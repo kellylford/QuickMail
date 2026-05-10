@@ -1,6 +1,6 @@
 # QuickMail
 
-A keyboard-first WPF desktop email client for Windows. Multi-account IMAP/SMTP with a unified inbox, conversation threading, and an HTML reading pane — all driven without a mouse.
+A keyboard-first WPF desktop email client for Windows. Multi-account IMAP/SMTP with a unified inbox, conversation threading, and an HTML reading pane.
 
 ## Features
 
@@ -8,7 +8,7 @@ A keyboard-first WPF desktop email client for Windows. Multi-account IMAP/SMTP w
 - **Unified inbox** — all mail from all accounts in one sorted view
 - **Conversation view** — threads grouped by subject with collapsible tree
 - **HTML rendering** — WebView2 with strict CSP (no email-embedded scripts)
-- **Keyboard-first** — full navigation, reply, forward, and delete without a mouse
+- **Keyboard-first** — full navigation, reply, forward, and delete.
 - **Secure credentials** — passwords stored in Windows Credential Manager, never in plain text
 
 ## Requirements
