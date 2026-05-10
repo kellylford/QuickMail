@@ -58,6 +58,7 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedFolder))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private MailFolderModel? _selectedFolder;
 
     [ObservableProperty]
@@ -68,10 +69,12 @@ public partial class MainViewModel : ObservableObject
     private MailMessageSummary? _selectedMessage;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private MailMessageDetail? _messageDetail;
 
     /// <summary>True when a message body has been loaded and the reading pane should be shown.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private bool _isMessageOpen;
 
     [ObservableProperty]
@@ -89,6 +92,18 @@ public partial class MainViewModel : ObservableObject
     public bool HasSelectedAccount  => SelectedAccount  != null;
     public bool HasSelectedFolder   => SelectedFolder   != null;
     public bool HasSelectedMessage  => SelectedMessage  != null;
+
+    public string WindowTitle
+    {
+        get
+        {
+            if (IsMessageOpen && !string.IsNullOrWhiteSpace(MessageDetail?.Subject))
+                return $"{MessageDetail.Subject} - QuickMail";
+            if (SelectedFolder != null && !SelectedFolder.IsHeader)
+                return $"{SelectedFolder.DisplayName} - QuickMail";
+            return "QuickMail";
+        }
+    }
 
     public MainViewModel(
         IImapService imap,

@@ -7,7 +7,7 @@
         xmlns:models="clr-namespace:QuickMail.Models"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
-        Title="QuickMail"
+        Title="{Binding WindowTitle}"
         Height="650" Width="1000"
         MinHeight="400" MinWidth="700">
 
