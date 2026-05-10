@@ -65,12 +65,16 @@ public partial class AccountManagerViewModel : ObservableObject
         StatusText = string.Empty;
     }
 
-    [RelayCommand]
-    private void NewAccount()
+    public AddAccountViewModel CreateAddAccountViewModel() => new(_imap);
+
+    public void CommitNewAccount(AccountModel account, string password)
     {
-        var account = new AccountModel { DisplayName = "New Account" };
+        if (!string.IsNullOrEmpty(password))
+            _credentials.SavePassword(account.Id, password);
         Accounts.Add(account);
+        _accountService.SaveAccounts([.. Accounts]);
         SelectedAccount = account;
+        StatusText = "Account added.";
     }
 
     [RelayCommand]

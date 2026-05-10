@@ -21,6 +21,14 @@ public partial class AccountManagerDialog : Window
             _vm.Password = pb.Password;
     }
 
+    private void NewButton_Click(object sender, RoutedEventArgs e)
+    {
+        var addVm = _vm.CreateAddAccountViewModel();
+        var dialog = new AddAccountDialog(addVm) { Owner = this };
+        if (dialog.ShowDialog() == true)
+            _vm.CommitNewAccount(addVm.ToAccountModel(), addVm.Password);
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         DialogResult = true;
