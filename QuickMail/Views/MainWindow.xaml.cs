@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.IO;
 using System.Globalization;
 using System.Linq;
 using System.Net;
@@ -89,7 +90,11 @@ public partial class MainWindow : Window
         // Initialise the embedded browser.  Wire Escape before doing anything else.
         try
         {
-            await MessageBody.EnsureCoreWebView2Async();
+            var userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "QuickMail", "WebView2");
+            var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            await MessageBody.EnsureCoreWebView2Async(env);
             _webViewReady = true;
 
             // Disable unnecessary browser chrome / context menus
