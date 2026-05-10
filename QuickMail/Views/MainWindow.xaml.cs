@@ -244,6 +244,7 @@ public partial class MainWindow : Window
     private void List_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         if (sender is not ListBox lb) return;
+        LogService.Debug($"List_GotKeyboardFocus sender={lb.Name} newFocus={e.NewFocus?.GetType().Name} oldFocus={e.OldFocus?.GetType().Name}");
 
         if (lb.SelectedIndex < 0 && lb.Items.Count > 0)
             lb.SelectedIndex = 0;
@@ -350,6 +351,7 @@ public partial class MainWindow : Window
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        LogService.Debug($"MessageList_PreviewKeyDown key={e.Key} mod={Keyboard.Modifiers} focused={Keyboard.FocusedElement?.GetType().Name}");
         if (e.Key == Key.Enter && MessageList.SelectedItem is MailMessageSummary summary)
         {
             e.Handled = true;
