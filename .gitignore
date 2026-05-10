@@ -15,3 +15,7 @@ packages/
 # OS
 .DS_Store
 Thumbs.db
+
+# Claude Code worktrees and local session data
+.claude/worktrees/
+.claude/settings.local.json
