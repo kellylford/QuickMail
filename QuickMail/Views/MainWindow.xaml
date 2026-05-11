@@ -15,6 +15,7 @@
         <local:BoolToFontWeightConverter x:Key="BoolToWeightConverter"/>
         <BooleanToVisibilityConverter    x:Key="BoolToVisibilityConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <local:BoolToColumnWidthConverter       x:Key="BoolToColumnWidthConverter"/>
     </Window.Resources>
 
     <Window.InputBindings>
@@ -268,6 +269,26 @@
                         </ListView.Resources>
                         <ListView.View>
                             <GridView>
+                                <GridViewColumn Width="{Binding ShowMessageStatus, Converter={StaticResource BoolToColumnWidthConverter}}">
+                                    <GridViewColumn.Header>
+                                        <TextBlock Text="Status"
+                                                   AutomationProperties.IsColumnHeader="True"
+                                                   Visibility="{Binding DataContext.ShowMessageStatus,
+                                                       RelativeSource={RelativeSource AncestorType=Window},
+                                                       Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    </GridViewColumn.Header>
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding StatusDisplay}"
+                                                       FontSize="11"
+                                                       TextAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Visibility="{Binding DataContext.ShowMessageStatus,
+                                                           RelativeSource={RelativeSource AncestorType=Window},
+                                                           Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
                                 <GridViewColumn Width="180">
                                     <GridViewColumn.Header>
                                         <GridViewColumnHeader Content="From"

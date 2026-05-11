@@ -18,6 +18,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
     private readonly ISyncService _syncService;
+    private readonly IConfigService _configService;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -89,6 +90,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isBusy;
 
+    [ObservableProperty]
+    private bool _showMessageStatus;
+
     public bool HasSelectedAccount  => SelectedAccount  != null;
     public bool HasSelectedFolder   => SelectedFolder   != null;
     public bool HasSelectedMessage  => SelectedMessage  != null;
@@ -110,13 +114,18 @@ public partial class MainViewModel : ObservableObject
         IAccountService accountService,
         ICredentialService credentials,
         ILocalStoreService localStore,
-        ISyncService syncService)
+        ISyncService syncService,
+        IConfigService configService)
     {
-        _imap        = imap;
+        _imap           = imap;
         _accountService = accountService;
-        _credentials = credentials;
-        _localStore  = localStore;
-        _syncService = syncService;
+        _credentials    = credentials;
+        _localStore     = localStore;
+        _syncService    = syncService;
+        _configService  = configService;
+
+        var cfg = _configService.Load();
+        _showMessageStatus = cfg.ShowMessageStatus;
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
@@ -552,7 +561,7 @@ public partial class MainViewModel : ObservableObject
             if (string.IsNullOrEmpty(summary.Preview))
             {
                 var account = Accounts.FirstOrDefault(a => a.Id == summary.AccountId);
-                var lines   = account?.PreviewLines ?? 2;
+                var lines   = _configService.Load().GetPreviewLines(summary.AccountId);
                 var preview = ExtractPreview(detail.PlainTextBody, detail.HtmlBody, lines);
                 if (!string.IsNullOrEmpty(preview))
                 {
@@ -763,19 +772,46 @@ public partial class MainViewModel : ObservableObject
 
     // Returns MessageDetail if already loaded for the selected message,
     // otherwise fetches it (cache then IMAP) so compose can always proceed.
+    // Deliberately bypasses SelectMessageCommand to avoid concurrent-execution
+    // guards on that command and to avoid opening the reading pane as a side-effect.
     private async Task<MailMessageDetail?> EnsureDetailAsync()
     {
         var summary = SelectedMessage;
         if (summary == null) return null;
 
+        // Fast path: detail already loaded for this exact message.
         if (MessageDetail != null &&
             MessageDetail.UniqueId   == summary.UniqueId &&
             MessageDetail.AccountId  == summary.AccountId &&
             MessageDetail.FolderName == summary.FolderName)
             return MessageDetail;
 
-        await SelectMessageCommand.ExecuteAsync(summary);
-        return MessageDetail;
+        // Ensure the correct account is active (important in All-Mail view).
+        if (SelectedAccount?.Id != summary.AccountId)
+            SelectedAccount = Accounts.FirstOrDefault(a => a.Id == summary.AccountId) ?? SelectedAccount;
+        if (SelectedAccount == null) return null;
+
+        // Load from local cache first, fall back to IMAP.
+        try
+        {
+            var detail = await _localStore.LoadDetailAsync(
+                summary.AccountId, summary.FolderName, summary.UniqueId);
+
+            if (detail == null)
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                detail = await _imap.GetMessageDetailAsync(
+                    summary.AccountId, summary.FolderName, summary.UniqueId, cts.Token);
+                _ = _localStore.UpsertDetailAsync(detail);
+            }
+
+            return detail;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("EnsureDetail", ex);
+            return null;
+        }
     }
 
     [RelayCommand]

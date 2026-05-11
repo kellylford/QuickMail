@@ -12,11 +12,13 @@ public class SyncService : ISyncService
 {
     private readonly IImapService _imap;
     private readonly ILocalStoreService _store;
+    private readonly IConfigService _config;
 
-    public SyncService(IImapService imap, ILocalStoreService store)
+    public SyncService(IImapService imap, ILocalStoreService store, IConfigService config)
     {
-        _imap  = imap;
-        _store = store;
+        _imap   = imap;
+        _store  = store;
+        _config = config;
     }
 
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
@@ -44,7 +46,8 @@ public class SyncService : ISyncService
                     var incoming = await SyncFolderAsync(account, folder, ct);
                     // Only queue body-download fallback for messages the server didn't
                     // already fill via the IMAP PREVIEW extension.
-                    if (incoming.Count > 0 && account.PreviewLines > 0
+                    var previewLines = _config.Load().GetPreviewLines(account.Id);
+                    if (incoming.Count > 0 && previewLines > 0
                         && incoming.Any(s => string.IsNullOrEmpty(s.Preview)))
                         previewJobs.Add((account, folder, incoming));
                 }
@@ -134,8 +137,10 @@ public class SyncService : ISyncService
                 .ToList();
             if (uids.Count == 0) return;
 
+            var previewLines = _config.Load().GetPreviewLines(account.Id);
+            if (previewLines <= 0) return;
             var previews = await _imap.FetchPreviewsAsync(
-                account.Id, folder.FullName, uids, account.PreviewLines, ct);
+                account.Id, folder.FullName, uids, previewLines, ct);
 
             foreach (var s in incoming)
             {

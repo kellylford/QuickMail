@@ -43,6 +43,19 @@ public class InverseBoolToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>
+/// Converts a bool (ShowMessageStatus) to a GridViewColumn width.
+/// true → fixed column width; false → 0 (hidden).
+/// </summary>
+public class BoolToColumnWidthConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        value is true ? 65.0 : 0.0;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;

@@ -22,14 +22,15 @@ public partial class App : Application
         var credentialService = new CredentialService();
         var imapService       = new ImapService();
         var smtpService       = new SmtpService();
+        var configService     = new ConfigService();
 
         var localStore = new LocalStoreService();
         localStore.Initialize();
 
-        var syncService = new SyncService(imapService, localStore);
+        var syncService = new SyncService(imapService, localStore, configService);
 
         var mainVm = new MainViewModel(
-            imapService, accountService, credentialService, localStore, syncService);
+            imapService, accountService, credentialService, localStore, syncService, configService);
         mainVm.LoadAccountList();
 
         var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService);

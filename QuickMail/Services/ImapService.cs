@@ -427,14 +427,18 @@ public class ImapService : IImapService
     private static MailMessageSummary SummaryToModel(IMessageSummary s, Guid accountId, string folderName) =>
         new()
         {
-            UniqueId   = s.UniqueId.Id,
-            AccountId  = accountId,
-            FolderName = folderName,
-            From       = FormatAddressListDisplay(s.Envelope?.From),
-            Subject    = s.Envelope?.Subject ?? "(no subject)",
-            Date       = s.Envelope?.Date ?? DateTimeOffset.MinValue,
-            IsRead     = (s.Flags & MessageFlags.Seen) != 0,
-            Preview    = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
+            UniqueId    = s.UniqueId.Id,
+            AccountId   = accountId,
+            FolderName  = folderName,
+            From        = FormatAddressListDisplay(s.Envelope?.From),
+            Subject     = s.Envelope?.Subject ?? "(no subject)",
+            Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
+            IsRead      = (s.Flags & MessageFlags.Seen)     != 0,
+            IsReplied   = (s.Flags & MessageFlags.Answered) != 0,
+            IsForwarded = s.Keywords?.Any(k =>
+                              k.Equals("$Forwarded", StringComparison.OrdinalIgnoreCase) ||
+                              k.Equals("Forwarded",  StringComparison.OrdinalIgnoreCase)) == true,
+            Preview     = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
         };
 
     private static IMailFolder? FindSpecialFolder(ImapClient client, params SpecialFolder[] candidates)

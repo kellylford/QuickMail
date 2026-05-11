@@ -13,12 +13,36 @@ public partial class MailMessageSummary : ObservableObject
     public DateTimeOffset Date { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     private bool _isRead;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDisplay))]
+    private bool _isReplied;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDisplay))]
+    private bool _isForwarded;
 
     [ObservableProperty]
     private string _preview = string.Empty;
 
-    /// <summary>Display-friendly date: "Today HH:mm" or "dd MMM".</summary>
+    /// <summary>
+    /// Single-word status shown in the status column.
+    /// Priority: Replied > Fwd > New > (blank for read with no special flag).
+    /// </summary>
+    public string StatusDisplay
+    {
+        get
+        {
+            if (IsReplied)   return "Replied";
+            if (IsForwarded) return "Fwd";
+            if (!IsRead)     return "New";
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Display-friendly date: "HH:mm" for today, "dd MMM" otherwise.</summary>
     public string DateDisplay
     {
         get
