@@ -10,10 +10,13 @@ namespace QuickMail.Services;
 
 public class SmtpService : ISmtpService
 {
+    private readonly IOAuthService _oauth;
     private static readonly string UserAgent =
         "QuickMail/" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0");
 
-    public async Task SendAsync(ComposeModel compose, AccountModel account, string password, CancellationToken ct = default)
+    public SmtpService(IOAuthService oauth) => _oauth = oauth;
+
+    public async Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
     {
         var message = new MimeMessage();
 
@@ -40,7 +43,17 @@ public class SmtpService : ISmtpService
             : SecureSocketOptions.StartTlsWhenAvailable;
 
         await client.ConnectAsync(account.SmtpHost, account.SmtpPort, ssl, ct);
-        await client.AuthenticateAsync(account.Username, password, ct);
+
+        if (account.AuthType == AuthType.OAuth2Microsoft)
+        {
+            var token = await _oauth.GetAccessTokenAsync(account, ct);
+            await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Username, token), ct);
+        }
+        else
+        {
+            await client.AuthenticateAsync(account.Username, password!, ct);
+        }
+
         await client.SendAsync(message, ct);
         await client.DisconnectAsync(true, ct);
     }

@@ -63,6 +63,7 @@ public partial class MainWindow : Window
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly IImapService _imap;
+    private readonly IOAuthService _oauth;
     private bool _webViewReady;
 
     public MainWindow(
@@ -70,13 +71,15 @@ public partial class MainWindow : Window
         ISmtpService smtp,
         IAccountService accountService,
         ICredentialService credentials,
-        IImapService imap)
+        IImapService imap,
+        IOAuthService oauth)
     {
         _vm = vm;
         _smtp = smtp;
         _accountService = accountService;
         _credentials = credentials;
         _imap = imap;
+        _oauth = oauth;
 
         InitializeComponent();
         DataContext = vm;
@@ -720,7 +723,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManager()
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth);
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         if (dialog.ShowDialog() == true)
             _vm.RefreshAccountList();

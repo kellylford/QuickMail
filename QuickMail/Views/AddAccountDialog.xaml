@@ -10,6 +10,10 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
@@ -32,12 +36,39 @@
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
                          TabIndex="1"/>
 
-                <TextBlock x:Name="LblPassword" Text="_Password:" Margin="0,8,0,2"/>
-                <PasswordBox x:Name="PasswordBox"
-                             AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                             AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
-                             TabIndex="2"
-                             PasswordChanged="PasswordBox_PasswordChanged"/>
+                <!-- Authentication type -->
+                <TextBlock Text="Authentication:" Margin="0,8,0,2"/>
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,6">
+                    <RadioButton Content="_Password"
+                                 IsChecked="{Binding IsPasswordAuth, Mode=TwoWay}"
+                                 GroupName="AuthType"
+                                 AutomationProperties.Name="Use password authentication"
+                                 Margin="0,0,12,0" TabIndex="2"/>
+                    <RadioButton Content="_Microsoft OAuth2 (Outlook.com)"
+                                 IsChecked="{Binding IsOAuth2, Mode=TwoWay}"
+                                 GroupName="AuthType"
+                                 AutomationProperties.Name="Use Microsoft OAuth2 for Outlook.com"
+                                 TabIndex="3"/>
+                </StackPanel>
+
+                <!-- Password panel (hidden for OAuth2) -->
+                <StackPanel Visibility="{Binding IsPasswordAuth, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock x:Name="LblPassword" Text="_Password:" Margin="0,0,0,2"/>
+                    <PasswordBox x:Name="PasswordBox"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
+                                 AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
+                                 TabIndex="4"
+                                 PasswordChanged="PasswordBox_PasswordChanged"/>
+                </StackPanel>
+
+                <!-- OAuth2 sign-in panel (hidden for password auth) -->
+                <StackPanel Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
+                            Margin="0,4,0,0">
+                    <Button Content="Sign in with _Microsoft…"
+                            Command="{Binding SignInMicrosoftCommand}"
+                            AutomationProperties.Name="Sign in with Microsoft account in browser"
+                            HorizontalAlignment="Left" MinWidth="200" TabIndex="4"/>
+                </StackPanel>
 
                 <Separator Margin="0,12"/>
 

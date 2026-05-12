@@ -15,15 +15,18 @@ namespace QuickMail.Services;
 
 public class ImapService : IImapService
 {
+    private readonly IOAuthService _oauth;
     private readonly ConcurrentDictionary<Guid, ImapClient> _clients   = new();
     private readonly ConcurrentDictionary<Guid, AccountModel> _accounts = new();
     private readonly ConcurrentDictionary<Guid, string>  _passwords     = new();
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks   = new();
     private bool _disposed;
 
+    public ImapService(IOAuthService oauth) => _oauth = oauth;
+
     // ── Connect / disconnect ─────────────────────────────────────────────────────
 
-    public async Task ConnectAsync(AccountModel account, string password, CancellationToken ct = default)
+    public async Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
     {
         if (_clients.TryGetValue(account.Id, out var existing))
         {
@@ -41,14 +44,25 @@ public class ImapService : IImapService
             ? SecureSocketOptions.SslOnConnect
             : SecureSocketOptions.StartTlsWhenAvailable;
 
-        LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={account.ImapUseSsl} user={account.Username}");
+        LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={account.ImapUseSsl} user={account.Username} auth={account.AuthType}");
         await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
-        await client.AuthenticateAsync(account.Username, password, ct);
+
+        if (account.AuthType == AuthType.OAuth2Microsoft)
+        {
+            var token = await _oauth.GetAccessTokenAsync(account, ct);
+            await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Username, token), ct);
+        }
+        else
+        {
+            await client.AuthenticateAsync(account.Username, password!, ct);
+        }
+
         LogService.Log($"Connected. Capabilities: {client.Capabilities}");
 
-        _clients[account.Id]   = client;
-        _accounts[account.Id]  = account;
-        _passwords[account.Id] = password;
+        _clients[account.Id]  = client;
+        _accounts[account.Id] = account;
+        if (password is not null)
+            _passwords[account.Id] = password;
     }
 
     public async Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
@@ -404,8 +418,11 @@ public class ImapService : IImapService
         if (_clients.TryGetValue(accountId, out var client) && client.IsAuthenticated)
             return client;
 
-        if (!_accounts.TryGetValue(accountId, out var account) ||
-            !_passwords.TryGetValue(accountId, out var password))
+        if (!_accounts.TryGetValue(accountId, out var account))
+            throw new InvalidOperationException($"Account {accountId} is not connected.");
+
+        string? password = null;
+        if (account.AuthType == AuthType.Password && !_passwords.TryGetValue(accountId, out password))
             throw new InvalidOperationException($"Account {accountId} is not connected.");
 
         // One reconnect attempt at a time per account

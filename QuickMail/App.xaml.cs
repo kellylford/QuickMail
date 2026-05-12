@@ -20,8 +20,9 @@ public partial class App : Application
 
         var accountService    = new AccountService();
         var credentialService = new CredentialService();
-        var imapService       = new ImapService();
-        var smtpService       = new SmtpService();
+        var oauthService      = new OAuthService();
+        var imapService       = new ImapService(oauthService);
+        var smtpService       = new SmtpService(oauthService);
         var configService     = new ConfigService();
 
         var localStore = new LocalStoreService();
@@ -33,7 +34,7 @@ public partial class App : Application
             imapService, accountService, credentialService, localStore, syncService, configService);
         mainVm.LoadAccountList();
 
-        var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService);
+        var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService);
         mainWindow.Show();
     }
 }

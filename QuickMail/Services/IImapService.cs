@@ -8,7 +8,7 @@ namespace QuickMail.Services;
 
 public interface IImapService : IDisposable
 {
-    Task ConnectAsync(AccountModel account, string password, CancellationToken ct = default);
+    Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default);
     Task DisconnectAsync(Guid accountId, CancellationToken ct = default);
     Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default);
     Task<List<MailMessageSummary>> GetMessageSummariesAsync(

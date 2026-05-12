@@ -68,7 +68,7 @@ public partial class ComposeViewModel : ObservableObject
         }
 
         var password = _credentials.GetPassword(account.Id);
-        if (string.IsNullOrEmpty(password))
+        if (string.IsNullOrEmpty(password) && account.AuthType == Models.AuthType.Password)
         {
             StatusText = "No password stored for this account.";
             return;

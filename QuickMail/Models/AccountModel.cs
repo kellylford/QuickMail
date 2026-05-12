@@ -7,6 +7,7 @@ public class AccountModel
     public Guid Id { get; set; } = Guid.NewGuid();
     public string DisplayName { get; set; } = string.Empty;
     public string Username { get; set; } = string.Empty;
+    public AuthType AuthType { get; set; } = AuthType.Password;
 
     // IMAP
     public string ImapHost { get; set; } = string.Empty;

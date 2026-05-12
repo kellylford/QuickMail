@@ -14,6 +14,7 @@ public partial class AccountManagerViewModel : ObservableObject
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly IImapService _imap;
+    private readonly IOAuthService _oauth;
 
     [ObservableProperty]
     private ObservableCollection<AccountModel> _accounts = [];
@@ -35,16 +36,33 @@ public partial class AccountManagerViewModel : ObservableObject
     [ObservableProperty] private bool _smtpUseSsl = false;
     [ObservableProperty] private bool _smtpAcceptInvalidCert = false;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPasswordAuth))]
+    [NotifyPropertyChangedFor(nameof(IsOAuth2))]
+    private AuthType _authType = AuthType.Password;
+
+    public bool IsPasswordAuth
+    {
+        get => AuthType == AuthType.Password;
+        set { if (value) AuthType = AuthType.Password; }
+    }
+    public bool IsOAuth2
+    {
+        get => AuthType == AuthType.OAuth2Microsoft;
+        set { if (value) AuthType = AuthType.OAuth2Microsoft; }
+    }
+
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private bool _isBusy = false;
 
     public bool IsEditing => SelectedAccount != null;
 
-    public AccountManagerViewModel(IAccountService accountService, ICredentialService credentials, IImapService imap)
+    public AccountManagerViewModel(IAccountService accountService, ICredentialService credentials, IImapService imap, IOAuthService oauth)
     {
         _accountService = accountService;
         _credentials = credentials;
         _imap = imap;
+        _oauth = oauth;
         Accounts = new ObservableCollection<AccountModel>(accountService.LoadAccounts());
     }
 
@@ -53,7 +71,10 @@ public partial class AccountManagerViewModel : ObservableObject
         if (value == null) return;
         DisplayName = value.DisplayName;
         Username = value.Username;
-        Password = _credentials.GetPassword(value.Id) ?? string.Empty;
+        AuthType = value.AuthType;
+        Password = value.AuthType == AuthType.Password
+            ? (_credentials.GetPassword(value.Id) ?? string.Empty)
+            : string.Empty;
         ImapHost = value.ImapHost;
         ImapPort = value.ImapPort;
         ImapUseSsl = value.ImapUseSsl;
@@ -65,7 +86,7 @@ public partial class AccountManagerViewModel : ObservableObject
         StatusText = string.Empty;
     }
 
-    public AddAccountViewModel CreateAddAccountViewModel() => new(_imap);
+    public AddAccountViewModel CreateAddAccountViewModel() => new(_imap, _oauth);
 
     public void CommitNewAccount(AccountModel account, string password)
     {
@@ -84,6 +105,7 @@ public partial class AccountManagerViewModel : ObservableObject
 
         SelectedAccount.DisplayName = DisplayName;
         SelectedAccount.Username = Username;
+        SelectedAccount.AuthType = AuthType;
         SelectedAccount.ImapHost = ImapHost;
         SelectedAccount.ImapPort = ImapPort;
         SelectedAccount.ImapUseSsl = ImapUseSsl;
@@ -93,7 +115,7 @@ public partial class AccountManagerViewModel : ObservableObject
         SelectedAccount.SmtpUseSsl = SmtpUseSsl;
         SelectedAccount.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
 
-        if (!string.IsNullOrEmpty(Password))
+        if (AuthType == AuthType.Password && !string.IsNullOrEmpty(Password))
             _credentials.SavePassword(SelectedAccount.Id, Password);
 
         _accountService.SaveAccounts([.. Accounts]);
@@ -121,6 +143,29 @@ public partial class AccountManagerViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task SignInMicrosoftAsync()
+    {
+        IsBusy = true;
+        StatusText = "Opening browser for Microsoft sign-in…";
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft };
+            var result = await _oauth.SignInInteractiveAsync(tempAccount, cts.Token);
+            Username = result.Username;
+            StatusText = $"Signed in as {result.Username}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Sign-in failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
     private async Task TestConnectionAsync()
     {
         if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(Username))
@@ -137,13 +182,15 @@ public partial class AccountManagerViewModel : ObservableObject
             {
                 Id = SelectedAccount?.Id ?? Guid.NewGuid(),
                 Username = Username,
+                AuthType = AuthType,
                 ImapHost = ImapHost,
                 ImapPort = ImapPort,
                 ImapUseSsl = ImapUseSsl,
                 ImapAcceptInvalidCert = ImapAcceptInvalidCert
             };
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            await _imap.ConnectAsync(testAccount, Password, cts.Token);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var pwd = IsPasswordAuth ? Password : null;
+            await _imap.ConnectAsync(testAccount, pwd, cts.Token);
             await _imap.DisconnectAsync(testAccount.Id, cts.Token);
             StatusText = "Connection successful!";
         }

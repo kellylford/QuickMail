@@ -11,6 +11,7 @@ namespace QuickMail.ViewModels;
 public partial class AddAccountViewModel : ObservableObject
 {
     private readonly IImapService _imap;
+    private readonly IOAuthService _oauth;
 
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _username = string.Empty;
@@ -27,9 +28,66 @@ public partial class AddAccountViewModel : ObservableObject
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private bool _isBusy = false;
 
-    public AddAccountViewModel(IImapService imap)
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPasswordAuth))]
+    [NotifyPropertyChangedFor(nameof(IsOAuth2))]
+    private AuthType _authType = AuthType.Password;
+
+    public bool IsPasswordAuth
     {
-        _imap = imap;
+        get => AuthType == AuthType.Password;
+        set { if (value) AuthType = AuthType.Password; }
+    }
+    public bool IsOAuth2
+    {
+        get => AuthType == AuthType.OAuth2Microsoft;
+        set { if (value) AuthType = AuthType.OAuth2Microsoft; }
+    }
+
+    public AddAccountViewModel(IImapService imap, IOAuthService oauth)
+    {
+        _imap  = imap;
+        _oauth = oauth;
+    }
+
+    partial void OnAuthTypeChanged(AuthType value)
+    {
+        if (value == AuthType.OAuth2Microsoft)
+        {
+            // Auto-fill Outlook.com server settings
+            ImapHost             = "outlook.office365.com";
+            ImapPort             = 993;
+            ImapUseSsl           = true;
+            ImapAcceptInvalidCert = false;
+            SmtpHost             = "smtp.office365.com";
+            SmtpPort             = 587;
+            SmtpUseSsl           = false;
+            SmtpAcceptInvalidCert = false;
+            Password             = string.Empty;
+        }
+    }
+
+    [RelayCommand]
+    private async Task SignInMicrosoftAsync()
+    {
+        IsBusy = true;
+        StatusText = "Opening browser for Microsoft sign-in…";
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft };
+            var result = await _oauth.SignInInteractiveAsync(tempAccount, cts.Token);
+            Username = result.Username;
+            StatusText = $"Signed in as {result.Username}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Sign-in failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     [RelayCommand]
@@ -49,13 +107,15 @@ public partial class AddAccountViewModel : ObservableObject
             {
                 Id = Guid.NewGuid(),
                 Username = Username,
+                AuthType = AuthType,
                 ImapHost = ImapHost,
                 ImapPort = ImapPort,
                 ImapUseSsl = ImapUseSsl,
                 ImapAcceptInvalidCert = ImapAcceptInvalidCert
             };
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-            await _imap.ConnectAsync(testAccount, Password, cts.Token);
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var pwd = IsPasswordAuth ? Password : null;
+            await _imap.ConnectAsync(testAccount, pwd, cts.Token);
             await _imap.DisconnectAsync(testAccount.Id, cts.Token);
             StatusText = "Connection successful!";
         }
@@ -73,6 +133,7 @@ public partial class AddAccountViewModel : ObservableObject
     {
         DisplayName = DisplayName,
         Username = Username,
+        AuthType = AuthType,
         ImapHost = ImapHost,
         ImapPort = ImapPort,
         ImapUseSsl = ImapUseSsl,
