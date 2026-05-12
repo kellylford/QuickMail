@@ -303,8 +303,12 @@ public partial class MainViewModel : ObservableObject
 
     private async Task<(Guid Id, List<MailFolderModel>? Folders)> ConnectOneAccountAsync(AccountModel account)
     {
-        var password = _credentials.GetPassword(account.Id);
-        if (string.IsNullOrEmpty(password)) return (account.Id, null);
+        string? password = null;
+        if (account.AuthType == Models.AuthType.Password)
+        {
+            password = _credentials.GetPassword(account.Id);
+            if (string.IsNullOrEmpty(password)) return (account.Id, null);
+        }
 
         try
         {
@@ -867,7 +871,24 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ManageAccounts() => ManageAccountsRequested?.Invoke();
 
-    public void RefreshAccountList() => LoadAccountList();
+    public void RefreshAccountList()
+    {
+        LoadAccountList();
+        // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts)
+        _ = Task.Run(async () =>
+        {
+            foreach (var account in Accounts)
+            {
+                if (_cachedFolders.ContainsKey(account.Id)) continue;
+                var result = await ConnectOneAccountAsync(account);
+                if (result.Folders != null)
+                {
+                    _cachedFolders[result.Id] = result.Folders;
+                    App.Current.Dispatcher.Invoke(RebuildFolderListFromCache);
+                }
+            }
+        });
+    }
 
     // ── Preview extraction ────────────────────────────────────────────────────────
 
