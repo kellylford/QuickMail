@@ -54,12 +54,12 @@ public partial class AddAccountViewModel : ObservableObject
     {
         if (value == AuthType.OAuth2Microsoft)
         {
-            // Auto-fill Outlook.com server settings
+            // Personal Outlook.com IMAP/SMTP server settings
             ImapHost             = "outlook.office365.com";
             ImapPort             = 993;
             ImapUseSsl           = true;
             ImapAcceptInvalidCert = false;
-            SmtpHost             = "smtp.office365.com";
+            SmtpHost             = "smtp-mail.outlook.com";
             SmtpPort             = 587;
             SmtpUseSsl           = false;
             SmtpAcceptInvalidCert = false;

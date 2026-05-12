@@ -80,7 +80,7 @@
                                  IsChecked="{Binding IsOAuth2, Mode=TwoWay}"
                                  GroupName="AuthType"
                                  AutomationProperties.Name="Use Microsoft OAuth2 for Outlook.com"
-                                 TabIndex="3"/>
+                                 IsTabStop="False"/>
                 </StackPanel>
 
                 <!-- Password panel -->
