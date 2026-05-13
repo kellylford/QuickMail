@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using MimeKit;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -310,10 +311,20 @@ public partial class ComposeViewModel : ObservableObject
         };
     }
 
-    public static ComposeModel CreateReplyAll(MailMessageDetail detail, Guid accountId)
+    /// <param name="ownAddress">The sender's own email address; excluded from the Cc list to avoid self-addressing.</param>
+    public static ComposeModel CreateReplyAll(MailMessageDetail detail, Guid accountId, string ownAddress = "")
     {
         var model = CreateReply(detail, accountId);
-        model.Cc = detail.Cc;
+
+        // Merge original To + Cc, excluding the sender's own address, into the new Cc.
+        var recipients = InternetAddressList.Parse(detail.To ?? string.Empty)
+            .Concat(InternetAddressList.Parse(detail.Cc ?? string.Empty))
+            .OfType<MailboxAddress>()
+            .Where(a => !string.Equals(a.Address, ownAddress, StringComparison.OrdinalIgnoreCase))
+            .Distinct()
+            .ToList();
+
+        model.Cc = string.Join(", ", recipients.Select(a => a.ToString()));
         return model;
     }
 

@@ -837,7 +837,8 @@ public partial class MainViewModel : ObservableObject
     {
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId));
+        var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
+        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId, ownAddress));
     }
 
     [RelayCommand]
@@ -1343,7 +1344,8 @@ public partial class MainViewModel : ObservableObject
         SelectedMessage = group!.Messages[0];
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId));
+        var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
+        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId, ownAddress));
     }
 
     [RelayCommand]
