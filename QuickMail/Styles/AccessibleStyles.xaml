@@ -58,4 +58,9 @@
         <Setter Property="MinHeight" Value="28"/>
     </Style>
 
+    <!-- Status bar items are F6-reachable; give them a visible focus ring. -->
+    <Style TargetType="StatusBarItem">
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+    </Style>
+
 </ResourceDictionary>

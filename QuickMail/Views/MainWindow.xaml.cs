@@ -138,6 +138,11 @@ public partial class MainWindow : Window
             execute: () => _vm.IsConversationView = !_vm.IsConversationView,
             defaultKey: Key.C, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
+        _registry.Register(new CommandDefinition(
+            id: "view.focusStatusBar", category: "View", title: "Focus Status Bar",
+            execute: FocusStatusBar,
+            defaultKey: Key.D9, defaultModifiers: ModifierKeys.Control));
+
         // Initialise the embedded browser.  Wire Escape before doing anything else.
         try
         {
