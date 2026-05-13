@@ -59,7 +59,9 @@
                      VirtualizingPanel.IsVirtualizing="True"
                      VirtualizingPanel.VirtualizationMode="Recycling"
                      AutomationProperties.Name="Commands"
-                     MouseDoubleClick="CommandList_MouseDoubleClick">
+                     MouseDoubleClick="CommandList_MouseDoubleClick"
+                     PreviewTextInput="CommandList_PreviewTextInput"
+                     PreviewKeyDown="CommandList_PreviewKeyDown">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>

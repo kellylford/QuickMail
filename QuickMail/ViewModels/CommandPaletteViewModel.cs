@@ -12,12 +12,6 @@ public partial class CommandPaletteViewModel : ObservableObject
     private readonly ICommandRegistry _registry;
     private readonly IReadOnlyList<CommandDefinition> _allCommands;
 
-    // Suppressed during construction so the window opening doesn't trigger a spurious announcement.
-    private bool _announceEnabled;
-
-    /// <summary>Raised when the screen reader should speak the currently highlighted command.</summary>
-    public event EventHandler<string>? AnnouncementRequested;
-
     [ObservableProperty]
     private string _searchText = string.Empty;
 
@@ -31,7 +25,6 @@ public partial class CommandPaletteViewModel : ObservableObject
         _registry    = registry;
         _allCommands = registry.GetAll();
         PopulateList(string.Empty);
-        _announceEnabled = true;  // enable after initial population
     }
 
     partial void OnSearchTextChanged(string value) => PopulateList(value);
@@ -39,16 +32,6 @@ public partial class CommandPaletteViewModel : ObservableObject
     partial void OnSelectedCommandChanged(CommandDefinition? value)
     {
         ExecuteSelectedCommand.NotifyCanExecuteChanged();
-        if (_announceEnabled && value != null)
-            AnnouncementRequested?.Invoke(this, BuildAnnouncement(value));
-    }
-
-    private static string BuildAnnouncement(CommandDefinition cmd)
-    {
-        var text = cmd.Title;
-        if (!string.IsNullOrEmpty(cmd.GestureText))
-            text += $", {cmd.GestureText}";
-        return text;
     }
 
     private void PopulateList(string filter)
