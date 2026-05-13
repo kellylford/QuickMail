@@ -99,6 +99,9 @@ public partial class MainWindow : Window
         {
             if (e.PropertyName is nameof(MainViewModel.Messages) or nameof(MainViewModel.Conversations) && IsActive)
                 Dispatcher.InvokeAsync(FocusActiveMessagePanel, DispatcherPriority.Input);
+
+            if (e.PropertyName == nameof(MainViewModel.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
+                AccessibilityHelper.Announce(this, vm.StatusText);
         };
 
         PreviewKeyDown += OnWindowKeyDown;
@@ -620,9 +623,13 @@ public partial class MainWindow : Window
     }
 
     // Moves focus to the first visible item in the status bar (always StatusTextItem).
+    // Also explicitly announces the status text because WPF's StatusBarItemAutomationPeer
+    // does not reliably raise UIA focus-changed events, so screen readers won't read it
+    // from the focus move alone.
     private void FocusStatusBar()
     {
         StatusTextItem.Focus();
+        AccessibilityHelper.Announce(this, $"Status bar: {_vm.StatusText}");
     }
 
     // Left/Right arrow keys navigate between the visible StatusBarItems.

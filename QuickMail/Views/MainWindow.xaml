@@ -662,9 +662,7 @@
                            Focusable="True"
                            IsTabStop="False"
                            AutomationProperties.Name="{Binding StatusText}">
-                <TextBlock Text="{Binding StatusText}"
-                           AutomationProperties.LiveSetting="Polite"
-                           AutomationProperties.Name="Status"/>
+                <TextBlock Text="{Binding StatusText}"/>
             </StatusBarItem>
 
             <StatusBarItem x:Name="StatusProgressItem"
