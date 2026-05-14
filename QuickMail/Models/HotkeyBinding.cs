@@ -1,4 +1,4 @@
-using System.Windows.Input;
+using System.Windows.Forms;
 
 namespace QuickMail.Models;
 
@@ -10,9 +10,6 @@ public sealed class HotkeyBinding
 {
     public string CommandId { get; set; } = string.Empty;
 
-    /// <summary>Integer value of <see cref="System.Windows.Input.Key"/>.</summary>
-    public int Key { get; set; }
-
-    /// <summary>Integer value of <see cref="System.Windows.Input.ModifierKeys"/>.</summary>
-    public int Modifiers { get; set; }
+    /// <summary>Integer value of the combined <see cref="Keys"/> shortcut (key + modifiers).</summary>
+    public int Shortcut { get; set; }
 }

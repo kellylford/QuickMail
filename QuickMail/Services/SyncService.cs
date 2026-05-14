@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -89,8 +88,8 @@ public class SyncService : ISyncService
             await _store.UpsertSummariesAsync(incoming);
 
             // Show messages immediately — don't wait for body preview fetches.
-            await Application.Current.Dispatcher.InvokeAsync(
-                () => FolderSynced?.Invoke(incoming));
+            // UI thread marshaling is the subscriber's responsibility (MainViewModel uses _uiSyncContext).
+            FolderSynced?.Invoke(incoming);
         }
 
         // ── Remote deletions ─────────────────────────────────────────────────────
@@ -116,8 +115,7 @@ public class SyncService : ISyncService
             })
             .ToList();
 
-        await Application.Current.Dispatcher.InvokeAsync(
-            () => MessagesRemoved?.Invoke(removed));
+        MessagesRemoved?.Invoke(removed);
 
         return incoming;
     }
@@ -146,7 +144,7 @@ public class SyncService : ISyncService
             {
                 if (!previews.TryGetValue(s.UniqueId, out var p)) continue;
 
-                await Application.Current.Dispatcher.InvokeAsync(() => s.Preview = p);
+                s.Preview = p;
                 await _store.UpdatePreviewAsync(s.AccountId, s.FolderName, s.UniqueId, p);
             }
         }

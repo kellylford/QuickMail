@@ -6,11 +6,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Input;
+using System.Windows.Forms;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -24,6 +22,9 @@ public partial class MainViewModel : ObservableObject
     private readonly ILocalStoreService _localStore;
     private readonly ISyncService _syncService;
     private readonly IConfigService _configService;
+
+    // UI-thread context captured at construction (ViewModel is created on the UI thread)
+    private readonly SynchronizationContext _uiSyncContext;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -123,6 +124,7 @@ public partial class MainViewModel : ObservableObject
         IConfigService configService,
         ICommandRegistry commandRegistry)
     {
+        _uiSyncContext  = SynchronizationContext.Current ?? new SynchronizationContext();
         _imap           = imap;
         _accountService = accountService;
         _credentials    = credentials;
@@ -134,8 +136,8 @@ public partial class MainViewModel : ObservableObject
         _showMessageStatus  = cfg.ShowMessageStatus;
         _isConversationView = cfg.ConversationView;
 
-        _syncService.FolderSynced    += OnFolderSynced;
-        _syncService.MessagesRemoved += OnMessagesRemoved;
+        _syncService.FolderSynced    += msgs => _uiSyncContext.Post(_ => OnFolderSynced(msgs), null);
+        _syncService.MessagesRemoved += msgs => _uiSyncContext.Post(_ => OnMessagesRemoved(msgs), null);
 
         RegisterCommands(commandRegistry);
     }
@@ -150,46 +152,46 @@ public partial class MainViewModel : ObservableObject
         registry.Register(new CommandDefinition(
             id: "mail.new", category: "Mail", title: "New Message",
             execute: () => NewMessageCommand.Execute(null),
-            defaultKey: Key.N, defaultModifiers: ModifierKeys.Control));
+            shortcut: Keys.Control | Keys.N));
 
         registry.Register(new CommandDefinition(
             id: "mail.reply", category: "Mail", title: "Reply",
             execute: () => ReplyCommand.Execute(null),
-            defaultKey: Key.R, defaultModifiers: ModifierKeys.Control,
+            shortcut: Keys.Control | Keys.R,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
             id: "mail.replyAll", category: "Mail", title: "Reply All",
             execute: () => ReplyAllCommand.Execute(null),
-            defaultKey: Key.R, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            shortcut: Keys.Control | Keys.Shift | Keys.R,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
             id: "mail.forward", category: "Mail", title: "Forward",
             execute: () => ForwardCommand.Execute(null),
-            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control,
+            shortcut: Keys.Control | Keys.F,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
             id: "mail.delete", category: "Mail", title: "Delete",
             execute: () => DeleteMessageCommand.Execute(null),
-            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            shortcut: Keys.Delete,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
             id: "mail.refresh", category: "Mail", title: "Refresh",
             execute: () => RefreshCommand.Execute(null),
-            defaultKey: Key.F5, defaultModifiers: ModifierKeys.None));
+            shortcut: Keys.F5));
 
         registry.Register(new CommandDefinition(
             id: "mail.loadMore", category: "Mail", title: "Load More Messages",
             execute: () => LoadMoreMessagesCommand.Execute(null),
-            defaultKey: Key.M, defaultModifiers: ModifierKeys.Control));
+            shortcut: Keys.Control | Keys.M));
 
         registry.Register(new CommandDefinition(
             id: "mail.emptyTrash", category: "Mail", title: "Empty Trash",
             execute: () => EmptyTrashCommand.Execute(null),
-            defaultKey: Key.E, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+            shortcut: Keys.Control | Keys.Shift | Keys.E));
 
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Toggle Conversation View",
@@ -202,14 +204,14 @@ public partial class MainViewModel : ObservableObject
         registry.Register(new CommandDefinition(
             id: "help.userGuide", category: "Help", title: "Open User Guide",
             execute: () => ViewUserGuideCommand.Execute(null),
-            defaultKey: Key.F1, defaultModifiers: ModifierKeys.None));
+            shortcut: Keys.F1));
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Shows All Mail from the local store immediately (no network).
-    /// Called first in OnLoaded so the UI is populated before any IMAP work begins.
+    /// Called first in MainForm.Load so the UI is populated before any IMAP work begins.
     /// </summary>
     public async Task InitialLoadAsync()
     {
@@ -225,7 +227,7 @@ public partial class MainViewModel : ObservableObject
     /// <summary>
     /// Connects all accounts then runs a background incremental sync.
     /// New messages trickle into the UI via the FolderSynced event.
-    /// Fire-and-forget from OnLoaded; does not block the UI.
+    /// Fire-and-forget from Load; does not block the UI.
     /// </summary>
     public async Task StartBackgroundSyncAsync()
     {
@@ -281,7 +283,6 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var msg in incoming.OrderByDescending(m => m.Date))
         {
-            // Skip if already displayed (can happen if user triggered a manual refresh mid-sync)
             if (Messages.Any(e => e.UniqueId   == msg.UniqueId &&
                                   e.AccountId  == msg.AccountId &&
                                   e.FolderName == msg.FolderName))
@@ -295,6 +296,7 @@ public partial class MainViewModel : ObservableObject
         if (IsConversationView)
             ScheduleConversationRebuild();
     }
+
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
         bool removedOpen = false;
@@ -433,7 +435,6 @@ public partial class MainViewModel : ObservableObject
     {
         var roots = new List<FolderTreeNode>();
 
-        // "All Mail" is a synthetic leaf at the top (no children).
         roots.Add(new FolderTreeNode { Folder = AllMailFolder, Label = AllMailFolder.DisplayName });
 
         foreach (var account in Accounts)
@@ -445,7 +446,6 @@ public partial class MainViewModel : ObservableObject
             }
             else
             {
-                // Placeholder node for accounts that have not yet loaded folders.
                 roots.Add(new FolderTreeNode
                 {
                     IsHeader = true,
@@ -472,7 +472,6 @@ public partial class MainViewModel : ObservableObject
         _configService.Save(cfg);
     }
 
-    /// <summary>Called by MVVM Toolkit whenever the Messages property is replaced.</summary>
     partial void OnMessagesChanged(ObservableCollection<MailMessageSummary> value)
     {
         if (IsConversationView)
@@ -487,16 +486,15 @@ public partial class MainViewModel : ObservableObject
     private void ScheduleConversationRebuild()
     {
         var version  = Interlocked.Increment(ref _conversationRebuildVersion);
-        var snapshot = Messages.ToList(); // snapshot on UI thread; safe to read on background
+        var snapshot = Messages.ToList();
         Task.Run(() =>
         {
             var groups = ConversationBuilder.Build(snapshot);
-            App.Current.Dispatcher.InvokeAsync(() =>
+            _uiSyncContext.Post(_ =>
             {
-                // Discard stale results if a newer rebuild was already scheduled
                 if (version == _conversationRebuildVersion)
                     Conversations = new ObservableCollection<ConversationGroup>(groups);
-            });
+            }, null);
         });
     }
 
@@ -618,7 +616,6 @@ public partial class MainViewModel : ObservableObject
             _messageCts?.Cancel();
             _messageCts = new CancellationTokenSource();
 
-            // Serve from cache when available; fall back to IMAP and cache the result.
             var detail = await _localStore.LoadDetailAsync(
                 summary.AccountId, summary.FolderName, summary.UniqueId);
 
@@ -635,10 +632,8 @@ public partial class MainViewModel : ObservableObject
             summary.HasAttachments = detail.Attachments.Count > 0;
             _ = _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.UniqueId, true);
 
-            // Extract preview and persist if not already set.
             if (string.IsNullOrEmpty(summary.Preview))
             {
-                var account = Accounts.FirstOrDefault(a => a.Id == summary.AccountId);
                 var lines   = _configService.Load().GetPreviewLines(summary.AccountId);
                 var preview = ExtractPreview(detail.PlainTextBody, detail.HtmlBody, lines);
                 if (!string.IsNullOrEmpty(preview))
@@ -849,7 +844,6 @@ public partial class MainViewModel : ObservableObject
 
         var model = ComposeViewModel.CreateForward(detail, detail.AccountId);
 
-        // Hydrate attachment bytes so the forwarded message can include them.
         if (detail.Attachments.Count > 0)
         {
             IsBusy = true;
@@ -886,28 +880,21 @@ public partial class MainViewModel : ObservableObject
         ComposeRequested?.Invoke(model);
     }
 
-    // Returns MessageDetail if already loaded for the selected message,
-    // otherwise fetches it (cache then IMAP) so compose can always proceed.
-    // Deliberately bypasses SelectMessageCommand to avoid concurrent-execution
-    // guards on that command and to avoid opening the reading pane as a side-effect.
     private async Task<MailMessageDetail?> EnsureDetailAsync()
     {
         var summary = SelectedMessage;
         if (summary == null) return null;
 
-        // Fast path: detail already loaded for this exact message.
         if (MessageDetail != null &&
             MessageDetail.UniqueId   == summary.UniqueId &&
             MessageDetail.AccountId  == summary.AccountId &&
             MessageDetail.FolderName == summary.FolderName)
             return MessageDetail;
 
-        // Ensure the correct account is active (important in All-Mail view).
         if (SelectedAccount?.Id != summary.AccountId)
             SelectedAccount = Accounts.FirstOrDefault(a => a.Id == summary.AccountId) ?? SelectedAccount;
         if (SelectedAccount == null) return null;
 
-        // Load from local cache first, fall back to IMAP.
         try
         {
             var detail = await _localStore.LoadDetailAsync(
@@ -979,7 +966,6 @@ public partial class MainViewModel : ObservableObject
                 DraftFolderName = summary.FolderName,
             };
 
-            // Eagerly hydrate attachment bytes so ComposeWindow can re-send them
             foreach (var att in detail.Attachments)
             {
                 if (!att.IsLoaded && att.PartSpecifier != null)
@@ -1068,9 +1054,9 @@ public partial class MainViewModel : ObservableObject
         var result = MessageBox.Show(
             $"Remove the account '{account.DisplayName}'? This only removes it from QuickMail — your mail on the server is not affected.",
             "Remove Account",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-        if (result != MessageBoxResult.Yes) return;
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question);
+        if (result != DialogResult.Yes) return;
 
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
@@ -1098,10 +1084,6 @@ public partial class MainViewModel : ObservableObject
 
     // ── Folder context menu commands ──────────────────────────────────────────
 
-    /// <summary>
-    /// Refreshes the folder list for one account from the server.
-    /// Called after any folder CRUD operation.
-    /// </summary>
     public async Task RefreshFolderListAsync(Guid accountId)
     {
         try
@@ -1118,7 +1100,6 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>Creates a new folder under the given parent and refreshes the tree.</summary>
     public async Task CreateFolderAndRefreshAsync(Guid accountId, string? parentFolderName, string name)
     {
         StatusText = $"Creating folder '{name}'…";
@@ -1138,7 +1119,6 @@ public partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    /// <summary>Moves a folder to a new parent (IMAP RENAME) and refreshes the tree.</summary>
     public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
@@ -1164,7 +1144,6 @@ public partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    /// <summary>Copies a folder (and all its messages) to a new parent and refreshes the tree.</summary>
     public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
@@ -1189,10 +1168,6 @@ public partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    /// <summary>
-    /// Moves all messages in the folder to Trash, deletes the folder, and refreshes the tree.
-    /// Shows a confirmation dialog first.
-    /// </summary>
     public async Task DeleteFolderAsync(FolderTreeNode node)
     {
         if (node.Folder == null || node.IsHeader) return;
@@ -1200,9 +1175,9 @@ public partial class MainViewModel : ObservableObject
         var result = MessageBox.Show(
             $"Delete the folder '{node.Label}' and move all its messages to Trash?",
             "Delete Folder",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning);
-        if (result != MessageBoxResult.Yes) return;
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning);
+        if (result != DialogResult.Yes) return;
 
         StatusText = $"Deleting folder '{node.Label}'…";
         IsBusy     = true;
@@ -1211,7 +1186,6 @@ public partial class MainViewModel : ObservableObject
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
             await _imap.DeleteFolderAsync(node.Folder.AccountId, node.Folder.FullName, cts.Token);
 
-            // If the deleted folder was selected, fall back to All Mail
             if (SelectedFolder?.FullName == node.Folder.FullName)
             {
                 SelectedFolder = AllMailFolder;
@@ -1231,7 +1205,6 @@ public partial class MainViewModel : ObservableObject
 
     // ── Message move / copy ───────────────────────────────────────────────────
 
-    /// <summary>Moves the given messages to a destination folder and removes them from the current view.</summary>
     public async Task MoveSelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
@@ -1272,7 +1245,6 @@ public partial class MainViewModel : ObservableObject
         finally { IsBusy = false; }
     }
 
-    /// <summary>Copies the given messages to a destination folder without removing them from the current view.</summary>
     public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
@@ -1331,7 +1303,7 @@ public partial class MainViewModel : ObservableObject
     private async Task ReplyConversationAsync(ConversationGroup? group)
     {
         if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0]; // newest first
+        SelectedMessage = group!.Messages[0];
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
@@ -1404,12 +1376,12 @@ public partial class MainViewModel : ObservableObject
             IsBusy = false;
         }
 
-        var dlg = new SaveFileDialog
+        using var dlg = new SaveFileDialog
         {
             FileName = att.FileName,
             Title    = "Save Attachment",
         };
-        if (dlg.ShowDialog() != true) return;
+        if (dlg.ShowDialog() != DialogResult.OK) return;
         await File.WriteAllBytesAsync(dlg.FileName, att.Content!);
         StatusText = $"Saved {att.FileName}.";
     }
@@ -1419,9 +1391,9 @@ public partial class MainViewModel : ObservableObject
     {
         if (MessageDetail == null || MessageDetail.Attachments.Count == 0) return;
 
-        var dlg = new OpenFolderDialog { Title = "Choose folder to save attachments" };
-        if (dlg.ShowDialog() != true) return;
-        var folder = dlg.FolderName;
+        using var dlg = new FolderBrowserDialog { Description = "Choose folder to save attachments" };
+        if (dlg.ShowDialog() != DialogResult.OK) return;
+        var folder = dlg.SelectedPath;
 
         IsBusy = true;
         StatusText = "Saving attachments…";
@@ -1480,9 +1452,9 @@ public partial class MainViewModel : ObservableObject
             var result = MessageBox.Show(
                 $"'{att.FileName}' is an executable file type. Opening it could be dangerous. Continue?",
                 "Security Warning",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return;
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes) return;
         }
 
         var tempDir = Path.Combine(Path.GetTempPath(), "QuickMail");
@@ -1495,7 +1467,6 @@ public partial class MainViewModel : ObservableObject
     public void RefreshAccountList()
     {
         LoadAccountList();
-        // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts)
         _ = Task.Run(async () =>
         {
             foreach (var account in Accounts)
@@ -1505,7 +1476,7 @@ public partial class MainViewModel : ObservableObject
                 if (result.Folders != null)
                 {
                     _cachedFolders[result.Id] = result.Folders;
-                    App.Current.Dispatcher.Invoke(RebuildFolderListFromCache);
+                    _uiSyncContext.Post(_ => RebuildFolderListFromCache(), null);
                 }
             }
         });

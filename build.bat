@@ -2,8 +2,10 @@
 setlocal
 
 set CONFIG=Debug
-if /i "%1"=="release" set CONFIG=Release
+if /i "%1"==""        goto publish
 if /i "%1"=="publish" goto publish
+if /i "%1"=="build"   goto build
+if /i "%1"=="release" set CONFIG=Release & goto build
 if /i "%1"=="run"     goto run
 if /i "%1"=="clean"   goto clean
 if /i "%1"=="smoke"   goto smoke

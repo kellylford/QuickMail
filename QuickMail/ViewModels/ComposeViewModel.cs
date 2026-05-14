@@ -5,9 +5,9 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
 using MimeKit;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -205,8 +205,8 @@ public partial class ComposeViewModel : ObservableObject
     [RelayCommand]
     private void AddAttachments()
     {
-        var dlg = new OpenFileDialog { Multiselect = true, Title = "Add Attachments" };
-        if (dlg.ShowDialog() != true) return;
+        using var dlg = new OpenFileDialog { Multiselect = true, Title = "Add Attachments" };
+        if (dlg.ShowDialog() != DialogResult.OK) return;
         foreach (var path in dlg.FileNames)
             AddAttachmentFromPath(path);
     }
@@ -259,12 +259,12 @@ public partial class ComposeViewModel : ObservableObject
         var ext = Path.GetExtension(attachment.FileName).ToLowerInvariant();
         if (DangerousExtensions.Contains(ext))
         {
-            var result = System.Windows.MessageBox.Show(
+            var result = MessageBox.Show(
                 $"'{attachment.FileName}' is an executable file type. Opening it could be dangerous. Continue?",
                 "Security Warning",
-                System.Windows.MessageBoxButton.YesNo,
-                System.Windows.MessageBoxImage.Warning);
-            if (result != System.Windows.MessageBoxResult.Yes) return;
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (result != DialogResult.Yes) return;
         }
 
         var tempDir = Path.Combine(Path.GetTempPath(), "QuickMail");

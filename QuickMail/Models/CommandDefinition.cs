@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Windows.Input;
+using System.Windows.Forms;
 
 namespace QuickMail.Models;
 
@@ -14,8 +14,12 @@ public sealed class CommandDefinition
     public string Category        { get; }
     public string Title           { get; }
     public string? Description    { get; }
-    public Key DefaultKey         { get; }
-    public ModifierKeys DefaultModifiers { get; }
+
+    /// <summary>
+    /// Combined key + modifier flags (e.g. <c>Keys.Control | Keys.N</c>).
+    /// <c>Keys.None</c> means no default shortcut.
+    /// </summary>
+    public Keys Shortcut          { get; }
     public Action Execute         { get; }
     public Func<bool>? IsAvailable { get; }
 
@@ -24,33 +28,37 @@ public sealed class CommandDefinition
         string category,
         string title,
         Action execute,
-        Key defaultKey = Key.None,
-        ModifierKeys defaultModifiers = ModifierKeys.None,
+        Keys shortcut = Keys.None,
         string? description = null,
         Func<bool>? isAvailable = null)
     {
-        Id             = id;
-        Category       = category;
-        Title          = title;
-        Execute        = execute;
-        DefaultKey     = defaultKey;
-        DefaultModifiers = defaultModifiers;
-        Description    = description;
-        IsAvailable    = isAvailable;
+        Id           = id;
+        Category     = category;
+        Title        = title;
+        Execute      = execute;
+        Shortcut     = shortcut;
+        Description  = description;
+        IsAvailable  = isAvailable;
     }
+
+    public override string ToString() =>
+        GestureText.Length > 0 ? $"{Title} ({GestureText})" : Title;
 
     /// <summary>Human-readable shortcut string, e.g. "Ctrl+N" or "Delete".</summary>
     public string GestureText
     {
         get
         {
-            if (DefaultKey == Key.None) return string.Empty;
+            var keyCode = Shortcut & Keys.KeyCode;
+            if (keyCode == Keys.None) return string.Empty;
+
             var parts = new List<string>();
-            if ((DefaultModifiers & ModifierKeys.Control) != 0) parts.Add("Ctrl");
-            if ((DefaultModifiers & ModifierKeys.Shift)   != 0) parts.Add("Shift");
-            if ((DefaultModifiers & ModifierKeys.Alt)     != 0) parts.Add("Alt");
-            var keyStr = DefaultKey.ToString();
-            // Key.D0–Key.D9 stringify as "D0"–"D9"; show just the digit.
+            if ((Shortcut & Keys.Control) != 0) parts.Add("Ctrl");
+            if ((Shortcut & Keys.Shift)   != 0) parts.Add("Shift");
+            if ((Shortcut & Keys.Alt)     != 0) parts.Add("Alt");
+
+            var keyStr = keyCode.ToString();
+            // D0–D9 stringify as "D0"–"D9"; show just the digit.
             if (keyStr.Length == 2 && keyStr[0] == 'D' && char.IsDigit(keyStr[1]))
                 keyStr = keyStr[1..];
             parts.Add(keyStr);

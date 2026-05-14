@@ -81,253 +81,228 @@ public class ImapService : IImapService
 
     // ── Folder list ──────────────────────────────────────────────────────────────
 
-    public async Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var result = new List<MailFolderModel>();
-
-        // Always put INBOX first — many servers don't return it via GetFoldersAsync
-        try
+    public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            var inbox = client.Inbox!;
-            await inbox.OpenAsync(FolderAccess.ReadOnly, ct);
-            LogService.Log($"INBOX: FullName={inbox.FullName} Count={inbox.Count} Unread={inbox.Unread}");
-            result.Add(new MailFolderModel
-            {
-                FullName    = inbox.FullName,
-                DisplayName = "Inbox",
-                UnreadCount = inbox.Unread,
-                AccountId   = accountId
-            });
-            await inbox.CloseAsync(false, ct);
-        }
-        catch (Exception ex) { LogService.Log("GetFolders/Inbox", ex); }
+            var result = new List<MailFolderModel>();
 
-        var folders = await client.GetFoldersAsync(client.PersonalNamespaces[0], cancellationToken: ct);
-        LogService.Log($"GetFoldersAsync returned {folders.Count} folders");
-
-        foreach (var folder in folders)
-        {
-            if ((folder.Attributes & FolderAttributes.NonExistent) != 0) continue;
-            if ((folder.Attributes & FolderAttributes.NoSelect)    != 0) continue;
-            if (folder.FullName == client.Inbox!.FullName)              continue;
-
+            // Always put INBOX first — many servers don't return it via GetFoldersAsync
             try
             {
-                await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-                LogService.Log($"  Folder: {folder.FullName} Count={folder.Count} Unread={folder.Unread}");
-                var unread   = folder.Unread;
-                var excluded = IsExcludedFromAllMail(folder.Attributes);
-                await folder.CloseAsync(false, ct);
+                var inbox = client.Inbox!;
+                await inbox.OpenAsync(FolderAccess.ReadOnly, ct);
+                LogService.Log($"INBOX: FullName={inbox.FullName} Count={inbox.Count} Unread={inbox.Unread}");
                 result.Add(new MailFolderModel
                 {
-                    FullName           = folder.FullName,
-                    DisplayName        = folder.Name,
-                    UnreadCount        = unread,
-                    AccountId          = accountId,
-                    ExcludeFromAllMail = excluded
+                    FullName    = inbox.FullName,
+                    DisplayName = "Inbox",
+                    UnreadCount = inbox.Unread,
+                    AccountId   = accountId
                 });
+                await inbox.CloseAsync(false, ct);
             }
-            catch (Exception ex)
-            {
-                LogService.Log($"  Cannot open folder {folder.FullName}: {ex.Message}");
-                result.Add(new MailFolderModel
-                {
-                    FullName           = folder.FullName,
-                    DisplayName        = folder.Name,
-                    UnreadCount        = 0,
-                    AccountId          = accountId,
-                    ExcludeFromAllMail = IsExcludedFromAllMail(folder.Attributes)
-                });
-            }
-        }
+            catch (Exception ex) { LogService.Log("GetFolders/Inbox", ex); }
 
-        LogService.Log($"GetFoldersAsync: returning {result.Count} folders");
-        return result;
-    }
+            var folders = await client.GetFoldersAsync(client.PersonalNamespaces[0], cancellationToken: ct);
+            LogService.Log($"GetFoldersAsync returned {folders.Count} folders");
+
+            foreach (var folder in folders)
+            {
+                if ((folder.Attributes & FolderAttributes.NonExistent) != 0) continue;
+                if ((folder.Attributes & FolderAttributes.NoSelect)    != 0) continue;
+                if (folder.FullName == client.Inbox!.FullName)              continue;
+
+                try
+                {
+                    await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+                    LogService.Log($"  Folder: {folder.FullName} Count={folder.Count} Unread={folder.Unread}");
+                    var unread   = folder.Unread;
+                    var excluded = IsExcludedFromAllMail(folder.Attributes);
+                    await folder.CloseAsync(false, ct);
+                    result.Add(new MailFolderModel
+                    {
+                        FullName           = folder.FullName,
+                        DisplayName        = folder.Name,
+                        UnreadCount        = unread,
+                        AccountId          = accountId,
+                        ExcludeFromAllMail = excluded
+                    });
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"  Cannot open folder {folder.FullName}: {ex.Message}");
+                    result.Add(new MailFolderModel
+                    {
+                        FullName           = folder.FullName,
+                        DisplayName        = folder.Name,
+                        UnreadCount        = 0,
+                        AccountId          = accountId,
+                        ExcludeFromAllMail = IsExcludedFromAllMail(folder.Attributes)
+                    });
+                }
+            }
+
+            LogService.Log($"GetFoldersAsync: returning {result.Count} folders");
+            return result;
+        });
 
     // ── Message lists ────────────────────────────────────────────────────────────
 
-    public async Task<List<MailMessageSummary>> GetMessageSummariesAsync(
-        Guid accountId, string folderName, int maxMessages, CancellationToken ct = default)
-    {
-        LogService.Log($"GetMessageSummaries: folder={folderName} maxMessages={maxMessages}");
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        LogService.Log($"  Opened. Count={folder.Count} Unread={folder.Unread}");
-
-        try
+    public Task<List<MailMessageSummary>> GetMessageSummariesAsync(
+        Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            if (folder.Count == 0) return [];
-
-            var startIndex = Math.Max(0, folder.Count - maxMessages);
-            var summaries  = await folder.FetchAsync(
-                startIndex, -1,
-                MessageSummaryItems.UniqueId
-                | MessageSummaryItems.Envelope
-                | MessageSummaryItems.Flags
-                | MessageSummaryItems.PreviewText,   // free if server supports PREVIEW
-                ct);
-
-            var result = summaries
-                .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
-                .Select(s => SummaryToModel(s, accountId, folderName))
-                .ToList();
-
-            LogService.Log($"  Returning {result.Count} summaries (preview={result.Count(r => !string.IsNullOrEmpty(r.Preview))} prefilled)");
-            return result;
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
-
-    public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(
-        Guid accountId, string folderName, uint sinceUid, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try
-        {
-            var items = MessageSummaryItems.UniqueId
-                      | MessageSummaryItems.Envelope
-                      | MessageSummaryItems.Flags
-                      | MessageSummaryItems.PreviewText;   // free if server supports PREVIEW
-
-            IList<IMessageSummary> summaries;
-            if (sinceUid == 0)
+            LogService.Log($"GetMessageSummaries: folder={folderName} maxMessages={maxMessages}");
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            LogService.Log($"  Opened. Count={folder.Count} Unread={folder.Unread}");
+            try
             {
                 if (folder.Count == 0) return [];
-                var startIndex = Math.Max(0, folder.Count - 500);
-                summaries = await folder.FetchAsync(startIndex, -1, items, ct);
+                var startIndex = Math.Max(0, folder.Count - maxMessages);
+                var summaries  = await folder.FetchAsync(
+                    startIndex, -1,
+                    MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope
+                    | MessageSummaryItems.Flags  | MessageSummaryItems.PreviewText, ct);
+                var result = summaries
+                    .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
+                    .Select(s => SummaryToModel(s, accountId, folderName))
+                    .ToList();
+                LogService.Log($"  Returning {result.Count} summaries");
+                return result;
             }
-            else
-            {
-                var range = new UniqueIdRange(new UniqueId(sinceUid + 1), UniqueId.MaxValue);
-                summaries = await folder.FetchAsync((IList<UniqueId>)range, items, ct);
-            }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
-            return summaries.Select(s => SummaryToModel(s, accountId, folderName)).ToList();
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+    public Task<List<MailMessageSummary>> GetMessagesSinceAsync(
+        Guid accountId, string folderName, uint sinceUid, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
+        {
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
+            {
+                var items = MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope
+                          | MessageSummaryItems.Flags    | MessageSummaryItems.PreviewText;
+                IList<IMessageSummary> summaries;
+                if (sinceUid == 0)
+                {
+                    if (folder.Count == 0) return [];
+                    summaries = await folder.FetchAsync(Math.Max(0, folder.Count - 500), -1, items, ct);
+                }
+                else
+                {
+                    var range = new UniqueIdRange(new UniqueId(sinceUid + 1), UniqueId.MaxValue);
+                    summaries = await folder.FetchAsync((IList<UniqueId>)range, items, ct);
+                }
+                return summaries.Select(s => SummaryToModel(s, accountId, folderName)).ToList();
+            }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
     // ── Message detail ───────────────────────────────────────────────────────────
 
-    public async Task<MailMessageDetail> GetMessageDetailAsync(
-        Guid accountId, string folderName, uint uid, CancellationToken ct = default)
-    {
-        var client    = await GetOrReconnectAsync(accountId, ct);
-        var folder    = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-
-        try
+    public Task<MailMessageDetail> GetMessageDetailAsync(
+        Guid accountId, string folderName, uint uid, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            var mailKitUid = new UniqueId(uid);
-            var summaries  = await folder.FetchAsync(
-                new[] { mailKitUid },
-                MessageSummaryItems.UniqueId
-                | MessageSummaryItems.Envelope
-                | MessageSummaryItems.Flags
-                | MessageSummaryItems.BodyStructure,
-                ct);
-
-            var s = summaries.FirstOrDefault()
-                ?? throw new InvalidOperationException($"Message UID {uid} not found.");
-
-            string plainText = string.Empty;
-            string htmlText  = string.Empty;
-
-            if (s.HtmlBody != null)
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+            try
             {
-                var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.HtmlBody, ct);
-                if (bodyPart is TextPart tp) htmlText = tp.Text ?? string.Empty;
+                var mailKitUid = new UniqueId(uid);
+                var summaries  = await folder.FetchAsync(
+                    new[] { mailKitUid },
+                    MessageSummaryItems.UniqueId | MessageSummaryItems.Envelope
+                    | MessageSummaryItems.Flags  | MessageSummaryItems.BodyStructure, ct);
+
+                var s = summaries.FirstOrDefault()
+                    ?? throw new InvalidOperationException($"Message UID {uid} not found.");
+
+                string plainText = string.Empty, htmlText = string.Empty;
+                if (s.HtmlBody != null)
+                {
+                    var part = await folder.GetBodyPartAsync(mailKitUid, s.HtmlBody, ct);
+                    if (part is TextPart tp) htmlText = tp.Text ?? string.Empty;
+                }
+                if (s.TextBody != null)
+                {
+                    var part = await folder.GetBodyPartAsync(mailKitUid, s.TextBody, ct);
+                    if (part is TextPart tp) plainText = tp.Text ?? string.Empty;
+                }
+                await folder.AddFlagsAsync(mailKitUid, MessageFlags.Seen, true, ct);
+
+                return new MailMessageDetail
+                {
+                    UniqueId      = uid,
+                    AccountId     = accountId,
+                    FolderName    = folderName,
+                    From          = FormatAddressList(s.Envelope?.From),
+                    To            = FormatAddressList(s.Envelope?.To),
+                    Cc            = FormatAddressList(s.Envelope?.Cc),
+                    ReplyTo       = FormatAddressList(s.Envelope?.ReplyTo),
+                    Subject       = s.Envelope?.Subject ?? "(no subject)",
+                    Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
+                    IsRead        = true,
+                    MessageId     = s.Envelope?.MessageId ?? string.Empty,
+                    PlainTextBody = plainText,
+                    HtmlBody      = htmlText,
+                    Attachments   = ExtractAttachments(s.Body),
+                };
             }
-
-            if (s.TextBody != null)
-            {
-                var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.TextBody, ct);
-                if (bodyPart is TextPart tp) plainText = tp.Text ?? string.Empty;
-            }
-
-            await folder.AddFlagsAsync(mailKitUid, MessageFlags.Seen, true, ct);
-
-            var attachments = ExtractAttachments(s.Body);
-
-            return new MailMessageDetail
-            {
-                UniqueId      = uid,
-                AccountId     = accountId,
-                FolderName    = folderName,
-                From          = FormatAddressList(s.Envelope?.From),
-                To            = FormatAddressList(s.Envelope?.To),
-                Cc            = FormatAddressList(s.Envelope?.Cc),
-                ReplyTo       = FormatAddressList(s.Envelope?.ReplyTo),
-                Subject       = s.Envelope?.Subject ?? "(no subject)",
-                Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
-                IsRead        = true,
-                MessageId     = s.Envelope?.MessageId ?? string.Empty,
-                PlainTextBody = plainText,
-                HtmlBody      = htmlText,
-                Attachments   = attachments,
-            };
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
     // ── Mutations ────────────────────────────────────────────────────────────────
 
-    public async Task MarkReadAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try   { await folder.AddFlagsAsync(new UniqueId(uid), MessageFlags.Seen, true, ct); }
-        finally { await folder.CloseAsync(false, ct); }
-    }
-
-    public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
-    {
-        var client  = await GetOrReconnectAsync(accountId, ct);
-        var folder  = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+    public Task MarkReadAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            var uidList = uids.Select(u => new UniqueId(u)).ToList();
-            var trash   = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
-            if (trash != null) await folder.MoveToAsync(uidList, trash, ct);
-            else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+            try   { await folder.AddFlagsAsync(new UniqueId(uid), MessageFlags.Seen, true, ct); }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
-    public async Task MoveToTrashAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            var trash = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
-            if (trash != null) await folder.MoveToAsync(new UniqueId(uid), trash, ct);
-            else               await folder.AddFlagsAsync(new UniqueId(uid), MessageFlags.Deleted, true, ct);
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+            var folder  = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+            try
+            {
+                var uidList = uids.Select(u => new UniqueId(u)).ToList();
+                var trash   = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
+                if (trash != null) await folder.MoveToAsync(uidList, trash, ct);
+                else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
+            }
+            finally { await folder.CloseAsync(false, ct); }
+        });
+
+    public Task MoveToTrashAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
+        {
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+            try
+            {
+                var trash = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
+                if (trash != null) await folder.MoveToAsync(new UniqueId(uid), trash, ct);
+                else               await folder.AddFlagsAsync(new UniqueId(uid), MessageFlags.Deleted, true, ct);
+            }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
     // ── Drafts ───────────────────────────────────────────────────────────────────
 
-    public async Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var drafts = FindSpecialFolder(client, SpecialFolder.Drafts);
-        return drafts?.FullName;
-    }
+    public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, client =>
+            Task.FromResult(FindSpecialFolder(client, SpecialFolder.Drafts)?.FullName));
 
-    public async Task<uint> AppendDraftAsync(
-        Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default)
-    {
-        var client  = await GetOrReconnectAsync(accountId, ct);
+    public Task<uint> AppendDraftAsync(
+        Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
+        {
         var account = _accounts[accountId];
 
         var draftsFolder = FindSpecialFolder(client, SpecialFolder.Drafts)
@@ -403,238 +378,254 @@ public class ImapService : IImapService
             return newUid?.Id ?? 0;
         }
         finally { await draftsFolder.CloseAsync(false, ct); }
-    }
+        }); // end WithClientAsync
 
     // ── Copy / Move messages ─────────────────────────────────────────────────────
 
-    public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        var dest   = await client.GetFolderAsync(destinationFolder, ct);
-        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try   { await folder.CopyToAsync(uids.Select(u => new UniqueId(u)).ToList(), dest, ct); }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+    public Task CopyMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
+        {
+            var folder = await client.GetFolderAsync(folderName, ct);
+            var dest   = await client.GetFolderAsync(destinationFolder, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try   { await folder.CopyToAsync(uids.Select(u => new UniqueId(u)).ToList(), dest, ct); }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
-    public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        var dest   = await client.GetFolderAsync(destinationFolder, ct);
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try   { await folder.MoveToAsync(uids.Select(u => new UniqueId(u)).ToList(), dest, ct); }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+    public Task MoveMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
+        {
+            var folder = await client.GetFolderAsync(folderName, ct);
+            var dest   = await client.GetFolderAsync(destinationFolder, ct);
+            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+            try   { await folder.MoveToAsync(uids.Select(u => new UniqueId(u)).ToList(), dest, ct); }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
     // ── Folder CRUD ──────────────────────────────────────────────────────────────
 
-    public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        IMailFolder parent = string.IsNullOrEmpty(parentFolderName)
-            ? client.GetFolder(client.PersonalNamespaces[0])
-            : await client.GetFolderAsync(parentFolderName, ct);
-        await parent.CreateAsync(name, true, ct);
-    }
-
-    public async Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-
-        // Move all messages to Trash first so no mail is hard-deleted
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+    public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            var uids = await folder.SearchAsync(SearchQuery.All, ct);
-            if (uids.Count > 0)
-            {
-                var trash = FindSpecialFolder(client, SpecialFolder.Trash);
-                if (trash != null) await folder.MoveToAsync(uids, trash, ct);
-                else               await folder.AddFlagsAsync(uids, MessageFlags.Deleted, true, ct);
-            }
-        }
-        finally { await folder.CloseAsync(false, ct); }
+            IMailFolder parent = string.IsNullOrEmpty(parentFolderName)
+                ? client.GetFolder(client.PersonalNamespaces[0])
+                : await client.GetFolderAsync(parentFolderName, ct);
+            await parent.CreateAsync(name, true, ct);
+        });
 
-        await folder.DeleteAsync(ct);
-    }
-
-    public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
-            ? client.GetFolder(client.PersonalNamespaces[0])
-            : await client.GetFolderAsync(newParentFolderName, ct);
-        await folder.RenameAsync(parent, newName, ct);
-    }
-
-    public async Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
-    {
-        var client    = await GetOrReconnectAsync(accountId, ct);
-        var srcFolder = await client.GetFolderAsync(folderName, ct);
-
-        IMailFolder destParent = string.IsNullOrEmpty(destinationParentName)
-            ? client.GetFolder(client.PersonalNamespaces[0])
-            : await client.GetFolderAsync(destinationParentName, ct);
-
-        var newFolder = await destParent.CreateAsync(srcFolder.Name, true, ct)
-            ?? throw new InvalidOperationException($"Failed to create destination folder '{srcFolder.Name}'.");
-
-        await srcFolder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try
+    public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            if (srcFolder.Count > 0)
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+            try
             {
-                var uids = await srcFolder.SearchAsync(SearchQuery.All, ct);
+                var uids = await folder.SearchAsync(SearchQuery.All, ct);
                 if (uids.Count > 0)
-                    await srcFolder.CopyToAsync(uids, newFolder, ct);
+                {
+                    var trash = FindSpecialFolder(client, SpecialFolder.Trash);
+                    if (trash != null) await folder.MoveToAsync(uids, trash, ct);
+                    else               await folder.AddFlagsAsync(uids, MessageFlags.Deleted, true, ct);
+                }
             }
-        }
-        finally { await srcFolder.CloseAsync(false, ct); }
+            finally { await folder.CloseAsync(false, ct); }
+            await folder.DeleteAsync(ct);
+        });
 
-        // Recurse into subfolders
-        var subfolders = await srcFolder.GetSubfoldersAsync(false, ct);
-        foreach (var sub in subfolders)
-            await CopyFolderAsync(accountId, sub.FullName, newFolder.FullName, ct);
-    }
-
-    public async Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var trash  = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
-
-        if (trash == null)
+    public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            LogService.Log($"EmptyTrash: no Trash folder found for account {accountId}");
-            return 0;
-        }
+            var folder = await client.GetFolderAsync(folderName, ct);
+            IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
+                ? client.GetFolder(client.PersonalNamespaces[0])
+                : await client.GetFolderAsync(newParentFolderName, ct);
+            await folder.RenameAsync(parent, newName, ct);
+        });
 
-        await trash.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+    public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            var uids = await trash.SearchAsync(SearchQuery.All, ct);
-            if (uids.Count == 0) return 0;
-            LogService.Log($"EmptyTrash: expunging {uids.Count} messages from {trash.FullName}");
-            await trash.AddFlagsAsync(uids, MessageFlags.Deleted, true, ct);
-            await trash.ExpungeAsync(ct);
-            return uids.Count;
-        }
-        finally { await trash.CloseAsync(false, ct); }
-    }
+            var srcFolder  = await client.GetFolderAsync(folderName, ct);
+            IMailFolder destParent = string.IsNullOrEmpty(destinationParentName)
+                ? client.GetFolder(client.PersonalNamespaces[0])
+                : await client.GetFolderAsync(destinationParentName, ct);
+            var newFolder = await destParent.CreateAsync(srcFolder.Name, true, ct)
+                ?? throw new InvalidOperationException($"Failed to create destination folder '{srcFolder.Name}'.");
+            await srcFolder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
+            {
+                if (srcFolder.Count > 0)
+                {
+                    var uids = await srcFolder.SearchAsync(SearchQuery.All, ct);
+                    if (uids.Count > 0) await srcFolder.CopyToAsync(uids, newFolder, ct);
+                }
+            }
+            finally { await srcFolder.CloseAsync(false, ct); }
+            // Recurse into subfolders — each recursive call acquires its own lock turn
+            var subfolders = await srcFolder.GetSubfoldersAsync(false, ct);
+            foreach (var sub in subfolders)
+                await CopyFolderAsync(accountId, sub.FullName, newFolder.FullName, ct);
+        });
+
+    public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
+        {
+            var trash = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
+            if (trash == null) { LogService.Log($"EmptyTrash: no Trash folder for {accountId}"); return 0; }
+            await trash.OpenAsync(FolderAccess.ReadWrite, ct);
+            try
+            {
+                var uids = await trash.SearchAsync(SearchQuery.All, ct);
+                if (uids.Count == 0) return 0;
+                LogService.Log($"EmptyTrash: expunging {uids.Count} messages");
+                await trash.AddFlagsAsync(uids, MessageFlags.Deleted, true, ct);
+                await trash.ExpungeAsync(ct);
+                return uids.Count;
+            }
+            finally { await trash.CloseAsync(false, ct); }
+        });
 
     // ── UID queries ──────────────────────────────────────────────────────────────
 
-    public async Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try
+    public Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            if (folder.Count == 0) return [];
-            var uids = await folder.SearchAsync(SearchQuery.All, ct);
-            return uids.Select(u => u.Id).ToList();
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
+            {
+                if (folder.Count == 0) return (IList<uint>)[];
+                var uids = await folder.SearchAsync(SearchQuery.All, ct);
+                return (IList<uint>)uids.Select(u => u.Id).ToList();
+            }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
     // ── Body-download preview fallback (used when server lacks IMAP PREVIEW) ────
 
-    public async Task<IReadOnlyDictionary<uint, string>> FetchPreviewsAsync(
-        Guid accountId, string folderName, IList<uint> uids,
-        int maxLines, CancellationToken ct = default)
+    public Task<IReadOnlyDictionary<uint, string>> FetchPreviewsAsync(
+        Guid accountId, string folderName, IList<uint> uids, int maxLines, CancellationToken ct = default)
     {
-        var result = new Dictionary<uint, string>();
-        if (uids.Count == 0 || maxLines <= 0) return result;
+        if (uids.Count == 0 || maxLines <= 0)
+            return Task.FromResult<IReadOnlyDictionary<uint, string>>(new Dictionary<uint, string>());
 
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try
+        return WithClientAsync(accountId, ct, async client =>
         {
-            var mailKitUids = uids.Select(u => new UniqueId(u)).ToList();
-            var summaries   = await folder.FetchAsync(
-                mailKitUids,
-                MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure,
-                ct);
-
-            foreach (var s in summaries)
+            var result  = new Dictionary<uint, string>();
+            var folder  = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                try
+                var summaries = await folder.FetchAsync(
+                    uids.Select(u => new UniqueId(u)).ToList(),
+                    MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure, ct);
+
+                foreach (var s in summaries)
                 {
-                    string text = string.Empty;
-                    if (s.TextBody != null)
+                    ct.ThrowIfCancellationRequested();
+                    try
                     {
-                        var part = await folder.GetBodyPartAsync(s.UniqueId, s.TextBody, ct);
-                        if (part is TextPart tp) text = tp.Text ?? string.Empty;
+                        string text = string.Empty;
+                        if (s.TextBody != null)
+                        {
+                            var part = await folder.GetBodyPartAsync(s.UniqueId, s.TextBody, ct);
+                            if (part is TextPart tp) text = tp.Text ?? string.Empty;
+                        }
+                        else if (s.HtmlBody != null)
+                        {
+                            var part = await folder.GetBodyPartAsync(s.UniqueId, s.HtmlBody, ct);
+                            if (part is TextPart tp) text = StripHtml(tp.Text ?? string.Empty);
+                        }
+                        var preview = ExtractPreviewLines(text, maxLines);
+                        if (!string.IsNullOrEmpty(preview)) result[s.UniqueId.Id] = preview;
                     }
-                    else if (s.HtmlBody != null)
-                    {
-                        var part = await folder.GetBodyPartAsync(s.UniqueId, s.HtmlBody, ct);
-                        if (part is TextPart tp) text = StripHtml(tp.Text ?? string.Empty);
-                    }
-
-                    var preview = ExtractPreviewLines(text, maxLines);
-                    if (!string.IsNullOrEmpty(preview)) result[s.UniqueId.Id] = preview;
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { LogService.Log($"FetchPreview/{s.UniqueId}", ex); }
                 }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { LogService.Log($"FetchPreview/{s.UniqueId}", ex); }
             }
-        }
-        finally { await folder.CloseAsync(false, ct); }
-        return result;
+            finally { await folder.CloseAsync(false, ct); }
+            return (IReadOnlyDictionary<uint, string>)result;
+        });
     }
 
-    public async Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try   { await folder.CheckAsync(ct); return folder.Unread; }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+    public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
+        {
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try   { await folder.CheckAsync(ct); return folder.Unread; }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
     // ── Attachment download ───────────────────────────────────────────────────────
 
-    public async Task<byte[]> DownloadAttachmentAsync(
-        Guid accountId, string folderName, uint uid, string partSpecifier, CancellationToken ct = default)
-    {
-        var client = await GetOrReconnectAsync(accountId, ct);
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try
+    public Task<byte[]> DownloadAttachmentAsync(
+        Guid accountId, string folderName, uint uid, string partSpecifier, CancellationToken ct = default) =>
+        WithClientAsync(accountId, ct, async client =>
         {
-            var mailKitUid = new UniqueId(uid);
-            var summaries  = await folder.FetchAsync(
-                new[] { mailKitUid },
-                MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure,
-                ct);
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
+            {
+                var mailKitUid = new UniqueId(uid);
+                var summaries  = await folder.FetchAsync(
+                    new[] { mailKitUid },
+                    MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure, ct);
 
-            var s        = summaries.FirstOrDefault()
-                ?? throw new InvalidOperationException($"Message UID {uid} not found.");
-            var bodyPart = FindBodyPartBySpecifier(s.Body, partSpecifier)
-                ?? throw new InvalidOperationException($"Body part '{partSpecifier}' not found.");
+                var s        = summaries.FirstOrDefault()
+                    ?? throw new InvalidOperationException($"Message UID {uid} not found.");
+                var bodyPart = FindBodyPartBySpecifier(s.Body, partSpecifier)
+                    ?? throw new InvalidOperationException($"Body part '{partSpecifier}' not found.");
 
-            var decoded = await folder.GetBodyPartAsync(mailKitUid, bodyPart, ct);
-            using var stream = new MemoryStream();
-            if (decoded is MimePart mp)
-                mp.Content!.DecodeTo(stream);
-            else if (decoded is MessagePart msgPart)
-                await msgPart.Message!.WriteToAsync(stream, ct);
-            return stream.ToArray();
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+                var decoded = await folder.GetBodyPartAsync(mailKitUid, bodyPart, ct);
+                using var stream = new MemoryStream();
+                if (decoded is MimePart mp)
+                    mp.Content!.DecodeTo(stream);
+                else if (decoded is MessagePart msgPart)
+                    await msgPart.Message!.WriteToAsync(stream, ct);
+                return stream.ToArray();
+            }
+            finally { await folder.CloseAsync(false, ct); }
+        });
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
+    private SemaphoreSlim GetLock(Guid accountId) =>
+        _locks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
+
     /// <summary>
-    /// Returns an authenticated client, reconnecting transparently if the connection dropped.
+    /// Runs <paramref name="work"/> with exclusive access to the account's ImapClient,
+    /// reconnecting transparently if the connection has dropped.
+    /// All public IMAP methods must go through this to prevent concurrent-use errors.
     /// </summary>
-    private async Task<ImapClient> GetOrReconnectAsync(Guid accountId, CancellationToken ct)
+    private async Task<T> WithClientAsync<T>(Guid accountId, CancellationToken ct, Func<ImapClient, Task<T>> work)
+    {
+        var sem = GetLock(accountId);
+        await sem.WaitAsync(ct);
+        try
+        {
+            var client = await EnsureConnectedAsync(accountId, ct);
+            return await work(client);
+        }
+        finally { sem.Release(); }
+    }
+
+    private async Task WithClientAsync(Guid accountId, CancellationToken ct, Func<ImapClient, Task> work)
+    {
+        var sem = GetLock(accountId);
+        await sem.WaitAsync(ct);
+        try
+        {
+            var client = await EnsureConnectedAsync(accountId, ct);
+            await work(client);
+        }
+        finally { sem.Release(); }
+    }
+
+    /// <summary>
+    /// Returns an authenticated client, reconnecting if needed. Caller must hold the account lock.
+    /// </summary>
+    private async Task<ImapClient> EnsureConnectedAsync(Guid accountId, CancellationToken ct)
     {
         if (_clients.TryGetValue(accountId, out var client) && client.IsAuthenticated)
             return client;
@@ -646,21 +637,14 @@ public class ImapService : IImapService
         if (account.AuthType == AuthType.Password && !_passwords.TryGetValue(accountId, out password))
             throw new InvalidOperationException($"Account {accountId} is not connected.");
 
-        // One reconnect attempt at a time per account
-        var sem = _locks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
-        await sem.WaitAsync(ct);
-        try
-        {
-            // Re-check after acquiring — another waiter may have reconnected already
-            if (_clients.TryGetValue(accountId, out client) && client.IsAuthenticated)
-                return client;
-
-            LogService.Log($"Reconnecting {account.Username}…");
-            await ConnectAsync(account, password, ct);
-            return _clients[accountId];
-        }
-        finally { sem.Release(); }
+        LogService.Log($"Reconnecting {account.Username}…");
+        await ConnectAsync(account, password, ct);
+        return _clients[accountId];
     }
+
+    // Keep old name as a private alias so no call-site changes are needed during the transition.
+    private Task<ImapClient> GetOrReconnectAsync(Guid accountId, CancellationToken ct) =>
+        EnsureConnectedAsync(accountId, ct);
 
     private static MailMessageSummary SummaryToModel(IMessageSummary s, Guid accountId, string folderName) =>
         new()

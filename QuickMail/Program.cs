@@ -1,22 +1,31 @@
-using System.Windows;
+using System;
+using System.Linq;
+using System.Windows.Forms;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 using QuickMail.Views;
 
 namespace QuickMail;
 
-public partial class App : Application
+static class Program
 {
-    protected override void OnStartup(StartupEventArgs e)
+    [STAThread]
+    static void Main(string[] args)
     {
-        base.OnStartup(e);
+        Application.ThreadException += (_, e) =>
+            MessageBox.Show($"Unhandled error:\n\n{e.Exception.Message}\n\n{e.Exception.StackTrace}",
+                "QuickMail Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            MessageBox.Show($"Fatal error:\n\n{e.ExceptionObject}",
+                "QuickMail Fatal Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 
-        // /debug enables verbose debug logging to the log file.
-        if (e.Args.Contains("/debug", StringComparer.OrdinalIgnoreCase))
+        if (args.Contains("/debug", StringComparer.OrdinalIgnoreCase))
         {
             LogService.DebugMode = true;
             LogService.Log("Debug mode enabled.");
         }
+
+        ApplicationConfiguration.Initialize();
 
         var accountService    = new AccountService();
         var credentialService = new CredentialService();
@@ -37,7 +46,6 @@ public partial class App : Application
             imapService, accountService, credentialService, localStore, syncService, configService, commandRegistry);
         mainVm.LoadAccountList();
 
-        var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry);
-        mainWindow.Show();
+        Application.Run(new MainForm(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry));
     }
 }
