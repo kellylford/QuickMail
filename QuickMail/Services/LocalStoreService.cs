@@ -151,15 +151,18 @@ public class LocalStoreService : ILocalStoreService
         return await ReadSummariesAsync(cmd);
     }
 
-    public async Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName)
+    public async Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null)
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
             "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
-            "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC;";
+            "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC" +
+            (limit.HasValue ? " LIMIT $limit;" : ";");
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
+        if (limit.HasValue)
+            cmd.Parameters.AddWithValue("$limit", Math.Max(0, limit.Value));
         return await ReadSummariesAsync(cmd);
     }
 

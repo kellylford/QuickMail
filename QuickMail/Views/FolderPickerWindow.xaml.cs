@@ -1,93 +1,136 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using QuickMail.Models;
-using QuickMail.Services;
 
 namespace QuickMail.Views;
 
 /// <summary>
-/// Modal folder picker backed by a real WPF TreeView so screen readers
-/// announce role, level, expanded/collapsed state correctly.
+/// Fast modal folder picker backed by a virtualized flat list.
 /// </summary>
 public partial class FolderPickerWindow : Window
 {
-    private readonly Dictionary<MailFolderModel, AccountModel> _folderToAccount = new();
-    private MailFolderModel? _initialFolder;
+    private readonly ObservableCollection<FolderPickerItem> _items = [];
+    private readonly ICollectionView _view;
+    private readonly MailFolderModel? _initialFolder;
 
     public MailFolderModel? SelectedFolder { get; private set; }
     public AccountModel? SelectedAccount { get; private set; }
 
-    public FolderPickerWindow(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, IEnumerable<MailFolderModel>? virtualFolders = null, string title = "Go to Folder", MailFolderModel? initialFolder = null)
+    public FolderPickerWindow(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        IEnumerable<MailFolderModel>? virtualFolders = null,
+        string title = "Go to Folder",
+        MailFolderModel? initialFolder = null)
     {
         _initialFolder = initialFolder;
 
         InitializeComponent();
         Title = title;
 
-        var roots = new List<FolderTreeNode>();
-
-        // "All Mail" group header with virtual sub-folder children at the top of the tree
-        var virtualList = virtualFolders?.ToList();
-        if (virtualList is { Count: > 0 })
+        if (virtualFolders != null)
         {
-            var allMailGroup = new FolderTreeNode { IsHeader = true, Label = "All Mail", IsExpanded = true };
-            foreach (var vf in virtualList)
-                allMailGroup.Children.Add(new FolderTreeNode { Folder = vf, Label = vf.DisplayName });
-            roots.Add(allMailGroup);
+            foreach (var vf in virtualFolders)
+                _items.Add(new FolderPickerItem(vf, null, vf.DisplayName, "All Mail"));
         }
 
         foreach (var account in accounts)
         {
-            if (!cachedFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0) continue;
+            if (!cachedFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
+                continue;
 
-            foreach (var f in folders)
-                _folderToAccount[f] = account;
-
-            var accountRoots = FolderTreeBuilder.Build(folders, account);
-            foreach (var r in accountRoots)
-                roots.Add(r);
+            foreach (var folder in folders
+                         .Where(f => !f.IsHeader)
+                         .OrderBy(f => IsInbox(f) ? 0 : 1)
+                         .ThenBy(f => f.FullName, StringComparer.OrdinalIgnoreCase))
+            {
+                var folderPath = string.IsNullOrWhiteSpace(folder.FullName)
+                    ? folder.DisplayName
+                    : folder.FullName;
+                _items.Add(new FolderPickerItem(
+                    folder,
+                    account,
+                    folderPath,
+                    $"{account.DisplayName} - {folderPath}"));
+            }
         }
 
-        FolderTreeView.ItemsSource = roots;
+        _view = CollectionViewSource.GetDefaultView(_items);
+        _view.Filter = FilterItem;
+        FolderListBox.ItemsSource = _view;
 
         Loaded += (_, _) =>
         {
-            if (_initialFolder == null)
-            {
-                FolderTreeView.Focus();
-                return;
-            }
-
-            // Ensure ancestors of the target node are expanded so their
-            // item containers get generated before we try to select.
-            FindAndExpandPath(roots, _initialFolder);
-
-            // Defer selection until after WPF has generated the new containers.
-            Dispatcher.InvokeAsync(() =>
-            {
-                var node = FindNode(roots, _initialFolder);
-                if (node != null)
-                    SelectTreeViewNode(FolderTreeView, node);
-                else
-                    FolderTreeView.Focus();
-            }, System.Windows.Threading.DispatcherPriority.Input);
+            SearchBox.Focus();
+            if (!TrySelectInitialFolder())
+                SelectFirstVisibleItem();
         };
     }
 
-    private void OpenButton_Click(object sender, RoutedEventArgs e) => Commit();
-
-    private void FolderTreeView_PreviewKeyDown(object sender, KeyEventArgs e)
+    // Backwards-compatible single-virtual-folder convenience constructor.
+    public FolderPickerWindow(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        MailFolderModel? allMailFolder,
+        string title = "Go to Folder")
+        : this(accounts, cachedFolders,
+               allMailFolder != null ? new[] { allMailFolder } : null,
+               title,
+               initialFolder: null)
     {
-        if (TryGetTypeAheadKeyText(e, out var searchText) && TryHandleFolderTreeTypeAhead(searchText))
-        {
-            e.Handled = true;
-            return;
-        }
+    }
 
+    private static bool IsInbox(MailFolderModel folder) =>
+        folder.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
+
+    private bool FilterItem(object item)
+    {
+        if (item is not FolderPickerItem folder)
+            return false;
+
+        var query = SearchBox?.Text?.Trim();
+        if (string.IsNullOrEmpty(query))
+            return true;
+
+        return folder.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        _view.Refresh();
+        SelectFirstVisibleItem();
+    }
+
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case Key.Enter:
+                e.Handled = true;
+                Commit();
+                break;
+            case Key.Down:
+                e.Handled = true;
+                FolderListBox.Focus();
+                if (FolderListBox.SelectedIndex < 0)
+                    SelectFirstVisibleItem();
+                break;
+            case Key.Escape:
+                e.Handled = true;
+                DialogResult = false;
+                break;
+        }
+    }
+
+    private void FolderListBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
@@ -95,139 +138,67 @@ public partial class FolderPickerWindow : Window
         }
     }
 
-    // First-letter navigation for the folder TreeView (TreeView has no built-in TextSearch).
-    private void FolderTreeView_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    private void FolderListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e) => Commit();
+
+    private void OpenButton_Click(object sender, RoutedEventArgs e) => Commit();
+
+    private void SelectFirstVisibleItem()
     {
-        if (TryHandleFolderTreeTypeAhead(e.Text))
-            e.Handled = true;
+        var first = _view.Cast<FolderPickerItem>().FirstOrDefault();
+        FolderListBox.SelectedItem = first;
+        if (first != null)
+            FolderListBox.ScrollIntoView(first);
     }
 
-    private bool TryHandleFolderTreeTypeAhead(string? text)
+    private bool TrySelectInitialFolder()
     {
-        if (string.IsNullOrEmpty(text) || char.IsControl(text[0]))
+        if (_initialFolder == null)
             return false;
 
-        var allNodes = GetVisibleTreeNodes(FolderTreeView.Items.OfType<FolderTreeNode>()).ToList();
-        if (allNodes.Count == 0)
+        var match = _items.FirstOrDefault(i => FoldersMatch(i.Folder, _initialFolder));
+        if (match == null)
             return false;
 
-        var current = FolderTreeView.SelectedItem as FolderTreeNode;
-        var startIdx = current != null ? allNodes.IndexOf(current) : -1;
-
-        for (int i = 1; i <= allNodes.Count; i++)
-        {
-            var candidate = allNodes[(startIdx + i) % allNodes.Count];
-            if (!candidate.Label.StartsWith(text, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            return SelectTreeViewNode(FolderTreeView, candidate);
-        }
-
-        return false;
-    }
-
-    private static bool TryGetTypeAheadKeyText(KeyEventArgs e, out string text)
-    {
-        text = string.Empty;
-
-        if (Keyboard.Modifiers != ModifierKeys.None)
-            return false;
-
-        var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key is >= Key.A and <= Key.Z)
-        {
-            text = key.ToString();
-            return true;
-        }
-
-        if (key is >= Key.D0 and <= Key.D9)
-        {
-            text = ((char)('0' + (key - Key.D0))).ToString();
-            return true;
-        }
-
-        if (key is >= Key.NumPad0 and <= Key.NumPad9)
-        {
-            text = ((char)('0' + (key - Key.NumPad0))).ToString();
-            return true;
-        }
-
-        return false;
-    }
-
-    private static IEnumerable<FolderTreeNode> GetVisibleTreeNodes(IEnumerable<FolderTreeNode> nodes)
-    {
-        foreach (var node in nodes)
-        {
-            yield return node;
-            if (node.IsExpanded && node.Children.Count > 0)
-                foreach (var child in GetVisibleTreeNodes(node.Children))
-                    yield return child;
-        }
-    }
-
-    // Finds a node whose Folder matches the target, searching all nodes regardless of expansion.
-    private static FolderTreeNode? FindNode(IEnumerable<FolderTreeNode> nodes, MailFolderModel target)
-    {
-        foreach (var node in nodes)
-        {
-            if (node.Folder != null && FoldersMatch(node.Folder, target))
-                return node;
-            var found = FindNode(node.Children, target);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    // Expands all ancestor nodes along the path to the target so their
-    // children's item containers are generated before SelectTreeViewNode runs.
-    private static bool FindAndExpandPath(IList<FolderTreeNode> nodes, MailFolderModel target)
-    {
-        foreach (var node in nodes)
-        {
-            if (node.Folder != null && FoldersMatch(node.Folder, target))
-                return true;
-            if (FindAndExpandPath(node.Children, target))
-            {
-                node.IsExpanded = true;
-                return true;
-            }
-        }
-        return false;
+        FolderListBox.SelectedItem = match;
+        FolderListBox.ScrollIntoView(match);
+        return true;
     }
 
     private static bool FoldersMatch(MailFolderModel a, MailFolderModel b) =>
         a.FullName.Equals(b.FullName, StringComparison.OrdinalIgnoreCase) &&
         (a.AccountId == b.AccountId || a.AccountId == Guid.Empty || b.AccountId == Guid.Empty);
 
-    private static bool SelectTreeViewNode(ItemsControl parent, FolderTreeNode target)
-    {
-        foreach (var item in parent.Items)
-        {
-            if (item is not FolderTreeNode node) continue;
-            if (parent.ItemContainerGenerator.ContainerFromItem(item) is not TreeViewItem container) continue;
-
-            if (node == target)
-            {
-                container.IsSelected = true;
-                container.BringIntoView();
-                container.Focus();
-                return true;
-            }
-            if (node.IsExpanded && SelectTreeViewNode(container, target))
-                return true;
-        }
-        return false;
-    }
-
     private void Commit()
     {
-        if (FolderTreeView.SelectedItem is FolderTreeNode node && node.Folder != null)
+        if (FolderListBox.SelectedItem is not FolderPickerItem item)
+            return;
+
+        SelectedFolder = item.Folder;
+        SelectedAccount = item.Account;
+        DialogResult = true;
+    }
+
+    private sealed class FolderPickerItem
+    {
+        public FolderPickerItem(
+            MailFolderModel folder,
+            AccountModel? account,
+            string folderPath,
+            string displayName)
         {
-            SelectedFolder = node.Folder;
-            _folderToAccount.TryGetValue(node.Folder, out var account);
-            SelectedAccount = account;
-            DialogResult = true;
+            Folder = folder;
+            Account = account;
+            FolderPath = folderPath;
+            DisplayName = displayName;
+            AccountName = account?.DisplayName ?? string.Empty;
+            SearchText = $"{DisplayName} {Folder.DisplayName} {Folder.FullName} {AccountName}";
         }
+
+        public MailFolderModel Folder { get; }
+        public AccountModel? Account { get; }
+        public string FolderPath { get; }
+        public string DisplayName { get; }
+        public string AccountName { get; }
+        public string SearchText { get; }
     }
 }

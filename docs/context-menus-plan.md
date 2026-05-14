@@ -1,5 +1,9 @@
 # Plan: Context Menus Throughout the App (Issue #3)
 
+## Status
+
+Implemented in the current codebase. The context-menu work added account, folder, message, and conversation actions. As of v0.5.3 those commands run through the pooled IMAP connection layer, so moving/copying/deleting mail or folders should not collide with message opening or background sync on the same account.
+
 ## TL;DR
 Add right-click / Shift+F10 context menus to all four interactive lists (account, folder, message, conversation) with contextually appropriate commands. Requires new IMAP folder/message operations (copy messages, move messages, folder CRUD), new VM commands, a reusable folder-picker dialog adapted for destination selection, and a small new-folder dialog. Naturally decomposes into 5 sequential-but-partially-parallelizable phases.
 
@@ -16,7 +20,7 @@ These are the server-side primitives needed by all higher phases. Implement firs
 5. `RenameFolderAsync(Guid accountId, string folderName, string newFullName, CancellationToken ct)` — IMAP RENAME (also serves as move-folder)
 6. `CopyFolderAsync(Guid accountId, string folderName, string destinationParent, CancellationToken ct)` — recursive CreateFolder + CopyMessages per subfolder
 
-Pattern reference: `MoveToTrashBatchAsync` in `ImapService.cs` for the move pattern; MailKit's `IMailFolder.MoveToAsync()` / `CopyToAsync()` / `CreateAsync()` / `RenameAsync()` / `DeleteAsync()`.
+Pattern reference: `MoveToTrashBatchAsync` in `ImapService.cs` for the move pattern; MailKit's `IMailFolder.MoveToAsync()` / `CopyToAsync()` / `CreateAsync()` / `RenameAsync()` / `DeleteAsync()`. Every method must lease an IMAP client from `ImapService`'s per-account pool and return it after the operation; do not store or reuse `ImapClient` instances in view models.
 
 ---
 
@@ -54,7 +58,8 @@ Register new commands in `RegisterCommands()` where keyboard shortcuts apply (Mo
 
 **`FolderPickerWindow` extensions:**
 - Add a `string Title` constructor parameter (sets `Window.Title`, e.g. "Move to Folder", "Copy to Folder")
-- Add optional `bool ShowNewFolderButton` — if true, show "New Folder…" button at the bottom that calls `NewFolderDialog` inline and inserts the created node into the tree
+- Add optional `bool ShowNewFolderButton` — if true, show "New Folder…" button at the bottom that calls `NewFolderDialog` inline and refreshes the destination list
+- Current implementation note: `FolderPickerWindow` is now a flat virtualized searchable list for responsiveness with large Gmail label sets. Keep future destination-picking changes compatible with that fast path.
 
 **New `NewFolderDialog`** (new small Window):
 - Single `TextBox` for folder name + OK / Cancel
@@ -123,6 +128,10 @@ Command="{Binding PlacementTarget.DataContext.XxxCommand,
 | `QuickMail/Views/NewFolderDialog.xaml` + `.cs` | **New file** (Phase 3) |
 | `QuickMail/Models/ConversationGroup.cs` | Verify `IsExpanded` property exists |
 | `QuickMail/Models/FolderTreeNode.cs` | Verify system-folder guard property |
+
+## Follow-up Note: Issue #6
+
+Issue #6 reported MailKit's "ImapClient is currently busy processing a command in another thread" error while opening messages during other IMAP work. The fix is not in the context-menu XAML; it is the v0.5.2+ IMAP pool. Context-menu commands should continue to call `IImapService` methods and let the service handle connection leasing. Foreground commands use reserved connection capacity in v0.5.3.
 
 ---
 

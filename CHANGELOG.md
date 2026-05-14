@@ -1,5 +1,71 @@
 # Changelog
 
+## v0.5.9
+
+### Accessibility
+
+- Restored automatic focus into the WebView2 message body after opening a message.
+- Added a retrying WebView2 host plus DOM focus handoff and UIA notification so NVDA receives a stable "Message body" focus event after heavy HTML rendering.
+
+## v0.5.8
+
+### Message rendering
+
+- Heavy sender HTML is now prepared off the UI thread before it is sent to WebView2.
+- Large, deeply table-based, or embedded-image-heavy messages are displayed in a simplified reader mode instead of rendering the full marketing HTML.
+- HTML rendering now strips remote images, external resources, scripts, forms, inline event handlers, and oversized styling before display.
+- WebView2 body navigation has a timeout so a problematic message cannot hold the interface indefinitely.
+
+## v0.5.7
+
+### Folder tree shortcuts
+
+- `Ctrl+2` and `Ctrl+Y` now focus the main folder tree pane instead of opening the quick-search folder picker.
+- The same folder-tree shortcut handling now works from the WebView2 reading pane.
+
+## v0.5.6
+
+### Folder picker shortcuts
+
+- `Ctrl+2` and `Ctrl+Y` both opened the same folder picker.
+- Added WebView2 shortcut relay so both shortcuts work while focus is in the reading pane.
+- Added feedback when folders are still loading instead of silently ignoring the shortcut.
+
+## v0.5.5
+
+### Folder navigation and Inbox loading
+
+- Changed the primary folder picker shortcut to `Ctrl+2`.
+- Folder selection now shows cached folder messages immediately and refreshes from IMAP in the background, so opening Inbox does not wait on Gmail before returning control to the UI.
+- Foreground folder summary fetches no longer request IMAP preview text; background sync still fills previews when available.
+
+## v0.5.4
+
+### Folder picker
+
+- Replaced the `Ctrl+Y` folder picker tree with a virtualized searchable list so opening the picker does not realize a large Gmail folder tree on the UI thread.
+- The search field is focused when the picker opens; typing filters folders immediately, Enter opens the selected folder, and Down Arrow moves into the list.
+
+## v0.5.3
+
+### IMAP responsiveness
+
+- Raised the default IMAP connection limit from 3 to 6 simultaneous connections per account.
+- Added foreground/background IMAP leasing: background sync, polling, UID checks, and preview fetching are capped below the full pool so message opening and attachment downloads keep reserved connection capacity.
+- Increased the supported `MaxImapConnectionsPerAccount` range to 1-15.
+
+## v0.5.2
+
+### IMAP concurrency
+
+- Added a bounded IMAP connection pool per account so background sync, preview fetching, message opening, attachment downloads, and move/copy/delete operations do not reuse the same busy MailKit client.
+- Message opening now allows a newer selection to cancel and supersede an older body load, preventing stale or slow loads from blocking quick navigation.
+- Added `MaxImapConnectionsPerAccount` to `config.ini` with a default of 3 and a supported range of 1-10.
+
+### Documentation
+
+- Updated the README, user guide, and project notes for pooled IMAP connections and the current keyboard shortcuts.
+
 ## v0.5.1
 
 ### Attachments

@@ -10,6 +10,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 - [Connecting accounts](#connecting-accounts)
 - [Managing accounts](#managing-accounts)
 - [Reading mail](#reading-mail)
+- [Performance and concurrency](#performance-and-concurrency)
 - [Conversation view](#conversation-view)
 - [Composing messages](#composing-messages)
 - [Drafts](#drafts)
@@ -99,17 +100,18 @@ Your Microsoft password is never seen or stored by QuickMail — only an encrypt
 | Action | How |
 |--------|-----|
 | Focus the account list | `Ctrl+1`, then use **Up/Down** arrow keys |
-| Focus the folder list | `Ctrl+2`, then use **Up/Down** + **Enter** to open a folder |
+| Focus the folder tree | `Ctrl+2` or `Ctrl+Y`, then use **Up/Down** + **Enter** |
 | Focus the message list | `Ctrl+3`, then use **Up/Down** to move between messages |
 | Open a message in the reading pane | Press **Enter** or select the message |
-| Move focus into the reading pane | `Ctrl+4` or **F6** |
+| Move focus into the reading pane | **F6** after a message is open |
 | Return focus to the message list | **Escape** or **F6** from the reading pane |
 | Cycle focus forward through all panes | **F6** |
 | Cycle focus backward | **Shift+F6** |
+| Focus the status bar | `Ctrl+9` |
 
-### Quick folder picker (Ctrl+Y)
+### Folder tree shortcut (Ctrl+2 / Ctrl+Y)
 
-Press `Ctrl+Y` to open a searchable list of every folder across all your accounts. Start typing to filter the list, then press **Enter** to jump straight to that folder.
+Press `Ctrl+2` or `Ctrl+Y` to move focus to the main folder tree. Use **Up/Down** to choose a folder, **Right/Left** to expand or collapse account and folder nodes, and **Enter** to open the selected folder.
 
 ### Load More (Ctrl+M)
 
@@ -122,6 +124,16 @@ At the top of the folder list is an **All Mail** entry. Selecting it shows messa
 ### Selecting multiple messages
 
 Hold **Shift** and press **Up** or **Down** in the message list to extend your selection. You can then act on all selected messages at once (for example, pressing **Delete** removes them all).
+
+---
+
+## Performance and concurrency
+
+QuickMail uses a small IMAP connection pool for each account. Message opening, background sync, preview fetching, attachment downloads, and move/copy/delete actions lease separate connections when one is available, so opening a message should not fail just because another IMAP command is already running.
+
+By default, QuickMail uses up to **6 simultaneous IMAP connections per account**. Foreground work such as opening a message or downloading an attachment gets reserved capacity; background sync and preview fetching are limited below the full pool. Advanced users can change the limit in `%AppData%\QuickMail\config.ini` with `MaxImapConnectionsPerAccount`; changes take effect after restarting QuickMail.
+
+Some marketing or financial messages contain very large HTML layouts. QuickMail may show those messages in a simplified reader mode so the reading pane remains responsive.
 
 ---
 
@@ -255,7 +267,7 @@ A security warning is shown before opening executable file types.
 
 - **Passwords** are stored in **Windows Credential Manager** — never in any file on disk. They are protected by your Windows login.
 - **OAuth2 tokens** (used for Outlook.com accounts) are encrypted with Windows DPAPI and stored locally. Your Microsoft password is never seen or stored by QuickMail.
-- **HTML emails** are displayed in a sandboxed WebView2 component with a strict Content Security Policy. Scripts, embedded objects, and external frames are all blocked, so malicious email content cannot run on your machine.
+- **HTML emails** are displayed in a sandboxed WebView2 component with a strict Content Security Policy. Scripts, embedded objects, remote images, external frames, and forms are blocked or stripped, so malicious email content cannot run on your machine.
 
 ---
 
@@ -266,10 +278,10 @@ A security warning is shown before opening executable file types.
 | Shortcut | Action |
 |----------|--------|
 | Ctrl+1 | Focus account list |
-| Ctrl+2 | Focus folder list |
+| Ctrl+2 / Ctrl+Y | Focus folder tree |
 | Ctrl+3 | Focus message list / conversation tree |
-| Ctrl+4 | Focus reading pane |
 | Ctrl+0 | Focus toolbar |
+| Ctrl+9 | Focus status bar |
 | F6 | Cycle focus forward through panes |
 | Shift+F6 | Cycle focus backward through panes |
 | F5 | Refresh current folder |
@@ -278,7 +290,6 @@ A security warning is shown before opening executable file types.
 | Ctrl+Shift+R | Reply All |
 | Ctrl+F | Forward |
 | Delete | Delete selected message(s) |
-| Ctrl+Y | Open folder picker |
 | Ctrl+Shift+C | Toggle conversation view |
 | Ctrl+M | Load more messages |
 | Ctrl+Shift+E | Empty Trash |
@@ -328,6 +339,7 @@ Lines starting with `#` are comments and are ignored. The file uses a simple `ke
 | `PreviewLines` | `0`–`5` | `3` | Number of body-preview lines shown under each subject in the message list. Set to `0` to hide previews entirely. |
 | `ShowMessageStatus` | `true` / `false` | `true` | Show or hide the read/unread status indicator column in the message list. |
 | `ConversationView` | `true` / `false` | `false` | Start with conversation threading on. |
+| `MaxImapConnectionsPerAccount` | `1`–`15` | `6` | Maximum simultaneous IMAP connections QuickMail may open for each account. Background work is capped below this value so opening messages keeps reserved capacity. Higher values can make large accounts more responsive, but only raise this if your mail provider allows it. |
 
 ### `[account:<guid>]` overrides
 

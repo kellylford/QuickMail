@@ -28,17 +28,21 @@ public partial class MainViewModel : ObservableObject
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
     private CancellationTokenSource? _folderCts;
-    private CancellationTokenSource? _messageCts;
+    private CancellationTokenSource? _messageLoadCts;
+    private CancellationTokenSource? _messageActionCts;
     private CancellationTokenSource? _bgSyncCts;
 
     // How many days of mail to sync (0 = all); set via the Sync Range menu
     private int _syncDays = 30;
 
-    // Version stamps for grouped-view rebuilds; latest wins, stale results discarded
+    // Version stamps; latest wins, stale results discarded
     private int _folderLoadVersion;
     private int _conversationRebuildVersion;
     private int _senderGroupRebuildVersion;
     private int _toGroupRebuildVersion;
+
+    // Version stamp for message body loads; latest selection wins.
+    private int _messageLoadVersion;
 
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
@@ -771,48 +775,82 @@ public partial class MainViewModel : ObservableObject
         if (accountId == Guid.Empty) return;
         var folder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
-        var cached = await _localStore.LoadFolderSummariesAsync(accountId, folder.FullName);
-        if (!IsCurrentFolderLoad(loadVersion, folder))
-            return;
-
-        Messages = new ObservableCollection<MailMessageSummary>(cached);
-        StatusText = cached.Count > 0
-            ? $"{cached.Count} cached messages (checking for new...)"
-            : $"Loading {folder.DisplayName}...";
         IsBusy = true;
         try
         {
-            _folderCts?.Cancel();
-            _folderCts = new CancellationTokenSource();
-            var list = _syncDays > 0
-                ? await _imap.GetMessagesSinceDateAsync(accountId, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), _folderCts.Token)
-                : await _imap.GetMessageSummariesAsync(accountId, folder.FullName, 50000, _folderCts.Token);
+            var cts = new CancellationTokenSource();
+            var previousCts = Interlocked.Exchange(ref _folderCts, cts);
+            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
+
+            var cached = await _localStore.LoadFolderSummariesAsync(accountId, folder.FullName);
             if (!IsCurrentFolderLoad(loadVersion, folder))
+                return;
+
+            Messages = new ObservableCollection<MailMessageSummary>(cached);
+            StatusText = cached.Count > 0
+                ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
+                : $"Loading {folder.DisplayName}…";
+            if (cached.Count > 0 && IsConversationsView)
+                ScheduleConversationRebuild();
+
+            _ = RefreshFolderFromServerAsync(accountId, folder, loadVersion, cts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+            {
+                StatusText = "Message list load cancelled.";
+                IsBusy = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (loadVersion == _folderLoadVersion)
+            {
+                StatusText = $"Failed to load messages: {ex.Message}";
+                IsBusy = false;
+            }
+            LogService.Log("SelectFolder", ex);
+        }
+    }
+
+    private async Task RefreshFolderFromServerAsync(
+        Guid accountId, MailFolderModel folder, int version, CancellationToken ct)
+    {
+        try
+        {
+            var list = _syncDays > 0
+                ? await _imap.GetMessagesSinceDateAsync(accountId, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                : await _imap.GetMessageSummariesAsync(accountId, folder.FullName, 50000, ct);
+            if (!IsCurrentFolderLoad(version, folder))
                 return;
 
             Messages = new ObservableCollection<MailMessageSummary>(list);
             StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
             _ = _localStore.UpsertSummariesAsync(list);
+
+            if (IsConversationsView)
+                ScheduleConversationRebuild();
         }
         catch (OperationCanceledException)
         {
-            if (loadVersion == _folderLoadVersion)
+            if (version == _folderLoadVersion)
                 StatusText = "Message list load cancelled.";
         }
         catch (Exception ex)
         {
-            if (loadVersion == _folderLoadVersion)
+            if (version == _folderLoadVersion)
                 StatusText = $"Failed to load messages: {ex.Message}";
-            LogService.Log("SelectFolder", ex);
+            LogService.Log("RefreshFolderFromServer", ex);
         }
         finally
         {
-            if (loadVersion == _folderLoadVersion)
+            if (version == _folderLoadVersion)
                 IsBusy = false;
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task SelectMessageAsync(MailMessageSummary? summary)
     {
         if (summary == null) return;
@@ -820,6 +858,7 @@ public partial class MainViewModel : ObservableObject
             SelectedAccount = Accounts.FirstOrDefault(a => a.Id == summary.AccountId) ?? SelectedAccount;
         if (SelectedAccount == null) return;
 
+        var loadVersion = Interlocked.Increment(ref _messageLoadVersion);
         SelectedMessage = summary;
         MessageDetail   = null;
         IsMessageOpen   = false;
@@ -827,8 +866,10 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            _messageCts?.Cancel();
-            _messageCts = new CancellationTokenSource();
+            var cts = new CancellationTokenSource();
+            var previousCts = Interlocked.Exchange(ref _messageLoadCts, cts);
+            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
+            var token = cts.Token;
 
             // Serve from cache when available; fall back to IMAP and cache the result.
             var detail = await _localStore.LoadDetailAsync(
@@ -837,9 +878,12 @@ public partial class MainViewModel : ObservableObject
             if (detail == null)
             {
                 detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId, _messageCts.Token);
+                    summary.AccountId, summary.FolderName, summary.UniqueId, token);
                 _ = _localStore.UpsertDetailAsync(detail);
             }
+
+            if (loadVersion != _messageLoadVersion || SelectedMessage != summary)
+                return;
 
             MessageDetail = detail;
             IsMessageOpen = true;
@@ -864,16 +908,19 @@ public partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Message load cancelled.";
+            if (loadVersion == _messageLoadVersion)
+                StatusText = "Message load cancelled.";
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to load message: {ex.Message}";
+            if (loadVersion == _messageLoadVersion)
+                StatusText = $"Failed to load message: {ex.Message}";
             LogService.Log("SelectMessage", ex);
         }
         finally
         {
-            IsBusy = false;
+            if (loadVersion == _messageLoadVersion)
+                IsBusy = false;
         }
     }
 
@@ -1233,8 +1280,9 @@ public partial class MainViewModel : ObservableObject
         // ── Step 2: IMAP delete + local store cleanup ────────────────────────────
         try
         {
-            _messageCts?.Cancel();
-            _messageCts = new CancellationTokenSource();
+            var cts = new CancellationTokenSource();
+            var previousCts = Interlocked.Exchange(ref _messageActionCts, cts);
+            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
 
             var groups = toDelete.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
@@ -1251,10 +1299,10 @@ public partial class MainViewModel : ObservableObject
 
                 if (sourceKind == SpecialFolderKind.Trash)
                     await _imap.PermanentlyDeleteBatchAsync(
-                        group.Key.AccountId, group.Key.FolderName, uids, _messageCts.Token);
+                        group.Key.AccountId, group.Key.FolderName, uids, cts.Token);
                 else
                     await _imap.MoveToTrashBatchAsync(
-                        group.Key.AccountId, group.Key.FolderName, uids, _messageCts.Token);
+                        group.Key.AccountId, group.Key.FolderName, uids, cts.Token);
 
                 LogService.Debug($"[DELETE] IMAP done {group.Key.FolderName}");
                 await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
@@ -1425,8 +1473,9 @@ public partial class MainViewModel : ObservableObject
         StatusText = "Opening draft…";
         try
         {
-            _messageCts?.Cancel();
-            _messageCts = new CancellationTokenSource();
+            var cts = new CancellationTokenSource();
+            var previousCts = Interlocked.Exchange(ref _messageLoadCts, cts);
+            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
 
             var detail = await _localStore.LoadDetailAsync(
                 summary.AccountId, summary.FolderName, summary.UniqueId);
@@ -1434,7 +1483,7 @@ public partial class MainViewModel : ObservableObject
             if (detail == null)
             {
                 detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId, _messageCts.Token);
+                    summary.AccountId, summary.FolderName, summary.UniqueId, cts.Token);
             }
 
             var model = new ComposeModel
@@ -1457,7 +1506,7 @@ public partial class MainViewModel : ObservableObject
                     {
                         att.Content = await _imap.DownloadAttachmentAsync(
                             summary.AccountId, summary.FolderName, summary.UniqueId,
-                            att.PartSpecifier, _messageCts.Token);
+                            att.PartSpecifier, cts.Token);
                     }
                     catch (Exception ex)
                     {
@@ -1730,8 +1779,9 @@ public partial class MainViewModel : ObservableObject
         IsBusy     = true;
         try
         {
-            _messageCts?.Cancel();
-            _messageCts = new CancellationTokenSource();
+            var cts = new CancellationTokenSource();
+            var previousCts = Interlocked.Exchange(ref _messageActionCts, cts);
+            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
 
             var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
@@ -1739,7 +1789,7 @@ public partial class MainViewModel : ObservableObject
                 var uids = group.Select(m => m.UniqueId).ToList();
                 await _imap.MoveMessagesAsync(
                     group.Key.AccountId, group.Key.FolderName, uids,
-                    destination.FullName, _messageCts.Token);
+                    destination.FullName, cts.Token);
                 await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
 

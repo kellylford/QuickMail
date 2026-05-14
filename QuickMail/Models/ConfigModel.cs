@@ -26,6 +26,9 @@ public class ConfigModel
     /// </summary>
     public int SyncDays { get; set; } = 30;
 
+    /// <summary>Maximum simultaneous IMAP connections QuickMail may open per account.</summary>
+    public int MaxImapConnectionsPerAccount { get; set; } = 6;
+
     // ── Custom hotkey overrides ──────────────────────────────────────────────────
 
     /// <summary>User-defined keyboard shortcut overrides, stored in hotkeys.json.</summary>

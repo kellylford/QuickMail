@@ -11,7 +11,7 @@ public interface ILocalStoreService
 
     Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries);
     Task<List<MailMessageSummary>> LoadAllSummariesAsync();
-    Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName);
+    Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null);
     Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds);
     Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead);
     Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview);

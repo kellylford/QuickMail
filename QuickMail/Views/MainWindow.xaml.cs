@@ -4,12 +4,16 @@ using System.IO;
 using System.Globalization;
 using System.Linq;
 using System.Net;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using QuickMail.Models;
@@ -71,6 +75,13 @@ public partial class MainWindow : Window
     private string _typeAheadBuffer = string.Empty;
     private DateTime _typeAheadLastInputUtc = DateTime.MinValue;
     private object? _typeAheadScope;
+    private int _messageBodyRenderVersion;
+
+    private const int MaxRichHtmlRenderChars = 180_000;
+    private const int MaxReaderTextChars = 140_000;
+    private const int MaxRichHtmlTableCount = 80;
+    private static readonly TimeSpan HtmlRegexTimeout = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan WebViewNavigationTimeout = TimeSpan.FromSeconds(4);
 
     public MainWindow(
         MainViewModel vm,
@@ -210,9 +221,13 @@ public partial class MainWindow : Window
     {
         // Register commands that require UI access (must run after InitializeComponent).
         _registry.Register(new CommandDefinition(
+            id: "view.focusFolders", category: "View", title: "Focus Folder Tree",
+            execute: FocusFolderTree,
+            defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control));
+
+        _registry.Register(new CommandDefinition(
             id: "view.folderPicker", category: "View", title: "Go to Folder…",
-            execute: OpenFolderPicker,
-            defaultKey: Key.Y, defaultModifiers: ModifierKeys.Control));
+            execute: OpenFolderPicker));
 
         _registry.Register(new CommandDefinition(
             id: "view.openViewMenu", category: "View", title: "Open View Menu",
@@ -244,6 +259,7 @@ public partial class MainWindow : Window
                 "window.addEventListener('keydown',function(e){"
                 +"if(e.key==='Escape'){window.chrome.webview.postMessage('escape');e.preventDefault();}"
                 +"else if(e.key==='F6'){window.chrome.webview.postMessage(e.shiftKey?'shift-f6':'f6');e.preventDefault();}"
+                +"else if(e.ctrlKey&&(e.key==='2'||e.key==='y'||e.key==='Y')){window.chrome.webview.postMessage('focus-folders');e.preventDefault();}"
                 +"else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}"
                 +"});");
 
@@ -263,6 +279,8 @@ public partial class MainWindow : Window
                     Dispatcher.InvokeAsync(() => _ = CycleFocusAsync(true), DispatcherPriority.Input);
                 else if (msg == "shift-f6")
                     Dispatcher.InvokeAsync(() => _ = CycleFocusAsync(false), DispatcherPriority.Input);
+                else if (msg == "focus-folders")
+                    Dispatcher.InvokeAsync(FocusFolderTree, DispatcherPriority.Input);
                 else if (msg == "shift-tab")
                     Dispatcher.InvokeAsync(FocusLastHeaderField, DispatcherPriority.Input);
             };
@@ -292,7 +310,11 @@ public partial class MainWindow : Window
     private async void OnWindowKeyDown(object sender, KeyEventArgs e)
     {
         var modifiers = e.KeyboardDevice.Modifiers;
-        var key       = e.Key;
+        var key = e.Key == Key.System
+            ? e.SystemKey
+            : e.Key == Key.ImeProcessed
+                ? e.ImeProcessedKey
+                : e.Key;
 
         // ── Navigation shortcuts (hardcoded, not in the command registry) ──────────
         if (modifiers == ModifierKeys.Control)
@@ -301,7 +323,12 @@ public partial class MainWindow : Window
             {
                 case Key.D0: ToolbarFirstButton.Focus(); e.Handled = true; return;
                 case Key.D1: AccountList.Focus();        e.Handled = true; return;
-                case Key.D2: FolderList.Focus();         e.Handled = true; return;
+                case Key.D2:
+                case Key.NumPad2:
+                case Key.Y:
+                    FocusFolderTree();
+                    e.Handled = true;
+                    return;
                 case Key.D3:
                     if (_vm.IsConversationsView)
                         ConversationTree.Focus();
@@ -385,13 +412,48 @@ public partial class MainWindow : Window
         cm.IsOpen = true;
     }
 
+    private void FocusFolderTree()
+    {
+        if (FolderList.Items.Count == 0)
+        {
+            _vm.StatusText = "Folders are still loading.";
+            return;
+        }
+
+        FolderList.Focus();
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (FolderList.SelectedItem is FolderTreeNode selected &&
+                SelectTreeViewNode(FolderList, selected))
+                return;
+
+            if (FolderList.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
+            {
+                first.IsSelected = true;
+                first.Focus();
+                return;
+            }
+
+            FolderList.Focus();
+        }, DispatcherPriority.Input);
+    }
+
     private async void OpenFolderPicker()
     {
-        if (_vm.CachedFolders.Count == 0) return;
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders,
-            [MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
-             MainViewModel.AllDraftsFolder,  MainViewModel.AllSentFolder,
-             MainViewModel.AllTrashFolder],
+        if (_vm.CachedFolders.Count == 0)
+        {
+            _vm.StatusText = "Folders are still loading.";
+            return;
+        }
+        var picker = new FolderPickerWindow(
+            _vm.Accounts,
+            _vm.CachedFolders,
+            new[]
+            {
+                MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
+                MainViewModel.AllDraftsFolder,  MainViewModel.AllSentFolder,
+                MainViewModel.AllTrashFolder
+            },
             initialFolder: _vm.SelectedFolder) { Owner = this };
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
         {
@@ -1018,63 +1080,257 @@ public partial class MainWindow : Window
     {
         if (!_webViewReady) return;
 
-        var encodedSubject = WebUtility.HtmlEncode(detail.Subject ?? string.Empty);
-        var titleTag = $"<title>{encodedSubject}</title>";
-
-        string html;
-        if (!string.IsNullOrWhiteSpace(detail.HtmlBody))
-        {
-            // Render the sender's HTML directly.
-            // Inject a tight CSP that blocks email-embedded scripts; our Escape relay
-            // was added via AddScriptToExecuteOnDocumentCreatedAsync and is unaffected by CSP.
-            const string cspTag =
-                "<meta http-equiv=\"Content-Security-Policy\" " +
-                "content=\"script-src 'none'; object-src 'none'; frame-src 'none';\">";
-            var body = detail.HtmlBody;
-
-            // Replace any existing <title> so screen readers announce our subject, not the sender's.
-            body = System.Text.RegularExpressions.Regex.Replace(
-                body, @"<title[^>]*>.*?</title>", string.Empty,
-                System.Text.RegularExpressions.RegexOptions.IgnoreCase |
-                System.Text.RegularExpressions.RegexOptions.Singleline);
-
-            var headIdx = body.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
-            html = headIdx >= 0
-                ? body.Insert(headIdx + 6, titleTag + cspTag)
-                : titleTag + cspTag + body;
-        }
-        else
-        {
-            // Plain-text fallback: HTML-encode so tags/special chars are safe
-            var encoded = WebUtility.HtmlEncode(detail.PlainTextBody ?? string.Empty);
-            html =
-                "<!DOCTYPE html>\n" +
-                "<html lang=\"en\">\n" +
-                $"<head><meta charset=\"utf-8\">{titleTag}<style>\n" +
-                "html,body{margin:0;padding:8px 12px;font-family:Segoe UI,Arial,sans-serif;" +
-                "font-size:13px;white-space:pre-wrap;word-break:break-word;" +
-                "background:Window;color:WindowText;outline:none;}\n" +
-                "</style></head>\n" +
-                "<body tabindex=\"0\">" + encoded + "</body>\n" +
-                "</html>";
-        }
+        var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
+        var html = await Task.Run(() => BuildMessageHtml(detail));
+        if (renderVersion != _messageBodyRenderVersion)
+            return;
 
         // Wait for navigation to finish before focusing so the screen reader
-        // gets the fully rendered document, not a blank page.
-        var tcs = new TaskCompletionSource<bool>();
+        // gets the rendered document, but never let a complex sender HTML wait forever.
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         void OnNavigated(object? s, CoreWebView2NavigationCompletedEventArgs ev)
         {
             MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
             tcs.TrySetResult(ev.IsSuccess);
         }
+
         MessageBody.CoreWebView2.NavigationCompleted += OnNavigated;
         MessageBody.CoreWebView2.NavigateToString(html);
 
-        await tcs.Task;
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(WebViewNavigationTimeout)) == tcs.Task;
+        if (!completed)
+        {
+            MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
+            LogService.Log($"ShowMessageBody: WebView navigation timed out for UID {detail.UniqueId}");
+        }
 
-        // Give focus to the browser control and push keyboard focus into <body>
+        if (renderVersion != _messageBodyRenderVersion)
+            return;
+
+        await FocusMessageBodyAsync(renderVersion, detail.Subject);
+    }
+
+    private async Task FocusMessageBodyAsync(int renderVersion, string? subject)
+    {
+        if (renderVersion != _messageBodyRenderVersion || !_webViewReady)
+            return;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            MessageBody.Focus();
+            Keyboard.Focus(MessageBody);
+        }, DispatcherPriority.Input);
+
+        var focusLabel = MessageBodyFocusLabel(subject);
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            if (renderVersion != _messageBodyRenderVersion)
+                return;
+
+            await Dispatcher.InvokeAsync(FocusMessageBodyHost, DispatcherPriority.Input);
+
+            try
+            {
+                if (await TryFocusMessageBodyDocumentAsync(focusLabel))
+                    break;
+            }
+            catch (Exception ex)
+            {
+                if (attempt == 4)
+                    LogService.Log("FocusMessageBody", ex);
+            }
+
+            await Task.Delay(100);
+        }
+
+        if (renderVersion != _messageBodyRenderVersion)
+            return;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            FocusMessageBodyHost();
+            AccessibilityHelper.Announce(this, focusLabel, interrupt: true);
+        }, DispatcherPriority.Input);
+    }
+
+    private void FocusMessageBodyHost()
+    {
         MessageBody.Focus();
-        await MessageBody.CoreWebView2.ExecuteScriptAsync("document.body.focus()");
+        Keyboard.Focus(MessageBody);
+
+        try
+        {
+            ((IKeyboardInputSink)MessageBody).TabInto(
+                new TraversalRequest(FocusNavigationDirection.First));
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("FocusMessageBodyHost", ex);
+        }
+    }
+
+    private async Task<bool> TryFocusMessageBodyDocumentAsync(string focusLabel)
+    {
+        var bodyLabel = JsonSerializer.Serialize(focusLabel);
+        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
+            "(() => {" +
+            "const body = document.body;" +
+            "if (!body) return false;" +
+            "window.focus();" +
+            "body.setAttribute('tabindex','0');" +
+            "body.setAttribute('role','document');" +
+            $"body.setAttribute('aria-label',{bodyLabel});" +
+            "body.focus({preventScroll:true});" +
+            "return document.hasFocus() && document.activeElement === body;" +
+            "})()");
+
+        return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string MessageBodyFocusLabel(string? subject)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+            return "Message body";
+
+        var trimmed = subject.Trim();
+        if (trimmed.Length > 120)
+            trimmed = trimmed[..120] + "...";
+
+        return $"Message body. {trimmed}";
+    }
+
+    private static string BuildMessageHtml(MailMessageDetail detail)
+    {
+        var htmlBody = detail.HtmlBody ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(htmlBody) && !ShouldUseReaderMode(htmlBody))
+            return BuildSanitizedHtmlDocument(detail.Subject, htmlBody);
+
+        var text = !string.IsNullOrWhiteSpace(detail.PlainTextBody)
+            ? detail.PlainTextBody
+            : HtmlToText(htmlBody);
+
+        var note = !string.IsNullOrWhiteSpace(htmlBody)
+            ? "This message uses complex HTML, so QuickMail is showing a simplified body."
+            : null;
+        return BuildPlainTextHtmlDocument(detail.Subject, text, note);
+    }
+
+    private static bool ShouldUseReaderMode(string html) =>
+        html.Length > MaxRichHtmlRenderChars ||
+        CountOccurrences(html, "<table") > MaxRichHtmlTableCount ||
+        CountOccurrences(html, "data:image", StringComparison.OrdinalIgnoreCase) > 0;
+
+    private static string BuildSanitizedHtmlDocument(string? subject, string html)
+    {
+        var body = StripHeavyHtml(html);
+        var titleTag = $"<title>{WebUtility.HtmlEncode(subject ?? string.Empty)}</title>";
+        const string cspTag =
+            "<meta http-equiv=\"Content-Security-Policy\" " +
+            "content=\"default-src 'none'; script-src 'none'; object-src 'none'; " +
+            "frame-src 'none'; img-src 'none'; media-src 'none'; connect-src 'none'; " +
+            "form-action 'none'; base-uri 'none'; style-src 'unsafe-inline';\">";
+        const string css =
+            "<style>html,body{margin:0;padding:8px 12px;font-family:Segoe UI,Arial,sans-serif;" +
+            "font-size:13px;line-height:1.45;word-break:break-word;background:Window;color:WindowText;}" +
+            "table{max-width:100%;border-collapse:collapse;}td,th{vertical-align:top;}a{color:#0645ad;}</style>";
+
+        var headIdx = body.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
+        if (headIdx >= 0)
+        {
+            body = RemoveTitle(body);
+            body = body.Insert(headIdx + 6, "<meta charset=\"utf-8\">" + titleTag + cspTag + css);
+            return EnsureBodyFocusable(body);
+        }
+
+        return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+               titleTag + cspTag + css +
+               "</head><body tabindex=\"0\">" + body + "</body></html>";
+    }
+
+    private static string BuildPlainTextHtmlDocument(string? subject, string text, string? note)
+    {
+        var clipped = Truncate(text ?? string.Empty, MaxReaderTextChars);
+        var encoded = WebUtility.HtmlEncode(clipped);
+        var titleTag = $"<title>{WebUtility.HtmlEncode(subject ?? string.Empty)}</title>";
+        var noteHtml = string.IsNullOrWhiteSpace(note)
+            ? string.Empty
+            : "<p class=\"note\">" + WebUtility.HtmlEncode(note) + "</p>";
+
+        return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
+               titleTag +
+               "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline';\">" +
+               "<style>html,body{margin:0;padding:8px 12px;font-family:Segoe UI,Arial,sans-serif;" +
+               "font-size:13px;white-space:pre-wrap;word-break:break-word;background:Window;color:WindowText;}" +
+               ".note{white-space:normal;border-left:3px solid #777;padding-left:8px;margin:0 0 12px 0;color:#555;}</style>" +
+               "</head><body tabindex=\"0\">" + noteHtml + encoded + "</body></html>";
+    }
+
+    private static string StripHeavyHtml(string html)
+    {
+        var body = html;
+        body = SafeRegexReplace(body, "<!--.*?-->", string.Empty, RegexOptions.Singleline);
+        body = SafeRegexReplace(body, "<script\\b.*?</script>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = SafeRegexReplace(body, "<style\\b.*?</style>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = SafeRegexReplace(body, "<svg\\b.*?</svg>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = SafeRegexReplace(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?</\\1>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = SafeRegexReplace(body, "<(img|link|base|input|button|meta)\\b[^>]*>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = SafeRegexReplace(body, "\\s(on\\w+|style|src|srcset|background)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        return body;
+    }
+
+    private static string RemoveTitle(string html) =>
+        SafeRegexReplace(html, "<title[^>]*>.*?</title>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+    private static string EnsureBodyFocusable(string html)
+    {
+        if (!html.Contains("<body", StringComparison.OrdinalIgnoreCase) ||
+            html.Contains("tabindex=", StringComparison.OrdinalIgnoreCase))
+            return html;
+
+        return SafeRegexReplace(html, "<body\\b", "<body tabindex=\"0\"", RegexOptions.IgnoreCase);
+    }
+
+    private static string HtmlToText(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html)) return string.Empty;
+        var text = StripHeavyHtml(html);
+        text = SafeRegexReplace(text, "<br\\s*/?>", "\n", RegexOptions.IgnoreCase);
+        text = SafeRegexReplace(text, "</(p|div|tr|li|h[1-6])>", "\n", RegexOptions.IgnoreCase);
+        text = SafeRegexReplace(text, "<[^>]+>", " ", RegexOptions.Singleline);
+        text = WebUtility.HtmlDecode(text);
+        text = SafeRegexReplace(text, "[ \\t\\r\\f\\v]+", " ", RegexOptions.None);
+        text = SafeRegexReplace(text, "\\n\\s+|\\s+\\n", "\n", RegexOptions.None);
+        text = SafeRegexReplace(text, "\\n{3,}", "\n\n", RegexOptions.None);
+        return text.Trim();
+    }
+
+    private static string SafeRegexReplace(string input, string pattern, string replacement, RegexOptions options)
+    {
+        try { return Regex.Replace(input, pattern, replacement, options, HtmlRegexTimeout); }
+        catch (RegexMatchTimeoutException)
+        {
+            LogService.Log($"HTML cleanup timed out for pattern: {pattern}");
+            return input;
+        }
+    }
+
+    private static string Truncate(string value, int maxChars)
+    {
+        if (value.Length <= maxChars) return value;
+        return value[..maxChars] + "\n\n[Message truncated for display.]";
+    }
+
+    private static int CountOccurrences(
+        string value, string needle, StringComparison comparison = StringComparison.OrdinalIgnoreCase)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = value.IndexOf(needle, index, comparison)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+        return count;
     }
 
     // When the WebView2 host receives WPF keyboard focus (e.g. Tab from a header field),
@@ -1082,7 +1338,16 @@ public partial class MainWindow : Window
     private async void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
         if (_webViewReady)
-            await MessageBody.CoreWebView2.ExecuteScriptAsync("document.body.focus()");
+        {
+            try
+            {
+                await TryFocusMessageBodyDocumentAsync(MessageBodyFocusLabel(_vm.MessageDetail?.Subject));
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("MessageBody_GotKeyboardFocus", ex);
+            }
+        }
     }
 
     // Focuses the last visible field in the reading-pane header so Shift+Tab from the
@@ -1186,8 +1451,7 @@ public partial class MainWindow : Window
             case 4:
                 if (_vm.IsMessageOpen && _webViewReady)
                 {
-                    MessageBody.Focus();
-                    await MessageBody.CoreWebView2.ExecuteScriptAsync("document.body.focus()");
+                    await FocusMessageBodyAsync(_messageBodyRenderVersion, _vm.MessageDetail?.Subject);
                 }
                 else
                 {

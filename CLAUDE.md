@@ -5,7 +5,6 @@ WPF desktop email client (.NET 8, C#). Multi-account IMAP/SMTP with unified inbo
 ## Build & Run
 
 ```bat
-cd QuickMail
 build.bat          # build
 build.bat run      # build + launch
 build.bat publish  # self-contained win-x64
@@ -23,7 +22,7 @@ QuickMail/QuickMail/
 │   ├── MainWindow.xaml(.cs) # 3-pane layout; keyboard nav; WebView2 HTML rendering
 │   ├── ComposeWindow.xaml   # New/Reply/Forward dialog
 │   ├── AccountManagerDialog.xaml
-│   └── FolderPickerWindow.xaml  # Ctrl+Y quick nav
+│   └── FolderPickerWindow.xaml  # Destination picker for move/copy/go-to-folder commands
 ├── ViewModels/
 │   ├── MainViewModel.cs     # Master state (accounts, folders, messages, selection)
 │   ├── ComposeViewModel.cs  # Compose/reply/forward factories
@@ -45,23 +44,29 @@ QuickMail/QuickMail/
 ## Key Conventions
 
 - **MVVM strictly**: views bind to VM properties/commands; no logic in code-behind except UI-only concerns (keyboard shortcuts, WebView2 navigation)
-- **IMAP client pool**: `ImapService` keeps one `ImapClient` per account Guid; reconnect on demand
+- **IMAP client pool**: `ImapService` leases one `ImapClient` per active operation from a bounded per-account pool; never run two MailKit commands on the same client concurrently
+- **Foreground IMAP priority**: message detail and attachment downloads use foreground leases; background sync, UID checks, polling, and preview fetches use background leases capped below the full pool
 - **"All Mail" virtual folder**: identified by `FullName == "\x00AllMail"`; aggregates all accounts sorted newest-first
 - **Passwords**: never written to JSON; always round-trip through `CredentialService` (Windows Credential Manager)
 - **HTML sandbox**: WebView2 `NavigateToString` with strict CSP — no scripts, no object/embed, no frames
-- **Cancellation**: three separate `CancellationTokenSource` (connect, folder load, message load) — cancel the right one when switching context
+- **Heavy HTML rendering**: build reading-pane HTML off the UI thread; large/table-heavy/data-image messages use simplified reader mode before `NavigateToString`
+- **Cancellation**: use separate token sources for connect, folder load, message body load, message mutations, and background sync so unrelated work does not cancel accidentally
 - **Pagination**: messages fetched in batches of 100; "Load More" appends next batch
+- **IMAP concurrency config**: `MaxImapConnectionsPerAccount` in `%APPDATA%\QuickMail\config.ini` defaults to 6 and is clamped to 1-15
+- **Folder shortcuts**: `Ctrl+2` and `Ctrl+Y` focus the main `FolderList` TreeView; do not route those shortcuts to `FolderPickerWindow`
+- **Folder picker**: `FolderPickerWindow` is a flat virtualized searchable list, not a `TreeView`; keep construction cheap for large Gmail label sets
 
 ## Keyboard Shortcuts (MainWindow)
 
 | Key | Action |
 |-----|--------|
-| Ctrl+0 | Focus account list |
-| Ctrl+1 | Focus folder list |
-| Ctrl+2 | Focus message list |
-| Ctrl+3 | Focus reading pane |
+| Ctrl+0 | Focus toolbar |
+| Ctrl+1 | Focus account list |
+| Ctrl+2 / Ctrl+Y | Focus folder tree |
+| Ctrl+3 | Focus message list / conversation tree |
+| Ctrl+9 | Focus status bar |
+| F6 / Shift+F6 | Cycle panes |
 | Ctrl+N | New message |
-| Ctrl+Y | Folder picker |
 | Delete | Delete selected messages |
 | Escape | Close reading pane |
 
@@ -69,7 +74,8 @@ QuickMail/QuickMail/
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| MailKit | 4.15.1 | IMAP + SMTP protocol |
+| MailKit | 4.16.0 | IMAP + SMTP protocol |
 | CommunityToolkit.Mvvm | 8.4.2 | ObservableProperty, RelayCommand |
-| Microsoft.Web.WebView2 | latest | HTML email rendering |
+| Microsoft.Data.Sqlite | 10.0.7 | Local message cache |
+| Microsoft.Web.WebView2 | 1.0.3912.50 | HTML email rendering |
 | AdysTech.CredentialManager | 3.1.0 | Windows Credential Manager |

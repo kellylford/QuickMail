@@ -17,74 +17,91 @@ namespace QuickMail.Services;
 
 public class ImapService : IImapService
 {
+    private const int DefaultMaxConnectionsPerAccount = 6;
+    private const int AbsoluteMaxConnectionsPerAccount = 15;
+    private const int ForegroundReservedConnectionCount = 2;
+
     private readonly IOAuthService _oauth;
-    private readonly ConcurrentDictionary<Guid, ImapClient> _clients   = new();
+    private readonly IConfigService? _config;
+    private readonly ConcurrentDictionary<Guid, AccountConnectionPool> _pools = new();
     private readonly ConcurrentDictionary<Guid, AccountModel> _accounts = new();
     private readonly ConcurrentDictionary<Guid, string>  _passwords     = new();
-    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _locks   = new();
+    private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _poolLocks = new();
     private bool _disposed;
 
-    public ImapService(IOAuthService oauth) => _oauth = oauth;
+    public ImapService(IOAuthService oauth, IConfigService? config = null)
+    {
+        _oauth  = oauth;
+        _config = config;
+    }
+
+    private enum ImapLeasePriority
+    {
+        Foreground,
+        Background
+    }
 
     // ── Connect / disconnect ─────────────────────────────────────────────────────
 
     public async Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
     {
-        if (_clients.TryGetValue(account.Id, out var existing))
+        ThrowIfDisposed();
+
+        if (account.AuthType == AuthType.Password)
         {
-            if (existing.IsAuthenticated) return;
-            existing.Dispose();
-            _clients.TryRemove(account.Id, out _);
+            if (password is null && !_passwords.TryGetValue(account.Id, out password))
+                throw new InvalidOperationException($"No password is available for account {account.Username}.");
         }
 
-        var client = new ImapClient();
-
-        if (account.ImapAcceptInvalidCert)
-            client.ServerCertificateValidationCallback = (_, _, _, _) => true;
-
-        var ssl = account.ImapUseSsl
-            ? SecureSocketOptions.SslOnConnect
-            : SecureSocketOptions.StartTlsWhenAvailable;
-
-        LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={account.ImapUseSsl} user={account.Username} auth={account.AuthType}");
-        await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
-
-        if (account.AuthType == AuthType.OAuth2Microsoft)
+        var maxConnections = GetMaxConnectionsPerAccount();
+        var poolLock = _poolLocks.GetOrAdd(account.Id, _ => new SemaphoreSlim(1, 1));
+        await poolLock.WaitAsync(ct);
+        try
         {
-            var token = await _oauth.GetAccessTokenAsync(account, ct);
-            await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Username, token), ct);
+            if (_pools.TryGetValue(account.Id, out var existing) &&
+                existing.Matches(account, maxConnections))
+            {
+                existing.UpdateAccount(account, password);
+                _accounts[account.Id] = CloneAccount(account);
+                if (password is not null)
+                    _passwords[account.Id] = password;
+
+                using var existingWarmLease = await existing.RentAsync(ImapLeasePriority.Foreground, ct);
+                return;
+            }
+
+            if (_pools.TryRemove(account.Id, out var stalePool))
+                await stalePool.DisconnectAsync(ct);
+
+            var pool = new AccountConnectionPool(this, account, password, maxConnections);
+            _pools[account.Id]   = pool;
+            _accounts[account.Id] = CloneAccount(account);
+            if (password is not null)
+                _passwords[account.Id] = password;
+
+            using var newWarmLease = await pool.RentAsync(ImapLeasePriority.Foreground, ct);
         }
-        else
+        finally
         {
-            await client.AuthenticateAsync(account.Username, password!, ct);
+            poolLock.Release();
         }
-
-        LogService.Log($"Connected. Capabilities: {client.Capabilities}");
-
-        _clients[account.Id]  = client;
-        _accounts[account.Id] = account;
-        if (password is not null)
-            _passwords[account.Id] = password;
     }
 
     public async Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
     {
-        if (_clients.TryGetValue(accountId, out var client))
-        {
-            if (client.IsConnected)
-                await client.DisconnectAsync(true, ct);
-            client.Dispose();
-            _clients.TryRemove(accountId, out _);
-            _accounts.TryRemove(accountId, out _);
-            _passwords.TryRemove(accountId, out _);
-        }
+        if (_pools.TryRemove(accountId, out var pool))
+            await pool.DisconnectAsync(ct);
+
+        _accounts.TryRemove(accountId, out _);
+        _passwords.TryRemove(accountId, out _);
     }
 
     // ── Folder list ──────────────────────────────────────────────────────────────
 
     public async Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var result = new List<MailFolderModel>();
 
         // Always put INBOX first — many servers don't return it via GetFoldersAsync
@@ -153,196 +170,198 @@ public class ImapService : IImapService
 
     // ── Message lists ────────────────────────────────────────────────────────────
 
-    public Task<List<MailMessageSummary>> GetMessageSummariesAsync(
+    public async Task<List<MailMessageSummary>> GetMessageSummariesAsync(
         Guid accountId, string folderName, int maxMessages, CancellationToken ct = default)
     {
         LogService.Log($"GetMessageSummaries: folder={folderName} maxMessages={maxMessages}");
-        return ExecuteWithRetryAsync(accountId, ct, async client =>
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        LogService.Log($"  Opened. Count={folder.Count} Unread={folder.Unread}");
+        try
         {
-            var folder = await client.GetFolderAsync(folderName, ct);
-            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-            LogService.Log($"  Opened. Count={folder.Count} Unread={folder.Unread}");
-            try
-            {
-                if (folder.Count == 0) return new List<MailMessageSummary>();
+            if (folder.Count == 0) return new List<MailMessageSummary>();
 
-                var startIndex = Math.Max(0, folder.Count - maxMessages);
-                var summaries  = await folder.FetchAsync(
-                    startIndex, -1,
-                    MessageSummaryItems.UniqueId
-                    | MessageSummaryItems.Envelope
-                    | MessageSummaryItems.Flags
-                    | MessageSummaryItems.PreviewText,   // free if server supports PREVIEW
-                    ct);
+            var startIndex = Math.Max(0, folder.Count - maxMessages);
+            var summaries  = await folder.FetchAsync(
+                startIndex, -1,
+                MessageSummaryItems.UniqueId
+                | MessageSummaryItems.Envelope
+                | MessageSummaryItems.Flags
+                | MessageSummaryItems.PreviewText,   // free if server supports PREVIEW
+                ct);
 
-                var result = summaries
-                    .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
-                    .Select(s => SummaryToModel(s, accountId, folderName))
-                    .ToList();
+            var result = summaries
+                .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
+                .Select(s => SummaryToModel(s, accountId, folderName))
+                .ToList();
 
-                LogService.Log($"  Returning {result.Count} summaries (preview={result.Count(r => !string.IsNullOrEmpty(r.Preview))} prefilled)");
-                return result;
-            }
-            finally { await folder.CloseAsync(false, ct); }
-        });
+            LogService.Log($"  Returning {result.Count} summaries (preview={result.Count(r => !string.IsNullOrEmpty(r.Preview))} prefilled)");
+            return result;
+        }
+        finally { await folder.CloseAsync(false, ct); }
     }
 
-    public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(
+    public async Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(
         Guid accountId, string folderName, DateTime since, CancellationToken ct = default)
     {
         LogService.Log($"GetMessagesSinceDate: folder={folderName} since={since:yyyy-MM-dd}");
-        return ExecuteWithRetryAsync(accountId, ct, async client =>
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
         {
-            var folder = await client.GetFolderAsync(folderName, ct);
-            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-            try
-            {
-                var query   = SearchQuery.DeliveredAfter(since.Date);
-                var uids    = await folder.SearchAsync(query, ct);
-                if (uids.Count == 0) return new List<MailMessageSummary>();
+            var query   = SearchQuery.DeliveredAfter(since.Date);
+            var uids    = await folder.SearchAsync(query, ct);
+            if (uids.Count == 0) return new List<MailMessageSummary>();
 
-                var items = MessageSummaryItems.UniqueId
-                          | MessageSummaryItems.Envelope
-                          | MessageSummaryItems.Flags
-                          | MessageSummaryItems.PreviewText;
+            var items = MessageSummaryItems.UniqueId
+                      | MessageSummaryItems.Envelope
+                      | MessageSummaryItems.Flags
+                      | MessageSummaryItems.PreviewText;
 
-                var summaries = await folder.FetchAsync(uids, items, ct);
-                var result    = summaries
-                    .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
-                    .Select(s => SummaryToModel(s, accountId, folderName))
-                    .ToList();
+            var summaries = await folder.FetchAsync(uids, items, ct);
+            var result    = summaries
+                .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
+                .Select(s => SummaryToModel(s, accountId, folderName))
+                .ToList();
 
-                LogService.Log($"  Returning {result.Count} summaries since {since:yyyy-MM-dd}");
-                return result;
-            }
-            finally { await folder.CloseAsync(false, ct); }
-        });
+            LogService.Log($"  Returning {result.Count} summaries since {since:yyyy-MM-dd}");
+            return result;
+        }
+        finally { await folder.CloseAsync(false, ct); }
     }
 
-    public Task<List<MailMessageSummary>> GetMessagesSinceAsync(
+    public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(
         Guid accountId, string folderName, uint sinceUid, CancellationToken ct = default)
-        => ExecuteWithRetryAsync(accountId, ct, async client =>
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
         {
-            var folder = await client.GetFolderAsync(folderName, ct);
-            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-            try
+            var items = MessageSummaryItems.UniqueId
+                      | MessageSummaryItems.Envelope
+                      | MessageSummaryItems.Flags
+                      | MessageSummaryItems.PreviewText;   // free if server supports PREVIEW
+
+            IList<IMessageSummary> summaries;
+            if (sinceUid == 0)
             {
-                var items = MessageSummaryItems.UniqueId
-                          | MessageSummaryItems.Envelope
-                          | MessageSummaryItems.Flags
-                          | MessageSummaryItems.PreviewText;   // free if server supports PREVIEW
-
-                IList<IMessageSummary> summaries;
-                if (sinceUid == 0)
-                {
-                    if (folder.Count == 0) return new List<MailMessageSummary>();
-                    var startIndex = Math.Max(0, folder.Count - 500);
-                    summaries = await folder.FetchAsync(startIndex, -1, items, ct);
-                }
-                else
-                {
-                    var range = new UniqueIdRange(new UniqueId(sinceUid + 1), UniqueId.MaxValue);
-                    summaries = await folder.FetchAsync((IList<UniqueId>)range, items, ct);
-                }
-
-                return summaries.Select(s => SummaryToModel(s, accountId, folderName)).ToList();
+                if (folder.Count == 0) return new List<MailMessageSummary>();
+                var startIndex = Math.Max(0, folder.Count - 500);
+                summaries = await folder.FetchAsync(startIndex, -1, items, ct);
             }
-            finally { await folder.CloseAsync(false, ct); }
-        });
+            else
+            {
+                var range = new UniqueIdRange(new UniqueId(sinceUid + 1), UniqueId.MaxValue);
+                summaries = await folder.FetchAsync((IList<UniqueId>)range, items, ct);
+            }
+
+            return summaries.Select(s => SummaryToModel(s, accountId, folderName)).ToList();
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
 
     // ── Message detail ───────────────────────────────────────────────────────────
 
-    public Task<MailMessageDetail> GetMessageDetailAsync(
+    public async Task<MailMessageDetail> GetMessageDetailAsync(
         Guid accountId, string folderName, uint uid, CancellationToken ct = default)
-        => ExecuteWithRetryAsync(accountId, ct, async client =>
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+
+        try
         {
-            var folder = await client.GetFolderAsync(folderName, ct);
-            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+            var mailKitUid = new UniqueId(uid);
+            var summaries  = await folder.FetchAsync(
+                new[] { mailKitUid },
+                MessageSummaryItems.UniqueId
+                | MessageSummaryItems.Envelope
+                | MessageSummaryItems.Flags
+                | MessageSummaryItems.BodyStructure,
+                ct);
 
-            try
+            var s = summaries.FirstOrDefault()
+                ?? throw new InvalidOperationException($"Message UID {uid} not found.");
+
+            string plainText = string.Empty;
+            string htmlText  = string.Empty;
+
+            if (s.HtmlBody != null)
             {
-                var mailKitUid = new UniqueId(uid);
-                var summaries  = await folder.FetchAsync(
-                    new[] { mailKitUid },
-                    MessageSummaryItems.UniqueId
-                    | MessageSummaryItems.Envelope
-                    | MessageSummaryItems.Flags
-                    | MessageSummaryItems.BodyStructure,
-                    ct);
-
-                var s = summaries.FirstOrDefault()
-                    ?? throw new InvalidOperationException($"Message UID {uid} not found.");
-
-                string plainText = string.Empty;
-                string htmlText  = string.Empty;
-
-                if (s.HtmlBody != null)
-                {
-                    var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.HtmlBody, ct);
-                    if (bodyPart is TextPart tp) htmlText = tp.Text ?? string.Empty;
-                }
-
-                if (s.TextBody != null)
-                {
-                    var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.TextBody, ct);
-                    if (bodyPart is TextPart tp) plainText = tp.Text ?? string.Empty;
-                }
-
-                await folder.AddFlagsAsync(mailKitUid, MessageFlags.Seen, true, ct);
-
-                var attachments = ExtractAttachments(s.Body);
-
-                return new MailMessageDetail
-                {
-                    UniqueId      = uid,
-                    AccountId     = accountId,
-                    FolderName    = folderName,
-                    From          = FormatAddressList(s.Envelope?.From),
-                    To            = FormatAddressList(s.Envelope?.To),
-                    Cc            = FormatAddressList(s.Envelope?.Cc),
-                    ReplyTo       = FormatAddressList(s.Envelope?.ReplyTo),
-                    Subject       = s.Envelope?.Subject ?? "(no subject)",
-                    Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
-                    IsRead        = true,
-                    MessageId     = s.Envelope?.MessageId ?? string.Empty,
-                    PlainTextBody = plainText,
-                    HtmlBody      = htmlText,
-                    Attachments   = attachments,
-                };
+                var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.HtmlBody, ct);
+                if (bodyPart is TextPart tp) htmlText = tp.Text ?? string.Empty;
             }
-            finally { await folder.CloseAsync(false, ct); }
-        });
+
+            if (s.TextBody != null)
+            {
+                var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.TextBody, ct);
+                if (bodyPart is TextPart tp) plainText = tp.Text ?? string.Empty;
+            }
+
+            await folder.AddFlagsAsync(mailKitUid, MessageFlags.Seen, true, ct);
+
+            var attachments = ExtractAttachments(s.Body);
+
+            return new MailMessageDetail
+            {
+                UniqueId      = uid,
+                AccountId     = accountId,
+                FolderName    = folderName,
+                From          = FormatAddressList(s.Envelope?.From),
+                To            = FormatAddressList(s.Envelope?.To),
+                Cc            = FormatAddressList(s.Envelope?.Cc),
+                ReplyTo       = FormatAddressList(s.Envelope?.ReplyTo),
+                Subject       = s.Envelope?.Subject ?? "(no subject)",
+                Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
+                IsRead        = true,
+                MessageId     = s.Envelope?.MessageId ?? string.Empty,
+                PlainTextBody = plainText,
+                HtmlBody      = htmlText,
+                Attachments   = attachments,
+            };
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
 
     // ── Mutations ────────────────────────────────────────────────────────────────
 
     public async Task MarkReadAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
         try   { await folder.AddFlagsAsync(new UniqueId(uid), MessageFlags.Seen, true, ct); }
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
-        => ExecuteWithRetryAsync<bool>(accountId, ct, async client =>
+    public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+        try
         {
-            var folder  = await client.GetFolderAsync(folderName, ct);
-            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-            try
-            {
-                var uidList = uids.Select(u => new UniqueId(u)).ToList();
-                var trash   = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
-                if (trash != null) await folder.MoveToAsync(uidList, trash, ct);
-                else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
-                return true;
-            }
-            finally { await folder.CloseAsync(false, ct); }
-        });
+            var uidList = uids.Select(u => new UniqueId(u)).ToList();
+            var trash   = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
+            if (trash != null) await folder.MoveToAsync(uidList, trash, ct);
+            else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
 
     public async Task MoveToTrashAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
         try
@@ -358,7 +377,8 @@ public class ImapService : IImapService
 
     public async Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var drafts = FindSpecialFolder(client, SpecialFolder.Drafts);
         return drafts?.FullName;
     }
@@ -366,7 +386,8 @@ public class ImapService : IImapService
     public async Task<uint> AppendDraftAsync(
         Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default)
     {
-        var client  = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client  = lease.Client;
         var account = _accounts[accountId];
 
         var draftsFolder = FindSpecialFolder(client, SpecialFolder.Drafts)
@@ -448,7 +469,8 @@ public class ImapService : IImapService
 
     public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         var dest   = await client.GetFolderAsync(destinationFolder, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -458,7 +480,8 @@ public class ImapService : IImapService
 
     public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         var dest   = await client.GetFolderAsync(destinationFolder, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -470,7 +493,8 @@ public class ImapService : IImapService
 
     public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         IMailFolder parent = string.IsNullOrEmpty(parentFolderName)
             ? client.GetFolder(client.PersonalNamespaces[0])
             : await client.GetFolderAsync(parentFolderName, ct);
@@ -479,7 +503,8 @@ public class ImapService : IImapService
 
     public async Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
 
         // Move all messages to Trash first so no mail is hard-deleted
@@ -501,7 +526,8 @@ public class ImapService : IImapService
 
     public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
             ? client.GetFolder(client.PersonalNamespaces[0])
@@ -511,7 +537,12 @@ public class ImapService : IImapService
 
     public async Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
     {
-        var client    = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        await CopyFolderCoreAsync(lease.Client, folderName, destinationParentName, ct);
+    }
+
+    private async Task CopyFolderCoreAsync(ImapClient client, string folderName, string? destinationParentName, CancellationToken ct)
+    {
         var srcFolder = await client.GetFolderAsync(folderName, ct);
 
         IMailFolder destParent = string.IsNullOrEmpty(destinationParentName)
@@ -536,12 +567,13 @@ public class ImapService : IImapService
         // Recurse into subfolders
         var subfolders = await srcFolder.GetSubfoldersAsync(false, ct);
         foreach (var sub in subfolders)
-            await CopyFolderAsync(accountId, sub.FullName, newFolder.FullName, ct);
+            await CopyFolderCoreAsync(client, sub.FullName, newFolder.FullName, ct);
     }
 
     public async Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var trash  = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
 
         if (trash == null)
@@ -565,19 +597,20 @@ public class ImapService : IImapService
 
     // ── UID queries ──────────────────────────────────────────────────────────────
 
-    public Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default)
-        => ExecuteWithRetryAsync(accountId, ct, async client =>
+    public async Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
         {
-            var folder = await client.GetFolderAsync(folderName, ct);
-            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-            try
-            {
-                if (folder.Count == 0) return (IList<uint>)Array.Empty<uint>();
-                var uids = await folder.SearchAsync(SearchQuery.All, ct);
-                return (IList<uint>)uids.Select(u => u.Id).ToList();
-            }
-            finally { await folder.CloseAsync(false, ct); }
-        });
+            if (folder.Count == 0) return (IList<uint>)Array.Empty<uint>();
+            var uids = await folder.SearchAsync(SearchQuery.All, ct);
+            return (IList<uint>)uids.Select(u => u.Id).ToList();
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
 
     // ── Body-download preview fallback (used when server lacks IMAP PREVIEW) ────
 
@@ -588,7 +621,8 @@ public class ImapService : IImapService
         var result = new Dictionary<uint, string>();
         if (uids.Count == 0 || maxLines <= 0) return result;
 
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
@@ -629,7 +663,8 @@ public class ImapService : IImapService
 
     public async Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try   { await folder.CheckAsync(ct); return folder.Unread; }
@@ -641,7 +676,8 @@ public class ImapService : IImapService
     public async Task<byte[]> DownloadAttachmentAsync(
         Guid accountId, string folderName, uint uid, string partSpecifier, CancellationToken ct = default)
     {
-        var client = await GetOrReconnectAsync(accountId, ct);
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
@@ -671,29 +707,329 @@ public class ImapService : IImapService
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Returns an authenticated client, reconnecting transparently if the connection dropped.
+    /// Leases one authenticated client for a single IMAP operation. MailKit clients
+    /// are single-command objects, so every concurrent operation gets its own client.
     /// </summary>
-    private async Task<ImapClient> GetOrReconnectAsync(Guid accountId, CancellationToken ct)
+    private async Task<ImapClientLease> RentClientAsync(
+        Guid accountId, CancellationToken ct, ImapLeasePriority priority)
     {
-        if (_clients.TryGetValue(accountId, out var client) && client.IsConnected && client.IsAuthenticated)
+        ThrowIfDisposed();
+
+        if (!_pools.TryGetValue(accountId, out var pool))
+        {
+            if (!_accounts.TryGetValue(accountId, out var account))
+                throw new InvalidOperationException($"Account {accountId} is not connected.");
+
+            _passwords.TryGetValue(accountId, out var password);
+            await ConnectAsync(account, password, ct);
+            if (!_pools.TryGetValue(accountId, out pool))
+                throw new InvalidOperationException($"Account {accountId} is not connected.");
+        }
+
+        return await pool.RentAsync(priority, ct);
+    }
+
+    private async Task<ImapClient> CreateAuthenticatedClientAsync(
+        AccountModel account, string? password, CancellationToken ct)
+    {
+        var client = new ImapClient();
+        try
+        {
+            if (account.ImapAcceptInvalidCert)
+                client.ServerCertificateValidationCallback = (_, _, _, _) => true;
+
+            var ssl = account.ImapUseSsl
+                ? SecureSocketOptions.SslOnConnect
+                : SecureSocketOptions.StartTlsWhenAvailable;
+
+            LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={account.ImapUseSsl} user={account.Username} auth={account.AuthType}");
+            await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
+
+            if (account.AuthType == AuthType.OAuth2Microsoft)
+            {
+                var token = await _oauth.GetAccessTokenAsync(account, ct);
+                await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Username, token), ct);
+            }
+            else
+            {
+                if (password is null)
+                    throw new InvalidOperationException($"No password is available for account {account.Username}.");
+                await client.AuthenticateAsync(account.Username, password, ct);
+            }
+
+            LogService.Log($"Connected. Capabilities: {client.Capabilities}");
             return client;
+        }
+        catch
+        {
+            DisposeClient(client);
+            throw;
+        }
+    }
 
-        if (!_accounts.TryGetValue(accountId, out var account))
-            throw new InvalidOperationException($"Account {accountId} is not connected.");
+    private int GetMaxConnectionsPerAccount()
+    {
+        var configured = _config?.Load().MaxImapConnectionsPerAccount
+                         ?? DefaultMaxConnectionsPerAccount;
+        return Math.Clamp(configured, 1, AbsoluteMaxConnectionsPerAccount);
+    }
 
-        string? password = null;
-        if (account.AuthType == AuthType.Password && !_passwords.TryGetValue(accountId, out password))
-            throw new InvalidOperationException($"Account {accountId} is not connected.");
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+            throw new ObjectDisposedException(nameof(ImapService));
+    }
 
-        // ExecuteWithRetryAsync already holds the per-account lock, so reconnect
-        // without re-acquiring it (avoids deadlock). The double-check below handles
-        // the rare case where two direct callers both see the client as disconnected.
-        if (_clients.TryGetValue(accountId, out client) && client.IsConnected && client.IsAuthenticated)
-            return client;
+    private static bool SameConnectionSettings(AccountModel left, AccountModel right) =>
+        left.Id == right.Id &&
+        left.Username == right.Username &&
+        left.AuthType == right.AuthType &&
+        left.ImapHost == right.ImapHost &&
+        left.ImapPort == right.ImapPort &&
+        left.ImapUseSsl == right.ImapUseSsl &&
+        left.ImapAcceptInvalidCert == right.ImapAcceptInvalidCert;
 
-        LogService.Log($"Reconnecting {account.Username}…");
-        await ConnectAsync(account, password, ct);
-        return _clients[accountId];
+    private static AccountModel CloneAccount(AccountModel account) =>
+        new()
+        {
+            Id                    = account.Id,
+            DisplayName           = account.DisplayName,
+            Username              = account.Username,
+            AuthType              = account.AuthType,
+            ImapHost              = account.ImapHost,
+            ImapPort              = account.ImapPort,
+            ImapUseSsl            = account.ImapUseSsl,
+            ImapAcceptInvalidCert = account.ImapAcceptInvalidCert,
+            SmtpHost              = account.SmtpHost,
+            SmtpPort              = account.SmtpPort,
+            SmtpUseSsl            = account.SmtpUseSsl,
+            SmtpAcceptInvalidCert = account.SmtpAcceptInvalidCert,
+            IsDefault             = account.IsDefault,
+        };
+
+    private static bool IsClientUsable(ImapClient client)
+    {
+        try { return client.IsConnected && client.IsAuthenticated; }
+        catch { return false; }
+    }
+
+    private static void DisposeClient(ImapClient client)
+    {
+        try { client.Dispose(); } catch { /* best effort */ }
+    }
+
+    private static async Task DisconnectAndDisposeAsync(ImapClient client, CancellationToken ct)
+    {
+        try
+        {
+            if (client.IsConnected)
+                await client.DisconnectAsync(true, ct);
+        }
+        catch (Exception ex) { LogService.Log("IMAP disconnect", ex); }
+        finally { DisposeClient(client); }
+    }
+
+    private sealed class ImapClientLease : IDisposable
+    {
+        private AccountConnectionPool? _pool;
+
+        public ImapClientLease(
+            AccountConnectionPool pool, ImapClient client, bool releaseBackgroundSlot)
+        {
+            _pool = pool;
+            Client = client;
+            ReleaseBackgroundSlot = releaseBackgroundSlot;
+        }
+
+        public ImapClient Client { get; }
+        private bool ReleaseBackgroundSlot { get; }
+
+        public void Dispose()
+        {
+            var pool = Interlocked.Exchange(ref _pool, null);
+            pool?.Return(Client, ReleaseBackgroundSlot);
+        }
+    }
+
+    private sealed class AccountConnectionPool : IDisposable
+    {
+        private readonly ImapService _owner;
+        private readonly SemaphoreSlim _slots;
+        private readonly SemaphoreSlim _backgroundSlots;
+        private readonly object _gate = new();
+        private readonly Stack<ImapClient> _idle = new();
+        private readonly HashSet<ImapClient> _all = new();
+        private bool _disposed;
+
+        public AccountConnectionPool(
+            ImapService owner, AccountModel account, string? password, int maxConnections)
+        {
+            _owner = owner;
+            Account = CloneAccount(account);
+            Password = password;
+            MaxConnections = maxConnections;
+            _slots = new SemaphoreSlim(maxConnections, maxConnections);
+            var reservedForegroundSlots = maxConnections >= 3
+                ? Math.Min(ForegroundReservedConnectionCount, maxConnections - 1)
+                : 0;
+            var backgroundCapacity = Math.Max(1, maxConnections - reservedForegroundSlots);
+            _backgroundSlots = new SemaphoreSlim(backgroundCapacity, backgroundCapacity);
+        }
+
+        public AccountModel Account { get; private set; }
+        public string? Password { get; private set; }
+        public int MaxConnections { get; }
+
+        public bool Matches(AccountModel account, int maxConnections) =>
+            MaxConnections == maxConnections && SameConnectionSettings(Account, account);
+
+        public void UpdateAccount(AccountModel account, string? password)
+        {
+            lock (_gate)
+            {
+                if (_disposed) return;
+                Account = CloneAccount(account);
+                if (password is not null)
+                    Password = password;
+            }
+        }
+
+        public async Task<ImapClientLease> RentAsync(ImapLeasePriority priority, CancellationToken ct)
+        {
+            var hasBackgroundSlot = false;
+            if (priority == ImapLeasePriority.Background)
+            {
+                await _backgroundSlots.WaitAsync(ct);
+                hasBackgroundSlot = true;
+            }
+
+            try
+            {
+                await _slots.WaitAsync(ct);
+            }
+            catch
+            {
+                if (hasBackgroundSlot)
+                    _backgroundSlots.Release();
+                throw;
+            }
+
+            ImapClient? client = null;
+
+            try
+            {
+                while (client == null)
+                {
+                    AccountModel account;
+                    string? password;
+
+                    lock (_gate)
+                    {
+                        if (_disposed)
+                            throw new ObjectDisposedException(nameof(AccountConnectionPool));
+
+                        while (_idle.Count > 0)
+                        {
+                            var candidate = _idle.Pop();
+                            if (IsClientUsable(candidate))
+                            {
+                                client = candidate;
+                                break;
+                            }
+
+                            _all.Remove(candidate);
+                            DisposeClient(candidate);
+                        }
+
+                        if (client != null)
+                            break;
+
+                        account = CloneAccount(Account);
+                        password = Password;
+                    }
+
+                    client = await _owner.CreateAuthenticatedClientAsync(account, password, ct);
+
+                    lock (_gate)
+                    {
+                        if (_disposed)
+                            throw new ObjectDisposedException(nameof(AccountConnectionPool));
+                        _all.Add(client);
+                    }
+                }
+
+                return new ImapClientLease(this, client, hasBackgroundSlot);
+            }
+            catch
+            {
+                if (client != null)
+                {
+                    lock (_gate) { _all.Remove(client); }
+                    DisposeClient(client);
+                }
+                _slots.Release();
+                if (hasBackgroundSlot)
+                    _backgroundSlots.Release();
+                throw;
+            }
+        }
+
+        public void Return(ImapClient client, bool releaseBackgroundSlot)
+        {
+            var keep = false;
+
+            lock (_gate)
+            {
+                if (!_disposed && IsClientUsable(client))
+                {
+                    _idle.Push(client);
+                    keep = true;
+                }
+                else
+                {
+                    _all.Remove(client);
+                }
+            }
+
+            if (!keep)
+                DisposeClient(client);
+
+            _slots.Release();
+            if (releaseBackgroundSlot)
+                _backgroundSlots.Release();
+        }
+
+        public async Task DisconnectAsync(CancellationToken ct)
+        {
+            List<ImapClient> clients;
+            lock (_gate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                clients = _all.ToList();
+                _idle.Clear();
+                _all.Clear();
+            }
+
+            foreach (var client in clients)
+                await DisconnectAndDisposeAsync(client, ct);
+        }
+
+        public void Dispose()
+        {
+            List<ImapClient> clients;
+            lock (_gate)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                clients = _all.ToList();
+                _idle.Clear();
+                _all.Clear();
+            }
+
+            foreach (var client in clients)
+                DisposeClient(client);
+        }
     }
 
     private static MailMessageSummary SummaryToModel(IMessageSummary s, Guid accountId, string folderName) =>
@@ -820,86 +1156,43 @@ public class ImapService : IImapService
                     ? mb.Name
                     : a.ToString()));
 
-    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
-        => ExecuteWithRetryAsync<bool>(accountId, ct, async client =>
+    public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+        try
         {
-            var folder = await client.GetFolderAsync(folderName, ct);
-            await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-            try
-            {
-                var uidList = uids.Select(u => new UniqueId(u)).ToList();
-                await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
-                await folder.ExpungeAsync(ct);
-                return true;
-            }
-            finally { await folder.CloseAsync(false, ct); }
-        });
+            var uidList = uids.Select(u => new UniqueId(u)).ToList();
+            await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
+            await folder.ExpungeAsync(ct);
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
 
     public async Task NoOpAsync(Guid accountId, CancellationToken ct = default)
     {
-        if (!_clients.TryGetValue(accountId, out var client) || !client.IsConnected) return;
-        try   { await client.NoOpAsync(ct); }
-        catch (Exception ex) when (IsTransientConnectionError(ex))
-        {
-            LogService.Log($"NoOp failed for {accountId}, discarding stale connection: {ex.GetType().Name}");
-            ForceDisconnect(accountId);
-        }
-    }
-
-    // ── Connection retry helpers ─────────────────────────────────────────────────
-
-    private static bool IsTransientConnectionError(Exception ex) =>
-        ex is ServiceNotConnectedException
-           or ImapProtocolException
-           or IOException
-           or SocketException;
-
-    private void ForceDisconnect(Guid accountId)
-    {
-        if (_clients.TryRemove(accountId, out var stale))
-        {
-            try { stale.Dispose(); } catch { /* best effort */ }
-        }
-    }
-
-    /// <summary>
-    /// Runs <paramref name="operation"/> with an authenticated client.
-    /// On a transient connection error (BYE, socket drop) the stale client is
-    /// discarded, a fresh connection is established, and the operation retried once.
-    /// </summary>
-    private async Task<T> ExecuteWithRetryAsync<T>(
-        Guid accountId, CancellationToken ct, Func<ImapClient, Task<T>> operation)
-    {
-        // Serialize all IMAP operations per account so background sync and
-        // foreground actions (delete, send, etc.) never share the client concurrently.
-        var sem = _locks.GetOrAdd(accountId, _ => new SemaphoreSlim(1, 1));
-        await sem.WaitAsync(ct);
+        if (!_pools.ContainsKey(accountId)) return;
         try
         {
-            var client = await GetOrReconnectAsync(accountId, ct);
-            try
-            {
-                return await operation(client);
-            }
-            catch (Exception ex) when (!ct.IsCancellationRequested && IsTransientConnectionError(ex))
-            {
-                LogService.Log($"Transient IMAP error, reconnecting ({accountId}): {ex.GetType().Name}");
-                ForceDisconnect(accountId);
-                client = await GetOrReconnectAsync(accountId, ct);
-                return await operation(client);
-            }
+            using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+            await lease.Client.NoOpAsync(ct);
         }
-        finally { sem.Release(); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            // Pool will discard the dead client on Return via IsClientUsable; just log.
+            LogService.Log($"NoOp failed for {accountId}: {ex.GetType().Name}");
+        }
     }
 
     public void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        foreach (var client in _clients.Values)
-        {
-            try { client.Dispose(); } catch { /* best effort */ }
-        }
-        _clients.Clear();
+        foreach (var pool in _pools.Values)
+            pool.Dispose();
+        _pools.Clear();
     }
 }

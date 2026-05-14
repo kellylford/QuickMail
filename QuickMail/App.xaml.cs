@@ -21,9 +21,9 @@ public partial class App : Application
         var accountService    = new AccountService();
         var credentialService = new CredentialService();
         var oauthService      = new OAuthService();
-        var imapService       = new ImapService(oauthService);
-        var smtpService       = new SmtpService(oauthService);
         var configService     = new ConfigService();
+        var imapService       = new ImapService(oauthService, configService);
+        var smtpService       = new SmtpService(oauthService);
 
         var localStore = new LocalStoreService();
         localStore.Initialize();

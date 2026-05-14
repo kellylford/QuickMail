@@ -155,6 +155,10 @@ public class ConfigService : IConfigService
                     case "syncdays":
                         if (int.TryParse(value, out var sd)) config.SyncDays = Math.Max(0, sd);
                         break;
+                    case "maximapconnectionsperaccount":
+                        if (int.TryParse(value, out var maxConn))
+                            config.MaxImapConnectionsPerAccount = Math.Clamp(maxConn, 1, 15);
+                        break;
                 }
             }
             else if (section == "account" && acctGuid != Guid.Empty)
@@ -208,6 +212,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# How many days of mail to sync when opening a folder.");
         sb.AppendLine("# Set to 0 to sync all mail (no date filter).");
         sb.AppendLine("# Supported values: 7, 30, 180, 365, or 0 (all).");
+        sb.AppendLine();
+
+        sb.AppendLine($"MaxImapConnectionsPerAccount = {Math.Clamp(config.MaxImapConnectionsPerAccount, 1, 15)}");
+        sb.AppendLine("# Maximum simultaneous IMAP connections per account.");
+        sb.AppendLine("# Background sync is limited below this value so foreground message opens keep reserved capacity.");
+        sb.AppendLine("# Increase only if your provider allows it. Values: 1-15.");
         sb.AppendLine();
 
         // ── [account:guid] overrides ─────────────────────────────────────────────
