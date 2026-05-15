@@ -37,6 +37,7 @@ public partial class MainViewModel : ObservableObject
     // Version stamps for grouped-view rebuilds; latest wins, stale results discarded
     private int _conversationRebuildVersion;
     private int _senderGroupRebuildVersion;
+    private int _toGroupRebuildVersion;
 
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
@@ -115,14 +116,19 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private ObservableCollection<SenderGroup> _senderGroups = [];
 
+    [ObservableProperty]
+    private ObservableCollection<SenderGroup> _toGroups = [];
+
     public bool IsMessagesView      => ViewMode == ViewMode.Messages;
     public bool IsConversationsView => ViewMode == ViewMode.Conversations;
     public bool IsFromView          => ViewMode == ViewMode.From;
+    public bool IsToView            => ViewMode == ViewMode.To;
 
     public string ViewModeLabel => ViewMode switch
     {
         ViewMode.Conversations => "View: Conversations",
         ViewMode.From          => "View: From",
+        ViewMode.To            => "View: To",
         _                      => "View: Messages",
     };
 
@@ -173,6 +179,7 @@ public partial class MainViewModel : ObservableObject
         {
             "conversations" => ViewMode.Conversations,
             "from"          => ViewMode.From,
+            "to"            => ViewMode.To,
             _               => ViewMode.Messages,
         };
 
@@ -235,7 +242,7 @@ public partial class MainViewModel : ObservableObject
 
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
-            execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 3)));
+            execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 4)));
 
         registry.Register(new CommandDefinition(
             id: "account.manage", category: "Account", title: "Manage Accounts",
@@ -338,6 +345,8 @@ public partial class MainViewModel : ObservableObject
             ScheduleConversationRebuild();
         else if (ViewMode == ViewMode.From)
             ScheduleSenderGroupRebuild();
+        else if (ViewMode == ViewMode.To)
+            ScheduleToGroupRebuild();
     }
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
@@ -369,6 +378,8 @@ public partial class MainViewModel : ObservableObject
             ScheduleConversationRebuild();
         else if (ViewMode == ViewMode.From)
             ScheduleSenderGroupRebuild();
+        else if (ViewMode == ViewMode.To)
+            ScheduleToGroupRebuild();
     }
 
     // Binary-insert into the descending-by-date Messages collection.
@@ -525,6 +536,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsMessagesView));
         OnPropertyChanged(nameof(IsConversationsView));
         OnPropertyChanged(nameof(IsFromView));
+        OnPropertyChanged(nameof(IsToView));
         OnPropertyChanged(nameof(ViewModeLabel));
 
         if (value == ViewMode.Conversations)
@@ -537,11 +549,17 @@ public partial class MainViewModel : ObservableObject
         else
             SenderGroups = [];
 
+        if (value == ViewMode.To)
+            ScheduleToGroupRebuild();
+        else
+            ToGroups = [];
+
         var cfg = _configService.Load();
         cfg.ViewMode = value switch
         {
             ViewMode.Conversations => "conversations",
             ViewMode.From          => "from",
+            ViewMode.To            => "to",
             _                      => "messages",
         };
         _configService.Save(cfg);
@@ -554,6 +572,8 @@ public partial class MainViewModel : ObservableObject
             ScheduleConversationRebuild();
         else if (ViewMode == ViewMode.From)
             ScheduleSenderGroupRebuild();
+        else if (ViewMode == ViewMode.To)
+            ScheduleToGroupRebuild();
     }
 
     /// <summary>
@@ -594,6 +614,29 @@ public partial class MainViewModel : ObservableObject
                 else
                 {
                     LogService.Debug($"[DELETE] SenderGroupRebuild v={version} DISCARDED (current={_senderGroupRebuildVersion})");
+                }
+            });
+        });
+    }
+
+    private void ScheduleToGroupRebuild()
+    {
+        var version  = Interlocked.Increment(ref _toGroupRebuildVersion);
+        var snapshot = Messages.ToList();
+        LogService.Debug($"[DELETE] ScheduleToGroupRebuild v={version} snapshot={snapshot.Count} msgs");
+        Task.Run(() =>
+        {
+            var groups = SenderGroupBuilder.BuildByTo(snapshot);
+            App.Current.Dispatcher.InvokeAsync(() =>
+            {
+                if (version == _toGroupRebuildVersion)
+                {
+                    LogService.Debug($"[DELETE] ToGroupRebuild v={version} applying {groups.Count} groups");
+                    ToGroups = new ObservableCollection<SenderGroup>(groups);
+                }
+                else
+                {
+                    LogService.Debug($"[DELETE] ToGroupRebuild v={version} DISCARDED (current={_toGroupRebuildVersion})");
                 }
             });
         });
@@ -1015,6 +1058,8 @@ public partial class MainViewModel : ObservableObject
             ScheduleConversationRebuild();
         else if (ViewMode == ViewMode.From)
             ScheduleSenderGroupRebuild();
+        else if (ViewMode == ViewMode.To)
+            ScheduleToGroupRebuild();
 
         if (ViewMode == ViewMode.Messages && Messages.Count > 0)
         {
@@ -1026,8 +1071,9 @@ public partial class MainViewModel : ObservableObject
         }
         else
         {
-            // In From/Conversations views focus is managed by LandOnSenderGroupAfterRebuild /
-            // LandOnConversationAfterRebuild.  Clearing SelectedMessage here is essential:
+            // In From/To/Conversations views focus is managed by LandOnSenderGroupAfterRebuild /
+            // LandOnToGroupAfterRebuild / LandOnConversationAfterRebuild.  Clearing SelectedMessage
+            // here is essential:
             // leaving it set makes HasSelectedMessage=true, which causes the global Delete
             // hotkey in OnWindowKeyDown to steal the next keypress and delete just that one
             // message instead of the whole selected group.
@@ -1661,6 +1707,68 @@ public partial class MainViewModel : ObservableObject
         await DeleteMessagesAsync(group.Messages);
     }
 
+    // ── ToGroup commands ──────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task DeleteToGroupAsync(SenderGroup? group)
+    {
+        if (group == null || group.Messages.Count == 0) return;
+        await DeleteMessagesAsync(group.Messages);
+    }
+
+    [RelayCommand]
+    private void ExpandToGroup(SenderGroup? group)
+    {
+        if (group != null) group.IsExpanded = true;
+    }
+
+    [RelayCommand]
+    private void CollapseToGroup(SenderGroup? group)
+    {
+        if (group != null) group.IsExpanded = false;
+    }
+
+    [RelayCommand]
+    private void ExpandAllToGroups()
+    {
+        foreach (var g in ToGroups) g.IsExpanded = true;
+    }
+
+    [RelayCommand]
+    private void CollapseAllToGroups()
+    {
+        foreach (var g in ToGroups) g.IsExpanded = false;
+    }
+
+    [RelayCommand]
+    private async Task ReplyToGroupAsync(SenderGroup? group)
+    {
+        if (group?.Messages.Count == 0) return;
+        SelectedMessage = group!.Messages[0];
+        var detail = await EnsureDetailAsync();
+        if (detail == null) return;
+        ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
+    }
+
+    [RelayCommand]
+    private async Task ReplyAllToGroupAsync(SenderGroup? group)
+    {
+        if (group?.Messages.Count == 0) return;
+        SelectedMessage = group!.Messages[0];
+        var detail = await EnsureDetailAsync();
+        if (detail == null) return;
+        var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
+        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId, ownAddress));
+    }
+
+    [RelayCommand]
+    private async Task ForwardToGroupAsync(SenderGroup? group)
+    {
+        if (group?.Messages.Count == 0) return;
+        SelectedMessage = group!.Messages[0];
+        await Forward();
+    }
+
     // ── SenderGroup context menu commands ─────────────────────────────────────
 
     [RelayCommand]
@@ -1732,6 +1840,7 @@ public partial class MainViewModel : ObservableObject
         {
             "conversations" => ViewMode.Conversations,
             "from"          => ViewMode.From,
+            "to"            => ViewMode.To,
             _               => ViewMode.Messages,
         };
     }

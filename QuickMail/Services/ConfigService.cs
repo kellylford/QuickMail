@@ -148,6 +148,7 @@ public class ConfigService : IConfigService
                         {
                             "conversations" => "conversations",
                             "from"          => "from",
+                            "to"            => "to",
                             _               => "messages",
                         };
                         break;

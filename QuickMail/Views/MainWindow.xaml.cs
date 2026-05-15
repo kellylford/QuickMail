@@ -115,6 +115,11 @@ public partial class MainWindow : Window
                     LogService.Debug("[FOCUS]   → LandOnSenderGroupAfterRebuild(0)");
                     LandOnSenderGroupAfterRebuild(0);
                 }
+                else if (vm.IsToView)
+                {
+                    LogService.Debug("[FOCUS]   → LandOnToGroupAfterRebuild(0)");
+                    LandOnToGroupAfterRebuild(0);
+                }
                 else
                 {
                     LogService.Debug("[FOCUS]   → FocusActiveMessagePanel (dispatched)");
@@ -136,6 +141,14 @@ public partial class MainWindow : Window
                 var oldIdx = SenderGroupTree.Items.IndexOf(SenderGroupTree.SelectedItem);
                 LogService.Debug($"[FOCUS] PropChanged:SenderGroups grpCount={vm.SenderGroups.Count} oldIdx={oldIdx} {FocusInfo()}");
                 FocusTreeSelectedOrFirst(SenderGroupTree, oldIdx);
+            }
+            else if (e.PropertyName == nameof(MainViewModel.ToGroups) && IsActive && vm.IsToView)
+            {
+                // Capture selected index now (before DataBind replaces items) so we can
+                // restore position after a background sync that rebuilds ToGroups.
+                var oldIdx = ToGroupTree.Items.IndexOf(ToGroupTree.SelectedItem);
+                LogService.Debug($"[FOCUS] PropChanged:ToGroups grpCount={vm.ToGroups.Count} oldIdx={oldIdx} {FocusInfo()}");
+                FocusTreeSelectedOrFirst(ToGroupTree, oldIdx);
             }
             else if (e.PropertyName == nameof(MainViewModel.ViewMode))
             {
@@ -279,6 +292,8 @@ public partial class MainWindow : Window
                         ConversationTree.Focus();
                     else if (_vm.IsFromView)
                         SenderGroupTree.Focus();
+                    else if (_vm.IsToView)
+                        ToGroupTree.Focus();
                     else
                         MessageList.Focus();
                     e.Handled = true;
@@ -766,6 +781,8 @@ public partial class MainWindow : Window
             FocusConversationTreeFirstItem();
         else if (_vm.IsFromView)
             FocusSenderGroupTreeFirstItem();
+        else if (_vm.IsToView)
+            FocusToGroupTreeFirstItem();
         else
             FocusMessageListFirstItem();
     }
@@ -793,7 +810,7 @@ public partial class MainWindow : Window
         if (MainToolbar.IsKeyboardFocusWithin)  return 0;
         if (AccountList.IsKeyboardFocusWithin)  return 1;
         if (FolderList.IsKeyboardFocusWithin)   return 2;
-        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin) return 3;
+        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin) return 3;
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;
         return 0;
@@ -908,6 +925,7 @@ public partial class MainWindow : Window
     {
         if (ConversationTree.IsKeyboardFocusWithin)  return $"focus=ConvTree/{Keyboard.FocusedElement?.GetType().Name}";
         if (SenderGroupTree.IsKeyboardFocusWithin)   return $"focus=SenderTree/{Keyboard.FocusedElement?.GetType().Name}";
+        if (ToGroupTree.IsKeyboardFocusWithin)        return $"focus=ToTree/{Keyboard.FocusedElement?.GetType().Name}";
         if (MessageList.IsKeyboardFocusWithin)        return $"focus=MsgList/{Keyboard.FocusedElement?.GetType().Name}";
         if (MessageBody.IsKeyboardFocusWithin)        return "focus=MsgBody";
         if (FolderList.IsKeyboardFocusWithin)         return "focus=FolderList";
@@ -1078,6 +1096,12 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(SenderGroupTree.Focus, DispatcherPriority.Input);
     }
 
+    private void FocusToGroupTreeFirstItem()
+    {
+        if (ToGroupTree.Items.Count == 0) { ToGroupTree.Focus(); return; }
+        Dispatcher.InvokeAsync(ToGroupTree.Focus, DispatcherPriority.Input);
+    }
+
     // After an async sender-group rebuild, selects and focuses the sender group
     // at the given index (clamped to the new list size).
     private void LandOnSenderGroupAfterRebuild(int targetGroupIdx)
@@ -1118,6 +1142,53 @@ public partial class MainWindow : Window
                         else
                         {
                             LogService.Debug($"[FOCUS] LandOnSender: retry also failed idx={idx} — giving up");
+                        }
+                    }, DispatcherPriority.Background);
+                }
+            }, DispatcherPriority.Input);
+        }
+        _vm.PropertyChanged += OnPropertyChanged;
+    }
+
+    // After an async to-group rebuild, selects and focuses the recipient group
+    // at the given index (clamped to the new list size).
+    private void LandOnToGroupAfterRebuild(int targetGroupIdx)
+    {
+        LogService.Debug($"[FOCUS] LandOnToGroup: registered listener targetIdx={targetGroupIdx} {FocusInfo()}");
+        void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(_vm.ToGroups)) return;
+            _vm.PropertyChanged -= OnPropertyChanged;
+            LogService.Debug($"[FOCUS] LandOnToGroup: listener fired count={_vm.ToGroups.Count} targetIdx={targetGroupIdx} {FocusInfo()}");
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (_vm.ToGroups.Count == 0)
+                {
+                    LogService.Debug("[FOCUS] LandOnToGroup: dispatch skipped — ToGroups empty");
+                    return;
+                }
+                var idx   = Math.Max(0, Math.Min(targetGroupIdx, _vm.ToGroups.Count - 1));
+                var group = _vm.ToGroups[idx];
+                if (ToGroupTree.ItemContainerGenerator.ContainerFromItem(group) is TreeViewItem tvi)
+                {
+                    LogService.Debug($"[FOCUS] LandOnToGroup: tvi.Focus() idx={idx} {FocusInfo()}");
+                    tvi.IsSelected = true;
+                    tvi.Focus();
+                }
+                else
+                {
+                    LogService.Debug($"[FOCUS] LandOnToGroup: container not realized idx={idx} — retry at Background");
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        if (ToGroupTree.ItemContainerGenerator.ContainerFromItem(group) is TreeViewItem tvi2)
+                        {
+                            LogService.Debug($"[FOCUS] LandOnToGroup: retry tvi.Focus() idx={idx}");
+                            tvi2.IsSelected = true;
+                            tvi2.Focus();
+                        }
+                        else
+                        {
+                            LogService.Debug($"[FOCUS] LandOnToGroup: retry also failed idx={idx} — giving up");
                         }
                     }, DispatcherPriority.Background);
                 }
@@ -1243,6 +1314,127 @@ public partial class MainWindow : Window
                 // resolves to MainViewModel (not MailMessageSummary), giving commands
                 // like ReplyCommand and DeleteMessageCommand access to the right bindings.
                 SenderGroupTree.ContextMenu = (ContextMenu)FindResource("MessageContextMenu");
+                break;
+            default:
+                e.Handled = true;
+                break;
+        }
+    }
+
+    // ── ToGroup tree event handlers ──────────────────────────────────────────
+
+    private void ToGroupTree_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        LogService.Debug($"[FOCUS] ToTree GotKeyboardFocus selectedItem={ToGroupTree.SelectedItem?.GetType().Name ?? "null"} count={ToGroupTree.Items.Count} from={e.OldFocus?.GetType().Name ?? "null"}");
+        if (ToGroupTree.SelectedItem == null && ToGroupTree.Items.Count > 0)
+        {
+            if (ToGroupTree.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
+            {
+                LogService.Debug("[FOCUS]   ToTree GotKeyboardFocus: no selection — selecting first item");
+                first.IsSelected = true;
+                first.Focus();
+            }
+        }
+    }
+
+    private void ToGroupTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        LogService.Debug($"[FOCUS] ToTree SelectedItemChanged old={e.OldValue?.GetType().Name ?? "null"} new={e.NewValue?.GetType().Name ?? "null"} {FocusInfo()}");
+        if (e.NewValue is MailMessageSummary msg)
+            _vm.SelectedMessage = msg;
+
+        if (ToGroupTree.IsKeyboardFocusWithin)
+        {
+            switch (e.NewValue)
+            {
+                case MailMessageSummary m:
+                    AccessibilityHelper.Announce(this, MessageSummaryAnnouncement(m), interrupt: true);
+                    break;
+                case SenderGroup grp:
+                    AccessibilityHelper.Announce(this, grp.AutomationName, interrupt: true);
+                    break;
+            }
+        }
+    }
+
+    private async void ToGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        LogService.Debug($"[FOCUS] ToTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ToGroupTree.Items.Count} selected={ToGroupTree.SelectedItem?.GetType().Name ?? "null"}");
+        if (e.Key == Key.Enter)
+        {
+            if (ToGroupTree.SelectedItem is MailMessageSummary msg)
+            {
+                e.Handled = true;
+                await _vm.SelectMessageCommand.ExecuteAsync(msg);
+                if (_vm.IsMessageOpen && _vm.MessageDetail != null)
+                    await ShowMessageBodyAsync(_vm.MessageDetail);
+            }
+            else if (ToGroupTree.SelectedItem is SenderGroup group)
+            {
+                e.Handled = true;
+                if (group.Messages.Count == 1)
+                {
+                    var singleMsg = group.Messages[0];
+                    _vm.SelectedMessage = singleMsg;
+                    await _vm.SelectMessageCommand.ExecuteAsync(singleMsg);
+                    if (_vm.IsMessageOpen && _vm.MessageDetail != null)
+                        await ShowMessageBodyAsync(_vm.MessageDetail);
+                }
+                else
+                {
+                    if (ToGroupTree.ItemContainerGenerator.ContainerFromItem(group) is TreeViewItem tvi)
+                        tvi.IsExpanded = !tvi.IsExpanded;
+                }
+            }
+        }
+        else if (e.Key == Key.Delete)
+        {
+            e.Handled = true;
+            if (ToGroupTree.SelectedItem is MailMessageSummary toDelete)
+            {
+                var parentGroup = _vm.ToGroups.FirstOrDefault(g => g.Messages.Contains(toDelete));
+                var targetIdx   = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
+                _vm.SelectedMessage = toDelete;
+                LandOnToGroupAfterRebuild(targetIdx);
+                await _vm.DeleteMessageCommand.ExecuteAsync(null);
+            }
+            else if (ToGroupTree.SelectedItem is SenderGroup group)
+            {
+                var targetIdx = _vm.ToGroups.IndexOf(group);
+                LandOnToGroupAfterRebuild(targetIdx);
+                await _vm.DeleteToGroupCommand.ExecuteAsync(group);
+            }
+        }
+        else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
+                 && Keyboard.Modifiers == ModifierKeys.None
+                 && ToGroupTree.Items.Count == 0)
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void ToGroupTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var source = e.OriginalSource as DependencyObject;
+        while (source != null && source is not TreeViewItem)
+            source = System.Windows.Media.VisualTreeHelper.GetParent(source);
+
+        if (source is TreeViewItem tvi)
+        {
+            tvi.IsSelected = true;
+            tvi.Focus();
+        }
+    }
+
+    private void ToGroupTree_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        switch (ToGroupTree.SelectedItem)
+        {
+            case SenderGroup:
+                ToGroupTree.ContextMenu = (ContextMenu)FindResource("ToGroupContextMenu");
+                break;
+            case MailMessageSummary:
+                ToGroupTree.ContextMenu = (ContextMenu)FindResource("MessageContextMenu");
                 break;
             default:
                 e.Handled = true;
@@ -1378,6 +1570,8 @@ public partial class MainWindow : Window
             LandOnConversationAfterRebuild(0);
         else if (_vm.IsFromView)
             LandOnSenderGroupAfterRebuild(0);
+        else if (_vm.IsToView)
+            LandOnToGroupAfterRebuild(0);
     }
 
     private async void MessageContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)

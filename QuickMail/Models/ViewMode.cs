@@ -11,4 +11,7 @@ public enum ViewMode
 
     /// <summary>Messages grouped by sender (From address).</summary>
     From,
+
+    /// <summary>Messages grouped by recipient (To address).</summary>
+    To,
 }

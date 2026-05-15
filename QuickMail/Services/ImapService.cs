@@ -671,6 +671,7 @@ public class ImapService : IImapService
             AccountId   = accountId,
             FolderName  = folderName,
             From        = FormatAddressListDisplay(s.Envelope?.From),
+            To          = FormatAddressListDisplay(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
             IsRead      = (s.Flags & MessageFlags.Seen)     != 0,

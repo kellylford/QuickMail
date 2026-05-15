@@ -28,4 +28,25 @@ public static class SenderGroupBuilder
             .OrderBy(s => s.SenderKey, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
+
+    /// <summary>
+    /// Groups <paramref name="messages"/> by recipient (To field, trimmed, case-insensitive),
+    /// sorts each group newest-first, and orders groups alphabetically.
+    /// </summary>
+    public static IReadOnlyList<SenderGroup> BuildByTo(IEnumerable<MailMessageSummary> messages)
+    {
+        return messages
+            .GroupBy(m => string.IsNullOrWhiteSpace(m.To) ? "(no recipient)" : m.To.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g =>
+            {
+                var sorted = g.OrderByDescending(m => m.Date).ToList();
+                return new SenderGroup
+                {
+                    SenderKey = g.Key,
+                    Messages  = sorted,
+                };
+            })
+            .OrderBy(s => s.SenderKey, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
 }
