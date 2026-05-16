@@ -26,22 +26,27 @@
 
                 <TextBlock Text="Account Details" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
 
-                <TextBlock x:Name="LblDisplayName" Text="_Display Name:" Margin="0,4,0,2"/>
+                <TextBlock x:Name="LblAccountName" Text="_Account Name:" Margin="0,4,0,2"/>
+                <TextBox Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
+                         TabIndex="0"/>
+
+                <TextBlock x:Name="LblDisplayName" Text="Sender _Display Name:" Margin="0,8,0,2"/>
                 <TextBox Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                         TabIndex="0"/>
+                         TabIndex="1"/>
 
                 <TextBlock x:Name="LblUsername" Text="_Email / Username:" Margin="0,8,0,2"/>
                 <TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
-                         TabIndex="1"/>
+                         TabIndex="2"/>
 
                 <!-- Authentication type -->
                 <TextBlock x:Name="LblAuthType" Text="_Authentication:" Margin="0,8,0,2"/>
                 <ComboBox SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
                           AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
                           AutomationProperties.Name="Authentication method"
-                          TabIndex="2">
+                          TabIndex="3">
                     <ComboBoxItem>Password</ComboBoxItem>
                     <ComboBoxItem>Microsoft OAuth2 (Outlook.com)</ComboBoxItem>
                 </ComboBox>
@@ -52,7 +57,7 @@
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
                                  AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
-                                 TabIndex="4"
+                                 TabIndex="5"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
                 </StackPanel>
 
@@ -62,7 +67,7 @@
                     <Button Content="Sign in with _Microsoft…"
                             Command="{Binding SignInMicrosoftCommand}"
                             AutomationProperties.Name="Sign in with Microsoft account in browser"
-                            HorizontalAlignment="Left" MinWidth="200" TabIndex="4"/>
+                            HorizontalAlignment="Left" MinWidth="200" TabIndex="5"/>
                 </StackPanel>
 
                 <Separator Margin="0,12"/>
@@ -72,7 +77,7 @@
                 <TextBlock x:Name="LblImapHost" Text="IMAP _Host:" Margin="0,4,0,2"/>
                 <TextBox Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
-                         TabIndex="3"/>
+                         TabIndex="4"/>
 
                 <TextBlock x:Name="LblImapPort" Text="IMAP _Port:" Margin="0,6,0,2"/>
                 <TextBox Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"

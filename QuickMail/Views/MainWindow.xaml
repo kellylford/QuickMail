@@ -330,8 +330,8 @@
                          AutomationProperties.Name="Email accounts. Arrow keys to navigate, Enter to connect."
                          ItemsSource="{Binding Accounts}"
                          SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
-                         DisplayMemberPath="DisplayName"
-                         TextSearch.TextPath="DisplayName"
+                         DisplayMemberPath="AccountLabel"
+                         TextSearch.TextPath="AccountLabel"
                          BorderThickness="0,0,1,0"
                          TabIndex="1"
                          KeyboardNavigation.TabNavigation="Once"
@@ -363,6 +363,7 @@
                           BorderThickness="0,0,1,0"
                           TabIndex="2"
                           KeyboardNavigation.TabNavigation="Once"
+                          GotKeyboardFocus="FolderList_GotKeyboardFocus"
                           PreviewTextInput="FolderList_PreviewTextInput"
                           PreviewKeyDown="FolderList_PreviewKeyDown">
                     <TreeView.Resources>

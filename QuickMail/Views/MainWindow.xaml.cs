@@ -158,6 +158,16 @@ public partial class MainWindow : Window
             else if (e.PropertyName == nameof(MainViewModel.ViewMode))
             {
                 LogService.Debug($"[FOCUS] ViewMode → {vm.ViewMode} {FocusInfo()}");
+                if (ShouldRestoreMessagePanelFocusAfterViewModeChange())
+                {
+                    LogService.Debug("[FOCUS]   → FocusActiveMessagePanel (view mode change)");
+                    Dispatcher.InvokeAsync(FocusActiveMessagePanel, DispatcherPriority.Input);
+                }
+            }
+            else if (e.PropertyName == nameof(MainViewModel.SelectedFolder) ||
+                     e.PropertyName == nameof(MainViewModel.FolderTree))
+            {
+                Dispatcher.InvokeAsync(() => SyncFolderTreeSelection(false), DispatcherPriority.Input);
             }
 
             if (e.PropertyName == nameof(MainViewModel.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
@@ -376,10 +386,6 @@ public partial class MainWindow : Window
             initialFolder: _vm.SelectedFolder) { Owner = this };
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
         {
-            // Switch accounts if needed (AllMail has no specific account)
-            if (picker.SelectedAccount != null && picker.SelectedAccount.Id != _vm.SelectedAccount?.Id)
-                await _vm.SelectAccountCommand.ExecuteAsync(picker.SelectedAccount);
-
             // Resolve to the live instance from the folder list
             var target = _vm.Folders.FirstOrDefault(f =>
                              !f.IsHeader &&
@@ -457,6 +463,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private void FolderList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (e.OldFocus is DependencyObject oldFocus && IsDescendantOf(FolderList, oldFocus))
+            return;
+
+        if (SyncFolderTreeSelection(true))
+            return;
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (FolderList.Items.Count == 0)
+            {
+                FolderList.Focus();
+                return;
+            }
+
+            FolderList.UpdateLayout();
+            if (FolderList.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
+                first.Focus();
+            else
+                FolderList.Focus();
+        }, DispatcherPriority.Input);
+    }
+
     // First-letter navigation for the folder TreeView (TreeView has no built-in TextSearch).
     private void FolderList_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
     {
@@ -484,7 +514,7 @@ public partial class MainWindow : Window
     }
 
     // Walks the TreeView container hierarchy to find and select the target node.
-    private static bool SelectTreeViewNode(System.Windows.Controls.ItemsControl parent, FolderTreeNode target)
+    private static bool SelectTreeViewNode(System.Windows.Controls.ItemsControl parent, FolderTreeNode target, bool focusNode = true)
     {
         foreach (var item in parent.Items)
         {
@@ -495,14 +525,88 @@ public partial class MainWindow : Window
             {
                 container.IsSelected = true;
                 container.BringIntoView();
-                container.Focus();
+                if (focusNode)
+                    container.Focus();
                 return true;
             }
-            if (node.IsExpanded && SelectTreeViewNode(container, target))
+            if (node.IsExpanded && SelectTreeViewNode(container, target, focusNode))
                 return true;
         }
         return false;
     }
+
+    private bool SyncFolderTreeSelection(bool focusNode)
+    {
+        if (_vm.SelectedFolder == null)
+            return false;
+
+        var roots = FolderList.Items.OfType<FolderTreeNode>().ToList();
+        if (roots.Count == 0)
+            return false;
+
+        if (!FindAndExpandFolderPath(roots, _vm.SelectedFolder))
+            return false;
+
+        FolderList.UpdateLayout();
+        var target = FindFolderTreeNode(roots, _vm.SelectedFolder);
+        return target != null && SelectTreeViewNode(FolderList, target, focusNode);
+    }
+
+    private static FolderTreeNode? FindFolderTreeNode(System.Collections.Generic.IEnumerable<FolderTreeNode> nodes, MailFolderModel target)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Folder != null && FolderMatches(node.Folder, target))
+                return node;
+
+            var child = FindFolderTreeNode(node.Children, target);
+            if (child != null)
+                return child;
+        }
+
+        return null;
+    }
+
+    private static bool FindAndExpandFolderPath(System.Collections.Generic.IEnumerable<FolderTreeNode> nodes, MailFolderModel target)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Folder != null && FolderMatches(node.Folder, target))
+                return true;
+
+            if (FindAndExpandFolderPath(node.Children, target))
+            {
+                node.IsExpanded = true;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool FolderMatches(MailFolderModel left, MailFolderModel right) =>
+        left.AccountId == right.AccountId &&
+        string.Equals(left.FullName, right.FullName, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsDescendantOf(DependencyObject ancestor, DependencyObject descendant)
+    {
+        DependencyObject? current = descendant;
+        while (current != null)
+        {
+            if (ReferenceEquals(current, ancestor))
+                return true;
+
+            current = current switch
+            {
+                System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D => System.Windows.Media.VisualTreeHelper.GetParent(current),
+                FrameworkContentElement fce => fce.Parent,
+                _ => null,
+            };
+        }
+
+        return false;
+    }
+
 
     private bool TryHandleFolderTreeTypeAhead(TreeView tree, System.Collections.Generic.IEnumerable<FolderTreeNode> roots, string? text)
     {
@@ -645,22 +749,33 @@ public partial class MainWindow : Window
     {
         tree.Dispatcher.InvokeAsync(() =>
         {
-            if (tree.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem tvi)
+            tree.UpdateLayout();
+
+            if (FindTreeViewItem(tree, item) is TreeViewItem tvi)
             {
                 tvi.IsSelected = true;
                 tvi.BringIntoView();
                 tvi.Focus();
-                return;
-            }
-
-            tree.UpdateLayout();
-            if (tree.ItemContainerGenerator.ContainerFromItem(item) is TreeViewItem retryTvi)
-            {
-                retryTvi.IsSelected = true;
-                retryTvi.BringIntoView();
-                retryTvi.Focus();
             }
         }, DispatcherPriority.Input);
+    }
+
+    private static TreeViewItem? FindTreeViewItem(ItemsControl parent, object target)
+    {
+        foreach (var item in parent.Items)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromItem(item) is not TreeViewItem container)
+                continue;
+
+            if (ReferenceEquals(item, target))
+                return container;
+
+            var child = FindTreeViewItem(container, target);
+            if (child != null)
+                return child;
+        }
+
+        return null;
     }
 
     private void HandleMessageTreeTypeAhead(
@@ -784,6 +899,13 @@ public partial class MainWindow : Window
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"MessageList_PreviewKeyDown key={e.Key} mod={Keyboard.Modifiers} focused={Keyboard.FocusedElement?.GetType().Name}");
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            SyncFolderTreeSelection(true);
+            return;
+        }
+
         if (TryGetTypeAheadKeyText(e, out var searchText) && TryHandleMessageListTypeAhead(searchText))
         {
             e.Handled = true;
@@ -1006,6 +1128,14 @@ public partial class MainWindow : Window
             FocusMessageListFirstItem();
     }
 
+    private bool ShouldRestoreMessagePanelFocusAfterViewModeChange() =>
+        MessageList.IsKeyboardFocusWithin ||
+        ConversationTree.IsKeyboardFocusWithin ||
+        SenderGroupTree.IsKeyboardFocusWithin ||
+        ToGroupTree.IsKeyboardFocusWithin ||
+        MessageBody.IsKeyboardFocusWithin ||
+        ViewModeButton.IsKeyboardFocusWithin;
+
     // Moves keyboard focus to the status bar's read-only TextBox.
     // StatusTextBox is ControlType.Edit + ValuePattern, so screen readers
     // announce its value natively when it receives focus — no Announce hack needed.
@@ -1199,6 +1329,13 @@ public partial class MainWindow : Window
     private async void ConversationTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ConvTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ConversationTree.Items.Count} selected={ConversationTree.SelectedItem?.GetType().Name ?? "null"}");
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            SyncFolderTreeSelection(true);
+            return;
+        }
+
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
             TryHandleMessageTreeTypeAhead(
                 ConversationTree,
@@ -1466,6 +1603,13 @@ public partial class MainWindow : Window
     private async void SenderGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] SenderTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={SenderGroupTree.Items.Count} selected={SenderGroupTree.SelectedItem?.GetType().Name ?? "null"}");
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            SyncFolderTreeSelection(true);
+            return;
+        }
+
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
             TryHandleMessageTreeTypeAhead(
                 SenderGroupTree,
@@ -1608,6 +1752,13 @@ public partial class MainWindow : Window
     private async void ToGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         LogService.Debug($"[FOCUS] ToTree KeyDown key={e.Key} mod={Keyboard.Modifiers} {FocusInfo()} items={ToGroupTree.Items.Count} selected={ToGroupTree.SelectedItem?.GetType().Name ?? "null"}");
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            SyncFolderTreeSelection(true);
+            return;
+        }
+
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
             TryHandleMessageTreeTypeAhead(
                 ToGroupTree,
@@ -1752,7 +1903,7 @@ public partial class MainWindow : Window
         // Determine the parent: if it's a header node (account), create at root; otherwise under the selected folder
         var parentFolder = node.IsHeader ? null : node.Folder;
         var accountId    = parentFolder?.AccountId
-                          ?? _vm.Accounts.FirstOrDefault(a => a.DisplayName == node.Label)?.Id
+                          ?? _vm.Accounts.FirstOrDefault(a => a.AccountLabel == node.Label)?.Id
                           ?? _vm.SelectedAccount?.Id;
         if (accountId == null || accountId == Guid.Empty) return;
 

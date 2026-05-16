@@ -342,7 +342,7 @@ public class ImapService : IImapService
 
         // Build the MIME message from compose fields
         var msg = new MimeMessage();
-        msg.From.Add(new MailboxAddress(account.DisplayName, account.Username));
+        msg.From.Add(new MailboxAddress(account.SenderDisplayName, account.Username));
 
         static void AddAddresses(InternetAddressList list, string raw)
         {

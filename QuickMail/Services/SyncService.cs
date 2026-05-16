@@ -41,7 +41,7 @@ public class SyncService : ISyncService
             // internally so GetOrReconnectAsync will create a fresh one when needed.
             try { await _imap.NoOpAsync(account.Id, ct); }
             catch (OperationCanceledException) { throw; }
-            catch (Exception ex) { LogService.Log($"NoOp {account.DisplayName}", ex); }
+            catch (Exception ex) { LogService.Log($"NoOp {account.AccountLabel}", ex); }
 
             foreach (var folder in folders)
             {
@@ -61,7 +61,7 @@ public class SyncService : ISyncService
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    LogService.Log($"Sync {account.DisplayName}/{folder.DisplayName}", ex);
+                    LogService.Log($"Sync {account.AccountLabel}/{folder.DisplayName}", ex);
                 }
             }
         }
@@ -111,7 +111,7 @@ public class SyncService : ISyncService
 
         if (deletedUids.Count == 0) return incoming;
 
-        LogService.Log($"Sync {account.DisplayName}/{folder.FullName}: {deletedUids.Count} remote deletion(s)");
+        LogService.Log($"Sync {account.AccountLabel}/{folder.FullName}: {deletedUids.Count} remote deletion(s)");
         await _store.DeleteSummariesAsync(account.Id, folder.FullName, deletedUids);
 
         var removed = deletedUids
@@ -160,7 +160,7 @@ public class SyncService : ISyncService
         catch (OperationCanceledException) { /* sync cancelled — normal */ }
         catch (Exception ex)
         {
-            LogService.Log($"FetchAndApplyPreviews {account.DisplayName}/{folder.FullName}", ex);
+            LogService.Log($"FetchAndApplyPreviews {account.AccountLabel}/{folder.FullName}", ex);
         }
     }
 }

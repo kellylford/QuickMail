@@ -44,7 +44,7 @@ public static class FolderTreeBuilder
         {
             var accountNode = new FolderTreeNode
             {
-                Label      = account.DisplayName,
+                Label      = account.AccountLabel,
                 Folder     = null,
                 IsHeader   = true,
                 IsExpanded = true,

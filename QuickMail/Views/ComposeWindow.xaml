@@ -76,7 +76,7 @@
                       x:Name="FromCombo"
                       ItemsSource="{Binding SenderAccounts}"
                       SelectedItem="{Binding SenderAccount, Mode=TwoWay}"
-                      DisplayMemberPath="DisplayName"
+                      DisplayMemberPath="AccountLabel"
                       AutomationProperties.Name="From account. Alt+M to focus."
                       AutomationProperties.HelpText="Choose which account to send from"
                       Margin="0,4" TabIndex="0"/>

@@ -24,6 +24,7 @@ public partial class AccountManagerViewModel : ObservableObject
     private AccountModel? _selectedAccount;
 
     // Editing form fields (bound to a working copy, not directly to SelectedAccount)
+    [ObservableProperty] private string _accountName = string.Empty;
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _username = string.Empty;
     [ObservableProperty] private string _password = string.Empty;
@@ -68,6 +69,7 @@ public partial class AccountManagerViewModel : ObservableObject
     partial void OnSelectedAccountChanged(AccountModel? value)
     {
         if (value == null) return;
+        AccountName = value.AccountName;
         DisplayName = value.DisplayName;
         Username = value.Username;
         AuthType = value.AuthType;
@@ -102,6 +104,7 @@ public partial class AccountManagerViewModel : ObservableObject
     {
         if (SelectedAccount == null) return;
 
+        SelectedAccount.AccountName = AccountName;
         SelectedAccount.DisplayName = DisplayName;
         SelectedAccount.Username = Username;
         SelectedAccount.AuthType = AuthType;
@@ -154,7 +157,7 @@ public partial class AccountManagerViewModel : ObservableObject
         SelectedAccount = selectedId.HasValue
             ? Accounts.FirstOrDefault(a => a.Id == selectedId.Value)
             : null;
-        StatusText = $"{account.DisplayName} set as default.";
+        StatusText = $"{account.AccountLabel} set as default.";
     }
 
     [RelayCommand]

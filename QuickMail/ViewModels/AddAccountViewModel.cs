@@ -13,6 +13,7 @@ public partial class AddAccountViewModel : ObservableObject
     private readonly IImapService _imap;
     private readonly IOAuthService _oauth;
 
+    [ObservableProperty] private string _accountName = string.Empty;
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _username = string.Empty;
     [ObservableProperty] private string _password = string.Empty;
@@ -130,6 +131,7 @@ public partial class AddAccountViewModel : ObservableObject
 
     public AccountModel ToAccountModel() => new()
     {
+        AccountName = AccountName,
         DisplayName = DisplayName,
         Username = Username,
         AuthType = AuthType,

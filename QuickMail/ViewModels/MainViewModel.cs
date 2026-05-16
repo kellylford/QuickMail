@@ -35,6 +35,7 @@ public partial class MainViewModel : ObservableObject
     private int _messageLimit = 100;
 
     // Version stamps for grouped-view rebuilds; latest wins, stale results discarded
+    private int _folderLoadVersion;
     private int _conversationRebuildVersion;
     private int _senderGroupRebuildVersion;
     private int _toGroupRebuildVersion;
@@ -71,7 +72,17 @@ public partial class MainViewModel : ObservableObject
         DisplayName = "All Trash"
     };
 
-    private static bool IsVirtualFolder(MailFolderModel? f) => f?.FullName.StartsWith("\x00") == true;
+    private static bool IsVirtualFolder(MailFolderModel? folder)
+    {
+        if (folder == null || folder.AccountId != Guid.Empty)
+            return false;
+
+        return string.Equals(folder.FullName, AllMailFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal);
+    }
 
     [ObservableProperty]
     private ObservableCollection<AccountModel> _accounts = [];
@@ -152,7 +163,14 @@ public partial class MainViewModel : ObservableObject
             if (IsMessageOpen && !string.IsNullOrWhiteSpace(MessageDetail?.Subject))
                 return $"{MessageDetail.Subject} - QuickMail";
             if (SelectedFolder != null && !SelectedFolder.IsHeader)
-                return $"{SelectedFolder.DisplayName} - QuickMail";
+            {
+                var accountLabel = SelectedFolder.AccountId != Guid.Empty
+                    ? Accounts.FirstOrDefault(a => a.Id == SelectedFolder.AccountId)?.AccountLabel
+                    : null;
+                return string.IsNullOrWhiteSpace(accountLabel)
+                    ? $"{SelectedFolder.DisplayName} - QuickMail"
+                    : $"{SelectedFolder.DisplayName} - {accountLabel} - QuickMail";
+            }
             return "QuickMail";
         }
     }
@@ -455,12 +473,12 @@ public partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            LogService.Log($"ConnectAll/{account.DisplayName}: timed out");
+            LogService.Log($"ConnectAll/{account.AccountLabel}: timed out");
             return (account.Id, null);
         }
         catch (Exception ex)
         {
-            LogService.Log($"ConnectAll/{account.DisplayName}", ex);
+            LogService.Log($"ConnectAll/{account.AccountLabel}", ex);
             return (account.Id, null);
         }
     }
@@ -480,7 +498,7 @@ public partial class MainViewModel : ObservableObject
             items.Add(new MailFolderModel
             {
                 IsHeader    = true,
-                DisplayName = account.DisplayName,
+                DisplayName = account.AccountLabel,
                 FullName    = $"\x00Header:{account.Id}",
                 AccountId   = account.Id
             });
@@ -531,7 +549,7 @@ public partial class MainViewModel : ObservableObject
                 roots.Add(new FolderTreeNode
                 {
                     IsHeader = true,
-                    Label    = account.DisplayName,
+                    Label    = account.AccountLabel,
                     Folder   = null,
                 });
             }
@@ -661,14 +679,14 @@ public partial class MainViewModel : ObservableObject
     {
         if (account == null) return;
         SelectedAccount = account;
-        StatusText = $"Connecting to {account.DisplayName}…";
+        StatusText = $"Connecting to {account.AccountLabel}…";
         IsBusy = true;
         try
         {
             var password = _credentials.GetPassword(account.Id);
             if (string.IsNullOrEmpty(password))
             {
-                StatusText = $"No password stored for {account.DisplayName}.";
+                StatusText = $"No password stored for {account.AccountLabel}.";
                 return;
             }
             _connectCts?.Cancel();
@@ -677,7 +695,7 @@ public partial class MainViewModel : ObservableObject
             var folderList = await _imap.GetFoldersAsync(account.Id, _connectCts.Token);
             _cachedFolders[account.Id] = folderList;
             RebuildFolderListFromCache();
-            StatusText = $"Connected to {account.DisplayName}. Press Enter on a folder to load messages.";
+            StatusText = $"Connected to {account.AccountLabel}. Press Enter on a folder to load messages.";
         }
         catch (OperationCanceledException)
         {
@@ -729,30 +747,43 @@ public partial class MainViewModel : ObservableObject
         var accountId = SelectedFolder.AccountId;
         if (accountId == Guid.Empty) return;
         var folder = SelectedFolder;
-        Messages.Clear();
-        StatusText = $"Loading {folder.DisplayName}…";
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
+        var cached = await _localStore.LoadFolderSummariesAsync(accountId, folder.FullName);
+        if (!IsCurrentFolderLoad(loadVersion, folder))
+            return;
+
+        Messages = new ObservableCollection<MailMessageSummary>(cached);
+        StatusText = cached.Count > 0
+            ? $"{cached.Count} cached messages (checking for new...)"
+            : $"Loading {folder.DisplayName}...";
         IsBusy = true;
         try
         {
             _folderCts?.Cancel();
             _folderCts = new CancellationTokenSource();
             var list = await _imap.GetMessageSummariesAsync(accountId, folder.FullName, _messageLimit, _folderCts.Token);
+            if (!IsCurrentFolderLoad(loadVersion, folder))
+                return;
+
             Messages = new ObservableCollection<MailMessageSummary>(list);
             StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
             _ = _localStore.UpsertSummariesAsync(list);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Message list load cancelled.";
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "Message list load cancelled.";
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to load messages: {ex.Message}";
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"Failed to load messages: {ex.Message}";
             LogService.Log("SelectFolder", ex);
         }
         finally
         {
-            IsBusy = false;
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
         }
     }
 
@@ -832,6 +863,7 @@ public partial class MainViewModel : ObservableObject
 
     private async Task FetchAllMailAsync()
     {
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
         StatusText = "Loading All Mail…";
         IsBusy = true;
@@ -846,6 +878,9 @@ public partial class MainViewModel : ObservableObject
             // This keeps the view consistent regardless of how many times the user
             // navigates to All Mail.  The IMAP fetch in Phase 2 adds truly new messages.
             var cached = await _localStore.LoadAllSummariesAsync();
+            if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
+                return;
+
             Messages = new ObservableCollection<MailMessageSummary>(cached);
             StatusText = cached.Count > 0
                 ? $"{cached.Count} messages (checking for new…)"
@@ -866,9 +901,14 @@ public partial class MainViewModel : ObservableObject
 
             var accountResults = await Task.WhenAll(perAccountTasks);
             var newMessages = accountResults.SelectMany(r => r).ToList();
+            if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
+                return;
 
             if (needsRecipientRepair)
             {
+                if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
+                    return;
+
                 var repaired = newMessages
                     .GroupBy(m => (m.AccountId, m.FolderName, m.UniqueId))
                     .Select(g => g.OrderByDescending(m => m.Date).First())
@@ -894,6 +934,9 @@ public partial class MainViewModel : ObservableObject
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
+                if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
+                    return;
+
                 // Dedup in case of overlap with cache
                 if (Messages.Any(e => e.UniqueId == msg.UniqueId &&
                                       e.AccountId == msg.AccountId &&
@@ -901,6 +944,9 @@ public partial class MainViewModel : ObservableObject
                     continue;
                 InsertMessageSorted(msg);
             }
+
+            if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
+                return;
 
             if (newMessages.Count > 0)
                 _ = _localStore.UpsertSummariesAsync(newMessages);
@@ -919,16 +965,19 @@ public partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            StatusText = "All Mail load cancelled.";
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "All Mail load cancelled.";
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to load All Mail: {ex.Message}";
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"Failed to load All Mail: {ex.Message}";
             LogService.Log("FetchAllMail", ex);
         }
         finally
         {
-            IsBusy = false;
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
         }
     }
 
@@ -951,7 +1000,7 @@ public partial class MainViewModel : ObservableObject
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                LogService.Log($"AllMail fetch {account.DisplayName}/{folder.FullName}", ex);
+                LogService.Log($"AllMail fetch {account.AccountLabel}/{folder.FullName}", ex);
             }
         }
         return result;
@@ -981,7 +1030,7 @@ public partial class MainViewModel : ObservableObject
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                LogService.Log($"AllMail new-msg fetch {account.DisplayName}/{folder.FullName}", ex);
+                LogService.Log($"AllMail new-msg fetch {account.AccountLabel}/{folder.FullName}", ex);
             }
         }
         return result;
@@ -1000,6 +1049,8 @@ public partial class MainViewModel : ObservableObject
 
     private async Task FetchVirtualFolderAsync(SpecialFolderKind kind, string displayName)
     {
+        var expectedFolder = SelectedFolder;
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
         StatusText = $"Loading {displayName}…";
         IsBusy = true;
@@ -1020,6 +1071,9 @@ public partial class MainViewModel : ObservableObject
             foreach (var batch in accountResults)
                 all.AddRange(batch);
 
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder))
+                return;
+
             var sorted = all.OrderByDescending(m => m.Date).ToList();
             Messages = new ObservableCollection<MailMessageSummary>(sorted);
             StatusText = sorted.Count == 0
@@ -1029,18 +1083,31 @@ public partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
-            StatusText = $"{displayName} load cancelled.";
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"{displayName} load cancelled.";
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to load {displayName}: {ex.Message}";
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"Failed to load {displayName}: {ex.Message}";
             LogService.Log($"Fetch{displayName.Replace(" ", "")}", ex);
         }
         finally
         {
-            IsBusy = false;
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
         }
     }
+
+    private bool IsCurrentFolderLoad(int loadVersion, MailFolderModel? expectedFolder) =>
+        loadVersion == _folderLoadVersion &&
+        FoldersMatch(SelectedFolder, expectedFolder);
+
+    private static bool FoldersMatch(MailFolderModel? left, MailFolderModel? right) =>
+        left != null &&
+        right != null &&
+        left.AccountId == right.AccountId &&
+        string.Equals(left.FullName, right.FullName, StringComparison.OrdinalIgnoreCase);
 
     private async Task<List<MailMessageSummary>> FetchAccountByKindAsync(
         AccountModel account, SpecialFolderKind kind, CancellationToken ct)
@@ -1061,7 +1128,7 @@ public partial class MainViewModel : ObservableObject
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                LogService.Log($"VirtualFolder fetch {account.DisplayName}/{folder.FullName}", ex);
+                LogService.Log($"VirtualFolder fetch {account.AccountLabel}/{folder.FullName}", ex);
             }
         }
         return result;
@@ -1451,7 +1518,7 @@ public partial class MainViewModel : ObservableObject
         if (account == null) return;
 
         var result = MessageBox.Show(
-            $"Remove the account '{account.DisplayName}'? This only removes it from QuickMail — your mail on the server is not affected.",
+            $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected.",
             "Remove Account",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
@@ -1471,7 +1538,7 @@ public partial class MainViewModel : ObservableObject
             Messages.Clear();
         }
 
-        StatusText = $"Account '{account.DisplayName}' removed.";
+        StatusText = $"Account '{account.AccountLabel}' removed.";
     }
 
     [RelayCommand]

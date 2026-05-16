@@ -5,6 +5,7 @@ namespace QuickMail.Models;
 public class AccountModel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
+    public string AccountName { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string Username { get; set; } = string.Empty;
     public AuthType AuthType { get; set; } = AuthType.Password;
@@ -24,5 +25,8 @@ public class AccountModel
     /// <summary>When true, this account is pre-selected when composing a new message.</summary>
     public bool IsDefault { get; set; } = false;
 
-    public override string ToString() => DisplayName;
+    public string AccountLabel => string.IsNullOrWhiteSpace(AccountName) ? Username : AccountName;
+    public string SenderDisplayName => string.IsNullOrWhiteSpace(DisplayName) ? AccountLabel : DisplayName;
+
+    public override string ToString() => AccountLabel;
 }
