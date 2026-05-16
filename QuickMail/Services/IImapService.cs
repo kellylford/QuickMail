@@ -15,6 +15,13 @@ public interface IImapService : IDisposable
         Guid accountId, string folderName, int maxMessages, CancellationToken ct = default);
 
     /// <summary>
+    /// Fetches messages delivered on or after <paramref name="since"/> using IMAP SEARCH SINCE.
+    /// Results are sorted newest-first.
+    /// </summary>
+    Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(
+        Guid accountId, string folderName, DateTime since, CancellationToken ct = default);
+
+    /// <summary>
     /// Incremental fetch for background sync.
     /// When sinceUid == 0 (first sync), returns the last 500 messages.
     /// When sinceUid > 0, returns only messages with UID > sinceUid (IMAP UID range).

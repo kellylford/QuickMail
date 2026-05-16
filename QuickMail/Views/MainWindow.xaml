@@ -242,11 +242,44 @@
                     AutomationProperties.Name="Refresh (F5)"
                     ToolTip="Refresh (F5)"
                     Content="Refres_h"/>
-            <Button Style="{StaticResource ToolbarButton}"
-                    Command="{Binding LoadMoreMessagesCommand}"
-                    AutomationProperties.Name="Load more messages (Ctrl+M)"
-                    ToolTip="Load 100 more messages (Ctrl+M)"
-                    Content="Load _More"/>
+            <Button x:Name="SyncRangeButton"
+                    Style="{StaticResource ToolbarButton}"
+                    Content="{Binding SyncRangeLabel}"
+                    AutomationProperties.Name="Sync range"
+                    ToolTip="Choose how many days of mail to sync"
+                    Click="SyncRangeButton_Click">
+                <Button.ContextMenu>
+                    <ContextMenu AutomationProperties.Name="Sync range"
+                                 DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="Last _7 Days"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding IsSyncDays7, Mode=OneWay}"
+                                  Command="{Binding SetSyncDaysCommand}"
+                                  CommandParameter="7"/>
+                        <MenuItem Header="Last _30 Days"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding IsSyncDays30, Mode=OneWay}"
+                                  Command="{Binding SetSyncDaysCommand}"
+                                  CommandParameter="30"/>
+                        <MenuItem Header="Last _6 Months (180 Days)"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding IsSyncDays180, Mode=OneWay}"
+                                  Command="{Binding SetSyncDaysCommand}"
+                                  CommandParameter="180"/>
+                        <MenuItem Header="Last _1 Year (365 Days)"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding IsSyncDays365, Mode=OneWay}"
+                                  Command="{Binding SetSyncDaysCommand}"
+                                  CommandParameter="365"/>
+                        <Separator/>
+                        <MenuItem Header="_All Mail"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding IsSyncDaysAll, Mode=OneWay}"
+                                  Command="{Binding SetSyncDaysCommand}"
+                                  CommandParameter="0"/>
+                    </ContextMenu>
+                </Button.ContextMenu>
+            </Button>
             <Separator/>
             <Button x:Name="ViewModeButton"
                     Style="{StaticResource ToolbarButton}"

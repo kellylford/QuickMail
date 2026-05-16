@@ -152,6 +152,9 @@ public class ConfigService : IConfigService
                             _               => "messages",
                         };
                         break;
+                    case "syncdays":
+                        if (int.TryParse(value, out var sd)) config.SyncDays = Math.Max(0, sd);
+                        break;
                 }
             }
             else if (section == "account" && acctGuid != Guid.Empty)
@@ -199,6 +202,12 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ViewMode = {config.ViewMode}");
         sb.AppendLine("# How to display the message list.");
         sb.AppendLine("# Values: messages (flat list), conversations (grouped by subject), from (grouped by sender).");
+        sb.AppendLine();
+
+        sb.AppendLine($"SyncDays = {config.SyncDays}");
+        sb.AppendLine("# How many days of mail to sync when opening a folder.");
+        sb.AppendLine("# Set to 0 to sync all mail (no date filter).");
+        sb.AppendLine("# Supported values: 7, 30, 180, 365, or 0 (all).");
         sb.AppendLine();
 
         // ── [account:guid] overrides ─────────────────────────────────────────────

@@ -31,8 +31,8 @@ public partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _messageCts;
     private CancellationTokenSource? _bgSyncCts;
 
-    // How many messages to fetch; increased by LoadMoreMessagesCommand
-    private int _messageLimit = 100;
+    // How many days of mail to sync (0 = all); set via the Sync Range menu
+    private int _syncDays = 30;
 
     // Version stamps for grouped-view rebuilds; latest wins, stale results discarded
     private int _folderLoadVersion;
@@ -135,6 +135,21 @@ public partial class MainViewModel : ObservableObject
     public bool IsFromView          => ViewMode == ViewMode.From;
     public bool IsToView            => ViewMode == ViewMode.To;
 
+    public bool IsSyncDays7   => _syncDays == 7;
+    public bool IsSyncDays30  => _syncDays == 30;
+    public bool IsSyncDays180 => _syncDays == 180;
+    public bool IsSyncDays365 => _syncDays == 365;
+    public bool IsSyncDaysAll => _syncDays == 0;
+
+    public string SyncRangeLabel => _syncDays switch
+    {
+        7   => "Sync: 7 Days",
+        30  => "Sync: 30 Days",
+        180 => "Sync: 6 Months",
+        365 => "Sync: 1 Year",
+        _   => "Sync: All",
+    };
+
     public string ViewModeLabel => ViewMode switch
     {
         ViewMode.Conversations => "View: Conversations",
@@ -193,6 +208,7 @@ public partial class MainViewModel : ObservableObject
 
         var cfg = _configService.Load();
         _showMessageStatus = cfg.ShowMessageStatus;
+        _syncDays = cfg.SyncDays;
         _viewMode = cfg.ViewMode switch
         {
             "conversations" => ViewMode.Conversations,
@@ -247,11 +263,6 @@ public partial class MainViewModel : ObservableObject
             id: "mail.refresh", category: "Mail", title: "Refresh",
             execute: () => RefreshCommand.Execute(null),
             defaultKey: Key.F5, defaultModifiers: ModifierKeys.None));
-
-        registry.Register(new CommandDefinition(
-            id: "mail.loadMore", category: "Mail", title: "Load More Messages",
-            execute: () => LoadMoreMessagesCommand.Execute(null),
-            defaultKey: Key.M, defaultModifiers: ModifierKeys.Control));
 
         registry.Register(new CommandDefinition(
             id: "mail.emptyTrash", category: "Mail", title: "Empty Trash",
@@ -716,7 +727,6 @@ public partial class MainViewModel : ObservableObject
     private async Task SelectFolderAsync(MailFolderModel? folder)
     {
         if (folder == null || folder.IsHeader) return;
-        _messageLimit = 100;
         SelectedFolder = folder;
         MessageDetail  = null;
         IsMessageOpen  = false;
@@ -732,9 +742,22 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task LoadMoreMessagesAsync()
+    private async Task SetSyncDaysAsync(string daysParam)
     {
-        _messageLimit += 100;
+        if (!int.TryParse(daysParam, out var days)) return;
+        _syncDays = days;
+
+        var cfg = _configService.Load();
+        cfg.SyncDays = days;
+        _configService.Save(cfg);
+
+        OnPropertyChanged(nameof(IsSyncDays7));
+        OnPropertyChanged(nameof(IsSyncDays30));
+        OnPropertyChanged(nameof(IsSyncDays180));
+        OnPropertyChanged(nameof(IsSyncDays365));
+        OnPropertyChanged(nameof(IsSyncDaysAll));
+        OnPropertyChanged(nameof(SyncRangeLabel));
+
         if (IsVirtualFolder(SelectedFolder))
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
@@ -761,7 +784,9 @@ public partial class MainViewModel : ObservableObject
         {
             _folderCts?.Cancel();
             _folderCts = new CancellationTokenSource();
-            var list = await _imap.GetMessageSummariesAsync(accountId, folder.FullName, _messageLimit, _folderCts.Token);
+            var list = _syncDays > 0
+                ? await _imap.GetMessagesSinceDateAsync(accountId, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), _folderCts.Token)
+                : await _imap.GetMessageSummariesAsync(accountId, folder.FullName, 50000, _folderCts.Token);
             if (!IsCurrentFolderLoad(loadVersion, folder))
                 return;
 
@@ -993,8 +1018,9 @@ public partial class MainViewModel : ObservableObject
             ct.ThrowIfCancellationRequested();
             try
             {
-                var msgs = await _imap.GetMessageSummariesAsync(
-                    account.Id, folder.FullName, _messageLimit, ct);
+                var msgs = _syncDays > 0
+                    ? await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                    : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
                 result.AddRange(msgs);
             }
             catch (OperationCanceledException) { throw; }
@@ -1121,8 +1147,9 @@ public partial class MainViewModel : ObservableObject
             ct.ThrowIfCancellationRequested();
             try
             {
-                var msgs = await _imap.GetMessageSummariesAsync(
-                    account.Id, folder.FullName, _messageLimit, ct);
+                var msgs = _syncDays > 0
+                    ? await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                    : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
                 result.AddRange(msgs);
             }
             catch (OperationCanceledException) { throw; }

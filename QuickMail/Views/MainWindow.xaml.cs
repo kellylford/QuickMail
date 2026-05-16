@@ -367,6 +367,15 @@ public partial class MainWindow : Window
 
     private void ViewModeButton_Click(object sender, RoutedEventArgs e) => OpenViewMenu();
 
+    private void SyncRangeButton_Click(object sender, RoutedEventArgs e)
+    {
+        var cm = SyncRangeButton.ContextMenu;
+        if (cm == null) return;
+        cm.PlacementTarget = SyncRangeButton;
+        cm.Placement = PlacementMode.Bottom;
+        cm.IsOpen = true;
+    }
+
     private void OpenViewMenu()
     {
         var cm = ViewModeButton.ContextMenu;

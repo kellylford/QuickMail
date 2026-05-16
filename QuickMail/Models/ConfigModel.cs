@@ -20,6 +20,12 @@ public class ConfigModel
     /// </summary>
     public string ViewMode { get; set; } = "messages";
 
+    /// <summary>
+    /// How many days of mail to sync. 0 = sync all mail (no date filter).
+    /// Supported values: 7, 30, 180, 365, or 0 (all).
+    /// </summary>
+    public int SyncDays { get; set; } = 30;
+
     // ── Custom hotkey overrides ──────────────────────────────────────────────────
 
     /// <summary>User-defined keyboard shortcut overrides, stored in hotkeys.json.</summary>

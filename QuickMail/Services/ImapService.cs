@@ -187,6 +187,38 @@ public class ImapService : IImapService
         });
     }
 
+    public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(
+        Guid accountId, string folderName, DateTime since, CancellationToken ct = default)
+    {
+        LogService.Log($"GetMessagesSinceDate: folder={folderName} since={since:yyyy-MM-dd}");
+        return ExecuteWithRetryAsync(accountId, ct, async client =>
+        {
+            var folder = await client.GetFolderAsync(folderName, ct);
+            await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
+            {
+                var query   = SearchQuery.DeliveredAfter(since.Date);
+                var uids    = await folder.SearchAsync(query, ct);
+                if (uids.Count == 0) return new List<MailMessageSummary>();
+
+                var items = MessageSummaryItems.UniqueId
+                          | MessageSummaryItems.Envelope
+                          | MessageSummaryItems.Flags
+                          | MessageSummaryItems.PreviewText;
+
+                var summaries = await folder.FetchAsync(uids, items, ct);
+                var result    = summaries
+                    .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
+                    .Select(s => SummaryToModel(s, accountId, folderName))
+                    .ToList();
+
+                LogService.Log($"  Returning {result.Count} summaries since {since:yyyy-MM-dd}");
+                return result;
+            }
+            finally { await folder.CloseAsync(false, ct); }
+        });
+    }
+
     public Task<List<MailMessageSummary>> GetMessagesSinceAsync(
         Guid accountId, string folderName, uint sinceUid, CancellationToken ct = default)
         => ExecuteWithRetryAsync(accountId, ct, async client =>
