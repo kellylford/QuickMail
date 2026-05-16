@@ -13,9 +13,9 @@ public class LocalStoreService : ILocalStoreService
 {
     private readonly string _connectionString;
 
-    public LocalStoreService()
+    public LocalStoreService(string? dataDirectory = null)
     {
-        var dir = Path.Combine(
+        var dir = dataDirectory ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
         Directory.CreateDirectory(dir);
         _connectionString = $"Data Source={Path.Combine(dir, "mail.db")};Mode=ReadWriteCreate;";
@@ -33,6 +33,7 @@ public class LocalStoreService : ILocalStoreService
                 account_id   TEXT    NOT NULL,
                 folder_name  TEXT    NOT NULL,
                 from_disp    TEXT    NOT NULL DEFAULT '',
+                to_addr      TEXT    NOT NULL DEFAULT '',
                 subject      TEXT    NOT NULL DEFAULT '',
                 date_ticks   INTEGER NOT NULL,
                 is_read      INTEGER NOT NULL DEFAULT 0,
@@ -59,11 +60,26 @@ public class LocalStoreService : ILocalStoreService
         cmd.ExecuteNonQuery();
 
         // Migration: add columns added after initial release.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN to_addr        TEXT    NOT NULL DEFAULT '';");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN preview_text  TEXT    NOT NULL DEFAULT '';");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN is_replied    INTEGER NOT NULL DEFAULT 0;");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN is_forwarded  INTEGER NOT NULL DEFAULT 0;");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN has_attachments INTEGER NOT NULL DEFAULT 0;");
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN attachments_json TEXT DEFAULT NULL;");
+
+        using var backfillCmd = conn.CreateCommand();
+        backfillCmd.CommandText = """
+            UPDATE MessageSummary
+            SET to_addr = COALESCE((
+                SELECT d.to_addr
+                FROM MessageDetail d
+                WHERE d.unique_id = MessageSummary.unique_id
+                  AND d.account_id = MessageSummary.account_id
+                  AND d.folder_name = MessageSummary.folder_name
+            ), to_addr)
+            WHERE to_addr = '';
+            """;
+        backfillCmd.ExecuteNonQuery();
     }
 
     private static void RunMigration(SqliteConnection conn, string sql)
@@ -83,10 +99,11 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded)
-            VALUES($uid, $aid, $fn, $from, $subj, $dt, $read, $preview, $replied, $forwarded)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded)
+            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp    = excluded.from_disp,
+                to_addr      = excluded.to_addr,
                 subject      = excluded.subject,
                 date_ticks   = excluded.date_ticks,
                 is_read      = excluded.is_read,
@@ -98,6 +115,7 @@ public class LocalStoreService : ILocalStoreService
         var pAid       = cmd.Parameters.Add("$aid",       SqliteType.Text);
         var pFn        = cmd.Parameters.Add("$fn",        SqliteType.Text);
         var pFrom      = cmd.Parameters.Add("$from",      SqliteType.Text);
+        var pTo        = cmd.Parameters.Add("$to",        SqliteType.Text);
         var pSubj      = cmd.Parameters.Add("$subj",      SqliteType.Text);
         var pDt        = cmd.Parameters.Add("$dt",        SqliteType.Integer);
         var pRead      = cmd.Parameters.Add("$read",      SqliteType.Integer);
@@ -111,6 +129,7 @@ public class LocalStoreService : ILocalStoreService
             pAid.Value       = s.AccountId.ToString();
             pFn.Value        = s.FolderName;
             pFrom.Value      = s.From;
+            pTo.Value        = s.To;
             pSubj.Value      = s.Subject;
             pDt.Value        = s.Date.UtcTicks;
             pRead.Value      = s.IsRead      ? 1 : 0;
@@ -127,7 +146,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
             "FROM MessageSummary ORDER BY date_ticks DESC;";
         return await ReadSummariesAsync(cmd);
     }
@@ -137,11 +156,20 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
         return await ReadSummariesAsync(cmd);
+    }
+
+    public async Task<bool> HasSummariesMissingRecipientsAsync()
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT EXISTS(SELECT 1 FROM MessageSummary WHERE to_addr = '' LIMIT 1);";
+        var result = await cmd.ExecuteScalarAsync();
+        return result is long value && value != 0;
     }
 
     public async Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds)
@@ -333,12 +361,13 @@ public class LocalStoreService : ILocalStoreService
                 AccountId   = Guid.Parse(r.GetString(1)),
                 FolderName  = r.GetString(2),
                 From        = r.GetString(3),
-                Subject     = r.GetString(4),
-                Date        = new DateTimeOffset(r.GetInt64(5), TimeSpan.Zero),
-                IsRead      = r.GetInt64(6) != 0,
-                Preview     = r.GetString(7),
-                IsReplied   = r.GetInt64(8) != 0,
-                IsForwarded = r.GetInt64(9) != 0,
+                To          = r.GetString(4),
+                Subject     = r.GetString(5),
+                Date        = new DateTimeOffset(r.GetInt64(6), TimeSpan.Zero),
+                IsRead      = r.GetInt64(7) != 0,
+                Preview     = r.GetString(8),
+                IsReplied   = r.GetInt64(9) != 0,
+                IsForwarded = r.GetInt64(10) != 0,
             });
         }
         return list;

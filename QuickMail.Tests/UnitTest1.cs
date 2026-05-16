@@ -9,6 +9,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Markup;
 using System.Xml;
+using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 using QuickMail.Views;
@@ -171,5 +172,34 @@ public class XamlParseTests
         return (new StubImapService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry());
+    }
+}
+
+public class LocalStoreServiceTests
+{
+    [Fact]
+    public async Task SummaryToField_PersistsAndLoads()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store = new LocalStoreService(tempDir);
+        store.Initialize();
+
+        var summary = new MailMessageSummary
+        {
+            UniqueId = 42,
+            AccountId = Guid.NewGuid(),
+            FolderName = "Inbox",
+            From = "Sender <sender@example.com>",
+            To = "Long Recipient Name <recipient@example.com>",
+            Subject = "Test subject",
+            Date = DateTimeOffset.UtcNow,
+            Preview = "Preview",
+        };
+
+        await store.UpsertSummariesAsync([summary]);
+        var loaded = await store.LoadAllSummariesAsync();
+
+        Assert.Single(loaded);
+        Assert.Equal(summary.To, loaded[0].To);
     }
 }

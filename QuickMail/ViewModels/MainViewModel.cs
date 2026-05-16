@@ -285,6 +285,17 @@ public partial class MainViewModel : ObservableObject
         await ConnectAllAccountsAsync();
         if (_cachedFolders.Count == 0) return;
 
+        if (SelectedFolder?.FullName == AllMailFolder.FullName && ViewMode == ViewMode.To)
+        {
+            var missingRecipients = Messages.Any(m => string.IsNullOrWhiteSpace(m.To))
+                || await _localStore.HasSummariesMissingRecipientsAsync();
+            if (missingRecipients)
+            {
+                await FetchAllMailAsync();
+                return;
+            }
+        }
+
         StatusText = "Syncing mail…";
         using var announceCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var announceTask = AnnounceLoadingProgressAsync(announceCts.Token);
@@ -563,6 +574,9 @@ public partial class MainViewModel : ObservableObject
             _                      => "messages",
         };
         _configService.Save(cfg);
+
+        if (value == ViewMode.To && SelectedFolder?.FullName == AllMailFolder.FullName && Messages.Any(m => string.IsNullOrWhiteSpace(m.To)))
+            _ = RefreshAsync();
     }
 
     /// <summary>Called by MVVM Toolkit whenever the Messages property is replaced.</summary>
@@ -841,12 +855,42 @@ public partial class MainViewModel : ObservableObject
             // ── Phase 2: incremental IMAP update (new messages only, per-folder) ─────
             ct.ThrowIfCancellationRequested();
             IsBusy = true;
+            var needsRecipientRepair = ViewMode == ViewMode.To &&
+                (cached.Any(m => string.IsNullOrWhiteSpace(m.To))
+                    || await _localStore.HasSummariesMissingRecipientsAsync());
             var perAccountTasks = Accounts
                 .Where(a => _cachedFolders.ContainsKey(a.Id))
-                .Select(account => FetchAccountNewMessagesAsync(account, ct));
+                .Select(account => needsRecipientRepair
+                    ? FetchAccountAllFoldersAsync(account, ct)
+                    : FetchAccountNewMessagesAsync(account, ct));
 
             var accountResults = await Task.WhenAll(perAccountTasks);
             var newMessages = accountResults.SelectMany(r => r).ToList();
+
+            if (needsRecipientRepair)
+            {
+                var repaired = newMessages
+                    .GroupBy(m => (m.AccountId, m.FolderName, m.UniqueId))
+                    .Select(g => g.OrderByDescending(m => m.Date).First())
+                    .OrderByDescending(m => m.Date)
+                    .ToList();
+
+                Messages = new ObservableCollection<MailMessageSummary>(repaired);
+                _ = _localStore.UpsertSummariesAsync(repaired);
+
+                var totalCount = Messages.Count;
+                StatusText = totalCount == 0
+                    ? "No messages across connected accounts."
+                    : $"{totalCount} messages across all accounts.";
+
+                if (ViewMode == ViewMode.Conversations)
+                    ScheduleConversationRebuild();
+                else if (ViewMode == ViewMode.From)
+                    ScheduleSenderGroupRebuild();
+                else if (ViewMode == ViewMode.To)
+                    ScheduleToGroupRebuild();
+                return;
+            }
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
@@ -870,6 +914,8 @@ public partial class MainViewModel : ObservableObject
                 ScheduleConversationRebuild();
             else if (ViewMode == ViewMode.From)
                 ScheduleSenderGroupRebuild();
+            else if (ViewMode == ViewMode.To)
+                ScheduleToGroupRebuild();
         }
         catch (OperationCanceledException)
         {

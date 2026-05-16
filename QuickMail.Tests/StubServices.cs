@@ -76,6 +76,7 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds) => Task.CompletedTask;
     public Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead) => Task.CompletedTask;
     public Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview) => Task.CompletedTask;
+    public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
     public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
     public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, uint uniqueId) => Task.FromResult<MailMessageDetail?>(null);
     public Task<uint> GetMaxUidAsync(Guid accountId, string folderName) => Task.FromResult(0u);
