@@ -1050,7 +1050,17 @@ public partial class MainViewModel : ObservableObject
             try
             {
                 var maxUid = await _localStore.GetMaxUidAsync(account.Id, folder.FullName);
-                var msgs   = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, maxUid, ct);
+                List<MailMessageSummary> msgs;
+                if (maxUid == 0 && _syncDays > 0)
+                {
+                    // Fresh start with a date filter: use SEARCH SINCE rather than last-500 fallback.
+                    msgs = await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct);
+                }
+                else
+                {
+                    // Incremental sync: UID-based is correct (fetch everything newer than last seen).
+                    msgs = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, maxUid, ct);
+                }
                 result.AddRange(msgs);
             }
             catch (OperationCanceledException) { throw; }
