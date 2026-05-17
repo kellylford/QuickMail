@@ -541,8 +541,9 @@ public partial class MainWindow : Window
     private static bool FindAndExpandFolderPath(System.Collections.Generic.IEnumerable<FolderTreeNode> nodes, MailFolderModel target)
         => TreeViewFocusHelper.FindAndExpandFolderPath(nodes, target);
 
-    private static bool FolderMatches(MailFolderModel left, MailFolderModel right)
-        => TreeViewFocusHelper.FoldersMatch(left, right);
+    private static bool FolderMatches(MailFolderModel left, MailFolderModel right) =>
+        left.AccountId == right.AccountId &&
+        string.Equals(left.FullName, right.FullName, StringComparison.OrdinalIgnoreCase);
 
     private static bool IsDescendantOf(DependencyObject ancestor, DependencyObject descendant)
     {
