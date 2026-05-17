@@ -72,10 +72,32 @@ public partial class MainViewModel : ObservableObject
         DisplayName = "All Trash"
     };
 
+    // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\x00AccountMail:{guid}".
+    private const string AccountMailPrefix = "\x00AccountMail:";
+
+    /// <summary>
+    /// Extracts the account GUID from a per-account "All Mail" sentinel,
+    /// e.g. "\x00AccountMail:f47ac10b-…" → true, id = f47ac10b-….
+    /// </summary>
+    private static bool TryGetAccountIdFromSentinel(string? fullName, out Guid accountId)
+    {
+        if (fullName != null &&
+            fullName.StartsWith(AccountMailPrefix, StringComparison.Ordinal) &&
+            Guid.TryParse(fullName.AsSpan(AccountMailPrefix.Length), out accountId))
+            return true;
+
+        accountId = Guid.Empty;
+        return false;
+    }
+
     private static bool IsVirtualFolder(MailFolderModel? folder)
     {
-        if (folder == null || folder.AccountId != Guid.Empty)
-            return false;
+        if (folder == null) return false;
+
+        // Per-account "All Mail" sentinels have a real AccountId, not Guid.Empty.
+        if (TryGetAccountIdFromSentinel(folder.FullName, out _)) return true;
+
+        if (folder.AccountId != Guid.Empty) return false;
 
         return string.Equals(folder.FullName, AllMailFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ||
@@ -366,9 +388,26 @@ public partial class MainViewModel : ObservableObject
     // Inserts truly new messages into the live collection in sorted order.
     private void OnFolderSynced(IReadOnlyList<MailMessageSummary> incoming)
     {
-        if (SelectedFolder?.FullName != AllMailFolder.FullName) return;
+        var selected = SelectedFolder;
+        if (selected == null) return;
 
-        foreach (var msg in incoming.OrderByDescending(m => m.Date))
+        IEnumerable<MailMessageSummary> relevant;
+        if (selected.FullName == AllMailFolder.FullName)
+        {
+            // Global "All Mail" — accept messages from every account.
+            relevant = incoming;
+        }
+        else if (TryGetAccountIdFromSentinel(selected.FullName, out var watchedAccountId))
+        {
+            // Per-account "All Mail" — only messages belonging to that account.
+            relevant = incoming.Where(m => m.AccountId == watchedAccountId);
+        }
+        else
+        {
+            return;
+        }
+
+        foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
             // Skip if already displayed (can happen if user triggered a manual refresh mid-sync)
             if (Messages.Any(e => e.UniqueId   == msg.UniqueId &&
@@ -552,6 +591,24 @@ public partial class MainViewModel : ObservableObject
             if (_cachedFolders.TryGetValue(account.Id, out var folders) && folders.Count > 0)
             {
                 var accountRoots = FolderTreeBuilder.Build(folders, account);
+
+                // Inject a per-account "All Mail" virtual folder as the first child
+                // of the account header node so users can see all mail for that account.
+                if (accountRoots.Count > 0)
+                {
+                    var accountMailFolder = new MailFolderModel
+                    {
+                        FullName    = $"{AccountMailPrefix}{account.Id}",
+                        DisplayName = "All Mail",
+                        AccountId   = account.Id,
+                    };
+                    accountRoots[0].Children.Insert(0, new FolderTreeNode
+                    {
+                        Folder = accountMailFolder,
+                        Label  = "All Mail",
+                    });
+                }
+
                 roots.AddRange(accountRoots);
             }
             else
@@ -1081,7 +1138,91 @@ public partial class MainViewModel : ObservableObject
         if (folder.FullName == AllDraftsFolder.FullName)  return FetchVirtualFolderAsync(SpecialFolderKind.Drafts, "All Drafts");
         if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   "All Sent");
         if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
+        if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Loads all cached messages for a single account (Phase 1), then incrementally
+    /// fetches new messages from every non-excluded IMAP folder (Phase 2).
+    /// Mirrors <see cref="FetchAllMailAsync"/> but scoped to one account.
+    /// </summary>
+    private async Task FetchAccountAllMailAsync(Guid accountId)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account == null) return;
+
+        var expectedFolder = SelectedFolder;
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
+        Messages.Clear();
+        StatusText = $"Loading {account.AccountLabel}…";
+        IsBusy = true;
+
+        _folderCts?.Cancel();
+        _folderCts = new CancellationTokenSource();
+        var ct = _folderCts.Token;
+
+        try
+        {
+            // ── Phase 1: show cache immediately ────────────────────────────────────
+            var cached = await _localStore.LoadAllSummariesAsync(accountId);
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            Messages = new ObservableCollection<MailMessageSummary>(cached);
+            StatusText = cached.Count > 0
+                ? $"{cached.Count} messages (checking for new…)"
+                : "Checking for new messages…";
+            IsBusy = false;
+
+            // ── Phase 2: incremental IMAP update (new messages only, per-folder) ───
+            ct.ThrowIfCancellationRequested();
+            IsBusy = true;
+            var newMessages = await FetchAccountNewMessagesAsync(account, ct);
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            foreach (var msg in newMessages.OrderByDescending(m => m.Date))
+            {
+                if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+                if (Messages.Any(e => e.UniqueId   == msg.UniqueId &&
+                                      e.AccountId  == msg.AccountId &&
+                                      e.FolderName == msg.FolderName))
+                    continue;
+                InsertMessageSorted(msg);
+            }
+
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            if (newMessages.Count > 0)
+                _ = _localStore.UpsertSummariesAsync(newMessages);
+
+            var count = Messages.Count;
+            StatusText = count == 0
+                ? $"No messages in {account.AccountLabel}."
+                : $"{count} messages in {account.AccountLabel}.";
+
+            if (ViewMode == ViewMode.Conversations)
+                ScheduleConversationRebuild();
+            else if (ViewMode == ViewMode.From)
+                ScheduleSenderGroupRebuild();
+            else if (ViewMode == ViewMode.To)
+                ScheduleToGroupRebuild();
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"{account.AccountLabel} load cancelled.";
+        }
+        catch (Exception ex)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"Failed to load {account.AccountLabel}: {ex.Message}";
+            LogService.Log("FetchAccountAllMail", ex);
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
+        }
     }
 
     private async Task FetchVirtualFolderAsync(SpecialFolderKind kind, string displayName)
