@@ -388,11 +388,15 @@ public partial class MainWindow : Window
     private async void OpenFolderPicker()
     {
         if (_vm.CachedFolders.Count == 0) return;
+        var acctMailFolders = _vm.Accounts
+            .Where(a => _vm.CachedFolders.ContainsKey(a.Id))
+            .ToDictionary(a => a.Id, a => MainViewModel.CreateAccountMailVirtualFolder(a));
         var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders,
             [MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
              MainViewModel.AllDraftsFolder,  MainViewModel.AllSentFolder,
              MainViewModel.AllTrashFolder],
-            initialFolder: _vm.SelectedFolder) { Owner = this };
+            initialFolder: _vm.SelectedFolder,
+            accountMailFolders: acctMailFolders) { Owner = this };
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
         {
             // Resolve to the live instance from the folder list

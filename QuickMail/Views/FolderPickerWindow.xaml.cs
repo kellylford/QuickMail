@@ -21,7 +21,7 @@ public partial class FolderPickerWindow : Window
     public MailFolderModel? SelectedFolder { get; private set; }
     public AccountModel? SelectedAccount { get; private set; }
 
-    public FolderPickerWindow(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, IEnumerable<MailFolderModel>? virtualFolders = null, string title = "Go to Folder", MailFolderModel? initialFolder = null)
+    public FolderPickerWindow(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, IEnumerable<MailFolderModel>? virtualFolders = null, string title = "Go to Folder", MailFolderModel? initialFolder = null, IReadOnlyDictionary<Guid, MailFolderModel>? accountMailFolders = null)
     {
         _initialFolder = initialFolder;
 
@@ -48,6 +48,21 @@ public partial class FolderPickerWindow : Window
                 _folderToAccount[f] = account;
 
             var accountRoots = FolderTreeBuilder.Build(folders, account);
+
+            // Inject the per-account "All Mail" virtual folder as the first child
+            // of the account header node (navigation picker only — move/copy pickers
+            // omit this by not passing accountMailFolders).
+            if (accountRoots.Count > 0 &&
+                accountMailFolders != null &&
+                accountMailFolders.TryGetValue(account.Id, out var acctMail))
+            {
+                accountRoots[0].Children.Insert(0, new FolderTreeNode
+                {
+                    Folder = acctMail,
+                    Label  = acctMail.DisplayName,
+                });
+            }
+
             foreach (var r in accountRoots)
                 roots.Add(r);
         }

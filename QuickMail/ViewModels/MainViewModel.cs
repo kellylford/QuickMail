@@ -73,7 +73,18 @@ public partial class MainViewModel : ObservableObject
     };
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\x00AccountMail:{guid}".
-    private const string AccountMailPrefix = "\x00AccountMail:";
+    internal const string AccountMailPrefix = "\x00AccountMail:";
+
+    /// <summary>
+    /// Creates the <see cref="MailFolderModel"/> that represents the "All Mail" virtual
+    /// folder for a specific account.  Used by both the main folder tree and the folder picker.
+    /// </summary>
+    public static MailFolderModel CreateAccountMailVirtualFolder(AccountModel account) => new()
+    {
+        FullName    = $"{AccountMailPrefix}{account.Id}",
+        DisplayName = $"All Mail \u2014 {account.AccountLabel}",
+        AccountId   = account.Id,
+    };
 
     /// <summary>
     /// Extracts the account GUID from a per-account "All Mail" sentinel,
@@ -596,16 +607,11 @@ public partial class MainViewModel : ObservableObject
                 // of the account header node so users can see all mail for that account.
                 if (accountRoots.Count > 0)
                 {
-                    var accountMailFolder = new MailFolderModel
-                    {
-                        FullName    = $"{AccountMailPrefix}{account.Id}",
-                        DisplayName = "All Mail",
-                        AccountId   = account.Id,
-                    };
+                    var accountMailFolder = CreateAccountMailVirtualFolder(account);
                     accountRoots[0].Children.Insert(0, new FolderTreeNode
                     {
                         Folder = accountMailFolder,
-                        Label  = "All Mail",
+                        Label  = accountMailFolder.DisplayName,
                     });
                 }
 
