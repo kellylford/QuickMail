@@ -66,7 +66,7 @@
                     Margin="8,0,0,0" MinWidth="60" TabIndex="4"/>
             <Button Grid.Column="5"
                     Content="_Delete"
-                    Command="{Binding DeleteContactCommand}"
+                    Click="DeleteButton_Click"
                     AutomationProperties.Name="Delete selected contact"
                     IsEnabled="{Binding HasSelectedContact}"
                     Margin="4,0,0,0" MinWidth="60" TabIndex="5"/>

@@ -63,15 +63,15 @@ public partial class AddressBookViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task DeleteContactAsync()
+    private void DeleteContact()
+    {
+        // This command just signals that deletion was requested.
+        // The view handles confirmation; if confirmed, it calls DeleteConfirmedAsync.
+    }
+
+    public async Task DeleteConfirmedAsync()
     {
         if (SelectedContact is not { } contact) return;
-        var result = MessageBox.Show(
-            $"Delete {contact.Display}?",
-            "Confirm Delete",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
-        if (result != MessageBoxResult.Yes) return;
         await _contactService.DeleteContactAsync(contact.Id);
         _allContacts.Remove(contact);
         FilteredContacts.Remove(contact);

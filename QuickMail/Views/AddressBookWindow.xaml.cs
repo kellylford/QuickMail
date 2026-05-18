@@ -24,13 +24,13 @@ public partial class AddressBookWindow : Window
             {
                 if (vm.SelectedContact != null)
                 {
-                    NewNameBox.Text = vm.SelectedContact.DisplayName;
-                    NewEmailBox.Text = vm.SelectedContact.EmailAddress;
+                    vm.NewName = vm.SelectedContact.DisplayName;
+                    vm.NewEmail = vm.SelectedContact.EmailAddress;
                 }
                 else
                 {
-                    NewNameBox.Text = string.Empty;
-                    NewEmailBox.Text = string.Empty;
+                    vm.NewName = string.Empty;
+                    vm.NewEmail = string.Empty;
                 }
             }
         };
@@ -45,11 +45,18 @@ public partial class AddressBookWindow : Window
         }
     }
 
-    private void ContactList_PreviewKeyDown(object sender, KeyEventArgs e)
+    private async void ContactList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Delete && _vm.HasSelectedContact)
+        if (e.Key == Key.Delete && _vm.SelectedContact != null)
         {
-            _vm.DeleteContactCommand.Execute(null);
+            var contact = _vm.SelectedContact;
+            var result = MessageBox.Show(
+                $"Delete {contact.Display}?",
+                "Confirm Delete",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+                await _vm.DeleteConfirmedAsync();
             e.Handled = true;
         }
     }
@@ -75,6 +82,19 @@ public partial class AddressBookWindow : Window
         // If user edits the email field and a contact is selected, deselect it to allow adding new contact
         if (_vm.SelectedContact != null && NewEmailBox.Text != _vm.SelectedContact.EmailAddress)
             _vm.SelectedContact = null;
+    }
+
+    private async void DeleteButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedContact == null) return;
+        var contact = _vm.SelectedContact;
+        var result = MessageBox.Show(
+            $"Delete {contact.Display}?",
+            "Confirm Delete",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (result == MessageBoxResult.Yes)
+            await _vm.DeleteConfirmedAsync();
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

@@ -88,7 +88,7 @@ sealed class StubLocalStoreService : ILocalStoreService
 sealed class StubContactService : IContactService
 {
     public Task UpsertContactAsync(ContactModel contact) => Task.CompletedTask;
-    public Task<List<ContactModel>> SearchContactsAsync(string prefix) => Task.FromResult(new List<ContactModel>());
+    public Task<List<ContactModel>> SearchContactsAsync(string prefix, CancellationToken ct = default) => Task.FromResult(new List<ContactModel>());
     public Task<List<ContactModel>> LoadAllContactsAsync() => Task.FromResult(new List<ContactModel>());
     public Task DeleteContactAsync(int id) => Task.CompletedTask;
 }

@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -16,6 +17,7 @@ public partial class ComposeWindow : Window
     private readonly ComposeViewModel   _vm;
     private readonly IContactService    _contactService;
     private TextBox? _activeAddressBox;
+    private CancellationTokenSource? _autocompleteCts;
 
     public ComposeWindow(ComposeViewModel vm, IContactService contactService)
     {
@@ -46,19 +48,30 @@ public partial class ComposeWindow : Window
     private async void AddressBox_TextChanged(object sender, TextChangedEventArgs e)
     {
         _activeAddressBox = (TextBox)sender;
-        var token = GetCurrentToken(_activeAddressBox.Text, _activeAddressBox.CaretIndex);
-        if (token.Length < 1) { AutoCompletePopup.IsOpen = false; return; }
+        var searchToken = GetCurrentToken(_activeAddressBox.Text, _activeAddressBox.CaretIndex);
+        if (searchToken.Length < 1) { AutoCompletePopup.IsOpen = false; return; }
 
-        var results = await _contactService.SearchContactsAsync(token);
-        if (results.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
+        // Cancel any previous search and create a new cancellation token
+        _autocompleteCts?.Cancel();
+        _autocompleteCts = new CancellationTokenSource();
 
-        SuggestionList.ItemsSource = results;
-        AutoCompletePopup.PlacementTarget = _activeAddressBox;
-        AutoCompletePopup.Placement       = PlacementMode.Bottom;
-        AutoCompletePopup.IsOpen          = true;
+        try
+        {
+            var results = await _contactService.SearchContactsAsync(searchToken, _autocompleteCts.Token);
+            if (results.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
 
-        AccessibilityHelper.Announce(this,
-            results.Count == 1 ? "1 suggestion" : $"{results.Count} suggestions");
+            SuggestionList.ItemsSource = results;
+            AutoCompletePopup.PlacementTarget = _activeAddressBox;
+            AutoCompletePopup.Placement       = PlacementMode.Bottom;
+            AutoCompletePopup.IsOpen          = true;
+
+            AccessibilityHelper.Announce(this,
+                results.Count == 1 ? "1 suggestion" : $"{results.Count} suggestions");
+        }
+        catch (OperationCanceledException)
+        {
+            // Search was cancelled by a more recent keystroke, ignore
+        }
     }
 
     private void AddressBox_PreviewKeyDown(object sender, KeyEventArgs e)
