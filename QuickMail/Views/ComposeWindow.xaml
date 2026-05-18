@@ -97,6 +97,7 @@
                        x:Name="CcLabel" Text="_Cc:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <TextBox Grid.Row="2" Grid.Column="1"
+                     x:Name="CcBox"
                      Text="{Binding Cc, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=CcLabel}"
                      Margin="0,4" TabIndex="2"/>
@@ -106,6 +107,7 @@
                        x:Name="BccLabel" Text="_Bcc:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <TextBox Grid.Row="3" Grid.Column="1"
+                     x:Name="BccBox"
                      Text="{Binding Bcc, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=BccLabel}"
                      Margin="0,4" TabIndex="3"/>
@@ -203,5 +205,25 @@
                      Margin="0,4" TabIndex="7"
                      VerticalAlignment="Stretch"/>
         </Grid>
+
+        <!-- Autocomplete popup — positioned below the active address field via code-behind -->
+        <Popup x:Name="AutoCompletePopup"
+               StaysOpen="True"
+               AllowsTransparency="True"
+               PopupAnimation="None">
+            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                    BorderThickness="1"
+                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                <ListBox x:Name="SuggestionList"
+                         MaxHeight="160"
+                         MinWidth="260"
+                         AutomationProperties.Name="Address suggestions"
+                         IsTabStop="True"
+                         KeyboardNavigation.TabNavigation="Cycle"
+                         DisplayMemberPath="Display"
+                         PreviewKeyDown="SuggestionList_PreviewKeyDown"
+                         MouseLeftButtonUp="SuggestionList_MouseLeftButtonUp"/>
+            </Border>
+        </Popup>
     </DockPanel>
 </Window>

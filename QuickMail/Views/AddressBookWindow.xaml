@@ -1,0 +1,105 @@
+<Window x:Class="QuickMail.Views.AddressBookWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Address Book"
+        Height="480" Width="580"
+        MinHeight="320" MinWidth="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <DockPanel Margin="10">
+
+        <!-- Search -->
+        <TextBox DockPanel.Dock="Top"
+                 x:Name="SearchBox"
+                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                 AutomationProperties.Name="Search contacts"
+                 Margin="0,0,0,6"
+                 TabIndex="0"/>
+
+        <!-- Add-contact form + action buttons -->
+        <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Label Grid.Column="0"
+                   x:Name="NewNameLabel"
+                   Content="_Name:"
+                   Target="{Binding ElementName=NewNameBox}"
+                   VerticalAlignment="Center"/>
+            <TextBox Grid.Column="1"
+                     x:Name="NewNameBox"
+                     Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.LabeledBy="{Binding ElementName=NewNameLabel}"
+                     TextChanged="NewNameBox_TextChanged"
+                     Margin="4,0" TabIndex="2"/>
+
+            <Label Grid.Column="2"
+                   x:Name="NewEmailLabel"
+                   Content="_Email:"
+                   Target="{Binding ElementName=NewEmailBox}"
+                   VerticalAlignment="Center"
+                   Margin="8,0,0,0"/>
+            <TextBox Grid.Column="3"
+                     x:Name="NewEmailBox"
+                     Text="{Binding NewEmail, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.LabeledBy="{Binding ElementName=NewEmailLabel}"
+                     TextChanged="NewEmailBox_TextChanged"
+                     Margin="4,0" TabIndex="3"
+                     PreviewKeyDown="NewEmailBox_PreviewKeyDown"/>
+
+            <Button Grid.Column="4"
+                    Content="_Add"
+                    Command="{Binding AddContactCommand}"
+                    AutomationProperties.Name="Add contact"
+                    Margin="8,0,0,0" MinWidth="60" TabIndex="4"/>
+            <Button Grid.Column="5"
+                    Content="_Delete"
+                    Click="DeleteButton_Click"
+                    AutomationProperties.Name="Delete selected contact"
+                    IsEnabled="{Binding HasSelectedContact}"
+                    Margin="4,0,0,0" MinWidth="60" TabIndex="5"/>
+            <Button Grid.Column="6"
+                    Content="Close"
+                    IsCancel="True"
+                    AutomationProperties.Name="Close address book"
+                    Margin="12,0,0,0" MinWidth="60" TabIndex="6"
+                    Click="Close_Click"/>
+        </Grid>
+
+        <!-- Contact list -->
+        <ListView x:Name="ContactList"
+                  ItemsSource="{Binding FilteredContacts}"
+                  SelectedItem="{Binding SelectedContact}"
+                  AutomationProperties.Name="Contacts"
+                  TabIndex="1"
+                  KeyboardNavigation.TabNavigation="Once"
+                  KeyboardNavigation.DirectionalNavigation="Contained"
+                  PreviewKeyDown="ContactList_PreviewKeyDown">
+            <ListView.ItemContainerStyle>
+                <Style TargetType="ListViewItem">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
+                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                </Style>
+            </ListView.ItemContainerStyle>
+            <ListView.View>
+                <GridView>
+                    <GridViewColumn Header="Name"  Width="200" DisplayMemberBinding="{Binding DisplayName}"/>
+                    <GridViewColumn Header="Email" Width="300" DisplayMemberBinding="{Binding EmailAddress}"/>
+                </GridView>
+            </ListView.View>
+        </ListView>
+
+    </DockPanel>
+</Window>

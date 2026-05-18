@@ -85,6 +85,14 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<uint>());
 }
 
+sealed class StubContactService : IContactService
+{
+    public Task UpsertContactAsync(ContactModel contact) => Task.CompletedTask;
+    public Task<List<ContactModel>> SearchContactsAsync(string prefix, CancellationToken ct = default) => Task.FromResult(new List<ContactModel>());
+    public Task<List<ContactModel>> LoadAllContactsAsync() => Task.FromResult(new List<ContactModel>());
+    public Task DeleteContactAsync(int id) => Task.CompletedTask;
+}
+
 sealed class StubSyncService : ISyncService
 {
 #pragma warning disable CS0067 // events required by interface but never raised in stubs
