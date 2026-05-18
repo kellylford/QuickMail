@@ -129,7 +129,7 @@
                 <DockPanel Margin="10">
                     <!-- Helper text -->
                     <TextBlock DockPanel.Dock="Top"
-                               Text="Select a command and press your desired key combination (with Ctrl, Shift, or Alt)."
+                               Text="Select a command row. Use Right arrow to focus the 'Set Shortcut' button, then press Space to assign a key combination."
                                TextWrapping="Wrap"
                                Margin="0,0,0,10"
                                Foreground="DimGray"/>
@@ -142,18 +142,43 @@
                               SelectionMode="Single"
                               BorderThickness="1"
                               Margin="0,0,0,10"
-                              PreviewKeyDown="HotkeyListView_PreviewKeyDown"
                               SelectionChanged="HotkeyListView_SelectionChanged"
                               AutomationProperties.Name="Keyboard shortcuts list">
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Category" DisplayMemberBinding="{Binding Category}" Width="100"/>
-                                <GridViewColumn Header="Command" DisplayMemberBinding="{Binding Title}" Width="150"/>
-                                <GridViewColumn Header="Default" DisplayMemberBinding="{Binding DefaultGesture}" Width="80"/>
-                                <GridViewColumn Header="Custom" Width="100">
+                                <GridViewColumn Header="Category" DisplayMemberBinding="{Binding Category}" Width="90"/>
+                                <GridViewColumn Header="Command" DisplayMemberBinding="{Binding Title}" Width="130"/>
+                                <GridViewColumn Header="Default" DisplayMemberBinding="{Binding DefaultGesture}" Width="70"/>
+                                <GridViewColumn Header="Custom" Width="80">
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding CustomGesture, Converter={StaticResource EmptyStringToDashConverter}}"/>
+                                            <TextBlock Text="{Binding CustomGesture, Converter={StaticResource EmptyStringToDashConverter}}"
+                                                       VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Set" Width="60">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button x:Name="SetButton"
+                                                    Content="Set…"
+                                                    Click="SetShortcutButton_Click"
+                                                    Padding="4,2"
+                                                    FontSize="11"
+                                                    AutomationProperties.Name="Set shortcut for this command"/>
+                                        </DataTemplate>
+                                    </GridViewColumn.CellTemplate>
+                                </GridViewColumn>
+                                <GridViewColumn Header="Restore" Width="65">
+                                    <GridViewColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button x:Name="RestoreButton"
+                                                    Content="Default"
+                                                    Click="RestoreDefaultButton_Click"
+                                                    Padding="4,2"
+                                                    FontSize="11"
+                                                    IsEnabled="{Binding HasCustomBinding}"
+                                                    AutomationProperties.Name="Restore default shortcut"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
@@ -161,16 +186,6 @@
                         </ListView.View>
                     </ListView>
 
-                    <!-- Clear Button -->
-                    <Button x:Name="ClearButton"
-                            DockPanel.Dock="Bottom"
-                            Content="_Clear Shortcut"
-                            Command="{Binding ClearHotkeyCommand}"
-                            CommandParameter="{Binding SelectedHotkey}"
-                            MinWidth="100"
-                            Margin="0,0,0,10"
-                            HorizontalAlignment="Left"
-                            AutomationProperties.Name="Clear the selected shortcut"/>
                 </DockPanel>
             </TabItem>
         </TabControl>

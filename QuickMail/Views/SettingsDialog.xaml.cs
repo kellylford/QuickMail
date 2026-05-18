@@ -52,43 +52,50 @@ public partial class SettingsDialog : Window
         }
     }
 
-    private void HotkeyListView_PreviewKeyDown(object sender, KeyEventArgs e)
-    {
-        if (_vm.SelectedHotkey == null)
-        {
-            return;
-        }
-
-        // Allow navigation keys to work normally
-        if (e.Key is Key.Up or Key.Down or Key.Left or Key.Right or Key.Home or Key.End
-            or Key.PageUp or Key.PageDown or Key.Tab)
-        {
-            return;
-        }
-
-        // Require at least one modifier key (Ctrl, Alt, or Shift)
-        var modifiers = Keyboard.Modifiers;
-        if (modifiers == ModifierKeys.None)
-        {
-            return;
-        }
-
-        // Ignore modifier-only key presses
-        if (e.Key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
-            or Key.LeftShift or Key.RightShift)
-        {
-            return;
-        }
-
-        _vm.SelectedHotkey.SetCustomBinding(e.Key, modifiers);
-        e.Handled = true;
-
-        // Update Clear button state
-        ClearButton.IsEnabled = _vm.SelectedHotkey.HasCustomBinding;
-    }
-
     private void HotkeyListView_SelectionChanged(object sender, object e)
     {
-        ClearButton.IsEnabled = _vm.SelectedHotkey != null && _vm.SelectedHotkey.HasCustomBinding;
+        // Selection changed; buttons will handle enable state binding
+    }
+
+    private void SetShortcutButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedHotkey == null) return;
+
+        while (true)
+        {
+            var captureDialog = new KeyCaptureDialog { Owner = this };
+            if (captureDialog.ShowDialog() != true)
+            {
+                return;
+            }
+
+            var key = captureDialog.CapturedKey;
+            var modifiers = captureDialog.CapturedModifiers;
+
+            var conflict = _vm.FindConflict(key, modifiers);
+            if (conflict != null)
+            {
+                var conflictDialog = new ConflictDialog(conflict.Title) { Owner = this };
+                if (conflictDialog.ShowDialog() == true)
+                {
+                    // "Choose Another" — loop back to capture dialog
+                    continue;
+                }
+                else
+                {
+                    // "Cancel" — exit without saving
+                    return;
+                }
+            }
+
+            _vm.SelectedHotkey.SetCustomBinding(key, modifiers);
+            break;
+        }
+    }
+
+    private void RestoreDefaultButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedHotkey == null) return;
+        _vm.SelectedHotkey.ClearCustomBinding();
     }
 }

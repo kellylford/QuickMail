@@ -85,6 +85,13 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    internal HotkeyRowViewModel? FindConflict(Key key, ModifierKeys modifiers)
+    {
+        if (key == Key.None) return null;
+
+        return HotkeyRows.FirstOrDefault(r => r.HasCustomBinding && r.MatchesBinding(key, modifiers));
+    }
+
     // ── HotkeyRowViewModel ─────────────────────────────────────────────────────────
 
     public partial class HotkeyRowViewModel : ObservableObject
@@ -150,5 +157,8 @@ public partial class SettingsViewModel : ObservableObject
             parts.Add(keyStr);
             CustomGesture = string.Join("+", parts);
         }
+
+        internal bool MatchesBinding(Key key, ModifierKeys modifiers)
+            => _customKey == key && _customModifiers == modifiers;
     }
 }
