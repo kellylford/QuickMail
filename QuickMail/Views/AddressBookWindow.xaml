@@ -42,6 +42,7 @@
                      x:Name="NewNameBox"
                      Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=NewNameLabel}"
+                     TextChanged="NewNameBox_TextChanged"
                      Margin="4,0" TabIndex="2"/>
 
             <Label Grid.Column="2"
@@ -54,6 +55,7 @@
                      x:Name="NewEmailBox"
                      Text="{Binding NewEmail, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=NewEmailLabel}"
+                     TextChanged="NewEmailBox_TextChanged"
                      Margin="4,0" TabIndex="3"
                      PreviewKeyDown="NewEmailBox_PreviewKeyDown"/>
 

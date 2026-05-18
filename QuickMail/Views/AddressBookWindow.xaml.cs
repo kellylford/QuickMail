@@ -18,6 +18,22 @@ public partial class AddressBookWindow : Window
             await vm.LoadAsync();
             SearchBox.Focus();
         };
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.SelectedContact))
+            {
+                if (vm.SelectedContact != null)
+                {
+                    NewNameBox.Text = vm.SelectedContact.DisplayName;
+                    NewEmailBox.Text = vm.SelectedContact.EmailAddress;
+                }
+                else
+                {
+                    NewNameBox.Text = string.Empty;
+                    NewEmailBox.Text = string.Empty;
+                }
+            }
+        };
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -45,6 +61,20 @@ public partial class AddressBookWindow : Window
             _vm.AddContactCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    private void NewNameBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        // If user edits the name field and a contact is selected, deselect it to allow adding new contact
+        if (_vm.SelectedContact != null && NewNameBox.Text != _vm.SelectedContact.DisplayName)
+            _vm.SelectedContact = null;
+    }
+
+    private void NewEmailBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
+    {
+        // If user edits the email field and a contact is selected, deselect it to allow adding new contact
+        if (_vm.SelectedContact != null && NewEmailBox.Text != _vm.SelectedContact.EmailAddress)
+            _vm.SelectedContact = null;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
