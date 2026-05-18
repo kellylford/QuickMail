@@ -378,7 +378,7 @@ public class LocalStoreService : ILocalStoreService
             INSERT INTO Contacts(display_name, email_address, last_used_ticks)
             VALUES($name, $email, $ticks)
             ON CONFLICT(email_address) DO UPDATE SET
-                display_name    = CASE WHEN excluded.display_name = '' THEN display_name ELSE excluded.display_name END,
+                display_name    = CASE WHEN display_name = '' THEN excluded.display_name ELSE display_name END,
                 last_used_ticks = excluded.last_used_ticks;
             """;
         cmd.Parameters.AddWithValue("$name",  contact.DisplayName);
