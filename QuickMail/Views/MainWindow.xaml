@@ -335,10 +335,11 @@
 
         </Menu>
 
-        <!-- ── Toolbar — one tab stop; Arrow keys navigate between buttons ── -->
+        <!-- ── Toolbar — Ctrl+0 only; excluded from Tab sequence ── -->
         <ToolBar x:Name="MainToolbar"
                  Grid.Row="1"
                  AutomationProperties.Name="Main toolbar"
+                 KeyboardNavigation.TabNavigation="None"
                  KeyboardNavigation.DirectionalNavigation="Cycle"
                  PreviewKeyDown="Toolbar_PreviewKeyDown">
             <Button x:Name="ToolbarFirstButton"
