@@ -117,7 +117,7 @@ public class XamlParseTests
         var vm = new MainViewModel(imap, accounts, creds, store, sync, config, registry);
         // Constructing MainWindow triggers InitializeComponent() which is the real XAML parse.
         var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
-            new StubOAuthService(), registry);
+            new StubOAuthService(), registry, store);
         Assert.NotNull(window);
         window.Close();
     }
@@ -126,9 +126,9 @@ public class XamlParseTests
     public void ComposeWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (imap, accounts, creds, _, _, _, _) = MakeServices();
+        var (imap, accounts, creds, store, _, _, _) = MakeServices();
         var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap);
-        var window = new ComposeWindow(vm);
+        var window = new ComposeWindow(vm, store);
         Assert.NotNull(window);
         window.Close();
     }

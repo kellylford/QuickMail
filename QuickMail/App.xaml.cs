@@ -37,7 +37,7 @@ public partial class App : Application
             imapService, accountService, credentialService, localStore, syncService, configService, commandRegistry);
         mainVm.LoadAccountList();
 
-        var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry);
+        var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, localStore);
         mainWindow.Show();
     }
 }

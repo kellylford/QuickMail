@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
 using System.Globalization;
@@ -12,6 +13,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
+using MimeKit;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -72,6 +74,8 @@ public partial class MainWindow : Window
     private DateTime _typeAheadLastInputUtc = DateTime.MinValue;
     private object? _typeAheadScope;
 
+    private readonly ILocalStoreService _localStore;
+
     public MainWindow(
         MainViewModel vm,
         ISmtpService smtp,
@@ -79,7 +83,8 @@ public partial class MainWindow : Window
         ICredentialService credentials,
         IImapService imap,
         IOAuthService oauth,
-        ICommandRegistry registry)
+        ICommandRegistry registry,
+        ILocalStoreService localStore)
     {
         _vm = vm;
         _smtp = smtp;
@@ -88,6 +93,7 @@ public partial class MainWindow : Window
         _imap = imap;
         _oauth = oauth;
         _registry = registry;
+        _localStore = localStore;
 
         InitializeComponent();
         DataContext = vm;
@@ -223,6 +229,12 @@ public partial class MainWindow : Window
             id: "view.focusStatusBar", category: "View", title: "Focus Status Bar",
             execute: FocusStatusBar,
             defaultKey: Key.D9, defaultModifiers: ModifierKeys.Control));
+
+        _registry.Register(new CommandDefinition(
+            id: "contacts.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
+            execute: GrabAddressesFromMessage,
+            defaultKey: Key.G, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => _vm.IsMessageOpen));
 
         // Initialise the embedded browser.  Wire Escape before doing anything else.
         try
@@ -1798,7 +1810,7 @@ public partial class MainWindow : Window
     {
         var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap);
         composeVm.Seed(composeModel);
-        var window = new ComposeWindow(composeVm) { Owner = this };
+        var window = new ComposeWindow(composeVm, _localStore) { Owner = this };
         composeVm.CloseRequested += window.Close;
         window.Show();
     }
@@ -1907,6 +1919,35 @@ public partial class MainWindow : Window
     }
 
     // ── Menu bar handlers ────────────────────────────────────────────────────
+
+    private void MenuAddressBook_Click(object sender, RoutedEventArgs e)
+    {
+        var vm  = new AddressBookViewModel(_localStore);
+        var win = new AddressBookWindow(vm) { Owner = this };
+        win.ShowDialog();
+    }
+
+    private void MenuGrabAddresses_Click(object sender, RoutedEventArgs e)
+        => GrabAddressesFromMessage();
+
+    private void GrabAddressesFromMessage()
+    {
+        if (_vm.MessageDetail is not { } detail) return;
+
+        var list = new InternetAddressList();
+        AddressParser.AddAddresses(list, detail.From);
+        AddressParser.AddAddresses(list, detail.To);
+        AddressParser.AddAddresses(list, detail.Cc);
+
+        var addresses = list.OfType<MailboxAddress>()
+            .Select(a => (Name: a.Name ?? string.Empty, a.Address))
+            .DistinctBy(x => x.Address, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (addresses.Count == 0) return;
+
+        new GrabAddressesDialog(addresses, _localStore) { Owner = this }.ShowDialog();
+    }
 
     private void MenuCommandPalette_Click(object sender, RoutedEventArgs e)
         => OpenCommandPalette();

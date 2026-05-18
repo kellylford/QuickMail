@@ -83,6 +83,10 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, uint uniqueId) => Task.FromResult<MailMessageDetail?>(null);
     public Task<uint> GetMaxUidAsync(Guid accountId, string folderName) => Task.FromResult(0u);
     public Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<uint>());
+    public Task UpsertContactAsync(ContactModel contact) => Task.CompletedTask;
+    public Task<List<ContactModel>> SearchContactsAsync(string prefix) => Task.FromResult(new List<ContactModel>());
+    public Task<List<ContactModel>> LoadAllContactsAsync() => Task.FromResult(new List<ContactModel>());
+    public Task DeleteContactAsync(int id) => Task.CompletedTask;
 }
 
 sealed class StubSyncService : ISyncService

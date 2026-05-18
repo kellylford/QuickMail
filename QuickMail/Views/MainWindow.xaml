@@ -216,6 +216,8 @@
                 <Separator/>
                 <MenuItem Header="_Manage Accounts…"
                           Command="{Binding ManageAccountsCommand}"/>
+                <MenuItem Header="Address _Book…"
+                          Click="MenuAddressBook_Click"/>
                 <Separator/>
                 <MenuItem Header="E_xit"
                           Command="{Binding ExitCommand}"/>
@@ -246,6 +248,11 @@
                 <MenuItem Header="_Copy to Folder…"
                           IsEnabled="{Binding HasSelectedMessage}"
                           Click="MenuCopyToFolder_Click"/>
+                <Separator/>
+                <MenuItem Header="Grab _Addresses from Message"
+                          IsEnabled="{Binding IsMessageOpen}"
+                          Click="MenuGrabAddresses_Click"
+                          InputGestureText="Ctrl+Shift+G"/>
             </MenuItem>
 
             <!-- View -->
