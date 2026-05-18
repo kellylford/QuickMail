@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -19,6 +20,29 @@ public partial class GrabAddressesDialog : Window
         _entries = addresses.Select(a => new AddressEntry(a.Name, a.Address)).ToList();
         InitializeComponent();
         AddressList.ItemsSource = _entries;
+        Loaded += (_, _) => FocusFirstAddress();
+    }
+
+    private void FocusFirstAddress()
+    {
+        if (_entries.Count > 0)
+        {
+            var container = AddressList.ItemContainerGenerator.ContainerFromIndex(0);
+            if (container is ContentPresenter presenter && FindFirstChild<CheckBox>(presenter) is CheckBox checkbox)
+                checkbox.Focus();
+        }
+    }
+
+    private static T? FindFirstChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        if (parent == null) return null;
+        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+            if (child is T result) return result;
+            if (FindFirstChild<T>(child) is T descendant) return descendant;
+        }
+        return null;
     }
 
     private async void Save_Click(object sender, RoutedEventArgs e)
