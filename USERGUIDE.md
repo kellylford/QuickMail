@@ -7,6 +7,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 ## Contents
 
 - [Layout](#layout)
+- [Menu bar](#menu-bar)
 - [Connecting accounts](#connecting-accounts)
 - [Managing accounts](#managing-accounts)
 - [Reading mail](#reading-mail)
@@ -14,6 +15,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 - [Conversation view](#conversation-view)
 - [From view (by sender)](#from-view-by-sender)
 - [To view (by recipient)](#to-view-by-recipient)
+- [Address book](#address-book)
 - [Command palette](#command-palette)
 - [Context menus](#context-menus)
 - [Composing messages](#composing-messages)
@@ -38,6 +40,21 @@ QuickMail uses a three-pane layout:
 | **Reading pane** | Right / bottom | The full body of the selected message, rendered as HTML when available |
 
 A toolbar at the top provides buttons for the most common actions.
+
+---
+
+## Menu bar
+
+The menu bar at the top of the window provides access to all major features, organized by task:
+
+| Menu | Contains |
+|------|----------|
+| **File** | New Message, Manage Accounts, Address Book, Exit |
+| **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
+| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Command Palette |
+| **Help** | User Guide |
+
+All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
 
 ---
 
@@ -185,6 +202,40 @@ When From view is on:
 To view groups messages by the recipient address. This is useful for folders that receive mail sent to several different addresses — for example, a shared mailbox or an alias.
 
 Toggling and navigation work the same way as [From view](#from-view-by-sender). Press **Ctrl+Shift+V** to cycle between Messages, From, To, and Conversations.
+
+---
+
+## Address book
+
+QuickMail includes a built-in address book for storing email addresses and display names. Contacts can be added manually or imported directly from your messages.
+
+### Managing the address book
+
+- Open **File → Address Book** to view, search, and manage all your saved contacts.
+- Search for a contact by typing in the search field — matches appear for both name and email address.
+- To add a contact manually, type in the **Name** and **Email** fields and press **Enter** or click **Add**.
+- To delete a contact, select it in the list and click **Delete** (or press **Delete**).
+
+### Grab addresses from a message
+
+While reading a message, you can quickly save the sender, recipients, and reply-to addresses to your address book:
+
+- Open **Message → Grab Addresses from Message** (or press `Ctrl+Shift+G`).
+- A dialog appears showing all addresses found in the message (From, To, Cc).
+- All addresses are checked by default. Uncheck any you don't want to save.
+- Click **Save** to add the selected addresses to your address book.
+
+### Autocomplete in compose
+
+When composing a message, as you type in the **To**, **Cc**, or **Bcc** fields, matching contacts from your address book appear in a dropdown suggestion list:
+
+- Type at least one character to see suggestions.
+- Press **Down arrow** to move into the suggestion list.
+- Use **Up/Down** arrows to select a contact, then press **Enter** or **Tab** to insert it.
+- Press **Escape** to dismiss the suggestions without selecting.
+- Press **Up arrow** on the first item to return focus to the text field.
+
+Contacts are sorted by how recently they were used, so your most-contacted people appear first.
 
 ---
 
@@ -357,6 +408,7 @@ A security warning is shown before opening executable file types.
 | Ctrl+Shift+P | Open command palette |
 | Ctrl+M | Load more messages |
 | Ctrl+Shift+E | Empty Trash |
+| Ctrl+Shift+G | Grab addresses from open message |
 | Shift+Up / Shift+Down | Extend message selection |
 | Shift+F10 | Open context menu for focused item |
 | Escape | Close reading pane |
@@ -385,7 +437,7 @@ QuickMail keeps all its files under `%AppData%\QuickMail\` (typically `C:\Users\
 |---------------|----------|
 | `accounts.json` | Account configuration — server addresses, ports, display names. No passwords. |
 | `config.ini` | Optional settings file — see [Configuration file](#configuration-file) below. |
-| `mail.db` | Local message cache (SQLite database) |
+| `mail.db` | Local message cache and address book (SQLite database) |
 | `msal.cache` | Encrypted OAuth2 token cache (Microsoft accounts only) |
 | `quickmail.log` | Application log |
 
