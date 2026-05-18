@@ -199,7 +199,7 @@
                      AutomationProperties.Name="Message body. Alt+U for Subject, Alt+M for From, Alt+S to send."
                      AcceptsReturn="True" AcceptsTab="True"
                      TextWrapping="Wrap"
-                     SpellCheck.IsEnabled="True"
+                     SpellCheck.IsEnabled="False"
                      VerticalScrollBarVisibility="Auto"
                      FontFamily="Segoe UI"
                      Margin="0,4" TabIndex="7"

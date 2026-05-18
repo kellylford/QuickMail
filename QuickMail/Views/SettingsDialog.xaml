@@ -10,7 +10,8 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
         Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Loaded="Window_Loaded">
 
     <Window.Resources>
         <local:EmptyStringToDashConverter x:Key="EmptyStringToDashConverter"/>
@@ -126,67 +127,59 @@
 
             <!-- Keyboard Shortcuts Tab -->
             <TabItem Header="_Keyboard Shortcuts" AutomationProperties.Name="Keyboard shortcuts tab">
-                <DockPanel Margin="10">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
                     <!-- Helper text -->
-                    <TextBlock DockPanel.Dock="Top"
-                               Text="Select a command row. Use Right arrow to focus the 'Set Shortcut' button, then press Space to assign a key combination."
+                    <TextBlock Grid.Row="0"
+                               Text="Arrow to a command, then press Enter to assign a shortcut or Delete to restore the default."
                                TextWrapping="Wrap"
                                Margin="0,0,0,10"
                                Foreground="DimGray"/>
 
                     <!-- Hotkeys ListView -->
-                    <ListView x:Name="HotkeyListView"
-                              DockPanel.Dock="Top"
+                    <ListView Grid.Row="1"
+                              x:Name="HotkeyListView"
                               ItemsSource="{Binding HotkeyRows}"
                               SelectedItem="{Binding SelectedHotkey, Mode=TwoWay}"
                               SelectionMode="Single"
                               BorderThickness="1"
-                              Margin="0,0,0,10"
+                              Margin="0,0,0,6"
+                              KeyDown="HotkeyListView_KeyDown"
                               SelectionChanged="HotkeyListView_SelectionChanged"
                               AutomationProperties.Name="Keyboard shortcuts list">
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="Category" DisplayMemberBinding="{Binding Category}" Width="90"/>
-                                <GridViewColumn Header="Command" DisplayMemberBinding="{Binding Title}" Width="130"/>
-                                <GridViewColumn Header="Default" DisplayMemberBinding="{Binding DefaultGesture}" Width="70"/>
-                                <GridViewColumn Header="Custom" Width="80">
-                                    <GridViewColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding CustomGesture, Converter={StaticResource EmptyStringToDashConverter}}"
-                                                       VerticalAlignment="Center"/>
-                                        </DataTemplate>
-                                    </GridViewColumn.CellTemplate>
-                                </GridViewColumn>
-                                <GridViewColumn Header="Set" Width="60">
-                                    <GridViewColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Button x:Name="SetButton"
-                                                    Content="Set…"
-                                                    Click="SetShortcutButton_Click"
-                                                    Padding="4,2"
-                                                    FontSize="11"
-                                                    AutomationProperties.Name="Set shortcut for this command"/>
-                                        </DataTemplate>
-                                    </GridViewColumn.CellTemplate>
-                                </GridViewColumn>
-                                <GridViewColumn Header="Restore" Width="65">
-                                    <GridViewColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Button x:Name="RestoreButton"
-                                                    Content="Default"
-                                                    Click="RestoreDefaultButton_Click"
-                                                    Padding="4,2"
-                                                    FontSize="11"
-                                                    IsEnabled="{Binding HasCustomBinding}"
-                                                    AutomationProperties.Name="Restore default shortcut"/>
-                                        </DataTemplate>
-                                    </GridViewColumn.CellTemplate>
-                                </GridViewColumn>
+                                <GridViewColumn Header="Command" DisplayMemberBinding="{Binding Title}" Width="200"/>
+                                <GridViewColumn Header="Shortcut" DisplayMemberBinding="{Binding ActiveGesture}" Width="130"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
 
-                </DockPanel>
+                    <!-- Action buttons — Grid.Row="2" so Tab flows: list → Set → Restore → Save/Cancel -->
+                    <StackPanel Grid.Row="2"
+                                Orientation="Horizontal">
+                        <Button x:Name="SetShortcutButton"
+                                Content="Set Shortcut…"
+                                Click="SetShortcutButton_Click"
+                                IsEnabled="False"
+                                Padding="6,3"
+                                Margin="0,0,8,0"
+                                AutomationProperties.Name="Set shortcut for selected command"/>
+                        <Button x:Name="RestoreDefaultButton"
+                                Content="Restore Default"
+                                Click="RestoreDefaultButton_Click"
+                                IsEnabled="False"
+                                Padding="6,3"
+                                AutomationProperties.Name="Restore default shortcut for selected command"/>
+                    </StackPanel>
+
+                </Grid>
             </TabItem>
         </TabControl>
 
@@ -206,5 +199,6 @@
                     MinWidth="75"
                     AutomationProperties.Name="Cancel and close without saving"/>
         </StackPanel>
+
     </Grid>
 </Window>

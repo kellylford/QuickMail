@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Automation;
+using QuickMail.Services;
 
 namespace QuickMail.Views;
 
@@ -29,18 +30,33 @@ internal static class AccessibilityHelper
     {
         if (string.IsNullOrEmpty(text)) return;
 
-        var peer = UIElementAutomationPeer.FromElement(element)
-                   ?? UIElementAutomationPeer.CreatePeerForElement(element);
-        if (peer == null) return;
+        var fromElement = UIElementAutomationPeer.FromElement(element);
+        var peer        = fromElement ?? UIElementAutomationPeer.CreatePeerForElement(element);
+
+        LogService.Debug($"[UIA] Announce: element={element?.GetType().Name} fromElement={fromElement != null} peer={peer?.GetType().Name ?? "null"} text='{text}'");
+
+        if (peer == null)
+        {
+            LogService.Debug("[UIA] Announce: peer is null — notification skipped");
+            return;
+        }
 
         var processing = interrupt
             ? AutomationNotificationProcessing.ImportantMostRecent
             : AutomationNotificationProcessing.MostRecent;
 
-        peer.RaiseNotificationEvent(
-            AutomationNotificationKind.Other,
-            processing,
-            text,
-            ActivityId);
+        try
+        {
+            peer.RaiseNotificationEvent(
+                AutomationNotificationKind.Other,
+                processing,
+                text,
+                ActivityId);
+            LogService.Debug("[UIA] Announce: RaiseNotificationEvent completed");
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("[UIA] Announce RaiseNotificationEvent", ex);
+        }
     }
 }

@@ -1,10 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -49,9 +48,10 @@ public partial class SettingsViewModel : ObservableObject
         {
             var row = new HotkeyRowViewModel(cmd);
             var customBinding = cfg.CustomHotkeys.FirstOrDefault(h => h.CommandId == cmd.Id);
-            if (customBinding != null)
+            if (customBinding != null &&
+                GestureHelper.TryParse(customBinding.Gesture, out var key, out var mods))
             {
-                row.SetCustomBinding((Key)customBinding.Key, (ModifierKeys)customBinding.Modifiers);
+                row.SetCustomBinding(key, mods);
             }
             HotkeyRows.Add(row);
         }
@@ -79,16 +79,12 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void ClearHotkey(HotkeyRowViewModel? row)
     {
-        if (row != null)
-        {
-            row.ClearCustomBinding();
-        }
+        row?.ClearCustomBinding();
     }
 
     internal HotkeyRowViewModel? FindConflict(Key key, ModifierKeys modifiers)
     {
         if (key == Key.None) return null;
-
         return HotkeyRows.FirstOrDefault(r => r.HasCustomBinding && r.MatchesBinding(key, modifiers));
     }
 
@@ -101,13 +97,17 @@ public partial class SettingsViewModel : ObservableObject
         private ModifierKeys _customModifiers = ModifierKeys.None;
 
         public string CommandId => _command.Id;
-        public string Category => _command.Category;
-        public string Title => _command.Title;
+        public string Category  => _command.Category;
+        public string Title     => _command.Title;
 
         public string DefaultGesture => _command.GestureText;
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(ActiveGesture))]
         private string _customGesture = string.Empty;
+
+        /// <summary>The binding currently in effect — custom if set, otherwise the default.</summary>
+        public string ActiveGesture => HasCustomBinding ? CustomGesture : DefaultGesture;
 
         public bool HasCustomBinding => _customKey != Key.None;
 
@@ -118,44 +118,31 @@ public partial class SettingsViewModel : ObservableObject
 
         public void SetCustomBinding(Key key, ModifierKeys modifiers)
         {
-            _customKey = key;
+            _customKey      = key;
             _customModifiers = modifiers;
             UpdateCustomGesture();
+            OnPropertyChanged(nameof(HasCustomBinding));
+            OnPropertyChanged(nameof(ActiveGesture));
         }
 
         public void ClearCustomBinding()
         {
-            _customKey = Key.None;
+            _customKey      = Key.None;
             _customModifiers = ModifierKeys.None;
-            CustomGesture = string.Empty;
+            CustomGesture   = string.Empty;
+            OnPropertyChanged(nameof(HasCustomBinding));
+            OnPropertyChanged(nameof(ActiveGesture));
         }
 
         public HotkeyBinding ToBinding() => new()
         {
             CommandId = CommandId,
-            Key = (int)_customKey,
-            Modifiers = (int)_customModifiers,
+            Gesture   = GestureHelper.Format(_customKey, _customModifiers),
         };
 
         private void UpdateCustomGesture()
         {
-            if (_customKey == Key.None)
-            {
-                CustomGesture = string.Empty;
-                return;
-            }
-
-            var parts = new List<string>();
-            if ((_customModifiers & ModifierKeys.Control) != 0) parts.Add("Ctrl");
-            if ((_customModifiers & ModifierKeys.Shift) != 0) parts.Add("Shift");
-            if ((_customModifiers & ModifierKeys.Alt) != 0) parts.Add("Alt");
-
-            var keyStr = _customKey.ToString();
-            if (keyStr.Length == 2 && keyStr[0] == 'D' && char.IsDigit(keyStr[1]))
-                keyStr = keyStr[1..];
-
-            parts.Add(keyStr);
-            CustomGesture = string.Join("+", parts);
+            CustomGesture = GestureHelper.Format(_customKey, _customModifiers);
         }
 
         internal bool MatchesBinding(Key key, ModifierKeys modifiers)

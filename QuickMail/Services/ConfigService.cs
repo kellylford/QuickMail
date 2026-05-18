@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Text.Json;
+using System.Windows.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -63,7 +65,7 @@ public class ConfigService : IConfigService
             {
                 var hotkeys = JsonSerializer.Deserialize<List<HotkeyBinding>>(File.ReadAllText(HotkeysFile));
                 if (hotkeys != null)
-                    _cached.CustomHotkeys = hotkeys;
+                    _cached.CustomHotkeys = ValidateAndMigrateHotkeys(hotkeys);
             }
             catch { /* malformed hotkeys.json — ignore and use defaults */ }
         }
@@ -82,6 +84,33 @@ public class ConfigService : IConfigService
             File.WriteAllText(HotkeysFile, JsonSerializer.Serialize(config.CustomHotkeys, JsonOptions), Encoding.UTF8);
         else if (File.Exists(HotkeysFile))
             File.Delete(HotkeysFile);
+    }
+
+    // ── Hotkey helpers ────────────────────────────────────────────────────────────
+
+    private static List<HotkeyBinding> ValidateAndMigrateHotkeys(List<HotkeyBinding> raw)
+    {
+        var result = new List<HotkeyBinding>(raw.Count);
+        var seen   = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var h in raw)
+        {
+            // Skip entries with no command id or duplicate command ids
+            if (string.IsNullOrWhiteSpace(h.CommandId) || !seen.Add(h.CommandId))
+                continue;
+
+            // Migrate old integer format: if Gesture is absent but Key int is set, convert it
+            if (string.IsNullOrEmpty(h.Gesture) && h.Key != 0)
+                h.Gesture = GestureHelper.Format((Key)h.Key, (ModifierKeys)h.Modifiers);
+
+            // Skip entries whose gesture string can't be parsed into a valid key combination
+            if (!GestureHelper.TryParse(h.Gesture, out _, out _))
+                continue;
+
+            result.Add(h);
+        }
+
+        return result;
     }
 
     // ── Parser ────────────────────────────────────────────────────────────────────
