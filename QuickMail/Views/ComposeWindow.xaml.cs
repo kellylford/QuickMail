@@ -13,14 +13,14 @@ namespace QuickMail.Views;
 
 public partial class ComposeWindow : Window
 {
-    private readonly ComposeViewModel    _vm;
-    private readonly ILocalStoreService  _localStore;
+    private readonly ComposeViewModel   _vm;
+    private readonly IContactService    _contactService;
     private TextBox? _activeAddressBox;
 
-    public ComposeWindow(ComposeViewModel vm, ILocalStoreService localStore)
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService)
     {
-        _vm         = vm;
-        _localStore = localStore;
+        _vm = vm;
+        _contactService = contactService;
         InitializeComponent();
         DataContext = vm;
 
@@ -49,7 +49,7 @@ public partial class ComposeWindow : Window
         var token = GetCurrentToken(_activeAddressBox.Text, _activeAddressBox.CaretIndex);
         if (token.Length < 1) { AutoCompletePopup.IsOpen = false; return; }
 
-        var results = await _localStore.SearchContactsAsync(token);
+        var results = await _contactService.SearchContactsAsync(token);
         if (results.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
 
         SuggestionList.ItemsSource = results;

@@ -56,16 +56,6 @@ public class LocalStoreService : ILocalStoreService
                 html_body   TEXT    NOT NULL DEFAULT '',
                 PRIMARY KEY (unique_id, account_id, folder_name)
             );
-
-            CREATE TABLE IF NOT EXISTS Contacts (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                display_name    TEXT    NOT NULL DEFAULT '',
-                email_address   TEXT    NOT NULL,
-                last_used_ticks INTEGER NOT NULL DEFAULT 0,
-                UNIQUE(email_address)
-            );
-            CREATE INDEX IF NOT EXISTS idx_contacts_email
-                ON Contacts(email_address COLLATE NOCASE);
             """;
         cmd.ExecuteNonQuery();
 
@@ -366,78 +356,6 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$fn",  folderName);
         var result = await cmd.ExecuteScalarAsync();
         return result is long l ? (uint)l : 0u;
-    }
-
-    // ── contacts ────────────────────────────────────────────────────────────────
-
-    public async Task UpsertContactAsync(ContactModel contact)
-    {
-        await using var conn = await OpenAsync();
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            INSERT INTO Contacts(display_name, email_address, last_used_ticks)
-            VALUES($name, $email, $ticks)
-            ON CONFLICT(email_address) DO UPDATE SET
-                display_name    = CASE WHEN display_name = '' THEN excluded.display_name ELSE display_name END,
-                last_used_ticks = excluded.last_used_ticks;
-            """;
-        cmd.Parameters.AddWithValue("$name",  contact.DisplayName);
-        cmd.Parameters.AddWithValue("$email", contact.EmailAddress);
-        cmd.Parameters.AddWithValue("$ticks", contact.LastUsedTicks);
-        await cmd.ExecuteNonQueryAsync();
-    }
-
-    public async Task<List<ContactModel>> SearchContactsAsync(string prefix)
-    {
-        await using var conn = await OpenAsync();
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT id, display_name, email_address, last_used_ticks
-            FROM Contacts
-            WHERE email_address LIKE $p OR display_name LIKE $p
-            ORDER BY last_used_ticks DESC
-            LIMIT 10;
-            """;
-        cmd.Parameters.AddWithValue("$p", prefix + "%");
-        return await ReadContactsAsync(cmd);
-    }
-
-    public async Task<List<ContactModel>> LoadAllContactsAsync()
-    {
-        await using var conn = await OpenAsync();
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = """
-            SELECT id, display_name, email_address, last_used_ticks
-            FROM Contacts
-            ORDER BY display_name ASC, email_address ASC;
-            """;
-        return await ReadContactsAsync(cmd);
-    }
-
-    public async Task DeleteContactAsync(int id)
-    {
-        await using var conn = await OpenAsync();
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText = "DELETE FROM Contacts WHERE id=$id;";
-        cmd.Parameters.AddWithValue("$id", id);
-        await cmd.ExecuteNonQueryAsync();
-    }
-
-    private static async Task<List<ContactModel>> ReadContactsAsync(SqliteCommand cmd)
-    {
-        var list = new List<ContactModel>();
-        await using var r = await cmd.ExecuteReaderAsync();
-        while (await r.ReadAsync())
-        {
-            list.Add(new ContactModel
-            {
-                Id            = (int)r.GetInt64(0),
-                DisplayName   = r.GetString(1),
-                EmailAddress  = r.GetString(2),
-                LastUsedTicks = r.GetInt64(3),
-            });
-        }
-        return list;
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────

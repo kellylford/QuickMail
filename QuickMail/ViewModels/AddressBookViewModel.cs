@@ -13,12 +13,12 @@ namespace QuickMail.ViewModels;
 
 public partial class AddressBookViewModel : ObservableObject
 {
-    private readonly ILocalStoreService _store;
+    private readonly IContactService _contactService;
     private List<ContactModel> _allContacts = [];
 
-    public AddressBookViewModel(ILocalStoreService store)
+    public AddressBookViewModel(IContactService contactService)
     {
-        _store = store;
+        _contactService = contactService;
     }
 
     public ObservableCollection<ContactModel> FilteredContacts { get; } = [];
@@ -43,7 +43,7 @@ public partial class AddressBookViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadAsync()
     {
-        _allContacts = await _store.LoadAllContactsAsync();
+        _allContacts = await _contactService.LoadAllContactsAsync();
         ApplyFilter(SearchText);
     }
 
@@ -51,7 +51,7 @@ public partial class AddressBookViewModel : ObservableObject
     private async Task AddContactAsync()
     {
         if (string.IsNullOrWhiteSpace(NewEmail)) return;
-        await _store.UpsertContactAsync(new ContactModel
+        await _contactService.UpsertContactAsync(new ContactModel
         {
             DisplayName   = NewName.Trim(),
             EmailAddress  = NewEmail.Trim(),
@@ -72,7 +72,7 @@ public partial class AddressBookViewModel : ObservableObject
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
         if (result != MessageBoxResult.Yes) return;
-        await _store.DeleteContactAsync(contact.Id);
+        await _contactService.DeleteContactAsync(contact.Id);
         _allContacts.Remove(contact);
         FilteredContacts.Remove(contact);
         SelectedContact = null;

@@ -74,7 +74,7 @@ public partial class MainWindow : Window
     private DateTime _typeAheadLastInputUtc = DateTime.MinValue;
     private object? _typeAheadScope;
 
-    private readonly ILocalStoreService _localStore;
+    private readonly IContactService _contactService;
 
     public MainWindow(
         MainViewModel vm,
@@ -84,7 +84,7 @@ public partial class MainWindow : Window
         IImapService imap,
         IOAuthService oauth,
         ICommandRegistry registry,
-        ILocalStoreService localStore)
+        IContactService contactService)
     {
         _vm = vm;
         _smtp = smtp;
@@ -93,7 +93,7 @@ public partial class MainWindow : Window
         _imap = imap;
         _oauth = oauth;
         _registry = registry;
-        _localStore = localStore;
+        _contactService = contactService;
 
         InitializeComponent();
         DataContext = vm;
@@ -1810,7 +1810,7 @@ public partial class MainWindow : Window
     {
         var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap);
         composeVm.Seed(composeModel);
-        var window = new ComposeWindow(composeVm, _localStore) { Owner = this };
+        var window = new ComposeWindow(composeVm, _contactService) { Owner = this };
         composeVm.CloseRequested += window.Close;
         window.Show();
     }
@@ -1922,7 +1922,7 @@ public partial class MainWindow : Window
 
     private void MenuAddressBook_Click(object sender, RoutedEventArgs e)
     {
-        var vm  = new AddressBookViewModel(_localStore);
+        var vm  = new AddressBookViewModel(_contactService);
         var win = new AddressBookWindow(vm) { Owner = this };
         win.ShowDialog();
     }
@@ -1946,7 +1946,7 @@ public partial class MainWindow : Window
 
         if (addresses.Count == 0) return;
 
-        new GrabAddressesDialog(addresses, _localStore) { Owner = this }.ShowDialog();
+        new GrabAddressesDialog(addresses, _contactService) { Owner = this }.ShowDialog();
     }
 
     private void MenuCommandPalette_Click(object sender, RoutedEventArgs e)

@@ -26,9 +26,4 @@ public interface ILocalStoreService
 
     /// <summary>Returns all UniqueIds stored locally for this folder.</summary>
     Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName);
-
-    Task UpsertContactAsync(ContactModel contact);
-    Task<List<ContactModel>> SearchContactsAsync(string prefix);
-    Task<List<ContactModel>> LoadAllContactsAsync();
-    Task DeleteContactAsync(int id);
 }

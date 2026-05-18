@@ -25,18 +25,18 @@ public class ViewModelConstructionTests
 {
     private static (StubImapService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
-        StubCommandRegistry registry)
+        StubCommandRegistry registry, StubContactService contacts)
         MakeServices()
     {
         return (new StubImapService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
-            new StubCommandRegistry());
+            new StubCommandRegistry(), new StubContactService());
     }
 
     [Fact]
     public void MainViewModel_ConstructsWithoutException()
     {
-        var (imap, accounts, creds, store, sync, config, registry) = MakeServices();
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
         var vm = new MainViewModel(imap, accounts, creds, store, sync, config, registry);
         Assert.NotNull(vm);
     }
@@ -44,7 +44,7 @@ public class ViewModelConstructionTests
     [Fact]
     public void MainViewModel_LoadAccountList_DoesNotThrow()
     {
-        var (imap, accounts, creds, store, sync, config, registry) = MakeServices();
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
         var vm = new MainViewModel(imap, accounts, creds, store, sync, config, registry);
         vm.LoadAccountList(); // must not throw
     }
@@ -52,7 +52,7 @@ public class ViewModelConstructionTests
     [Fact]
     public void ComposeViewModel_ConstructsWithoutException()
     {
-        var (imap, accounts, creds, _, _, _, _) = MakeServices();
+        var (imap, accounts, creds, _, _, _, _, _) = MakeServices();
         var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap);
         Assert.NotNull(vm);
     }
@@ -60,7 +60,7 @@ public class ViewModelConstructionTests
     [Fact]
     public void AccountManagerViewModel_ConstructsWithoutException()
     {
-        var (imap, accounts, creds, _, _, _, _) = MakeServices();
+        var (imap, accounts, creds, _, _, _, _, _) = MakeServices();
         var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService());
         Assert.NotNull(vm);
     }
@@ -113,11 +113,11 @@ public class XamlParseTests
     public void MainWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (imap, accounts, creds, store, sync, config, registry) = MakeServices();
+        var (imap, accounts, creds, store, sync, config, registry, contacts) = MakeServices();
         var vm = new MainViewModel(imap, accounts, creds, store, sync, config, registry);
         // Constructing MainWindow triggers InitializeComponent() which is the real XAML parse.
         var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
-            new StubOAuthService(), registry, store);
+            new StubOAuthService(), registry, contacts);
         Assert.NotNull(window);
         window.Close();
     }
@@ -126,9 +126,9 @@ public class XamlParseTests
     public void ComposeWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (imap, accounts, creds, store, _, _, _) = MakeServices();
+        var (imap, accounts, creds, _, _, _, _, contacts) = MakeServices();
         var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap);
-        var window = new ComposeWindow(vm, store);
+        var window = new ComposeWindow(vm, contacts);
         Assert.NotNull(window);
         window.Close();
     }
@@ -137,7 +137,7 @@ public class XamlParseTests
     public void AccountManagerDialog_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (imap, accounts, creds, _, _, _, _) = MakeServices();
+        var (imap, accounts, creds, _, _, _, _, _) = MakeServices();
         var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService());
         var window = new AccountManagerDialog(vm);
         Assert.NotNull(window);
@@ -166,12 +166,12 @@ public class XamlParseTests
 
     private static (StubImapService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
-        StubCommandRegistry registry)
+        StubCommandRegistry registry, StubContactService contacts)
         MakeServices()
     {
         return (new StubImapService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
-            new StubCommandRegistry());
+            new StubCommandRegistry(), new StubContactService());
     }
 }
 

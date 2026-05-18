@@ -10,12 +10,12 @@ namespace QuickMail.Views;
 
 public partial class GrabAddressesDialog : Window
 {
-    private readonly ILocalStoreService _store;
+    private readonly IContactService _contactService;
     private readonly List<AddressEntry> _entries;
 
-    public GrabAddressesDialog(List<(string Name, string Address)> addresses, ILocalStoreService store)
+    public GrabAddressesDialog(List<(string Name, string Address)> addresses, IContactService contactService)
     {
-        _store   = store;
+        _contactService = contactService;
         _entries = addresses.Select(a => new AddressEntry(a.Name, a.Address)).ToList();
         InitializeComponent();
         AddressList.ItemsSource = _entries;
@@ -25,7 +25,7 @@ public partial class GrabAddressesDialog : Window
     {
         foreach (var entry in _entries.Where(a => a.IsChecked))
         {
-            await _store.UpsertContactAsync(new ContactModel
+            await _contactService.UpsertContactAsync(new ContactModel
             {
                 DisplayName   = entry.DisplayName,
                 EmailAddress  = entry.EmailAddress,
