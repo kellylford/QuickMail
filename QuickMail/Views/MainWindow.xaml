@@ -197,14 +197,134 @@
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>  <!-- Menu bar -->
             <RowDefinition Height="Auto"/>  <!-- Toolbar -->
             <RowDefinition Height="*"/>     <!-- Content -->
             <RowDefinition Height="Auto"/>  <!-- Status bar -->
         </Grid.RowDefinitions>
 
+        <!-- ── Menu bar — Row 0 ── -->
+        <Menu Grid.Row="0"
+              IsTabStop="False"
+              AutomationProperties.Name="Main menu">
+
+            <!-- File -->
+            <MenuItem Header="_File">
+                <MenuItem Header="_New Message"
+                          Command="{Binding NewMessageCommand}"
+                          InputGestureText="Ctrl+N"/>
+                <Separator/>
+                <MenuItem Header="_Manage Accounts…"
+                          Command="{Binding ManageAccountsCommand}"/>
+                <Separator/>
+                <MenuItem Header="E_xit"
+                          Command="{Binding ExitCommand}"/>
+            </MenuItem>
+
+            <!-- Message -->
+            <MenuItem Header="_Message">
+                <MenuItem Header="_Reply"
+                          Command="{Binding ReplyCommand}"
+                          InputGestureText="Ctrl+R"/>
+                <MenuItem Header="Reply _All"
+                          Command="{Binding ReplyAllCommand}"
+                          InputGestureText="Ctrl+Shift+R"/>
+                <MenuItem Header="_Forward"
+                          Command="{Binding ForwardCommand}"
+                          InputGestureText="Ctrl+F"/>
+                <Separator/>
+                <MenuItem Header="_Delete"
+                          Command="{Binding DeleteMessageCommand}"
+                          InputGestureText="Del"/>
+                <MenuItem Header="Empty _Trash"
+                          Command="{Binding EmptyTrashCommand}"
+                          InputGestureText="Ctrl+Shift+E"/>
+                <Separator/>
+                <MenuItem Header="_Move to Folder…"
+                          IsEnabled="{Binding HasSelectedMessage}"
+                          Click="MenuMoveToFolder_Click"/>
+                <MenuItem Header="_Copy to Folder…"
+                          IsEnabled="{Binding HasSelectedMessage}"
+                          Click="MenuCopyToFolder_Click"/>
+            </MenuItem>
+
+            <!-- View -->
+            <MenuItem Header="_View">
+                <MenuItem Header="_Refresh"
+                          Command="{Binding RefreshCommand}"
+                          InputGestureText="F5"/>
+                <Separator/>
+                <MenuItem Header="View _Mode">
+                    <MenuItem Header="_Messages"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsMessagesView, Mode=OneWay}"
+                              Command="{Binding SetViewModeCommand}"
+                              CommandParameter="Messages"/>
+                    <MenuItem Header="_Conversations"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsConversationsView, Mode=OneWay}"
+                              Command="{Binding SetViewModeCommand}"
+                              CommandParameter="Conversations"/>
+                    <MenuItem Header="By _Sender"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFromView, Mode=OneWay}"
+                              Command="{Binding SetViewModeCommand}"
+                              CommandParameter="From"/>
+                    <MenuItem Header="By _Recipient"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsToView, Mode=OneWay}"
+                              Command="{Binding SetViewModeCommand}"
+                              CommandParameter="To"/>
+                </MenuItem>
+                <MenuItem Header="_Sync Range">
+                    <MenuItem Header="Last _7 Days"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSyncDays7, Mode=OneWay}"
+                              Command="{Binding SetSyncDaysCommand}"
+                              CommandParameter="7"/>
+                    <MenuItem Header="Last _30 Days"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSyncDays30, Mode=OneWay}"
+                              Command="{Binding SetSyncDaysCommand}"
+                              CommandParameter="30"/>
+                    <MenuItem Header="Last _6 Months"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSyncDays180, Mode=OneWay}"
+                              Command="{Binding SetSyncDaysCommand}"
+                              CommandParameter="180"/>
+                    <MenuItem Header="Last _1 Year"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSyncDays365, Mode=OneWay}"
+                              Command="{Binding SetSyncDaysCommand}"
+                              CommandParameter="365"/>
+                    <Separator/>
+                    <MenuItem Header="_All Mail"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSyncDaysAll, Mode=OneWay}"
+                              Command="{Binding SetSyncDaysCommand}"
+                              CommandParameter="0"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="Go to _Folder…"
+                          Click="MenuFolderPicker_Click"
+                          InputGestureText="Ctrl+Y"/>
+                <MenuItem Header="Command _Palette…"
+                          Click="MenuCommandPalette_Click"
+                          InputGestureText="Ctrl+Shift+P"/>
+            </MenuItem>
+
+            <!-- Help -->
+            <MenuItem Header="_Help">
+                <MenuItem Header="User _Guide"
+                          Command="{Binding ViewUserGuideCommand}"
+                          InputGestureText="F1"/>
+            </MenuItem>
+
+        </Menu>
+
         <!-- ── Toolbar — one tab stop; Arrow keys navigate between buttons ── -->
         <ToolBar x:Name="MainToolbar"
-                 Grid.Row="0"
+                 Grid.Row="1"
                  AutomationProperties.Name="Main toolbar"
                  KeyboardNavigation.DirectionalNavigation="Cycle"
                  PreviewKeyDown="Toolbar_PreviewKeyDown">
@@ -338,7 +458,7 @@
         <!--  Arrow keys navigate within the focused pane (TabNavigation=Once on each)      -->
         <!--  Enter triggers action; focus never changes unless user does it                 -->
         <!--  Ctrl+0 = toolbar | Ctrl+1/2/3 = jump directly to any pane                    -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="200" MinWidth="120"/>
                 <ColumnDefinition Width="5"/>
@@ -1005,7 +1125,7 @@
              which screen readers read natively on focus — unlike TextBlock
              (ControlType.Text, not keyboard-focusable in UIA). -->
         <StatusBar x:Name="MainStatusBar"
-                   Grid.Row="2"
+                   Grid.Row="3"
                    Focusable="False"
                    IsTabStop="False"
                    AutomationProperties.Name="Status bar">

@@ -1906,6 +1906,43 @@ public partial class MainWindow : Window
         return [];
     }
 
+    // ── Menu bar handlers ────────────────────────────────────────────────────
+
+    private void MenuCommandPalette_Click(object sender, RoutedEventArgs e)
+        => OpenCommandPalette();
+
+    private void MenuFolderPicker_Click(object sender, RoutedEventArgs e)
+        => OpenFolderPicker();
+
+    private async void MenuMoveToFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var messages = GetSelectedMessages();
+        if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
+
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move to Folder") { Owner = this };
+        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+
+        await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
+
+        if (_vm.IsConversationsView)
+            LandOnConversationAfterRebuild(0);
+        else if (_vm.IsFromView)
+            LandOnSenderGroupAfterRebuild(0);
+        else if (_vm.IsToView)
+            LandOnToGroupAfterRebuild(0);
+    }
+
+    private async void MenuCopyToFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var messages = GetSelectedMessages();
+        if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
+
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder") { Owner = this };
+        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+
+        await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
+    }
+
     private async void MessageContextMenu_MoveToFolder_Click(object sender, RoutedEventArgs e)
     {
         var messages = GetSelectedMessages();

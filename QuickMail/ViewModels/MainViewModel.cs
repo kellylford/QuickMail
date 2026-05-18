@@ -1693,6 +1693,9 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ManageAccounts() => ManageAccountsRequested?.Invoke();
 
+    [RelayCommand]
+    private void Exit() => Application.Current.Shutdown();
+
     // ── Account context menu commands ─────────────────────────────────────────
 
     public event Action<AccountModel>? OpenAccountSettingsRequested;

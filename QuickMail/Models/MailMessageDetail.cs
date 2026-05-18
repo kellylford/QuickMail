@@ -4,7 +4,6 @@ namespace QuickMail.Models;
 
 public partial class MailMessageDetail : MailMessageSummary
 {
-    public string To { get; set; } = string.Empty;
     public string Cc { get; set; } = string.Empty;
     public string ReplyTo { get; set; } = string.Empty;
     public string MessageId { get; set; } = string.Empty;
