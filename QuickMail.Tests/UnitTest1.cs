@@ -145,6 +145,17 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void AddressBookWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var (_, _, _, _, _, _, _, contacts) = MakeServices();
+        var vm = new AddressBookViewModel(contacts);
+        var window = new AddressBookWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
     public void FolderPickerWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

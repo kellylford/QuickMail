@@ -81,6 +81,43 @@ Trash, Junk, Sent, and Drafts are excluded from `\x00AllMail` via `folder.Exclud
 - **Pagination**: messages fetched in batches of 100; "Load More" appends next batch
 - **Logging**: `LogService` appends to `%APPDATA%\QuickMail\quickmail.log`; `LogService.Debug()` only writes when `/debug` flag is present
 
+## MVVM Rules — Enforced
+
+These rules apply to every change. Violations must be corrected before a PR can merge.
+
+### ViewModels must not touch the View layer
+
+- **No `MessageBox`, `Window`, or any `System.Windows` UI type in a ViewModel.** Confirmation dialogs, alerts, and window navigation must be requested via an event or callback that the View subscribes to.
+  - ✅ `public event Action? ConfirmDeleteRequested;` — raise it from the VM; the View shows the dialog and calls back.
+  - ❌ `MessageBox.Show("Delete?", ...)` inside a ViewModel method.
+- **No direct references to controls** (`TextBox`, `ListBox`, `Button`, etc.) in a ViewModel. Expose properties and commands; let bindings do the wiring.
+- **No `Dispatcher` calls in a ViewModel.** If you need to marshal to the UI thread, use `Application.Current.Dispatcher` only in Views or services, never in a VM.
+
+### Code-behind must not duplicate bindings
+
+- If a control is already bound two-way to a VM property, **do not also set that control's value directly in code-behind**. Pick one path: either the binding, or explicit code-behind assignment — not both.
+  - ✅ `vm.NewName = contact.DisplayName;` — updates the VM; the binding propagates to the TextBox.
+  - ❌ `NewNameBox.Text = contact.DisplayName;` when `NewNameBox` is already bound to `vm.NewName`.
+
+### Code-behind is allowed only for UI-only concerns
+
+Permitted in `.xaml.cs`:
+- Keyboard shortcut wiring (`PreviewKeyDown`, `KeyDown`)
+- Focus management (`element.Focus()`, `Keyboard.Focus()`)
+- WebView2 navigation and CSP setup
+- Subscribing to VM events and showing dialogs in response
+- Animation or visual-state transitions that have no business logic
+
+Not permitted in `.xaml.cs`:
+- Business logic, data transformation, or validation
+- Direct calls to services (`ImapService`, `ContactService`, etc.)
+- State decisions ("if account has unread messages, do X")
+
+### Async event handlers in Views
+
+- `async void` event handlers are acceptable **only** in Views (code-behind) for fire-and-forget UI reactions.
+- When an `async void` handler calls a service that may be slow (e.g. autocomplete search), use a `CancellationTokenSource` field — cancel and replace it on each invocation so stale results from a superseded call never overwrite fresher results.
+
 ## Keyboard Shortcuts (MainWindow)
 
 | Key | Action |
