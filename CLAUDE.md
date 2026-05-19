@@ -121,19 +121,49 @@ Not permitted in `.xaml.cs`:
 - `async void` event handlers are acceptable **only** in Views (code-behind) for fire-and-forget UI reactions.
 - When an `async void` handler calls a service that may be slow (e.g. autocomplete search), use a `CancellationTokenSource` field — cancel and replace it on each invocation so stale results from a superseded call never overwrite fresher results.
 
-## Keyboard Shortcuts (MainWindow)
+## Keyboard Shortcuts — Enforced
 
-| Key | Action |
-|---|---|
-| Ctrl+0 | Focus toolbar |
-| Ctrl+1 | Focus account list |
-| Ctrl+2 / Ctrl+Y | Focus folder tree |
-| Ctrl+3 | Focus message list / conversation tree |
-| Ctrl+9 | Focus status bar |
-| F6 / Shift+F6 | Cycle panes |
-| Ctrl+N | New message |
-| Delete | Delete selected messages |
-| Escape | Close reading pane |
+Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` via `_registry.Register(new CommandDefinition(...))` in `MainWindow.xaml.cs`. This is not optional: registration is what makes the shortcut appear in the **keyboard customizations** dialog and in the **Command Palette**.
+
+### Rules
+
+- **Register first, hardcode never.** Do not add a raw `if (modifiers == ... && key == ...)` block in `PreviewKeyDown` for a new action. Register the command with `defaultKey` / `defaultModifiers` and let the registry dispatch it.
+- **Two exceptions** are allowed to remain hardcoded (they are framework-level, not user actions):
+  - `Ctrl+Shift+P` — opens the Command Palette itself (cannot dispatch through the palette)
+  - Navigation shortcuts `Ctrl+0–3`, `Ctrl+9`, `Ctrl+Y`, `F6` — focus-only pane jumps with no associated command title
+- **`InputGestureText` in menus** must match the registered default key, e.g. `InputGestureText="Ctrl+Shift+F"`.
+- **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Settings`, `Help`.
+
+### Adding a new shortcut — checklist
+
+1. `_registry.Register(new CommandDefinition(id: "category.name", category: "…", title: "…", execute: MyMethod, defaultKey: Key.X, defaultModifiers: ModifierKeys.Control));`
+2. Add a menu item with matching `InputGestureText` if applicable.
+3. Do **not** add a duplicate hardcoded branch in `PreviewKeyDown`.
+
+### Registered shortcut table (MainWindow)
+
+| Key | Command ID | Title |
+|---|---|---|
+| Ctrl+0 | *(hardcoded)* | Focus toolbar |
+| Ctrl+1 | *(hardcoded)* | Focus account list |
+| Ctrl+2 / Ctrl+Y | `view.focusFolders` | Focus Folder Tree |
+| Ctrl+3 | *(hardcoded)* | Focus message list |
+| Ctrl+9 | `view.focusStatusBar` | Focus Status Bar |
+| F6 / Shift+F6 | *(hardcoded)* | Cycle panes |
+| Escape | *(hardcoded)* | Close reading pane |
+| Ctrl+Shift+P | *(hardcoded)* | Command Palette |
+| Ctrl+N | `mail.new` | New Message |
+| Ctrl+R | `mail.reply` | Reply |
+| Ctrl+Shift+R | `mail.replyAll` | Reply All |
+| Ctrl+F | `mail.forward` | Forward |
+| Delete | `mail.delete` | Delete |
+| F5 | `mail.refresh` | Refresh |
+| Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
+| Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
+| Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
+| Ctrl+Shift+G | `contacts.grabAddresses` | Grab Addresses from Message |
+| Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
+| F1 | `help.userGuide` | Open User Guide |
 
 ## Dependencies
 
