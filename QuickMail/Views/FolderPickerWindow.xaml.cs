@@ -167,8 +167,7 @@ public partial class FolderPickerWindow : Window
     private static bool IsSearchGesture(KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        return (key == Key.Oem2 || key == Key.Divide) && Keyboard.Modifiers == ModifierKeys.None
-            || key == Key.F && Keyboard.Modifiers == ModifierKeys.Control;
+        return (key == Key.Oem2 || key == Key.Divide) && Keyboard.Modifiers == ModifierKeys.None;
     }
 
     private void BeginSearch()

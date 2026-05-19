@@ -743,7 +743,6 @@ public partial class MainViewModel : ObservableObject
     {
         var version  = Interlocked.Increment(ref _senderGroupRebuildVersion);
         var snapshot = Messages.ToList();
-        LogService.Debug($"[DELETE] ScheduleSenderGroupRebuild v={version} snapshot={snapshot.Count} msgs");
         Task.Run(() =>
         {
             var groups = SenderGroupBuilder.Build(snapshot);
@@ -751,12 +750,10 @@ public partial class MainViewModel : ObservableObject
             {
                 if (version == _senderGroupRebuildVersion)
                 {
-                    LogService.Debug($"[DELETE] SenderGroupRebuild v={version} applying {groups.Count} groups");
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
                 }
                 else
                 {
-                    LogService.Debug($"[DELETE] SenderGroupRebuild v={version} DISCARDED (current={_senderGroupRebuildVersion})");
                 }
             });
         });
@@ -766,7 +763,6 @@ public partial class MainViewModel : ObservableObject
     {
         var version  = Interlocked.Increment(ref _toGroupRebuildVersion);
         var snapshot = Messages.ToList();
-        LogService.Debug($"[DELETE] ScheduleToGroupRebuild v={version} snapshot={snapshot.Count} msgs");
         Task.Run(() =>
         {
             var groups = SenderGroupBuilder.BuildByTo(snapshot);
@@ -774,12 +770,10 @@ public partial class MainViewModel : ObservableObject
             {
                 if (version == _toGroupRebuildVersion)
                 {
-                    LogService.Debug($"[DELETE] ToGroupRebuild v={version} applying {groups.Count} groups");
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
                 }
                 else
                 {
-                    LogService.Debug($"[DELETE] ToGroupRebuild v={version} DISCARDED (current={_toGroupRebuildVersion})");
                 }
             });
         });
@@ -1495,7 +1489,6 @@ public partial class MainViewModel : ObservableObject
 
         var minIdx = toDelete.Min(m => Messages.IndexOf(m));
         var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";
-        LogService.Debug($"[DELETE] DeleteMessagesAsync start count={toDelete.Count} ViewMode={ViewMode}");
         StatusText    = $"Deleting {label}…";
         IsBusy        = true;
         MessageDetail = null;
@@ -1511,7 +1504,6 @@ public partial class MainViewModel : ObservableObject
         {
             if (Messages.Remove(msg)) removed++;
         }
-        LogService.Debug($"[DELETE] Removed {removed}/{toDelete.Count} from UI immediately (now {Messages.Count})");
 
         if (ViewMode == ViewMode.Conversations)
             ScheduleConversationRebuild();
@@ -1550,7 +1542,6 @@ public partial class MainViewModel : ObservableObject
             foreach (var group in groups)
             {
                 var uids = group.Select(m => m.UniqueId).ToList();
-                LogService.Debug($"[DELETE] IMAP delete {group.Key.FolderName} uids={string.Join(",", uids)}");
 
                 // Messages already in Trash must be permanently deleted (expunge);
                 // moving them to trash again is a no-op on most servers.
@@ -1566,7 +1557,6 @@ public partial class MainViewModel : ObservableObject
                     await _imap.MoveToTrashBatchAsync(
                         group.Key.AccountId, group.Key.FolderName, uids, cts.Token);
 
-                LogService.Debug($"[DELETE] IMAP done {group.Key.FolderName}");
                 await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
 

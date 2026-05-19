@@ -44,7 +44,7 @@
 ### Folder picker
 
 - Replaced the `Ctrl+Y` folder picker tree with a virtualized searchable list so opening the picker does not realize a large Gmail folder tree on the UI thread.
-- The search field is focused when the picker opens; typing filters folders immediately, Enter opens the selected folder, and Down Arrow moves into the list.
+- The folder list is focused when the picker opens; press `/` to move focus to the search field, type to filter folders, and press Enter to open the selected folder.
 
 ## v0.5.3
 
