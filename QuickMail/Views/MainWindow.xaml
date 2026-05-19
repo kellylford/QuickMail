@@ -320,6 +320,9 @@
                 <Separator/>
                 <MenuItem Header="Go to _Folder…"
                           Click="MenuFolderPicker_Click"/>
+                <MenuItem Header="_Search Folders…"
+                          Click="MenuSearchFolders_Click"
+                          InputGestureText="Ctrl+Shift+F"/>
                 <MenuItem Header="Command _Palette…"
                           Click="MenuCommandPalette_Click"
                           InputGestureText="Ctrl+Shift+P"/>

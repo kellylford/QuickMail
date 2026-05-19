@@ -455,6 +455,12 @@ public partial class MainWindow : Window
             e.Handled = true;
             return;
         }
+        else if (modifiers == (ModifierKeys.Control | ModifierKeys.Shift) && key == Key.F)
+        {
+            OpenFolderPicker();
+            e.Handled = true;
+            return;
+        }
 
         // ── Registry-based action commands ───────────────────────────────────────
         var cmd = _registry.FindByGesture(key, modifiers);
@@ -2372,6 +2378,9 @@ public partial class MainWindow : Window
         => OpenCommandPalette();
 
     private void MenuFolderPicker_Click(object sender, RoutedEventArgs e)
+        => OpenFolderPicker();
+
+    private void MenuSearchFolders_Click(object sender, RoutedEventArgs e)
         => OpenFolderPicker();
 
     private async void MenuMoveToFolder_Click(object sender, RoutedEventArgs e)
