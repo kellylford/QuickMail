@@ -719,7 +719,15 @@ public partial class MainViewModel : ObservableObject
             App.Current.Dispatcher.InvokeAsync(() =>
             {
                 if (version == _conversationRebuildVersion)
+                {
+                    var expanded = Conversations
+                        .Where(g => g.IsExpanded).Select(g => g.NormalizedSubject)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (var g in groups)
+                        if (expanded.Contains(g.NormalizedSubject))
+                            g.IsExpanded = true;
                     Conversations = new ObservableCollection<ConversationGroup>(groups);
+                }
             });
         });
     }
@@ -737,6 +745,12 @@ public partial class MainViewModel : ObservableObject
                 if (version == _senderGroupRebuildVersion)
                 {
                     LogService.Debug($"[DELETE] SenderGroupRebuild v={version} applying {groups.Count} groups");
+                    var expanded = SenderGroups
+                        .Where(g => g.IsExpanded).Select(g => g.SenderKey)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (var g in groups)
+                        if (expanded.Contains(g.SenderKey))
+                            g.IsExpanded = true;
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
                 }
                 else
@@ -760,6 +774,12 @@ public partial class MainViewModel : ObservableObject
                 if (version == _toGroupRebuildVersion)
                 {
                     LogService.Debug($"[DELETE] ToGroupRebuild v={version} applying {groups.Count} groups");
+                    var expanded = ToGroups
+                        .Where(g => g.IsExpanded).Select(g => g.SenderKey)
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    foreach (var g in groups)
+                        if (expanded.Contains(g.SenderKey))
+                            g.IsExpanded = true;
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
                 }
                 else
