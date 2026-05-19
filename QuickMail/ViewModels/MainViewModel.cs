@@ -1173,16 +1173,19 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
+            var existingKeys = Messages
+                .Select(m => (m.UniqueId, m.AccountId, m.FolderName))
+                .ToHashSet();
+
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                     return;
 
-                // Dedup in case of overlap with cache
-                if (Messages.Any(e => e.UniqueId == msg.UniqueId &&
-                                      e.AccountId == msg.AccountId &&
-                                      e.FolderName == msg.FolderName))
+                var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
+                if (!existingKeys.Add(key))
                     continue;
+
                 InsertMessageSorted(msg);
             }
 
@@ -1341,13 +1344,18 @@ public partial class MainViewModel : ObservableObject
             var newMessages = await FetchAccountNewMessagesAsync(account, ct);
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+            var existingKeys = Messages
+                .Select(m => (m.UniqueId, m.AccountId, m.FolderName))
+                .ToHashSet();
+
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
-                if (Messages.Any(e => e.UniqueId   == msg.UniqueId &&
-                                      e.AccountId  == msg.AccountId &&
-                                      e.FolderName == msg.FolderName))
+
+                var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
+                if (!existingKeys.Add(key))
                     continue;
+
                 InsertMessageSorted(msg);
             }
 

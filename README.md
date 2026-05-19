@@ -9,6 +9,7 @@ A keyboard-first WPF desktop email client for Windows. Multi-account IMAP/SMTP w
 - **Conversation view** — threads grouped by subject with collapsible tree
 - **Pooled IMAP connections** — background sync, previews, attachment downloads, and message opening can run without reusing a busy IMAP connection
 - **Folder tree shortcut** — Ctrl+2 or Ctrl+Y moves focus to the main folder tree
+- **Search folders** — Ctrl+Shift+F opens a virtualized flat folder list; press / in the list to search
 - **Responsive reading pane** — complex marketing HTML falls back to a simplified reader mode
 - **HTML rendering** — WebView2 with strict CSP (no email-embedded scripts)
 - **Keyboard-first** — full navigation, reply, forward, and delete.
@@ -49,6 +50,7 @@ dotnet run --project QuickMail
 | Ctrl+R | Reply |
 | Ctrl+Shift+R | Reply all |
 | Ctrl+F | Forward |
+| Ctrl+Shift+F | Search folders |
 | Delete | Delete selected message(s) / conversation |
 | Escape | Close reading pane |
 

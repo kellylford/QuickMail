@@ -21,6 +21,7 @@
 ### Folder tree shortcuts
 
 - `Ctrl+2` and `Ctrl+Y` now focus the main folder tree pane instead of opening the quick-search folder picker.
+- Added `Ctrl+Shift+F` / **View > Search Folders...** for the virtualized flat folder list.
 - The same folder-tree shortcut handling now works from the WebView2 reading pane.
 
 ## v0.5.6

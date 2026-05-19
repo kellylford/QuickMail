@@ -52,7 +52,7 @@ The menu bar at the top of the window provides access to all major features, org
 |------|----------|
 | **File** | New Message, Manage Accounts, Address Book, Exit |
 | **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
-| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Command Palette |
+| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
 | **Help** | User Guide |
 
 All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
@@ -134,6 +134,10 @@ Your Microsoft password is never seen or stored by QuickMail — only an encrypt
 ### Folder tree shortcut (Ctrl+2 / Ctrl+Y)
 
 Press `Ctrl+2` or `Ctrl+Y` to move focus to the main folder tree. Use **Up/Down** to choose a folder, **Right/Left** to expand or collapse account and folder nodes, and **Enter** to open the selected folder.
+
+### Search folders (Ctrl+Shift+F)
+
+Press `Ctrl+Shift+F` or activate **View > Search Folders...** to open the flat folder list. Focus starts on the folder list, so you can use **Up/Down** and **Enter** immediately. Press `/` to move to the search field, type to filter folders, and press **Enter** to open the selected folder.
 
 ### Load More (Ctrl+M)
 
@@ -419,6 +423,7 @@ A security warning is shown before opening executable file types.
 | Delete | Delete selected message(s) |
 | Ctrl+Shift+V | Cycle view mode (Messages / From / To / Conversations) |
 | Ctrl+Shift+C | Toggle conversation view |
+| Ctrl+Shift+F | Search folders |
 | Ctrl+Shift+P | Open command palette |
 | Ctrl+M | Load more messages |
 | Ctrl+Shift+E | Empty Trash |
