@@ -48,10 +48,14 @@
                      AutomationProperties.Name="Account list"
                      TextSearch.TextPath="AccountLabel"
                      BorderThickness="1">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding AccountLabelWithDefault}"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal"
-                                    AutomationProperties.Name="{Binding AccountLabelWithDefault}">
+                        <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{Binding AccountLabel}" VerticalAlignment="Center"/>
                             <TextBlock Text=" (Default)" FontStyle="Italic" Foreground="DarkBlue"
                                        VerticalAlignment="Center"
