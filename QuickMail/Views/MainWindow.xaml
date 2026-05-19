@@ -218,7 +218,8 @@
         </Grid.RowDefinitions>
 
         <!-- ── Menu bar — Row 0 ── -->
-        <Menu Grid.Row="0"
+        <Menu x:Name="MainMenuBar"
+              Grid.Row="0"
               IsTabStop="False"
               KeyboardNavigation.TabNavigation="None"
               AutomationProperties.Name="Main menu">

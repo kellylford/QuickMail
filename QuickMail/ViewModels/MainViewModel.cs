@@ -11,6 +11,7 @@ using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -39,6 +40,10 @@ public partial class MainViewModel : ObservableObject
 
     // How many days of mail to sync (0 = all); set via the Sync Range menu
     private int _syncDays = 30;
+
+    // When true, FolderSynced events are ignored so that the initial startup sync
+    // can run silently and update the UI once at the end instead of N times.
+    private bool _suppressFolderSyncUpdates;
 
     // Version stamps; latest wins, stale results discarded
     private int _folderLoadVersion;
@@ -145,7 +150,7 @@ public partial class MainViewModel : ObservableObject
     private MailFolderModel? _selectedFolder;
 
     [ObservableProperty]
-    private ObservableCollection<MailMessageSummary> _messages = [];
+    private BatchObservableCollection<MailMessageSummary> _messages = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedMessage))]
@@ -359,7 +364,7 @@ public partial class MainViewModel : ObservableObject
     {
         SelectedFolder = AllMailFolder;
         var cached = await _localStore.LoadAllSummariesAsync();
-        Messages = new ObservableCollection<MailMessageSummary>(cached);
+        Messages = new BatchObservableCollection<MailMessageSummary>(cached);
         StatusText = cached.Count > 0
             ? $"{cached.Count} messages (cached — syncing…)"
             : "Connecting and syncing…";
@@ -393,23 +398,42 @@ public partial class MainViewModel : ObservableObject
         }
 
         StatusText = "Syncing mail…";
-        using var announceCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var announceTask = AnnounceLoadingProgressAsync(announceCts.Token);
+        _suppressFolderSyncUpdates = true;
         try
         {
             await _syncService.SyncAllAccountsAsync(Accounts, _cachedFolders, ct);
-            await announceCts.CancelAsync();
-            await announceTask;
+
+            // Sync done — reload from the local store once so the UI reflects
+            // every folder that was synced without N intermediate screen-reader
+            // announcements.  Only reload if the user hasn't navigated away.
+            var sel = SelectedFolder;
+            if (sel != null)
+            {
+                List<MailMessageSummary> fresh;
+                if (sel.FullName == AllMailFolder.FullName)
+                    fresh = await _localStore.LoadAllSummariesAsync();
+                else if (TryGetAccountIdFromSentinel(sel.FullName, out var aid))
+                    fresh = await _localStore.LoadAllSummariesAsync(aid);
+                else
+                    fresh = null!; // user is on a specific folder — don't overwrite it
+
+                if (fresh != null)
+                    Messages = new BatchObservableCollection<MailMessageSummary>(fresh);
+            }
+
             var count = Messages.Count;
             StatusText = $"{count} messages.";
             Announce($"{count} {(count == 1 ? "message" : "messages")} loaded.");
         }
-        catch (OperationCanceledException) { await announceCts.CancelAsync(); }
+        catch (OperationCanceledException) { /* sync cancelled — normal */ }
         catch (Exception ex)
         {
-            await announceCts.CancelAsync();
             LogService.Log("BackgroundSync", ex);
             StatusText = $"Sync error: {ex.Message}";
+        }
+        finally
+        {
+            _suppressFolderSyncUpdates = false;
         }
     }
 
@@ -433,6 +457,11 @@ public partial class MainViewModel : ObservableObject
     // Inserts truly new messages into the live collection in sorted order.
     private void OnFolderSynced(IReadOnlyList<MailMessageSummary> incoming)
     {
+        // During startup background sync the UI is updated once at the end
+        // (in StartBackgroundSyncAsync) rather than folder-by-folder, so that
+        // screen readers don't re-announce the focused message on every insert.
+        if (_suppressFolderSyncUpdates) return;
+
         var selected = SelectedFolder;
         if (selected == null) return;
 
@@ -459,14 +488,21 @@ public partial class MainViewModel : ObservableObject
         foreach (var e in Messages)
             seen.Add((e.UniqueId, e.AccountId, e.FolderName));
 
+        // Batch all inserts into a single CollectionChanged(Reset) notification.
+        // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
+        // causes the ListView to emit a UIA StructureChanged(ChildAdded) event per insert.
+        // When new messages arrive sorted before the focused item, each event shifts the
+        // focused item's UIA position, causing screen readers to re-announce it every time.
+        // A single Reset notification lets WPF re-bind once and screen readers see only
+        // one structural change for the whole batch.
+        Messages.BeginBatch();
         foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
             if (!seen.Add((msg.UniqueId, msg.AccountId, msg.FolderName)))
                 continue;
             InsertMessageSorted(msg);
         }
-
-        StatusText = $"{Messages.Count} messages";
+        Messages.EndBatch();
 
         if (ViewMode == ViewMode.Conversations)
             ScheduleConversationRebuild();
@@ -712,7 +748,7 @@ public partial class MainViewModel : ObservableObject
     }
 
     /// <summary>Called by MVVM Toolkit whenever the Messages property is replaced.</summary>
-    partial void OnMessagesChanged(ObservableCollection<MailMessageSummary> value)
+    partial void OnMessagesChanged(BatchObservableCollection<MailMessageSummary> value)
     {
         if (ViewMode == ViewMode.Conversations)
             ScheduleConversationRebuild();
@@ -899,7 +935,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, folder))
                 return;
 
-            Messages = new ObservableCollection<MailMessageSummary>(cached);
+            Messages = new BatchObservableCollection<MailMessageSummary>(cached);
             StatusText = cached.Count > 0
                 ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
                 : $"Loading {folder.DisplayName}…";
@@ -942,7 +978,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(version, folder))
                 return;
 
-            Messages = new ObservableCollection<MailMessageSummary>(list);
+            Messages = new BatchObservableCollection<MailMessageSummary>(list);
             StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
             _ = _localStore.UpsertSummariesAsync(list);
 
@@ -1145,7 +1181,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                 return;
 
-            Messages = new ObservableCollection<MailMessageSummary>(cached);
+            Messages = new BatchObservableCollection<MailMessageSummary>(cached);
             StatusText = cached.Count > 0
                 ? $"{cached.Count} messages (checking for new…)"
                 : "Checking for new messages…";
@@ -1179,7 +1215,7 @@ public partial class MainViewModel : ObservableObject
                     .OrderByDescending(m => m.Date)
                     .ToList();
 
-                Messages = new ObservableCollection<MailMessageSummary>(repaired);
+                Messages = new BatchObservableCollection<MailMessageSummary>(repaired);
                 _ = _localStore.UpsertSummariesAsync(repaired);
 
                 var totalCount = Messages.Count;
@@ -1355,7 +1391,7 @@ public partial class MainViewModel : ObservableObject
             var cached = await _localStore.LoadAllSummariesAsync(accountId);
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-            Messages = new ObservableCollection<MailMessageSummary>(cached);
+            Messages = new BatchObservableCollection<MailMessageSummary>(cached);
             StatusText = cached.Count > 0
                 ? $"{cached.Count} messages (checking for new…)"
                 : "Checking for new messages…";
@@ -1445,7 +1481,7 @@ public partial class MainViewModel : ObservableObject
                 return;
 
             var sorted = all.OrderByDescending(m => m.Date).ToList();
-            Messages = new ObservableCollection<MailMessageSummary>(sorted);
+            Messages = new BatchObservableCollection<MailMessageSummary>(sorted);
             StatusText = sorted.Count == 0
                 ? $"No messages in {displayName}."
                 : $"{sorted.Count} messages in {displayName}.";

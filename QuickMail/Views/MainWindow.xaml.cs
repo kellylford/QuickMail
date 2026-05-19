@@ -86,6 +86,12 @@ public partial class MainWindow : Window
     private string? _pendingAnnounceText;
     private static readonly TimeSpan AnnounceDebounce = TimeSpan.FromMilliseconds(50);
 
+    // Debounces StatusText announcements so rapid per-folder sync updates ("5 messages",
+    // "12 messages", …) coalesce into a single final reading by the screen reader.
+    private DispatcherTimer? _statusAnnounceTimer;
+    private string? _pendingStatusText;
+    private static readonly TimeSpan StatusAnnounceDebounce = TimeSpan.FromMilliseconds(500);
+
     private const int MaxRichHtmlRenderChars = 1_000_000;
     private const int MaxReaderTextChars = 140_000;
     private const int MaxRichHtmlTableCount = 500;
@@ -155,7 +161,11 @@ public partial class MainWindow : Window
             if (e.PropertyName == nameof(MainViewModel.Messages) && IsActive)
             {
                 LogService.Debug($"[FOCUS] PropChanged:Messages viewMode={_vm.ViewMode} {FocusInfo()}");
-                if (vm.IsConversationsView)
+                if (IsMenuOrToolbarFocused())
+                {
+                    LogService.Debug("[FOCUS]   → skipped (menu/toolbar has focus)");
+                }
+                else if (vm.IsConversationsView)
                 {
                     LogService.Debug("[FOCUS]   → LandOnConversationAfterRebuild(0)");
                     LandOnConversationAfterRebuild(0);
@@ -178,32 +188,53 @@ public partial class MainWindow : Window
             }
             else if (e.PropertyName == nameof(MainViewModel.Conversations) && IsActive && vm.IsConversationsView)
             {
-                // Capture selected index now (before DataBind replaces items) so we can
-                // restore position after a background sync that rebuilds Conversations.
-                var oldIdx = ConversationTree.Items.IndexOf(ConversationTree.SelectedItem);
-                LogService.Debug($"[FOCUS] PropChanged:Conversations convCount={vm.Conversations.Count} oldIdx={oldIdx} {FocusInfo()}");
-                FocusTreeSelectedOrFirst(ConversationTree, oldIdx);
+                if (IsMenuOrToolbarFocused())
+                {
+                    LogService.Debug("[FOCUS] PropChanged:Conversations skipped (menu/toolbar has focus)");
+                }
+                else
+                {
+                    // Capture selected index now (before DataBind replaces items) so we can
+                    // restore position after a background sync that rebuilds Conversations.
+                    var oldIdx = ConversationTree.Items.IndexOf(ConversationTree.SelectedItem);
+                    LogService.Debug($"[FOCUS] PropChanged:Conversations convCount={vm.Conversations.Count} oldIdx={oldIdx} {FocusInfo()}");
+                    FocusTreeSelectedOrFirst(ConversationTree, oldIdx);
+                }
             }
             else if (e.PropertyName == nameof(MainViewModel.SenderGroups) && IsActive && vm.IsFromView)
             {
-                // Capture selected index now (before DataBind replaces items) so we can
-                // restore position after a background sync that rebuilds SenderGroups.
-                var oldIdx = SenderGroupTree.Items.IndexOf(SenderGroupTree.SelectedItem);
-                LogService.Debug($"[FOCUS] PropChanged:SenderGroups grpCount={vm.SenderGroups.Count} oldIdx={oldIdx} {FocusInfo()}");
-                FocusTreeSelectedOrFirst(SenderGroupTree, oldIdx);
+                if (IsMenuOrToolbarFocused())
+                {
+                    LogService.Debug("[FOCUS] PropChanged:SenderGroups skipped (menu/toolbar has focus)");
+                }
+                else
+                {
+                    // Capture selected index now (before DataBind replaces items) so we can
+                    // restore position after a background sync that rebuilds SenderGroups.
+                    var oldIdx = SenderGroupTree.Items.IndexOf(SenderGroupTree.SelectedItem);
+                    LogService.Debug($"[FOCUS] PropChanged:SenderGroups grpCount={vm.SenderGroups.Count} oldIdx={oldIdx} {FocusInfo()}");
+                    FocusTreeSelectedOrFirst(SenderGroupTree, oldIdx);
+                }
             }
             else if (e.PropertyName == nameof(MainViewModel.ToGroups) && IsActive && vm.IsToView)
             {
-                // Capture selected index now (before DataBind replaces items) so we can
-                // restore position after a background sync that rebuilds ToGroups.
-                var oldIdx = ToGroupTree.Items.IndexOf(ToGroupTree.SelectedItem);
-                LogService.Debug($"[FOCUS] PropChanged:ToGroups grpCount={vm.ToGroups.Count} oldIdx={oldIdx} {FocusInfo()}");
-                FocusTreeSelectedOrFirst(ToGroupTree, oldIdx);
+                if (IsMenuOrToolbarFocused())
+                {
+                    LogService.Debug("[FOCUS] PropChanged:ToGroups skipped (menu/toolbar has focus)");
+                }
+                else
+                {
+                    // Capture selected index now (before DataBind replaces items) so we can
+                    // restore position after a background sync that rebuilds ToGroups.
+                    var oldIdx = ToGroupTree.Items.IndexOf(ToGroupTree.SelectedItem);
+                    LogService.Debug($"[FOCUS] PropChanged:ToGroups grpCount={vm.ToGroups.Count} oldIdx={oldIdx} {FocusInfo()}");
+                    FocusTreeSelectedOrFirst(ToGroupTree, oldIdx);
+                }
             }
             else if (e.PropertyName == nameof(MainViewModel.ViewMode))
             {
                 LogService.Debug($"[FOCUS] ViewMode → {vm.ViewMode} {FocusInfo()}");
-                if (ShouldRestoreMessagePanelFocusAfterViewModeChange())
+                if (!IsMenuOrToolbarFocused() && ShouldRestoreMessagePanelFocusAfterViewModeChange())
                 {
                     LogService.Debug("[FOCUS]   → FocusActiveMessagePanel (view mode change)");
                     Dispatcher.InvokeAsync(FocusActiveMessagePanel, DispatcherPriority.Input);
@@ -216,7 +247,7 @@ public partial class MainWindow : Window
             }
 
             if (e.PropertyName == nameof(MainViewModel.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
-                AccessibilityHelper.Announce(this, vm.StatusText);
+                QueueStatusAnnounce(vm.StatusText);
         };
 
         PreviewKeyDown += OnWindowKeyDown;
@@ -276,6 +307,37 @@ public partial class MainWindow : Window
         _announceTimer.Stop();
         _announceTimer.Start();
     }
+
+    // Debounced UIA notification for rapid status-text changes during sync. Multiple
+    // per-folder updates ("5 messages", "12 messages", …) are coalesced so the screen
+    // reader hears only the final count once sync settles.
+    private void QueueStatusAnnounce(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        _pendingStatusText = text;
+
+        if (_statusAnnounceTimer == null)
+        {
+            _statusAnnounceTimer = new DispatcherTimer { Interval = StatusAnnounceDebounce };
+            _statusAnnounceTimer.Tick += (_, _) =>
+            {
+                _statusAnnounceTimer!.Stop();
+                var pending = _pendingStatusText;
+                _pendingStatusText = null;
+                if (!string.IsNullOrEmpty(pending))
+                    AccessibilityHelper.Announce(this, pending);
+            };
+        }
+
+        _statusAnnounceTimer.Stop();
+        _statusAnnounceTimer.Start();
+    }
+
+    // Returns true when the main menu bar or toolbar currently holds keyboard focus,
+    // meaning sync-triggered focus restoration should be suppressed so the user's
+    // deliberate navigation is not interrupted.
+    private bool IsMenuOrToolbarFocused() =>
+        MainMenuBar.IsKeyboardFocusWithin || MainToolbar.IsKeyboardFocusWithin;
 
     // On startup: initialise WebView2, connect to first account, open INBOX, focus message list
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -1488,12 +1550,13 @@ public partial class MainWindow : Window
     }
 
     private bool ShouldRestoreMessagePanelFocusAfterViewModeChange() =>
-        MessageList.IsKeyboardFocusWithin ||
+        !IsMenuOrToolbarFocused() &&
+        (MessageList.IsKeyboardFocusWithin ||
         ConversationTree.IsKeyboardFocusWithin ||
         SenderGroupTree.IsKeyboardFocusWithin ||
         ToGroupTree.IsKeyboardFocusWithin ||
         MessageBody.IsKeyboardFocusWithin ||
-        ViewModeButton.IsKeyboardFocusWithin;
+        ViewModeButton.IsKeyboardFocusWithin);
 
     // Moves keyboard focus to the status bar's read-only TextBox.
     // StatusTextBox is ControlType.Edit + ValuePattern, so screen readers
