@@ -37,12 +37,10 @@ public partial class App : Application
             commandRegistry.ApplyUserOverrides(configService.Load().CustomHotkeys);
 
             var mainVm = new MainViewModel(
-                imapService, accountService, credentialService, localStore, syncService, configService, commandRegistry);
+                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry);
             mainVm.LoadAccountList();
 
-            var mainWindow = new MainWindow(
-                mainVm, smtpService, accountService, credentialService, imapService, oauthService,
-                commandRegistry, contactService, configService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, contactService, configService, localStore);
             mainWindow.Show();
         }
         catch (Exception ex)

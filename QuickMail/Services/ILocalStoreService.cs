@@ -14,6 +14,7 @@ public interface ILocalStoreService
     Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId);
     Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null);
     Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds);
+    Task DeleteAccountDataAsync(Guid accountId);
     Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead);
     Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview);
     Task<bool> HasSummariesMissingRecipientsAsync();

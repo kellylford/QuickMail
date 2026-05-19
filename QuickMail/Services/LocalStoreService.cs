@@ -205,6 +205,19 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
+    public async Task DeleteAccountDataAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var tx   = await conn.BeginTransactionAsync();
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText =
+            "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
+            "DELETE FROM MessageSummary WHERE account_id = $aid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
     public async Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead)
     {
         await using var conn = await OpenAsync();

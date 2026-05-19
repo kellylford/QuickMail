@@ -25,9 +25,15 @@ xUnit 2.9.3 with `Xunit.StaFact` for WPF STA-thread tests.
 
 ```bat
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
+dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --filter "FullyQualifiedName~ClassName"
 ```
 
 Test types in `QuickMail.Tests/`:
+
+- **ViewModelConstructionTests** — VM instantiation with stub services (catches init crashes)
+- **XamlParseTests** — XAML loads without `XamlParseException` (requires STA thread via `[StaFact]`)
+- **LocalStoreServiceTests** — SQLite round-trip tests
+- **SettingsViewModelTests** — settings persistence and hotkey binding logic
 
 - **ViewModelConstructionTests**: VM instantiation with stub services.
 - **XamlParseTests**: XAML loads without `XamlParseException` (STA thread).
@@ -40,8 +46,8 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 
 ### Service Layer
 
-**App.xaml.cs** is the manual DI composition root. Services are wired in `OnStartup` in dependency order:
-`AccountService` -> `CredentialService` -> `OAuthService` -> `ConfigService` -> `ImapService` -> `SmtpService` -> `LocalStoreService` -> `SyncService` -> `CommandRegistry` -> `MainViewModel` -> `MainWindow`. Pass `/debug` on startup to enable verbose file logging.
+**App.xaml.cs** is the manual DI composition root — no container. Services are wired in `OnStartup` in dependency order:
+`AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `SyncService` → `CommandRegistry` → `MainViewModel` → `MainWindow`. Pass `/debug` on startup to enable verbose file logging.
 
 **ImapService** uses MailKit and leases `ImapClient` instances from a bounded per-account pool. Foreground operations (message open, attachment download, mutating user actions) use foreground leases. Background work (sync, UID checks, polling, preview fetches, prefetch) uses background leases capped below the full pool so sync cannot starve interactive work. `MaxImapConnectionsPerAccount` defaults to 6 and is clamped to 1-15.
 
@@ -50,6 +56,18 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 **SyncService** runs background IMAP sync. It raises `FolderSynced` and `MessagesRemoved` events; `MainViewModel` subscribes and merges new data into observable collections. UI is populated from the SQLite cache immediately, then background sync fills gaps.
 
 **OAuthService** wraps MSAL (`Microsoft.Identity.Client`) for Microsoft 365 / Outlook OAuth2. Token refresh is handled automatically; passwords for OAuth accounts are not stored in Credential Manager.
+
+**ConfigService** reads/writes `%APPDATA%\QuickMail\config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
+
+**ContactService** stores the address book in `%APPDATA%\QuickMail\contacts.json`. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
+
+**CommandRegistry** holds all `CommandDefinition` instances (id, category, title, default gesture, execute action). Commands are registered in `MainWindow`'s constructor. `FindByGesture()` checks user overrides from `hotkeys.json` first, then falls back to defaults. The command palette (`Ctrl+P`) uses `CommandPaletteViewModel` to display and invoke them.
+
+**Static utilities** (no DI required):
+- `ConversationBuilder` — groups messages by normalized subject (strips all leading Re:/Fwd: chains); used for Conversations view mode
+- `SenderGroupBuilder` — groups messages by From or To; used for From/To view modes
+- `MimeMessageBuilder` — builds a `MimeMessage` from `ComposeModel` + `AccountModel`; shared by `SmtpService` and `ImapService` (draft saving)
+- `AddressParser` — splits comma/semicolon-delimited address strings into `MailboxAddress` objects
 
 ### ViewModel State
 
@@ -164,6 +182,7 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | Ctrl+Shift+G | `contacts.grabAddresses` | Grab Addresses from Message |
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
 | F1 | `help.userGuide` | Open User Guide |
+
 
 ## Dependencies
 

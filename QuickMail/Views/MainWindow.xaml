@@ -36,6 +36,13 @@
                       Command="{Binding ForwardSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
+            <MenuItem Header="_Move to Folder…"
+                      AutomationProperties.Name="Move Sender Group to Folder"
+                      Click="SenderGroupContextMenu_MoveToFolder_Click"/>
+            <MenuItem Header="_Copy to Folder…"
+                      AutomationProperties.Name="Copy Sender Group to Folder"
+                      Click="SenderGroupContextMenu_CopyToFolder_Click"/>
+            <Separator/>
             <MenuItem Header="_Delete All from Sender"
                       AutomationProperties.Name="Delete All from Sender"
                       Command="{Binding DeleteSenderGroupCommand}"
@@ -73,6 +80,13 @@
                       AutomationProperties.Name="Forward"
                       Command="{Binding ForwardToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <Separator/>
+            <MenuItem Header="_Move to Folder…"
+                      AutomationProperties.Name="Move Recipient Group to Folder"
+                      Click="ToGroupContextMenu_MoveToFolder_Click"/>
+            <MenuItem Header="_Copy to Folder…"
+                      AutomationProperties.Name="Copy Recipient Group to Folder"
+                      Click="ToGroupContextMenu_CopyToFolder_Click"/>
             <Separator/>
             <MenuItem Header="_Delete All to Recipient"
                       AutomationProperties.Name="Delete All to Recipient"

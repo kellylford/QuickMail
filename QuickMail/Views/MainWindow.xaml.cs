@@ -106,6 +106,7 @@ public partial class MainWindow : Window
 
     private readonly IContactService _contactService;
     private readonly IConfigService _configService;
+    private readonly ILocalStoreService _localStore;
 
     public MainWindow(
         MainViewModel vm,
@@ -116,7 +117,8 @@ public partial class MainWindow : Window
         IOAuthService oauth,
         ICommandRegistry registry,
         IContactService contactService,
-        IConfigService configService)
+        IConfigService configService,
+        ILocalStoreService localStore)
     {
         _vm = vm;
         _smtp = smtp;
@@ -127,6 +129,7 @@ public partial class MainWindow : Window
         _registry = registry;
         _contactService = contactService;
         _configService = configService;
+        _localStore = localStore;
 
         InitializeComponent();
         DataContext = vm;
@@ -1738,9 +1741,17 @@ public partial class MainWindow : Window
             if (ConversationTree.SelectedItem is MailMessageSummary toDelete)
             {
                 var parentGroup = _vm.Conversations.FirstOrDefault(g => g.Messages.Contains(toDelete));
-                var targetIdx   = parentGroup != null ? _vm.Conversations.IndexOf(parentGroup) : 0;
+                var groupIdx    = parentGroup != null ? _vm.Conversations.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
-                LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
+                if (parentGroup != null && parentGroup.Messages.Count > 1)
+                {
+                    int msgIdx = 0;
+                    for (int i = 0; i < parentGroup.Messages.Count; i++)
+                        if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
+                    LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
+                }
+                else
+                    LandOnConversationAfterRebuild(groupIdx);
                 await _vm.DeleteMessageCommand.ExecuteAsync(null);
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
@@ -1919,6 +1930,176 @@ public partial class MainWindow : Window
         _vm.PropertyChanged += OnPropertyChanged;
     }
 
+    // ── Message-level focus helpers for grouped views ────────────────────────
+
+    private void FocusSenderGroupMessage(SenderGroup group, int msgIdx, bool isRetry = false)
+    {
+        var target   = group.Messages[msgIdx];
+        var groupTvi = SenderGroupTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
+        if (groupTvi == null)
+        {
+            if (!isRetry)
+                Dispatcher.InvokeAsync(() => FocusSenderGroupMessage(group, msgIdx, true), DispatcherPriority.Background);
+            return;
+        }
+        if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
+        var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
+        if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
+        if (!isRetry)
+            Dispatcher.InvokeAsync(() =>
+            {
+                var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
+                if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
+                else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
+            }, DispatcherPriority.Background);
+        else { groupTvi.IsSelected = true; groupTvi.Focus(); }
+    }
+
+    private void LandOnSenderMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
+    {
+        void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(_vm.SenderGroups)) return;
+            _vm.PropertyChanged -= OnPropertyChanged;
+            Dispatcher.InvokeAsync(() =>
+            {
+                var group = _vm.SenderGroups.FirstOrDefault(g =>
+                    string.Equals(g.SenderKey, senderKey, StringComparison.OrdinalIgnoreCase));
+                if (group != null && group.Messages.Count > 0)
+                {
+                    FocusSenderGroupMessage(group, Math.Min(msgIdx, group.Messages.Count - 1));
+                }
+                else
+                {
+                    if (_vm.SenderGroups.Count == 0) return;
+                    var idx      = Math.Max(0, Math.Min(fallbackGroupIdx, _vm.SenderGroups.Count - 1));
+                    var fallback = _vm.SenderGroups[idx];
+                    if (SenderGroupTree.ItemContainerGenerator.ContainerFromItem(fallback) is TreeViewItem tvi)
+                    { tvi.IsSelected = true; tvi.Focus(); }
+                    else
+                        Dispatcher.InvokeAsync(() =>
+                        {
+                            if (SenderGroupTree.ItemContainerGenerator.ContainerFromItem(fallback) is TreeViewItem tvi2)
+                            { tvi2.IsSelected = true; tvi2.Focus(); }
+                        }, DispatcherPriority.Background);
+                }
+            }, DispatcherPriority.Input);
+        }
+        _vm.PropertyChanged += OnPropertyChanged;
+    }
+
+    private void FocusToGroupMessage(SenderGroup group, int msgIdx, bool isRetry = false)
+    {
+        var target   = group.Messages[msgIdx];
+        var groupTvi = ToGroupTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
+        if (groupTvi == null)
+        {
+            if (!isRetry)
+                Dispatcher.InvokeAsync(() => FocusToGroupMessage(group, msgIdx, true), DispatcherPriority.Background);
+            return;
+        }
+        if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
+        var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
+        if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
+        if (!isRetry)
+            Dispatcher.InvokeAsync(() =>
+            {
+                var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
+                if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
+                else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
+            }, DispatcherPriority.Background);
+        else { groupTvi.IsSelected = true; groupTvi.Focus(); }
+    }
+
+    private void LandOnToMessageAfterRebuild(string senderKey, int msgIdx, int fallbackGroupIdx)
+    {
+        void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(_vm.ToGroups)) return;
+            _vm.PropertyChanged -= OnPropertyChanged;
+            Dispatcher.InvokeAsync(() =>
+            {
+                var group = _vm.ToGroups.FirstOrDefault(g =>
+                    string.Equals(g.SenderKey, senderKey, StringComparison.OrdinalIgnoreCase));
+                if (group != null && group.Messages.Count > 0)
+                {
+                    FocusToGroupMessage(group, Math.Min(msgIdx, group.Messages.Count - 1));
+                }
+                else
+                {
+                    if (_vm.ToGroups.Count == 0) return;
+                    var idx      = Math.Max(0, Math.Min(fallbackGroupIdx, _vm.ToGroups.Count - 1));
+                    var fallback = _vm.ToGroups[idx];
+                    if (ToGroupTree.ItemContainerGenerator.ContainerFromItem(fallback) is TreeViewItem tvi)
+                    { tvi.IsSelected = true; tvi.Focus(); }
+                    else
+                        Dispatcher.InvokeAsync(() =>
+                        {
+                            if (ToGroupTree.ItemContainerGenerator.ContainerFromItem(fallback) is TreeViewItem tvi2)
+                            { tvi2.IsSelected = true; tvi2.Focus(); }
+                        }, DispatcherPriority.Background);
+                }
+            }, DispatcherPriority.Input);
+        }
+        _vm.PropertyChanged += OnPropertyChanged;
+    }
+
+    private void FocusConversationMessage(ConversationGroup group, int msgIdx, bool isRetry = false)
+    {
+        var target   = group.Messages[msgIdx];
+        var groupTvi = ConversationTree.ItemContainerGenerator.ContainerFromItem(group) as TreeViewItem;
+        if (groupTvi == null)
+        {
+            if (!isRetry)
+                Dispatcher.InvokeAsync(() => FocusConversationMessage(group, msgIdx, true), DispatcherPriority.Background);
+            return;
+        }
+        if (!groupTvi.IsExpanded) groupTvi.IsExpanded = true;
+        var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
+        if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
+        if (!isRetry)
+            Dispatcher.InvokeAsync(() =>
+            {
+                var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
+                if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
+                else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
+            }, DispatcherPriority.Background);
+        else { groupTvi.IsSelected = true; groupTvi.Focus(); }
+    }
+
+    private void LandOnConversationMessageAfterRebuild(string normalizedSubject, int msgIdx, int fallbackGroupIdx)
+    {
+        void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(_vm.Conversations)) return;
+            _vm.PropertyChanged -= OnPropertyChanged;
+            Dispatcher.InvokeAsync(() =>
+            {
+                var group = _vm.Conversations.FirstOrDefault(g =>
+                    string.Equals(g.NormalizedSubject, normalizedSubject, StringComparison.OrdinalIgnoreCase));
+                if (group != null && group.Messages.Count > 0)
+                {
+                    FocusConversationMessage(group, Math.Min(msgIdx, group.Messages.Count - 1));
+                }
+                else
+                {
+                    if (_vm.Conversations.Count == 0) return;
+                    var idx      = Math.Max(0, Math.Min(fallbackGroupIdx, _vm.Conversations.Count - 1));
+                    var fallback = _vm.Conversations[idx];
+                    if (ConversationTree.ItemContainerGenerator.ContainerFromItem(fallback) is TreeViewItem tvi)
+                    { tvi.IsSelected = true; tvi.Focus(); }
+                    else
+                        Dispatcher.InvokeAsync(() =>
+                        {
+                            if (ConversationTree.ItemContainerGenerator.ContainerFromItem(fallback) is TreeViewItem tvi2)
+                            { tvi2.IsSelected = true; tvi2.Focus(); }
+                        }, DispatcherPriority.Background);
+                }
+            }, DispatcherPriority.Input);
+        }
+        _vm.PropertyChanged += OnPropertyChanged;
+    }
+
     // ── SenderGroup tree event handlers ─────────────────────────────────────
 
     private void SenderGroupTree_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
@@ -2009,9 +2190,17 @@ public partial class MainWindow : Window
             if (SenderGroupTree.SelectedItem is MailMessageSummary toDelete)
             {
                 var parentGroup = _vm.SenderGroups.FirstOrDefault(g => g.Messages.Contains(toDelete));
-                var targetIdx   = parentGroup != null ? _vm.SenderGroups.IndexOf(parentGroup) : 0;
+                var groupIdx    = parentGroup != null ? _vm.SenderGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
-                LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
+                if (parentGroup != null && parentGroup.Messages.Count > 1)
+                {
+                    int msgIdx = 0;
+                    for (int i = 0; i < parentGroup.Messages.Count; i++)
+                        if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
+                    LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                }
+                else
+                    LandOnSenderGroupAfterRebuild(groupIdx);
                 await _vm.DeleteMessageCommand.ExecuteAsync(null);
             }
             else if (SenderGroupTree.SelectedItem is SenderGroup group)
@@ -2066,6 +2255,32 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
         }
+    }
+
+    // ── SenderGroup context menu handlers ────────────────────────────────────
+
+    private async void SenderGroupContextMenu_MoveToFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (SenderGroupTree.SelectedItem is not SenderGroup group || group.Messages.Count == 0) return;
+        if (_vm.CachedFolders.Count == 0) return;
+
+        var targetIdx = _vm.SenderGroups.IndexOf(group);
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move to Folder") { Owner = this };
+        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+
+        await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
+        LandOnSenderGroupAfterRebuild(targetIdx);
+    }
+
+    private async void SenderGroupContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (SenderGroupTree.SelectedItem is not SenderGroup group || group.Messages.Count == 0) return;
+        if (_vm.CachedFolders.Count == 0) return;
+
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder") { Owner = this };
+        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+
+        await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
     }
 
     // ── ToGroup tree event handlers ──────────────────────────────────────────
@@ -2158,9 +2373,17 @@ public partial class MainWindow : Window
             if (ToGroupTree.SelectedItem is MailMessageSummary toDelete)
             {
                 var parentGroup = _vm.ToGroups.FirstOrDefault(g => g.Messages.Contains(toDelete));
-                var targetIdx   = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
+                var groupIdx    = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
                 _vm.SelectedMessage = toDelete;
-                LandOnToGroupAfterRebuild(targetIdx);
+                if (parentGroup != null && parentGroup.Messages.Count > 1)
+                {
+                    int msgIdx = 0;
+                    for (int i = 0; i < parentGroup.Messages.Count; i++)
+                        if (parentGroup.Messages[i] == toDelete) { msgIdx = i; break; }
+                    LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                }
+                else
+                    LandOnToGroupAfterRebuild(groupIdx);
                 await _vm.DeleteMessageCommand.ExecuteAsync(null);
             }
             else if (ToGroupTree.SelectedItem is SenderGroup group)
@@ -2214,6 +2437,32 @@ public partial class MainWindow : Window
         }
     }
 
+    // ── ToGroup context menu handlers ─────────────────────────────────────────
+
+    private async void ToGroupContextMenu_MoveToFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (ToGroupTree.SelectedItem is not SenderGroup group || group.Messages.Count == 0) return;
+        if (_vm.CachedFolders.Count == 0) return;
+
+        var targetIdx = _vm.ToGroups.IndexOf(group);
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move to Folder") { Owner = this };
+        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+
+        await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
+        LandOnToGroupAfterRebuild(targetIdx);
+    }
+
+    private async void ToGroupContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
+    {
+        if (ToGroupTree.SelectedItem is not SenderGroup group || group.Messages.Count == 0) return;
+        if (_vm.CachedFolders.Count == 0) return;
+
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder") { Owner = this };
+        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+
+        await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
+    }
+
     private void OpenComposeWindow(ComposeModel composeModel)
     {
         var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap);
@@ -2225,7 +2474,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManager()
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService);
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         if (dialog.ShowDialog() == true)
             _vm.RefreshAccountList();
@@ -2233,7 +2482,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManagerForAccount(AccountModel account)
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService);
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);
