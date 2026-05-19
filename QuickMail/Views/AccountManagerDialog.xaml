@@ -50,7 +50,8 @@
                      BorderThickness="1">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal"
+                                    AutomationProperties.Name="{Binding AccountLabelWithDefault}">
                             <TextBlock Text="{Binding AccountLabel}" VerticalAlignment="Center"/>
                             <TextBlock Text=" (Default)" FontStyle="Italic" Foreground="DarkBlue"
                                        VerticalAlignment="Center"

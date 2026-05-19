@@ -27,6 +27,7 @@ public class AccountModel
 
     public string AccountLabel => string.IsNullOrWhiteSpace(AccountName) ? Username : AccountName;
     public string SenderDisplayName => string.IsNullOrWhiteSpace(DisplayName) ? AccountLabel : DisplayName;
+    public string AccountLabelWithDefault => IsDefault ? $"{AccountLabel} (default)" : AccountLabel;
 
     public override string ToString() => AccountLabel;
 }
