@@ -263,16 +263,9 @@ public partial class MainWindow : Window
                 $"focusedEl:{Keyboard.FocusedElement?.GetType().Name ?? "null"}");
         };
 
-        // Announce the newly selected message to the screen reader whenever the selection
-        // changes via keyboard (arrow keys, etc.).  WPF ListView does not reliably fire
-        // UIA focus events on arrow-key navigation, so RaiseNotificationEvent is required.
-        // Debounced — a held arrow key only announces the final landing, which keeps NVDA's
-        // UIA pipeline from being flooded (the flood causes whole-process stalls).
-        MessageList.SelectionChanged += (_, _) =>
-        {
-            if (MessageList.IsKeyboardFocusWithin && MessageList.SelectedItem is MailMessageSummary msg)
-                QueueSelectionAnnounce(MessageSummaryAnnouncement(msg));
-        };
+        // AutomationProperties.Name is set on each ListViewItem via ItemContainerStyle,
+        // so WPF's built-in UIA focus events announce the selected message without a
+        // separate notification event here.
 
         // ── Focus-enter / focus-leave traces for every message panel ────────────
         MessageList.GotKeyboardFocus       += (_, e) => LogService.Debug($"[FOCUS] GotFocus  MsgList   from={e.OldFocus?.GetType().Name ?? "null"}");
@@ -1731,19 +1724,6 @@ public partial class MainWindow : Window
         LogService.Debug($"[FOCUS] ConvTree SelectedItemChanged old={e.OldValue?.GetType().Name ?? "null"} new={e.NewValue?.GetType().Name ?? "null"} {FocusInfo()}");
         if (e.NewValue is MailMessageSummary msg)
             _vm.SelectedMessage = msg;
-
-        if (ConversationTree.IsKeyboardFocusWithin)
-        {
-            switch (e.NewValue)
-            {
-                case MailMessageSummary m:
-                    QueueSelectionAnnounce(MessageSummaryAnnouncement(m));
-                    break;
-                case ConversationGroup grp:
-                    QueueSelectionAnnounce(grp.AutomationName);
-                    break;
-            }
-        }
     }
 
     // Keyboard actions in the conversation tree.
@@ -2184,19 +2164,6 @@ public partial class MainWindow : Window
         LogService.Debug($"[FOCUS] SenderTree SelectedItemChanged old={e.OldValue?.GetType().Name ?? "null"} new={e.NewValue?.GetType().Name ?? "null"} {FocusInfo()}");
         if (e.NewValue is MailMessageSummary msg)
             _vm.SelectedMessage = msg;
-
-        if (SenderGroupTree.IsKeyboardFocusWithin)
-        {
-            switch (e.NewValue)
-            {
-                case MailMessageSummary m:
-                    AccessibilityHelper.Announce(this, MessageSummaryAnnouncement(m), interrupt: true);
-                    break;
-                case SenderGroup grp:
-                    AccessibilityHelper.Announce(this, grp.AutomationName, interrupt: true);
-                    break;
-            }
-        }
     }
 
     private async void SenderGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -2367,19 +2334,6 @@ public partial class MainWindow : Window
         LogService.Debug($"[FOCUS] ToTree SelectedItemChanged old={e.OldValue?.GetType().Name ?? "null"} new={e.NewValue?.GetType().Name ?? "null"} {FocusInfo()}");
         if (e.NewValue is MailMessageSummary msg)
             _vm.SelectedMessage = msg;
-
-        if (ToGroupTree.IsKeyboardFocusWithin)
-        {
-            switch (e.NewValue)
-            {
-                case MailMessageSummary m:
-                    AccessibilityHelper.Announce(this, MessageSummaryAnnouncement(m), interrupt: true);
-                    break;
-                case SenderGroup grp:
-                    AccessibilityHelper.Announce(this, grp.AutomationName, interrupt: true);
-                    break;
-            }
-        }
     }
 
     private async void ToGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
