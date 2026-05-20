@@ -468,6 +468,32 @@ public partial class MainViewModel : ObservableObject
         registry.Register(new CommandDefinition(
             id: "view.filterForwarded", category: "View", title: "Show Forwarded Only",
             execute: () => SetFilterCommand.Execute("forwarded")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.sortDateDesc", category: "View", title: "Sort: Newest First",
+            execute: () => SetSortCommand.Execute("dateDesc")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.sortDateAsc", category: "View", title: "Sort: Oldest First",
+            execute: () => SetSortCommand.Execute("dateAsc")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.sortAlphaAsc", category: "View", title: "Sort: A → Z",
+            execute: () => SetSortCommand.Execute("alphaAsc")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.sortAlphaDesc", category: "View", title: "Sort: Z → A",
+            execute: () => SetSortCommand.Execute("alphaDesc")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.sortCountDesc", category: "View", title: "Sort: Most Messages",
+            execute: () => SetSortCommand.Execute("countDesc"),
+            isAvailable: () => IsCountSortAvailable));
+
+        registry.Register(new CommandDefinition(
+            id: "view.sortCountAsc", category: "View", title: "Sort: Fewest Messages",
+            execute: () => SetSortCommand.Execute("countAsc"),
+            isAvailable: () => IsCountSortAvailable));
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
