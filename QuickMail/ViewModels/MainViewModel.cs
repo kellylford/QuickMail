@@ -607,7 +607,7 @@ public partial class MainViewModel : ObservableObject
 
     private bool MatchesFilter(MailMessageSummary msg) => ActiveFilter switch
     {
-        MessageFilter.Unread          => !msg.IsRead,
+        MessageFilter.Unread          => !msg.IsRead && !msg.IsReplied && !msg.IsForwarded,
         MessageFilter.Read            => msg.IsRead,
         MessageFilter.WithAttachments => msg.HasAttachments,
         MessageFilter.Replied         => msg.IsReplied,
@@ -1326,6 +1326,9 @@ public partial class MainViewModel : ObservableObject
                 if (!existingKeys.Add(key))
                     continue;
 
+                if (!MatchesFilter(msg))
+                    continue;
+
                 InsertMessageSorted(msg);
             }
 
@@ -1494,6 +1497,9 @@ public partial class MainViewModel : ObservableObject
 
                 var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
                 if (!existingKeys.Add(key))
+                    continue;
+
+                if (!MatchesFilter(msg))
                     continue;
 
                 InsertMessageSorted(msg);

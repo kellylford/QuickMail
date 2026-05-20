@@ -49,11 +49,13 @@ public class MessageFilterTests
 
     private static readonly MailMessageSummary[] SampleMessages =
     [
-        MakeMsg(isRead: false, uid: 1),                        // unread
-        MakeMsg(isRead: true,  uid: 2),                        // read
-        MakeMsg(isRead: true,  hasAttachments: true, uid: 3),  // read + attachment
-        MakeMsg(isRead: true,  isReplied: true, uid: 4),       // replied
-        MakeMsg(isRead: true,  isForwarded: true, uid: 5),     // forwarded
+        MakeMsg(isRead: false, uid: 1),                                             // truly unread
+        MakeMsg(isRead: true,  uid: 2),                                             // read
+        MakeMsg(isRead: true,  hasAttachments: true, uid: 3),                       // read + attachment
+        MakeMsg(isRead: true,  isReplied: true, uid: 4),                            // replied (read)
+        MakeMsg(isRead: true,  isForwarded: true, uid: 5),                          // forwarded (read)
+        MakeMsg(isRead: false, isReplied: true, uid: 6),                            // replied but \Seen not set
+        MakeMsg(isRead: false, isForwarded: true, uid: 7),                          // forwarded but \Seen not set
     ];
 
     private static MainViewModel MakeVm(IEnumerable<MailMessageSummary> messages)
@@ -83,11 +85,33 @@ public class MessageFilterTests
     }
 
     [Fact]
-    public async Task FilterUnread_ShowsOnlyUnreadMessages()
+    public async Task FilterUnread_ShowsOnlyTrulyUnreadMessages()
     {
         var vm = await LoadedVm(SampleMessages);
         await vm.SetFilterCommand.ExecuteAsync("unread");
         Assert.All(vm.Messages, m => Assert.False(m.IsRead));
+        Assert.All(vm.Messages, m => Assert.False(m.IsReplied));
+        Assert.All(vm.Messages, m => Assert.False(m.IsForwarded));
+    }
+
+    [Fact]
+    public async Task FilterUnread_ExcludesRepliedEvenWhenUnread()
+    {
+        // A message can have \Answered without \Seen; it must not appear in Unread filter.
+        var msgs = new[] { MakeMsg(isRead: false, isReplied: true, uid: 1) };
+        var vm = await LoadedVm(msgs);
+        await vm.SetFilterCommand.ExecuteAsync("unread");
+        Assert.Empty(vm.Messages);
+    }
+
+    [Fact]
+    public async Task FilterUnread_ExcludesForwardedEvenWhenUnread()
+    {
+        // A message can have \Forwarded without \Seen; it must not appear in Unread filter.
+        var msgs = new[] { MakeMsg(isRead: false, isForwarded: true, uid: 1) };
+        var vm = await LoadedVm(msgs);
+        await vm.SetFilterCommand.ExecuteAsync("unread");
+        Assert.Empty(vm.Messages);
     }
 
     [Fact]
@@ -113,7 +137,7 @@ public class MessageFilterTests
         var vm = await LoadedVm(SampleMessages);
         await vm.SetFilterCommand.ExecuteAsync("replied");
         Assert.All(vm.Messages, m => Assert.True(m.IsReplied));
-        Assert.Single(vm.Messages);
+        Assert.Equal(2, vm.Messages.Count);
     }
 
     [Fact]
@@ -122,7 +146,7 @@ public class MessageFilterTests
         var vm = await LoadedVm(SampleMessages);
         await vm.SetFilterCommand.ExecuteAsync("forwarded");
         Assert.All(vm.Messages, m => Assert.True(m.IsForwarded));
-        Assert.Single(vm.Messages);
+        Assert.Equal(2, vm.Messages.Count);
     }
 
     [Fact]
