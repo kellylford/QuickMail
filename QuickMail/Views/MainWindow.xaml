@@ -304,6 +304,40 @@
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="To"/>
                 </MenuItem>
+                <MenuItem Header="F_ilter">
+                    <MenuItem Header="S_how All"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterAll, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="all"/>
+                    <Separator/>
+                    <MenuItem Header="_Unread"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterUnread, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="unread"/>
+                    <MenuItem Header="_Read"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterRead, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="read"/>
+                    <Separator/>
+                    <MenuItem Header="With _Attachments"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterWithAttachments, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="attachments"/>
+                    <MenuItem Header="Re_plied"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterReplied, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="replied"/>
+                    <MenuItem Header="_Forwarded"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterForwarded, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="forwarded"/>
+                </MenuItem>
                 <MenuItem Header="_Sync Range">
                     <MenuItem Header="Last _7 Days"
                               IsCheckable="True"

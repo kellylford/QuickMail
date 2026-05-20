@@ -1,0 +1,149 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using QuickMail.Models;
+using QuickMail.Services;
+using QuickMail.ViewModels;
+using Xunit;
+
+namespace QuickMail.Tests;
+
+/// <summary>
+/// Verifies that the active message filter is correctly applied to the Messages collection.
+/// These tests run on the default STA thread (no WPF window needed).
+/// </summary>
+public class MessageFilterTests
+{
+    // ── Configurable stub ───────────────────────────────────────────────────
+
+    sealed class FilterableStore : ILocalStoreService
+    {
+        private readonly List<MailMessageSummary> _messages;
+
+        public FilterableStore(IEnumerable<MailMessageSummary> messages)
+            => _messages = new List<MailMessageSummary>(messages);
+
+        public void Initialize() { }
+        public Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries) => Task.CompletedTask;
+        public Task<List<MailMessageSummary>> LoadAllSummariesAsync() => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds) => Task.CompletedTask;
+        public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
+        public Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead) => Task.CompletedTask;
+        public Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview) => Task.CompletedTask;
+        public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
+        public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
+        public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, uint uniqueId) => Task.FromResult<MailMessageDetail?>(null);
+        public Task<uint> GetMaxUidAsync(Guid accountId, string folderName) => Task.FromResult(0u);
+        public Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<uint>());
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+
+    private static MailMessageSummary MakeMsg(bool isRead = false, bool hasAttachments = false,
+        bool isReplied = false, bool isForwarded = false, uint uid = 1)
+        => new() { UniqueId = uid, IsRead = isRead, HasAttachments = hasAttachments,
+                   IsReplied = isReplied, IsForwarded = isForwarded };
+
+    private static readonly MailMessageSummary[] SampleMessages =
+    [
+        MakeMsg(isRead: false, uid: 1),                        // unread
+        MakeMsg(isRead: true,  uid: 2),                        // read
+        MakeMsg(isRead: true,  hasAttachments: true, uid: 3),  // read + attachment
+        MakeMsg(isRead: true,  isReplied: true, uid: 4),       // replied
+        MakeMsg(isRead: true,  isForwarded: true, uid: 5),     // forwarded
+    ];
+
+    private static MainViewModel MakeVm(IEnumerable<MailMessageSummary> messages)
+    {
+        var store = new FilterableStore(messages);
+        return new MainViewModel(
+            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            store, new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            new StubCommandRegistry());
+    }
+
+    private static async Task<MainViewModel> LoadedVm(IEnumerable<MailMessageSummary> messages)
+    {
+        var vm = MakeVm(messages);
+        await vm.InitialLoadAsync();
+        return vm;
+    }
+
+    // ── Tests ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task FilterAll_ShowsAllMessages()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("all");
+        Assert.Equal(SampleMessages.Length, vm.Messages.Count);
+    }
+
+    [Fact]
+    public async Task FilterUnread_ShowsOnlyUnreadMessages()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("unread");
+        Assert.All(vm.Messages, m => Assert.False(m.IsRead));
+    }
+
+    [Fact]
+    public async Task FilterRead_ShowsOnlyReadMessages()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("read");
+        Assert.All(vm.Messages, m => Assert.True(m.IsRead));
+    }
+
+    [Fact]
+    public async Task FilterWithAttachments_ShowsOnlyMessagesWithAttachments()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("attachments");
+        Assert.All(vm.Messages, m => Assert.True(m.HasAttachments));
+        Assert.Single(vm.Messages);
+    }
+
+    [Fact]
+    public async Task FilterReplied_ShowsOnlyRepliedMessages()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("replied");
+        Assert.All(vm.Messages, m => Assert.True(m.IsReplied));
+        Assert.Single(vm.Messages);
+    }
+
+    [Fact]
+    public async Task FilterForwarded_ShowsOnlyForwardedMessages()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("forwarded");
+        Assert.All(vm.Messages, m => Assert.True(m.IsForwarded));
+        Assert.Single(vm.Messages);
+    }
+
+    [Fact]
+    public async Task ActiveFilter_DefaultsToAll()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        Assert.Equal(MessageFilter.All, vm.ActiveFilter);
+    }
+
+    [Fact]
+    public async Task IsFilterActive_FalseWhenAll()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        Assert.False(vm.IsFilterActive);
+    }
+
+    [Fact]
+    public async Task IsFilterActive_TrueWhenNotAll()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("unread");
+        Assert.True(vm.IsFilterActive);
+    }
+}

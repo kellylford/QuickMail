@@ -169,6 +169,9 @@ public partial class MainViewModel : ObservableObject
     private ViewMode _viewMode = ViewMode.Messages;
 
     [ObservableProperty]
+    private MessageFilter _activeFilter = MessageFilter.All;
+
+    [ObservableProperty]
     private ObservableCollection<ConversationGroup> _conversations = [];
 
     [ObservableProperty]
@@ -181,6 +184,23 @@ public partial class MainViewModel : ObservableObject
     public bool IsConversationsView => ViewMode == ViewMode.Conversations;
     public bool IsFromView          => ViewMode == ViewMode.From;
     public bool IsToView            => ViewMode == ViewMode.To;
+
+    public bool IsFilterAll             => ActiveFilter == MessageFilter.All;
+    public bool IsFilterUnread          => ActiveFilter == MessageFilter.Unread;
+    public bool IsFilterRead            => ActiveFilter == MessageFilter.Read;
+    public bool IsFilterWithAttachments => ActiveFilter == MessageFilter.WithAttachments;
+    public bool IsFilterReplied         => ActiveFilter == MessageFilter.Replied;
+    public bool IsFilterForwarded       => ActiveFilter == MessageFilter.Forwarded;
+    public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
+    public string FilterLabel => ActiveFilter switch
+    {
+        MessageFilter.Unread          => "Unread",
+        MessageFilter.Read            => "Read",
+        MessageFilter.WithAttachments => "With Attachments",
+        MessageFilter.Replied         => "Replied",
+        MessageFilter.Forwarded       => "Forwarded",
+        _                             => string.Empty,
+    };
 
     public bool IsSyncDays7   => _syncDays == 7;
     public bool IsSyncDays30  => _syncDays == 30;
@@ -229,9 +249,12 @@ public partial class MainViewModel : ObservableObject
                 var accountLabel = SelectedFolder.AccountId != Guid.Empty
                     ? Accounts.FirstOrDefault(a => a.Id == SelectedFolder.AccountId)?.AccountLabel
                     : null;
-                return string.IsNullOrWhiteSpace(accountLabel)
-                    ? $"{SelectedFolder.DisplayName} - QuickMail"
-                    : $"{SelectedFolder.DisplayName} - {accountLabel} - QuickMail";
+                var folderPart = string.IsNullOrWhiteSpace(accountLabel)
+                    ? SelectedFolder.DisplayName
+                    : $"{SelectedFolder.DisplayName} - {accountLabel}";
+                return IsFilterActive
+                    ? $"{folderPart} — {FilterLabel} - QuickMail"
+                    : $"{folderPart} - QuickMail";
             }
             return "QuickMail";
         }
@@ -352,6 +375,30 @@ public partial class MainViewModel : ObservableObject
             id: "help.userGuide", category: "Help", title: "Open User Guide",
             execute: () => ViewUserGuideCommand.Execute(null),
             defaultKey: Key.F1, defaultModifiers: ModifierKeys.None));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterAll", category: "View", title: "Show All Messages",
+            execute: () => SetFilterCommand.Execute("all")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterUnread", category: "View", title: "Show Unread Only",
+            execute: () => SetFilterCommand.Execute("unread")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterRead", category: "View", title: "Show Read Only",
+            execute: () => SetFilterCommand.Execute("read")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterWithAttachments", category: "View", title: "Show Messages with Attachments",
+            execute: () => SetFilterCommand.Execute("attachments")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterReplied", category: "View", title: "Show Replied Only",
+            execute: () => SetFilterCommand.Execute("replied")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterForwarded", category: "View", title: "Show Forwarded Only",
+            execute: () => SetFilterCommand.Execute("forwarded")));
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -364,7 +411,7 @@ public partial class MainViewModel : ObservableObject
     {
         SelectedFolder = AllMailFolder;
         var cached = await _localStore.LoadAllSummariesAsync();
-        Messages = new BatchObservableCollection<MailMessageSummary>(cached);
+        SetMessages(cached);
         StatusText = cached.Count > 0
             ? $"{cached.Count} messages (cached — syncing…)"
             : "Connecting and syncing…";
@@ -418,7 +465,7 @@ public partial class MainViewModel : ObservableObject
                     fresh = null!; // user is on a specific folder — don't overwrite it
 
                 if (fresh != null)
-                    Messages = new BatchObservableCollection<MailMessageSummary>(fresh);
+                    SetMessages(fresh);
             }
 
             var count = Messages.Count;
@@ -500,6 +547,7 @@ public partial class MainViewModel : ObservableObject
         {
             if (!seen.Add((msg.UniqueId, msg.AccountId, msg.FolderName)))
                 continue;
+            if (!MatchesFilter(msg)) continue;
             InsertMessageSorted(msg);
         }
         Messages.EndBatch();
@@ -547,6 +595,25 @@ public partial class MainViewModel : ObservableObject
         else if (ViewMode == ViewMode.To)
             ScheduleToGroupRebuild();
     }
+
+    // Assigns Messages from a raw list, applying the active filter.
+    private void SetMessages(IEnumerable<MailMessageSummary> messages)
+    {
+        var list = ActiveFilter == MessageFilter.All
+            ? messages
+            : messages.Where(MatchesFilter);
+        Messages = new BatchObservableCollection<MailMessageSummary>(list);
+    }
+
+    private bool MatchesFilter(MailMessageSummary msg) => ActiveFilter switch
+    {
+        MessageFilter.Unread          => !msg.IsRead,
+        MessageFilter.Read            => msg.IsRead,
+        MessageFilter.WithAttachments => msg.HasAttachments,
+        MessageFilter.Replied         => msg.IsReplied,
+        MessageFilter.Forwarded       => msg.IsForwarded,
+        _                             => true,
+    };
 
     // Binary-insert into the descending-by-date Messages collection.
     private void InsertMessageSorted(MailMessageSummary msg)
@@ -709,6 +776,19 @@ public partial class MainViewModel : ObservableObject
     }
 
     // ── View-mode grouping ────────────────────────────────────────────────────────
+
+    partial void OnActiveFilterChanged(MessageFilter value)
+    {
+        OnPropertyChanged(nameof(IsFilterAll));
+        OnPropertyChanged(nameof(IsFilterUnread));
+        OnPropertyChanged(nameof(IsFilterRead));
+        OnPropertyChanged(nameof(IsFilterWithAttachments));
+        OnPropertyChanged(nameof(IsFilterReplied));
+        OnPropertyChanged(nameof(IsFilterForwarded));
+        OnPropertyChanged(nameof(IsFilterActive));
+        OnPropertyChanged(nameof(FilterLabel));
+        OnPropertyChanged(nameof(WindowTitle));
+    }
 
     partial void OnViewModeChanged(ViewMode value)
     {
@@ -880,6 +960,7 @@ public partial class MainViewModel : ObservableObject
     private async Task SelectFolderAsync(MailFolderModel? folder)
     {
         if (folder == null || folder.IsHeader) return;
+        ActiveFilter   = MessageFilter.All;
         SelectedFolder = folder;
         MessageDetail  = null;
         IsMessageOpen  = false;
@@ -935,7 +1016,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, folder))
                 return;
 
-            Messages = new BatchObservableCollection<MailMessageSummary>(cached);
+            SetMessages(cached);
             StatusText = cached.Count > 0
                 ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
                 : $"Loading {folder.DisplayName}…";
@@ -978,7 +1059,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(version, folder))
                 return;
 
-            Messages = new BatchObservableCollection<MailMessageSummary>(list);
+            SetMessages(list);
             StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
             _ = _localStore.UpsertSummariesAsync(list);
 
@@ -1181,7 +1262,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                 return;
 
-            Messages = new BatchObservableCollection<MailMessageSummary>(cached);
+            SetMessages(cached);
             StatusText = cached.Count > 0
                 ? $"{cached.Count} messages (checking for new…)"
                 : "Checking for new messages…";
@@ -1215,7 +1296,7 @@ public partial class MainViewModel : ObservableObject
                     .OrderByDescending(m => m.Date)
                     .ToList();
 
-                Messages = new BatchObservableCollection<MailMessageSummary>(repaired);
+                SetMessages(repaired);
                 _ = _localStore.UpsertSummariesAsync(repaired);
 
                 var totalCount = Messages.Count;
@@ -1391,7 +1472,7 @@ public partial class MainViewModel : ObservableObject
             var cached = await _localStore.LoadAllSummariesAsync(accountId);
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-            Messages = new BatchObservableCollection<MailMessageSummary>(cached);
+            SetMessages(cached);
             StatusText = cached.Count > 0
                 ? $"{cached.Count} messages (checking for new…)"
                 : "Checking for new messages…";
@@ -1481,7 +1562,7 @@ public partial class MainViewModel : ObservableObject
                 return;
 
             var sorted = all.OrderByDescending(m => m.Date).ToList();
-            Messages = new BatchObservableCollection<MailMessageSummary>(sorted);
+            SetMessages(sorted);
             StatusText = sorted.Count == 0
                 ? $"No messages in {displayName}."
                 : $"{sorted.Count} messages in {displayName}.";
@@ -2380,6 +2461,23 @@ public partial class MainViewModel : ObservableObject
             "to"            => ViewMode.To,
             _               => ViewMode.Messages,
         };
+    }
+
+    // ── Filter command ────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task SetFilterAsync(string? filter)
+    {
+        ActiveFilter = filter?.ToLowerInvariant() switch
+        {
+            "unread"      => MessageFilter.Unread,
+            "read"        => MessageFilter.Read,
+            "attachments" => MessageFilter.WithAttachments,
+            "replied"     => MessageFilter.Replied,
+            "forwarded"   => MessageFilter.Forwarded,
+            _             => MessageFilter.All,
+        };
+        await RefreshAsync();
     }
 
     [RelayCommand]
