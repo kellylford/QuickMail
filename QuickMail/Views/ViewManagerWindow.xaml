@@ -136,7 +136,8 @@
                              Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Save buttons for the selected view -->
-                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0"
+                    <StackPanel x:Name="SelectedViewActionsPanel"
+                                Orientation="Horizontal" Margin="0,16,0,0"
                                 Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}">
                         <Button Content="_Save"
                                 Command="{Binding SaveCommand}"
@@ -156,7 +157,8 @@
                     </StackPanel>
 
                     <!-- Save as new when nothing is selected -->
-                    <Button Content="Create New View from Current State"
+                    <Button x:Name="CreateNewViewButton"
+                            Content="Create New View from Current State"
                             Command="{Binding SaveAsNewCommand}"
                             HorizontalAlignment="Left"
                             Margin="0,16,0,0"

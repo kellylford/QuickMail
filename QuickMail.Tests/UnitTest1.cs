@@ -77,11 +77,15 @@ public class XamlParseTests
 {
     /// Ensure Application.Current exists and has the app's resource dictionaries loaded —
     /// required for StaticResource / DynamicResource resolution during XAML parsing.
+    /// Uses a process-wide lock so that parallel [StaFact] threads from different test
+    /// classes don't race to create a second Application (WPF forbids more than one).
     private static void EnsureApplication()
     {
-        if (Application.Current == null)
+        // Lock on the Application type object — shared across all test classes.
+        lock (typeof(Application))
         {
-            var app = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            if (Application.Current == null)
+                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         }
 
         // Merge the same resource dictionaries that App.xaml merges, so StaticResources
@@ -173,6 +177,26 @@ public class XamlParseTests
     {
         EnsureApplication();
         var window = new NewFolderDialog();
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
+    public void ViewManagerDialog_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var (_, _, _, _, _, config, registry, _) = MakeServices();
+        var vm = new ViewManagerViewModel(
+            new StubViewService(),
+            config,
+            registry,
+            savedViews:      [],
+            currentFolder:   null,
+            currentAccount:  null,
+            currentViewMode: QuickMail.Models.ViewMode.Messages,
+            currentFilter:   QuickMail.Models.MessageFilter.All,
+            currentSort:     QuickMail.Models.MessageSort.DateDescending);
+        var window = new ViewManagerWindow(vm);
         Assert.NotNull(window);
         window.Close();
     }
