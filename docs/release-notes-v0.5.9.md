@@ -33,7 +33,7 @@ Open **View → Views → Save View…**. The dialog opens focused on the name f
 
 Three ways to switch to a saved view:
 - **View menu** — select the view from the **View → Views** submenu
-- **Folder tree** — a **Views** section appears below your accounts; expand it and click the view
+- **Folder tree** — a **Views** section appears below your accounts; expand it and activate the view
 - **Keyboard shortcut** — press the shortcut assigned in the view manager or in Settings → Keyboard Shortcuts
 
 **Managing views**
