@@ -394,7 +394,7 @@ public partial class MainWindow : Window
     // meaning sync-triggered focus restoration should be suppressed so the user's
     // deliberate navigation is not interrupted.
     private bool IsMenuOrToolbarFocused() =>
-        MainMenuBar.IsKeyboardFocusWithin || MainToolbar.IsKeyboardFocusWithin;
+        MainMenuBar.IsKeyboardFocusWithin || MainToolbar.IsKeyboardFocusWithin || SearchBox.IsKeyboardFocusWithin;
 
     // On startup: initialise WebView2, connect to first account, open INBOX, focus message list
     private async void OnLoaded(object sender, RoutedEventArgs e)
