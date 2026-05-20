@@ -18,6 +18,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 - [From view (by sender)](#from-view-by-sender)
 - [To view (by recipient)](#to-view-by-recipient)
 - [Filtering messages](#filtering-messages)
+- [Sorting messages](#sorting-messages)
 - [Address book](#address-book)
 - [Command palette](#command-palette)
 - [Context menus](#context-menus)
@@ -54,7 +55,7 @@ The menu bar at the top of the window provides access to all major features, org
 |------|----------|
 | **File** | New Message, Manage Accounts, Address Book, Settings (`Ctrl+,`), Exit |
 | **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
-| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
+| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
 | **Help** | User Guide |
 
 All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
@@ -272,6 +273,29 @@ The **View → Filter** submenu (and the command palette) let you narrow the mes
 The active filter is shown in the window title bar. Navigating to a different folder automatically clears the filter.
 
 Filter commands can be assigned custom keyboard shortcuts in **File → Settings → Keyboard Shortcuts**.
+
+---
+
+## Sorting messages
+
+The **View → Sort** submenu controls the order in which messages or groups are displayed. The selected sort is saved and restored when you reopen the app.
+
+| Sort | Orders by |
+|------|-----------|
+| **Newest First** *(default)* | Most recent message date first |
+| **Oldest First** | Oldest message date first |
+| **A → Z** | Subject or sender name, ascending |
+| **Z → A** | Subject or sender name, descending |
+| **Most Messages** | Groups with the most messages first — grouped views only |
+| **Fewest Messages** | Groups with the fewest messages first — grouped views only |
+
+**Most Messages** and **Fewest Messages** only apply when a grouped view is active (Conversations, By Sender, or By Recipient) and are greyed out in the flat Messages view. They let you instantly see, for example, who you have the most correspondence with.
+
+**Applying a sort:**
+- Open **View → Sort** and choose an option.
+
+**Clearing a sort:**
+- Open **View → Sort → Newest First** to return to the default.
 
 ---
 

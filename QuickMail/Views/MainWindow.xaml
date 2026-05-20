@@ -338,6 +338,42 @@
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="forwarded"/>
                 </MenuItem>
+                <MenuItem Header="S_ort">
+                    <MenuItem Header="Newest _First"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSortDateDesc, Mode=OneWay}"
+                              Command="{Binding SetSortCommand}"
+                              CommandParameter="dateDesc"/>
+                    <MenuItem Header="_Oldest First"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSortDateAsc, Mode=OneWay}"
+                              Command="{Binding SetSortCommand}"
+                              CommandParameter="dateAsc"/>
+                    <Separator/>
+                    <MenuItem Header="_A → Z"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSortAlphaAsc, Mode=OneWay}"
+                              Command="{Binding SetSortCommand}"
+                              CommandParameter="alphaAsc"/>
+                    <MenuItem Header="_Z → A"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSortAlphaDesc, Mode=OneWay}"
+                              Command="{Binding SetSortCommand}"
+                              CommandParameter="alphaDesc"/>
+                    <Separator/>
+                    <MenuItem Header="_Most Messages"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSortCountDesc, Mode=OneWay}"
+                              IsEnabled="{Binding IsCountSortAvailable}"
+                              Command="{Binding SetSortCommand}"
+                              CommandParameter="countDesc"/>
+                    <MenuItem Header="_Fewest Messages"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSortCountAsc, Mode=OneWay}"
+                              IsEnabled="{Binding IsCountSortAvailable}"
+                              Command="{Binding SetSortCommand}"
+                              CommandParameter="countAsc"/>
+                </MenuItem>
                 <MenuItem Header="_Sync Range">
                     <MenuItem Header="Last _7 Days"
                               IsCheckable="True"

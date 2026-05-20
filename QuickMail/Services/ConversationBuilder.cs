@@ -32,9 +32,9 @@ public static class ConversationBuilder
     }
 
     /// <summary>
-    /// Groups <paramref name="messages"/> by normalised subject (case-insensitive),
-    /// sorts each group newest-first, and orders groups by their newest message date descending
-    /// (matching the flat message list order).
+    /// Groups <paramref name="messages"/> by normalised subject (case-insensitive) and sorts
+    /// each group newest-first. Groups are returned in an unspecified order — the caller applies
+    /// the desired sort.
     /// </summary>
     public static IReadOnlyList<ConversationGroup> Build(IEnumerable<MailMessageSummary> messages)
     {
@@ -49,7 +49,6 @@ public static class ConversationBuilder
                     Messages          = sorted,
                 };
             })
-            .OrderByDescending(c => c.Messages.Count > 0 ? c.Messages[0].Date : DateTimeOffset.MinValue)
             .ToList();
     }
 }

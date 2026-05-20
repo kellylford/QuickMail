@@ -21,6 +21,12 @@ public class ConfigModel
     public string ViewMode { get; set; } = "messages";
 
     /// <summary>
+    /// How to sort the message list or groups.
+    /// Values: "dateDesc", "dateAsc", "alphaAsc", "alphaDesc", "countDesc", "countAsc".
+    /// </summary>
+    public string Sort { get; set; } = "dateDesc";
+
+    /// <summary>
     /// How many days of mail to sync. 0 = sync all mail (no date filter).
     /// Supported values: 7, 30, 180, 365, or 0 (all).
     /// </summary>

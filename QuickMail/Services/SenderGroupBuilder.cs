@@ -8,9 +8,9 @@ namespace QuickMail.Services;
 public static class SenderGroupBuilder
 {
     /// <summary>
-    /// Groups <paramref name="messages"/> by sender (From field, trimmed, case-insensitive),
-    /// sorts each group newest-first, and orders groups by their newest message date descending
-    /// (matching the flat message list order).
+    /// Groups <paramref name="messages"/> by sender (From field, trimmed, case-insensitive) and
+    /// sorts each group newest-first. Groups are returned in an unspecified order — the caller
+    /// applies the desired sort.
     /// </summary>
     public static IReadOnlyList<SenderGroup> Build(IEnumerable<MailMessageSummary> messages)
     {
@@ -25,13 +25,13 @@ public static class SenderGroupBuilder
                     Messages  = sorted,
                 };
             })
-            .OrderBy(s => s.SenderKey, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
     /// <summary>
-    /// Groups <paramref name="messages"/> by recipient (To field, trimmed, case-insensitive),
-    /// sorts each group newest-first, and orders groups alphabetically.
+    /// Groups <paramref name="messages"/> by recipient (To field, trimmed, case-insensitive) and
+    /// sorts each group newest-first. Groups are returned in an unspecified order — the caller
+    /// applies the desired sort.
     /// </summary>
     public static IReadOnlyList<SenderGroup> BuildByTo(IEnumerable<MailMessageSummary> messages)
     {
@@ -46,7 +46,6 @@ public static class SenderGroupBuilder
                     Messages  = sorted,
                 };
             })
-            .OrderBy(s => s.SenderKey, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 }

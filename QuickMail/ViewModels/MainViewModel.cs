@@ -171,6 +171,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private MessageFilter _activeFilter = MessageFilter.All;
 
+    [ObservableProperty]
+    private MessageSort _activeSort = MessageSort.DateDescending;
+
     // ── Search ───────────────────────────────────────────────────────────────────
 
     // Raw messages before search filtering; repopulated by SetMessages().
@@ -222,6 +225,23 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.Replied         => "Replied",
         MessageFilter.Forwarded       => "Forwarded",
         _                             => string.Empty,
+    };
+
+    public bool IsSortDateDesc    => ActiveSort == MessageSort.DateDescending;
+    public bool IsSortDateAsc     => ActiveSort == MessageSort.DateAscending;
+    public bool IsSortAlphaAsc    => ActiveSort == MessageSort.AlphaAscending;
+    public bool IsSortAlphaDesc   => ActiveSort == MessageSort.AlphaDescending;
+    public bool IsSortCountDesc   => ActiveSort == MessageSort.CountDescending;
+    public bool IsSortCountAsc    => ActiveSort == MessageSort.CountAscending;
+    public bool IsCountSortAvailable => ViewMode != ViewMode.Messages;
+    public string SortLabel => ActiveSort switch
+    {
+        MessageSort.DateAscending   => "Oldest First",
+        MessageSort.AlphaAscending  => "A → Z",
+        MessageSort.AlphaDescending => "Z → A",
+        MessageSort.CountDescending => "Most Messages",
+        MessageSort.CountAscending  => "Fewest Messages",
+        _                           => string.Empty,
     };
 
     public bool IsSyncDays7   => _syncDays == 7;
@@ -313,6 +333,15 @@ public partial class MainViewModel : ObservableObject
             "to"            => ViewMode.To,
             _               => ViewMode.Messages,
         };
+        _activeSort = cfg.Sort switch
+        {
+            "dateAsc"   => MessageSort.DateAscending,
+            "alphaAsc"  => MessageSort.AlphaAscending,
+            "alphaDesc" => MessageSort.AlphaDescending,
+            "countDesc" => MessageSort.CountDescending,
+            "countAsc"  => MessageSort.CountAscending,
+            _           => MessageSort.DateDescending,
+        };
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
@@ -345,6 +374,16 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSyncDays365));
         OnPropertyChanged(nameof(IsSyncDaysAll));
         OnPropertyChanged(nameof(SyncRangeLabel));
+
+        ActiveSort = cfg.Sort switch
+        {
+            "dateAsc"   => MessageSort.DateAscending,
+            "alphaAsc"  => MessageSort.AlphaAscending,
+            "alphaDesc" => MessageSort.AlphaDescending,
+            "countDesc" => MessageSort.CountDescending,
+            "countAsc"  => MessageSort.CountAscending,
+            _           => MessageSort.DateDescending,
+        };
     }
 
     private void RegisterCommands(ICommandRegistry registry)
@@ -658,6 +697,13 @@ public partial class MainViewModel : ObservableObject
             result = result.Where(MatchesFilter);
         if (!string.IsNullOrWhiteSpace(SearchText))
             result = result.Where(MatchesSearch);
+        result = ActiveSort switch
+        {
+            MessageSort.DateAscending   => result.OrderBy(m => m.Date),
+            MessageSort.AlphaAscending  => result.OrderBy(m => m.Subject, StringComparer.OrdinalIgnoreCase),
+            MessageSort.AlphaDescending => result.OrderByDescending(m => m.Subject, StringComparer.OrdinalIgnoreCase),
+            _                           => result.OrderByDescending(m => m.Date),
+        };
         Messages = new BatchObservableCollection<MailMessageSummary>(result);
 
         if (IsSearchActive && !string.IsNullOrWhiteSpace(SearchText))
@@ -863,6 +909,38 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(WindowTitle));
     }
 
+    partial void OnActiveSortChanged(MessageSort value)
+    {
+        OnPropertyChanged(nameof(IsSortDateDesc));
+        OnPropertyChanged(nameof(IsSortDateAsc));
+        OnPropertyChanged(nameof(IsSortAlphaAsc));
+        OnPropertyChanged(nameof(IsSortAlphaDesc));
+        OnPropertyChanged(nameof(IsSortCountDesc));
+        OnPropertyChanged(nameof(IsSortCountAsc));
+        OnPropertyChanged(nameof(SortLabel));
+
+        var cfg = _configService.Load();
+        cfg.Sort = value switch
+        {
+            MessageSort.DateAscending   => "dateAsc",
+            MessageSort.AlphaAscending  => "alphaAsc",
+            MessageSort.AlphaDescending => "alphaDesc",
+            MessageSort.CountDescending => "countDesc",
+            MessageSort.CountAscending  => "countAsc",
+            _                           => "dateDesc",
+        };
+        _configService.Save(cfg);
+
+        if (ViewMode == ViewMode.Messages)
+            ApplyFiltersAndSearch();
+        else if (ViewMode == ViewMode.Conversations)
+            ScheduleConversationRebuild();
+        else if (ViewMode == ViewMode.From)
+            ScheduleSenderGroupRebuild();
+        else if (ViewMode == ViewMode.To)
+            ScheduleToGroupRebuild();
+    }
+
     partial void OnViewModeChanged(ViewMode value)
     {
         OnPropertyChanged(nameof(IsMessagesView));
@@ -870,6 +948,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsFromView));
         OnPropertyChanged(nameof(IsToView));
         OnPropertyChanged(nameof(ViewModeLabel));
+        OnPropertyChanged(nameof(IsCountSortAvailable));
 
         if (value == ViewMode.Conversations)
             ScheduleConversationRebuild();
@@ -920,9 +999,20 @@ public partial class MainViewModel : ObservableObject
     {
         var version  = Interlocked.Increment(ref _conversationRebuildVersion);
         var snapshot = Messages.ToList();
+        var sort     = ActiveSort;
         Task.Run(() =>
         {
-            var groups = ConversationBuilder.Build(snapshot);
+            var built = ConversationBuilder.Build(snapshot);
+            IEnumerable<ConversationGroup> ordered = sort switch
+            {
+                MessageSort.DateAscending   => built.OrderBy(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
+                MessageSort.AlphaAscending  => built.OrderBy(g => g.NormalizedSubject, StringComparer.OrdinalIgnoreCase),
+                MessageSort.AlphaDescending => built.OrderByDescending(g => g.NormalizedSubject, StringComparer.OrdinalIgnoreCase),
+                MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
+                MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                _                           => built.OrderByDescending(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
+            };
+            var groups = ordered.ToList();
             App.Current.Dispatcher.InvokeAsync(() =>
             {
                 if (version == _conversationRebuildVersion)
@@ -943,9 +1033,19 @@ public partial class MainViewModel : ObservableObject
     {
         var version  = Interlocked.Increment(ref _senderGroupRebuildVersion);
         var snapshot = Messages.ToList();
+        var sort     = ActiveSort;
         Task.Run(() =>
         {
-            var groups = SenderGroupBuilder.Build(snapshot);
+            var built = SenderGroupBuilder.Build(snapshot);
+            IEnumerable<SenderGroup> ordered = sort switch
+            {
+                MessageSort.DateAscending   => built.OrderBy(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
+                MessageSort.AlphaDescending => built.OrderByDescending(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
+                MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
+                MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
+            };
+            var groups = ordered.ToList();
             App.Current.Dispatcher.InvokeAsync(() =>
             {
                 if (version == _senderGroupRebuildVersion)
@@ -958,9 +1058,6 @@ public partial class MainViewModel : ObservableObject
                             g.IsExpanded = true;
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
                 }
-                else
-                {
-                }
             });
         });
     }
@@ -969,9 +1066,19 @@ public partial class MainViewModel : ObservableObject
     {
         var version  = Interlocked.Increment(ref _toGroupRebuildVersion);
         var snapshot = Messages.ToList();
+        var sort     = ActiveSort;
         Task.Run(() =>
         {
-            var groups = SenderGroupBuilder.BuildByTo(snapshot);
+            var built = SenderGroupBuilder.BuildByTo(snapshot);
+            IEnumerable<SenderGroup> ordered = sort switch
+            {
+                MessageSort.DateAscending   => built.OrderBy(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
+                MessageSort.AlphaDescending => built.OrderByDescending(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
+                MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
+                MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
+            };
+            var groups = ordered.ToList();
             App.Current.Dispatcher.InvokeAsync(() =>
             {
                 if (version == _toGroupRebuildVersion)
@@ -983,9 +1090,6 @@ public partial class MainViewModel : ObservableObject
                         if (expanded.Contains(g.SenderKey))
                             g.IsExpanded = true;
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
-                }
-                else
-                {
                 }
             });
         });
@@ -2568,6 +2672,22 @@ public partial class MainViewModel : ObservableObject
             _             => MessageFilter.All,
         };
         await RefreshAsync();
+    }
+
+    // ── Sort command ──────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private void SetSort(string? sort)
+    {
+        ActiveSort = sort switch
+        {
+            "dateAsc"   => MessageSort.DateAscending,
+            "alphaAsc"  => MessageSort.AlphaAscending,
+            "alphaDesc" => MessageSort.AlphaDescending,
+            "countDesc" => MessageSort.CountDescending,
+            "countAsc"  => MessageSort.CountAscending,
+            _           => MessageSort.DateDescending,
+        };
     }
 
     [RelayCommand]
