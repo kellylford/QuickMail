@@ -1,0 +1,182 @@
+<Window x:Class="QuickMail.Views.ViewManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="View Manager"
+        Height="520" Width="720"
+        MinHeight="420" MinWidth="580"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        AutomationProperties.Name="View Manager">
+
+    <Window.Resources>
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,10,0,3"/>
+        </Style>
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,0,0,3"/>
+            <Setter Property="Foreground" Value="DimGray"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style x:Key="ReadonlyField" TargetType="TextBox">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <!-- Current state strip -->
+            <RowDefinition Height="Auto"/>
+            <!-- Main content -->
+            <RowDefinition Height="*"/>
+            <!-- Bottom buttons -->
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ── Current state strip ─────────────────────────────────────────── -->
+        <Border Grid.Row="0" Background="#F0F4FF" BorderBrush="#C0CCE8"
+                BorderThickness="1" CornerRadius="3" Padding="10,7" Margin="0,0,0,10">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Current state: " FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding CurrentStateSummary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Two-panel main area ─────────────────────────────────────────── -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="210" MinWidth="150"/>
+                <ColumnDefinition Width="8"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left: saved views list -->
+            <DockPanel Grid.Column="0">
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}"
+                           Text="Saved Views" Margin="0,0,0,4"/>
+                <ListBox x:Name="ViewsList"
+                         ItemsSource="{Binding SavedViews}"
+                         SelectedItem="{Binding SelectedView, Mode=TwoWay}"
+                         DisplayMemberPath="Name"
+                         AutomationProperties.Name="Saved views"
+                         KeyboardNavigation.TabNavigation="Once"/>
+            </DockPanel>
+
+            <!-- Separator -->
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
+                          IsTabStop="False"/>
+
+            <!-- Right: editing panel -->
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="8,0,0,0">
+
+                    <!-- Name -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Name"/>
+                    <TextBox x:Name="NameBox"
+                             Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="View name"
+                             MaxLength="120"/>
+
+                    <!-- Hotkey -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Keyboard Shortcut"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding EditHotkey, Mode=OneWay}"
+                                 IsReadOnly="True" IsTabStop="False"
+                                 Background="#F5F5F5"
+                                 AutomationProperties.Name="Assigned shortcut"
+                                 Margin="0,0,4,0"/>
+                        <Button Grid.Column="1"
+                                Content="_Set…"
+                                Command="{Binding RequestSetHotkeyCommand}"
+                                MinWidth="60" Margin="0,0,4,0"
+                                AutomationProperties.Name="Set keyboard shortcut"/>
+                        <Button Grid.Column="2"
+                                Content="_Clear"
+                                Command="{Binding ClearHotkeyCommand}"
+                                MinWidth="60"
+                                AutomationProperties.Name="Clear keyboard shortcut"/>
+                    </Grid>
+                    <TextBlock Text="Also configurable in File → Settings → Keyboard Shortcuts."
+                               FontSize="10" Foreground="DimGray" Margin="0,3,0,0"/>
+
+                    <!-- Default -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Options"/>
+                    <CheckBox Content="_Default view (applied on startup)"
+                              IsChecked="{Binding EditIsDefault}"
+                              AutomationProperties.Name="Set as default view"/>
+
+                    <!-- Saved state summary (read-only) -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Saved Folders"
+                               Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
+                    <TextBox Style="{StaticResource ReadonlyField}"
+                             Text="{Binding SelectedFoldersSummary, Mode=OneWay}"
+                             AutomationProperties.Name="Saved folders"
+                             Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
+
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Saved Settings"
+                               Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
+                    <TextBox Style="{StaticResource ReadonlyField}"
+                             Text="{Binding SelectedModeSummary, Mode=OneWay}"
+                             AutomationProperties.Name="Saved view settings"
+                             Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
+
+                    <!-- Save buttons for the selected view -->
+                    <StackPanel Orientation="Horizontal" Margin="0,16,0,0"
+                                Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}">
+                        <Button Content="_Save"
+                                Command="{Binding SaveCommand}"
+                                MinWidth="80" Margin="0,0,8,0"
+                                ToolTip="Save current app state to this view"
+                                AutomationProperties.Name="Save current state to selected view"/>
+                        <Button Content="Save _As New"
+                                Command="{Binding SaveAsNewCommand}"
+                                MinWidth="100" Margin="0,0,8,0"
+                                ToolTip="Create a new view from current app state"
+                                AutomationProperties.Name="Save current state as a new view"/>
+                        <Button Content="_Delete"
+                                Command="{Binding DeleteCommand}"
+                                MinWidth="70"
+                                ToolTip="Delete this view"
+                                AutomationProperties.Name="Delete selected view"/>
+                    </StackPanel>
+
+                    <!-- Save as new when nothing is selected -->
+                    <Button Content="Create New View from Current State"
+                            Command="{Binding SaveAsNewCommand}"
+                            HorizontalAlignment="Left"
+                            Margin="0,16,0,0"
+                            AutomationProperties.Name="Create new view from current state"
+                            Visibility="{Binding HasSelectedView,
+                                Converter={StaticResource BoolToVis},
+                                ConverterParameter=Inverse}"/>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- ── Bottom close button ─────────────────────────────────────────── -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal"
+                    HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="_Close"
+                    IsCancel="True"
+                    MinWidth="80"
+                    Click="CloseButton_Click"
+                    AutomationProperties.Name="Close View Manager"/>
+        </StackPanel>
+    </Grid>
+</Window>

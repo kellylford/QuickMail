@@ -111,6 +111,7 @@ public partial class MainWindow : Window
     private readonly IContactService _contactService;
     private readonly IConfigService _configService;
     private readonly ILocalStoreService _localStore;
+    private readonly IViewService _viewService;
 
     public MainWindow(
         MainViewModel vm,
@@ -122,7 +123,8 @@ public partial class MainWindow : Window
         ICommandRegistry registry,
         IContactService contactService,
         IConfigService configService,
-        ILocalStoreService localStore)
+        ILocalStoreService localStore,
+        IViewService viewService)
     {
         _vm = vm;
         _smtp = smtp;
@@ -134,6 +136,7 @@ public partial class MainWindow : Window
         _contactService = contactService;
         _configService = configService;
         _localStore = localStore;
+        _viewService = viewService;
 
         InitializeComponent();
         DataContext = vm;
@@ -145,6 +148,8 @@ public partial class MainWindow : Window
         vm.AnnouncementRequested += (_, args) =>
             AccessibilityHelper.Announce(this, args.Text, interrupt: true, category: args.Category);
         vm.SearchRequested += (_, _) => OpenSearch();
+        vm.ManageViewsRequested += (_, _) => OpenViewManager();
+        vm.SavedViewsChanged    += (_, _) => RebuildViewsMenu();
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
@@ -488,6 +493,9 @@ public partial class MainWindow : Window
         // Show local cache immediately so the UI is never blank on startup.
         await _vm.InitialLoadAsync();
         FocusActiveMessagePanel();
+
+        // Populate the Views menu from saved views loaded at startup.
+        RebuildViewsMenu();
 
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
@@ -2887,6 +2895,57 @@ public partial class MainWindow : Window
             default:
                 e.Handled = true;
                 break;
+        }
+    }
+
+    // ── View Manager ──────────────────────────────────────────────────────────────
+
+    private void OpenViewManager()
+    {
+        var vmVm = new ViewManagerViewModel(
+            viewService:    _viewService,
+            configService:  _configService,
+            registry:       _registry,
+            savedViews:     _vm.SavedViews,
+            currentFolder:  _vm.SelectedFolder,
+            currentAccount: _vm.SelectedAccount,
+            currentViewMode:  _vm.ViewMode,
+            currentFilter:    _vm.ActiveFilter,
+            currentSort:      _vm.ActiveSort);
+
+        vmVm.ViewsChanged += (_, _) => _vm.UpdateSavedViews();
+
+        var dialog = new ViewManagerWindow(vmVm) { Owner = this };
+        dialog.ShowDialog();
+    }
+
+    private void RebuildViewsMenu()
+    {
+        // Remove all dynamically-inserted view items (everything before the separator).
+        while (ViewsMenuItem.Items.Count > 0 &&
+               ViewsMenuItem.Items[0] is not Separator)
+            ViewsMenuItem.Items.RemoveAt(0);
+
+        var views = _vm.SavedViews;
+
+        // Show/hide the separator.
+        ViewsMenuSeparator.Visibility = views.Count > 0
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        // Insert one item per saved view, in order.
+        for (int i = 0; i < views.Count; i++)
+        {
+            var view    = views[i];
+            var item    = new MenuItem { Header = view.Name };
+            var viewId  = view.Id.ToString();
+            item.Click += (_, _) => _vm.SelectViewCommand.Execute(viewId);
+
+            // Show hotkey in menu if one is assigned.
+            if (!string.IsNullOrEmpty(view.Hotkey))
+                item.InputGestureText = view.Hotkey;
+
+            ViewsMenuItem.Items.Insert(i, item);
         }
     }
 

@@ -19,6 +19,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 - [To view (by recipient)](#to-view-by-recipient)
 - [Filtering messages](#filtering-messages)
 - [Sorting messages](#sorting-messages)
+- [Saved views](#saved-views)
 - [Address book](#address-book)
 - [Command palette](#command-palette)
 - [Context menus](#context-menus)
@@ -55,7 +56,7 @@ The menu bar at the top of the window provides access to all major features, org
 |------|----------|
 | **File** | New Message, Manage Accounts, Address Book, Settings (`Ctrl+,`), Exit |
 | **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
-| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
+| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
 | **Help** | User Guide |
 
 All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
@@ -296,6 +297,77 @@ The **View → Sort** submenu controls the order in which messages or groups are
 
 **Clearing a sort:**
 - Open **View → Sort → Newest First** to return to the default.
+
+---
+
+## Saved views
+
+A **saved view** is a named snapshot of your current working context — it bundles a folder (or multiple folders), a display mode (Messages, Conversations, From, or To), a filter (All, Unread, etc.), and a sort order into a single item you can jump back to instantly.
+
+### Creating a view
+
+1. Navigate to the folder you want and set the mode, filter, and sort you prefer.
+2. Open **View → Views → Save View…**. The **View Manager** dialog opens.
+3. Click **Create New View from Current State**. A view is created with an auto-generated name like *"The Idea Place Inbox, From Unread"*.
+4. Edit the **Name** field if you want a different name.
+5. Click **Save**.
+
+### Applying a view
+
+Once you have saved views, you can reach them in three ways:
+
+- **View menu** — Open **View → Views** and click the view name. The current keyboard shortcut (if any) is shown next to each item.
+- **Folder tree** — A **Views** group appears at the top of the folder tree. Expand it and click a view name to apply it.
+- **Command palette** — Press **Ctrl+Shift+P** and type part of the view's name. Views appear in the **Views** category.
+
+### Managing views
+
+Open **View → Views → Manage Views…** (or press the keyboard shortcut you assigned) to open the **View Manager**.
+
+The dialog has two panels:
+
+| Area | What it does |
+|------|-------------|
+| **Left — Saved Views list** | Click a view to select it for editing |
+| **Right — Edit panel** | Edit name, shortcut, default flag, and see the view's saved folders and settings |
+
+**Buttons in the right panel:**
+
+| Button | Action |
+|--------|--------|
+| **Save** | Overwrites the selected view with the current app state (mode, filter, sort, and current folder) |
+| **Save As New** | Creates a new view from the current state |
+| **Delete** | Permanently removes the selected view |
+
+### Keyboard shortcuts for views
+
+1. Select a view in the View Manager.
+2. Click **Set…** next to the **Keyboard Shortcut** field.
+3. Press the key combination you want (must include at least one modifier: Ctrl, Shift, or Alt).
+4. Click **Save** to apply.
+
+The shortcut also appears in **File → Settings → Keyboard Shortcuts** and can be changed there as well. Both places stay in sync — changing a shortcut in one place updates the other.
+
+If you assign a shortcut that is already used by another view, QuickMail asks whether to reassign it; the previous view loses its shortcut.
+
+### Multi-folder views
+
+A single view can span more than one folder:
+
+1. Open the View Manager and select an existing view.
+2. Navigate to a different folder in the main window.
+3. Click **Save**. QuickMail detects the folder change and asks:
+   - **Yes** — replace the existing folder with the new one.
+   - **No** — add the new folder alongside the existing one (multi-folder view).
+   - **Cancel** — keep the view unchanged.
+
+When a view has multiple folders, the folder tree shows a **ViewName — All** child node (loads messages from every constituent folder at once) plus one node per individual folder.
+
+### Default view
+
+Check **Default view (applied on startup)** in the View Manager and click **Save** to mark a view as the default. QuickMail applies it automatically after the initial sync completes each time it starts.
+
+Only one view can be the default; marking a new view as default automatically clears the flag on any previously-default view.
 
 ---
 

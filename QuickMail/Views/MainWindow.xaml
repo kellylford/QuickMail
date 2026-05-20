@@ -374,6 +374,16 @@
                               Command="{Binding SetSortCommand}"
                               CommandParameter="countAsc"/>
                 </MenuItem>
+                <MenuItem Header="_Views" x:Name="ViewsMenuItem">
+                    <!-- Dynamic view items inserted by code-behind -->
+                    <Separator x:Name="ViewsMenuSeparator" Visibility="Collapsed"/>
+                    <MenuItem Header="_Save View…"
+                              Command="{Binding SaveViewCommand}"
+                              AutomationProperties.Name="Save current state as a view"/>
+                    <MenuItem Header="_Manage Views…"
+                              Command="{Binding ManageViewsCommand}"
+                              AutomationProperties.Name="Open View Manager"/>
+                </MenuItem>
                 <MenuItem Header="_Sync Range">
                     <MenuItem Header="Last _7 Days"
                               IsCheckable="True"

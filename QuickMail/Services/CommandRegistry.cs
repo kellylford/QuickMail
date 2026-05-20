@@ -17,6 +17,8 @@ public sealed class CommandRegistry : ICommandRegistry
     public void Register(CommandDefinition command) =>
         _byId[command.Id] = command;
 
+    public void Unregister(string id) => _byId.Remove(id);
+
     public IReadOnlyList<CommandDefinition> GetAll() =>
         _byId.Values.OrderBy(c => c.Category).ThenBy(c => c.Title).ToList();
 

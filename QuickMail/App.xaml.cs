@@ -38,11 +38,13 @@ public partial class App : Application
             var commandRegistry = new CommandRegistry();
             commandRegistry.ApplyUserOverrides(configService.Load().CustomHotkeys);
 
+            var viewService = new ViewService();
+
             var mainVm = new MainViewModel(
-                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry);
+                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService);
             mainVm.LoadAccountList();
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, contactService, configService, localStore);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, contactService, configService, localStore, viewService);
             mainWindow.Show();
         }
         catch (Exception ex)

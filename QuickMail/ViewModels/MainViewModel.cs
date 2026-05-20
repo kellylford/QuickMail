@@ -26,6 +26,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IOAuthService _oauthService;
     private readonly ISyncService _syncService;
     private readonly IConfigService _configService;
+    private readonly IViewService _viewService;
+    private readonly ICommandRegistry _commandRegistry;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -89,6 +91,30 @@ public partial class MainViewModel : ObservableObject
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\x00AccountMail:{guid}".
     internal const string AccountMailPrefix = "\x00AccountMail:";
 
+    // Sentinel prefixes for saved-view virtual folders.
+    internal const string ViewPrefix    = "\x00View:";
+    internal const string ViewAllPrefix = "\x00ViewAll:";
+
+    private static bool TryGetViewIdFromSentinel(string? fullName, out Guid viewId)
+    {
+        if (fullName != null &&
+            fullName.StartsWith(ViewPrefix, StringComparison.Ordinal) &&
+            Guid.TryParse(fullName.AsSpan(ViewPrefix.Length), out viewId))
+            return true;
+        viewId = Guid.Empty;
+        return false;
+    }
+
+    private static bool TryGetViewAllIdFromSentinel(string? fullName, out Guid viewId)
+    {
+        if (fullName != null &&
+            fullName.StartsWith(ViewAllPrefix, StringComparison.Ordinal) &&
+            Guid.TryParse(fullName.AsSpan(ViewAllPrefix.Length), out viewId))
+            return true;
+        viewId = Guid.Empty;
+        return false;
+    }
+
     /// <summary>
     /// Creates the <see cref="MailFolderModel"/> that represents the "All Mail" virtual
     /// folder for a specific account.  Used by both the main folder tree and the folder picker.
@@ -122,6 +148,10 @@ public partial class MainViewModel : ObservableObject
         // Per-account "All Mail" sentinels have a real AccountId, not Guid.Empty.
         if (TryGetAccountIdFromSentinel(folder.FullName, out _)) return true;
 
+        // Saved-view sentinels.
+        if (TryGetViewIdFromSentinel(folder.FullName, out _))    return true;
+        if (TryGetViewAllIdFromSentinel(folder.FullName, out _)) return true;
+
         if (folder.AccountId != Guid.Empty) return false;
 
         return string.Equals(folder.FullName, AllMailFolder.FullName, StringComparison.Ordinal) ||
@@ -130,6 +160,25 @@ public partial class MainViewModel : ObservableObject
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal);
     }
+
+    // ── Saved views ───────────────────────────────────────────────────────────────
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSavedViews))]
+    private ObservableCollection<SavedView> _savedViews = [];
+
+    [ObservableProperty]
+    private SavedView? _activeView;
+
+    public bool HasSavedViews => SavedViews.Count > 0;
+
+    /// <summary>Raised when the view list changes so the Views menu can be rebuilt.</summary>
+    public event EventHandler? SavedViewsChanged;
+
+    /// <summary>Raised to ask MainWindow to open the View Manager dialog.</summary>
+    public event EventHandler? ManageViewsRequested;
+
+    // ── Account / folder tree ─────────────────────────────────────────────────────
 
     [ObservableProperty]
     private ObservableCollection<AccountModel> _accounts = [];
@@ -313,15 +362,18 @@ public partial class MainViewModel : ObservableObject
         IOAuthService oauthService,
         ISyncService syncService,
         IConfigService configService,
-        ICommandRegistry commandRegistry)
+        ICommandRegistry commandRegistry,
+        IViewService viewService)
     {
-        _imap           = imap;
-        _accountService = accountService;
-        _credentials    = credentials;
-        _localStore     = localStore;
-        _oauthService   = oauthService;
-        _syncService    = syncService;
-        _configService  = configService;
+        _imap            = imap;
+        _accountService  = accountService;
+        _credentials     = credentials;
+        _localStore      = localStore;
+        _oauthService    = oauthService;
+        _syncService     = syncService;
+        _configService   = configService;
+        _commandRegistry = commandRegistry;
+        _viewService     = viewService;
 
         var cfg = _configService.Load();
         _showMessageStatus = cfg.ShowMessageStatus;
@@ -346,12 +398,284 @@ public partial class MainViewModel : ObservableObject
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
 
+        // Load saved views and register their commands before the UI is shown.
+        LoadSavedViews();
         RegisterCommands(commandRegistry);
     }
 
     public void LoadAccountList()
     {
         Accounts = new ObservableCollection<AccountModel>(_accountService.LoadAccounts());
+    }
+
+    // ── Saved-views lifecycle ─────────────────────────────────────────────────────
+
+    /// <summary>Loads views from disk and registers a command for each one.</summary>
+    private void LoadSavedViews()
+    {
+        var views = _viewService.Load();
+        SavedViews = new ObservableCollection<SavedView>(views);
+        RegisterViewCommands();
+    }
+
+    /// <summary>
+    /// Called by the code-behind after the View Manager dialog closes with changes.
+    /// Reloads views from disk, refreshes commands, and rebuilds the folder tree.
+    /// </summary>
+    public void UpdateSavedViews()
+    {
+        var views = _viewService.Load();
+        SavedViews = new ObservableCollection<SavedView>(views);
+        RegisterViewCommands();
+        BuildFolderTree();
+        SavedViewsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Registers (or re-registers) one command per saved view.</summary>
+    private void RegisterViewCommands()
+    {
+        // Remove any commands from previous view registrations.
+        var stale = _commandRegistry.GetAll()
+            .Where(c => c.Id.StartsWith("view.saved.", StringComparison.OrdinalIgnoreCase))
+            .Select(c => c.Id)
+            .ToList();
+        foreach (var id in stale)
+            _commandRegistry.Unregister(id);
+
+        foreach (var view in SavedViews)
+            RegisterOneViewCommand(view);
+    }
+
+    private void RegisterOneViewCommand(SavedView view)
+    {
+        var commandId = $"view.saved.{view.Id}";
+        var cfg       = _configService.Load();
+        var binding   = cfg.CustomHotkeys.FirstOrDefault(h => h.CommandId == commandId);
+        var gesture   = binding?.Gesture ?? view.Hotkey;
+
+        Key defaultKey         = Key.None;
+        ModifierKeys defaultMods = ModifierKeys.None;
+        if (!string.IsNullOrEmpty(gesture))
+            GestureHelper.TryParse(gesture, out defaultKey, out defaultMods);
+
+        // Capture the ID (not the SavedView reference) to avoid closure-captures
+        // that would break if the collection is replaced.
+        var capturedId = view.Id;
+        _commandRegistry.Register(new CommandDefinition(
+            id:               commandId,
+            category:         "Views",
+            title:            view.Name,
+            execute:          () => _ = ApplyViewByIdAsync(capturedId, allFolders: false),
+            defaultKey:       defaultKey,
+            defaultModifiers: defaultMods));
+    }
+
+    // ── View application ──────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private void SaveView() => ManageViewsRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private void ManageViews() => ManageViewsRequested?.Invoke(this, EventArgs.Empty);
+
+    [RelayCommand]
+    private async Task SelectViewAsync(string? viewIdString)
+    {
+        if (!Guid.TryParse(viewIdString, out var id)) return;
+        await ApplyViewByIdAsync(id, allFolders: false);
+    }
+
+    private async Task ApplyViewByIdAsync(Guid viewId, bool allFolders)
+    {
+        var view = SavedViews.FirstOrDefault(v => v.Id == viewId);
+        if (view == null) return;
+        await ApplyViewAsync(view, allFolders);
+    }
+
+    private async Task ApplyViewAsync(SavedView view, bool allFolders = false)
+    {
+        ActiveView = view;
+
+        // Apply view's mode/filter/sort before clearing search so rebuild
+        // schedulers triggered by ViewMode change operate on the right data.
+        ViewMode = view.ViewMode switch
+        {
+            "conversations" => ViewMode.Conversations,
+            "from"          => ViewMode.From,
+            "to"            => ViewMode.To,
+            _               => ViewMode.Messages,
+        };
+        ActiveFilter = view.Filter switch
+        {
+            "unread"      => MessageFilter.Unread,
+            "read"        => MessageFilter.Read,
+            "attachments" => MessageFilter.WithAttachments,
+            "replied"     => MessageFilter.Replied,
+            "forwarded"   => MessageFilter.Forwarded,
+            _             => MessageFilter.All,
+        };
+        ActiveSort = view.Sort switch
+        {
+            "dateAsc"   => MessageSort.DateAscending,
+            "alphaAsc"  => MessageSort.AlphaAscending,
+            "alphaDesc" => MessageSort.AlphaDescending,
+            "countDesc" => MessageSort.CountDescending,
+            "countAsc"  => MessageSort.CountAscending,
+            _           => MessageSort.DateDescending,
+        };
+
+        SearchText     = string.Empty;
+        IsSearchActive = false;
+        MessageDetail  = null;
+        IsMessageOpen  = false;
+
+        if (view.Folders.Count == 0)
+        {
+            SelectedFolder = new MailFolderModel
+            {
+                FullName    = $"{ViewPrefix}{view.Id}",
+                DisplayName = view.Name,
+            };
+            Messages.Clear();
+            StatusText = $"View '{view.Name}' has no folders configured.";
+            return;
+        }
+
+        bool multiFolder = view.Folders.Count > 1 || allFolders;
+
+        if (!multiFolder)
+        {
+            // Single-folder view: navigate to the real folder so Refresh / sync work naturally.
+            var vf = view.Folders[0];
+            var realFolder = Folders.FirstOrDefault(f =>
+                !f.IsHeader &&
+                f.AccountId == vf.AccountId &&
+                string.Equals(f.FullName, vf.FolderFullName, StringComparison.OrdinalIgnoreCase));
+
+            if (realFolder != null)
+            {
+                SelectedFolder  = realFolder;
+                SelectedAccount = Accounts.FirstOrDefault(a => a.Id == vf.AccountId) ?? SelectedAccount;
+                await FetchFolderAsync();
+                return;
+            }
+        }
+
+        // Multi-folder view: use a view-sentinel as the selected folder.
+        SelectedFolder = new MailFolderModel
+        {
+            FullName    = allFolders ? $"{ViewAllPrefix}{view.Id}" : $"{ViewPrefix}{view.Id}",
+            DisplayName = view.Name,
+        };
+        await FetchViewFoldersAsync(view);
+    }
+
+    private async Task FetchViewFoldersAsync(SavedView view)
+    {
+        var expectedFolder = SelectedFolder;
+        var loadVersion    = Interlocked.Increment(ref _folderLoadVersion);
+        Messages.Clear();
+        StatusText = $"Loading {view.Name}…";
+        IsBusy = true;
+
+        _folderCts?.Cancel();
+        _folderCts = new CancellationTokenSource();
+        var ct = _folderCts.Token;
+
+        try
+        {
+            // ── Phase 1: show cache immediately ───────────────────────────────────
+            var cached = new List<MailMessageSummary>();
+            foreach (var vf in view.Folders)
+            {
+                var msgs = await _localStore.LoadFolderSummariesAsync(vf.AccountId, vf.FolderFullName);
+                cached.AddRange(msgs);
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            SetMessages(cached.OrderByDescending(m => m.Date));
+            StatusText = cached.Count > 0
+                ? $"{cached.Count} cached messages (checking for new…)"
+                : $"Loading {view.Name}…";
+            IsBusy = false;
+
+            // ── Phase 2: incremental IMAP update ──────────────────────────────────
+            ct.ThrowIfCancellationRequested();
+            IsBusy = true;
+            var newMessages = new List<MailMessageSummary>();
+            foreach (var vf in view.Folders)
+            {
+                ct.ThrowIfCancellationRequested();
+                try
+                {
+                    var maxUid = await _localStore.GetMaxUidAsync(vf.AccountId, vf.FolderFullName);
+                    List<MailMessageSummary> msgs;
+                    if (maxUid == 0 && _syncDays > 0)
+                        msgs = await _imap.GetMessagesSinceDateAsync(
+                            vf.AccountId, vf.FolderFullName, DateTime.UtcNow.AddDays(-_syncDays), ct);
+                    else
+                    {
+                        var initialCount = _configService.Load().InitialSyncCount;
+                        msgs = await _imap.GetMessagesSinceAsync(
+                            vf.AccountId, vf.FolderFullName, maxUid, initialCount, ct);
+                    }
+                    newMessages.AddRange(msgs);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    LogService.Log($"ViewFolders fetch {vf.AccountDisplayName}/{vf.FolderDisplayName}", ex);
+                }
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            var existingKeys = Messages
+                .Select(m => (m.UniqueId, m.AccountId, m.FolderName))
+                .ToHashSet();
+
+            foreach (var msg in newMessages.OrderByDescending(m => m.Date))
+            {
+                if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+                var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
+                if (!existingKeys.Add(key)) continue;
+                if (!MatchesFilter(msg)) continue;
+                InsertMessageSorted(msg);
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            if (newMessages.Count > 0)
+                _ = _localStore.UpsertSummariesAsync(newMessages);
+
+            var count = Messages.Count;
+            StatusText = count == 0
+                ? $"No messages in {view.Name}."
+                : $"{count} messages in {view.Name}.";
+
+            if (ViewMode == ViewMode.Conversations)
+                ScheduleConversationRebuild();
+            else if (ViewMode == ViewMode.From)
+                ScheduleSenderGroupRebuild();
+            else if (ViewMode == ViewMode.To)
+                ScheduleToGroupRebuild();
+
+            StartPrefetchTopOfFolder();
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"{view.Name} load cancelled.";
+        }
+        catch (Exception ex)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = $"Failed to load {view.Name}: {ex.Message}";
+            LogService.Log("FetchViewFolders", ex);
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
+        }
     }
 
     internal void ApplySettings(ConfigModel cfg)
@@ -566,6 +890,11 @@ public partial class MainViewModel : ObservableObject
             var count = Messages.Count;
             StatusText = $"{count} messages.";
             Announce($"{count} {(count == 1 ? "message" : "messages")} loaded.", AnnouncementCategory.Status);
+
+            // Apply default view (if any) after the initial sync is complete.
+            var defaultView = SavedViews.FirstOrDefault(v => v.IsDefault);
+            if (defaultView != null)
+                await ApplyViewAsync(defaultView);
         }
         catch (OperationCanceledException) { /* sync cancelled — normal */ }
         catch (Exception ex)
@@ -871,6 +1200,52 @@ public partial class MainViewModel : ObservableObject
     {
         var roots = new List<FolderTreeNode>();
 
+        // "Views" group — shown only when the user has saved at least one view.
+        if (SavedViews.Count > 0)
+        {
+            var viewsGroup = new FolderTreeNode
+            {
+                IsHeader   = true,
+                Label      = "Views",
+                IsExpanded = true,
+            };
+            foreach (var view in SavedViews)
+            {
+                var viewFolder = new MailFolderModel
+                {
+                    FullName    = $"{ViewPrefix}{view.Id}",
+                    DisplayName = view.Name,
+                };
+                var viewNode = new FolderTreeNode { Folder = viewFolder, Label = view.Name };
+
+                if (view.Folders.Count > 1)
+                {
+                    // Multi-folder: add "All" child, then each constituent folder.
+                    var allFolder = new MailFolderModel
+                    {
+                        FullName    = $"{ViewAllPrefix}{view.Id}",
+                        DisplayName = $"{view.Name} — All",
+                    };
+                    viewNode.Children.Add(new FolderTreeNode
+                    {
+                        Folder = allFolder,
+                        Label  = allFolder.DisplayName,
+                    });
+                    foreach (var vf in view.Folders)
+                    {
+                        var real = Folders.FirstOrDefault(f =>
+                            !f.IsHeader &&
+                            f.AccountId == vf.AccountId &&
+                            string.Equals(f.FullName, vf.FolderFullName, StringComparison.OrdinalIgnoreCase));
+                        if (real != null)
+                            viewNode.Children.Add(new FolderTreeNode { Folder = real, Label = real.DisplayName });
+                    }
+                }
+                viewsGroup.Children.Add(viewNode);
+            }
+            roots.Add(viewsGroup);
+        }
+
         // "All Mail" is a top-level group header with 5 virtual sub-folder children.
         var allMailGroup = new FolderTreeNode
         {
@@ -1163,6 +1538,19 @@ public partial class MainViewModel : ObservableObject
     private async Task SelectFolderAsync(MailFolderModel? folder)
     {
         if (folder == null || folder.IsHeader) return;
+
+        // Intercept view sentinels BEFORE resetting filter/search — views set their own state.
+        if (TryGetViewIdFromSentinel(folder.FullName, out var viewId))
+        {
+            await ApplyViewByIdAsync(viewId, allFolders: false);
+            return;
+        }
+        if (TryGetViewAllIdFromSentinel(folder.FullName, out var viewAllId))
+        {
+            await ApplyViewByIdAsync(viewAllId, allFolders: true);
+            return;
+        }
+
         ActiveFilter   = MessageFilter.All;
         SearchText     = string.Empty;
         IsSearchActive = false;
@@ -1651,6 +2039,14 @@ public partial class MainViewModel : ObservableObject
         if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   "All Sent");
         if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
+
+        // Saved-view sentinels — re-fetch without resetting mode/filter/sort
+        if (TryGetViewIdFromSentinel(folder.FullName, out var viewId) ||
+            TryGetViewAllIdFromSentinel(folder.FullName, out viewId))
+        {
+            var view = SavedViews.FirstOrDefault(v => v.Id == viewId);
+            if (view != null) return FetchViewFoldersAsync(view);
+        }
         return Task.CompletedTask;
     }
 

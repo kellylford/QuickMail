@@ -7,6 +7,7 @@ namespace QuickMail.Services;
 public interface ICommandRegistry
 {
     void Register(CommandDefinition command);
+    void Unregister(string id);
     IReadOnlyList<CommandDefinition> GetAll();
     CommandDefinition? FindById(string id);
     CommandDefinition? FindByGesture(Key key, ModifierKeys modifiers);
