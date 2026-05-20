@@ -725,6 +725,43 @@
                                Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                                AutomationProperties.Name="Current folder"/>
 
+                    <!-- Search bar — visible only while IsSearchActive -->
+                    <Border DockPanel.Dock="Top"
+                            Padding="6,4"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                            Visibility="{Binding IsSearchActive, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right"
+                                    Content="Clear"
+                                    Command="{Binding ClearSearchCommand}"
+                                    AutomationProperties.Name="Clear search (Escape)"
+                                    ToolTip="Clear search (Escape)"
+                                    IsTabStop="True"/>
+                            <TextBlock DockPanel.Dock="Right"
+                                       VerticalAlignment="Center"
+                                       Margin="6,0"
+                                       Focusable="False"
+                                       Text="{Binding Messages.Count, StringFormat='{}{0} found'}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SearchText}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <TextBox x:Name="SearchBox"
+                                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Search messages. Tab or Down Arrow to move to results. Escape to clear."
+                                     ToolTip="Search by sender, subject, or preview. Escape to clear."
+                                     PreviewKeyDown="SearchBox_PreviewKeyDown"/>
+                        </DockPanel>
+                    </Border>
+
                     <TextBlock DockPanel.Dock="Top"
                                Text="No messages"
                                HorizontalAlignment="Center" Margin="0,20">

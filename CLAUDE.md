@@ -180,6 +180,7 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
 | Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
+| Ctrl+Shift+S | `view.search` | Search Messages… |
 | Ctrl+Shift+G | `contacts.grabAddresses` | Grab Addresses from Message |
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
 | F1 | `help.userGuide` | Open User Guide |

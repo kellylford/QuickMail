@@ -171,6 +171,28 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private MessageFilter _activeFilter = MessageFilter.All;
 
+    // ── Search ───────────────────────────────────────────────────────────────────
+
+    // Raw messages before search filtering; repopulated by SetMessages().
+    private List<MailMessageSummary> _rawMessages = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    private bool _isSearchActive = false;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    private string _searchText = string.Empty;
+
+    // Updated by ApplyFiltersAndSearch(); the View debounces this to announce count.
+    [ObservableProperty]
+    private string _searchAnnouncement = string.Empty;
+
+    /// <summary>Raised when the search box should receive focus (View concern).</summary>
+    public event EventHandler? SearchRequested;
+
+    partial void OnSearchTextChanged(string value) => ApplyFiltersAndSearch();
+
     [ObservableProperty]
     private ObservableCollection<ConversationGroup> _conversations = [];
 
@@ -252,9 +274,12 @@ public partial class MainViewModel : ObservableObject
                 var folderPart = string.IsNullOrWhiteSpace(accountLabel)
                     ? SelectedFolder.DisplayName
                     : $"{SelectedFolder.DisplayName} - {accountLabel}";
-                return IsFilterActive
-                    ? $"{folderPart} — {FilterLabel} - QuickMail"
-                    : $"{folderPart} - QuickMail";
+                var suffix = IsSearchActive && !string.IsNullOrWhiteSpace(SearchText)
+                    ? $" — Search: {SearchText}"
+                    : IsFilterActive
+                    ? $" — {FilterLabel}"
+                    : string.Empty;
+                return $"{folderPart}{suffix} - QuickMail";
             }
             return "QuickMail";
         }
@@ -375,6 +400,11 @@ public partial class MainViewModel : ObservableObject
             id: "help.userGuide", category: "Help", title: "Open User Guide",
             execute: () => ViewUserGuideCommand.Execute(null),
             defaultKey: Key.F1, defaultModifiers: ModifierKeys.None));
+
+        registry.Register(new CommandDefinition(
+            id: "view.search", category: "View", title: "Search Messages…",
+            execute: () => { IsSearchActive = true; SearchRequested?.Invoke(this, EventArgs.Empty); },
+            defaultKey: Key.S, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         registry.Register(new CommandDefinition(
             id: "view.filterAll", category: "View", title: "Show All Messages",
@@ -596,13 +626,40 @@ public partial class MainViewModel : ObservableObject
             ScheduleToGroupRebuild();
     }
 
-    // Assigns Messages from a raw list, applying the active filter.
+    // Stores raw messages and applies all active filters.
     private void SetMessages(IEnumerable<MailMessageSummary> messages)
     {
-        var list = ActiveFilter == MessageFilter.All
-            ? messages
-            : messages.Where(MatchesFilter);
-        Messages = new BatchObservableCollection<MailMessageSummary>(list);
+        _rawMessages = messages.ToList();
+        ApplyFiltersAndSearch();
+    }
+
+    // Re-applies the status filter and search text to _rawMessages.
+    // Called by SetMessages() and OnSearchTextChanged(); OnMessagesChanged()
+    // automatically triggers group rebuilds when Messages is replaced.
+    private void ApplyFiltersAndSearch()
+    {
+        IEnumerable<MailMessageSummary> result = _rawMessages;
+        if (ActiveFilter != MessageFilter.All)
+            result = result.Where(MatchesFilter);
+        if (!string.IsNullOrWhiteSpace(SearchText))
+            result = result.Where(MatchesSearch);
+        Messages = new BatchObservableCollection<MailMessageSummary>(result);
+
+        if (IsSearchActive && !string.IsNullOrWhiteSpace(SearchText))
+        {
+            var n = Messages.Count;
+            SearchAnnouncement = n == 0
+                ? "No messages found"
+                : $"{n} {(n == 1 ? "message" : "messages")} found";
+        }
+    }
+
+    private bool MatchesSearch(MailMessageSummary msg)
+    {
+        var q = SearchText;
+        return msg.From.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || msg.Subject.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || msg.Preview.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool MatchesFilter(MailMessageSummary msg) => ActiveFilter switch
@@ -961,6 +1018,8 @@ public partial class MainViewModel : ObservableObject
     {
         if (folder == null || folder.IsHeader) return;
         ActiveFilter   = MessageFilter.All;
+        SearchText     = string.Empty;
+        IsSearchActive = false;
         SelectedFolder = folder;
         MessageDetail  = null;
         IsMessageOpen  = false;
@@ -2467,6 +2526,15 @@ public partial class MainViewModel : ObservableObject
             "to"            => ViewMode.To,
             _               => ViewMode.Messages,
         };
+    }
+
+    // ── Search command ────────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private void ClearSearch()
+    {
+        SearchText     = string.Empty;
+        IsSearchActive = false;
     }
 
     // ── Filter command ────────────────────────────────────────────────────────

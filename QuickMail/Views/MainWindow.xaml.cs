@@ -92,6 +92,11 @@ public partial class MainWindow : Window
     private string? _pendingStatusText;
     private static readonly TimeSpan StatusAnnounceDebounce = TimeSpan.FromMilliseconds(500);
 
+    // Debounces search result-count announcements so rapid keystrokes coalesce.
+    private DispatcherTimer? _searchAnnounceTimer;
+    private string? _pendingSearchAnnounceText;
+    private static readonly TimeSpan SearchAnnounceDebounce = TimeSpan.FromMilliseconds(300);
+
     private const int MaxRichHtmlRenderChars = 1_000_000;
     private const int MaxReaderTextChars = 140_000;
     private const int MaxRichHtmlTableCount = 500;
@@ -145,6 +150,7 @@ public partial class MainWindow : Window
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.AnnouncementRequested += (_, text) => AccessibilityHelper.Announce(this, text, interrupt: true);
+        vm.SearchRequested += (_, _) => OpenSearch();
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
@@ -248,6 +254,9 @@ public partial class MainWindow : Window
 
             if (e.PropertyName == nameof(MainViewModel.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
                 QueueStatusAnnounce(vm.StatusText);
+
+            if (e.PropertyName == nameof(MainViewModel.SearchAnnouncement) && !string.IsNullOrEmpty(vm.SearchAnnouncement))
+                QueueSearchAnnounce(vm.SearchAnnouncement);
         };
 
         PreviewKeyDown += OnWindowKeyDown;
@@ -324,6 +333,61 @@ public partial class MainWindow : Window
 
         _statusAnnounceTimer.Stop();
         _statusAnnounceTimer.Start();
+    }
+
+    private void QueueSearchAnnounce(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        _pendingSearchAnnounceText = text;
+
+        if (_searchAnnounceTimer == null)
+        {
+            _searchAnnounceTimer = new DispatcherTimer { Interval = SearchAnnounceDebounce };
+            _searchAnnounceTimer.Tick += (_, _) =>
+            {
+                _searchAnnounceTimer!.Stop();
+                var pending = _pendingSearchAnnounceText;
+                _pendingSearchAnnounceText = null;
+                if (!string.IsNullOrEmpty(pending))
+                    AccessibilityHelper.Announce(this, pending, interrupt: false);
+            };
+        }
+
+        _searchAnnounceTimer.Stop();
+        _searchAnnounceTimer.Start();
+    }
+
+    private void OpenSearch()
+    {
+        _vm.IsSearchActive = true;
+        Dispatcher.InvokeAsync(() =>
+        {
+            SearchBox.Focus();
+            AccessibilityHelper.Announce(this, "Search box. Type to filter messages.", interrupt: true);
+        }, DispatcherPriority.Input);
+    }
+
+    private void SearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            var count = _vm.Messages.Count;
+            _vm.ClearSearchCommand.Execute(null);
+            ReturnFocusToMessageList();
+            var word = count == 1 ? "message" : "messages";
+            AccessibilityHelper.Announce(this, $"Search cleared. {count} {word}.", interrupt: true);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
+        {
+            ReturnFocusToMessageList();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            SyncFolderTreeSelection(true);
+            e.Handled = true;
+        }
     }
 
     // Returns true when the main menu bar or toolbar currently holds keyboard focus,
@@ -1050,6 +1114,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.Oem2 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            OpenSearch();
+            e.Handled = true;
+            return;
+        }
+
         if (TryGetTypeAheadKeyText(e, out var searchText) && TryHandleMessageListTypeAhead(searchText))
         {
             e.Handled = true;
@@ -1574,6 +1645,7 @@ public partial class MainWindow : Window
         if (MainToolbar.IsKeyboardFocusWithin)  return 0;
         if (AccountList.IsKeyboardFocusWithin)  return 1;
         if (FolderList.IsKeyboardFocusWithin)   return 2;
+        if (SearchBox.IsKeyboardFocusWithin)    return 6;
         if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin) return 3;
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;
@@ -1588,6 +1660,7 @@ public partial class MainWindow : Window
             case 0: ToolbarFirstButton.Focus(); break;
             case 1: AccountList.Focus(); break;
             case 2: FolderList.Focus(); break;
+            case 6: SearchBox.Focus(); break;
             case 3: FocusActiveMessagePanel(); break;
             case 4:
                 if (_vm.IsMessageOpen && _webViewReady)
@@ -1609,7 +1682,9 @@ public partial class MainWindow : Window
     private async Task CycleFocusAsync(bool forward)
     {
         // Build the ordered list of active pane indices.
-        var panes = new System.Collections.Generic.List<int> { 0, 1, 2, 3 };
+        var panes = new System.Collections.Generic.List<int> { 0, 1, 2 };
+        if (_vm.IsSearchActive) panes.Add(6); // search box between folder tree and message list
+        panes.Add(3);
         if (_vm.IsMessageOpen && _webViewReady) panes.Add(4);
         panes.Add(5); // StatusBar always included
 
@@ -1734,6 +1809,13 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
             SyncFolderTreeSelection(true);
+            return;
+        }
+
+        if (e.Key == Key.Oem2 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            OpenSearch();
+            e.Handled = true;
             return;
         }
 
@@ -2176,6 +2258,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (e.Key == Key.Oem2 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            OpenSearch();
+            e.Handled = true;
+            return;
+        }
+
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
             TryHandleMessageTreeTypeAhead(
                 SenderGroupTree,
@@ -2343,6 +2432,13 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
             SyncFolderTreeSelection(true);
+            return;
+        }
+
+        if (e.Key == Key.Oem2 && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            OpenSearch();
+            e.Handled = true;
             return;
         }
 
