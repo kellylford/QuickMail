@@ -68,6 +68,13 @@ public interface IImapService : IDisposable
     /// </summary>
     Task<uint> AppendDraftAsync(Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default);
 
+    /// <summary>
+    /// Appends a sent message to the server Sent folder so it appears in the Sent view.
+    /// Providers that auto-copy sent mail (e.g. Gmail) will silently duplicate; we rely on
+    /// the server to deduplicate or accept the extra copy — most handle this gracefully.
+    /// </summary>
+    Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default);
+
     /// <summary>Downloads and decodes a single attachment by its IMAP body-part specifier.</summary>
     Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, uint uid, string partSpecifier, CancellationToken ct = default);
 

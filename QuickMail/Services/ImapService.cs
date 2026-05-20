@@ -428,6 +428,31 @@ public class ImapService : IImapService
         finally { await draftsFolder.CloseAsync(false, ct); }
     }
 
+    public async Task AppendToSentAsync(
+        Guid accountId, ComposeModel sent, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client  = lease.Client;
+        var account = _accounts[accountId];
+
+        var sentFolder = FindSpecialFolder(client, SpecialFolder.Sent);
+        if (sentFolder == null)
+        {
+            LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
+            return;
+        }
+
+        var msg = MimeMessageBuilder.Build(sent, account);
+
+        await sentFolder.OpenAsync(FolderAccess.ReadWrite, ct);
+        try
+        {
+            var uid = await sentFolder.AppendAsync(msg, MessageFlags.Seen, ct);
+            LogService.Log($"AppendToSent: appended to {sentFolder.FullName} UID={uid?.Id}");
+        }
+        finally { await sentFolder.CloseAsync(false, ct); }
+    }
+
     // ── Copy / Move messages ─────────────────────────────────────────────────────
 
     public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default)

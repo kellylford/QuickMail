@@ -173,6 +173,22 @@ public partial class ComposeViewModel : ObservableObject
             StatusText = "Message sent.";
             _isSent = true;
 
+            // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
+            // Providers that auto-save sent mail (e.g. Gmail) may produce a duplicate; that is
+            // harmless and the background sync will eventually deduplicate via UID tracking.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var sentCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    await _imap.AppendToSentAsync(account.Id, compose, sentCts.Token);
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log("SendAsync: failed to append to Sent folder", ex);
+                }
+            });
+
             // Delete the draft from the server (if one was saved)
             if (_draftUid.HasValue && _draftFolderName != null)
             {
