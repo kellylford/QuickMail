@@ -161,9 +161,7 @@
                             HorizontalAlignment="Left"
                             Margin="0,16,0,0"
                             AutomationProperties.Name="Create new view from current state"
-                            Visibility="{Binding HasSelectedView,
-                                Converter={StaticResource BoolToVis},
-                                ConverterParameter=Inverse}"/>
+                            Visibility="{Binding HasNoSelectedView, Converter={StaticResource BoolToVis}}"/>
 
                 </StackPanel>
             </ScrollViewer>

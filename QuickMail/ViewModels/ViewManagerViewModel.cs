@@ -36,12 +36,14 @@ public partial class ViewManagerViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedView))]
+    [NotifyPropertyChangedFor(nameof(HasNoSelectedView))]
     [NotifyPropertyChangedFor(nameof(SelectedFoldersSummary))]
     [NotifyPropertyChangedFor(nameof(SelectedModeSummary))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
     private SavedView? _selectedView;
 
-    public bool HasSelectedView => SelectedView != null;
+    public bool HasSelectedView   => SelectedView != null;
+    public bool HasNoSelectedView => SelectedView == null;
 
     // ── Edit fields ───────────────────────────────────────────────────────────────
 
