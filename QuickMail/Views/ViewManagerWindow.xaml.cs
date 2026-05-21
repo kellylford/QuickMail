@@ -27,6 +27,7 @@ public partial class ViewManagerWindow : Window
         vm.FolderConflictDetected += OnFolderConflict;
         vm.SetHotkeyRequested     += OnSetHotkeyRequested;
         vm.EditModeEntered        += OnEditModeEntered;
+        vm.CloseRequested         += (_, _) => Close();
 
         if (createMode)
             Loaded += OnLoadedCreateMode;

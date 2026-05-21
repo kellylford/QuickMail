@@ -42,6 +42,7 @@ public partial class ViewManagerViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanSave))]
     [NotifyPropertyChangedFor(nameof(ShowReadOnly))]
     [NotifyPropertyChangedFor(nameof(ShowEditPanel))]
+    [NotifyCanExecuteChangedFor(nameof(ApplySelectedViewCommand))]
     private SavedView? _selectedView;
 
     public bool HasSelectedView   => SelectedView != null;
@@ -159,6 +160,16 @@ public partial class ViewManagerViewModel : ObservableObject
 
     /// <summary>Raised whenever views are created, updated, or deleted so the VM caller can refresh.</summary>
     public event EventHandler? ViewsChanged;
+
+    /// <summary>
+    /// Set when the user presses "Apply View". The caller reads this after ShowDialog() returns
+    /// and applies the view. Never set from inside an active event handler so there is no
+    /// re-entrant parent-window mutation while the dialog loop is still running.
+    /// </summary>
+    public SavedView? ViewRequestedToApply { get; private set; }
+
+    /// <summary>Raised to ask the dialog to close itself (see Apply View).</summary>
+    public event EventHandler? CloseRequested;
 
     // ── Constructor ───────────────────────────────────────────────────────────────
 
@@ -351,6 +362,18 @@ public partial class ViewManagerViewModel : ObservableObject
             EditIsDefault = SelectedView.IsDefault;
         }
         IsEditMode = false;
+    }
+
+    /// <summary>
+    /// Stores the selected view as the one to apply and asks the dialog to close.
+    /// The actual ApplyViewAsync call happens in OpenViewManager after ShowDialog() returns,
+    /// so the dialog's message loop is fully dead before the parent window is mutated.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(HasSelectedView))]
+    private void ApplySelectedView()
+    {
+        ViewRequestedToApply = SelectedView;
+        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     [RelayCommand]

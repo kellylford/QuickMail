@@ -125,6 +125,11 @@
                     <StackPanel x:Name="ReadOnlyActionsPanel"
                                 Orientation="Horizontal" Margin="0,14,0,0"
                                 Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}">
+                        <Button Content="_Apply View"
+                                Command="{Binding ApplySelectedViewCommand}"
+                                MinWidth="90" Margin="0,0,8,0"
+                                ToolTip="Activate this view and close the dialog"
+                                AutomationProperties.Name="Apply selected view"/>
                         <Button Content="_Edit"
                                 Command="{Binding StartEditCommand}"
                                 MinWidth="70" Margin="0,0,8,0"

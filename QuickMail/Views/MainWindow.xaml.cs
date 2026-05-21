@@ -151,6 +151,11 @@ public partial class MainWindow : Window
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
         vm.ManageViewsRequested += (_, _) => OpenViewManager(createMode: false);
         vm.SavedViewsChanged    += (_, _) => RebuildViewsMenu();
+        vm.PropertyChanged      += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.ActiveView))
+                UpdateViewMenuCheckmarks();
+        };
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
@@ -2928,6 +2933,10 @@ public partial class MainWindow : Window
         // while the dialog's message loop is still running — a re-entrant COM
         // apartment violation that crashes the app (STATUS_CALLBACK_RETURNED_THREAD_APT_CHANGED).
         _vm.UpdateSavedViews();
+
+        // Apply View was pressed: activate the view now that the dialog loop is dead.
+        if (vmVm.ViewRequestedToApply is { } viewToApply)
+            _vm.SelectViewCommand.Execute(viewToApply.Id.ToString());
     }
 
     /// <summary>
@@ -2966,7 +2975,13 @@ public partial class MainWindow : Window
         for (int i = 0; i < views.Count; i++)
         {
             var view    = views[i];
-            var item    = new MenuItem { Header = view.Name };
+            var item    = new MenuItem
+            {
+                Header      = view.Name,
+                IsCheckable = true,
+                IsChecked   = view.Id == _vm.ActiveView?.Id,
+                Tag         = view.Id,
+            };
             var viewId  = view.Id.ToString();
             item.Click += (_, _) => _vm.SelectViewCommand.Execute(viewId);
 
@@ -2975,6 +2990,19 @@ public partial class MainWindow : Window
                 item.InputGestureText = view.Hotkey;
 
             ViewsMenuItem.Items.Insert(i, item);
+        }
+    }
+
+    /// <summary>
+    /// Updates IsChecked on the dynamic view menu items to reflect the currently active view.
+    /// Called when ActiveView changes; faster than a full menu rebuild.
+    /// </summary>
+    private void UpdateViewMenuCheckmarks()
+    {
+        foreach (var obj in ViewsMenuItem.Items)
+        {
+            if (obj is MenuItem { Tag: Guid id } item)
+                item.IsChecked = id == _vm.ActiveView?.Id;
         }
     }
 

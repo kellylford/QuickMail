@@ -61,39 +61,45 @@ public partial class MainViewModel : ObservableObject
     public IReadOnlyDictionary<Guid, List<MailFolderModel>> CachedFolders => _cachedFolders;
 
     // ── Virtual folder sentinels ─────────────────────────────────────────────────
+    // IMPORTANT: use \u0000 (Unicode escape, always exactly 4 hex digits) rather than
+    // \x00 in embedded string literals.  C#'s \x escape greedily consumes up to 4 hex
+    // digits, so "\x00AllMail" parses as \x00A (0x0A = LF) + "llMail", not NUL + "AllMail".
+    // A-F are valid hex digits, and every virtual-folder name starts with "All…" or
+    // "Account…", both beginning with A.
+
     /// <summary>Child under the All Mail group: all non-excluded folders across all accounts.</summary>
     public static readonly MailFolderModel AllMailFolder = new()
     {
-        FullName    = "\x00AllMail",
+        FullName    = "\u0000AllMail",
         DisplayName = "All Mail"
     };
     public static readonly MailFolderModel AllInboxesFolder = new()
     {
-        FullName    = "\x00AllInboxes",
+        FullName    = "\u0000AllInboxes",
         DisplayName = "All Inboxes"
     };
     public static readonly MailFolderModel AllDraftsFolder = new()
     {
-        FullName    = "\x00AllDrafts",
+        FullName    = "\u0000AllDrafts",
         DisplayName = "All Drafts"
     };
     public static readonly MailFolderModel AllSentFolder = new()
     {
-        FullName    = "\x00AllSent",
+        FullName    = "\u0000AllSent",
         DisplayName = "All Sent"
     };
     public static readonly MailFolderModel AllTrashFolder = new()
     {
-        FullName    = "\x00AllTrash",
+        FullName    = "\u0000AllTrash",
         DisplayName = "All Trash"
     };
 
-    // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\x00AccountMail:{guid}".
-    internal const string AccountMailPrefix = "\x00AccountMail:";
+    // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
+    internal const string AccountMailPrefix = "\u0000AccountMail:";
 
     // Sentinel prefixes for saved-view virtual folders.
-    internal const string ViewPrefix    = "\x00View:";
-    internal const string ViewAllPrefix = "\x00ViewAll:";
+    internal const string ViewPrefix    = "\u0000View:";
+    internal const string ViewAllPrefix = "\u0000ViewAll:";
 
     private static bool TryGetViewIdFromSentinel(string? fullName, out Guid viewId)
     {
@@ -1203,7 +1209,7 @@ public partial class MainViewModel : ObservableObject
             {
                 IsHeader    = true,
                 DisplayName = account.AccountLabel,
-                FullName    = $"\x00Header:{account.Id}",
+                FullName    = $"\u0000Header:{account.Id}",
                 AccountId   = account.Id
             });
             items.AddRange(folders);
