@@ -168,6 +168,7 @@ public partial class MainViewModel : ObservableObject
     private ObservableCollection<SavedView> _savedViews = [];
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private SavedView? _activeView;
 
     public bool HasSavedViews => SavedViews.Count > 0;
@@ -338,6 +339,15 @@ public partial class MainViewModel : ObservableObject
         {
             if (IsMessageOpen && !string.IsNullOrWhiteSpace(MessageDetail?.Subject))
                 return $"{MessageDetail.Subject} - QuickMail";
+            if (ActiveView != null)
+            {
+                var suffix = IsSearchActive && !string.IsNullOrWhiteSpace(SearchText)
+                    ? $" — Search: {SearchText}"
+                    : IsFilterActive
+                    ? $" — {FilterLabel}"
+                    : string.Empty;
+                return $"{ActiveView.Name}{suffix} - QuickMail";
+            }
             if (SelectedFolder != null && !SelectedFolder.IsHeader)
             {
                 var accountLabel = SelectedFolder.AccountId != Guid.Empty
@@ -534,13 +544,23 @@ public partial class MainViewModel : ObservableObject
 
         if (view.Folders.Count == 0)
         {
-            SelectedFolder = new MailFolderModel
+            if (!string.IsNullOrEmpty(view.VirtualFolderKey))
             {
-                FullName    = $"{ViewPrefix}{view.Id}",
-                DisplayName = view.Name,
-            };
-            Messages.Clear();
-            StatusText = $"View '{view.Name}' has no folders configured.";
+                // VirtualFolderKey is stored without the \x00 sentinel prefix.
+                // Reconstruct the full sentinel name to look up the folder.
+                var sentinelName  = "\x00" + view.VirtualFolderKey;
+                var virtualFolder = Folders.FirstOrDefault(f =>
+                    string.Equals(f.FullName, sentinelName, StringComparison.Ordinal))
+                    ?? new MailFolderModel { FullName = sentinelName, DisplayName = view.Name };
+                SelectedFolder = virtualFolder;
+                await FetchVirtualAsync(virtualFolder);
+                return;
+            }
+            // Legacy view (null key or pre-fix garbled key): default to All Mail and
+            // patch the key so a future Save will persist the correct value.
+            view.VirtualFolderKey = AllMailFolder.FullName.Substring(1); // "AllMail"
+            SelectedFolder = AllMailFolder;
+            await FetchVirtualAsync(AllMailFolder);
             return;
         }
 
@@ -1560,6 +1580,7 @@ public partial class MainViewModel : ObservableObject
         ActiveFilter   = MessageFilter.All;
         SearchText     = string.Empty;
         IsSearchActive = false;
+        ActiveView     = null;
         SelectedFolder = folder;
         MessageDetail  = null;
         IsMessageOpen  = false;

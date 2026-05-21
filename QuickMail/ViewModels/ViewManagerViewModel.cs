@@ -83,8 +83,22 @@ public partial class ViewManagerViewModel : ObservableObject
 
     public string SelectedFoldersSummary =>
         SelectedView == null ? string.Empty
-        : SelectedView.Folders.Count == 0 ? "(no folders)"
-        : string.Join(" + ", SelectedView.Folders.Select(f => $"{f.AccountDisplayName} {f.FolderDisplayName}"));
+        : SelectedView.Folders.Count > 0
+            ? string.Join(" + ", SelectedView.Folders.Select(f => $"{f.AccountDisplayName} {f.FolderDisplayName}"))
+        : !string.IsNullOrEmpty(SelectedView.VirtualFolderKey)
+            ? VirtualFolderDisplayName(SelectedView.VirtualFolderKey)
+        : "(no folders)";
+
+    private static string VirtualFolderDisplayName(string key) => key switch
+    {
+        "AllMail"    => "All Mail",
+        "AllInboxes" => "All Inboxes",
+        "AllDrafts"  => "All Drafts",
+        "AllSent"    => "All Sent",
+        "AllTrash"   => "All Trash",
+        var k when k.StartsWith("AccountMail:") => "Account Mail",
+        _            => "Virtual folder",
+    };
 
     public string SelectedModeSummary =>
         SelectedView == null ? string.Empty
@@ -206,6 +220,13 @@ public partial class ViewManagerViewModel : ObservableObject
                 AccountDisplayName = CurrentAccount.AccountLabel,
                 FolderDisplayName  = CurrentFolder.DisplayName,
             });
+        }
+        else if (CurrentFolder != null &&
+                 CurrentFolder.FullName.StartsWith("\x00", StringComparison.Ordinal))
+        {
+            // Strip the NUL sentinel prefix — storing it causes JSON serialization
+            // edge cases. ApplyViewAsync prepends it again when looking up the folder.
+            view.VirtualFolderKey = CurrentFolder.FullName.Substring(1);
         }
 
         SavedViews.Add(view);

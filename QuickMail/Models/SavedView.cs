@@ -26,4 +26,10 @@ public class SavedView
 
     /// <summary>When true this view is applied automatically on startup.</summary>
     public bool IsDefault  { get; set; }
+
+    /// <summary>
+    /// Set when the view was created from a virtual folder (All Mail, All Inboxes, etc.).
+    /// Stores the sentinel FullName, e.g. "\x00AllMail". Null for real-folder views.
+    /// </summary>
+    public string? VirtualFolderKey { get; set; }
 }
