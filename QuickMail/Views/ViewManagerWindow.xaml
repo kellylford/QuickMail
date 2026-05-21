@@ -188,13 +188,30 @@
                                FontSize="10" Foreground="DimGray" Margin="0,3,0,0"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
-                    <!-- Default checkbox -->
+                    <!-- Default checkbox and day limit -->
                     <TextBlock Style="{StaticResource SectionLabel}" Text="Options"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <CheckBox Content="_Default view (applied on startup)"
                               IsChecked="{Binding EditIsDefault}"
                               AutomationProperties.Name="Set as default view"
                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
+
+                    <!-- Day limit -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Day Limit"
+                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
+                    <Grid Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="72"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding EditDaysOfMail, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Day limit — number of days of mail to show"
+                                 MaxLength="4"/>
+                        <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"
+                                   Foreground="DimGray" FontSize="11"
+                                   Text="days  (blank = show all)"/>
+                    </Grid>
 
                     <!-- Save / Cancel buttons -->
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0"

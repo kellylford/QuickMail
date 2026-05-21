@@ -679,4 +679,92 @@ public class SavedViewsMainViewModelTests
         Assert.Null(vm.ActiveView);
         Assert.DoesNotContain("My Special Inbox View", vm.WindowTitle);
     }
+
+    // -- Day limit applied with view ----------------------------------------
+
+    [Fact]
+    public async Task ApplyView_WithDayLimit_SetsActiveDayLimit()
+    {
+        var view = MakeVirtualView("AllInboxes");
+        view.DaysOfMail = 7;
+        var vm = MakeVm([view]);
+
+        await SelectView(vm, view);
+
+        Assert.Equal(7, vm.ActiveDayLimit);
+    }
+
+    [Fact]
+    public async Task ApplyView_NoDayLimit_ActiveDayLimitIsNull()
+    {
+        var view = MakeVirtualView("AllInboxes");
+        // DaysOfMail deliberately left null
+        var vm = MakeVm([view]);
+
+        await SelectView(vm, view);
+
+        Assert.Null(vm.ActiveDayLimit);
+    }
+
+    [Fact]
+    public async Task ClearView_ResetsDayLimit()
+    {
+        var view = MakeVirtualView("AllInboxes");
+        view.DaysOfMail = 7;
+        var vm = MakeVm([view]);
+        await SelectView(vm, view);
+        Assert.Equal(7, vm.ActiveDayLimit);
+
+        await ClearView(vm);
+
+        Assert.Null(vm.ActiveDayLimit);
+    }
+
+    [Fact]
+    public async Task SelectRealFolder_ClearsDayLimit()
+    {
+        var view = MakeVirtualView("AllInboxes");
+        view.DaysOfMail = 14;
+        var vm = MakeVm([view]);
+        await SelectView(vm, view);
+
+        var realFolder = new MailFolderModel
+        {
+            AccountId   = Guid.NewGuid(),
+            FullName    = "INBOX",
+            DisplayName = "Inbox",
+        };
+        await SelectFolder(vm, realFolder);
+
+        Assert.Null(vm.ActiveDayLimit);
+    }
+
+    [Fact]
+    public async Task Refresh_WithActiveViewAndDayLimit_KeepsDayLimit()
+    {
+        var view = MakeVirtualView("AllInboxes");
+        view.DaysOfMail = 30;
+        var vm = MakeVm([view]);
+        await SelectView(vm, view);
+
+        await Refresh(vm);
+
+        Assert.Equal(30, vm.ActiveDayLimit);
+    }
+
+    [Fact]
+    public async Task SwitchViews_DayLimitUpdatesToSecondView()
+    {
+        var viewA = MakeVirtualView("AllInboxes");
+        viewA.DaysOfMail = 7;
+        var viewB = MakeVirtualView("AllMail");
+        viewB.DaysOfMail = null;
+        var vm = MakeVm([viewA, viewB]);
+
+        await SelectView(vm, viewA);
+        Assert.Equal(7, vm.ActiveDayLimit);
+
+        await SelectView(vm, viewB);
+        Assert.Null(vm.ActiveDayLimit);
+    }
 }

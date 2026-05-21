@@ -2918,6 +2918,7 @@ public partial class MainWindow : Window
             currentViewMode:  _vm.ViewMode,
             currentFilter:    _vm.ActiveFilter,
             currentSort:      _vm.ActiveSort,
+            currentDayLimit:  _vm.ActiveDayLimit,
             isCreateMode:     createMode);
 
         var dialog = new ViewManagerWindow(vmVm, createMode) { Owner = this };

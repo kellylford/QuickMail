@@ -28,8 +28,14 @@ public class SavedView
     public bool IsDefault  { get; set; }
 
     /// <summary>
+    /// When set, only messages received within this many days are shown.
+    /// Null means no day limit (show all available mail).
+    /// </summary>
+    public int? DaysOfMail { get; set; }
+
+    /// <summary>
     /// Set when the view was created from a virtual folder (All Mail, All Inboxes, etc.).
-    /// Stores the sentinel FullName, e.g. "\x00AllMail". Null for real-folder views.
+    /// Stores the key without the NUL sentinel prefix, e.g. "AllMail". Null for real-folder views.
     /// </summary>
     public string? VirtualFolderKey { get; set; }
 }

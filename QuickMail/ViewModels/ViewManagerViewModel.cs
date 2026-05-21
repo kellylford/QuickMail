@@ -80,6 +80,10 @@ public partial class ViewManagerViewModel : ObservableObject
     [ObservableProperty]
     private bool _editIsDefault;
 
+    /// <summary>Bound to the day-limit TextBox. Empty string means no limit.</summary>
+    [ObservableProperty]
+    private string _editDaysOfMail = string.Empty;
+
     // ── Derived display for the selected view's saved state ───────────────────────
 
     public string SelectedFoldersSummary =>
@@ -101,9 +105,17 @@ public partial class ViewManagerViewModel : ObservableObject
         _            => "Virtual folder",
     };
 
-    public string SelectedModeSummary =>
-        SelectedView == null ? string.Empty
-        : $"{ModeLabel(SelectedView.ViewMode)}  ·  {FilterLabel(SelectedView.Filter)}  ·  {SortLabel(SelectedView.Sort)}";
+    public string SelectedModeSummary
+    {
+        get
+        {
+            if (SelectedView == null) return string.Empty;
+            var s = $"{ModeLabel(SelectedView.ViewMode)}  ·  {FilterLabel(SelectedView.Filter)}  ·  {SortLabel(SelectedView.Sort)}";
+            if (SelectedView.DaysOfMail.HasValue)
+                s += $"  ·  Last {SelectedView.DaysOfMail} days";
+            return s;
+        }
+    }
 
     public bool CanSave => HasSelectedView && !string.IsNullOrWhiteSpace(EditName);
 
@@ -125,6 +137,8 @@ public partial class ViewManagerViewModel : ObservableObject
                 extras.Add(FilterLabel(CurrentFilter.ToString().ToLowerInvariant()));
             if (CurrentSort != MessageSort.DateDescending)
                 extras.Add(SortLabel(CurrentSort.ToString()));
+            if (CurrentDayLimit.HasValue)
+                extras.Add($"last {CurrentDayLimit} days");
             if (extras.Count > 0)
                 sb.Append(", ").Append(string.Join(" ", extras));
             return sb.ToString();
@@ -173,6 +187,10 @@ public partial class ViewManagerViewModel : ObservableObject
 
     // ── Constructor ───────────────────────────────────────────────────────────────
 
+    // ── Current day limit (snapshot when dialog opens) ───────────────────────────
+
+    public int? CurrentDayLimit { get; }
+
     public ViewManagerViewModel(
         IViewService     viewService,
         IConfigService   configService,
@@ -183,18 +201,20 @@ public partial class ViewManagerViewModel : ObservableObject
         ViewMode         currentViewMode,
         MessageFilter    currentFilter,
         MessageSort      currentSort,
-        bool             isCreateMode = false)
+        int?             currentDayLimit = null,
+        bool             isCreateMode    = false)
     {
         _viewService   = viewService;
         _configService = configService;
         _registry      = registry;
         _isCreateMode  = isCreateMode;
 
-        CurrentFolder  = currentFolder;
-        CurrentAccount = currentAccount;
+        CurrentFolder    = currentFolder;
+        CurrentAccount   = currentAccount;
         CurrentViewMode  = currentViewMode;
         CurrentFilter    = currentFilter;
         CurrentSort      = currentSort;
+        CurrentDayLimit  = currentDayLimit;
 
         SavedViews = new ObservableCollection<SavedView>(savedViews);
     }
@@ -216,10 +236,11 @@ public partial class ViewManagerViewModel : ObservableObject
     {
         var view = new SavedView
         {
-            Name     = GenerateName(),
-            ViewMode = CurrentViewMode.ToString().ToLowerInvariant(),
-            Filter   = FilterKey(CurrentFilter),
-            Sort     = SortKey(CurrentSort),
+            Name       = GenerateName(),
+            ViewMode   = CurrentViewMode.ToString().ToLowerInvariant(),
+            Filter     = FilterKey(CurrentFilter),
+            Sort       = SortKey(CurrentSort),
+            DaysOfMail = CurrentDayLimit,
         };
 
         if (IsRealImapFolder(CurrentFolder) && CurrentAccount != null)
@@ -241,10 +262,11 @@ public partial class ViewManagerViewModel : ObservableObject
         }
 
         SavedViews.Add(view);
-        SelectedView = view;
-        EditName      = view.Name;
-        EditHotkey    = string.Empty;
-        EditIsDefault = false;
+        SelectedView   = view;
+        EditName       = view.Name;
+        EditHotkey     = string.Empty;
+        EditIsDefault  = false;
+        EditDaysOfMail = CurrentDayLimit.HasValue ? CurrentDayLimit.Value.ToString() : string.Empty;
 
         // Enter edit mode so the user can name the new view immediately.
         IsEditMode = true;
@@ -357,9 +379,10 @@ public partial class ViewManagerViewModel : ObservableObject
     {
         if (SelectedView != null)
         {
-            EditName      = SelectedView.Name;
-            EditHotkey    = GetEffectiveHotkey(SelectedView);
-            EditIsDefault = SelectedView.IsDefault;
+            EditName       = SelectedView.Name;
+            EditHotkey     = GetEffectiveHotkey(SelectedView);
+            EditIsDefault  = SelectedView.IsDefault;
+            EditDaysOfMail = SelectedView.DaysOfMail.HasValue ? SelectedView.DaysOfMail.Value.ToString() : string.Empty;
         }
         IsEditMode = false;
     }
@@ -397,15 +420,17 @@ public partial class ViewManagerViewModel : ObservableObject
 
         if (value == null)
         {
-            EditName      = string.Empty;
-            EditHotkey    = string.Empty;
-            EditIsDefault = false;
+            EditName       = string.Empty;
+            EditHotkey     = string.Empty;
+            EditIsDefault  = false;
+            EditDaysOfMail = string.Empty;
         }
         else
         {
-            EditName      = value.Name;
-            EditHotkey    = GetEffectiveHotkey(value);
-            EditIsDefault = value.IsDefault;
+            EditName       = value.Name;
+            EditHotkey     = GetEffectiveHotkey(value);
+            EditIsDefault  = value.IsDefault;
+            EditDaysOfMail = value.DaysOfMail.HasValue ? value.DaysOfMail.Value.ToString() : string.Empty;
         }
     }
 
@@ -436,6 +461,8 @@ public partial class ViewManagerViewModel : ObservableObject
             extras.Add(FilterLabel(CurrentFilter.ToString().ToLowerInvariant()));
         if (CurrentSort != MessageSort.DateDescending)
             extras.Add(SortLabel(CurrentSort.ToString()));
+        if (CurrentDayLimit.HasValue)
+            extras.Add($"{CurrentDayLimit}d");
 
         if (extras.Count > 0)
             sb.Append(", ").Append(string.Join(" ", extras));
@@ -466,6 +493,10 @@ public partial class ViewManagerViewModel : ObservableObject
                 v.IsDefault = false;
         }
         SelectedView.IsDefault = EditIsDefault;
+
+        // Update day limit — parse the text box; empty or invalid = no limit
+        SelectedView.DaysOfMail = int.TryParse(EditDaysOfMail.Trim(), out var days) && days > 0
+            ? days : null;
     }
 
     private void Persist()

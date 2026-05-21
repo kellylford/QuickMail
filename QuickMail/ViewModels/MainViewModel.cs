@@ -177,6 +177,13 @@ public partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private SavedView? _activeView;
 
+    /// <summary>
+    /// When set by a view's DaysOfMail property, only messages this many days old or newer are shown.
+    /// Cleared when the view is cleared or the user navigates to a folder directly.
+    /// </summary>
+    [ObservableProperty]
+    private int? _activeDayLimit;
+
     public bool HasSavedViews => SavedViews.Count > 0;
 
     /// <summary>Raised when the view list changes so the Views menu can be rebuilt.</summary>
@@ -543,6 +550,7 @@ public partial class MainViewModel : ObservableObject
             _           => MessageSort.DateDescending,
         };
 
+        ActiveDayLimit = view.DaysOfMail;
         SearchText     = string.Empty;
         IsSearchActive = false;
         MessageDetail  = null;
@@ -670,7 +678,7 @@ public partial class MainViewModel : ObservableObject
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
                 var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
                 if (!existingKeys.Add(key)) continue;
-                if (!MatchesFilter(msg)) continue;
+                if (!MatchesFilter(msg) || !MatchesDayLimit(msg)) continue;
                 InsertMessageSorted(msg);
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
@@ -1082,6 +1090,8 @@ public partial class MainViewModel : ObservableObject
         IEnumerable<MailMessageSummary> result = _rawMessages;
         if (ActiveFilter != MessageFilter.All)
             result = result.Where(MatchesFilter);
+        if (ActiveDayLimit.HasValue)
+            result = result.Where(MatchesDayLimit);
         if (!string.IsNullOrWhiteSpace(SearchText))
             result = result.Where(MatchesSearch);
         result = ActiveSort switch
@@ -1119,6 +1129,9 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.Forwarded       => msg.IsForwarded,
         _                             => true,
     };
+
+    private bool MatchesDayLimit(MailMessageSummary msg)
+        => msg.Date >= DateTimeOffset.Now.AddDays(-(ActiveDayLimit ?? 0));
 
     // Binary-insert into the descending-by-date Messages collection.
     private void InsertMessageSorted(MailMessageSummary msg)
@@ -1584,6 +1597,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         ActiveFilter   = MessageFilter.All;
+        ActiveDayLimit = null;
         SearchText     = string.Empty;
         IsSearchActive = false;
         ActiveView     = null;
@@ -1876,7 +1890,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ClearViewAsync()
     {
-        ActiveView = null;
+        ActiveView     = null;
+        ActiveDayLimit = null;
         if (IsVirtualFolder(SelectedFolder))
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
