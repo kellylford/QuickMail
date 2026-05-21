@@ -1856,6 +1856,21 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshAsync()
     {
+        if (ActiveView != null)
+        {
+            await ApplyViewAsync(ActiveView);
+            return;
+        }
+        if (IsVirtualFolder(SelectedFolder))
+            await FetchVirtualAsync(SelectedFolder!);
+        else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
+            await FetchFolderAsync();
+    }
+
+    [RelayCommand]
+    private async Task ClearViewAsync()
+    {
+        ActiveView = null;
         if (IsVirtualFolder(SelectedFolder))
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
