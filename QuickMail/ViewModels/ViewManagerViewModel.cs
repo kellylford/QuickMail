@@ -97,14 +97,15 @@ public partial class ViewManagerViewModel : ObservableObject
     /// <summary>
     /// True when the dialog's current state folder differs from the selected view's folder(s),
     /// which means a Save will trigger a Replace/Add prompt.
+    /// Only meaningful when the current folder is a real IMAP folder (not a virtual sentinel).
     /// </summary>
     public bool CurrentFolderDiffersFromSelected
     {
         get
         {
-            if (SelectedView == null || CurrentFolder == null) return false;
+            if (SelectedView == null || !IsRealImapFolder(CurrentFolder)) return false;
             return !SelectedView.Folders.Any(vf =>
-                vf.AccountId == CurrentFolder.AccountId &&
+                vf.AccountId == CurrentFolder!.AccountId &&
                 string.Equals(vf.FolderFullName, CurrentFolder.FullName, StringComparison.OrdinalIgnoreCase));
         }
     }
@@ -151,6 +152,16 @@ public partial class ViewManagerViewModel : ObservableObject
 
     // ── Commands ──────────────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Returns true only for real IMAP folders — not virtual sentinels (All Inboxes, All Mail,
+    /// view sentinels, account-mail sentinels, etc.) which all start with the NUL character.
+    /// </summary>
+    private static bool IsRealImapFolder(MailFolderModel? folder) =>
+        folder != null &&
+        !folder.IsHeader &&
+        folder.AccountId != Guid.Empty &&
+        !folder.FullName.StartsWith("\x00", StringComparison.Ordinal);
+
     [RelayCommand]
     private void SaveAsNew()
     {
@@ -162,12 +173,12 @@ public partial class ViewManagerViewModel : ObservableObject
             Sort     = SortKey(CurrentSort),
         };
 
-        if (CurrentFolder != null && CurrentAccount != null)
+        if (IsRealImapFolder(CurrentFolder) && CurrentAccount != null)
         {
             view.Folders.Add(new ViewFolder
             {
                 AccountId          = CurrentAccount.Id,
-                FolderFullName     = CurrentFolder.FullName,
+                FolderFullName     = CurrentFolder!.FullName,
                 AccountDisplayName = CurrentAccount.AccountLabel,
                 FolderDisplayName  = CurrentFolder.DisplayName,
             });
@@ -205,7 +216,7 @@ public partial class ViewManagerViewModel : ObservableObject
     /// <summary>Called by the code-behind after the user answers the folder-conflict prompt.</summary>
     public void ResolveConflict(FolderConflictResolution resolution)
     {
-        if (SelectedView == null || CurrentFolder == null || CurrentAccount == null) return;
+        if (SelectedView == null || CurrentFolder == null || !IsRealImapFolder(CurrentFolder) || CurrentAccount == null) return;
 
         if (resolution == FolderConflictResolution.Replace)
             SelectedView.Folders.Clear();

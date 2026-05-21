@@ -591,6 +591,8 @@ public partial class MainViewModel : ObservableObject
             var cached = new List<MailMessageSummary>();
             foreach (var vf in view.Folders)
             {
+                // Guard: skip any sentinel folder names accidentally stored in older views.
+                if (vf.FolderFullName.StartsWith("\x00", StringComparison.Ordinal)) continue;
                 var msgs = await _localStore.LoadFolderSummariesAsync(vf.AccountId, vf.FolderFullName);
                 cached.AddRange(msgs);
             }
@@ -608,6 +610,7 @@ public partial class MainViewModel : ObservableObject
             var newMessages = new List<MailMessageSummary>();
             foreach (var vf in view.Folders)
             {
+                if (vf.FolderFullName.StartsWith("\x00", StringComparison.Ordinal)) continue;
                 ct.ThrowIfCancellationRequested();
                 try
                 {
