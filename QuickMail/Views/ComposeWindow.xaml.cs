@@ -39,7 +39,20 @@ public partial class ComposeWindow : Window
             box.LostKeyboardFocus += AddressBox_LostKeyboardFocus;
         }
 
-        Loaded  += (_, _) => ToBox.Focus();
+        // Reply / Reply-All: To is already filled in, so land in the body at the top.
+        // New compose / Forward: To is empty, so land in the To field.
+        Loaded += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(_vm.To))
+            {
+                ToBox.Focus();
+            }
+            else
+            {
+                BodyBox.Focus();
+                BodyBox.CaretIndex = 0;
+            }
+        };
         Closing += OnWindowClosing;
     }
 
