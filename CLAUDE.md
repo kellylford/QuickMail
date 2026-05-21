@@ -109,6 +109,53 @@ Trash, Junk, Sent, and Drafts are excluded from `\x00AllMail` via `folder.Exclud
   - Use `force: true` only for feedback about the announcement system itself (the toggle confirmation), so it is always heard regardless of settings.
   - Do not bake instructional text into `AutomationProperties.Name` on controls. Keep the name a short identifying label ("Search messages", not "Search messages. Press Tab to move to results."). If the instruction is worth surfacing, deliver it as a `Hint` announce at the moment the control is focused or activated.
 
+## Modal Dialog Rules — Enforced
+
+These rules prevent a class of crashes (`STATUS_CALLBACK_RETURNED_THREAD_APT_CHANGED`) that
+occur when parent-window UI is mutated while a modal dialog's message loop is still running.
+
+### Never fire ViewsChanged (or any event that triggers UpdateSavedViews / RebuildViewsMenu) while a modal dialog is open
+
+`ShowDialog()` blocks the caller but runs a nested message loop.  If code inside the dialog
+fires an event that causes the **parent window** to rebuild its menu, re-query the folder tree,
+or otherwise touch WPF objects — all while the dialog's loop is still active — the UI thread
+enters a re-entrant state that violates COM apartment rules and crashes the app.
+
+- ✅ Fire `ViewsChanged` **after** `dialog.ShowDialog()` returns (the dialog is gone, its message loop is dead).
+- ✅ If you need the parent to sync state, set a flag or let the caller call `UpdateSavedViews()` post-close.
+- ❌ `vmVm.ViewsChanged += (_, _) => _vm.UpdateSavedViews();` before `dialog.ShowDialog()` — this crashes on Delete, Save, or any in-dialog operation that raises the event.
+- ❌ Calling `ViewsChanged?.Invoke(...)` from `OnClosing` — the message loop is still unwinding.
+
+This was the root cause of two separate crashes: Escape in the Save View dialog, and Delete/Save in the View Manager.
+
+### Event subscriptions on dialog VMs must be cleaned up
+
+If you subscribe to a VM event before `ShowDialog()`, unsubscribe after — even if the VM is
+short-lived — to prevent ghost callbacks if the object graph is retained longer than expected.
+
+```csharp
+void OnChanged(object? s, EventArgs e) { ... }
+vmVm.SomeEvent += OnChanged;
+dialog.ShowDialog();
+vmVm.SomeEvent -= OnChanged;   // always pair += with -=
+```
+
+### XAML element names in tests must use `as` + `Assert.NotNull`
+
+`window.FindName("ElementName")` returns `null` if the element is renamed or removed from XAML.
+A direct cast `(Button)null` silently produces a null reference; `.Visibility` then throws
+`NullReferenceException` with no indication of which element is missing.
+
+- ✅ `var btn = window.FindName("MyButton") as Button; Assert.NotNull(btn);`
+- ❌ `var btn = (Button)window.FindName("MyButton");`  — crashes instead of failing cleanly
+
+### Data validation at entry points, not exit points
+
+Virtual folder sentinel strings (`FullName` starting with `\x00`) must be excluded when saving
+view state.  Use `IsRealImapFolder()` in `ViewManagerViewModel` at the point where a folder
+**enters** a saved view.  Defensive guards in load/fetch code are belt-and-suspenders only;
+they should never be the primary protection.
+
 ## MVVM Rules — Enforced
 
 These rules apply to every change. Violations must be corrected before a PR can merge.

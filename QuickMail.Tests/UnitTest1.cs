@@ -92,11 +92,10 @@ public class XamlParseTests
         // like ToolbarButton that are defined there are available to Window XAML.
         const string stylesUri = "pack://application:,,,/QuickMail;component/Styles/AccessibleStyles.xaml";
         var uri = new Uri(stylesUri, UriKind.Absolute);
-        if (Application.Current.Resources.MergedDictionaries.All(d => d.Source != uri))
-        {
-            Application.Current.Resources.MergedDictionaries.Add(
-                new ResourceDictionary { Source = uri });
-        }
+        // Capture to local so nullable analysis knows it's non-null (it was just created above).
+        var app = Application.Current!;
+        if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
     }
 
     private static void ParseXamlFile(string relativePathFromAssembly)

@@ -250,9 +250,10 @@ public class ViewManagerWindowTests
 
         const string stylesUri = "pack://application:,,,/QuickMail;component/Styles/AccessibleStyles.xaml";
         var uri = new Uri(stylesUri, UriKind.Absolute);
-        if (Application.Current.Resources.MergedDictionaries.All(d => d.Source != uri))
-            Application.Current.Resources.MergedDictionaries.Add(
-                new ResourceDictionary { Source = uri });
+        // Capture to local so nullable analysis knows it's non-null (it was just created above).
+        var app = Application.Current!;
+        if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
+            app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
     }
 
     /// <summary>
@@ -320,8 +321,9 @@ public class ViewManagerWindowTests
         var window = new ViewManagerWindow(vm);
         FlushBindings();                                // drain DataBind queue
 
-        var button = (Button)window.FindName("CreateNewViewButton");
-        Assert.Equal(Visibility.Visible, button.Visibility);
+        var button = window.FindName("CreateNewViewButton") as Button;
+        Assert.NotNull(button);   // fails clearly if x:Name is ever removed from XAML
+        Assert.Equal(Visibility.Visible, button!.Visibility);
 
         window.Close();
     }
@@ -334,8 +336,9 @@ public class ViewManagerWindowTests
         var window = new ViewManagerWindow(vm);
         FlushBindings();
 
-        var panel = (StackPanel)window.FindName("ReadOnlyActionsPanel");
-        Assert.Equal(Visibility.Collapsed, panel.Visibility);
+        var panel = window.FindName("ReadOnlyActionsPanel") as StackPanel;
+        Assert.NotNull(panel);    // fails clearly if x:Name is ever removed from XAML
+        Assert.Equal(Visibility.Collapsed, panel!.Visibility);
 
         window.Close();
     }
@@ -344,7 +347,7 @@ public class ViewManagerWindowTests
     //
     // When a saved view is selected:
     //   • "Create New View from Current State" button  → Collapsed
-    //   • Save / Save As New / Delete panel            → Visible
+    //   • Read-only actions panel (Edit/Delete/Save As New)  → Visible
 
     [StaFact]
     public void CreateNewViewButton_CollapsedWhenViewSelected()
@@ -355,8 +358,9 @@ public class ViewManagerWindowTests
         var window = new ViewManagerWindow(vm);
         FlushBindings();
 
-        var button = (Button)window.FindName("CreateNewViewButton");
-        Assert.Equal(Visibility.Collapsed, button.Visibility);
+        var button = window.FindName("CreateNewViewButton") as Button;
+        Assert.NotNull(button);
+        Assert.Equal(Visibility.Collapsed, button!.Visibility);
 
         window.Close();
     }
@@ -370,8 +374,9 @@ public class ViewManagerWindowTests
         var window = new ViewManagerWindow(vm);
         FlushBindings();
 
-        var panel = (StackPanel)window.FindName("ReadOnlyActionsPanel");
-        Assert.Equal(Visibility.Visible, panel.Visibility);
+        var panel = window.FindName("ReadOnlyActionsPanel") as StackPanel;
+        Assert.NotNull(panel);
+        Assert.Equal(Visibility.Visible, panel!.Visibility);
 
         window.Close();
     }
@@ -387,8 +392,10 @@ public class ViewManagerWindowTests
         var window = new ViewManagerWindow(vm);
         FlushBindings();
 
-        var createBtn    = (Button)window.FindName("CreateNewViewButton");
-        var actionsPanel = (StackPanel)window.FindName("ReadOnlyActionsPanel");
+        var createBtn    = window.FindName("CreateNewViewButton") as Button;
+        var actionsPanel = window.FindName("ReadOnlyActionsPanel") as StackPanel;
+        Assert.NotNull(createBtn);
+        Assert.NotNull(actionsPanel);
 
         // Initial: nothing selected
         Assert.Equal(Visibility.Visible,   createBtn.Visibility);

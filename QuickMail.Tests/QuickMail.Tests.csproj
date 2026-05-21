@@ -11,6 +11,9 @@
     <ApartmentState>STA</ApartmentState>
     <!-- Match the main project's RID so the ProjectReference output path resolves correctly -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <!-- Treat the most dangerous nullable warnings as errors so the CI catches
+         null-dereference risks before they become runtime crashes. -->
+    <WarningsAsErrors>CS8602;CS8604;CS8618</WarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
