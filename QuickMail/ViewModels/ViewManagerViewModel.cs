@@ -371,7 +371,10 @@ public partial class ViewManagerViewModel : ObservableObject
     {
         var sb = new StringBuilder();
 
-        if (CurrentAccount != null)
+        // Only prefix the account name for real IMAP folders.
+        // Virtual folders (All Mail, All Inboxes, All Drafts, etc.) span multiple
+        // accounts, so prefixing one account name is misleading.
+        if (CurrentAccount != null && IsRealImapFolder(CurrentFolder))
         {
             // Use first word of account display name if multi-word.
             var words = CurrentAccount.AccountLabel.Split(' ', StringSplitOptions.RemoveEmptyEntries);
