@@ -2912,7 +2912,8 @@ public partial class MainWindow : Window
             currentAccount: _vm.SelectedAccount,
             currentViewMode:  _vm.ViewMode,
             currentFilter:    _vm.ActiveFilter,
-            currentSort:      _vm.ActiveSort);
+            currentSort:      _vm.ActiveSort,
+            isCreateMode:     createMode);
 
         vmVm.ViewsChanged += (_, _) => _vm.UpdateSavedViews();
 

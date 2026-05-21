@@ -40,10 +40,32 @@ public partial class ViewManagerViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SelectedFoldersSummary))]
     [NotifyPropertyChangedFor(nameof(SelectedModeSummary))]
     [NotifyPropertyChangedFor(nameof(CanSave))]
+    [NotifyPropertyChangedFor(nameof(ShowReadOnly))]
+    [NotifyPropertyChangedFor(nameof(ShowEditPanel))]
     private SavedView? _selectedView;
 
     public bool HasSelectedView   => SelectedView != null;
     public bool HasNoSelectedView => SelectedView == null;
+
+    // ── Edit mode ─────────────────────────────────────────────────────────────────
+
+    private readonly bool _isCreateMode;
+    public bool IsCreateMode => _isCreateMode;
+    public bool IsManageMode => !_isCreateMode;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowReadOnly))]
+    [NotifyPropertyChangedFor(nameof(ShowEditPanel))]
+    private bool _isEditMode;
+
+    /// <summary>True when a view is selected and we are NOT in edit mode — show read-only summary + Edit/Delete buttons.</summary>
+    public bool ShowReadOnly  => HasSelectedView && !IsEditMode;
+
+    /// <summary>True when a view is selected and we ARE in edit mode — show the editing fields.</summary>
+    public bool ShowEditPanel => HasSelectedView && IsEditMode;
+
+    /// <summary>Fired when edit mode is entered so the code-behind can focus the Name field.</summary>
+    public event EventHandler? EditModeEntered;
 
     // ── Edit fields ───────────────────────────────────────────────────────────────
 
@@ -135,11 +157,13 @@ public partial class ViewManagerViewModel : ObservableObject
         AccountModel?    currentAccount,
         ViewMode         currentViewMode,
         MessageFilter    currentFilter,
-        MessageSort      currentSort)
+        MessageSort      currentSort,
+        bool             isCreateMode = false)
     {
         _viewService   = viewService;
         _configService = configService;
         _registry      = registry;
+        _isCreateMode  = isCreateMode;
 
         CurrentFolder  = currentFolder;
         CurrentAccount = currentAccount;
@@ -190,6 +214,10 @@ public partial class ViewManagerViewModel : ObservableObject
         EditHotkey    = string.Empty;
         EditIsDefault = false;
 
+        // Enter edit mode so the user can name the new view immediately.
+        IsEditMode = true;
+        EditModeEntered?.Invoke(this, EventArgs.Empty);
+
         Persist();
         ViewsChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -211,6 +239,8 @@ public partial class ViewManagerViewModel : ObservableObject
         CommitEdits();
         Persist();
         ViewsChanged?.Invoke(this, EventArgs.Empty);
+        // In manage mode, return to read-only view after saving.
+        if (IsManageMode) IsEditMode = false;
     }
 
     /// <summary>Called by the code-behind after the user answers the folder-conflict prompt.</summary>
@@ -279,6 +309,27 @@ public partial class ViewManagerViewModel : ObservableObject
         // Do NOT fire ViewsChanged here.
     }
 
+    /// <summary>Enter edit mode for the selected view.</summary>
+    [RelayCommand(CanExecute = nameof(HasSelectedView))]
+    private void StartEdit()
+    {
+        IsEditMode = true;
+        EditModeEntered?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Leave edit mode, restoring the edit fields to the saved view state.</summary>
+    [RelayCommand]
+    private void CancelEdit()
+    {
+        if (SelectedView != null)
+        {
+            EditName      = SelectedView.Name;
+            EditHotkey    = GetEffectiveHotkey(SelectedView);
+            EditIsDefault = SelectedView.IsDefault;
+        }
+        IsEditMode = false;
+    }
+
     [RelayCommand]
     private void RequestSetHotkey() => SetHotkeyRequested?.Invoke(this, EventArgs.Empty);
 
@@ -295,6 +346,9 @@ public partial class ViewManagerViewModel : ObservableObject
 
     partial void OnSelectedViewChanged(SavedView? value)
     {
+        // Always leave edit mode when the selection changes.
+        IsEditMode = false;
+
         if (value == null)
         {
             EditName      = string.Empty;

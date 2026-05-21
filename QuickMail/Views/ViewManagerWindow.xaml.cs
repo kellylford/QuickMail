@@ -26,9 +26,20 @@ public partial class ViewManagerWindow : Window
 
         vm.FolderConflictDetected += OnFolderConflict;
         vm.SetHotkeyRequested     += OnSetHotkeyRequested;
+        vm.EditModeEntered        += OnEditModeEntered;
 
         if (createMode)
             Loaded += OnLoadedCreateMode;
+        else
+            Loaded += OnLoadedManageMode;
+    }
+
+    // ── Manage-mode setup ─────────────────────────────────────────────────────────
+
+    private void OnLoadedManageMode(object sender, RoutedEventArgs e)
+    {
+        // Land focus in the views list so the user can arrow-key through saved views immediately.
+        ViewsList.Focus();
     }
 
     // ── Create-mode setup ─────────────────────────────────────────────────────────
@@ -47,11 +58,26 @@ public partial class ViewManagerWindow : Window
         CloseButton.Content = "Cancel";
 
         // Create a new view from the current app state and select it.
+        // SaveAsNew() fires EditModeEntered, which schedules the NameBox focus via
+        // OnEditModeEntered at DispatcherPriority.Input — after the visibility update settles.
         _vm.SaveAsNewCommand.Execute(null);
+    }
 
-        // Land focus in the name field with the text selected so the user can type immediately.
-        NameBox.Focus();
-        NameBox.SelectAll();
+    // ── Edit-mode focus ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When the VM enters edit mode (StartEdit or SaveAsNew), land focus in the Name field
+    /// with the text selected so the user can type immediately.
+    /// Uses DispatcherPriority.Input so the layout pass that makes NameBox visible
+    /// (Render priority) runs first.
+    /// </summary>
+    private void OnEditModeEntered(object? sender, EventArgs e)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            NameBox.Focus();
+            NameBox.SelectAll();
+        }, System.Windows.Threading.DispatcherPriority.Input);
     }
 
     // ── Save View button (create mode only) ───────────────────────────────────────

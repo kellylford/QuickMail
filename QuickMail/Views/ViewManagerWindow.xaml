@@ -75,20 +75,87 @@
             <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Center"
                           IsTabStop="False"/>
 
-            <!-- Right: editing panel -->
+            <!-- Right: details / edit panel -->
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
                 <StackPanel Margin="8,0,0,0">
 
+                    <!-- ── Empty state: nothing selected ─────────────────────────── -->
+                    <TextBlock Text="Select a view from the list, or create a new one."
+                               Foreground="DimGray" Margin="0,8,0,0"
+                               Visibility="{Binding HasNoSelectedView, Converter={StaticResource BoolToVis}}"/>
+                    <Button x:Name="CreateNewViewButton"
+                            Content="Create New View from Current State"
+                            Command="{Binding SaveAsNewCommand}"
+                            HorizontalAlignment="Left"
+                            Margin="0,10,0,0"
+                            AutomationProperties.Name="Create new view from current state"
+                            Visibility="{Binding HasNoSelectedView, Converter={StaticResource BoolToVis}}"/>
+
+                    <!-- ── Read-only state: view selected, not editing ────────────── -->
+
+                    <!-- View name as a heading -->
+                    <TextBlock Text="{Binding SelectedView.Name}"
+                               FontWeight="SemiBold" FontSize="14"
+                               Margin="0,4,0,8"
+                               TextTrimming="CharacterEllipsis"
+                               Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
+
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Keyboard Shortcut"
+                               Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="{Binding EditHotkey}"
+                               Margin="0,0,0,6"
+                               Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
+
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Saved Folders"
+                               Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
+                    <TextBox Style="{StaticResource ReadonlyField}"
+                             Text="{Binding SelectedFoldersSummary, Mode=OneWay}"
+                             AutomationProperties.Name="Saved folders"
+                             Margin="0,0,0,6"
+                             Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
+
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="Saved Settings"
+                               Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
+                    <TextBox Style="{StaticResource ReadonlyField}"
+                             Text="{Binding SelectedModeSummary, Mode=OneWay}"
+                             AutomationProperties.Name="Saved view settings"
+                             Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
+
+                    <!-- Edit + Delete action buttons -->
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0"
+                                Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}">
+                        <Button Content="_Edit"
+                                Command="{Binding StartEditCommand}"
+                                MinWidth="70" Margin="0,0,8,0"
+                                ToolTip="Edit this view's name, shortcut, and options"
+                                AutomationProperties.Name="Edit selected view"/>
+                        <Button Content="_Delete"
+                                Command="{Binding DeleteCommand}"
+                                MinWidth="70" Margin="0,0,8,0"
+                                ToolTip="Delete this view"
+                                AutomationProperties.Name="Delete selected view"/>
+                        <Button Content="Save _As New"
+                                Command="{Binding SaveAsNewCommand}"
+                                MinWidth="100"
+                                ToolTip="Create a new view from current app state"
+                                AutomationProperties.Name="Save current state as a new view"/>
+                    </StackPanel>
+
+                    <!-- ── Edit state: view selected and editing ──────────────────── -->
+
                     <!-- Name -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Name"/>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Name"
+                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <TextBox x:Name="NameBox"
                              Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
                              AutomationProperties.Name="View name"
-                             MaxLength="120"/>
+                             MaxLength="120"
+                             Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Hotkey -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Keyboard Shortcut"/>
-                    <Grid>
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Keyboard Shortcut"
+                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
+                    <Grid Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -106,64 +173,39 @@
                                 MinWidth="60" Margin="0,0,4,0"
                                 AutomationProperties.Name="Set keyboard shortcut"/>
                         <Button Grid.Column="2"
-                                Content="_Clear"
+                                Content="C_lear"
                                 Command="{Binding ClearHotkeyCommand}"
                                 MinWidth="60"
                                 AutomationProperties.Name="Clear keyboard shortcut"/>
                     </Grid>
                     <TextBlock Text="Also configurable in File → Settings → Keyboard Shortcuts."
-                               FontSize="10" Foreground="DimGray" Margin="0,3,0,0"/>
+                               FontSize="10" Foreground="DimGray" Margin="0,3,0,0"
+                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
-                    <!-- Default -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Options"/>
+                    <!-- Default checkbox -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Options"
+                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <CheckBox Content="_Default view (applied on startup)"
                               IsChecked="{Binding EditIsDefault}"
-                              AutomationProperties.Name="Set as default view"/>
+                              AutomationProperties.Name="Set as default view"
+                              Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
-                    <!-- Saved state summary (read-only) -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Saved Folders"
-                               Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
-                    <TextBox Style="{StaticResource ReadonlyField}"
-                             Text="{Binding SelectedFoldersSummary, Mode=OneWay}"
-                             AutomationProperties.Name="Saved folders"
-                             Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
-
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Saved Settings"
-                               Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
-                    <TextBox Style="{StaticResource ReadonlyField}"
-                             Text="{Binding SelectedModeSummary, Mode=OneWay}"
-                             AutomationProperties.Name="Saved view settings"
-                             Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}"/>
-
-                    <!-- Save buttons for the selected view -->
-                    <StackPanel x:Name="SelectedViewActionsPanel"
-                                Orientation="Horizontal" Margin="0,16,0,0"
-                                Visibility="{Binding HasSelectedView, Converter={StaticResource BoolToVis}}">
+                    <!-- Save / Cancel buttons -->
+                    <StackPanel Orientation="Horizontal" Margin="0,14,0,0"
+                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}">
                         <Button Content="_Save"
                                 Command="{Binding SaveCommand}"
+                                IsEnabled="{Binding CanSave}"
                                 MinWidth="80" Margin="0,0,8,0"
                                 ToolTip="Save current app state to this view"
                                 AutomationProperties.Name="Save current state to selected view"/>
-                        <Button Content="Save _As New"
-                                Command="{Binding SaveAsNewCommand}"
-                                MinWidth="100" Margin="0,0,8,0"
-                                ToolTip="Create a new view from current app state"
-                                AutomationProperties.Name="Save current state as a new view"/>
-                        <Button Content="_Delete"
-                                Command="{Binding DeleteCommand}"
-                                MinWidth="70"
-                                ToolTip="Delete this view"
-                                AutomationProperties.Name="Delete selected view"/>
+                        <!-- Cancel is only shown in manage mode; create mode uses the dialog's Cancel button -->
+                        <Button Content="C_ancel"
+                                Command="{Binding CancelEditCommand}"
+                                MinWidth="80"
+                                Visibility="{Binding IsManageMode, Converter={StaticResource BoolToVis}}"
+                                AutomationProperties.Name="Cancel editing, discard changes"/>
                     </StackPanel>
-
-                    <!-- Save as new when nothing is selected -->
-                    <Button x:Name="CreateNewViewButton"
-                            Content="Create New View from Current State"
-                            Command="{Binding SaveAsNewCommand}"
-                            HorizontalAlignment="Left"
-                            Margin="0,16,0,0"
-                            AutomationProperties.Name="Create new view from current state"
-                            Visibility="{Binding HasNoSelectedView, Converter={StaticResource BoolToVis}}"/>
 
                 </StackPanel>
             </ScrollViewer>
