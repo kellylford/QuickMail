@@ -2915,15 +2915,18 @@ public partial class MainWindow : Window
             currentSort:      _vm.ActiveSort,
             isCreateMode:     createMode);
 
-        vmVm.ViewsChanged += (_, _) => _vm.UpdateSavedViews();
-
         var dialog = new ViewManagerWindow(vmVm, createMode) { Owner = this };
         dialog.ShowDialog();
 
-        // Sync the main VM after the dialog is fully closed.  This is the safe point to
-        // do UI-touching work (menu rebuild, folder-tree sync).  It also handles the cancel
-        // path in create mode, where CancelCreate() skips firing ViewsChanged to avoid
-        // re-entrant updates during OnClosing.
+        // Sync the main VM after the dialog is fully closed.  This is the ONLY safe
+        // point to do UI-touching work (menu rebuild, folder-tree sync).
+        //
+        // Do NOT subscribe to vmVm.ViewsChanged and call UpdateSavedViews() from
+        // inside that handler.  ViewsChanged fires while ShowDialog() is blocking
+        // (e.g. the user clicks Delete or Save inside the dialog), which means
+        // UpdateSavedViews() would mutate the main window's menu and folder tree
+        // while the dialog's message loop is still running — a re-entrant COM
+        // apartment violation that crashes the app (STATUS_CALLBACK_RETURNED_THREAD_APT_CHANGED).
         _vm.UpdateSavedViews();
     }
 
