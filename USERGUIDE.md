@@ -303,7 +303,7 @@ The **View → Sort** submenu controls the order in which messages or groups are
 
 ## Saved views
 
-A **saved view** is a named snapshot of your current working context — it bundles a folder or virtual folder (or multiple folders), a display mode (Messages, Conversations, From, or To), a filter (All, Unread, etc.), and a sort order into a single item you can jump back to instantly.
+A **saved view** is a named snapshot of your current working context — it bundles a folder or virtual folder (or multiple folders), a display mode (Messages, Conversations, From, or To), a filter (All, Unread, etc.), a sort order, and an optional day limit into a single item you can jump back to instantly.
 
 When a view is active, its name appears in the window title bar instead of the folder name.
 
@@ -323,11 +323,12 @@ You can save a view while **All Mail**, **All Inboxes**, **All Drafts**, **All S
 
 ### Applying a view
 
-Once you have saved views, you can reach them in three ways:
+Once you have saved views, you can reach them in four ways:
 
-- **View menu** — Open **View → Views** and press the view name. The current keyboard shortcut (if any) is shown next to each item.
+- **View menu** — Open **View → Views** and press the view name. The active view has a checkmark next to it. The current keyboard shortcut (if any) is shown next to each item.
 - **Folder tree** — A **Views** group appears at the top of the folder tree. Expand it and choose a view name to apply it.
 - **Command palette** — Press **Ctrl+Shift+P** and type part of the view's name. Views appear in the **Views** category.
+- **View Manager** — Select a view in the list and press **Apply View** to activate it and close the dialog.
 
 While a view is active:
 
@@ -350,15 +351,34 @@ The dialog has two panels:
 | Area | What it does |
 |------|-------------|
 | **Left — Saved Views list** | Choose a view to select it for editing |
-| **Right — Edit panel** | Edit name, shortcut, default flag, and see the view's saved folders and settings |
+| **Right — Edit panel** | Edit name, shortcut, day limit, default flag, and see the view's saved folders and settings |
 
 **Buttons in the right panel:**
 
 | Button | Action |
 |--------|--------|
-| **Save** | Overwrites the selected view with the current app state (mode, filter, sort, and current folder) |
+| **Apply View** | Activates the selected view immediately and closes the dialog |
+| **Edit** | Opens the edit fields for the selected view |
+| **Save** | Overwrites the selected view with the current app state (mode, filter, sort, day limit, and current folder) |
 | **Save As New** | Creates a new view from the current state |
 | **Delete** | Permanently removes the selected view |
+
+### Day limit
+
+A view can optionally restrict how many days of mail are shown. This is useful for high-volume folders where you only care about recent messages — for example, a view of your busiest inbox showing only the last seven days.
+
+**Setting a day limit:**
+
+1. Open the view for editing in the View Manager (select it and press **Edit**).
+2. Enter a number in the **Day Limit** field — for example, `7` for the last week, `30` for the last month. Leave it blank to show all available mail.
+3. Press **Save**.
+
+**How it works:**
+
+- Only messages received within the last N days appear in the message list. Older messages remain cached locally and reappear as soon as you clear the view or navigate to the folder directly.
+- The day limit is shown in the view's settings summary — for example: *"Messages · All · Newest First · Last 7 days"*.
+- The limit stacks with the other view filters. A view with "Unread, last 7 days" shows only unread messages from the past week.
+- The limit has no effect on syncing. QuickMail still fetches and stores mail according to your sync range (see Settings); the day limit only controls which of the already-cached messages are displayed when the view is active.
 
 ### Keyboard shortcuts for views
 
