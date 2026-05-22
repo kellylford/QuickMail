@@ -200,15 +200,12 @@
                               Style="{StaticResource RuleComboBox}"
                               AutomationProperties.Name="Rule action"/>
 
-                    <!-- Target folder (visible only for MoveToFolder) -->
-                    <TextBlock Text="Target folder"
-                               Visibility="{Binding IsMoveToFolderSelected, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}"/>
+                    <!-- Target folder -->
+                    <TextBlock Text="Target folder"/>
                     <Button Content="{Binding SelectedRule.TargetFolder, TargetNullValue=Choose Folder…, FallbackValue=Choose Folder…}"
                             Command="{Binding PickFolderCommand}"
                             Width="140" Height="26" Margin="0,2,0,8"
                             HorizontalAlignment="Left"
-                            Visibility="{Binding IsMoveToFolderSelected, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}"
-                            IsTabStop="True"
                             AutomationProperties.Name="Choose target folder"/>
                     <TextBlock Text="{Binding FolderError}" Foreground="Red"
                                KeyboardNavigation.IsTabStop="False"
