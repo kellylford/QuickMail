@@ -1117,6 +1117,7 @@ public partial class MainViewModel : ObservableObject
     {
         var q = SearchText;
         return msg.From.Contains(q, StringComparison.OrdinalIgnoreCase)
+            || msg.To.Contains(q, StringComparison.OrdinalIgnoreCase)
             || msg.Subject.Contains(q, StringComparison.OrdinalIgnoreCase)
             || msg.Preview.Contains(q, StringComparison.OrdinalIgnoreCase);
     }
