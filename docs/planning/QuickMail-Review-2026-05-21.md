@@ -542,3 +542,77 @@ For weekly cadence going forward, two recommendations:
 
 A third observation worth recording: the review caught a confirmed correctness bug (§1.1) that had shipped to users. That alone justifies the cost of the review pass. The other P0 items (§1.2 through §1.10) were largely latent — bugs waiting to happen rather than bugs currently happening — and the value of fixing them is proportional to how unhappy you'd be debugging them in production. The pattern of one confirmed-bug + several latent-bugs is a healthy signal: it means the review process is finding both kinds and not just churning on hypotheticals.
 
+---
+
+## §9. Follow-up bug investigation: saved-view system (2026-05-21)
+
+After the §1–§4 commits landed, the user reported two suspected bugs in the saved-view system that the review hadn't surfaced:
+
+1. **Hotkey assignment via the View Manager dialog doesn't work, even though hotkey assignment via Settings → Keyboard does.**
+2. **Applying a saved view changes the title bar but doesn't refresh the message list.**
+
+The investigation surfaced one real bug (with a non-obvious root cause), and one that turned out to be a false alarm. The reasoning behind both is worth recording — the false-alarm path was longer than the fix and is a useful template for future investigations.
+
+### Bug #2.1 — View Manager hotkeys silently swallowed by orphan bindings
+
+**Resolution:** Fixed in [293e280](https://github.com/kellylford/QuickMail/commit/293e280).
+
+**Root cause.** The user's real `hotkeys.json` (read directly from `%APPDATA%\QuickMail`) contained four `view.saved.{guid}` bindings, but `views.json` did not exist — the saved views had been lost at some point while their hotkey entries survived in the config. Code-reading alone could not have found this; it required looking at the live data.
+
+Walking the flow with that data in hand:
+
+1. `CommandRegistry.ApplyUserOverrides` parses all four orphan bindings into `_userOverrides`.
+2. None of the corresponding `view.saved.{guid}` *commands* are registered (no views in `views.json` to register them from).
+3. The user creates a new view in the View Manager and assigns, say, Ctrl+Shift+8 — which happens to be one of the orphan gestures.
+4. `PersistHotkey` adds a new binding for the new view's commandId, with `Gesture = "Ctrl+Shift+8"`. The override list now has **two** bindings claiming Ctrl+Shift+8: one orphan, one live.
+5. The user presses Ctrl+Shift+8. `FindByGesture` iterates `_userOverrides` in insertion order, hits the orphan first, calls `FindById(orphanCommandId)`, gets back `null`, and **returns null without trying the next override or falling back to defaults**.
+6. The keypress is silently swallowed.
+
+The reason Settings → Keyboard worked but View Manager didn't: the Settings UI iterates `registry.GetAll()` which only contains *registered* commands. Orphan view bindings have no corresponding row, so a Settings save effectively prunes them (the `cfg.CustomHotkeys = HotkeyRows.Where(HasCustomBinding).Select(ToBinding)` replacement throws orphans away). View Manager preserves them.
+
+**Three coordinated fixes:**
+
+1. `CommandRegistry.FindByGesture` now skips overrides whose `CommandId` isn't a registered command, instead of returning `null` from the override-match branch. The first *live* override that matches wins; otherwise we fall through to the default-gesture loop. The default-suppression set is built only from live overrides, so an orphan no longer suppresses unrelated defaults either.
+2. New `ICommandRegistry.GetOrphanOverrideCommandIds()` lets the app detect orphan `view.saved.*` entries after registration. `MainViewModel.RegisterViewCommands` calls a new `PruneOrphanHotkeys()` after registering all live view commands — this sweeps orphans from `hotkeys.json` so the config stays clean and the next `FindByGesture` pass doesn't have to skip them. Scoped to `view.saved.*` only so the prune never touches user overrides for built-in commands (which might be unregistered transiently mid-startup).
+3. `ViewManagerViewModel.PersistHotkey` now removes any *other* binding that claims the same gesture (not just the same CommandId) before adding the new one. The conflict check in the dialog code-behind can't see orphans because it only walks `SavedViews`; this is the belt-and-suspenders guard.
+
+**Tests added** to `CommandRegistryTests.cs`:
+- `FindByGesture_IgnoresOrphanOverride_FallsThroughToDefault`
+- `FindByGesture_OrphanOverride_DoesNotBlockNewerLiveOverrideOnSameGesture` — the user's exact scenario
+- `GetOrphanOverrideCommandIds_ReturnsBindingsWithoutCommands`
+- `FindByGesture_OrphanOverride_DoesNotSuppressUnrelatedDefault`
+
+Plus a new `ViewManagerHotkeyIntegrationTests.cs` with two end-to-end-ish tests that exercise the real `CommandRegistry` through the dialog VM flow.
+
+### Bug #2.2 — Apply View not refreshing messages: not reproduced
+
+**Resolution:** No code change. Investigation suggested the original report may have been a misreading of behaviour rather than a real bug.
+
+The user reported that applying a saved view updated the title bar but not the message list. Read of `ApplyViewAsync` and its callees (`FetchVirtualAsync`, `FetchFolderAsync`, `FetchViewFoldersAsync`) couldn't find a path where `Messages` wouldn't be repopulated after the view applied. The setter ordering (`ViewMode` → `ActiveFilter` → `ActiveSort` → `ActiveDayLimit`, then `Fetch*`) does have a quirk where `OnActiveSortChanged` calls `ApplyFiltersAndSearch` with the new filter against stale `_rawMessages`, but the subsequent `Fetch*` reload should overwrite that with fresh, properly-filtered data.
+
+Before opening the question-asker, the user concluded the report had been wrong and the apply-view path was actually working. Stopped investigation.
+
+**What I would have asked, if it does come back:** which kind of view (single real folder, virtual, multi-folder), what trigger (View Manager Apply button, Views menu, hotkey, folder tree), and what specifically stays on screen (previous flat list, previous grouped tree, blank pane, or mixed). Those three axes narrow it to one of the four `Fetch*` paths in `ApplyViewAsync` and the investigation can be focused.
+
+### Notes for the weekly review process
+
+Two methodology points worth keeping in mind:
+
+1. **Read the live data, not just the code.** The hotkey bug was invisible from code-reading alone because the code is correct given a consistent on-disk state. The bug was in the *interaction* between the code and an inconsistent state (orphan bindings) that the code didn't anticipate. Spending a minute to look at `%APPDATA%\QuickMail\hotkeys.json` and `views.json` was the entire turning point of the investigation. Future weekly reviews should include "look at a real user's data directory" as a standard step, not just "read the source."
+
+2. **A retracted bug report is still useful.** Bug #2.2 turned out to be wrong, but the investigation around it produced (a) confirmation that the `Fetch*` paths handle each view shape correctly, (b) a documented question-set for next time the symptom recurs, and (c) a noted quirk in setter ordering (`OnActiveSortChanged` running on stale data) that isn't a bug today but could become one if the subsequent `Fetch*` ever short-circuits. Worth recording even when no code changes.
+
+### Carried-forward open items
+
+For convenience when the next review runs, these were deliberately left open from the original §1–§6 review and are still open after this follow-up:
+
+- §1.4 (extract folder-sync method across three call sites)
+- §1.8 (debounce group rebuilds)
+- §1.11 (use `StatusAsync` in `GetFoldersAsync`)
+- §2.2 (extract tree-view controller in `MainWindow.xaml.cs`)
+- §2.3 (CTS disposal helper)
+- §2.4 (ViewMode/Sort magic-string cleanup)
+- §3.1, §3.3, §3.4 (security/policy decisions)
+- §5 (CI workflow)
+- §6 (strategic decomposition: MainViewModel, MainWindow, virtual-folder sentinels, migration framework)
+
