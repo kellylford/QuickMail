@@ -78,7 +78,9 @@
                           Focusable="False"/>
 
             <!-- Right pane: Rule editor -->
-            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
+                          Focusable="False"
+                          KeyboardNavigation.IsTabStop="False">
                 <StackPanel Margin="12,0,0,0">
                     <!-- Rule Name -->
                     <TextBlock Text="Rule Name" FontWeight="SemiBold" Margin="0,8,0,2"/>
