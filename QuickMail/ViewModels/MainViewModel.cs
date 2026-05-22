@@ -1031,6 +1031,7 @@ public partial class MainViewModel : ObservableObject
                 continue;
             _rawMessages.Add(msg);
             if (!MatchesFilter(msg)) continue;
+            if (!MatchesDayLimit(msg)) continue;
             if (!string.IsNullOrWhiteSpace(SearchText) && !MatchesSearch(msg)) continue;
             toInsert.Add(msg);
         }
@@ -1144,8 +1145,10 @@ public partial class MainViewModel : ObservableObject
         _                             => true,
     };
 
+    // Returns true when no day limit is active, so callers can chain this with
+    // MatchesFilter without an explicit ActiveDayLimit.HasValue guard at every site.
     private bool MatchesDayLimit(MailMessageSummary msg)
-        => msg.Date >= DateTimeOffset.Now.AddDays(-(ActiveDayLimit ?? 0));
+        => !ActiveDayLimit.HasValue || msg.Date >= DateTimeOffset.Now.AddDays(-ActiveDayLimit.Value);
 
     // Binary-insert into the descending-by-date Messages collection.
     private void InsertMessageSorted(MailMessageSummary msg)
@@ -1999,7 +2002,7 @@ public partial class MainViewModel : ObservableObject
                 if (!existingKeys.Add(key))
                     continue;
 
-                if (!MatchesFilter(msg))
+                if (!MatchesFilter(msg) || !MatchesDayLimit(msg))
                     continue;
 
                 InsertMessageSorted(msg);
@@ -2175,7 +2178,7 @@ public partial class MainViewModel : ObservableObject
                 if (!existingKeys.Add(key))
                     continue;
 
-                if (!MatchesFilter(msg))
+                if (!MatchesFilter(msg) || !MatchesDayLimit(msg))
                     continue;
 
                 InsertMessageSorted(msg);

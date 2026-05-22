@@ -134,8 +134,8 @@ Open **File → Settings** (or press `Ctrl+,`) to change application-wide prefer
 Assign custom key bindings to any registered command:
 
 1. Select a command from the list.
-2. Activate **Set…** to open the key-capture dialog, then press any `Ctrl`, `Shift`, or `Alt` combination.
-3. If the combination is already in use, a conflict dialog identifies the clash so you can choose another key or cancel.
+2. Activate **Set…** to open the shortcut-capture dialog, then press any `Ctrl`, `Shift`, or `Alt` combination.
+3. After the combination is captured, the dialog shows **OK**, **Change**, and **Cancel** buttons. If the combination is already assigned to another command, a conflict warning appears inline. Activate **OK** to confirm (reassigning from the conflicting command), **Change** to capture a different combination, or **Cancel** to keep the existing binding without changes.
 4. Activate **Restore** to remove a custom binding and return to the command's default.
 
 Custom bindings are saved to `hotkeys.json` in your AppData folder and apply immediately without restarting.
@@ -312,10 +312,13 @@ When a view is active, its name appears in the window title bar instead of the f
 Views can be created from any folder, including virtual folders (All Mail, All Inboxes, All Sent, etc.).
 
 1. Navigate to the folder (or virtual folder) you want and set the mode, filter, and sort you prefer.
-2. Open **View → Views → Save View…**. The **View Manager** dialog opens.
-3. Press **Create New View from Current State**. A view is created with an auto-generated name like *"All Inboxes, Conversations"* or *"The Idea Place Inbox, From Unread"*.
-4. Edit the **Name** field if you want a different name.
-5. Press **Save**.
+2. Open **View → Views → Save View…**. The **Save View** dialog opens with a new view already created from your current state, and focus on the **Set…** shortcut button.
+3. **(Optional)** Assign a keyboard shortcut: activate **Set…**, press your desired key combination, then activate **OK**.
+4. Choose a day limit: **Show all messages** is checked by default (no limit). Uncheck it and type a number of days to restrict what the view shows — for example, `7` for the last week. The **Name** field updates automatically as you change the day setting.
+5. The **Name** field is pre-filled with an auto-generated name that reflects the folder and day scope — for example, *"Inbox, last 7 days"* or *"All Inboxes, Conversations, all days"*. Edit it if you prefer a different name.
+6. Activate **Save View**.
+
+You can also create a new view while in the View Manager (opened via **View → Views → Manage Views…**) by activating **Save As New** or, when no view is selected, **Create New View from Current State**.
 
 ### Views from virtual folders
 
@@ -351,7 +354,7 @@ The dialog has two panels:
 | Area | What it does |
 |------|-------------|
 | **Left — Saved Views list** | Choose a view to select it for editing |
-| **Right — Edit panel** | Edit name, shortcut, day limit, default flag, and see the view's saved folders and settings |
+| **Right — Edit panel** | Edit shortcut, day limit, default flag, and name; also shows the view's saved folders and settings |
 
 **Buttons in the right panel:**
 
@@ -369,9 +372,11 @@ A view can optionally restrict how many days of mail are shown. This is useful f
 
 **Setting a day limit:**
 
-1. Open the view for editing in the View Manager (select it and press **Edit**).
-2. Enter a number in the **Day Limit** field — for example, `7` for the last week, `30` for the last month. Leave it blank to show all available mail.
-3. Press **Save**.
+1. Open the view for editing in the View Manager (select it and activate **Edit**).
+2. Check **Show all messages** to remove any day limit. Uncheck it and type a number of days — for example, `7` for the last week, `30` for the last month.
+3. Activate **Save**.
+
+When creating a new view via **Save View…**, the day limit is set before the name field so the auto-generated name already reflects your choice.
 
 **How it works:**
 
@@ -382,14 +387,14 @@ A view can optionally restrict how many days of mail are shown. This is useful f
 
 ### Keyboard shortcuts for views
 
-1. Select a view in the View Manager.
-2. Press **Set…** next to the **Keyboard Shortcut** field.
-3. Press the key combination you want (must include at least one modifier: Ctrl, Shift, or Alt).
-4. Press **Save** to apply.
+1. Select a view in the View Manager and activate **Edit** if not already editing.
+2. Activate **Set…** next to the **Keyboard Shortcut** field.
+3. Press the key combination you want (must include at least one modifier: Ctrl, Shift, or Alt). After the combination is captured, the dialog shows **OK**, **Change**, and **Cancel**. Activate **OK** to confirm.
+4. Activate **Save** to apply.
 
 The shortcut also appears in **File → Settings → Keyboard Shortcuts** and can be changed there as well. Both places stay in sync — changing a shortcut in one place updates the other.
 
-If you assign a shortcut that is already used by another view, QuickMail asks whether to reassign it; the previous view loses its shortcut.
+If the combination is already assigned to another view or command, a conflict warning appears inline in the capture dialog. Activate **OK** to reassign (the previous binding is cleared), or **Change** to choose a different combination.
 
 ### Multi-folder views
 

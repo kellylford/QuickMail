@@ -90,17 +90,33 @@ public partial class ViewManagerWindow : Window
     // ── Edit-mode focus ───────────────────────────────────────────────────────────
 
     /// <summary>
-    /// When the VM enters edit mode (StartEdit or SaveAsNew), land focus in the Name field
-    /// with the text selected so the user can type immediately.
-    /// Uses DispatcherPriority.Input so the layout pass that makes NameBox visible
+    /// When the VM enters edit mode, land focus on the most useful field for the context:
+    /// <list type="bullet">
+    ///   <item><description>
+    ///     <b>Create mode</b> (Save View…): focus the Set Hotkey button — the first tab stop —
+    ///     so the user walks through shortcut → day limit → name → Save View in order.
+    ///   </description></item>
+    ///   <item><description>
+    ///     <b>Manage mode</b> (Edit existing view): focus the Name field with the text selected
+    ///     so a quick rename is one keystroke away.
+    ///   </description></item>
+    /// </list>
+    /// Uses DispatcherPriority.Input so the layout pass that makes the panel visible
     /// (Render priority) runs first.
     /// </summary>
     private void OnEditModeEntered(object? sender, EventArgs e)
     {
         Dispatcher.InvokeAsync(() =>
         {
-            NameBox.Focus();
-            NameBox.SelectAll();
+            if (_createMode)
+            {
+                SetHotkeyButton.Focus();
+            }
+            else
+            {
+                NameBox.Focus();
+                NameBox.SelectAll();
+            }
         }, System.Windows.Threading.DispatcherPriority.Input);
     }
 
@@ -155,30 +171,35 @@ public partial class ViewManagerWindow : Window
 
     private void OnSetHotkeyRequested(object? sender, EventArgs e)
     {
-        var dlg = new KeyCaptureDialog { Owner = this };
+        var dlg = new KeyCaptureDialog
+        {
+            Owner = this,
+            ConflictChecker = (key, modifiers) =>
+            {
+                var gesture = Helpers.GestureHelper.Format(key, modifiers);
+                var conflict = _vm.SavedViews.FirstOrDefault(v =>
+                    v != _vm.SelectedView &&
+                    !string.IsNullOrEmpty(v.Hotkey) &&
+                    string.Equals(v.Hotkey, gesture, StringComparison.OrdinalIgnoreCase));
+                return conflict != null ? $"view \"{conflict.Name}\"" : null;
+            },
+        };
+
         if (dlg.ShowDialog() != true) return;
 
-        // Check for conflicts across the entire registry (same approach as SettingsDialog).
         var key       = dlg.CapturedKey;
         var modifiers = dlg.CapturedModifiers;
         var gesture   = Helpers.GestureHelper.Format(key, modifiers);
 
-        // Check all existing views for the same hotkey (exclude the one being edited).
-        var conflict = _vm.SavedViews.FirstOrDefault(v =>
-            v != _vm.SelectedView &&
-            !string.IsNullOrEmpty(v.Hotkey) &&
-            string.Equals(v.Hotkey, gesture, StringComparison.OrdinalIgnoreCase));
-
-        if (conflict != null)
+        // If the user accepted despite a conflict, clear the conflicting view's hotkey first.
+        if (dlg.HasConflict)
         {
-            var msg = $"The shortcut {gesture} is already assigned to view \"{conflict.Name}\".\n\n" +
-                      "Reassign it to this view? The other view will lose its shortcut.";
-            if (MessageBox.Show(msg, "Shortcut Conflict",
-                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
-                return;
-
-            // Clear the conflicting view's hotkey.
-            conflict.Hotkey = null;
+            var conflict = _vm.SavedViews.FirstOrDefault(v =>
+                v != _vm.SelectedView &&
+                !string.IsNullOrEmpty(v.Hotkey) &&
+                string.Equals(v.Hotkey, gesture, StringComparison.OrdinalIgnoreCase));
+            if (conflict != null)
+                conflict.Hotkey = null;
         }
 
         _vm.ApplyHotkey(key, modifiers);

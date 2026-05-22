@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Assign Shortcut"
-        Height="180" Width="400"
+        Height="220" Width="420"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         WindowStyle="ToolWindow"
@@ -19,29 +19,32 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Instructions -->
-        <TextBlock Grid.Row="0"
+        <!-- Listening-state instructions -->
+        <TextBlock x:Name="ListeningHeader"
+                   Grid.Row="0"
                    Text="Press your desired key combination"
                    FontSize="14"
                    FontWeight="SemiBold"
                    Margin="0,0,0,4"/>
-        <TextBlock Grid.Row="1"
+        <TextBlock x:Name="ListeningHint"
+                   Grid.Row="1"
                    Text="(with Ctrl, Shift, or Alt)"
                    FontSize="12"
                    Foreground="DimGray"
                    Margin="0,0,0,16"/>
 
-        <!-- Captured Key Display -->
+        <!-- Captured key display -->
         <Border Grid.Row="2"
                 BorderThickness="1"
                 BorderBrush="LightGray"
                 Background="#F5F5F5"
                 Padding="12"
-                Margin="0,0,0,16"
+                Margin="0,0,0,8"
                 CornerRadius="2">
             <TextBlock x:Name="CapturedKeyText"
                        Text="(waiting for input...)"
@@ -51,8 +54,18 @@
                        AutomationProperties.Name="Captured key combination"/>
         </Border>
 
+        <!-- Conflict warning (shown only when the captured combo collides) -->
+        <TextBlock x:Name="ConflictText"
+                   Grid.Row="3"
+                   Visibility="Collapsed"
+                   FontSize="12"
+                   Foreground="#D32F2F"
+                   TextWrapping="Wrap"
+                   Margin="0,0,0,8"
+                   AutomationProperties.LiveSetting="Polite"/>
+
         <!-- Buttons -->
-        <StackPanel Grid.Row="4"
+        <StackPanel Grid.Row="5"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right">
             <Button x:Name="OkButton"
@@ -60,9 +73,16 @@
                     IsDefault="True"
                     Click="OkButton_Click"
                     MinWidth="75"
-                    IsEnabled="False"
+                    Visibility="Collapsed"
                     Margin="0,0,8,0"
-                    AutomationProperties.Name="Accept the captured shortcut"/>
+                    AutomationProperties.Name="Accept this shortcut"/>
+            <Button x:Name="ChangeButton"
+                    Content="C_hange"
+                    Click="ChangeButton_Click"
+                    MinWidth="75"
+                    Visibility="Collapsed"
+                    Margin="0,0,8,0"
+                    AutomationProperties.Name="Capture a different shortcut"/>
             <Button Content="_Cancel"
                     IsCancel="True"
                     MinWidth="75"

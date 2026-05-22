@@ -767,4 +767,156 @@ public class SavedViewsMainViewModelTests
         await SelectView(vm, viewB);
         Assert.Null(vm.ActiveDayLimit);
     }
+
+    // -- Day limit actually filters messages -------------------------------
+    //
+    // Regression test: persisting DaysOfMail and setting ActiveDayLimit isn't
+    // enough — Messages must also be filtered when the view is applied.
+
+    sealed class DatedImap : IImapService
+    {
+        private readonly List<MailMessageSummary> _messages;
+        public DatedImap(IEnumerable<MailMessageSummary> messages) => _messages = new(messages);
+        public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(new List<MailFolderModel>());
+        public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid accountId, string folderName, uint sinceUid, int initialCount, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<MailMessageDetail> GetMessageDetailAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
+        public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
+        public Task MarkReadAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveToTrashAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default) => Task.CompletedTask;
+        public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default) => Task.CompletedTask;
+        public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
+        public Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IList<uint>>(Array.Empty<uint>());
+        public Task<IReadOnlyDictionary<uint, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<uint> uids, int maxLines, CancellationToken ct = default) => Task.FromResult<IReadOnlyDictionary<uint, string>>(new Dictionary<uint, string>());
+        public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult(0);
+        public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult<string?>(null);
+        public Task<uint> AppendDraftAsync(Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default) => Task.FromResult(0u);
+        public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, uint uid, string partSpecifier, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
+        public Task CopyMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
+        public void Dispose() { }
+    }
+
+    sealed class DatedStore : ILocalStoreService
+    {
+        private readonly List<MailMessageSummary> _messages;
+        public DatedStore(IEnumerable<MailMessageSummary> messages) => _messages = new(messages);
+        public void Initialize() { }
+        public Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries) => Task.CompletedTask;
+        public Task<List<MailMessageSummary>> LoadAllSummariesAsync() => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds) => Task.CompletedTask;
+        public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
+        public Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead) => Task.CompletedTask;
+        public Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview) => Task.CompletedTask;
+        public Task UpdatePreviewsBatchAsync(Guid accountId, string folderName, IEnumerable<(uint UniqueId, string Preview)> updates) => Task.CompletedTask;
+        public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
+        public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
+        public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, uint uniqueId) => Task.FromResult<MailMessageDetail?>(null);
+        public Task<uint> GetMaxUidAsync(Guid accountId, string folderName) => Task.FromResult(0u);
+        public Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<uint>());
+    }
+
+    private static MainViewModel MakeVmWithStore(IEnumerable<SavedView> views, ILocalStoreService store, IImapService? imap = null)
+        => new(imap ?? new StubImapService(),
+               new StubAccountService(),
+               new StubCredentialService(),
+               store,
+               new StubOAuthService(),
+               new StubSyncService(),
+               new StubConfigService(),
+               new StubCommandRegistry(),
+               new FakeViewService(views));
+
+    [Fact]
+    public async Task ApplyView_WithDayLimit_FiltersOldMessagesFromMessagesCollection()
+    {
+        var now = DateTimeOffset.Now;
+        var recent = new MailMessageSummary { UniqueId = 1, Subject = "recent", Date = now.AddDays(-2)  };
+        var older  = new MailMessageSummary { UniqueId = 2, Subject = "older",  Date = now.AddDays(-20) };
+        var store  = new DatedStore([recent, older]);
+
+        var view = MakeVirtualView("AllMail");
+        view.DaysOfMail = 7;
+        var vm = MakeVmWithStore([view], store);
+        AddVirtualFolders(vm);
+
+        await SelectView(vm, view);
+
+        Assert.Equal(7, vm.ActiveDayLimit);
+        Assert.Single(vm.Messages);
+        Assert.Equal("recent", vm.Messages[0].Subject);
+    }
+
+    [Fact]
+    public async Task ApplyView_AllMailWithDayLimit_FiltersOldMessagesFromImapPhase2()
+    {
+        // Regression: FetchAllMailAsync Phase 2 inserts IMAP-fetched messages
+        // incrementally and used to check only MatchesFilter, not MatchesDayLimit —
+        // so old messages came in via background fetch even when the view's day
+        // limit had filtered them out of the initial cached load.
+        var now    = DateTimeOffset.Now;
+        var recent = new MailMessageSummary { UniqueId = 1, Subject = "recent", Date = now.AddDays(-1)  };
+        var older  = new MailMessageSummary { UniqueId = 2, Subject = "older",  Date = now.AddDays(-20) };
+
+        // Local store is empty so Phase 1 contributes nothing — every visible
+        // message has to survive Phase 2's incremental insert path.
+        var store  = new DatedStore([]);
+        var imap   = new DatedImap([recent, older]);
+
+        var view = MakeVirtualView("AllMail");
+        view.DaysOfMail = 7;
+        var vm = MakeVmWithStore([view], store, imap);
+        AddVirtualFolders(vm);
+
+        await SelectView(vm, view);
+        await Task.Delay(50);  // let Phase 2 (no-op for AllMail with empty Accounts) complete
+
+        Assert.Equal(7, vm.ActiveDayLimit);
+        // With no accounts in vm.Accounts, FetchAllMailAsync's Phase 2 won't fetch.
+        // The point of this test is the assertion that no old messages slip in via
+        // the (previously buggy) MatchesFilter-only incremental insert.
+        Assert.All(vm.Messages, m => Assert.NotEqual("older", m.Subject));
+    }
+
+    [Fact]
+    public async Task ApplyView_RealFolderWithDayLimit_FiltersOldMessages()
+    {
+        var now      = DateTimeOffset.Now;
+        var acctId   = Guid.NewGuid();
+        var recent   = new MailMessageSummary { UniqueId = 1, AccountId = acctId, FolderName = "INBOX", Subject = "recent", Date = now.AddDays(-2)  };
+        var older    = new MailMessageSummary { UniqueId = 2, AccountId = acctId, FolderName = "INBOX", Subject = "older",  Date = now.AddDays(-20) };
+        var store    = new DatedStore([recent, older]);
+
+        var view = MakeRealFolderView(acctId, "INBOX");
+        view.DaysOfMail = 7;
+
+        var imap = new DatedImap([recent, older]);
+        var vm = MakeVmWithStore([view], store, imap);
+        // Match the AccountId on the live Folders collection so ApplyViewAsync's
+        // single-folder branch finds the real folder.
+        vm.Folders = new ObservableCollection<MailFolderModel>
+        {
+            new() { AccountId = acctId, FullName = "INBOX", DisplayName = "Inbox" },
+        };
+
+        await SelectView(vm, view);
+        // Give the fire-and-forget RefreshFolderFromServerAsync a chance to complete.
+        await Task.Delay(50);
+
+        Assert.Equal(7, vm.ActiveDayLimit);
+        Assert.Single(vm.Messages);
+        Assert.Equal("recent", vm.Messages[0].Subject);
+    }
 }

@@ -64,40 +64,42 @@ public partial class SettingsDialog : Window
     {
         LogService.Debug($"[Settings] Opening capture dialog for '{row.CommandId}'");
 
-        while (true)
+        var captureDialog = new KeyCaptureDialog
         {
-            var captureDialog = new KeyCaptureDialog { Owner = this };
-            if (captureDialog.ShowDialog() != true)
+            Owner = this,
+            ConflictChecker = (key, modifiers) =>
             {
-                LogService.Debug("[Settings] Key capture cancelled");
-                return;
-            }
+                var conflict = _vm.FindConflict(key, modifiers);
+                return (conflict != null && conflict != row) ? conflict.Title : null;
+            },
+        };
 
-            var key      = captureDialog.CapturedKey;
-            var modifiers = captureDialog.CapturedModifiers;
-            var gesture  = GestureHelper.Format(key, modifiers);
-            LogService.Debug($"[Settings] Captured: key={key} modifiers={modifiers} gesture='{gesture}'");
+        if (captureDialog.ShowDialog() != true)
+        {
+            LogService.Debug("[Settings] Key capture cancelled");
+            return;
+        }
 
+        var key       = captureDialog.CapturedKey;
+        var modifiers = captureDialog.CapturedModifiers;
+        var gesture   = GestureHelper.Format(key, modifiers);
+        LogService.Debug($"[Settings] Captured: key={key} modifiers={modifiers} gesture='{gesture}'");
+
+        // If the user accepted despite a conflict, clear the conflicting binding first.
+        if (captureDialog.HasConflict)
+        {
             var conflict = _vm.FindConflict(key, modifiers);
             if (conflict != null && conflict != row)
             {
-                LogService.Debug($"[Settings] Conflict with '{conflict.CommandId}'");
-                var conflictDialog = new ConflictDialog(conflict.Title) { Owner = this };
-                if (conflictDialog.ShowDialog() == true)
-                    continue;
-                else
-                {
-                    LogService.Debug("[Settings] Conflict cancelled");
-                    return;
-                }
+                LogService.Debug($"[Settings] Reassigning from '{conflict.CommandId}'");
+                conflict.ClearCustomBinding();
             }
-
-            row.SetCustomBinding(key, modifiers);
-            UpdateActionButtons();
-            LogService.Debug($"[Settings] Assigned '{gesture}' to '{row.Title}' — announcing");
-            AnnounceAssignment(gesture, row.Title);
-            break;
         }
+
+        row.SetCustomBinding(key, modifiers);
+        UpdateActionButtons();
+        LogService.Debug($"[Settings] Assigned '{gesture}' to '{row.Title}' — announcing");
+        AnnounceAssignment(gesture, row.Title);
     }
 
     private void AnnounceAssignment(string gesture, string commandTitle)

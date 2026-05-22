@@ -149,16 +149,7 @@
 
                     <!-- ── Edit state: view selected and editing ──────────────────── -->
 
-                    <!-- Name -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Name"
-                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
-                    <TextBox x:Name="NameBox"
-                             Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="View name"
-                             MaxLength="120"
-                             Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
-
-                    <!-- Hotkey -->
+                    <!-- Keyboard Shortcut (first focus target) -->
                     <TextBlock Style="{StaticResource SectionLabel}" Text="Keyboard Shortcut"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <Grid Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}">
@@ -173,7 +164,8 @@
                                  Background="#F5F5F5"
                                  AutomationProperties.Name="Assigned shortcut"
                                  Margin="0,0,4,0"/>
-                        <Button Grid.Column="1"
+                        <Button x:Name="SetHotkeyButton"
+                                Grid.Column="1"
                                 Content="_Set…"
                                 Command="{Binding RequestSetHotkeyCommand}"
                                 MinWidth="60" Margin="0,0,4,0"
@@ -188,15 +180,7 @@
                                FontSize="10" Foreground="DimGray" Margin="0,3,0,0"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
-                    <!-- Default checkbox and day limit -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Options"
-                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
-                    <CheckBox Content="_Default view (applied on startup)"
-                              IsChecked="{Binding EditIsDefault}"
-                              AutomationProperties.Name="Set as default view"
-                              Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
-
-                    <!-- Day limit -->
+                    <!-- Day Limit -->
                     <TextBlock Style="{StaticResource SectionLabel}" Text="Day Limit"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <CheckBox Content="Show _all messages (no day limit)"
@@ -220,6 +204,23 @@
                                    Foreground="DimGray" FontSize="11"
                                    Text="days"/>
                     </Grid>
+
+                    <!-- Options -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Options"
+                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
+                    <CheckBox Content="_Default view (applied on startup)"
+                              IsChecked="{Binding EditIsDefault}"
+                              AutomationProperties.Name="Set as default view"
+                              Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
+
+                    <!-- Name (last before Save — shown after day limit so the suggestion already includes it) -->
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="Name"
+                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
+                    <TextBox x:Name="NameBox"
+                             Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="View name"
+                             MaxLength="120"
+                             Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Save / Cancel buttons -->
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0"

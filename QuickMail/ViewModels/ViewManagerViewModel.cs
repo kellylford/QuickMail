@@ -65,7 +65,7 @@ public partial class ViewManagerViewModel : ObservableObject
     /// <summary>True when a view is selected and we ARE in edit mode — show the editing fields.</summary>
     public bool ShowEditPanel => HasSelectedView && IsEditMode;
 
-    /// <summary>Fired when edit mode is entered so the code-behind can focus the Name field.</summary>
+    /// <summary>Fired when edit mode is entered so the code-behind can land focus on the first edit field.</summary>
     public event EventHandler? EditModeEntered;
 
     // ── Edit fields ───────────────────────────────────────────────────────────────
@@ -94,6 +94,15 @@ public partial class ViewManagerViewModel : ObservableObject
 
     /// <summary>The day-limit textbox is enabled only when the "show all" checkbox is off.</summary>
     public bool IsDayLimitFieldEnabled => !EditUnlimitedDays;
+
+    // ── Auto-name tracking (create mode only) ─────────────────────────────────────
+
+    /// <summary>True while EditName still holds the auto-generated suggestion (not user-edited).</summary>
+    private bool _isAutoName;
+
+    /// <summary>Guard that prevents OnEditNameChanged from clearing _isAutoName during a
+    /// programmatic update triggered by a day-limit change.</summary>
+    private bool _updatingAutoName;
 
     // ── Derived display for the selected view's saved state ───────────────────────
 
@@ -136,16 +145,22 @@ public partial class ViewManagerViewModel : ObservableObject
     private static bool IsValidDayLimit(string text) =>
         int.TryParse(text?.Trim() ?? string.Empty, out var n) && n > 0;
 
-    /// <summary>Strip any non-digit characters to keep the field numeric-only.</summary>
+    /// <summary>Strip any non-digit characters to keep the field numeric-only.
+    /// Also triggers a name refresh so the auto-generated suggestion stays in sync.</summary>
     partial void OnEditDaysOfMailChanged(string value)
     {
         if (string.IsNullOrEmpty(value)) return;
         var digits = new string(value.Where(char.IsDigit).ToArray());
         if (digits != value)
+        {
             EditDaysOfMail = digits;   // re-enters this method once; no further change
+            return;
+        }
+        UpdateAutoName();
     }
 
-    /// <summary>When toggling unlimited, clear the textbox or seed it with a sensible default.</summary>
+    /// <summary>When toggling unlimited, clear the textbox or seed it with a sensible default.
+    /// Also refreshes the auto-generated name so it reflects the new day scope.</summary>
     partial void OnEditUnlimitedDaysChanged(bool value)
     {
         if (value)
@@ -156,6 +171,14 @@ public partial class ViewManagerViewModel : ObservableObject
         {
             EditDaysOfMail = (CurrentDayLimit ?? 30).ToString();
         }
+        UpdateAutoName();
+    }
+
+    /// <summary>Once the user edits the Name field manually, stop auto-updating it.</summary>
+    partial void OnEditNameChanged(string value)
+    {
+        if (!_updatingAutoName)
+            _isAutoName = false;
     }
 
     // ── Current-state summary shown at the top of the dialog ─────────────────────
@@ -308,7 +331,11 @@ public partial class ViewManagerViewModel : ObservableObject
         EditUnlimitedDays = !CurrentDayLimit.HasValue;
         EditDaysOfMail = CurrentDayLimit.HasValue ? CurrentDayLimit.Value.ToString() : string.Empty;
 
-        // Enter edit mode so the user can name the new view immediately.
+        // Mark the name as auto-generated so it updates live when the user changes the day limit
+        // before confirming (OnEditNameChanged will clear this once the user types).
+        _isAutoName = _isCreateMode;
+
+        // Enter edit mode so the user can configure and name the new view.
         IsEditMode = true;
         EditModeEntered?.Invoke(this, EventArgs.Empty);
 
@@ -481,7 +508,36 @@ public partial class ViewManagerViewModel : ObservableObject
 
     // ── Name generation ───────────────────────────────────────────────────────────
 
-    public string GenerateName()
+    /// <summary>Generates the initial suggested name using the app's current day limit snapshot.</summary>
+    public string GenerateName() => BuildName(CurrentDayLimit);
+
+    /// <summary>
+    /// Regenerates the suggested name using the current edit-panel day limit values.
+    /// Called while the user is still filling in the create-mode form so the name
+    /// stays in sync as they change the day scope.
+    /// </summary>
+    private string GenerateNameWithEditedDays()
+    {
+        if (EditUnlimitedDays) return BuildName(null);
+        if (IsValidDayLimit(EditDaysOfMail) && int.TryParse(EditDaysOfMail.Trim(), out var d))
+            return BuildName(d);
+        return BuildName(null);
+    }
+
+    /// <summary>
+    /// If the name is still the auto-generated suggestion (not manually edited) and we are
+    /// in create mode, refresh it to reflect the current day-limit edit state.
+    /// </summary>
+    private void UpdateAutoName()
+    {
+        if (!_isAutoName || !_isCreateMode) return;
+        _updatingAutoName = true;
+        EditName = GenerateNameWithEditedDays();
+        _updatingAutoName = false;
+    }
+
+    /// <summary>Builds a suggested view name using the supplied day limit (or null for unlimited).</summary>
+    private string BuildName(int? dayLimit)
     {
         var sb = new StringBuilder();
 
@@ -506,8 +562,7 @@ public partial class ViewManagerViewModel : ObservableObject
             extras.Add(FilterLabel(CurrentFilter.ToString().ToLowerInvariant()));
         if (CurrentSort != MessageSort.DateDescending)
             extras.Add(SortLabel(CurrentSort.ToString()));
-        if (CurrentDayLimit.HasValue)
-            extras.Add($"{CurrentDayLimit}d");
+        extras.Add(dayLimit.HasValue ? $"last {dayLimit} days" : "all days");
 
         if (extras.Count > 0)
             sb.Append(", ").Append(string.Join(" ", extras));
