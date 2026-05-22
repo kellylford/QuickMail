@@ -13,6 +13,11 @@ public static class LogService
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "QuickMail", "quickmail.log");
 
+    // File.AppendAllText opens-writes-closes; concurrent callers from background sync,
+    // prefetch, and the UI thread collided on the file handle and lost lines through
+    // the swallowed IOException — exactly the lines you want during a sync crash.
+    private static readonly object _writeGate = new();
+
     /// <summary>Set to true by App.xaml.cs when /debug is on the command line.</summary>
     public static bool DebugMode { get; set; }
 
@@ -21,7 +26,11 @@ public static class LogService
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);
-            File.AppendAllText(LogFile, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  {message}{Environment.NewLine}");
+            var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  {message}{Environment.NewLine}";
+            lock (_writeGate)
+            {
+                File.AppendAllText(LogFile, line);
+            }
         }
         catch { /* never crash on logging */ }
     }
