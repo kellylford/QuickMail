@@ -455,3 +455,90 @@ If you're handing this out as discrete tickets, this is the order I'd recommend:
 
 Strategic items §6 should be planned as deliberate work for one senior dev, not handed out piecemeal.
 
+---
+
+## §8. Resolution log (2026-05-21)
+
+Sixteen commits landed against this review on the same day it was written, walking the suggested PR ordering and then continuing into perf, quality, and security/robustness items. Tests went from 106 passing at baseline to 150 passing (44 new tests).
+
+The intent of this section is to make this review document the durable home for the work — not just a list of commits, but the *commentary* on why each fix was made the way it was, what was deliberately deferred, and how to use this review process on future iterations.
+
+### Commits, in order
+
+| Review item | Commit | Description |
+|---|---|---|
+| §1.1 — Hotkey overrides silently inert | [3f5db0d](https://github.com/kellylford/QuickMail/commit/3f5db0d) | Parse `Gesture` string in `ApplyUserOverrides`; suppress default gesture when remapped; migrate legacy ints. Added `CommandRegistryTests.cs` (8 cases). |
+| §1.2 — No unhandled-exception handler | [99263b2](https://github.com/kellylford/QuickMail/commit/99263b2) | Added `DispatcherUnhandledException` + `UnobservedTaskException` + `AppDomain.UnhandledException` handlers in `App.xaml.cs` — installed *before* startup wiring. |
+| §1.3 — `LogService` not thread-safe | [b87c07c](https://github.com/kellylford/QuickMail/commit/b87c07c) | Static lock around `File.AppendAllText`. |
+| §1.10 — `HasAttachments` not read | [02e8e70](https://github.com/kellylford/QuickMail/commit/02e8e70) | Added `has_attachments` to all three SELECTs in `LocalStoreService.cs`; regression tests. |
+| §1.7 — `IsSelectedFolderDrafts` substring | [4594223](https://github.com/kellylford/QuickMail/commit/4594223) | Now uses `SpecialFolderKind.Drafts`. |
+| §1.6 — `ContactService` cache race | [13873c5](https://github.com/kellylford/QuickMail/commit/13873c5) | `_loadLock` held for all mutations and reads; `SaveAsync` renamed to `SaveAsyncLocked` with precondition documented. |
+| §1.5 — `BatchObservableCollection` fragile | [ee2d9d3](https://github.com/kellylford/QuickMail/commit/ee2d9d3) | Depth counter, `BeginBatchScope()` `IDisposable`, MainViewModel switched to `using`. 5 new tests. |
+| §2.7 + §2.8 + §2.10 — Compose hardening | [0eaf9a6](https://github.com/kellylford/QuickMail/commit/0eaf9a6) | Removed `MessageBox` from VM (added `ConfirmationRequested` event); `AddAttachmentFromPathAsync`; per-attachment Guid temp subfolder. |
+| §2.9 — Reply-all duplicates sender | [733e51e](https://github.com/kellylford/QuickMail/commit/733e51e) | Exclude To-addresses (incl. ReplyTo) from new Cc; fix ineffective `Distinct()` call (MailboxAddress uses reference equality). 5 new tests. |
+| §2.6 — To-field search | [52a2178](https://github.com/kellylford/QuickMail/commit/52a2178) | One-line addition to `MatchesSearch`. |
+| §2.1 — `RebuildActiveGroupView` helper | [c0eeccf](https://github.com/kellylford/QuickMail/commit/c0eeccf) | Replaced 10 open-coded 3-branch switches; fixed latent bug in move-to-folder where To branch was missing entirely. -29 net lines. |
+| §4 — Builder tests | [4d06ca4](https://github.com/kellylford/QuickMail/commit/4d06ca4) | `ConversationBuilderTests.cs` + `SenderGroupBuilderTests.cs`, 21 new tests. |
+| §2.11 — Per-UID Delete loop | [cafb7c1](https://github.com/kellylford/QuickMail/commit/cafb7c1) | Chunked `WHERE unique_id IN (…)`; 1100-UID regression test crosses chunk boundary. |
+| §1.9 — Per-message preview persistence | [e5cc35c](https://github.com/kellylford/QuickMail/commit/e5cc35c) | Added `UpdatePreviewsBatchAsync` (single transaction); single `Dispatcher.InvokeAsync` for the whole batch. |
+| §2.5 — Backfill on every startup | [3858fdc](https://github.com/kellylford/QuickMail/commit/3858fdc) | `PRAGMA user_version` migration framework gates data migrations. |
+| §3.2 — Temp attachments leak forever | [c1d8b81](https://github.com/kellylford/QuickMail/commit/c1d8b81) | Background sweep on startup deletes `%TEMP%\QuickMail` entries older than 24h. Pairs with §2.10 (per-attachment subfolder) to give bounded per-attachment scope. |
+
+### Commentary on individual fixes
+
+A few of the fixes deserve more explanation than fits in the commit message — either because the scope drifted slightly from what the review suggested, or because there was a judgement call worth recording.
+
+**§1.1 — Hotkey override default-suppression.** The review prescribed parsing the `Gesture` string in `ApplyUserOverrides`. I went one step further: when a user remaps a command (e.g. Reply from `Ctrl+R` to `Alt+R`), the *old* default gesture is now suppressed in the lookup so `Ctrl+R` does nothing. Without this, both old and new gestures would fire Reply, which contradicts the Settings UI calling these "customisations" rather than "additions". This was a behaviour change beyond the minimum bug fix, and worth flagging if a user reports that an old hotkey "stopped working" after this commit.
+
+**§1.2 — DispatcherUnhandledException + MessageBox.** The review suggested optionally calling `MessageBox.Show` in the handler. I implemented it that way, with a defensive try/catch around the `MessageBox` call itself in case the dispatcher is in such a bad state that even showing a dialog faults. `Handled = true` keeps the window alive — the alternative is letting the process die after every transient bug, which is worse for users than a logged error and a "try again."
+
+**§1.5 — BatchObservableCollection depth counter + scope.** The review proposed a `BeginBatchScope` returning `IDisposable`. I extended it to a depth counter (rather than a bool) so nested batches are supported as a side-effect — the inner scope no longer clobbers the outer's `_pendingReset`. Cost is zero (one integer instead of one bool), benefit is that callers don't have to worry about whether they might be nested.
+
+**§2.1 — RebuildActiveGroupView fixed a latent bug.** While replacing the ten 3-branch switches, I found one site (the move-to-folder path) that had only Conversations and From — the To branch was missing entirely. Moving messages did not refresh the To view. The helper now covers all three views and the inconsistency is gone. Worth knowing if anyone reports "To view feels more responsive after moves" — it's a real behavioural change, not a regression.
+
+Two single-branch sites (after cache load, after server refresh) only rebuild Conversations and I deliberately left them alone. They might be intentional (waiting for full sync before rebuilding the heavier From/To groupings) and I didn't want to fold a behavioural change into a refactor PR. If From/To users notice stale groupings after refresh, those two sites are the place to look.
+
+**§2.9 — `.Distinct()` was a no-op.** While fixing reply-all, I noticed the existing `.Distinct()` call on `IEnumerable<MailboxAddress>` was effectively a no-op: `MailboxAddress` doesn't override `Equals`/`GetHashCode`, so reference-equality Distinct never deduplicated different parses of the same address. Replaced with `GroupBy(a => a.Address, OrdinalIgnoreCase).First()`. Picked up by the new "different display names" test.
+
+**§2.10 + §3.2 are paired.** §2.10 puts each opened attachment in its own Guid subfolder under `%TEMP%\QuickMail`. That alone gives correctness (no overwrites) but worsens disk leakage (more dirs to clean up). §3.2 adds the 24h sweep on startup, so the two together give bounded per-attachment scope. They were committed separately for review clarity but should be thought of as one fix.
+
+**§2.5 — Migration framework, lightweight version.** The review suggested introducing "the `user_version` migration system the May 16 review recommended." I added the minimum viable framework: a single `RunDataMigrations` method with a `CurrentSchemaVersion` constant and per-version `if (version < N)` blocks. The schema (`ALTER TABLE`) migrations still use the existing try/catch pattern because column-adds are idempotent on their own; only the *data* migration (the backfill) needs version-gating. When the next data migration arrives, the pattern is in place — but I didn't force-fit existing schema migrations through it because the change-set should be minimal.
+
+### Tests added (44 total)
+
+- `CommandRegistryTests.cs` — 8 cases (default match, no match, gesture-string override, default suppression, legacy integer migration, Key.None, malformed gesture, idempotent re-apply)
+- `BatchObservableCollectionTests.cs` — 5 cases (single Reset, exception cleanup, nesting, empty batch, EndBatch without Begin)
+- `ComposeViewModelReplyTests.cs` — 5 cases (mailing-list duplicate, ReplyTo exclusion, own-address exclusion, empty fields, dedup-by-email)
+- `ConversationBuilderTests.cs` — 11 cases (prefix-chain stripping × 10 inputs, embedded-Re false positive, grouping case-insensitive, newest-first order, empty input, all-blank subjects)
+- `SenderGroupBuilderTests.cs` — 6 cases (sender grouping, whitespace trim, within-group order, empty input, BuildByTo grouping, BuildByTo placeholder)
+- `LocalStoreServiceTests` additions — 4 cases (HasAttachments persist+load, HasAttachments default false, DeleteSummariesAsync 1100-UID across chunks, DeleteSummariesAsync empty input, Initialize idempotency)
+
+### What was deliberately left
+
+The review listed several items I did not address in this pass. Each was a judgement call:
+
+- **§1.4 — Extract `GetFolderSyncAsync` from three call sites.** The logic exists correctly in three places. Extracting it requires careful cross-checking of date-window vs count-based semantics between `MainViewModel.FetchAccountNewMessagesAsync`, `MainViewModel.FetchViewFoldersAsync`, and `SyncService.SyncFolderAsync`. Worth a focused PR by someone who has time to verify each call site does what the unified method should do.
+- **§1.8 — Debounce group rebuilds.** Suggested a 250ms debounce on `FolderSynced` bursts. The plumbing pattern exists (`QueueStatusAnnounce`) but the right debounce value depends on real-world sync cadence — needs UX testing under live sync before bundling.
+- **§1.11 — `GetFoldersAsync` uses `StatusAsync`.** Replacing `SELECT/CLOSE` round-trips with `STATUS` requires verification against real IMAP servers (especially Gmail's label semantics). Without that confirmation I'd rather not change the cold-connect path.
+- **§2.2 — `MainWindow.xaml.cs` tree-view triplet extraction.** Labelled "good first PR" in the review but is in practice a 30-method refactor with subtle focus-management interactions. Should be its own session with manual focus testing in the running app.
+- **§2.3 — CTS disposal helper.** Mechanical but ~15 sites scattered through `MainViewModel`. Better as a focused PR than mixed in here.
+- **§2.4 — ViewMode/Sort magic strings.** Pure cleanup, low priority, easy to do later.
+- **§3.1, §3.3, §3.4** — These are policy questions (default of `ImapAcceptInvalidCert`, configurability of OAuth client ID, OAuth `RegisterTokenCache` constructor pattern). Should be discussed before code change, not unilaterally decided.
+- **§5 — CI workflow.** Infrastructure decision for the project owner; not engineering work.
+- **§6 — Strategic decomposition.** Explicitly flagged in the review as senior-dev milestone work, not for piecemeal handout.
+
+### Notes on the review process itself
+
+The review's structure (Headline → P0 → P1 → security → tests → strategy → "things that are good") worked well as an actionable punch list. A few things that made it work:
+
+- **Every finding had file + line references.** Made fixes verifiable rather than vibes-based.
+- **Each fix included a "fix in N lines" sketch.** Useful for sanity-checking that the proposed change isn't bigger than billed — twice during this pass I ended up implementing close to the sketched form, which is a healthy sign the review's sizing was honest.
+- **The "PR ordering" section gave a clear path.** I followed it for items 1–9 then continued into the perf items in the order they were listed.
+
+For weekly cadence going forward, two recommendations:
+
+1. **Carry forward an "open from prior review" section.** Items like §1.4, §2.3, and the strategic decompositions need a durable home; otherwise they will be re-discovered every week. This document's §8 (resolution log) is one such home — future reviews can reference "still open from 2026-05-21: §1.4, §2.3, §2.4, …" rather than restating the same finding.
+2. **The reviewer's line-count claims are verifiable; the *interpretation* is the human-judgement part.** "MainViewModel grew from 1,200 to 3,355 lines" is a fact. "This is drift" is an opinion. Worth keeping a senior eye on the strategic findings rather than auto-trusting them. (In this case the drift call seems right — but the discipline of separating measurement from judgement matters.)
+
+A third observation worth recording: the review caught a confirmed correctness bug (§1.1) that had shipped to users. That alone justifies the cost of the review pass. The other P0 items (§1.2 through §1.10) were largely latent — bugs waiting to happen rather than bugs currently happening — and the value of fixing them is proportional to how unhappy you'd be debugging them in production. The pattern of one confirmed-bug + several latent-bugs is a healthy signal: it means the review process is finding both kinds and not just churning on hypotheticals.
+
