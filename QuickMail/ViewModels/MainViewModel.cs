@@ -2530,8 +2530,8 @@ public partial class MainViewModel : ObservableObject
     /// <summary>True when the currently selected folder is a Drafts folder.</summary>
     public bool IsSelectedFolderDrafts =>
         SelectedFolder != null &&
-        (SelectedFolder.DisplayName.Contains("draft", StringComparison.OrdinalIgnoreCase) ||
-         SelectedFolder.FullName.Contains("draft", StringComparison.OrdinalIgnoreCase));
+        (SelectedFolder.Kind == SpecialFolderKind.Drafts ||
+         string.Equals(SelectedFolder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal));
 
     [RelayCommand]
     private async Task OpenDraftAsync()
