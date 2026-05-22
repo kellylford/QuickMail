@@ -32,6 +32,12 @@ public partial class ComposeWindow : Window
                 AccessibilityHelper.Announce(this, vm.StatusText, category: AnnouncementCategory.Status);
         };
 
+        // Wire the View confirmation callback so the VM stays out of System.Windows.
+        // Mirrors the pattern used by MainViewModel.ConfirmationRequested.
+        vm.ConfirmationRequested = (message, title) =>
+            MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
+            == MessageBoxResult.Yes;
+
         foreach (var box in new[] { ToBox, CcBox, BccBox })
         {
             box.TextChanged       += AddressBox_TextChanged;
@@ -226,22 +232,22 @@ public partial class ComposeWindow : Window
         e.Handled = true;
     }
 
-    private void Window_Drop(object sender, DragEventArgs e)
+    private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
             foreach (var f in files)
-                _vm.AddAttachmentFromPath(f);
+                await _vm.AddAttachmentFromPathAsync(f);
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Ctrl+V with files → add attachments; Escape → cancel.
-    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Ctrl+V: if the clipboard contains files, paste them as attachments
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
         {
             foreach (string? f in Clipboard.GetFileDropList())
             {
-                if (f != null) _vm.AddAttachmentFromPath(f);
+                if (f != null) await _vm.AddAttachmentFromPathAsync(f);
             }
             e.Handled = true;
             return;

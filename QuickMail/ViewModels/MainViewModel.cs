@@ -3306,7 +3306,9 @@ public partial class MainViewModel : ObservableObject
                 "Security Warning") != true) return;
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "QuickMail");
+        // Per-attachment subfolder so two messages with the same attachment name
+        // (invoice.pdf, invoice.pdf) don't overwrite each other in %TEMP%\QuickMail.
+        var tempDir = Path.Combine(Path.GetTempPath(), "QuickMail", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var tempPath = Path.Combine(tempDir, safeFileName);
         await File.WriteAllBytesAsync(tempPath, att.Content!);

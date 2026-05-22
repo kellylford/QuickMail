@@ -43,6 +43,13 @@ public partial class ComposeViewModel : ObservableObject
 
     public event Action? CloseRequested;
 
+    /// <summary>
+    /// Set by the View to show a Yes/No confirmation dialog.
+    /// Parameters: message, title. Returns true when the user confirms.
+    /// Mirrors the pattern on MainViewModel — see CLAUDE.md MVVM Rules.
+    /// </summary>
+    public Func<string, string, bool>? ConfirmationRequested { get; set; }
+
     public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IImapService imap)
     {
         _smtp = smtp;
@@ -219,20 +226,23 @@ public partial class ComposeViewModel : ObservableObject
     private void Cancel() => CloseRequested?.Invoke();
 
     [RelayCommand]
-    private void AddAttachments()
+    private async Task AddAttachmentsAsync()
     {
         var dlg = new OpenFileDialog { Multiselect = true, Title = "Add Attachments" };
         if (dlg.ShowDialog() != true) return;
         foreach (var path in dlg.FileNames)
-            AddAttachmentFromPath(path);
+            await AddAttachmentFromPathAsync(path);
     }
 
-    /// <summary>Adds a file as an attachment (shared by AddAttachmentsCommand and clipboard paste).</summary>
-    public void AddAttachmentFromPath(string path)
+    /// <summary>
+    /// Adds a file as an attachment (shared by AddAttachmentsCommand and clipboard paste).
+    /// Reads asynchronously so large attachments don't freeze the window on slow disks.
+    /// </summary>
+    public async Task AddAttachmentFromPathAsync(string path)
     {
         if (!File.Exists(path)) return;
         var info  = new FileInfo(path);
-        var bytes = File.ReadAllBytes(path);
+        var bytes = await File.ReadAllBytesAsync(path);
         Attachments.Add(new AttachmentModel
         {
             FileName    = info.Name,
@@ -275,15 +285,18 @@ public partial class ComposeViewModel : ObservableObject
         var ext = Path.GetExtension(attachment.FileName).ToLowerInvariant();
         if (DangerousExtensions.Contains(ext))
         {
-            var result = System.Windows.MessageBox.Show(
+            // CLAUDE.md MVVM Rules: ViewModels must not call MessageBox directly.
+            // If the View hasn't wired a confirmation handler, treat that as deny so
+            // we never silently open something potentially dangerous.
+            var confirmed = ConfirmationRequested?.Invoke(
                 $"'{attachment.FileName}' is an executable file type. Opening it could be dangerous. Continue?",
-                "Security Warning",
-                System.Windows.MessageBoxButton.YesNo,
-                System.Windows.MessageBoxImage.Warning);
-            if (result != System.Windows.MessageBoxResult.Yes) return;
+                "Security Warning") ?? false;
+            if (!confirmed) return;
         }
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "QuickMail");
+        // Per-attachment subfolder so two files with the same name (invoice.pdf, invoice.pdf
+        // from different messages or sessions) don't overwrite each other in %TEMP%\QuickMail.
+        var tempDir = Path.Combine(Path.GetTempPath(), "QuickMail", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         var tempPath = Path.Combine(tempDir, attachment.FileName);
         File.WriteAllBytes(tempPath, attachment.Content);
