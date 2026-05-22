@@ -1028,6 +1028,13 @@ public partial class MainViewModel : ObservableObject
             // Per-account "All Mail" - only messages belonging to that account.
             relevant = incoming.Where(m => m.AccountId == watchedAccountId);
         }
+        else if (!selected.IsHeader && selected.AccountId != Guid.Empty)
+        {
+            // Regular folder — only accept messages for this specific folder.
+            relevant = incoming.Where(m =>
+                m.AccountId == selected.AccountId &&
+                string.Equals(m.FolderName, selected.FullName, StringComparison.OrdinalIgnoreCase));
+        }
         else
         {
             return;
