@@ -77,6 +77,7 @@ public class RuleService : IRuleService
     {
         var rules = LoadRules();
         var enabledRules = rules.Where(r => r.IsEnabled).ToList();
+        LogService.Debug($"ApplyRulesAsync: {enabledRules.Count} enabled rules, {incoming.Count} incoming messages for account {accountId}");
         if (enabledRules.Count == 0) return (0, []);
 
         int matchedCount = 0;
@@ -88,9 +89,18 @@ public class RuleService : IRuleService
 
             // Account scope check
             if (rule.AccountId.HasValue && rule.AccountId.Value != accountId)
+            {
+                LogService.Debug($"  Rule '{rule.Name}': skipped (account {rule.AccountId} != {accountId})");
                 continue;
+            }
 
             var matched = incoming.Where(m => MatchesRule(rule, m)).ToList();
+            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched (action={rule.Action}, from='{rule.FromContains}', subject='{rule.SubjectContains}')");
+            if (matched.Count > 0)
+            {
+                foreach (var m in matched.Take(3))
+                    LogService.Debug($"    Match: From='{m.From}' Subject='{m.Subject}' UID={m.UniqueId} Folder={m.FolderName}");
+            }
             if (matched.Count == 0) continue;
 
             matchedCount += matched.Count;

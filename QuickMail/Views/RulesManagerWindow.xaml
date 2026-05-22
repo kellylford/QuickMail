@@ -80,6 +80,7 @@
             <!-- Right pane: Rule editor -->
             <ScrollViewer Grid.Column="2" VerticalScrollBarVisibility="Auto"
                           Focusable="False"
+                          KeyboardNavigation.TabNavigation="Continue"
                           KeyboardNavigation.IsTabStop="False">
                 <StackPanel Margin="12,0,0,0">
                     <!-- Rule Name -->

@@ -117,7 +117,9 @@ public class SyncService : ISyncService
             List<MailMessageSummary> removedMessages = [];
             try
             {
+                LogService.Debug($"SyncFolderAsync: applying rules for {account.AccountLabel}/{folder.FullName}, {incoming.Count} incoming");
                 (matchedCount, removedMessages) = await _rules.ApplyRulesAsync(incoming, account.Id, ct);
+                LogService.Debug($"SyncFolderAsync: rules done — {matchedCount} matched, {removedMessages.Count} removed, {incoming.Count} remaining in incoming");
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
