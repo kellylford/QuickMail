@@ -188,20 +188,31 @@ public class LocalStoreService : ILocalStoreService
 
     public async Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds)
     {
+        // Chunk so the IN list stays well under SQLite's compiled-parameter limit (~999).
+        // Two round-trips per chunk regardless of size beats 2N round-trips for the old loop.
+        const int chunkSize = 500;
+        var ids = uniqueIds as IList<uint> ?? uniqueIds.ToList();
+        if (ids.Count == 0) return;
+
         await using var conn = await OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
-        await using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            "DELETE FROM MessageSummary WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;" +
-            "DELETE FROM MessageDetail  WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
-        var pUid = cmd.Parameters.Add("$uid", SqliteType.Integer);
-        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
-        cmd.Parameters.AddWithValue("$fn",  folderName);
-        foreach (var uid in uniqueIds)
+
+        for (int offset = 0; offset < ids.Count; offset += chunkSize)
         {
-            pUid.Value = (long)uid;
+            var count = Math.Min(chunkSize, ids.Count - offset);
+            // Build "$u0,$u1,..." once for this chunk.
+            var placeholders = string.Join(',', Enumerable.Range(0, count).Select(i => $"$u{i}"));
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                $"DELETE FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});" +
+                $"DELETE FROM MessageDetail  WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});";
+            cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+            cmd.Parameters.AddWithValue("$fn",  folderName);
+            for (int i = 0; i < count; i++)
+                cmd.Parameters.AddWithValue($"$u{i}", (long)ids[offset + i]);
             await cmd.ExecuteNonQueryAsync();
         }
+
         await tx.CommitAsync();
     }
 

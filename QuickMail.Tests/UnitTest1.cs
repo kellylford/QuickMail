@@ -282,6 +282,46 @@ public class LocalStoreServiceTests
     }
 
     [Fact]
+    public async Task DeleteSummariesAsync_RemovesAllRequestedIds()
+    {
+        // Covers §2.11: the chunked IN-list delete must remove every requested UID,
+        // including across chunk boundaries (chunkSize = 500 internally).
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(tempDir);
+        store.Initialize();
+
+        var accountId = Guid.NewGuid();
+        var ids = Enumerable.Range(1, 1100).Select(i => (uint)i).ToList(); // crosses two chunks
+        var summaries = ids.Select(id => new MailMessageSummary
+        {
+            UniqueId   = id,
+            AccountId  = accountId,
+            FolderName = "Inbox",
+            Subject    = $"msg{id}",
+            Date       = DateTimeOffset.UtcNow,
+        });
+        await store.UpsertSummariesAsync(summaries);
+
+        var toDelete = ids.Where(i => i % 2 == 0).ToList(); // 550 ids
+        await store.DeleteSummariesAsync(accountId, "Inbox", toDelete);
+
+        var remaining = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        Assert.Equal(550, remaining.Count);
+        Assert.All(remaining, m => Assert.Equal(1u, m.UniqueId % 2));
+    }
+
+    [Fact]
+    public async Task DeleteSummariesAsync_EmptyInput_NoOp()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(tempDir);
+        store.Initialize();
+
+        // Must not throw on empty input.
+        await store.DeleteSummariesAsync(Guid.NewGuid(), "Inbox", Array.Empty<uint>());
+    }
+
+    [Fact]
     public async Task HasAttachments_DefaultsFalse_WhenNotSet()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
