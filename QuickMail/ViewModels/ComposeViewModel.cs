@@ -345,16 +345,29 @@ public partial class ComposeViewModel : ObservableObject
     {
         var model = CreateReply(detail, accountId);
 
-        // Merge original To + Cc, excluding the sender's own address, into the new Cc.
-        // Use TryParse so that empty or malformed address strings (e.g. when Cc is absent)
-        // return an empty list rather than throwing MimeKit.ParseException.
+        // Also exclude whichever address landed in model.To (the original From or ReplyTo).
+        // Otherwise mailing-list senders who were Cc'd on their own message appear on both
+        // the To and Cc lines of the reply-all.
+        var toAddresses = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (InternetAddressList.TryParse(model.To ?? string.Empty, out var modelToList))
+        {
+            foreach (var a in modelToList.OfType<MailboxAddress>())
+                toAddresses.Add(a.Address);
+        }
+        if (!string.IsNullOrEmpty(ownAddress))
+            toAddresses.Add(ownAddress);
+
+        // Merge original To + Cc, excluding the sender's own address and the To recipient,
+        // into the new Cc. Use TryParse so empty/malformed address strings return an empty
+        // list rather than throwing MimeKit.ParseException.
         InternetAddressList.TryParse(detail.To ?? string.Empty, out var toList);
         InternetAddressList.TryParse(detail.Cc ?? string.Empty, out var ccList);
         var recipients = (toList ?? [])
             .Concat(ccList ?? [])
             .OfType<MailboxAddress>()
-            .Where(a => !string.Equals(a.Address, ownAddress, StringComparison.OrdinalIgnoreCase))
-            .Distinct()
+            .Where(a => !toAddresses.Contains(a.Address))
+            .GroupBy(a => a.Address, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
             .ToList();
 
         model.Cc = string.Join(", ", recipients.Select(a => a.ToString()));
