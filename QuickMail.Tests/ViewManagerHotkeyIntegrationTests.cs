@@ -19,24 +19,10 @@ namespace QuickMail.Tests;
 /// </summary>
 public class ViewManagerHotkeyIntegrationTests
 {
-    /// <summary>ConfigService hardcodes %APPDATA%\QuickMail, so each test points
-    /// APPDATA at a fresh temp folder.</summary>
-    private static (string tempDir, IDisposable restorer) UseTempAppData()
+    private static ProfileContext MakeTempProfile()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"QM-VM-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(tempDir);
-        var old = Environment.GetEnvironmentVariable("APPDATA");
-        Environment.SetEnvironmentVariable("APPDATA", tempDir);
-        return (tempDir, new ActionDisposable(() =>
-        {
-            Environment.SetEnvironmentVariable("APPDATA", old);
-            try { Directory.Delete(tempDir, recursive: true); } catch { }
-        }));
-    }
-
-    private sealed class ActionDisposable(Action a) : IDisposable
-    {
-        public void Dispose() => a();
+        return new ProfileContext(tempDir);
     }
 
     /// <summary>Mimics what MainViewModel.RegisterOneViewCommand does at startup —
@@ -67,8 +53,7 @@ public class ViewManagerHotkeyIntegrationTests
     [Fact]
     public void AssigningHotkeyViaViewManager_TakesEffectAfterDialogCloses()
     {
-        using var _ = UseTempAppData().restorer;
-        var config   = new ConfigService();
+        var config   = new ConfigService(MakeTempProfile());
         var registry = new CommandRegistry();
         var views    = new StubViewService();
 
@@ -116,8 +101,7 @@ public class ViewManagerHotkeyIntegrationTests
     [Fact]
     public void ChangingViewHotkeyClearsTheOldGesture()
     {
-        using var _ = UseTempAppData().restorer;
-        var config   = new ConfigService();
+        var config   = new ConfigService(MakeTempProfile());
         var registry = new CommandRegistry();
         var views    = new StubViewService();
 

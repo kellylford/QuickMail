@@ -16,12 +16,9 @@ public class ContactService : IContactService
     private List<ContactModel> _cache = [];
     private bool _loaded = false;
 
-    public ContactService(string? dataDirectory = null)
+    public ContactService(ProfileContext profile)
     {
-        var dir = dataDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
-        Directory.CreateDirectory(dir);
-        _filePath = Path.Combine(dir, "contacts.json");
+        _filePath = Path.Combine(profile.ProfileDir, "contacts.json");
     }
 
     public async Task UpsertContactAsync(ContactModel contact)

@@ -12,6 +12,34 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // --help / -h / /? — show usage and exit before anything else.
+        if (IsHelpRequest(e.Args))
+        {
+            MessageBox.Show(
+                "Usage: QuickMail.exe [options]\n\n" +
+                "Options:\n" +
+                "  --profileDir <path>   Store all data in <path> instead of the default\n" +
+                "                        %AppData%\\QuickMail directory. The directory is\n" +
+                "                        created if it does not already exist.\n\n" +
+                "  --help                Show this message and exit.\n\n" +
+                "  /debug                Write verbose debug output to quickmail.log.",
+                "QuickMail",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
+        // Resolve the profile directory first so all logging goes to the right place.
+        var profile = ResolveProfile(e.Args);
+        if (profile is null)
+        {
+            Shutdown();
+            return;
+        }
+
+        LogService.Configure(profile.ProfileDir);
+
         // /debug enables verbose debug logging to the log file.
         if (e.Args.Contains("/debug", StringComparer.OrdinalIgnoreCase))
         {
@@ -33,17 +61,17 @@ public partial class App : Application
 
         try
         {
-            var accountService    = new AccountService();
+            var accountService    = new AccountService(profile);
             var credentialService = new CredentialService();
-            var oauthService      = new OAuthService();
-            var configService     = new ConfigService();
+            var oauthService      = new OAuthService(profile);
+            var configService     = new ConfigService(profile);
             var imapService       = new ImapService(oauthService, configService);
             var smtpService       = new SmtpService(oauthService);
 
-            var localStore = new LocalStoreService();
+            var localStore = new LocalStoreService(profile);
             localStore.Initialize();
 
-            var contactService = new ContactService();
+            var contactService = new ContactService(profile);
             var syncService = new SyncService(imapService, localStore, configService);
 
             Views.AccessibilityHelper.Configure(configService.Load());
@@ -51,7 +79,7 @@ public partial class App : Application
             var commandRegistry = new CommandRegistry();
             commandRegistry.ApplyUserOverrides(configService.Load().CustomHotkeys);
 
-            var viewService = new ViewService();
+            var viewService = new ViewService(profile);
 
             var mainVm = new MainViewModel(
                 imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService);
@@ -68,6 +96,42 @@ public partial class App : Application
                 LogService.Log("Startup", cur);
             throw;
         }
+    }
+
+    /// <summary>
+    /// Parses --profileDir from args, validates the path, and returns a ProfileContext.
+    /// Returns null (and shows an error dialog) if the path is unusable.
+    /// </summary>
+    private static bool IsHelpRequest(string[] args)
+    {
+        var helpFlags = new[] { "--help", "-help", "-h", "/?" };
+        foreach (var arg in args)
+            foreach (var flag in helpFlags)
+                if (arg.Equals(flag, StringComparison.OrdinalIgnoreCase))
+                    return true;
+        return false;
+    }
+
+    private static ProfileContext? ResolveProfile(string[] args)
+    {
+        var rawDir = ProfileContext.ParseProfileDir(args);
+        if (rawDir is null)
+            return ProfileContext.Default();
+
+        var profile = ProfileContext.TryCreate(rawDir, out var error);
+        if (profile is null)
+            ShowProfileError(rawDir, error!);
+
+        return profile;
+    }
+
+    private static void ShowProfileError(string dir, string reason)
+    {
+        MessageBox.Show(
+            $"Cannot use profile directory:\n  {dir}\n\n{reason}\n\nCheck the --profileDir argument and try again.",
+            "QuickMail — Invalid Profile Directory",
+            MessageBoxButton.OK,
+            MessageBoxImage.Error);
     }
 
     private static void OnDispatcherUnhandledException(

@@ -27,21 +27,26 @@ namespace QuickMail.Services;
 /// </summary>
 public class ConfigService : IConfigService
 {
-    private static readonly string DataFolder =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
-
-    private static readonly string ConfigFile   = Path.Combine(DataFolder, "config.ini");
-    private static readonly string HotkeysFile  = Path.Combine(DataFolder, "hotkeys.json");
+    private readonly string _dataFolder;
+    private readonly string _configFile;
+    private readonly string _hotkeysFile;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private ConfigModel? _cached;
 
+    public ConfigService(ProfileContext profile)
+    {
+        _dataFolder   = profile.ProfileDir;
+        _configFile   = Path.Combine(profile.ProfileDir, "config.ini");
+        _hotkeysFile  = Path.Combine(profile.ProfileDir, "hotkeys.json");
+    }
+
     public ConfigModel Load()
     {
         if (_cached != null) return _cached;
 
-        if (!File.Exists(ConfigFile))
+        if (!File.Exists(_configFile))
         {
             _cached = new ConfigModel();
             Save(_cached);          // write defaults on first run
@@ -50,7 +55,7 @@ public class ConfigService : IConfigService
 
         try
         {
-            _cached = ParseFile(File.ReadAllLines(ConfigFile));
+            _cached = ParseFile(File.ReadAllLines(_configFile));
         }
         catch
         {
@@ -58,11 +63,11 @@ public class ConfigService : IConfigService
         }
 
         // Load custom hotkeys from separate JSON file
-        if (File.Exists(HotkeysFile))
+        if (File.Exists(_hotkeysFile))
         {
             try
             {
-                var hotkeys = JsonSerializer.Deserialize<List<HotkeyBinding>>(File.ReadAllText(HotkeysFile));
+                var hotkeys = JsonSerializer.Deserialize<List<HotkeyBinding>>(File.ReadAllText(_hotkeysFile));
                 if (hotkeys != null)
                     _cached.CustomHotkeys = ValidateAndMigrateHotkeys(hotkeys);
             }
@@ -75,14 +80,14 @@ public class ConfigService : IConfigService
     public void Save(ConfigModel config)
     {
         _cached = config;
-        Directory.CreateDirectory(DataFolder);
-        File.WriteAllText(ConfigFile, BuildFileText(config), Encoding.UTF8);
+        Directory.CreateDirectory(_dataFolder);
+        File.WriteAllText(_configFile, BuildFileText(config), Encoding.UTF8);
 
         // Save custom hotkeys to separate JSON file (only write when non-empty)
         if (config.CustomHotkeys.Count > 0)
-            File.WriteAllText(HotkeysFile, JsonSerializer.Serialize(config.CustomHotkeys, JsonOptions), Encoding.UTF8);
-        else if (File.Exists(HotkeysFile))
-            File.Delete(HotkeysFile);
+            File.WriteAllText(_hotkeysFile, JsonSerializer.Serialize(config.CustomHotkeys, JsonOptions), Encoding.UTF8);
+        else if (File.Exists(_hotkeysFile))
+            File.Delete(_hotkeysFile);
 
         Views.AccessibilityHelper.Configure(config);
     }

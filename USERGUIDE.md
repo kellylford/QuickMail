@@ -30,6 +30,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 - [Keyboard shortcut reference](#keyboard-shortcut-reference)
 - [Data storage](#data-storage)
 - [Configuration file](#configuration-file)
+- [Command-line options](#command-line-options)
 
 ---
 
@@ -650,7 +651,7 @@ A security warning is shown before opening executable file types.
 
 ## Data storage
 
-QuickMail keeps all its files under `%AppData%\QuickMail\` (typically `C:\Users\<YourName>\AppData\Roaming\QuickMail\`):
+QuickMail keeps all its files under `%AppData%\QuickMail\` (typically `C:\Users\<YourName>\AppData\Roaming\QuickMail\`). You can point QuickMail at a different directory — for example, a folder on OneDrive — using the `--profileDir` command-line option (see [Command-line options](#command-line-options)).
 
 | File / folder | Contents |
 |---------------|----------|
@@ -691,3 +692,33 @@ PreviewLines = 1
 ```
 
 Changes to `config.ini` take effect the next time you start QuickMail.
+
+---
+
+## Command-line options
+
+QuickMail accepts the following options on the command line:
+
+| Option | Description |
+|--------|-------------|
+| `--profileDir <path>` | Use `<path>` as the profile directory instead of the default `%AppData%\QuickMail`. All data files (accounts, mail cache, config, contacts, views, and log) are read from and written to this directory. The directory is created automatically if it does not already exist. |
+| `--help` | Show a summary of available options and exit. Also accepted as `-h`, `-help`, or `/?`. |
+| `/debug` | Write verbose diagnostic output to `quickmail.log` in the profile directory. |
+
+### Using profiles
+
+The `--profileDir` option lets you run QuickMail with a completely separate set of accounts and mail data. This is useful if you want to keep work and personal mail in separate profiles, or if you want your data stored in a synced folder such as OneDrive.
+
+**Example — store data on OneDrive:**
+
+```
+QuickMail.exe --profileDir "C:\Users\YourName\OneDrive\QuickMail"
+```
+
+**Example — run a second profile:**
+
+```
+QuickMail.exe --profileDir "C:\Users\YourName\AppData\Roaming\QuickMail-Work"
+```
+
+Each profile is fully independent. Passwords are stored in Windows Credential Manager (system-wide) and are shared across profiles — you do not need to re-enter them when switching.

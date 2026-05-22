@@ -13,12 +13,9 @@ public class LocalStoreService : ILocalStoreService
 {
     private readonly string _connectionString;
 
-    public LocalStoreService(string? dataDirectory = null)
+    public LocalStoreService(ProfileContext profile)
     {
-        var dir = dataDirectory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
-        Directory.CreateDirectory(dir);
-        _connectionString = $"Data Source={Path.Combine(dir, "mail.db")};Mode=ReadWriteCreate;";
+        _connectionString = $"Data Source={Path.Combine(profile.ProfileDir, "mail.db")};Mode=ReadWriteCreate;";
     }
 
     public void Initialize()

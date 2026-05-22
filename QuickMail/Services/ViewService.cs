@@ -9,19 +9,23 @@ namespace QuickMail.Services;
 /// <summary>Persists saved views to <c>%AppData%\QuickMail\views.json</c>.</summary>
 public class ViewService : IViewService
 {
-    private static readonly string DataFolder =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
-
-    private static readonly string ViewsFile = Path.Combine(DataFolder, "views.json");
+    private readonly string _dataFolder;
+    private readonly string _viewsFile;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    public ViewService(ProfileContext profile)
+    {
+        _dataFolder = profile.ProfileDir;
+        _viewsFile  = Path.Combine(profile.ProfileDir, "views.json");
+    }
+
     public List<SavedView> Load()
     {
-        if (!File.Exists(ViewsFile)) return [];
+        if (!File.Exists(_viewsFile)) return [];
         try
         {
-            var json = File.ReadAllText(ViewsFile);
+            var json = File.ReadAllText(_viewsFile);
             return JsonSerializer.Deserialize<List<SavedView>>(json) ?? [];
         }
         catch
@@ -32,7 +36,7 @@ public class ViewService : IViewService
 
     public void Save(List<SavedView> views)
     {
-        Directory.CreateDirectory(DataFolder);
-        File.WriteAllText(ViewsFile, JsonSerializer.Serialize(views, JsonOptions));
+        Directory.CreateDirectory(_dataFolder);
+        File.WriteAllText(_viewsFile, JsonSerializer.Serialize(views, JsonOptions));
     }
 }

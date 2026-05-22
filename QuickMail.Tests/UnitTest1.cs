@@ -217,7 +217,7 @@ public class LocalStoreServiceTests
     public async Task SummaryToField_PersistsAndLoads()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
-        var store = new LocalStoreService(tempDir);
+        var store = new LocalStoreService(new ProfileContext(tempDir));
         store.Initialize();
 
         var summary = new MailMessageSummary
@@ -246,7 +246,7 @@ public class LocalStoreServiceTests
         // column, so the attachment indicator was blank on cold start until each
         // message was opened individually.
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
-        var store   = new LocalStoreService(tempDir);
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
         store.Initialize();
 
         var accountId = Guid.NewGuid();
@@ -287,7 +287,7 @@ public class LocalStoreServiceTests
         // Covers §2.11: the chunked IN-list delete must remove every requested UID,
         // including across chunk boundaries (chunkSize = 500 internally).
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
-        var store   = new LocalStoreService(tempDir);
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
         store.Initialize();
 
         var accountId = Guid.NewGuid();
@@ -316,7 +316,7 @@ public class LocalStoreServiceTests
         // §2.5: data migrations are gated on PRAGMA user_version, so calling
         // Initialize() multiple times must be safe and have no further effect.
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
-        var store   = new LocalStoreService(tempDir);
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
         store.Initialize();
         store.Initialize();
         store.Initialize();
@@ -327,7 +327,7 @@ public class LocalStoreServiceTests
     public async Task DeleteSummariesAsync_EmptyInput_NoOp()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
-        var store   = new LocalStoreService(tempDir);
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
         store.Initialize();
 
         // Must not throw on empty input.
@@ -338,7 +338,7 @@ public class LocalStoreServiceTests
     public async Task HasAttachments_DefaultsFalse_WhenNotSet()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
-        var store   = new LocalStoreService(tempDir);
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
         store.Initialize();
 
         await store.UpsertSummariesAsync([new MailMessageSummary

@@ -9,21 +9,25 @@ namespace QuickMail.Services;
 
 public class AccountService : IAccountService
 {
-    private static readonly string DataFolder =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
-
-    private static readonly string AccountsFile = Path.Combine(DataFolder, "accounts.json");
+    private readonly string _dataFolder;
+    private readonly string _accountsFile;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
+    public AccountService(ProfileContext profile)
+    {
+        _dataFolder   = profile.ProfileDir;
+        _accountsFile = Path.Combine(profile.ProfileDir, "accounts.json");
+    }
+
     public List<AccountModel> LoadAccounts()
     {
-        if (!File.Exists(AccountsFile))
+        if (!File.Exists(_accountsFile))
             return [];
 
         try
         {
-            var json = File.ReadAllText(AccountsFile);
+            var json = File.ReadAllText(_accountsFile);
             var accounts = JsonSerializer.Deserialize<List<AccountModel?>>(json, JsonOptions) ?? [];
             return accounts.Where(a => a is not null).Cast<AccountModel>().ToList();
         }
@@ -35,9 +39,9 @@ public class AccountService : IAccountService
 
     public void SaveAccounts(List<AccountModel> accounts)
     {
-        Directory.CreateDirectory(DataFolder);
+        Directory.CreateDirectory(_dataFolder);
         var json = JsonSerializer.Serialize(accounts, JsonOptions);
-        File.WriteAllText(AccountsFile, json);
+        File.WriteAllText(_accountsFile, json);
     }
 
     public void SetDefaultAccount(Guid accountId)

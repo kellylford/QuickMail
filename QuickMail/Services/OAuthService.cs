@@ -22,15 +22,15 @@ public class OAuthService : IOAuthService
         "offline_access"
     ];
 
-    private static readonly string CacheDir =
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
-
+    private readonly string _cacheDir;
     private const string CacheFileName = "msal.cache";
 
     private readonly IPublicClientApplication _msal;
 
-    public OAuthService()
+    public OAuthService(ProfileContext profile)
     {
+        _cacheDir = profile.ProfileDir;
+
         _msal = PublicClientApplicationBuilder
             .Create(ClientId)
             .WithAuthority(Authority)
@@ -43,10 +43,10 @@ public class OAuthService : IOAuthService
 
     private void RegisterTokenCache()
     {
-        Directory.CreateDirectory(CacheDir);
+        Directory.CreateDirectory(_cacheDir);
 
         // DPAPI-encrypted file cache so tokens survive app restarts
-        var storageProps = new StorageCreationPropertiesBuilder(CacheFileName, CacheDir)
+        var storageProps = new StorageCreationPropertiesBuilder(CacheFileName, _cacheDir)
             .Build();
 
         var helper = MsalCacheHelper.CreateAsync(storageProps).GetAwaiter().GetResult();

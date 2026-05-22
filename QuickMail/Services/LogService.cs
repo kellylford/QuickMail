@@ -9,9 +9,16 @@ namespace QuickMail.Services;
 /// </summary>
 public static class LogService
 {
-    private static readonly string LogFile = Path.Combine(
+    private static string _logFile = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "QuickMail", "quickmail.log");
+
+    /// <summary>
+    /// Redirects the log file to the given profile directory.
+    /// Call this before any services are created when --profileDir is supplied.
+    /// </summary>
+    public static void Configure(string profileDir) =>
+        _logFile = Path.Combine(profileDir, "quickmail.log");
 
     // File.AppendAllText opens-writes-closes; concurrent callers from background sync,
     // prefetch, and the UI thread collided on the file handle and lost lines through
@@ -25,11 +32,11 @@ public static class LogService
     {
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);
+            Directory.CreateDirectory(Path.GetDirectoryName(_logFile)!);
             var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  {message}{Environment.NewLine}";
             lock (_writeGate)
             {
-                File.AppendAllText(LogFile, line);
+                File.AppendAllText(_logFile, line);
             }
         }
         catch { /* never crash on logging */ }
