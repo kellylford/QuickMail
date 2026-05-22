@@ -1,10 +1,11 @@
 # Mail Rules — Development Specification
 
-**Status:** Draft  
-**Version:** 1.0  
+**Status:** Complete (with revisions)  
+**Version:** 1.1  
 **Date:** 2026-05-22  
 **Based on:** `mail-rules-pm-spec.md` (Approved)  
-**Target:** AI coding agent implementation
+**Target:** AI coding agent implementation  
+**Post-implementation:** See [Appendix C: Lessons Learned](#appendix-c-lessons-learned)
 
 ---
 
@@ -1616,5 +1617,100 @@ public MainWindow(
 
 | Command ID | Category | Title | Default Shortcut |
 |---|---|---|---|
-| `mail.rules` | Mail | Manage Rules | `Ctrl+Shift+R` |
+| `mail.rules` | Mail | Manage Rules | `Ctrl+Shift+L` |
 | `mail.createRuleFromMessage` | Mail | Create Rule from Message | `Ctrl+Shift+T` |
+
+> **Note:** The original spec used `Ctrl+Shift+R` for `mail.rules`, but that conflicted with Reply All. Changed to `Ctrl+Shift+L` during implementation.
+
+## Appendix C: Lessons Learned
+
+**Date:** 2026-05-22  
+**Author:** Engineering, with PM input
+
+### Bugs found after initial implementation
+
+The initial implementation passed all 181 unit tests but had four integration-level bugs discovered during manual testing:
+
+| # | Bug | Root cause | Fix |
+|---|---|---|---|
+| 1 | Moved/deleted messages still appeared in UI after sync | `ApplyRulesAsync` removed messages from `incoming` but the `FolderSynced` event still passed the full list | `ApplyRulesAsync` now returns a `(matchedCount, removedMessages)` tuple; `SyncFolderAsync` removes them from `incoming` before raising `FolderSynced` |
+| 2 | Messages reappeared after cache reload | `UpsertSummariesAsync` was called *before* rules ran, persisting moved messages to SQLite; `InitialLoadAsync` reloaded them | `SyncFolderAsync` now calls `DeleteSummariesAsync` for rule-moved/deleted messages and raises `MessagesRemoved` |
+| 3 | Rules had no visible effect when viewing a regular folder (e.g., INBOX) | `OnFolderSynced` only handled virtual folders (All Mail, per-account All Mail); regular folders returned early | Added a branch in `OnFolderSynced` for regular folders that filters by `AccountId` and `FolderName` |
+| 4 | Rules never fired on messages that were already cached before the rule was created | Rules only ran on NEW messages during sync (UID > maxUid) | Added `ApplyRulesToExistingAsync` which loads all cached messages and runs enabled rules against them; called from `MainWindow.OpenRulesManager` after the dialog closes |
+
+### Data-flow diagram (should have been in the original spec)
+
+This diagram traces a single message through the system. Every bug above lives on one of these arrows:
+
+```
+IMAP Server
+    │
+    ▼ GetMessagesSinceAsync()
+[incoming: List<MailMessageSummary>]
+    │
+    ├──► UpsertSummariesAsync(incoming)     ← Bug #2: called before rules
+    │
+    ├──► ApplyRulesAsync(incoming, accountId)
+    │       │
+    │       ├── MatchesRule() → matched list
+    │       ├── ExecuteActionAsync() → IMAP MOVE/DELETE on server
+    │       └── Remove matched from incoming  ← Bug #1: wasn't removing
+    │
+    ├──► DeleteSummariesAsync(removed)       ← Bug #2 fix: delete from SQLite
+    │
+    ├──► FolderSynced?.Invoke(incoming)      ← Bug #3: OnFolderSynced ignored regular folders
+    │       │
+    │       └── OnFolderSynced() → UI inserts
+    │
+    └──► MessagesRemoved?.Invoke(removed)    ← Bug #2 fix: drop from UI
+            │
+            └── OnMessagesRemoved() → UI removes
+
+After Rules Manager closes:
+    ApplyRulesToExistingAsync(store)          ← Bug #4: didn't exist
+        │
+        ├── LoadAllSummariesAsync() → all cached messages
+        ├── MatchesRule() × all messages
+        ├── ExecuteActionAsync() → IMAP actions
+        └── DeleteSummariesAsync() → remove from SQLite
+            │
+            └── RefreshCommand → UI reloads from cache
+```
+
+### Integration test that would have caught bugs #1–#3
+
+```csharp
+[Fact]
+public async Task SyncFolderAsync_RuleDeletesMessage_MessageNotInStoreOrUI()
+{
+    // Arrange: create a rule that deletes messages from "alice"
+    var ruleService = new RuleService(stubImap, realStore, tempDir);
+    ruleService.SaveRules(new[] { new MailRule {
+        Name = "Delete Alice", FromContains = "alice", Action = RuleAction.Delete }});
+
+    var syncService = new SyncService(stubImap, realStore, stubConfig, ruleService);
+    var incoming = new List<MailMessageSummary> { MakeMsg(from: "alice@example.com") };
+
+    // Act: simulate what SyncFolderAsync does
+    await realStore.UpsertSummariesAsync(incoming);
+    var (count, removed) = await ruleService.ApplyRulesAsync(incoming, accountId, ct);
+    await realStore.DeleteSummariesAsync(accountId, "INBOX", removed.Select(m => m.UniqueId));
+
+    // Assert: message is gone from both incoming list and local store
+    Assert.Empty(incoming);                          // Bug #1 would fail here
+    var cached = await realStore.LoadAllSummariesAsync();
+    Assert.Empty(cached);                            // Bug #2 would fail here
+}
+```
+
+### Process recommendations for future AI-assisted specs
+
+1. **Every dev spec must include a data-flow diagram.** Not optional. One diagram tracing the primary entity (message, event, etc.) through every component. Bugs live on the arrows between boxes.
+
+2. **Every dev spec must specify at least one integration test.** Unit tests verify components. Integration tests verify the seams. The spec should include the test name, arrange/act/assert structure, and which bugs it prevents.
+
+3. **Every dev spec must include a manual test checklist.** Three to five steps a human can run in under two minutes. "Generate mail → create rule → press F5 → verify result."
+
+4. **Spec review and implementation should be done by different agents.** The author's blind spots carry through to the code. A review pass by a separate agent (or a human) against the spec catches boundary issues.
+
+5. **The PM spec must answer "when does this fire?" for ALL states.** The original spec said rules run "on incoming messages as they arrive during background sync." It should have also addressed: What about messages already in the inbox? What about messages that arrive while the app is closed? What about messages in folders other than INBOX? Each unanswered "when" question becomes a potential bug.

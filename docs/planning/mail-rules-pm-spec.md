@@ -1,10 +1,11 @@
 # Mail Rules — Product Management Specification
 
 **Status:** Approved  
-**Version:** 1.0  
+**Version:** 1.1  
 **Date:** 2026-05-22  
 **Author:** Design & PM  
-**Target release:** v0.6
+**Target release:** v0.6  
+**Implementation:** Complete (see [Appendix D: Post-Implementation Retrospective](#appendix-d-post-implementation-retrospective))
 
 ---
 
@@ -603,3 +604,47 @@ public interface IRuleService
 - **Has attachments**: checked
 - **Action**: Mark as unread
 - **Account**: All accounts
+
+## Appendix D: Post-Implementation Retrospective
+
+**Date:** 2026-05-22  
+**Author:** Design & PM, with engineering input
+
+### What worked
+
+The PM spec accurately predicted the feature shape, UX layout, accessibility requirements, and competitive positioning. The two-pane Rules Manager, condition checkboxes, folder picker, "Create Rule from Message" flow, and status bar integration all shipped as designed. The WCAG 2.2 checklist was followed and the feature is fully keyboard-accessible with screen-reader announcements.
+
+### What didn't work
+
+The implementation required **six rounds of bug fixes** after the initial build passed all 181 unit tests. The bugs were not in individual components — they were at the boundaries between components:
+
+| Bug | Root cause | Where it lived |
+|---|---|---|
+| Moved/deleted messages still appeared in UI | `ApplyRulesAsync` removed messages from `incoming` but `FolderSynced` still passed the full list to the UI | Between `RuleService` and `SyncService` |
+| Messages reappeared after cache reload | `UpsertSummariesAsync` was called *before* rules ran, so moved messages were persisted to SQLite; `InitialLoadAsync` reloaded them | Between `SyncService` and `LocalStoreService` |
+| Rules had no visible effect in regular folders | `OnFolderSynced` only handled virtual folders (All Mail, per-account All Mail); regular folders like INBOX returned early | Between `SyncService` and `MainViewModel` |
+| Rules never fired on already-cached mail | Rules only ran on NEW messages during sync (UID > maxUid); messages synced before the rule was created were never processed | Between `RuleService` and `LocalStoreService` |
+
+Every bug was at a **component boundary** — the exact place where specs are weakest and unit tests are blind.
+
+### Root cause analysis
+
+1. **The specs described components, not flows.** The dev spec had detailed code for each file in isolation, but no document traced a single message from IMAP fetch → SQLite → rules → UI. That one data-flow diagram would have caught all four bugs before implementation.
+
+2. **The tests tested units, not the pipeline.** `RuleServiceTests` verified matching and IMAP calls. But no integration test ran `SyncService.SyncFolderAsync` with a real `RuleService` and checked what ended up in the UI and the local store.
+
+3. **Same agent wrote specs and code.** Blind spots carried through. A different implementer reading the spec would have hit the first bug during manual testing and flagged it.
+
+### Process improvements for future features
+
+| Change | Why |
+|---|---|
+| **Data-flow diagram required in dev spec** | One diagram tracing a message/event through every component. Catches boundary bugs before code is written. |
+| **Integration test specified in dev spec** | At least one test that exercises the full pipeline (e.g., `SyncFolderAsync` → `RuleService` → `LocalStore` → UI events). |
+| **Manual test checklist in dev spec** | Step-by-step verification: "1. Generate mail. 2. Create rule. 3. Press F5. 4. Verify messages disappear." |
+| **Different agent for spec review vs implementation** | Even an AI agent running in review mode against the spec catches things the author missed. |
+| **"Existing mail" path explicit in PM spec** | The PM spec said rules run "on incoming messages as they arrive." It should have explicitly called out whether rules also apply to already-cached mail, and if so, when. |
+
+### What this means for AI-assisted development
+
+This project validated that PM specs + dev specs produce better results than raw prompting. The feature shipped with the right architecture, UX, and accessibility. But the process has a blind spot: **specs describe structure; bugs live in flow.** The fix isn't more detail in the same format — it's a different kind of artifact (data-flow diagrams, integration tests, manual test checklists) that specifically targets the seams between components.
