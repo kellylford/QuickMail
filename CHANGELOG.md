@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.6
+
+### New Features
+
+- **Mail rules** — automatic actions (move, mark read/unread, delete) on incoming messages during sync, with a full Rules Manager dialog (`Ctrl+Shift+L`), per-condition toggles, folder picker integration, test-against-current-messages dry run, and "Create Rule from Message" shortcut (`Ctrl+Shift+T`). Rules run locally; no data leaves the machine.
+- **Profile support** — `--profileDir <path>` command-line option stores all data (accounts, mail cache, config, contacts, views, rules, log) in a custom directory. Use it to keep work and personal mail in separate profiles, or to store data on a synced drive. Also adds `--help` to show available options and exit.
+
+### Bug Fixes
+
+- Messages in regular IMAP folders (e.g. INBOX) now appear in real-time as sync completes. Previously only virtual-folder views (All Mail, All Inboxes, etc.) received live sync updates; messages in regular folders required a manual refresh.
+
+---
+
 ## v0.5.9
 
 ### Accessibility
