@@ -274,4 +274,60 @@ public class RuleService : IRuleService
             }
         }
     }
+
+    // ── Apply to existing messages ──────────────────────────────────────────
+
+    public async Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+        ILocalStoreService store,
+        CancellationToken ct)
+    {
+        var rules = LoadRules();
+        var enabledRules = rules.Where(r => r.IsEnabled).ToList();
+        if (enabledRules.Count == 0) return [];
+
+        var removedMessages = new List<MailMessageSummary>();
+
+        // Load all cached messages once
+        var allMessages = await store.LoadAllSummariesAsync();
+        LogService.Debug($"ApplyRulesToExisting: {allMessages.Count} cached messages, {enabledRules.Count} enabled rules");
+
+        foreach (var rule in enabledRules)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var matched = allMessages.Where(m =>
+            {
+                if (rule.AccountId.HasValue && rule.AccountId.Value != m.AccountId)
+                    return false;
+                return MatchesRule(rule, m);
+            }).ToList();
+
+            LogService.Debug($"  Rule '{rule.Name}': {matched.Count} matched in existing mail (action={rule.Action})");
+            if (matched.Count == 0) continue;
+
+            try
+            {
+                await ExecuteActionAsync(rule, matched, matched[0].AccountId, ct);
+
+                if (rule.Action is RuleAction.MoveToFolder or RuleAction.Delete)
+                {
+                    var byFolder = matched.GroupBy(m => (m.AccountId, m.FolderName));
+                    foreach (var group in byFolder)
+                    {
+                        await store.DeleteSummariesAsync(
+                            group.Key.AccountId, group.Key.FolderName,
+                            group.Select(m => m.UniqueId));
+                    }
+                    removedMessages.AddRange(matched);
+                }
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                LogService.Log($"ApplyRulesToExisting: rule '{rule.Name}' failed", ex);
+            }
+        }
+
+        return removedMessages;
+    }
 }

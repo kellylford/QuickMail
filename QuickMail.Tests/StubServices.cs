@@ -118,6 +118,10 @@ sealed class StubRuleService : IRuleService
 
     public List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages)
         => messages.ToList(); // Stub matches everything
+
+    public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+        ILocalStoreService store, CancellationToken ct)
+        => Task.FromResult(new List<MailMessageSummary>());
 }
 
 sealed class StubSyncService : ISyncService

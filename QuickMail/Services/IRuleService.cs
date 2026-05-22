@@ -31,4 +31,13 @@ public interface IRuleService
     /// Returns the subset of messages that would match.
     /// </summary>
     List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages);
+
+    /// <summary>
+    /// Apply all enabled rules to messages already in the local store.
+    /// Used after rules are created/edited so existing mail is processed.
+    /// Returns messages that were moved or deleted (should be removed from UI).
+    /// </summary>
+    Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
+        ILocalStoreService store,
+        CancellationToken ct);
 }

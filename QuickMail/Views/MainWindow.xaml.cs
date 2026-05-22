@@ -2971,6 +2971,28 @@ public partial class MainWindow : Window
 
         // Refresh the rules status text after the dialog closes
         _vm.UpdateRulesStatusText();
+
+        // Apply rules to existing cached mail so newly created/edited rules
+        // take effect immediately without waiting for the next sync.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
+                if (removed.Count > 0)
+                {
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        _vm.RefreshCommand.Execute(null);
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("ApplyRulesToExisting failed", ex);
+            }
+        });
     }
 
     /// <summary>
