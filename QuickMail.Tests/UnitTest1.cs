@@ -238,4 +238,68 @@ public class LocalStoreServiceTests
         Assert.Single(loaded);
         Assert.Equal(summary.To, loaded[0].To);
     }
+
+    [Fact]
+    public async Task HasAttachments_PersistsAndLoads()
+    {
+        // Regression for §1.10: ReadSummariesAsync used to omit the has_attachments
+        // column, so the attachment indicator was blank on cold start until each
+        // message was opened individually.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(tempDir);
+        store.Initialize();
+
+        var accountId = Guid.NewGuid();
+        var summary = new MailMessageSummary
+        {
+            UniqueId   = 7,
+            AccountId  = accountId,
+            FolderName = "Inbox",
+            From       = "x@example.com",
+            Subject    = "with attachment",
+            Date       = DateTimeOffset.UtcNow,
+        };
+        await store.UpsertSummariesAsync([summary]);
+
+        // UpsertDetailAsync flips the has_attachments flag when attachments are present.
+        await store.UpsertDetailAsync(new MailMessageDetail
+        {
+            UniqueId    = 7,
+            AccountId   = accountId,
+            FolderName  = "Inbox",
+            Attachments = new() { new AttachmentModel { FileName = "doc.pdf", ContentType = "application/pdf" } },
+        });
+
+        var loaded = await store.LoadAllSummariesAsync();
+        Assert.Single(loaded);
+        Assert.True(loaded[0].HasAttachments);
+
+        var loaded2 = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        Assert.True(loaded2[0].HasAttachments);
+
+        var loaded3 = await store.LoadAllSummariesAsync(accountId);
+        Assert.True(loaded3[0].HasAttachments);
+    }
+
+    [Fact]
+    public async Task HasAttachments_DefaultsFalse_WhenNotSet()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(tempDir);
+        store.Initialize();
+
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            UniqueId   = 1,
+            AccountId  = Guid.NewGuid(),
+            FolderName = "Inbox",
+            From       = "x@example.com",
+            Subject    = "no attachment",
+            Date       = DateTimeOffset.UtcNow,
+        }]);
+
+        var loaded = await store.LoadAllSummariesAsync();
+        Assert.Single(loaded);
+        Assert.False(loaded[0].HasAttachments);
+    }
 }

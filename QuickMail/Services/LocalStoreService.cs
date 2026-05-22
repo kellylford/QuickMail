@@ -146,7 +146,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments " +
             "FROM MessageSummary ORDER BY date_ticks DESC;";
         return await ReadSummariesAsync(cmd);
     }
@@ -156,7 +156,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments " +
             "FROM MessageSummary WHERE account_id=$aid ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         return await ReadSummariesAsync(cmd);
@@ -167,7 +167,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC" +
             (limit.HasValue ? " LIMIT $limit;" : ";");
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
@@ -393,8 +393,9 @@ public class LocalStoreService : ILocalStoreService
                 Date        = new DateTimeOffset(r.GetInt64(6), TimeSpan.Zero),
                 IsRead      = r.GetInt64(7) != 0,
                 Preview     = r.GetString(8),
-                IsReplied   = r.GetInt64(9) != 0,
-                IsForwarded = r.GetInt64(10) != 0,
+                IsReplied      = r.GetInt64(9) != 0,
+                IsForwarded    = r.GetInt64(10) != 0,
+                HasAttachments = r.GetInt64(11) != 0,
             });
         }
         return list;
