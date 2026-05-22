@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using QuickMail.Models;
 using QuickMail.ViewModels;
 
@@ -8,6 +9,7 @@ namespace QuickMail.Views;
 public partial class AddAccountDialog : Window
 {
     private readonly AddAccountViewModel _vm;
+    private bool _restoreFocusToTestButton;
 
     public AddAccountDialog(AddAccountViewModel vm)
     {
@@ -18,7 +20,36 @@ public partial class AddAccountDialog : Window
         {
             if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
                 AccessibilityHelper.Announce(this, vm.StatusText, category: AnnouncementCategory.Status);
+            else if (e.PropertyName == nameof(vm.IsBusy))
+                OnIsBusyChanged();
         };
+    }
+
+    private void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        AccountNameBox.Focus();
+        Keyboard.Focus(AccountNameBox);
+    }
+
+    private void OnIsBusyChanged()
+    {
+        if (_vm.IsBusy)
+        {
+            // Test Connection (and SignIn) disable themselves while running via the
+            // generated AsyncRelayCommand.CanExecute. If Test Connection was focused,
+            // WPF will move focus to the default button (Add Account) when the button
+            // is disabled. Remember the original focus so we can restore it.
+            _restoreFocusToTestButton = ReferenceEquals(Keyboard.FocusedElement, TestConnectionButton);
+        }
+        else if (_restoreFocusToTestButton)
+        {
+            _restoreFocusToTestButton = false;
+            if (TestConnectionButton.IsEnabled)
+            {
+                TestConnectionButton.Focus();
+                Keyboard.Focus(TestConnectionButton);
+            }
+        }
     }
 
     private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)

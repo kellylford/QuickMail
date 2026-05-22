@@ -8,7 +8,8 @@
         Height="560" Width="420"
         MinHeight="460" MinWidth="360"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize">
+        ResizeMode="CanResize"
+        Loaded="Window_Loaded">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
@@ -27,7 +28,8 @@
                 <TextBlock Text="Account Details" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
 
                 <TextBlock x:Name="LblAccountName" Text="_Account Name:" Margin="0,4,0,2"/>
-                <TextBox Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
+                <TextBox x:Name="AccountNameBox"
+                         Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
                          TabIndex="0"/>
 
@@ -137,7 +139,8 @@
                     Click="CancelButton_Click"
                     AutomationProperties.Name="Cancel adding account"
                     MinWidth="80" Margin="6,0,0,0"/>
-            <Button DockPanel.Dock="Right"
+            <Button x:Name="TestConnectionButton"
+                    DockPanel.Dock="Right"
                     Content="_Test Connection"
                     Command="{Binding TestConnectionCommand}"
                     AutomationProperties.Name="Test IMAP connection with current settings"

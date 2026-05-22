@@ -11,6 +11,27 @@ public partial class ViewManagerWindow : Window
 {
     private readonly ViewManagerViewModel _vm;
 
+    private void DayLimitBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        // Block any keystroke that isn't a digit.
+        if (!e.Text.All(char.IsDigit))
+            e.Handled = true;
+    }
+
+    private void DayLimitBox_Pasting(object sender, DataObjectPastingEventArgs e)
+    {
+        if (e.DataObject.GetDataPresent(typeof(string)))
+        {
+            var pasted = (string)e.DataObject.GetData(typeof(string))!;
+            if (!pasted.All(char.IsDigit))
+                e.CancelCommand();
+        }
+        else
+        {
+            e.CancelCommand();
+        }
+    }
+
     /// <summary>True when opened via Save View… (create-new flow) rather than Manage Views…</summary>
     private readonly bool _createMode;
 
@@ -23,6 +44,8 @@ public partial class ViewManagerWindow : Window
         _createMode = createMode;
         InitializeComponent();
         DataContext = vm;
+
+        DataObject.AddPastingHandler(DayLimitBox, DayLimitBox_Pasting);
 
         vm.FolderConflictDetected += OnFolderConflict;
         vm.SetHotkeyRequested     += OnSetHotkeyRequested;

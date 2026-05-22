@@ -82,7 +82,18 @@ public partial class ViewManagerViewModel : ObservableObject
 
     /// <summary>Bound to the day-limit TextBox. Empty string means no limit.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
     private string _editDaysOfMail = string.Empty;
+
+    /// <summary>True when the view should show all mail with no day limit.
+    /// When true, the day-limit textbox is disabled and ignored on save.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDayLimitFieldEnabled))]
+    [NotifyPropertyChangedFor(nameof(CanSave))]
+    private bool _editUnlimitedDays = true;
+
+    /// <summary>The day-limit textbox is enabled only when the "show all" checkbox is off.</summary>
+    public bool IsDayLimitFieldEnabled => !EditUnlimitedDays;
 
     // ── Derived display for the selected view's saved state ───────────────────────
 
@@ -117,7 +128,35 @@ public partial class ViewManagerViewModel : ObservableObject
         }
     }
 
-    public bool CanSave => HasSelectedView && !string.IsNullOrWhiteSpace(EditName);
+    public bool CanSave =>
+        HasSelectedView &&
+        !string.IsNullOrWhiteSpace(EditName) &&
+        (EditUnlimitedDays || IsValidDayLimit(EditDaysOfMail));
+
+    private static bool IsValidDayLimit(string text) =>
+        int.TryParse(text?.Trim() ?? string.Empty, out var n) && n > 0;
+
+    /// <summary>Strip any non-digit characters to keep the field numeric-only.</summary>
+    partial void OnEditDaysOfMailChanged(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        var digits = new string(value.Where(char.IsDigit).ToArray());
+        if (digits != value)
+            EditDaysOfMail = digits;   // re-enters this method once; no further change
+    }
+
+    /// <summary>When toggling unlimited, clear the textbox or seed it with a sensible default.</summary>
+    partial void OnEditUnlimitedDaysChanged(bool value)
+    {
+        if (value)
+        {
+            EditDaysOfMail = string.Empty;
+        }
+        else if (string.IsNullOrWhiteSpace(EditDaysOfMail))
+        {
+            EditDaysOfMail = (CurrentDayLimit ?? 30).ToString();
+        }
+    }
 
     // ── Current-state summary shown at the top of the dialog ─────────────────────
 
@@ -266,6 +305,7 @@ public partial class ViewManagerViewModel : ObservableObject
         EditName       = view.Name;
         EditHotkey     = string.Empty;
         EditIsDefault  = false;
+        EditUnlimitedDays = !CurrentDayLimit.HasValue;
         EditDaysOfMail = CurrentDayLimit.HasValue ? CurrentDayLimit.Value.ToString() : string.Empty;
 
         // Enter edit mode so the user can name the new view immediately.
@@ -334,10 +374,12 @@ public partial class ViewManagerViewModel : ObservableObject
                                         // which nulls SelectedView via the ListBox binding
         SavedViews.Remove(view);
         RemoveViewHotkey(view.Id);
-        SelectedView  = null;
-        EditName      = string.Empty;
-        EditHotkey    = string.Empty;
-        EditIsDefault = false;
+        SelectedView      = null;
+        EditName          = string.Empty;
+        EditHotkey        = string.Empty;
+        EditIsDefault     = false;
+        EditUnlimitedDays = true;
+        EditDaysOfMail    = string.Empty;
         Persist();
         ViewsChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -382,6 +424,7 @@ public partial class ViewManagerViewModel : ObservableObject
             EditName       = SelectedView.Name;
             EditHotkey     = GetEffectiveHotkey(SelectedView);
             EditIsDefault  = SelectedView.IsDefault;
+            EditUnlimitedDays = !SelectedView.DaysOfMail.HasValue;
             EditDaysOfMail = SelectedView.DaysOfMail.HasValue ? SelectedView.DaysOfMail.Value.ToString() : string.Empty;
         }
         IsEditMode = false;
@@ -420,17 +463,19 @@ public partial class ViewManagerViewModel : ObservableObject
 
         if (value == null)
         {
-            EditName       = string.Empty;
-            EditHotkey     = string.Empty;
-            EditIsDefault  = false;
-            EditDaysOfMail = string.Empty;
+            EditName          = string.Empty;
+            EditHotkey        = string.Empty;
+            EditIsDefault     = false;
+            EditUnlimitedDays = true;
+            EditDaysOfMail    = string.Empty;
         }
         else
         {
-            EditName       = value.Name;
-            EditHotkey     = GetEffectiveHotkey(value);
-            EditIsDefault  = value.IsDefault;
-            EditDaysOfMail = value.DaysOfMail.HasValue ? value.DaysOfMail.Value.ToString() : string.Empty;
+            EditName          = value.Name;
+            EditHotkey        = GetEffectiveHotkey(value);
+            EditIsDefault     = value.IsDefault;
+            EditUnlimitedDays = !value.DaysOfMail.HasValue;
+            EditDaysOfMail    = value.DaysOfMail.HasValue ? value.DaysOfMail.Value.ToString() : string.Empty;
         }
     }
 
@@ -494,9 +539,10 @@ public partial class ViewManagerViewModel : ObservableObject
         }
         SelectedView.IsDefault = EditIsDefault;
 
-        // Update day limit — parse the text box; empty or invalid = no limit
-        SelectedView.DaysOfMail = int.TryParse(EditDaysOfMail.Trim(), out var days) && days > 0
-            ? days : null;
+        // Update day limit — "unlimited" checkbox wins; otherwise parse the text box
+        SelectedView.DaysOfMail = EditUnlimitedDays
+            ? null
+            : (int.TryParse(EditDaysOfMail.Trim(), out var days) && days > 0 ? days : null);
     }
 
     private void Persist()
