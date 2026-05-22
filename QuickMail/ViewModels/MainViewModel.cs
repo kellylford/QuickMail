@@ -470,6 +470,33 @@ public partial class MainViewModel : ObservableObject
 
         foreach (var view in SavedViews)
             RegisterOneViewCommand(view);
+
+        // Sweep orphan view.saved.* entries from hotkeys.json. These accumulate when a
+        // view is deleted (or views.json is lost) but the binding survives in the config
+        // — they used to swallow the keypress in FindByGesture and now also crowd out the
+        // gesture conflict detection in the View Manager dialog.
+        PruneOrphanHotkeys();
+    }
+
+    private void PruneOrphanHotkeys()
+    {
+        var orphans = _commandRegistry.GetOrphanOverrideCommandIds();
+        if (orphans.Count == 0) return;
+
+        var cfg = _configService.Load();
+        var before = cfg.CustomHotkeys.Count;
+        cfg.CustomHotkeys.RemoveAll(h =>
+            orphans.Contains(h.CommandId, StringComparer.OrdinalIgnoreCase) &&
+            // Only prune our own view bindings — never touch user overrides for built-in commands
+            // (the user might have an override for a command that isn't registered yet during a
+            // mid-startup window).
+            h.CommandId.StartsWith("view.saved.", StringComparison.OrdinalIgnoreCase));
+
+        if (cfg.CustomHotkeys.Count == before) return;
+
+        _configService.Save(cfg);
+        _commandRegistry.ApplyUserOverrides(cfg.CustomHotkeys);
+        LogService.Debug($"Pruned {before - cfg.CustomHotkeys.Count} orphan view hotkey binding(s).");
     }
 
     private void RegisterOneViewCommand(SavedView view)

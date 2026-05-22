@@ -143,4 +143,90 @@ public class CommandRegistryTests
         Assert.Null(reg.FindByGesture(Key.K, ModifierKeys.Control | ModifierKeys.Shift));
         Assert.NotNull(reg.FindByGesture(Key.R, ModifierKeys.Control));
     }
+
+    [Fact]
+    public void FindByGesture_IgnoresOrphanOverride_FallsThroughToDefault()
+    {
+        // Regression: when the user deletes a saved view but its hotkey binding remains
+        // in hotkeys.json (orphan), pressing that gesture used to swallow the keypress —
+        // FindByGesture returned null instead of falling through to the default-gesture
+        // loop. With this fix, the orphan is ignored entirely so a live default with the
+        // same gesture still fires.
+        var reg = new CommandRegistry();
+        reg.Register(MakeCmd("mail.reply", Key.K, ModifierKeys.Control | ModifierKeys.Shift));
+
+        reg.ApplyUserOverrides(new[]
+        {
+            new HotkeyBinding { CommandId = "view.saved.deleted-view-id", Gesture = "Ctrl+Shift+K" }
+        });
+
+        var hit = reg.FindByGesture(Key.K, ModifierKeys.Control | ModifierKeys.Shift);
+
+        Assert.NotNull(hit);
+        Assert.Equal("mail.reply", hit!.Id);
+    }
+
+    [Fact]
+    public void FindByGesture_OrphanOverride_DoesNotBlockNewerLiveOverrideOnSameGesture()
+    {
+        // Concrete user scenario: hotkeys.json has an orphan for view.saved.{deleted-id}
+        // → Ctrl+Shift+8. The user then creates a new saved view and assigns Ctrl+Shift+8.
+        // Both bindings end up in the override list. The orphan must be ignored so the
+        // new view's command fires.
+        var reg = new CommandRegistry();
+        reg.Register(MakeCmd("view.saved.live-view-id"));   // no default gesture — only the override
+
+        reg.ApplyUserOverrides(new[]
+        {
+            new HotkeyBinding { CommandId = "view.saved.dead-view-id", Gesture = "Ctrl+Shift+8" },
+            new HotkeyBinding { CommandId = "view.saved.live-view-id", Gesture = "Ctrl+Shift+8" },
+        });
+
+        var hit = reg.FindByGesture(Key.D8, ModifierKeys.Control | ModifierKeys.Shift);
+
+        Assert.NotNull(hit);
+        Assert.Equal("view.saved.live-view-id", hit!.Id);
+    }
+
+    [Fact]
+    public void GetOrphanOverrideCommandIds_ReturnsBindingsWithoutCommands()
+    {
+        var reg = new CommandRegistry();
+        reg.Register(MakeCmd("mail.reply"));
+
+        reg.ApplyUserOverrides(new[]
+        {
+            new HotkeyBinding { CommandId = "mail.reply",                Gesture = "Ctrl+R" },
+            new HotkeyBinding { CommandId = "view.saved.gone",           Gesture = "Ctrl+1" },
+            new HotkeyBinding { CommandId = "view.saved.also-gone",      Gesture = "Ctrl+2" },
+        });
+
+        var orphans = reg.GetOrphanOverrideCommandIds();
+
+        Assert.Equal(2, orphans.Count);
+        Assert.Contains("view.saved.gone",      orphans);
+        Assert.Contains("view.saved.also-gone", orphans);
+        Assert.DoesNotContain("mail.reply", orphans);
+    }
+
+    [Fact]
+    public void FindByGesture_OrphanOverride_DoesNotSuppressUnrelatedDefault()
+    {
+        // Subtle bug: my first fix used `_userOverrides.Select(...).ToHashSet()` to suppress
+        // defaults. That set included orphan CommandIds, but since orphans have no command
+        // to be suppressed there was no observable effect for OTHER commands. Still, only
+        // *live* overrides should populate the suppression set, so we test that here.
+        var reg = new CommandRegistry();
+        reg.Register(MakeCmd("mail.reply",   Key.R, ModifierKeys.Control));
+        reg.Register(MakeCmd("mail.forward", Key.F, ModifierKeys.Control));
+
+        reg.ApplyUserOverrides(new[]
+        {
+            new HotkeyBinding { CommandId = "view.saved.gone", Gesture = "Ctrl+1" },
+        });
+
+        // Both live defaults must still fire — the orphan binding shouldn't suppress them.
+        Assert.Equal("mail.reply",   reg.FindByGesture(Key.R, ModifierKeys.Control)!.Id);
+        Assert.Equal("mail.forward", reg.FindByGesture(Key.F, ModifierKeys.Control)!.Id);
+    }
 }

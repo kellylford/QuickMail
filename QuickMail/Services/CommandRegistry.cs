@@ -32,17 +32,27 @@ public sealed class CommandRegistry : ICommandRegistry
     {
         if (key == Key.None) return null;
 
-        // User overrides take precedence
+        // User overrides take precedence — but only when their CommandId still resolves
+        // to a registered command. Orphan overrides (e.g. saved-view hotkeys whose view
+        // was later deleted) used to swallow the keypress by returning null from this
+        // method instead of falling through to defaults.  When two overrides claim the
+        // same gesture (one orphan, one live), the live one must still fire.
+        // We also need to know which *live* command IDs have overrides, so a default
+        // gesture isn't suppressed by an orphan binding for a deleted command.
+        CommandDefinition? overrideHit = null;
+        var suppressed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var binding in _userOverrides)
         {
-            if (binding.Key == key && binding.Modifiers == modifiers)
-                return FindById(binding.CommandId);
+            var cmd = FindById(binding.CommandId);
+            if (cmd == null) continue;            // orphan binding — ignore entirely
+            suppressed.Add(binding.CommandId);    // live override — suppress this command's default
+
+            if (overrideHit == null && binding.Key == key && binding.Modifiers == modifiers)
+                overrideHit = cmd;
         }
+        if (overrideHit != null) return overrideHit;
 
-        // A command's default gesture is suppressed if the user remapped that command elsewhere.
-        var suppressed = _userOverrides.Select(o => o.CommandId).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        // Fall back to default gestures
+        // Fall back to default gestures (skipping any command that has a live override).
         foreach (var cmd in _byId.Values)
         {
             if (suppressed.Contains(cmd.Id)) continue;
@@ -52,6 +62,18 @@ public sealed class CommandRegistry : ICommandRegistry
 
         return null;
     }
+
+    /// <summary>
+    /// Returns the set of CommandIds in the user-override list that don't correspond to
+    /// any registered command. Used by the app to prune stale entries from hotkeys.json
+    /// after all commands (including saved-view commands) have been registered.
+    /// </summary>
+    public IReadOnlyList<string> GetOrphanOverrideCommandIds() =>
+        _userOverrides
+            .Select(o => o.CommandId)
+            .Where(id => !_byId.ContainsKey(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     public void ApplyUserOverrides(IEnumerable<HotkeyBinding> overrides)
     {

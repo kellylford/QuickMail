@@ -130,6 +130,7 @@ sealed class StubCommandRegistry : ICommandRegistry
 
     public void Unregister(string id) => _commands.Remove(id);
     public void ApplyUserOverrides(IEnumerable<HotkeyBinding> overrides) { }
+    public IReadOnlyList<string> GetOrphanOverrideCommandIds() => [];
 
     // Test helpers
     public void RegisterTestCommand(string id, string category, string title)

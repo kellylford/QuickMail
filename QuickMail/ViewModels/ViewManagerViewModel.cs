@@ -516,9 +516,15 @@ public partial class ViewManagerViewModel : ObservableObject
         // Remove any existing binding for this view command.
         cfg.CustomHotkeys.RemoveAll(h => h.CommandId == commandId);
 
-        // Add the new binding if a hotkey was set.
+        // Add the new binding if a hotkey was set. Also remove any *other* binding that
+        // claims the same gesture — without this, an orphan binding for a deleted view
+        // (matching the same key combo) would win the FindByGesture iteration and silently
+        // suppress this new binding. We can't reach those orphans through the SavedViews
+        // conflict check in the dialog because the corresponding views no longer exist.
         if (!string.IsNullOrEmpty(view.Hotkey))
         {
+            cfg.CustomHotkeys.RemoveAll(h =>
+                string.Equals(h.Gesture, view.Hotkey, StringComparison.OrdinalIgnoreCase));
             cfg.CustomHotkeys.Add(new HotkeyBinding
             {
                 CommandId = commandId,
