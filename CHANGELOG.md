@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.1
+
+### New Features
+
+- **IMAP IDLE push** — a dedicated background connection per account watches the INBOX and triggers a targeted sync the moment the server signals new mail. Works in both normal and `--online` modes. No configuration required.
+- **Online mode (`--online`)** — new command-line flag for fully live IMAP access with no local SQLite cache.
+- **12-hour clock** — message dates now show `9:30A` / `3:45P` for today and `M/d/yyyy` for older messages.
+
+### Bug Fixes
+
+- IDLE push did not work in `--online` mode — the watcher connections were never started.
+- Preview text was still shown in the message list when Preview Lines was set to 0 in Settings.
+
+---
+
 ## v0.6
 
 ### New Features
