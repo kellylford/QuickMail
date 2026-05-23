@@ -2567,7 +2567,8 @@ public partial class MainViewModel : ObservableObject
                     await _imap.MoveToTrashBatchAsync(
                         group.Key.AccountId, group.Key.FolderName, uids, cts.Token);
 
-                await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
+                if (!OnlineMode)
+                    await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
 
             var count = toDelete.Count;
@@ -3095,7 +3096,8 @@ public partial class MainViewModel : ObservableObject
                 await _imap.MoveMessagesAsync(
                     group.Key.AccountId, group.Key.FolderName, uids,
                     destination.FullName, cts.Token);
-                await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
+                if (!OnlineMode)
+                    await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
 
             foreach (var msg in messages)
