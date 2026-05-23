@@ -347,6 +347,7 @@ public partial class MainViewModel : ObservableObject
     private bool _showMessageStatus;
 
     private bool _showPreview;
+    private int  _previewLines;
 
     public bool HasSelectedAccount  => SelectedAccount  != null;
     public bool HasSelectedFolder   => SelectedFolder   != null;
@@ -417,7 +418,8 @@ public partial class MainViewModel : ObservableObject
 
         var cfg = _configService.Load();
         _showMessageStatus = cfg.ShowMessageStatus;
-        _showPreview = cfg.PreviewLines > 0;
+        _previewLines = cfg.PreviewLines;
+        _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
         _viewMode = cfg.ViewMode switch
         {
@@ -775,10 +777,14 @@ public partial class MainViewModel : ObservableObject
     {
         ShowMessageStatus = cfg.ShowMessageStatus;
 
-        var newShowPreview = cfg.PreviewLines > 0;
+        var newPreviewLines = cfg.PreviewLines;
+        var newShowPreview  = newPreviewLines > 0;
         if (_showPreview && !newShowPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
-        _showPreview = newShowPreview;
+        else if (newShowPreview && newPreviewLines < _previewLines)
+            foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, newPreviewLines);
+        _previewLines = newPreviewLines;
+        _showPreview  = newShowPreview;
 
         var newMode = cfg.ViewMode switch
         {
@@ -1225,6 +1231,8 @@ public partial class MainViewModel : ObservableObject
         _rawMessages = messages.ToList();
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
+        else
+            foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, _previewLines);
         ApplyFiltersAndSearch();
     }
 
@@ -1286,6 +1294,7 @@ public partial class MainViewModel : ObservableObject
     private void InsertMessageSorted(MailMessageSummary msg)
     {
         if (!_showPreview) msg.Preview = string.Empty;
+        else msg.Preview = TruncatePreview(msg.Preview, _previewLines);
         int lo = 0, hi = Messages.Count;
         while (lo < hi)
         {
@@ -3551,6 +3560,12 @@ public partial class MainViewModel : ObservableObject
     }
 
     // ── Preview extraction ────────────────────────────────────────────────────────
+
+    private static string TruncatePreview(string preview, int lines)
+    {
+        var limit = lines * 60;
+        return preview.Length <= limit ? preview : preview[..limit].TrimEnd();
+    }
 
     private static string ExtractPreview(string plainText, string htmlText, int maxLines)
     {
