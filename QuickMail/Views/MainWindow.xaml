@@ -627,18 +627,16 @@
 
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <!-- AutomationProperties.Name="" on both TextBlocks suppresses them from the
-                                 accessibility tree; the full detail is already in the container's
-                                 AutomationProperties.Name (AccessibleName) so screen readers don't
-                                 repeat "connected" twice by reading the StatusLabel TextBlock separately. -->
+                            <!-- AriaHiddenTextBlock suppresses both child elements from the UIA tree.
+                                 The full accessible name is on the ListBoxItem container via
+                                 AutomationProperties.Name → AccessibleName, so screen readers
+                                 read it once only. -->
                             <StackPanel>
-                                <TextBlock Text="{Binding AccountLabel}"
-                                           AutomationProperties.Name=""/>
-                                <TextBlock Text="{Binding StatusLabel}"
-                                           AutomationProperties.Name=""
-                                           Foreground="DimGray"
-                                           FontSize="11"
-                                           Margin="0,1,0,0"/>
+                                <local:AriaHiddenTextBlock Text="{Binding AccountLabel}"/>
+                                <local:AriaHiddenTextBlock Text="{Binding StatusLabel}"
+                                                           Foreground="DimGray"
+                                                           FontSize="11"
+                                                           Margin="0,1,0,0"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -675,10 +673,14 @@
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type models:FolderTreeNode}"
                                                   ItemsSource="{Binding Children}">
+                            <!-- Both elements are AriaHiddenTextBlock so screen readers don't
+                                 read them separately. The TreeViewItem container carries the full
+                                 accessible name via AutomationProperties.Name → AutomationName,
+                                 which already includes the unread count (e.g. "Inbox, 519 unread"). -->
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock TextTrimming="CharacterEllipsis">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
+                                <local:AriaHiddenTextBlock TextTrimming="CharacterEllipsis">
+                                    <local:AriaHiddenTextBlock.Style>
+                                        <Style TargetType="local:AriaHiddenTextBlock">
                                             <Setter Property="Text" Value="{Binding Label}"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding IsHeader}" Value="True">
@@ -686,15 +688,15 @@
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                    </local:AriaHiddenTextBlock.Style>
+                                </local:AriaHiddenTextBlock>
                                 <!-- Unread badge: "(5)" — collapsed when empty -->
-                                <TextBlock Margin="4,0,0,0"
-                                           Foreground="DimGray"
-                                           FontSize="11"
-                                           Text="{Binding UnreadDisplay}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
+                                <local:AriaHiddenTextBlock Margin="4,0,0,0"
+                                                           Foreground="DimGray"
+                                                           FontSize="11"
+                                                           Text="{Binding UnreadDisplay}">
+                                    <local:AriaHiddenTextBlock.Style>
+                                        <Style TargetType="local:AriaHiddenTextBlock">
                                             <Setter Property="Visibility" Value="Visible"/>
                                             <Style.Triggers>
                                                 <DataTrigger Binding="{Binding UnreadDisplay}" Value="">
@@ -702,8 +704,8 @@
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
+                                    </local:AriaHiddenTextBlock.Style>
+                                </local:AriaHiddenTextBlock>
                             </StackPanel>
                         </HierarchicalDataTemplate>
                     </TreeView.Resources>
