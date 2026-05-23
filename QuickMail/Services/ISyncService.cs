@@ -30,4 +30,10 @@ public interface ISyncService
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         CancellationToken ct);
+
+    /// <summary>
+    /// Syncs a single folder for one account. Used by the IDLE watcher for targeted
+    /// inbox sync without a full account-wide sweep.
+    /// </summary>
+    Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
 }

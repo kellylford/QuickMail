@@ -346,6 +346,8 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _showMessageStatus;
 
+    private bool _showPreview;
+
     public bool HasSelectedAccount  => SelectedAccount  != null;
     public bool HasSelectedFolder   => SelectedFolder   != null;
     public bool HasSelectedMessage  => SelectedMessage  != null;
@@ -384,6 +386,10 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>When true the app was launched with --online: all folder/message data is fetched
+    /// live from IMAP and nothing is read from or written to the local SQLite cache.</summary>
+    public bool OnlineMode { get; }
+
     public MainViewModel(
         IImapService imap,
         IAccountService accountService,
@@ -394,7 +400,8 @@ public partial class MainViewModel : ObservableObject
         IConfigService configService,
         ICommandRegistry commandRegistry,
         IViewService viewService,
-        IRuleService ruleService)
+        IRuleService ruleService,
+        bool onlineMode = false)
     {
         _imap            = imap;
         _accountService  = accountService;
@@ -406,9 +413,11 @@ public partial class MainViewModel : ObservableObject
         _commandRegistry = commandRegistry;
         _viewService     = viewService;
         _ruleService     = ruleService;
+        OnlineMode       = onlineMode;
 
         var cfg = _configService.Load();
         _showMessageStatus = cfg.ShowMessageStatus;
+        _showPreview = cfg.PreviewLines > 0;
         _syncDays = cfg.SyncDays;
         _viewMode = cfg.ViewMode switch
         {
@@ -430,6 +439,7 @@ public partial class MainViewModel : ObservableObject
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.RulesApplied    += OnRulesApplied;
+        _imap.InboxNewMailDetected += OnInboxNewMailDetected;
 
         // Load saved views and register their commands before the UI is shown.
         LoadSavedViews();
@@ -656,24 +666,27 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            // ── Phase 1: show cache immediately ───────────────────────────────────
-            var cached = new List<MailMessageSummary>();
-            foreach (var vf in view.Folders)
+            if (!OnlineMode)
             {
-                // Guard: skip any sentinel folder names accidentally stored in older views.
-                if (vf.FolderFullName.StartsWith("\x00", StringComparison.Ordinal)) continue;
-                var msgs = await _localStore.LoadFolderSummariesAsync(vf.AccountId, vf.FolderFullName);
-                cached.AddRange(msgs);
+                // ── Phase 1: show cache immediately ──────────────────────────────────
+                var cached = new List<MailMessageSummary>();
+                foreach (var vf in view.Folders)
+                {
+                    // Guard: skip any sentinel folder names accidentally stored in older views.
+                    if (vf.FolderFullName.StartsWith("\x00", StringComparison.Ordinal)) continue;
+                    var msgs = await _localStore.LoadFolderSummariesAsync(vf.AccountId, vf.FolderFullName);
+                    cached.AddRange(msgs);
+                }
+                if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+                SetMessages(cached.OrderByDescending(m => m.Date));
+                StatusText = cached.Count > 0
+                    ? $"{cached.Count} cached messages (checking for new…)"
+                    : $"Loading {view.Name}…";
+                IsBusy = false;
             }
-            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-            SetMessages(cached.OrderByDescending(m => m.Date));
-            StatusText = cached.Count > 0
-                ? $"{cached.Count} cached messages (checking for new…)"
-                : $"Loading {view.Name}…";
-            IsBusy = false;
-
-            // ── Phase 2: incremental IMAP update ──────────────────────────────────
+            // ── Phase 2: IMAP fetch ────────────────────────────────────────────────
             ct.ThrowIfCancellationRequested();
             IsBusy = true;
             var newMessages = new List<MailMessageSummary>();
@@ -683,16 +696,26 @@ public partial class MainViewModel : ObservableObject
                 ct.ThrowIfCancellationRequested();
                 try
                 {
-                    var maxUid = await _localStore.GetMaxUidAsync(vf.AccountId, vf.FolderFullName);
                     List<MailMessageSummary> msgs;
-                    if (maxUid == 0 && _syncDays > 0)
-                        msgs = await _imap.GetMessagesSinceDateAsync(
-                            vf.AccountId, vf.FolderFullName, DateTime.UtcNow.AddDays(-_syncDays), ct);
+                    if (OnlineMode)
+                    {
+                        msgs = _syncDays > 0
+                            ? await _imap.GetMessagesSinceDateAsync(
+                                vf.AccountId, vf.FolderFullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                            : await _imap.GetMessageSummariesAsync(vf.AccountId, vf.FolderFullName, 50000, ct);
+                    }
                     else
                     {
-                        var initialCount = _configService.Load().InitialSyncCount;
-                        msgs = await _imap.GetMessagesSinceAsync(
-                            vf.AccountId, vf.FolderFullName, maxUid, initialCount, ct);
+                        var maxUid = await _localStore.GetMaxUidAsync(vf.AccountId, vf.FolderFullName);
+                        if (maxUid == 0 && _syncDays > 0)
+                            msgs = await _imap.GetMessagesSinceDateAsync(
+                                vf.AccountId, vf.FolderFullName, DateTime.UtcNow.AddDays(-_syncDays), ct);
+                        else
+                        {
+                            var initialCount = _configService.Load().InitialSyncCount;
+                            msgs = await _imap.GetMessagesSinceAsync(
+                                vf.AccountId, vf.FolderFullName, maxUid, initialCount, ct);
+                        }
                     }
                     newMessages.AddRange(msgs);
                 }
@@ -718,7 +741,7 @@ public partial class MainViewModel : ObservableObject
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-            if (newMessages.Count > 0)
+            if (!OnlineMode && newMessages.Count > 0)
                 _ = _localStore.UpsertSummariesAsync(newMessages);
 
             var count = Messages.Count;
@@ -751,6 +774,11 @@ public partial class MainViewModel : ObservableObject
     internal void ApplySettings(ConfigModel cfg)
     {
         ShowMessageStatus = cfg.ShowMessageStatus;
+
+        var newShowPreview = cfg.PreviewLines > 0;
+        if (_showPreview && !newShowPreview)
+            foreach (var m in _rawMessages) m.Preview = string.Empty;
+        _showPreview = newShowPreview;
 
         var newMode = cfg.ViewMode switch
         {
@@ -910,6 +938,11 @@ public partial class MainViewModel : ObservableObject
     public async Task InitialLoadAsync()
     {
         SelectedFolder = AllMailFolder;
+        if (OnlineMode)
+        {
+            StatusText = "Online mode — connecting…";
+            return;
+        }
         var cached = await _localStore.LoadAllSummariesAsync();
         SetMessages(cached);
         StatusText = cached.Count > 0
@@ -933,6 +966,9 @@ public partial class MainViewModel : ObservableObject
         await ConnectAllAccountsAsync();
         if (_cachedFolders.Count == 0) return;
 
+        if (!OnlineMode)
+            _imap.StartIdleWatchers(Accounts.ToList(), ct);
+
         if (SelectedFolder?.FullName == AllMailFolder.FullName && ViewMode == ViewMode.To)
         {
             var missingRecipients = Messages.Any(m => string.IsNullOrWhiteSpace(m.To))
@@ -942,6 +978,13 @@ public partial class MainViewModel : ObservableObject
                 await FetchAllMailAsync();
                 return;
             }
+        }
+
+        if (OnlineMode)
+        {
+            // In online mode there is no background sync — just load the current folder live.
+            await FetchVirtualAsync(AllMailFolder);
+            return;
         }
 
         StatusText = "Syncing mail…";
@@ -1077,6 +1120,37 @@ public partial class MainViewModel : ObservableObject
 
         RebuildActiveGroupView();
     }
+    // Called on a ThreadPool thread by the IDLE watcher when new mail lands in an inbox.
+    // Runs a targeted sync for that account's INBOX so the message appears in the list.
+    private void OnInboxNewMailDetected(Guid accountId)
+    {
+        if (OnlineMode) return;
+
+        // Find the account and its INBOX folder model.
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null) return;
+
+        if (!_cachedFolders.TryGetValue(accountId, out var folders)) return;
+        var inbox = folders.FirstOrDefault(f =>
+            f.Kind == Models.SpecialFolderKind.Inbox ||
+            string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
+        if (inbox is null) return;
+
+        LogService.Log($"IDLE: new mail detected for {account.AccountLabel} INBOX — syncing.");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _syncService.SyncOneFolderAsync(account, inbox, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("IDLE targeted sync", ex);
+            }
+        });
+    }
+
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
         // Build a key→item map once so each removed key is an O(1) lookup
@@ -1150,6 +1224,8 @@ public partial class MainViewModel : ObservableObject
     private void SetMessages(IEnumerable<MailMessageSummary> messages)
     {
         _rawMessages = messages.ToList();
+        if (!_showPreview)
+            foreach (var m in _rawMessages) m.Preview = string.Empty;
         ApplyFiltersAndSearch();
     }
 
@@ -1210,6 +1286,7 @@ public partial class MainViewModel : ObservableObject
     // Binary-insert into the descending-by-date Messages collection.
     private void InsertMessageSorted(MailMessageSummary msg)
     {
+        if (!_showPreview) msg.Preview = string.Empty;
         int lo = 0, hi = Messages.Count;
         while (lo < hi)
         {
@@ -1734,19 +1811,22 @@ public partial class MainViewModel : ObservableObject
             var previousCts = Interlocked.Exchange(ref _folderCts, cts);
             await (previousCts?.CancelAsync() ?? Task.CompletedTask);
 
-            var cached = await _localStore.LoadFolderSummariesAsync(accountId, folder.FullName);
-            if (!IsCurrentFolderLoad(loadVersion, folder))
-                return;
-
-            SetMessages(cached);
-            StatusText = cached.Count > 0
-                ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
-                : $"Loading {folder.DisplayName}…";
-            if (cached.Count > 0)
+            if (!OnlineMode)
             {
-                if (IsConversationsView)
-                    ScheduleConversationRebuild();
-                StartPrefetchTopOfFolder();
+                var cached = await _localStore.LoadFolderSummariesAsync(accountId, folder.FullName);
+                if (!IsCurrentFolderLoad(loadVersion, folder))
+                    return;
+
+                SetMessages(cached);
+                StatusText = cached.Count > 0
+                    ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
+                    : $"Loading {folder.DisplayName}…";
+                if (cached.Count > 0)
+                {
+                    if (IsConversationsView)
+                        ScheduleConversationRebuild();
+                    StartPrefetchTopOfFolder();
+                }
             }
 
             _ = RefreshFolderFromServerAsync(accountId, folder, loadVersion, cts.Token);
@@ -1783,7 +1863,8 @@ public partial class MainViewModel : ObservableObject
 
             SetMessages(list);
             StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
-            _ = _localStore.UpsertSummariesAsync(list);
+            if (!OnlineMode)
+                _ = _localStore.UpsertSummariesAsync(list);
 
             if (IsConversationsView)
                 ScheduleConversationRebuild();
@@ -1828,14 +1909,19 @@ public partial class MainViewModel : ObservableObject
             await (previousCts?.CancelAsync() ?? Task.CompletedTask);
             var token = cts.Token;
 
-            // Serve from cache when available; fall back to IMAP and cache the result.
-            var detail = await _localStore.LoadDetailAsync(
-                summary.AccountId, summary.FolderName, summary.UniqueId);
-
-            if (detail == null)
+            MailMessageDetail detail;
+            if (OnlineMode)
             {
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.UniqueId, token);
+            }
+            else
+            {
+                // Serve from cache when available; fall back to IMAP and cache the result.
+                detail = await _localStore.LoadDetailAsync(
+                    summary.AccountId, summary.FolderName, summary.UniqueId)
+                    ?? await _imap.GetMessageDetailAsync(
+                        summary.AccountId, summary.FolderName, summary.UniqueId, token);
                 _ = _localStore.UpsertDetailAsync(detail);
             }
 
@@ -1846,24 +1932,27 @@ public partial class MainViewModel : ObservableObject
             IsMessageOpen = true;
             summary.IsRead = true;
             summary.HasAttachments = detail.Attachments.Count > 0;
-            _ = _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.UniqueId, true);
-
-            // Extract preview and persist if not already set.
-            if (string.IsNullOrEmpty(summary.Preview))
+            if (!OnlineMode)
             {
-                var account = Accounts.FirstOrDefault(a => a.Id == summary.AccountId);
-                var lines   = _configService.Load().GetPreviewLines(summary.AccountId);
-                var preview = ExtractPreview(detail.PlainTextBody, detail.HtmlBody, lines);
-                if (!string.IsNullOrEmpty(preview))
+                _ = _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.UniqueId, true);
+
+                // Extract preview and persist if not already set.
+                if (string.IsNullOrEmpty(summary.Preview))
                 {
-                    summary.Preview = preview;
-                    _ = _localStore.UpdatePreviewAsync(summary.AccountId, summary.FolderName, summary.UniqueId, preview);
+                    var lines   = _configService.Load().GetPreviewLines(summary.AccountId);
+                    var preview = ExtractPreview(detail.PlainTextBody, detail.HtmlBody, lines);
+                    if (!string.IsNullOrEmpty(preview))
+                    {
+                        summary.Preview = preview;
+                        _ = _localStore.UpdatePreviewAsync(summary.AccountId, summary.FolderName, summary.UniqueId, preview);
+                    }
                 }
             }
 
             StatusText = "Message loaded. Press Escape to return to message list.";
 
-            StartPrefetchAroundOpen(summary);
+            if (!OnlineMode)
+                StartPrefetchAroundOpen(summary);
         }
         catch (OperationCanceledException)
         {
@@ -1907,6 +1996,7 @@ public partial class MainViewModel : ObservableObject
 
     private void StartPrefetchTopOfFolder()
     {
+        if (OnlineMode) return;
         var snapshot = Messages.Take(PrefetchTopOnFolderLoad).ToList();
         if (snapshot.Count == 0) return;
         SchedulePrefetch(snapshot, "folder-top");
@@ -1932,7 +2022,7 @@ public partial class MainViewModel : ObservableObject
 
     private async Task PrefetchOneAsync(MailMessageSummary summary, CancellationToken ct)
     {
-        if (ct.IsCancellationRequested) return;
+        if (OnlineMode || ct.IsCancellationRequested) return;
         try
         {
             var cached = await _localStore.LoadDetailAsync(
@@ -1993,28 +2083,36 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            // ── Phase 1: show cache immediately (same data as InitialLoadAsync) ──────
-            // This keeps the view consistent regardless of how many times the user
-            // navigates to All Mail.  The IMAP fetch in Phase 2 adds truly new messages.
-            var cached = await _localStore.LoadAllSummariesAsync();
-            if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
-                return;
+            List<MailMessageSummary> cached;
+            if (!OnlineMode)
+            {
+                // ── Phase 1: show cache immediately (same data as InitialLoadAsync) ──
+                // This keeps the view consistent regardless of how many times the user
+                // navigates to All Mail.  The IMAP fetch in Phase 2 adds truly new messages.
+                cached = await _localStore.LoadAllSummariesAsync();
+                if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
+                    return;
 
-            SetMessages(cached);
-            StatusText = cached.Count > 0
-                ? $"{cached.Count} messages (checking for new…)"
-                : "Checking for new messages…";
-            IsBusy = false;
+                SetMessages(cached);
+                StatusText = cached.Count > 0
+                    ? $"{cached.Count} messages (checking for new…)"
+                    : "Checking for new messages…";
+                IsBusy = false;
+            }
+            else
+            {
+                cached = [];
+            }
 
-            // ── Phase 2: incremental IMAP update (new messages only, per-folder) ─────
+            // ── Phase 2: IMAP fetch ────────────────────────────────────────────────
             ct.ThrowIfCancellationRequested();
             IsBusy = true;
-            var needsRecipientRepair = ViewMode == ViewMode.To &&
+            var needsRecipientRepair = !OnlineMode && ViewMode == ViewMode.To &&
                 (cached.Any(m => string.IsNullOrWhiteSpace(m.To))
                     || await _localStore.HasSummariesMissingRecipientsAsync());
             var perAccountTasks = Accounts
                 .Where(a => _cachedFolders.ContainsKey(a.Id))
-                .Select(account => needsRecipientRepair
+                .Select(account => (OnlineMode || needsRecipientRepair)
                     ? FetchAccountAllFoldersAsync(account, ct)
                     : FetchAccountNewMessagesAsync(account, ct));
 
@@ -2035,13 +2133,28 @@ public partial class MainViewModel : ObservableObject
                     .ToList();
 
                 SetMessages(repaired);
-                _ = _localStore.UpsertSummariesAsync(repaired);
+                if (!OnlineMode)
+                    _ = _localStore.UpsertSummariesAsync(repaired);
 
                 var totalCount = Messages.Count;
                 StatusText = totalCount == 0
                     ? "No messages across connected accounts."
                     : $"{totalCount} messages across all accounts.";
 
+                RebuildActiveGroupView();
+                return;
+            }
+
+            if (OnlineMode)
+            {
+                // In online mode the list is fresh from IMAP — set directly rather than
+                // merging with (empty) cache so the sorted order is correct.
+                var sorted = newMessages.OrderByDescending(m => m.Date).ToList();
+                SetMessages(sorted);
+                var onlineCount = Messages.Count;
+                StatusText = onlineCount == 0
+                    ? "No messages across connected accounts."
+                    : $"{onlineCount} messages across all accounts.";
                 RebuildActiveGroupView();
                 return;
             }
@@ -2207,21 +2320,38 @@ public partial class MainViewModel : ObservableObject
 
         try
         {
-            // ── Phase 1: show cache immediately ────────────────────────────────────
-            var cached = await _localStore.LoadAllSummariesAsync(accountId);
-            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+            if (!OnlineMode)
+            {
+                // ── Phase 1: show cache immediately ──────────────────────────────────
+                var cached = await _localStore.LoadAllSummariesAsync(accountId);
+                if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-            SetMessages(cached);
-            StatusText = cached.Count > 0
-                ? $"{cached.Count} messages (checking for new…)"
-                : "Checking for new messages…";
-            IsBusy = false;
+                SetMessages(cached);
+                StatusText = cached.Count > 0
+                    ? $"{cached.Count} messages (checking for new…)"
+                    : "Checking for new messages…";
+                IsBusy = false;
+            }
 
-            // ── Phase 2: incremental IMAP update (new messages only, per-folder) ───
+            // ── Phase 2: IMAP fetch ────────────────────────────────────────────────
             ct.ThrowIfCancellationRequested();
             IsBusy = true;
-            var newMessages = await FetchAccountNewMessagesAsync(account, ct);
+            var newMessages = OnlineMode
+                ? await FetchAccountAllFoldersAsync(account, ct)
+                : await FetchAccountNewMessagesAsync(account, ct);
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            if (OnlineMode)
+            {
+                var sorted = newMessages.OrderByDescending(m => m.Date).ToList();
+                SetMessages(sorted);
+                var onlineCount = Messages.Count;
+                StatusText = onlineCount == 0
+                    ? $"No messages in {account.AccountLabel}."
+                    : $"{onlineCount} messages in {account.AccountLabel}.";
+                RebuildActiveGroupView();
+                return;
+            }
 
             var existingKeys = Messages
                 .Select(m => (m.UniqueId, m.AccountId, m.FolderName))
@@ -2303,7 +2433,8 @@ public partial class MainViewModel : ObservableObject
             StatusText = sorted.Count == 0
                 ? $"No messages in {displayName}."
                 : $"{sorted.Count} messages in {displayName}.";
-            _ = _localStore.UpsertSummariesAsync(sorted);
+            if (!OnlineMode)
+                _ = _localStore.UpsertSummariesAsync(sorted);
         }
         catch (OperationCanceledException)
         {

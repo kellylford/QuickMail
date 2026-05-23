@@ -21,6 +21,9 @@ public partial class App : Application
                 "  --profileDir <path>   Store all data in <path> instead of the default\n" +
                 "                        %AppData%\\QuickMail directory. The directory is\n" +
                 "                        created if it does not already exist.\n\n" +
+                "  --online              Run in fully online mode: fetch everything live from\n" +
+                "                        IMAP on every folder selection. Nothing is read from\n" +
+                "                        or written to the local SQLite cache.\n\n" +
                 "  --help                Show this message and exit.\n\n" +
                 "  /debug                Write verbose debug output to quickmail.log.",
                 "QuickMail",
@@ -47,6 +50,10 @@ public partial class App : Application
             LogService.Log("Debug mode enabled.");
         }
 
+        var onlineMode = e.Args.Contains("--online", StringComparer.OrdinalIgnoreCase);
+        if (onlineMode)
+            LogService.Log("Online mode enabled — SQLite cache bypassed.");
+
         // Install global exception handlers BEFORE anything else so an exception
         // in startup wiring or any background task is captured in the log instead
         // of disappearing with the process. (review §1.2)
@@ -69,7 +76,8 @@ public partial class App : Application
             var smtpService       = new SmtpService(oauthService);
 
             var localStore = new LocalStoreService(profile);
-            localStore.Initialize();
+            if (!onlineMode)
+                localStore.Initialize();
 
             var contactService = new ContactService(profile);
             var ruleService = new RuleService(imapService, localStore, profile.ProfileDir);
@@ -83,7 +91,8 @@ public partial class App : Application
             var viewService = new ViewService(profile);
 
             var mainVm = new MainViewModel(
-                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService);
+                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService,
+                onlineMode: onlineMode);
             mainVm.LoadAccountList();
 
             var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService);

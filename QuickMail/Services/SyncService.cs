@@ -88,6 +88,9 @@ public class SyncService : ISyncService
         }
     }
 
+    public Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+        => SyncFolderAsync(account, folder, ct);
+
     private async Task<List<MailMessageSummary>> SyncFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
     {
         // ── New messages ─────────────────────────────────────────────────────────

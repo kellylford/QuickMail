@@ -1,0 +1,311 @@
+// Tests for features added in the 0.6.x session:
+//   • DateDisplay format (12-hour clock, M/d/yyyy for older dates)
+//   • Preview suppression when PreviewLines = 0
+//   • OnlineMode flag on MainViewModel
+//   • IDLE new-mail detection triggering a targeted inbox sync
+
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using QuickMail.Models;
+using QuickMail.Services;
+using QuickMail.ViewModels;
+using Xunit;
+
+namespace QuickMail.Tests;
+
+// ── DateDisplay ──────────────────────────────────────────────────────────────
+
+public class MailMessageSummaryDateDisplayTests
+{
+    private static MailMessageSummary MsgAt(int hour, int minute)
+    {
+        var now = DateTimeOffset.Now;
+        return new MailMessageSummary
+        {
+            Date = new DateTimeOffset(now.Year, now.Month, now.Day, hour, minute, 0, now.Offset)
+        };
+    }
+
+    [Fact]
+    public void Today_Morning_ShowsHourMinuteA()
+    {
+        var msg = MsgAt(9, 30);
+        Assert.Equal("9:30A", msg.DateDisplay);
+    }
+
+    [Fact]
+    public void Today_Afternoon_ShowsHourMinuteP()
+    {
+        var msg = MsgAt(15, 45);
+        Assert.Equal("3:45P", msg.DateDisplay);
+    }
+
+    [Fact]
+    public void Today_Noon_ShowsP()
+    {
+        var msg = MsgAt(12, 0);
+        Assert.Equal("12:00P", msg.DateDisplay);
+    }
+
+    [Fact]
+    public void Today_Midnight_ShowsA()
+    {
+        var msg = MsgAt(0, 0);
+        Assert.Equal("12:00A", msg.DateDisplay);
+    }
+
+    [Fact]
+    public void OtherDate_ShowsMdyyyy()
+    {
+        var now = DateTimeOffset.Now;
+        var msg = new MailMessageSummary
+        {
+            // One year ago — definitely not today.
+            Date = new DateTimeOffset(now.Year - 1, 5, 1, 10, 0, 0, now.Offset)
+        };
+        Assert.Equal($"5/1/{now.Year - 1}", msg.DateDisplay);
+    }
+}
+
+// ── Preview suppression ──────────────────────────────────────────────────────
+
+public class PreviewSuppressionTests
+{
+    sealed class ZeroPreviewConfig : IConfigService
+    {
+        public ConfigModel Load() => new() { PreviewLines = 0 };
+        public void Save(ConfigModel config) { }
+    }
+
+    sealed class PreviewStore : ILocalStoreService
+    {
+        private readonly List<MailMessageSummary> _messages;
+        public PreviewStore(IEnumerable<MailMessageSummary> messages) => _messages = new(messages);
+
+        public void Initialize() { }
+        public Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries) => Task.CompletedTask;
+        public Task<List<MailMessageSummary>> LoadAllSummariesAsync() => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>(_messages));
+        public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds) => Task.CompletedTask;
+        public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
+        public Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead) => Task.CompletedTask;
+        public Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview) => Task.CompletedTask;
+        public Task UpdatePreviewsBatchAsync(Guid accountId, string folderName, IEnumerable<(uint UniqueId, string Preview)> updates) => Task.CompletedTask;
+        public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
+        public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
+        public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, uint uniqueId) => Task.FromResult<MailMessageDetail?>(null);
+        public Task<uint> GetMaxUidAsync(Guid accountId, string folderName) => Task.FromResult(0u);
+        public Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<uint>());
+    }
+
+    private static readonly MailMessageSummary[] MessagesWithPreviews =
+    [
+        new() { UniqueId = 1, Preview = "First preview text",  Date = DateTimeOffset.Now },
+        new() { UniqueId = 2, Preview = "Second preview text", Date = DateTimeOffset.Now.AddMinutes(-1) },
+        new() { UniqueId = 3, Preview = "Third preview text",  Date = DateTimeOffset.Now.AddMinutes(-2) },
+    ];
+
+    [Fact]
+    public async Task InitialLoad_PreviewLinesZero_ClearsAllPreviews()
+    {
+        var store = new PreviewStore(MessagesWithPreviews);
+        var vm = new MainViewModel(
+            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            store, new StubOAuthService(), new StubSyncService(), new ZeroPreviewConfig(),
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService());
+
+        await vm.InitialLoadAsync();
+
+        Assert.All(vm.Messages, m => Assert.Equal(string.Empty, m.Preview));
+    }
+
+    [Fact]
+    public async Task InitialLoad_PreviewLinesNonZero_PreservesPreview()
+    {
+        // Default StubConfigService returns PreviewLines = 3 (from ConfigModel defaults).
+        var store = new PreviewStore(MessagesWithPreviews);
+        var vm = new MainViewModel(
+            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            store, new StubOAuthService(), new StubSyncService(), new StubConfigService(),
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService());
+
+        await vm.InitialLoadAsync();
+
+        Assert.All(vm.Messages, m => Assert.NotEqual(string.Empty, m.Preview));
+    }
+
+
+}
+
+// ── Online mode ──────────────────────────────────────────────────────────────
+
+public class OnlineModeTests
+{
+    private static MainViewModel MakeVm(bool onlineMode = false) =>
+        new MainViewModel(
+            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), onlineMode: onlineMode);
+
+    [Fact]
+    public void OnlineMode_DefaultIsFalse()
+    {
+        var vm = MakeVm();
+        Assert.False(vm.OnlineMode);
+    }
+
+    [Fact]
+    public void OnlineMode_TrueWhenPassedToConstructor()
+    {
+        var vm = MakeVm(onlineMode: true);
+        Assert.True(vm.OnlineMode);
+    }
+
+    [Fact]
+    public async Task InitialLoad_OnlineMode_LeavesMessagesEmpty()
+    {
+        // In online mode, InitialLoadAsync must not touch the local store.
+        var vm = MakeVm(onlineMode: true);
+        await vm.InitialLoadAsync();
+        Assert.Empty(vm.Messages);
+    }
+}
+
+// ── IDLE new-mail detection ──────────────────────────────────────────────────
+
+public class IdleNewMailTests
+{
+    sealed class FireableImapService : IImapService
+    {
+        private readonly Guid _accountId;
+        public FireableImapService(Guid accountId) => _accountId = accountId;
+
+        public event Action<Guid>? InboxNewMailDetected;
+        public void FireNewMail() => InboxNewMailDetected?.Invoke(_accountId);
+
+        // Return one INBOX folder so ConnectAllAccountsAsync populates _cachedFolders.
+        public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) =>
+            Task.FromResult(new List<MailFolderModel>
+            {
+                new() { FullName = "INBOX", DisplayName = "Inbox", AccountId = accountId, Kind = SpecialFolderKind.Inbox }
+            });
+
+        public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());
+        public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());
+        public Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid accountId, string folderName, uint sinceUid, int initialCount, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());
+        public Task<MailMessageDetail> GetMessageDetailAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
+        public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
+        public Task MarkReadAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveToTrashAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default) => Task.CompletedTask;
+        public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default) => Task.CompletedTask;
+        public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
+        public Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IList<uint>>(Array.Empty<uint>());
+        public Task<IReadOnlyDictionary<uint, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<uint> uids, int maxLines, CancellationToken ct = default) => Task.FromResult<IReadOnlyDictionary<uint, string>>(new Dictionary<uint, string>());
+        public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult(0);
+        public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult<string?>(null);
+        public Task<uint> AppendDraftAsync(Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default) => Task.FromResult(0u);
+        public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, uint uid, string partSpecifier, CancellationToken ct = default) => Task.FromResult(Array.Empty<byte>());
+        public Task CopyMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
+        public Task MoveMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default) => Task.CompletedTask;
+        public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
+        public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
+        public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
+        public void StopIdleWatchers() { }
+        public void Dispose() { }
+    }
+
+    sealed class SpySyncService : ISyncService
+    {
+        public readonly TaskCompletionSource<(AccountModel Account, MailFolderModel Folder)> SyncOneFolderCalled = new();
+
+#pragma warning disable CS0067
+        public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
+        public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+        public event Action<int>? RulesApplied;
+#pragma warning restore CS0067
+
+        public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts,
+            IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct)
+            => Task.CompletedTask;
+
+        public Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+        {
+            SyncOneFolderCalled.TrySetResult((account, folder));
+            return Task.CompletedTask;
+        }
+    }
+
+    [Fact]
+    public async Task NewMailDetected_TriggersSyncForMatchingInbox()
+    {
+        var accountId = Guid.NewGuid();
+        var imap = new FireableImapService(accountId);
+        var sync = new SpySyncService();
+        var account = new AccountModel
+        {
+            Id = accountId,
+            AuthType = AuthType.OAuth2Microsoft,
+            Username = "test@example.com",
+            ImapHost = "imap.example.com",
+            ImapPort = 993
+        };
+
+        var vm = new MainViewModel(
+            imap, new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), sync,
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService());
+
+        // Seed the account and connect so _cachedFolders gets the INBOX entry.
+        vm.Accounts.Add(account);
+        await vm.ConnectAllAccountsAsync();
+
+        // Fire the IDLE event — OnInboxNewMailDetected runs SyncOneFolderAsync via Task.Run.
+        imap.FireNewMail();
+
+        var result = await sync.SyncOneFolderCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(accountId, result.Account.Id);
+        Assert.Equal(SpecialFolderKind.Inbox, result.Folder.Kind);
+    }
+
+    [Fact]
+    public async Task NewMailDetected_OnlineMode_DoesNotSync()
+    {
+        var accountId = Guid.NewGuid();
+        var imap = new FireableImapService(accountId);
+        var sync = new SpySyncService();
+        var account = new AccountModel
+        {
+            Id = accountId,
+            AuthType = AuthType.OAuth2Microsoft,
+            Username = "test@example.com"
+        };
+
+        var vm = new MainViewModel(
+            imap, new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), sync,
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), onlineMode: true);
+
+        vm.Accounts.Add(account);
+        await vm.ConnectAllAccountsAsync();
+
+        imap.FireNewMail();
+
+        // In online mode the handler returns immediately without calling sync.
+        // Wait briefly then assert the TCS was not set.
+        await Task.Delay(200);
+        Assert.False(sync.SyncOneFolderCalled.Task.IsCompleted);
+    }
+}

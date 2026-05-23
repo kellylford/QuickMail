@@ -27,7 +27,10 @@ public class ImapService : IImapService
     private readonly ConcurrentDictionary<Guid, AccountModel> _accounts = new();
     private readonly ConcurrentDictionary<Guid, string>  _passwords     = new();
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _poolLocks = new();
+    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _idleCts = new();
     private bool _disposed;
+
+    public event Action<Guid>? InboxNewMailDetected;
 
     public ImapService(IOAuthService oauth, IConfigService? config = null)
     {
@@ -89,6 +92,11 @@ public class ImapService : IImapService
 
     public async Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
     {
+        if (_idleCts.TryRemove(accountId, out var watcherCts))
+        {
+            try { watcherCts.Cancel(); watcherCts.Dispose(); } catch { }
+        }
+
         if (_pools.TryRemove(accountId, out var pool))
             await pool.DisconnectAsync(ct);
 
@@ -649,6 +657,118 @@ public class ImapService : IImapService
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    // ── IDLE watchers ────────────────────────────────────────────────────────────
+
+    public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
+    {
+        foreach (var account in accounts)
+        {
+            // Cancel any existing watcher for this account.
+            if (_idleCts.TryRemove(account.Id, out var old))
+            {
+                try { old.Cancel(); old.Dispose(); } catch { }
+            }
+
+            var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _idleCts[account.Id] = linked;
+
+            // Copy for capture — account object in _accounts may be updated later.
+            var accountId = account.Id;
+            _ = Task.Run(() => RunIdleWatcherAsync(accountId, linked.Token), linked.Token);
+        }
+    }
+
+    public void StopIdleWatchers()
+    {
+        foreach (var kvp in _idleCts)
+        {
+            if (_idleCts.TryRemove(kvp.Key, out var cts))
+            {
+                try { cts.Cancel(); cts.Dispose(); } catch { }
+            }
+        }
+    }
+
+    private async Task RunIdleWatcherAsync(Guid accountId, CancellationToken ct)
+    {
+        // Retry loop — reconnect on transient failures.
+        while (!ct.IsCancellationRequested)
+        {
+            ImapClient? client = null;
+            IMailFolder? inbox  = null;
+            try
+            {
+                if (!_accounts.TryGetValue(accountId, out var account))
+                    return; // account removed — exit permanently
+
+                _passwords.TryGetValue(accountId, out var password);
+                client = await CreateAuthenticatedClientAsync(account, password, ct);
+
+                if (!client.Capabilities.HasFlag(ImapCapabilities.Idle))
+                {
+                    LogService.Log($"IDLE watcher [{account.Username}]: server does not support IDLE — watcher disabled.");
+                    DisposeClient(client);
+                    return;
+                }
+
+                inbox = client.Inbox ?? throw new InvalidOperationException("Server has no INBOX.");
+                await inbox.OpenAsync(FolderAccess.ReadOnly, ct);
+
+                LogService.Log($"IDLE watcher [{account.Username}]: watching INBOX (Count={inbox.Count}).");
+
+                inbox.CountChanged += OnCountChanged;
+                try
+                {
+                    // Re-IDLE every 25 minutes — most servers time out at 30 minutes.
+                    while (!ct.IsCancellationRequested)
+                    {
+                        using var idleTimeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(25));
+                        using var combinedCts    = CancellationTokenSource.CreateLinkedTokenSource(ct, idleTimeoutCts.Token);
+                        try
+                        {
+                            await client.IdleAsync(combinedCts.Token, ct);
+                        }
+                        catch (OperationCanceledException) when (idleTimeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
+                        {
+                            // 25-minute timeout fired — send NOOP to keep the connection alive then re-enter IDLE.
+                            await client.NoOpAsync(ct);
+                        }
+                    }
+                }
+                finally
+                {
+                    inbox.CountChanged -= OnCountChanged;
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break; // ct cancelled — clean exit
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"IDLE watcher [{accountId}] error — will retry in 60s: {ex.Message}");
+                if (client != null) DisposeClient(client);
+                client = null;
+
+                try { await Task.Delay(TimeSpan.FromSeconds(60), ct); }
+                catch (OperationCanceledException) { break; }
+            }
+            finally
+            {
+                if (inbox != null)
+                    try { await inbox.CloseAsync(false, CancellationToken.None); } catch { }
+                if (client != null)
+                    await DisconnectAndDisposeAsync(client, CancellationToken.None);
+            }
+        }
+
+        void OnCountChanged(object? sender, EventArgs e)
+        {
+            LogService.Log($"IDLE watcher [{accountId}]: CountChanged — new mail detected.");
+            InboxNewMailDetected?.Invoke(accountId);
+        }
+    }
+
     public async Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
@@ -1181,6 +1301,7 @@ public class ImapService : IImapService
     {
         if (_disposed) return;
         _disposed = true;
+        StopIdleWatchers();
         foreach (var pool in _pools.Values)
             pool.Dispose();
         _pools.Clear();

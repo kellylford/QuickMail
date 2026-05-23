@@ -64,15 +64,15 @@ public partial class MailMessageSummary : ObservableObject
         }
     }
 
-    /// <summary>Display-friendly date: "HH:mm" for today, "dd MMM" otherwise.</summary>
+    /// <summary>Display-friendly date: "h:mmA/P" for today, "M/d/yyyy" otherwise.</summary>
     public string DateDisplay
     {
         get
         {
             var local = Date.ToLocalTime();
-            return local.Date == DateTimeOffset.Now.Date
-                ? local.ToString("HH:mm")
-                : local.ToString("dd MMM");
+            if (local.Date == DateTimeOffset.Now.Date)
+                return local.ToString("h:mm") + (local.Hour < 12 ? "A" : "P");
+            return local.ToString("M/d/yyyy");
         }
     }
 }

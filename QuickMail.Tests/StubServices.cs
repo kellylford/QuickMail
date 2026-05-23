@@ -41,6 +41,11 @@ sealed class StubImapService : IImapService
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
+#pragma warning disable CS0067
+    public event Action<Guid>? InboxNewMailDetected;
+#pragma warning restore CS0067
+    public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
+    public void StopIdleWatchers() { }
     public void Dispose() { }
 }
 
@@ -132,6 +137,7 @@ sealed class StubSyncService : ISyncService
     public event Action<int>? RulesApplied;
 #pragma warning restore CS0067
     public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
+    public Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
 }
 
 sealed class StubCommandRegistry : ICommandRegistry

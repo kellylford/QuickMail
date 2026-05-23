@@ -45,6 +45,23 @@ public interface IImapService : IDisposable
     Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default);
     /// <summary>Sends IMAP NOOP to keep the connection alive. Silently discards the client if the connection is stale.</summary>
     Task NoOpAsync(Guid accountId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Raised on the ThreadPool when IMAP IDLE detects new mail in the INBOX of the given account.
+    /// The handler should marshal to the UI thread if needed.
+    /// </summary>
+    event Action<Guid>? InboxNewMailDetected;
+
+    /// <summary>
+    /// Starts one IDLE watcher connection per account in <paramref name="accounts"/>.
+    /// Each watcher watches INBOX and fires <see cref="InboxNewMailDetected"/> when new mail arrives.
+    /// Call after all accounts are connected. Safe to call multiple times — existing watchers for
+    /// the same account are stopped and replaced.
+    /// </summary>
+    void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default);
+
+    /// <summary>Stops all IDLE watcher connections.</summary>
+    void StopIdleWatchers();
     Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default);
     Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default);
 

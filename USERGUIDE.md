@@ -150,7 +150,7 @@ Custom bindings are saved to `hotkeys.json` in your AppData folder and apply imm
 
 - Press **F5** or activate **Refresh** in the toolbar to fetch new messages.
 - If a saved view is active, **F5 refreshes the view** — not just the underlying folder. This means you stay in your view and see the latest messages that belong to it.
-- QuickMail also checks for new mail automatically in the background while the app is running.
+- QuickMail also checks for new mail automatically in the background while the app is running. When your mail server supports IMAP IDLE, new messages in your inboxes are detected in real time without polling — QuickMail keeps a persistent connection that the server notifies the moment a message arrives. When a new message is detected, a targeted sync runs for that inbox and the message list updates automatically.
 
 ### Navigating the panes
 
@@ -765,6 +765,7 @@ QuickMail accepts the following options on the command line:
 | Option | Description |
 |--------|-------------|
 | `--profileDir <path>` | Use `<path>` as the profile directory instead of the default `%AppData%\QuickMail`. All data files (accounts, mail cache, config, contacts, views, and log) are read from and written to this directory. The directory is created automatically if it does not already exist. |
+| `--online` | Run in fully online mode. Every folder selection fetches messages live from IMAP. Nothing is read from or written to the local SQLite cache (`mail.db`). Useful for testing or when you want a fresh view without any cached data. IDLE push notification and background sync are also disabled in this mode. |
 | `--help` | Show a summary of available options and exit. Also accepted as `-h`, `-help`, or `/?`. |
 | `/debug` | Write verbose diagnostic output to `quickmail.log` in the profile directory. |
 
