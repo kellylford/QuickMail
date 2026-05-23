@@ -3563,7 +3563,7 @@ public partial class MainViewModel : ObservableObject
 
     private static string TruncatePreview(string preview, int lines)
     {
-        var limit = lines * 60;
+        var limit = lines * 100;
         return preview.Length <= limit ? preview : preview[..limit].TrimEnd();
     }
 
