@@ -75,6 +75,12 @@ public interface IImapService : IDisposable
 
     Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
+    /// <summary>
+    /// Returns (Total, Unread) for the account's INBOX using an IMAP STATUS command.
+    /// Cheaper than <see cref="GetFoldersAsync"/> — does not open any folder.
+    /// </summary>
+    Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default);
+
     /// <summary>Returns the full name of the Drafts folder, or null if none.</summary>
     Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default);
 

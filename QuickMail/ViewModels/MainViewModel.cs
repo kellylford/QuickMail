@@ -1156,6 +1156,9 @@ public partial class MainViewModel : ObservableObject
 
         if (toInsert.Count > 0)
         {
+            // Increment account inbox counts for messages that landed in an Inbox-kind folder.
+            UpdateInboxCountsAfterInsert(toInsert);
+
             var n = Messages.Count;
             StatusText = n == 0 ? "No messages" : $"{n} {(n == 1 ? "message" : "messages")}";
         }
@@ -1205,7 +1208,21 @@ public partial class MainViewModel : ObservableObject
         var removedKeys = new HashSet<(uint, Guid, string)>(removed.Count);
         foreach (var msg in removed)
             removedKeys.Add((msg.UniqueId, msg.AccountId, msg.FolderName));
+
+        // Capture which messages are still in _rawMessages before removal so we only
+        // decrement inbox counts for messages we're actually removing here.  Messages
+        // removed by DeleteMessagesAsync have already been cleaned from _rawMessages
+        // (and their counts decremented), so they won't appear in this set.
+        var rawKeys = new HashSet<(uint, Guid, string)>(
+            _rawMessages.Select(m => (m.UniqueId, m.AccountId, m.FolderName)));
+        var actuallyRemovedFromRaw = removed
+            .Where(m => rawKeys.Contains((m.UniqueId, m.AccountId, m.FolderName)))
+            .ToList();
+
         _rawMessages.RemoveAll(m => removedKeys.Contains((m.UniqueId, m.AccountId, m.FolderName)));
+
+        // Update account inbox counts for the messages we actually removed from _rawMessages.
+        UpdateInboxCountsAfterRemoval(actuallyRemovedFromRaw);
 
         bool removedOpen = false;
         foreach (var msg in removed)
@@ -1400,6 +1417,71 @@ public partial class MainViewModel : ObservableObject
         account.IsConnected = true;
         account.InboxUnread  = inbox?.UnreadCount ?? 0;
         account.InboxTotal   = inbox?.MessageCount ?? 0;
+    }
+
+    /// <summary>
+    /// Decrements InboxTotal and InboxUnread on the relevant accounts for each message
+    /// in <paramref name="removed"/> that came from an Inbox-kind folder.
+    /// Must be called on the UI thread.
+    /// </summary>
+    private void UpdateInboxCountsAfterRemoval(IEnumerable<MailMessageSummary> removed)
+    {
+        var inboxFolderKeys = BuildInboxFolderKeySet();
+        if (inboxFolderKeys.Count == 0) return;
+
+        var decrements = new Dictionary<Guid, (int Total, int Unread)>();
+        foreach (var msg in removed)
+        {
+            if (!inboxFolderKeys.Contains((msg.AccountId, msg.FolderName.ToUpperInvariant()))) continue;
+            decrements.TryGetValue(msg.AccountId, out var cur);
+            decrements[msg.AccountId] = (cur.Total + 1, cur.Unread + (msg.IsRead ? 0 : 1));
+        }
+
+        foreach (var (id, (total, unread)) in decrements)
+        {
+            var account = Accounts.FirstOrDefault(a => a.Id == id);
+            if (account == null) continue;
+            account.InboxTotal  = Math.Max(0, account.InboxTotal  - total);
+            account.InboxUnread = Math.Max(0, account.InboxUnread - unread);
+        }
+    }
+
+    /// <summary>
+    /// Increments InboxTotal and InboxUnread on the relevant accounts for each message
+    /// in <paramref name="inserted"/> that landed in an Inbox-kind folder.
+    /// Must be called on the UI thread.
+    /// </summary>
+    private void UpdateInboxCountsAfterInsert(IEnumerable<MailMessageSummary> inserted)
+    {
+        var inboxFolderKeys = BuildInboxFolderKeySet();
+        if (inboxFolderKeys.Count == 0) return;
+
+        var increments = new Dictionary<Guid, (int Total, int Unread)>();
+        foreach (var msg in inserted)
+        {
+            if (!inboxFolderKeys.Contains((msg.AccountId, msg.FolderName.ToUpperInvariant()))) continue;
+            increments.TryGetValue(msg.AccountId, out var cur);
+            increments[msg.AccountId] = (cur.Total + 1, cur.Unread + (msg.IsRead ? 0 : 1));
+        }
+
+        foreach (var (id, (total, unread)) in increments)
+        {
+            var account = Accounts.FirstOrDefault(a => a.Id == id);
+            if (account == null) continue;
+            account.InboxTotal  += total;
+            account.InboxUnread += unread;
+        }
+    }
+
+    /// <summary>Returns the set of (AccountId, UpperInvariantFolderName) pairs for all cached Inbox-kind folders.</summary>
+    private HashSet<(Guid, string)> BuildInboxFolderKeySet()
+    {
+        var keys = new HashSet<(Guid, string)>();
+        foreach (var (accId, folders) in _cachedFolders)
+            foreach (var f in folders)
+                if (f.Kind == SpecialFolderKind.Inbox)
+                    keys.Add((accId, f.FullName.ToUpperInvariant()));
+        return keys;
     }
 
     private async Task<(Guid Id, List<MailFolderModel>? Folders)> ConnectOneAccountAsync(AccountModel account)
@@ -2605,6 +2687,15 @@ public partial class MainViewModel : ObservableObject
             if (Messages.Remove(msg)) removed++;
         }
 
+        // Remove from _rawMessages so OnMessagesRemoved (fired by background sync) won't
+        // double-count these messages when updating inbox totals.
+        var toDeleteKeys = new HashSet<(uint, Guid, string)>(
+            toDelete.Select(m => (m.UniqueId, m.AccountId, m.FolderName)));
+        _rawMessages.RemoveAll(m => toDeleteKeys.Contains((m.UniqueId, m.AccountId, m.FolderName)));
+
+        // Immediately update account inbox counts for messages deleted from Inbox-kind folders.
+        UpdateInboxCountsAfterRemoval(toDelete);
+
         RebuildActiveGroupView();
 
         if (ViewMode == ViewMode.Messages && Messages.Count > 0)
@@ -2961,6 +3052,33 @@ public partial class MainViewModel : ObservableObject
             MessageDetail   = null;
             IsMessageOpen   = false;
             MessageListFocusRequested?.Invoke();
+        }
+
+        // Refresh inbox counts from the server for affected accounts.
+        // Emptying trash doesn't change inbox counts, but this cheap STATUS command
+        // keeps the displayed counts in sync and corrects any accumulated drift.
+        if (trashEmptied)
+        {
+            var accountsSnapshot = accountsToEmpty.ToList();
+            _ = Task.Run(async () =>
+            {
+                foreach (var account in accountsSnapshot)
+                {
+                    try
+                    {
+                        var (total, unread) = await _imap.GetInboxStatusAsync(account.Id, CancellationToken.None);
+                        App.Current.Dispatcher.Invoke(() =>
+                        {
+                            account.InboxTotal  = total;
+                            account.InboxUnread = unread;
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        LogService.Log($"EmptyTrash: inbox status refresh failed for {account.AccountLabel}", ex);
+                    }
+                }
+            });
         }
     }
 

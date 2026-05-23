@@ -179,6 +179,15 @@ public class ImapService : IImapService
         return result;
     }
 
+    public async Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        var inbox = lease.Client.Inbox!;
+        await inbox.StatusAsync(StatusItems.Count | StatusItems.Unread, ct);
+        LogService.Debug($"GetInboxStatus: account={accountId} Total={inbox.Count} Unread={inbox.Unread}");
+        return (inbox.Count, inbox.Unread);
+    }
+
     // ── Message lists ────────────────────────────────────────────────────────────
 
     public async Task<List<MailMessageSummary>> GetMessageSummariesAsync(

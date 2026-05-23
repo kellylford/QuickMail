@@ -31,6 +31,7 @@ sealed class StubImapService : IImapService
     public Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IList<uint>>(Array.Empty<uint>());
     public Task<IReadOnlyDictionary<uint, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<uint> uids, int maxLines, CancellationToken ct = default) => Task.FromResult<IReadOnlyDictionary<uint, string>>(new Dictionary<uint, string>());
     public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult(0);
+    public Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult((0, 0));
     public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult<string?>(null);
     public Task<uint> AppendDraftAsync(Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default) => Task.FromResult(0u);
     public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default) => Task.CompletedTask;
