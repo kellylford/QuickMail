@@ -13,6 +13,7 @@
 - IDLE push did not work in `--online` mode — the watcher connections were never started.
 - Delete and Move to Folder crashed in `--online` mode with "no such table: MessageSummary" — the local store cleanup after an IMAP delete is now skipped when running in online mode.
 - Preview text was still shown in the message list when Preview Lines was set to 0 in Settings.
+- Preview Lines 1–5 all showed the same amount of preview text — values now map to 100–500 characters (100 per line).
 
 ---
 

@@ -25,3 +25,5 @@ MailGenerator/credentials.ini
 .claude/settings.local.json
 *.lscache
 /artifacts
+startmail.bat
+startoffline.bat
