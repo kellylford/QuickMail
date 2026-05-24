@@ -18,20 +18,16 @@ However, there are several issues — one of them a likely silent focus bug — 
 
 ## Findings
 
-### 1. Tooltip references an unregistered shortcut — `Ctrl+Shift+L`
+### 1. ~~Tooltip references an unregistered shortcut — `Ctrl+Shift+L`~~ — NOT AN ISSUE
 
-**Severity: Blocking**
-
-`MainWindow.xaml` (Region 3, Rules button):
-```xml
-<Button x:Name="RulesStatusButton"
-        ...
-        ToolTip="Open Rules Manager (Ctrl+Shift+L)"/>
+`Ctrl+Shift+L` **is** properly registered. It lives in `MainViewModel.cs` (not `MainWindow.xaml.cs`) as:
+```csharp
+registry.Register(new CommandDefinition(
+    id: "mail.rules", category: "Mail", title: "Manage Rules",
+    execute: () => OpenRulesManagerCommand.Execute(null),
+    defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 ```
-
-There is no `Ctrl+Shift+L` registered in `CommandRegistry` anywhere in the branch. No such shortcut appears in the keyboard shortcut table in `CLAUDE.md` or in `USERGUIDE.md`. The tooltip is false advertising — a sighted user who reads it and presses `Ctrl+Shift+L` gets nothing.
-
-**Fix:** Either register a `mail.openRulesManager` command with `Ctrl+Shift+L` as its `defaultKey` (and add it to the shortcut table in `CLAUDE.md` and `USERGUIDE.md`), or remove the shortcut hint from the tooltip entirely until it is implemented.
+The tooltip is accurate. No action needed.
 
 ---
 
@@ -206,7 +202,7 @@ No fix required; document as a known limitation if relevant.
 
 | # | Issue | Severity | Must-fix before merge? |
 |---|-------|----------|------------------------|
-| 1 | Tooltip references unregistered `Ctrl+Shift+L` | Blocking | Yes |
+| 1 | ~~Tooltip references unregistered `Ctrl+Shift+L`~~ | ~~Blocking~~ | Not an issue — shortcut is registered in `MainViewModel.cs` |
 | 2 | `StatusProgressBar` likely not focusable — region 4 navigation silently fails | Blocking | Yes |
 | 3 | `TabNavigation="Once"` contradicts keyboard contract | Significant | Yes |
 | 4 | `ConnectionStatusText` not updated on offline toggle | Significant | Yes |
