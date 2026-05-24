@@ -672,21 +672,49 @@
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type models:FolderTreeNode}"
                                                   ItemsSource="{Binding Children}">
-                            <!-- FolderTreeItemHeader renders entirely via DrawingContext —
-                                 no UIElement children exist, so screen readers cannot traverse
-                                 into the visual content. The TreeViewItem container's
-                                 AutomationProperties.Name → AutomationName is the sole
-                                 accessible representation (e.g. "Inbox, 519 unread"). -->
-                            <local:FolderTreeItemHeader Label="{Binding Label}"
-                                                        UnreadDisplay="{Binding UnreadDisplay}"
-                                                        IsHeaderItem="{Binding IsHeader}"
-                                                        MinWidth="60"/>
+                            <!-- Visual display only. The TreeViewItem container carries the
+                                 accessible name (AutomationProperties.Name → AutomationName)
+                                 and unread count (AutomationProperties.ItemStatus →
+                                 ItemStatusLabel). Splitting name and count across two UIA
+                                 properties prevents JAWS from announcing the count twice
+                                 (once per automation peer). -->
+                            <StackPanel Orientation="Horizontal">
+                                <local:AriaHiddenTextBlock TextTrimming="CharacterEllipsis">
+                                    <local:AriaHiddenTextBlock.Style>
+                                        <Style TargetType="local:AriaHiddenTextBlock">
+                                            <Setter Property="Text" Value="{Binding Label}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </local:AriaHiddenTextBlock.Style>
+                                </local:AriaHiddenTextBlock>
+                                <!-- Unread badge: "(5)" — collapsed when empty -->
+                                <local:AriaHiddenTextBlock Margin="4,0,0,0"
+                                                           Foreground="DimGray"
+                                                           FontSize="11"
+                                                           Text="{Binding UnreadDisplay}">
+                                    <local:AriaHiddenTextBlock.Style>
+                                        <Style TargetType="local:AriaHiddenTextBlock">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding UnreadDisplay}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </local:AriaHiddenTextBlock.Style>
+                                </local:AriaHiddenTextBlock>
+                            </StackPanel>
                         </HierarchicalDataTemplate>
                     </TreeView.Resources>
                     <TreeView.ItemContainerStyle>
                         <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                            <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                            <Setter Property="IsExpanded"                  Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                            <Setter Property="AutomationProperties.Name"   Value="{Binding AutomationName}"/>
+                            <Setter Property="AutomationProperties.ItemStatus" Value="{Binding ItemStatusLabel}"/>
                             <!-- Tag exposes the window DataContext (MainViewModel) to the ContextMenu -->
                             <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"/>
                             <Setter Property="ContextMenu" Value="{StaticResource FolderContextMenu}"/>

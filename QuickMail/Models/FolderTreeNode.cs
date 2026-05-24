@@ -19,11 +19,20 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     public ObservableCollection<FolderTreeNode> Children { get; } = [];
 
     /// <summary>
-    /// Accessibility label used by AutomationProperties.Name.
-    /// Folder nodes include the unread count; account-group and intermediate nodes use just the label.
+    /// Accessibility label used by AutomationProperties.Name on the TreeViewItem.
+    /// Contains only the folder name — the unread count is in ItemStatusLabel so it
+    /// is announced via a separate UIA property and cannot be doubled by JAWS reading
+    /// the same name through two automation peers.
     /// </summary>
-    public string AutomationName =>
-        Folder is { UnreadCount: > 0 } ? $"{Label}, {Folder.UnreadCount} unread" : Label;
+    public string AutomationName => Label;
+
+    /// <summary>
+    /// UIA ItemStatus string used by AutomationProperties.ItemStatus on the TreeViewItem.
+    /// Announced by screen readers after the folder name, e.g. "3 unread".
+    /// Empty for folders with no unread messages and for header/group nodes.
+    /// </summary>
+    public string ItemStatusLabel =>
+        Folder is { UnreadCount: > 0 } ? $"{Folder.UnreadCount} unread" : string.Empty;
 
     /// <summary>
     /// Visual unread badge shown next to the folder label, e.g. "(5)".
