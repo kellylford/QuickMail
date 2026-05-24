@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.6.3
+
+### Accessibility
+
+- **Status bar keyboard navigation** — The status bar now has four named regions navigable with **Left** and **Right** arrow keys: Status, Connection, Rules, and Sync Progress. Press `Ctrl+9` or `F6` to reach the status bar, arrow between regions, and **Tab** to exit. Screen readers announce each region individually as focus moves.
+- **Connection status region** — A new status bar region shows the current connection state: "Offline", "Connecting…", "Syncing…", "N accounts connected", or "Connection error". The value updates in real time as accounts connect and sync.
+- **Rules status bar region is now a proper button** — The Rules summary in the status bar is now a `Button` (ControlType.Button + InvokePattern) rather than a styled read-only text box. Screen readers correctly announce it as interactive, and **Enter** or **Space** opens the Rules Manager. Previously the element was announced as "edit" and its clickability was invisible to keyboard users.
+- **Screen reader status bar commands** — The status bar exposes the UIA StatusBar control pattern, enabling screen readers to read the entire bar with their built-in status-bar commands.
+
+---
+
 ## v0.6.2
 
 ### New Features

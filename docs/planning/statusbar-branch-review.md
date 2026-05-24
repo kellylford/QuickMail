@@ -3,212 +3,97 @@
 **Branch:** `StatusBar`  
 **Date:** 2026-05-24  
 **Reviewer:** Claude Code  
-**Commit reviewed:** `8563a13` — "Status bar accessibility: keyboard navigation, screen reader support, connection status"  
-**Files changed:** 6 (AccessibleStyles.xaml, MainViewModel.cs, MainWindow.xaml, MainWindow.xaml.cs, USERGUIDE.md, docs/planning/status-bar-accessibility-plan.md)
+**Commits reviewed:**
+- `8563a13` — Status bar accessibility: keyboard navigation, screen reader support, connection status
+- `bc10b11` — Address StatusBar branch review feedback
+- `2df1f7b` — Fix stale comment: Tab loop → F6 pane ring
+
+**Merged:** PR #23 → `main` (`2284d78`)
 
 ---
 
 ## Summary
 
-The branch makes meaningful accessibility improvements to the status bar: it adds left/right arrow key navigation between regions, converts the clickable Rules item from a TextBox-with-cursor to a proper `Button`, adds a new `ConnectionStatusText` region, and ensures each region has a well-formed `AutomationProperties.Name`. The architectural approach is sound and the code is generally clean.
+The branch delivers meaningful accessibility improvements to the status bar: left/right arrow key navigation between regions, a new Connection Status region, conversion of the clickable Rules item from a TextBox-with-cursor to a proper `Button`, and well-formed `AutomationProperties.Name` on every region. The architectural approach is sound and the code follows project conventions.
 
-However, there are several issues — one of them a likely silent focus bug — that should be resolved before merging.
-
----
-
-## Findings
-
-### 1. ~~Tooltip references an unregistered shortcut — `Ctrl+Shift+L`~~ — NOT AN ISSUE
-
-`Ctrl+Shift+L` **is** properly registered. It lives in `MainViewModel.cs` (not `MainWindow.xaml.cs`) as:
-```csharp
-registry.Register(new CommandDefinition(
-    id: "mail.rules", category: "Mail", title: "Manage Rules",
-    execute: () => OpenRulesManagerCommand.Execute(null),
-    defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
-```
-The tooltip is accurate. No action needed.
+A first review pass identified several issues. All significant ones were resolved in the follow-up commits. The branch was approved and merged as clean.
 
 ---
 
-### 2. `StatusProgressBar` is probably not focusable — region 4 navigation silently fails
+## First-Pass Findings and Resolutions
 
-**Severity: Blocking**
+### ~~1. Tooltip references an unregistered shortcut — `Ctrl+Shift+L`~~ — NOT AN ISSUE
 
-`MainWindow.xaml.cs`, `FocusStatusBarRegion`:
-```csharp
-case 4:
-    if (StatusProgressItem.Visibility == Visibility.Visible)
-        StatusProgressBar.Focus();
-    else
-        FocusStatusBarRegion(1); // fallback: wrap to first
-    break;
-```
-
-WPF's `ProgressBar` inherits from `RangeBase`, which sets `Focusable = false` in its default style. No `Focusable="True"` is set on `StatusProgressBar` in the XAML. The call to `StatusProgressBar.Focus()` will return `false` silently — focus will not move, and `GetFocusedStatusBarRegion()` will continue to return 3. If the user presses `Right Arrow` from region 3 while sync is running, focus appears to freeze.
-
-There is also a secondary symptom: `GetFocusedStatusBarRegion()` checks `StatusProgressBar.IsKeyboardFocused`, which can never be `true` if the element is not focusable.
-
-**Fix:** Add `Focusable="True"` to the `StatusProgressBar` element, or add it to the `StatusProgressItem` `StatusBarItem` and redirect focus there. If you want screen readers to read the progress bar's `AutomationProperties.Name` when navigated to, `Focusable="True"` on the element itself is the right call.
+`Ctrl+Shift+L` is registered in `MainViewModel.cs` (not `MainWindow.xaml.cs`) as `mail.rules`. The tooltip is accurate. No action was needed.
 
 ---
 
-### 3. `TabNavigation="Once"` contradicts the stated keyboard contract
+### 2. `StatusProgressBar` not focusable — region 4 navigation silently fails ✅ Fixed
 
-**Severity: Significant**
+WPF's `ProgressBar` defaults to `Focusable="False"`. Without an explicit override, `StatusProgressBar.Focus()` would return false silently, making arrow navigation appear stuck at region 3 during sync.
 
-The XAML sets `KeyboardNavigation.TabNavigation="Once"` on `MainStatusBar`:
+**Fix applied:** `Focusable="True"` added to `StatusProgressBar` in `MainWindow.xaml`.
+
+---
+
+### 3. `TabNavigation="Once"` contradicts the stated keyboard contract ✅ Fixed
+
+With `TabNavigation="Once"` and four tab stops, pressing **Tab** from inside the status bar cycled through every region before exiting — inconsistent with the documented contract ("Tab exits to the next F6 pane").
+
+**Fix applied:** Changed to `KeyboardNavigation.TabNavigation="None"` on `MainStatusBar`. Tab now exits immediately; arrow keys own internal navigation.
+
+---
+
+### 4. `ConnectionStatusText` not updated on account removal ✅ Fixed
+
+After accounts were removed, `ConnectionStatusText` would retain its last value ("N accounts connected") rather than returning to "Offline". Note: `OnlineMode` is a read-only startup flag (`--online`), not a runtime toggle, so the relevant scenarios are failed connections, sync errors, and account removal — all now handled.
+
+**Fix applied:** `ConnectionStatusText` now updated in the account-removal path in `MainViewModel.cs`.
+
+---
+
+### 5. Screen reader product names in XAML comment and USERGUIDE.md ✅ Fixed
+
+The XAML comment named JAWS and NVDA by product. `USERGUIDE.md` listed product-specific key commands for JAWS, NVDA, and Narrator. Both violate the project rule against naming specific screen reader products.
+
+**Fix applied:**
+- XAML comment reworded to: *"The StatusBar UIA control pattern enables screen readers' built-in status-bar read commands."*
+- USERGUIDE.md updated to: *"Screen readers that support reading a status bar directly can usually do so with a dedicated keyboard command — consult your screen reader's documentation for details."*
+
+---
+
+### 6. Double `AutomationProperties.Name` on `StatusBarItem` wrapper + child ✅ Fixed
+
+All four `StatusBarItem` containers had their own `AutomationProperties.Name` in addition to the name on the child element (TextBox or Button). This can cause screen readers to announce the name twice when focus moves to the child.
+
+**Fix applied:** `AutomationProperties.Name` removed from all four `StatusBarItem` wrappers. The child element names (e.g., `"Status — Ready"`, `"Connection — 2 accounts connected"`) carry the full context.
+
+---
+
+### 7. `StatusBarAccessibleName` computed in the ViewModel ✅ Fixed
+
+The property existed solely to set `AutomationProperties.Name` on the `StatusBar` element — a View concern computed in the ViewModel, with a partial method hook on `StatusText` changes.
+
+**Fix applied:** Property and `OnStatusTextChanged` removed from `MainViewModel`. Replaced with a `StringFormat` binding directly in XAML:
 ```xml
-<StatusBar x:Name="MainStatusBar"
-           KeyboardNavigation.TabNavigation="Once"
-           KeyboardNavigation.DirectionalNavigation="Contained"
-           ...>
+AutomationProperties.Name="{Binding StatusText, StringFormat='Status bar — {0}', FallbackValue='Status bar'}"
 ```
-
-All four `StatusBarItem`s have `KeyboardNavigation.IsTabStop="True"`.
-
-With `TabNavigation="Once"`, pressing **Tab** from region 1 moves focus to region 2, then 3, then 4 (if visible), then finally exits the status bar. This is the same behaviour as the Left/Right arrows — it cycles through every region before exiting.
-
-The keyboard contract documented in the planning spec and in `USERGUIDE.md` says:
-> **Tab** → move to Toolbar (next F6 pane)
-
-These are incompatible. Users (and screen reader users in particular) will press Tab expecting to leave the status bar immediately and instead get cycled through every region.
-
-**Fix:** Change to `KeyboardNavigation.TabNavigation="None"` on the `StatusBar`, which prevents Tab from entering or cycling through child elements. The custom Left/Right handler already owns internal navigation. Exiting via Tab will then fall through to the window's default focus behaviour, which (given `TabIndex` ordering) should route to the toolbar. Verify Tab exits to the correct next pane after making the change.
 
 ---
 
-### 4. `ConnectionStatusText` is not updated when the user goes offline
+## Remaining Minor Observations (Not Blocking, Not Fixed Pre-Merge)
 
-**Severity: Significant**
+### A. `StringFormat` produces a trailing em dash when `StatusText` is empty
 
-`MainViewModel.cs` updates `ConnectionStatusText` in:
-- `InitialLoadAsync` → `"Connecting…"`
-- `BackgroundSyncAsync` (start) → `"Syncing…"`
-- `BackgroundSyncAsync` (success) → `"N accounts connected"`
-- `BackgroundSyncAsync` (error) → `"Connection error"`
-- `ConnectAllAccountsAsync` (start) → `"Connecting…"`
-- `ConnectAllAccountsAsync` (finish) → `"N account(s) connected"` or `"Offline"`
+When `StatusText` is `""` (its field-initialiser default), the binding produces `"Status bar — "`. `FallbackValue` only fires on null or binding failure, not empty string. The window is brief (before `InitialLoadAsync` runs). Initialising `_statusText` to `"Ready"` instead of `string.Empty` would close the gap and give screen readers a more meaningful first read.
 
-There is no code path that resets `ConnectionStatusText` to `"Offline"` when the user manually triggers an offline-mode toggle. After a successful sync session the text says `"2 accounts connected"`, and it stays that way even after the user deliberately goes offline. The field initialiser starts at `"Offline"` but it will never return to that state through normal usage after the first successful sync.
+### B. XAML comment still says "Tab loop" (fixed in `2df1f7b`)
 
-**Fix:** Set `ConnectionStatusText = "Offline"` wherever the app transitions to offline mode (the existing toggle path in `MainViewModel`). Check that `GoOfflineModeAsync` / the equivalent command handler also sets it.
+The comment above the three-pane layout described the F6 pane ring as a "Tab loop", which was misleading after `TabNavigation="None"` was applied to the status bar. Fixed in the third commit: renamed to "F6 pane ring" with a clarifying note.
 
 ---
 
-### 5. Screen reader product names appear in XAML comments and USERGUIDE.md
+## Architecture Notes
 
-**Severity: Significant**
-
-`MainWindow.xaml`, the status bar XAML comment reads:
-```xml
-<!-- ... screen readers'
-     dedicated status-bar commands (JAWS Insert+PageDown, NVDA Insert+End) work. -->
-```
-
-`USERGUIDE.md` adds:
-> Screen readers can read the entire status bar at once with their dedicated status-bar command: **Insert+PageDown** (JAWS), **Insert+End** (NVDA), or **CapsLock+PageDown** (Narrator).
-
-`CLAUDE.md` is explicit:
-> Do not name a specific screen reader product (NVDA, JAWS, VoiceOver, Narrator, etc.) in documentation, release notes, commit messages, or UI text unless the content is specific to that product.
-
-The USERGUIDE entry is a genuine edge case — the content *is* product-specific (each product has a different key combination). However the XAML comment is implementation notes and does not need product names. Both violate the letter of the rule; the USERGUIDE entry is arguably justified on its merits, but should be discussed before merging. The XAML comment should simply be reworded.
-
-**Fix (XAML comment):** Replace with something like:
-```xml
-<!-- The StatusBar UIA control pattern enables screen readers' built-in
-     status-bar read commands. -->
-```
-
-**Fix (USERGUIDE):** Either follow the rule strictly and replace with:
-> Screen readers that support reading a status bar directly can usually do so with a dedicated keyboard command — consult your screen reader's documentation for details.
-
-…or obtain a deliberate exception to the no-product-names rule given that the key commands are product-specific. That decision should be made consciously.
-
----
-
-### 6. Both `StatusBarItem` and its child control carry `AutomationProperties.Name`
-
-**Severity: Moderate**
-
-Each region pairs a name on the `StatusBarItem` wrapper *and* on its child:
-
-```xml
-<StatusBarItem x:Name="StatusTextItem"
-               AutomationProperties.Name="Status">
-    <TextBox AutomationProperties.Name="{Binding StatusText, StringFormat='Status — {0}'}"/>
-</StatusBarItem>
-```
-
-In UIA, when the TextBox receives focus, the screen reader may announce both the containing `StatusBarItem`'s name ("Status") and the child's name ("Status — Ready"), producing a stuttered read: *"Status  Status — Ready"*. This depends on how each screen reader navigates the UIA tree, but it is a known source of double announcement.
-
-**Fix:** Remove `AutomationProperties.Name` from the `StatusBarItem` wrappers and rely entirely on the child element's name. The child's name already contains the full context (e.g., `"Status — Ready"`). Alternatively, keep the name on the child and make the `StatusBarItem`'s name an empty string via `AutomationProperties.Name=""` to suppress it from the UIA tree.
-
----
-
-### 7. `StatusBarAccessibleName` computed in the ViewModel is a mild MVVM stretch
-
-**Severity: Minor**
-
-`MainViewModel.cs`:
-```csharp
-partial void OnStatusTextChanged(string value)
-{
-    StatusBarAccessibleName = string.IsNullOrEmpty(value)
-        ? "Status bar"
-        : $"Status bar — {value}";
-}
-```
-
-This property exists solely to set `AutomationProperties.Name` on the `StatusBar` element — a View-layer concern. The ViewModel is aware of how the View will label itself. For the other regions the same information is expressed with a `StringFormat` directly in XAML:
-```xml
-AutomationProperties.Name="{Binding StatusText, StringFormat='Status — {0}'}"
-```
-
-The same approach would work for the status bar itself:
-```xml
-AutomationProperties.Name="{Binding StatusText, StringFormat='Status bar — {0}',
-                             FallbackValue='Status bar'}"
-```
-
-Removing `StatusBarAccessibleName` and `OnStatusTextChanged` from the ViewModel would clean up two properties from a class that already has many.
-
-**Note:** This is not a blocking concern — the existing pattern does not break MVVM rules — but it's worth tidying if the other issues are being fixed in the same pass.
-
----
-
-### 8. `FocusStatusBar()` always lands on region 1 regardless of F6 direction
-
-**Severity: Minor / Informational**
-
-Whether the user presses **F6** (forward) or **Shift+F6** (backward), `FocusPaneAtAsync(5)` always calls `FocusStatusBar()` which always focuses `StatusTextBox` (region 1). In practice this is consistent with how the other panes work (account list, folder list, and message list all focus their first/default item regardless of F6 direction), so it is not a regression or a rule violation. However it is worth noting because some apps (VS Code is the reference in the planning spec) do reverse the entry point on backward navigation. If that behaviour is desired in a future pass, `CycleFocusAsync` would need to pass the direction into `FocusStatusBar`.
-
-No fix required; document as a known limitation if relevant.
-
----
-
-## Items Confirmed Fine
-
-- **Removal of the old `RulesStatusItem.KeyDown` handler** and replacement with `RulesStatusButton_Click` is correct. The old handler was attached to a `Focusable="False"` element and could never fire via keyboard; the new Button approach is the right fix.
-- **`NavigateStatusBar` correctly excludes region 4 when not visible.** The visibility guard is in place and the fallback in `FocusStatusBarRegion(4)` is a safe no-op.
-- **The `StatusBarSpacerStyle` approach** (Separator with a zero-height Rectangle template) is the standard WPF idiom for a status-bar spacer and should push the right-side items correctly given the DockPanel layout inside StatusBar.
-- **The planning document** (`docs/planning/status-bar-accessibility-plan.md`) is appropriately filed in `docs/planning/` alongside the other planning documents already checked into `main`. No concern there.
-- **The `StatusBarButtonStyle`** is well-constructed: it has a `FocusVisualStyle`, keyboard-focus border, mouse-over highlight, pressed state, and transparent baseline — all the expected states for an accessible button.
-- **`ConnectionStatusText` field initialiser** (`"Offline"`) is correct for app startup before any accounts connect.
-
----
-
-## Merge Readiness
-
-| # | Issue | Severity | Must-fix before merge? |
-|---|-------|----------|------------------------|
-| 1 | ~~Tooltip references unregistered `Ctrl+Shift+L`~~ | ~~Blocking~~ | Not an issue — shortcut is registered in `MainViewModel.cs` |
-| 2 | `StatusProgressBar` likely not focusable — region 4 navigation silently fails | Blocking | Yes |
-| 3 | `TabNavigation="Once"` contradicts keyboard contract | Significant | Yes |
-| 4 | `ConnectionStatusText` not updated on offline toggle | Significant | Yes |
-| 5 | Screen reader product names in XAML comment (and USERGUIDE.md) | Significant | Yes (XAML) / Discuss (USERGUIDE) |
-| 6 | Double `AutomationProperties.Name` on container + child | Moderate | Recommended |
-| 7 | `StatusBarAccessibleName` in ViewModel | Minor | No |
-| 8 | F6 backward always enters region 1 | Minor / Info | No |
-
-**Recommended path:** Address items 1–5 (and ideally 6) before merging. Items 7–8 can be deferred to a follow-up.
+- **`TabNavigation="None"` + `KeyboardNavigation.IsTabStop="True"` on children:** With `None` on the container, the `IsTabStop` attributes on individual `StatusBarItem`s are inert for Tab navigation. They do no harm and serve as documentation of intent.
+- **F6 backward always enters region 1:** Both F6 forward and Shift+F6 backward call `FocusStatusBar()` → `FocusStatusBarRegion(1)`. Consistent with the other panes in the F6 ring. No change recommended.
