@@ -578,7 +578,7 @@
         </ToolBar>
 
         <!-- ── Three-pane layout (Outlook-style): Accounts+Folders left | Messages right ── -->
-        <!--  Tab loop: AccountList(1) → FolderList(2) → MessageList(3) → Toolbar → StatusBar → wrap -->
+        <!--  F6 pane ring: AccountList(1) → FolderList(2) → MessageList(3) → Toolbar → StatusBar → wrap -->
         <!--  Arrow keys navigate within the focused pane (TabNavigation=Once on each)      -->
         <!--  Enter triggers action; focus never changes unless user does it                 -->
         <!--  Ctrl+0 = toolbar | Ctrl+1/2/3 = jump directly to any pane                    -->
