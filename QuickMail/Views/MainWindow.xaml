@@ -672,40 +672,15 @@
                     <TreeView.Resources>
                         <HierarchicalDataTemplate DataType="{x:Type models:FolderTreeNode}"
                                                   ItemsSource="{Binding Children}">
-                            <!-- Both elements are AriaHiddenTextBlock so screen readers don't
-                                 read them separately. The TreeViewItem container carries the full
-                                 accessible name via AutomationProperties.Name → AutomationName,
-                                 which already includes the unread count (e.g. "Inbox, 519 unread"). -->
-                            <StackPanel Orientation="Horizontal">
-                                <local:AriaHiddenTextBlock TextTrimming="CharacterEllipsis">
-                                    <local:AriaHiddenTextBlock.Style>
-                                        <Style TargetType="local:AriaHiddenTextBlock">
-                                            <Setter Property="Text" Value="{Binding Label}"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsHeader}" Value="True">
-                                                    <Setter Property="FontWeight" Value="SemiBold"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </local:AriaHiddenTextBlock.Style>
-                                </local:AriaHiddenTextBlock>
-                                <!-- Unread badge: "(5)" — collapsed when empty -->
-                                <local:AriaHiddenTextBlock Margin="4,0,0,0"
-                                                           Foreground="DimGray"
-                                                           FontSize="11"
-                                                           Text="{Binding UnreadDisplay}">
-                                    <local:AriaHiddenTextBlock.Style>
-                                        <Style TargetType="local:AriaHiddenTextBlock">
-                                            <Setter Property="Visibility" Value="Visible"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding UnreadDisplay}" Value="">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </local:AriaHiddenTextBlock.Style>
-                                </local:AriaHiddenTextBlock>
-                            </StackPanel>
+                            <!-- FolderTreeItemHeader renders entirely via DrawingContext —
+                                 no UIElement children exist, so screen readers cannot traverse
+                                 into the visual content. The TreeViewItem container's
+                                 AutomationProperties.Name → AutomationName is the sole
+                                 accessible representation (e.g. "Inbox, 519 unread"). -->
+                            <local:FolderTreeItemHeader Label="{Binding Label}"
+                                                        UnreadDisplay="{Binding UnreadDisplay}"
+                                                        IsHeaderItem="{Binding IsHeader}"
+                                                        MinWidth="60"/>
                         </HierarchicalDataTemplate>
                     </TreeView.Resources>
                     <TreeView.ItemContainerStyle>
