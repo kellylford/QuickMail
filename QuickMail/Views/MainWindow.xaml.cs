@@ -1837,22 +1837,36 @@ public partial class MainWindow : Window
 
         _tutorialVm = new TutorialViewModel();
         _tutorialVm.TutorialCompleted += OnTutorialCompleted;
+        _tutorialVm.TutorialCancelled += OnTutorialCancelled;
         TutorialOverlayControl.SetViewModel(_tutorialVm);
         _tutorialVm.Start();
     }
 
     private void OnTutorialCompleted()
     {
-        if (_tutorialVm != null)
-            _tutorialVm.TutorialCompleted -= OnTutorialCompleted;
-
+        CleanupTutorial();
         var cfg = _configService.Load();
         cfg.TutorialCompleted = true;
         _configService.Save(cfg);
-
-        _tutorialVm = null;
         AccessibilityHelper.Announce(this, "Tutorial complete. You can replay it anytime from the Help menu.",
             interrupt: true, category: AnnouncementCategory.Result);
+    }
+
+    private void OnTutorialCancelled()
+    {
+        CleanupTutorial();
+        AccessibilityHelper.Announce(this, "Tutorial cancelled.",
+            interrupt: true, category: AnnouncementCategory.Result);
+    }
+
+    private void CleanupTutorial()
+    {
+        if (_tutorialVm != null)
+        {
+            _tutorialVm.TutorialCompleted -= OnTutorialCompleted;
+            _tutorialVm.TutorialCancelled -= OnTutorialCancelled;
+        }
+        _tutorialVm = null;
     }
 
     private void MenuKeyboardTutorial_Click(object sender, RoutedEventArgs e)

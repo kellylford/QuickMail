@@ -58,20 +58,16 @@ public class SmtpService : ISmtpService
         }
     }
 
-    public async Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password, CancellationToken ct = default)
+    public async Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
+        string organizerEmail, CancellationToken ct = default)
     {
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(account.SenderDisplayName, account.Username));
 
-        // Extract organizer from the ICS content to set as recipient.
-        var organizerMatch = System.Text.RegularExpressions.Regex.Match(
-            icsReplyContent, @"ORGANIZER[^:]*:mailto:([^\r\n]+)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-        if (organizerMatch.Success)
-        {
-            var orgEmail = organizerMatch.Groups[1].Value.Trim();
-            message.To.Add(MailboxAddress.Parse(orgEmail));
-        }
+        if (string.IsNullOrWhiteSpace(organizerEmail))
+            throw new ArgumentException("Organizer email is required for ICS reply.", nameof(organizerEmail));
+
+        message.To.Add(MailboxAddress.Parse(organizerEmail));
 
         message.Subject = "Calendar Response";
 

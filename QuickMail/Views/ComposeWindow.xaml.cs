@@ -454,74 +454,7 @@ public partial class ComposeWindow : Window
         if (e.Key == Key.F7)
         {
             var forward = (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
-            var text = BodyBox.Text;
-            if (string.IsNullOrEmpty(text)) return;
-
-            int start = BodyBox.CaretIndex;
-            int foundIndex = -1;
-
-            if (forward)
-            {
-                // Search forward from caret to end
-                for (int i = start; i < text.Length; i++)
-                {
-                    if (BodyBox.GetSpellingError(i) != null)
-                    {
-                        foundIndex = i;
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                // Search backward from caret-1 to beginning
-                for (int i = Math.Min(start - 1, text.Length - 1); i >= 0; i--)
-                {
-                    if (BodyBox.GetSpellingError(i) != null)
-                    {
-                        foundIndex = i;
-                        break;
-                    }
-                }
-            }
-
-            if (foundIndex >= 0)
-            {
-                // Walk to word boundaries so the whole misspelled word is selected.
-                int wordStart = foundIndex;
-                while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1]))
-                    wordStart--;
-                int wordEnd = foundIndex;
-                while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
-                    wordEnd++;
-
-                BodyBox.SelectionStart  = wordStart;
-                BodyBox.SelectionLength = wordEnd - wordStart;
-                BodyBox.Focus();
-
-                _lastAnnouncedSpellingIndex = wordStart;
-
-                var word        = text.Substring(wordStart, wordEnd - wordStart);
-                var suggestions = BodyBox.GetSpellingError(foundIndex)
-                    ?.Suggestions.Take(3).ToList() ?? new System.Collections.Generic.List<string>();
-
-                // Track the current spelling error so Alt+1/2/3 can replace it.
-                _currentSpellingWordStart = wordStart;
-                _currentSpellingWordEnd = wordEnd;
-                _currentSpellingSuggestions = suggestions;
-
-                var announce = BuildSpellingAnnouncement(word, suggestions);
-
-                AccessibilityHelper.Announce(this, announce,
-                    category: AnnouncementCategory.Result);
-            }
-            else
-            {
-                ClearSpellingContext();
-                AccessibilityHelper.Announce(this, "No more misspellings found.",
-                    category: AnnouncementCategory.Result);
-            }
-
+            NavigateSpellingError(forward);
             e.Handled = true;
         }
     }

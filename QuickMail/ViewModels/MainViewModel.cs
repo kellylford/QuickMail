@@ -3815,7 +3815,7 @@ public partial class MainViewModel : ObservableObject
             var icsContent = invite.GenerateReply(attendeeEmail, attendeeName, partStat);
 
             var password = _credentials.GetPassword(account.Id);
-            await _smtp.SendIcsReplyAsync(icsContent, account, password);
+            await _smtp.SendIcsReplyAsync(icsContent, account, password, invite.Organizer ?? "");
 
             var eventTitle = invite.Summary ?? "calendar event";
             Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);

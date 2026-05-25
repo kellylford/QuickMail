@@ -31,8 +31,11 @@ public partial class TutorialViewModel : ObservableObject
     /// <summary>1-based step number for display.</summary>
     public int CurrentStepNumber => CurrentStepIndex + 1;
 
-    /// <summary>Raised when the user completes all steps or cancels.</summary>
+    /// <summary>Raised when the user completes all six steps.</summary>
     public event Action? TutorialCompleted;
+
+    /// <summary>Raised when the user cancels the tutorial early (Escape).</summary>
+    public event Action? TutorialCancelled;
 
     public TutorialViewModel()
     {
@@ -126,7 +129,7 @@ public partial class TutorialViewModel : ObservableObject
     public void Cancel()
     {
         IsActive = false;
-        TutorialCompleted?.Invoke();
+        TutorialCancelled?.Invoke();
     }
 
     /// <summary>Starts the tutorial from step 0.</summary>
@@ -135,5 +138,6 @@ public partial class TutorialViewModel : ObservableObject
         CurrentStepIndex = 0;
         IsActive = true;
         OnPropertyChanged(nameof(CurrentStep));
+        OnPropertyChanged(nameof(CurrentStepNumber));
     }
 }

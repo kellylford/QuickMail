@@ -108,8 +108,8 @@ public class TutorialViewModelTests
         Assert.Equal(5, vm.CurrentStepIndex); // step 6 (0-based)
         Assert.False(completed);
 
-        // Step 6: Escape — step 6 expects Escape, but Escape always cancels first.
-        // So pressing Escape at step 6 cancels the tutorial and fires TutorialCompleted.
+        // Step 6: Escape — step 6 expects Escape, so Advance() fires (not Cancel()).
+        // The tutorial completes normally and fires TutorialCompleted.
         bool handled = vm.CheckKeyPress(Key.Escape, ModifierKeys.None);
         Assert.True(handled);
         Assert.False(vm.IsActive);
@@ -122,18 +122,18 @@ public class TutorialViewModelTests
         // Test escape at step 1 (index 0)
         var vm = new TutorialViewModel();
         vm.Start();
-        bool completed1 = false;
-        vm.TutorialCompleted += () => completed1 = true;
+        bool cancelled1 = false;
+        vm.TutorialCancelled += () => cancelled1 = true;
 
         vm.CheckKeyPress(Key.Escape, ModifierKeys.None);
         Assert.False(vm.IsActive);
-        Assert.True(completed1);
+        Assert.True(cancelled1);
 
         // Test escape at step 3 (index 2) — fresh VM to avoid stale subscriptions
         var vm2 = new TutorialViewModel();
         vm2.Start();
-        bool completed2 = false;
-        vm2.TutorialCompleted += () => completed2 = true;
+        bool cancelled2 = false;
+        vm2.TutorialCancelled += () => cancelled2 = true;
 
         vm2.CheckKeyPress(Key.F6, ModifierKeys.None);       // step 1 → 2
         vm2.CheckKeyPress(Key.D1, ModifierKeys.Control);     // step 2 → 3
@@ -141,7 +141,7 @@ public class TutorialViewModelTests
 
         vm2.CheckKeyPress(Key.Escape, ModifierKeys.None);
         Assert.False(vm2.IsActive);
-        Assert.True(completed2);
+        Assert.True(cancelled2);
     }
 
     [Fact]
@@ -152,19 +152,23 @@ public class TutorialViewModelTests
         vm.Start();
 
         bool completed = false;
+        bool cancelled = false;
         vm.TutorialCompleted += () => completed = true;
+        vm.TutorialCancelled += () => cancelled = true;
 
         // Ctrl+Escape at step 1 (F6) — wrong key, should not cancel
         bool handled = vm.CheckKeyPress(Key.Escape, ModifierKeys.Control);
         Assert.False(handled);
         Assert.True(vm.IsActive);
         Assert.False(completed);
+        Assert.False(cancelled);
 
         // Shift+Escape at step 1 — wrong key, should not cancel
         handled = vm.CheckKeyPress(Key.Escape, ModifierKeys.Shift);
         Assert.False(handled);
         Assert.True(vm.IsActive);
         Assert.False(completed);
+        Assert.False(cancelled);
     }
 
     [Fact]
@@ -226,33 +230,33 @@ public class TutorialViewModelTests
     }
 
     [Fact]
-    public void Cancel_FiresTutorialCompleted()
+    public void Cancel_FiresTutorialCancelled()
     {
         var vm = new TutorialViewModel();
         vm.Start();
 
-        bool completed = false;
-        vm.TutorialCompleted += () => completed = true;
+        bool cancelled = false;
+        vm.TutorialCancelled += () => cancelled = true;
 
         vm.Cancel();
 
         Assert.False(vm.IsActive);
-        Assert.True(completed);
+        Assert.True(cancelled);
     }
 
     [Fact]
-    public void Cancel_WhenNotActive_StillFiresTutorialCompleted()
+    public void Cancel_WhenNotActive_StillFiresTutorialCancelled()
     {
         var vm = new TutorialViewModel();
         // Not started
 
-        bool completed = false;
-        vm.TutorialCompleted += () => completed = true;
+        bool cancelled = false;
+        vm.TutorialCancelled += () => cancelled = true;
 
         vm.Cancel();
 
         Assert.False(vm.IsActive);
-        Assert.True(completed);
+        Assert.True(cancelled);
     }
 
     [Fact]

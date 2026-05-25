@@ -238,6 +238,12 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
 | F1 | `help.userGuide` | Open User Guide |
 | *(unassigned)* | `settings.toggleCustomAnnouncements` | Toggle Custom Announcements |
+| *(unassigned)* | `mail.acceptInvite` | Accept Invitation |
+| *(unassigned)* | `mail.declineInvite` | Decline Invitation |
+| *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
+| *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
+
+**Compose window shortcuts** (Alt+S, Ctrl+S, Ctrl+Shift+A, F7, Shift+F7, Alt+Y, Alt+U, Alt+M, Escape) are registered in a private `CommandRegistry` inside `ComposeWindow.xaml.cs`. They appear in the compose window's command palette (`Ctrl+Shift+P`) but are **not** user-customisable via the Settings dialog. The main window's `CommandRegistry` and `hotkeys.json` do not include compose commands.
 
 
 ## Dependencies

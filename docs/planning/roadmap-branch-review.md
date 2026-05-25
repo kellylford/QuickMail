@@ -4,6 +4,29 @@
 **Reviewer:** Claude Code (claude-sonnet-4-6)  
 **Scope:** All 54 changed files — 5,750 insertions, 291 deletions
 
+## Post-Review Fixes Applied (2026-05-25)
+
+The following issues from this review have been addressed:
+
+| # | Status | Title |
+|---|---|---|
+| BUG-1 | ✅ Fixed | `Cancel()` now fires `TutorialCancelled` (new event) instead of `TutorialCompleted`. `MainWindow` handles them separately: completion saves `TutorialCompleted = true` and announces "Tutorial complete"; cancellation announces "Tutorial cancelled" without marking the tutorial done. |
+| BUG-2 | ✅ Fixed | `SendIcsReplyAsync` now takes an explicit `organizerEmail` parameter. `MainViewModel.SendIcsReply` passes `invite.Organizer ?? ""`. The regex extraction from ICS content is removed. |
+| QUALITY-1 | ✅ Fixed | F7 handler in `BodyBox_PreviewKeyDown` now delegates to `NavigateSpellingError(forward)`, eliminating ~60 lines of duplicate code. |
+| QUALITY-2 | ✅ Fixed | Removed unused `using System.ComponentModel`, `using System.Windows`, and `using CommunityToolkit.Mvvm.Input` from `TemplatePickerViewModel.cs`. |
+| QUALITY-3 | ✅ Fixed | Replaced `global::QuickMail.Models.ViewMode` with `Models.ViewMode` in `ConfigModel.cs` (the `ViewMode` name conflicts with the string property, so namespace qualification is still needed but is now minimal). |
+| QUALITY-5 | ✅ Fixed | `TutorialOverlay.SetViewModel` now stores the handler in a field and unsubscribes before re-subscribing, preventing event subscription leaks on restart. |
+| QUALITY-7 | ✅ Fixed | Added `LIMITATION:` comment to `IcsModel.ParseIcsDateTime` documenting that TZID parameters are ignored. |
+| QUALITY-8 | ✅ Fixed | `TutorialViewModel.Start()` now notifies `CurrentStepNumber` in addition to `CurrentStep`. |
+| DOC-1 | ✅ Fixed | Added missing entries to CLAUDE.md shortcut table: `mail.acceptInvite`, `mail.declineInvite`, `mail.tentativeInvite`, `help.keyboardTutorial`. Added note about compose window's private `CommandRegistry`. |
+
+**Not addressed (deferred):**
+- BUG-3 (false positive test) — low priority, no production impact
+- DESIGN-1 through DESIGN-4 — design observations, not bugs
+- QUALITY-4, QUALITY-6 — very low priority
+- TEST-1 through TEST-5 — test coverage gaps
+- DOC-2 — addressed via QUALITY-7 comment
+
 ## Summary
 
 **Build:** ✅ Clean (0 warnings, 0 errors)  

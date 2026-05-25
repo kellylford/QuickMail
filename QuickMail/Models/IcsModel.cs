@@ -237,6 +237,12 @@ public class IcsModel
             : value;
     }
 
+    /// <summary>
+    /// Parses an ICS datetime value. Handles both UTC (ending in Z) and local time.
+    /// LIMITATION: TZID parameters are ignored; times without a 'Z' suffix are
+    /// treated as local machine time, which may be incorrect for attendees in
+    /// different time zones.
+    /// </summary>
     private static DateTime? ParseIcsDateTime(string value)
     {
         // Formats: 20260101T120000Z, 20260101T120000, 20260101

@@ -8,6 +8,7 @@ namespace QuickMail.Views;
 public partial class TutorialOverlay : UserControl
 {
     private TutorialViewModel? _viewModel;
+    private System.ComponentModel.PropertyChangedEventHandler? _propertyChangedHandler;
 
     public TutorialOverlay()
     {
@@ -17,10 +18,13 @@ public partial class TutorialOverlay : UserControl
 
     public void SetViewModel(TutorialViewModel vm)
     {
+        if (_viewModel != null && _propertyChangedHandler != null)
+            _viewModel.PropertyChanged -= _propertyChangedHandler;
+
         _viewModel = vm;
         DataContext = vm;
 
-        vm.PropertyChanged += (_, e) =>
+        _propertyChangedHandler = (_, e) =>
         {
             if (e.PropertyName == nameof(TutorialViewModel.CurrentStep) && vm.IsActive)
             {
@@ -32,6 +36,7 @@ public partial class TutorialOverlay : UserControl
                 }
             }
         };
+        vm.PropertyChanged += _propertyChangedHandler;
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
