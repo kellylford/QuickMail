@@ -268,17 +268,47 @@
                           Command="{Binding EmptyTrashCommand}"
                           InputGestureText="Ctrl+Shift+E"/>
                 <Separator/>
+                <!-- Keep IsEnabled off these three items so they remain keyboard-navigable
+                     per Windows convention (dimmed items are still focusable). Visual dimming
+                     is applied via DataTrigger; the Click handlers guard against invalid state. -->
                 <MenuItem Header="_Move to Folder…"
-                          IsEnabled="{Binding HasSelectedMessage}"
-                          Click="MenuMoveToFolder_Click"/>
+                          Click="MenuMoveToFolder_Click">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasSelectedMessage}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
                 <MenuItem Header="_Copy to Folder…"
-                          IsEnabled="{Binding HasSelectedMessage}"
-                          Click="MenuCopyToFolder_Click"/>
+                          Click="MenuCopyToFolder_Click">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasSelectedMessage}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="Grab _Addresses from Message"
-                          IsEnabled="{Binding IsMessageOpen}"
                           Click="MenuGrabAddresses_Click"
-                          InputGestureText="Ctrl+Shift+G"/>
+                          InputGestureText="Ctrl+Shift+G">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsMessageOpen}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
                 <Separator/>
                 <MenuItem Header="_Rules…"
                           Command="{Binding OpenRulesManagerCommand}"
