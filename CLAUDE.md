@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 # QuickMail
 
@@ -19,6 +19,8 @@ build.bat clean
 
 Or directly: `dotnet run --project QuickMail`.
 
+Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing.
+
 ## Tests
 
 xUnit 2.9.3 with `Xunit.StaFact` for WPF STA-thread tests.
@@ -28,46 +30,62 @@ dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --filter "FullyQualifiedName~ClassName"
 ```
 
-Test types in `QuickMail.Tests/`:
+All tests use `StubServices.cs` stub implementations to avoid real network and credential calls. Key test classes in `QuickMail.Tests/`:
 
 - **ViewModelConstructionTests** — VM instantiation with stub services (catches init crashes)
 - **XamlParseTests** — XAML loads without `XamlParseException` (requires STA thread via `[StaFact]`)
 - **LocalStoreServiceTests** — SQLite round-trip tests
 - **SettingsViewModelTests** — settings persistence and hotkey binding logic
-
-- **ViewModelConstructionTests**: VM instantiation with stub services.
-- **XamlParseTests**: XAML loads without `XamlParseException` (STA thread).
-- **LocalStoreServiceTests**: SQLite round-trip tests.
-- **SettingsViewModelTests**: hotkey/settings behavior.
-
-All tests use `StubServices.cs` stub implementations to avoid real network and credential calls.
+- **CommandRegistryTests** / **ViewManagerHotkeyIntegrationTests** — command registration and hotkey override
+- **RuleServiceTests** / **RulesManagerViewModelTests** — mail rule matching and actions
+- **ComposeViewModelReplyTests** / **ComposeViewModelTemplateTests** — compose VM behavior
+- **ConversationBuilderTests** / **SenderGroupBuilderTests** — grouping utilities
+- **SavedViewsTests** / **ViewManagerViewModelTests** — saved-view persistence and management
+- **TemplateServiceTests** / **TemplatePickerViewModelTests** — message template CRUD
+- **ProfileContextTests** — profile directory validation
+- **IcsModelTests**, **MessageFilterTests**, **TutorialViewModelTests**, **SessionFeaturesTests**, **BatchObservableCollectionTests**
 
 ## Architecture
 
 ### Service Layer
 
 **App.xaml.cs** is the manual DI composition root — no container. Services are wired in `OnStartup` in dependency order:
-`AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `SyncService` → `CommandRegistry` → `MainViewModel` → `MainWindow`. Pass `/debug` on startup to enable verbose file logging.
+`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
+
+Every service has a matching interface in `Services/I*.cs`, making them fully substitutable in tests.
 
 **ImapService** uses MailKit and leases `ImapClient` instances from a bounded per-account pool. Foreground operations (message open, attachment download, mutating user actions) use foreground leases. Background work (sync, UID checks, polling, preview fetches, prefetch) uses background leases capped below the full pool so sync cannot starve interactive work. `MaxImapConnectionsPerAccount` defaults to 6 and is clamped to 1-15.
 
-**LocalStoreService** (SQLite via `Microsoft.Data.Sqlite`) caches messages in `%APPDATA%\QuickMail\mail.db` with WAL journaling. It stores `MessageSummary` rows for list panes and `MessageDetail` rows for body/attachment metadata, and handles column-addition migrations at startup.
+**LocalStoreService** (SQLite via `Microsoft.Data.Sqlite`) caches messages in `mail.db` with WAL journaling. It stores `MessageSummary` rows for list panes and `MessageDetail` rows for body/attachment metadata, and handles column-addition migrations at startup. Schema version is tracked via `PRAGMA user_version` so data migrations run exactly once.
 
-**SyncService** runs background IMAP sync. It raises `FolderSynced` and `MessagesRemoved` events; `MainViewModel` subscribes and merges new data into observable collections. UI is populated from the SQLite cache immediately, then background sync fills gaps.
+**SyncService** runs background IMAP sync. It raises `FolderSynced`, `MessagesRemoved`, and `RulesApplied` events; `MainViewModel` subscribes and merges new data into observable collections. UI is populated from the SQLite cache immediately, then background sync fills gaps.
 
 **OAuthService** wraps MSAL (`Microsoft.Identity.Client`) for Microsoft 365 / Outlook OAuth2. Token refresh is handled automatically; passwords for OAuth accounts are not stored in Credential Manager.
 
-**ConfigService** reads/writes `%APPDATA%\QuickMail\config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
+**ConfigService** reads/writes `config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
 
-**ContactService** stores the address book in `%APPDATA%\QuickMail\contacts.json`. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
+**ContactService** stores the address book in `contacts.json`. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
+
+**RuleService** loads/saves mail rules from `rules.json`. Each `MailRule` has AND-combined conditions (FromContains, ToContains, SubjectContains, BodyContains, MustHaveAttachments) and one action (MarkAsRead, MarkAsUnread, MoveToFolder, Delete). `ApplyRulesAsync` is called by `SyncService` on incoming messages; `ApplyRulesToExistingAsync` runs on demand against the full cache. Rules can be scoped to one account via `AccountId` (null = all accounts). File writes use an atomic temp-then-rename pattern.
+
+**ViewService** persists `SavedView` objects to `views.json`. A `SavedView` bundles one or more folders with a view mode, filter, sort order, optional `Hotkey` gesture string, `IsDefault` flag, and optional `DaysOfMail` limit. File is written atomically.
+
+**TemplateService** persists `MessageTemplate` objects to `templates.json`. Thread-safe via `SemaphoreSlim`; writes use atomic temp-then-rename. Templates are ordered alphabetically by title on load.
 
 **CommandRegistry** holds all `CommandDefinition` instances (id, category, title, default gesture, execute action). Commands are registered in `MainWindow`'s constructor. `FindByGesture()` checks user overrides from `hotkeys.json` first, then falls back to defaults. The command palette (`Ctrl+P`) uses `CommandPaletteViewModel` to display and invoke them.
+
+**ProfileContext** resolves the data directory for the process. All services that write files derive their paths from it. Supports `--profileDir <path>` CLI override for alternate profiles (e.g. during testing). All file-writing services take `ProfileContext` in their constructor — do not accept raw `string` paths.
 
 **Static utilities** (no DI required):
 - `ConversationBuilder` — groups messages by normalized subject (strips all leading Re:/Fwd: chains); used for Conversations view mode
 - `SenderGroupBuilder` — groups messages by From or To; used for From/To view modes
 - `MimeMessageBuilder` — builds a `MimeMessage` from `ComposeModel` + `AccountModel`; shared by `SmtpService` and `ImapService` (draft saving)
 - `AddressParser` — splits comma/semicolon-delimited address strings into `MailboxAddress` objects
+- `FolderTreeBuilder` — builds `FolderTreeNode` hierarchy from a flat `MailFolderModel` list; auto-detects IMAP path separator (`.` or `/`)
+
+### Helpers
+
+**`BatchObservableCollection<T>`** (`Helpers/BatchObservableCollection.cs`) — subclass of `ObservableCollection<T>` that suppresses individual `CollectionChanged` notifications during bulk mutations and fires a single `Reset` when the batch closes. This prevents screen readers from re-announcing the focused item after every insert during background sync. Always use `BeginBatchScope()` in a `using` block (auto-closes on exception); the manual `BeginBatch()` / `EndBatch()` pair is available for explicit `try/finally` sites. Nesting is safe — the outermost scope fires the reset.
 
 ### ViewModel State
 
@@ -77,6 +95,7 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 - Version stamps discard stale async results after folder/message/view changes.
 - View modes: Messages, Conversations, From, and To.
 - `OnFolderSynced` and `OnMessagesRemoved` must use key-based lookups, not repeated `Messages.Any()` / `FirstOrDefault()` scans over large All Mail views.
+- `_suppressFolderSyncUpdates` silences sync events during startup; `_suppressFilterRebuild` prevents stale filter application during folder transitions.
 
 ### Virtual Folders
 
@@ -99,7 +118,7 @@ Trash, Junk, Sent, and Drafts are excluded from `\x00AllMail` via `folder.Exclud
 - **Heavy HTML rendering**: build reading-pane HTML off the UI thread; large/table-heavy messages use simplified reader mode before `NavigateToString`.
 - **Plain-text links**: render http/https/mailto text as links, and open clicked links in the default browser rather than inside the reading pane.
 - **Folder picker**: `FolderPickerWindow` is a flat virtualized list. It opens with focus on the folder list; `/` (forward slash) moves focus to search.
-- **Logging**: `LogService` appends to `%APPDATA%\QuickMail\quickmail.log`; `LogService.Debug()` writes only when `/debug` is present. Avoid logging credentials or unnecessary PII.
+- **Logging**: `LogService` appends to `quickmail.log`; `LogService.Debug()` writes only when `/debug` is present. Avoid logging credentials or unnecessary PII.
 - **Inclusive language in documentation and UI text**: Use verbs like "activate", "select", "choose", or "press" instead of "click".
 - **Screen reader references**: Do not name a specific screen reader product (NVDA, JAWS, VoiceOver, Narrator, etc.) in documentation, release notes, commit messages, or UI text unless the content is specific to that product. Use the generic term "screen readers" instead.
 - **Programmatic screen reader announcements**: All custom announcements must go through `AccessibilityHelper.Announce()`. Never call `RaiseNotificationEvent` directly. Every call must pass a `category` argument — choose the most specific one:
