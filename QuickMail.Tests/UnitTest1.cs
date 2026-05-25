@@ -25,27 +25,27 @@ public class ViewModelConstructionTests
 {
     private static (StubImapService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
-        StubCommandRegistry registry, StubContactService contacts)
+        StubCommandRegistry registry, StubContactService contacts, StubTemplateService templates)
         MakeServices()
     {
         return (new StubImapService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
-            new StubCommandRegistry(), new StubContactService());
+            new StubCommandRegistry(), new StubContactService(), new StubTemplateService());
     }
 
     [Fact]
     public void MainViewModel_ConstructsWithoutException()
     {
-        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService());
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
         Assert.NotNull(vm);
     }
 
     [Fact]
     public void MainViewModel_LoadAccountList_DoesNotThrow()
     {
-        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService());
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
         vm.LoadAccountList(); // must not throw
     }
 
@@ -59,18 +59,111 @@ public class ViewModelConstructionTests
     [Fact]
     public void ComposeViewModel_ConstructsWithoutException()
     {
-        var (imap, accounts, creds, _, _, _, _, _) = MakeServices();
-        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap);
+        var (imap, accounts, creds, _, _, _, _, _, templates) = MakeServices();
+        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap, templates);
+        Assert.NotNull(vm);
+    }
+
+    [Fact]
+    public void TemplatePickerViewModel_ConstructsWithoutException()
+    {
+        var (_, _, _, _, _, _, _, _, templates) = MakeServices();
+        var vm = new TemplatePickerViewModel(templates);
         Assert.NotNull(vm);
     }
 
     [Fact]
     public void AccountManagerViewModel_ConstructsWithoutException()
     {
-        var (imap, accounts, creds, _, _, _, _, _) = MakeServices();
-        var (_, _, _, store2, _, config2, _, _) = MakeServices();
+        var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
+        var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
         var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2);
         Assert.NotNull(vm);
+    }
+
+    [Fact]
+    public void TutorialViewModel_ConstructsWithoutException()
+    {
+        var vm = new TutorialViewModel();
+        Assert.NotNull(vm);
+        Assert.Equal(6, vm.Steps.Count);
+        Assert.False(vm.IsActive);
+    }
+
+    // ── Calendar invite tests ───────────────────────────────────────────────────
+
+    [Fact]
+    public void MainViewModel_HasCalendarInvite_IsFalseByDefault()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.False(vm.HasCalendarInvite);
+    }
+
+    [Fact]
+    public void MainViewModel_BuildEventCardHtml_ReturnsEmptyWhenNoInvite()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        var html = vm.BuildEventCardHtml();
+
+        Assert.Equal(string.Empty, html);
+    }
+
+    [Fact]
+    public void MainViewModel_AcceptInviteCommand_Exists()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.NotNull(vm.AcceptInviteCommand);
+        Assert.True(vm.AcceptInviteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void MainViewModel_DeclineInviteCommand_Exists()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.NotNull(vm.DeclineInviteCommand);
+        Assert.True(vm.DeclineInviteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void MainViewModel_TentativeInviteCommand_Exists()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.NotNull(vm.TentativeInviteCommand);
+        Assert.True(vm.TentativeInviteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void MainViewModel_InviteCommandsRegisteredInRegistry()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
+        // MainViewModel constructor calls RegisterCommands which registers invite commands
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        var acceptCmd = registry.FindById("mail.acceptInvite");
+        var declineCmd = registry.FindById("mail.declineInvite");
+        var tentativeCmd = registry.FindById("mail.tentativeInvite");
+
+        Assert.NotNull(acceptCmd);
+        Assert.Equal("Accept Invitation", acceptCmd!.Title);
+        Assert.Equal("Mail", acceptCmd.Category);
+
+        Assert.NotNull(declineCmd);
+        Assert.Equal("Decline Invitation", declineCmd!.Title);
+        Assert.Equal("Mail", declineCmd.Category);
+
+        Assert.NotNull(tentativeCmd);
+        Assert.Equal("Tentatively Accept Invitation", tentativeCmd!.Title);
+        Assert.Equal("Mail", tentativeCmd.Category);
     }
 }
 
@@ -124,11 +217,11 @@ public class XamlParseTests
     public void MainWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (imap, accounts, creds, store, sync, config, registry, contacts) = MakeServices();
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService());
+        var (imap, accounts, creds, store, sync, config, registry, contacts, templates) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
         // Constructing MainWindow triggers InitializeComponent() which is the real XAML parse.
         var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
-            new StubOAuthService(), registry, contacts, config, store, new StubViewService(), new StubRuleService());
+            new StubOAuthService(), registry, contacts, config, store, new StubViewService(), new StubRuleService(), templates);
         Assert.NotNull(window);
         window.Close();
     }
@@ -137,9 +230,9 @@ public class XamlParseTests
     public void ComposeWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (imap, accounts, creds, _, _, _, _, contacts) = MakeServices();
-        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap);
-        var window = new ComposeWindow(vm, contacts);
+        var (imap, accounts, creds, _, _, config, _, contacts, templates) = MakeServices();
+        var vm = new ComposeViewModel(new StubSmtpService(), accounts, creds, imap, templates);
+        var window = new ComposeWindow(vm, contacts, templates, config);
         Assert.NotNull(window);
         window.Close();
     }
@@ -148,8 +241,8 @@ public class XamlParseTests
     public void AccountManagerDialog_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (imap, accounts, creds, _, _, _, _, _) = MakeServices();
-        var (_, _, _, store2, _, config2, _, _) = MakeServices();
+        var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
+        var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
         var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2);
         var window = new AccountManagerDialog(vm);
         Assert.NotNull(window);
@@ -160,7 +253,7 @@ public class XamlParseTests
     public void AddressBookWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (_, _, _, _, _, _, _, contacts) = MakeServices();
+        var (_, _, _, _, _, _, _, contacts, _) = MakeServices();
         var vm = new AddressBookViewModel(contacts);
         var window = new AddressBookWindow(vm);
         Assert.NotNull(window);
@@ -201,7 +294,7 @@ public class XamlParseTests
     public void ViewManagerDialog_XamlParsesWithoutException()
     {
         EnsureApplication();
-        var (_, _, _, _, _, config, registry, _) = MakeServices();
+        var (_, _, _, _, _, config, registry, _, _) = MakeServices();
         var vm = new ViewManagerViewModel(
             new StubViewService(),
             config,
@@ -217,14 +310,33 @@ public class XamlParseTests
         window.Close();
     }
 
+    [StaFact]
+    public void TutorialOverlay_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var overlay = new TutorialOverlay();
+        Assert.NotNull(overlay);
+    }
+
+    [StaFact]
+    public void TemplatePickerWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var (_, _, _, _, _, _, _, _, templates) = MakeServices();
+        var vm = new TemplatePickerViewModel(templates);
+        var window = new TemplatePickerWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
     private static (StubImapService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
-        StubCommandRegistry registry, StubContactService contacts)
+        StubCommandRegistry registry, StubContactService contacts, StubTemplateService templates)
         MakeServices()
     {
         return (new StubImapService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
-            new StubCommandRegistry(), new StubContactService());
+            new StubCommandRegistry(), new StubContactService(), new StubTemplateService());
     }
 }
 

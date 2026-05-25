@@ -568,7 +568,19 @@ Common actions available through context menus:
 
 ### Spell check
 
-The message body has spell checking enabled. Misspelled words are underlined as you type. Right-click a word (or press **Shift+F10**) for suggested corrections.
+The message body has spell checking enabled. Misspelled words are underlined with a red squiggle as you type.
+
+**Navigating errors:** Press **F7** to jump to the next misspelled word; press **Shift+F7** to go back to the previous one. When you land on a misspelling, QuickMail selects the word and announces it through your screen reader.
+
+**Inline announcements:** As you move through the message body with arrow keys, QuickMail automatically detects when the caret enters a misspelled word and announces it. You don't need to press F7 — just navigate normally and you'll hear about errors as you encounter them.
+
+**Quick replacement:** When a misspelling is announced, press **Alt+1**, **Alt+2**, or **Alt+3** to replace the word with the first, second, or third suggestion. QuickMail announces "Replaced with [word]." and moves on. This lets you correct errors without opening a context menu.
+
+**Context menu:** Right-click a misspelled word (or press **Shift+F10**) to see the full list of suggestions and choose one manually.
+
+**Command palette:** Press **Ctrl+Shift+P** in the compose window and type "misspelling" to find **Next Misspelling** and **Previous Misspelling** commands.
+
+**Settings:** Open **Tools → Settings → Screen Reader Announcements** and check or uncheck **Announce spelling suggestions** to control whether suggestions are spoken. When off, only the misspelled word is announced — useful for experienced users who know the Alt+number workflow and prefer less speech.
 
 ### Reply, Reply All, and Forward
 
@@ -590,6 +602,11 @@ These are also available as buttons in the toolbar.
 | Ctrl+S | Save as draft |
 | Alt+U | Jump to the Subject field |
 | Alt+M | Jump to the From (account) field |
+| Alt+Y | Jump to the message body |
+| F7 | Jump to next misspelling |
+| Shift+F7 | Jump to previous misspelling |
+| Alt+1/2/3 | Replace misspelling with 1st/2nd/3rd suggestion |
+| Ctrl+Shift+P | Open command palette |
 | Ctrl+Shift+A | Add file attachments |
 | Ctrl+V | Paste files from clipboard as attachments |
 | Delete (in attachment list) | Remove selected attachment |

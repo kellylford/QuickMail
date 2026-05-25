@@ -55,6 +55,14 @@ public class ConfigModel
     /// <summary>Announce action results (search counts, move/delete confirmations).</summary>
     public bool AnnounceResults { get; set; } = true;
 
+    /// <summary>Announce spelling suggestions when navigating into a misspelled word.</summary>
+    public bool AnnounceSpellingSuggestions { get; set; } = true;
+
+    // ── Tutorial ──────────────────────────────────────────────────────────────────
+
+    /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
+    public bool TutorialCompleted { get; set; } = false;
+
     // ── Custom hotkey overrides ──────────────────────────────────────────────────
 
     /// <summary>User-defined keyboard shortcut overrides, stored in hotkeys.json.</summary>
@@ -76,6 +84,48 @@ public class ConfigModel
             return ovr.PreviewLines.Value;
         return PreviewLines;
     }
+
+    // ── ViewMode / Sort serialization helpers ─────────────────────────────────────
+
+    /// <summary>Converts a config-string ViewMode to the enum (case-insensitive).</summary>
+    public static Models.ViewMode ParseViewMode(string? s) => (s?.ToLowerInvariant()) switch
+    {
+        "conversations" => Models.ViewMode.Conversations,
+        "from"          => Models.ViewMode.From,
+        "to"            => Models.ViewMode.To,
+        _               => Models.ViewMode.Messages,
+    };
+
+    /// <summary>Converts a ViewMode enum to its config-string representation.</summary>
+    public static string ToConfigString(Models.ViewMode mode) => mode switch
+    {
+        Models.ViewMode.Conversations => "conversations",
+        Models.ViewMode.From          => "from",
+        Models.ViewMode.To            => "to",
+        _                             => "messages",
+    };
+
+    /// <summary>Converts a config-string Sort to the enum (case-insensitive).</summary>
+    public static MessageSort ParseSort(string? s) => (s?.ToLowerInvariant()) switch
+    {
+        "dateasc"   => MessageSort.DateAscending,
+        "alphaasc"  => MessageSort.AlphaAscending,
+        "alphadesc" => MessageSort.AlphaDescending,
+        "countdesc" => MessageSort.CountDescending,
+        "countasc"  => MessageSort.CountAscending,
+        _           => MessageSort.DateDescending,
+    };
+
+    /// <summary>Converts a MessageSort enum to its config-string representation.</summary>
+    public static string ToConfigString(MessageSort sort) => sort switch
+    {
+        MessageSort.DateAscending   => "dateAsc",
+        MessageSort.AlphaAscending  => "alphaAsc",
+        MessageSort.AlphaDescending => "alphaDesc",
+        MessageSort.CountDescending => "countDesc",
+        MessageSort.CountAscending  => "countAsc",
+        _                           => "dateDesc",
+    };
 }
 
 /// <summary>Per-account configuration overrides. Only set fields that differ from global defaults.</summary>

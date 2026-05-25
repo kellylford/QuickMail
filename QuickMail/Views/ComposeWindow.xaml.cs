@@ -16,15 +16,32 @@ public partial class ComposeWindow : Window
 {
     private readonly ComposeViewModel   _vm;
     private readonly IContactService    _contactService;
+    private readonly ITemplateService   _templateService;
+    private readonly IConfigService     _configService;
+    private readonly CommandRegistry    _registry = new();
     private TextBox? _activeAddressBox;
     private CancellationTokenSource? _autocompleteCts;
+    private int _lastAnnouncedSpellingIndex = -1;
 
-    public ComposeWindow(ComposeViewModel vm, IContactService contactService)
+    // Track the current spelling error so Alt+1/2/3 can replace it with a suggestion.
+    private int _currentSpellingWordStart = -1;
+    private int _currentSpellingWordEnd = -1;
+    private System.Collections.Generic.List<string>? _currentSpellingSuggestions;
+
+    // Suppress spelling announcements during programmatic text changes (e.g. Alt+1 replacement).
+    private bool _suppressSpellingAnnouncement;
+
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService)
     {
         _vm = vm;
         _contactService = contactService;
+        _templateService = templateService;
+        _configService = configService;
         InitializeComponent();
         DataContext = vm;
+
+        // ── Compose command palette ──────────────────────────────────────────────
+        RegisterComposeCommands();
 
         vm.PropertyChanged += (_, e) =>
         {
@@ -37,6 +54,16 @@ public partial class ComposeWindow : Window
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
+
+        // Wire the template picker so the VM stays out of System.Windows.
+        vm.InsertTemplateRequested += () =>
+        {
+            var pickerVm = new TemplatePickerViewModel(_templateService);
+            var dialog = new TemplatePickerWindow(pickerVm) { Owner = this };
+            if (dialog.ShowDialog() == true)
+                return Task.FromResult(dialog.SelectedTemplate);
+            return Task.FromResult<MessageTemplate?>(null);
+        };
 
         foreach (var box in new[] { ToBox, CcBox, BccBox })
         {
@@ -59,6 +86,7 @@ public partial class ComposeWindow : Window
                 BodyBox.CaretIndex = 0;
             }
         };
+        BodyBox.SelectionChanged += BodyBox_SelectionChanged;
         Closing += OnWindowClosing;
     }
 
@@ -239,9 +267,18 @@ public partial class ComposeWindow : Window
                 await _vm.AddAttachmentFromPathAsync(f);
     }
 
-    // Alt+U → Subject field; Alt+M → From combo; Ctrl+V with files → add attachments; Escape → cancel.
+    // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
+    // Ctrl+Shift+P → Command Palette; F7 → next misspelling; Shift+F7 → previous misspelling.
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Ctrl+Shift+P: open the command palette
+        if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            OpenCommandPalette();
+            e.Handled = true;
+            return;
+        }
+
         // Ctrl+V: if the clipboard contains files, paste them as attachments
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
         {
@@ -269,6 +306,271 @@ public partial class ComposeWindow : Window
             FromCombo.Focus();
             FromCombo.IsDropDownOpen = true;
             e.Handled = true;
+        }
+        else if (e.SystemKey == Key.Y && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
+        {
+            BodyBox.Focus();
+            e.Handled = true;
+        }
+
+        // ── Registry-based compose commands ──────────────────────────────────
+        var key = e.Key == Key.System ? e.SystemKey
+            : e.Key == Key.ImeProcessed ? e.ImeProcessedKey
+            : e.Key;
+        var modifiers = Keyboard.Modifiers;
+        var cmd = _registry.FindByGesture(key, modifiers);
+        if (cmd != null && (cmd.IsAvailable?.Invoke() ?? true))
+        {
+            cmd.Execute();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// When the caret moves into a misspelled word during normal cursor navigation,
+    /// announce it to screen readers so users hear about spelling errors without
+    /// needing to press F7. WPF's SpellCheck shows red squiggly underlines visually
+    /// but does not expose them through UIA, so we detect them manually.
+    /// </summary>
+    private void BodyBox_SelectionChanged(object sender, RoutedEventArgs e)
+    {
+        if (_suppressSpellingAnnouncement) return;
+
+        var text = BodyBox.Text;
+        if (string.IsNullOrEmpty(text)) return;
+
+        int caret = BodyBox.CaretIndex;
+        // If the caret is at the very end, check the character just before it
+        int checkIndex = (caret > 0 && caret == text.Length) ? caret - 1 : caret;
+        if (checkIndex < 0 || checkIndex >= text.Length)
+        {
+            ClearSpellingContext();
+            return;
+        }
+
+        // Only announce if the caret is inside a misspelled word
+        var error = BodyBox.GetSpellingError(checkIndex);
+        if (error == null)
+        {
+            ClearSpellingContext();
+            return;
+        }
+
+        // Walk to word boundaries to get the full word
+        int wordStart = checkIndex;
+        while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1]))
+            wordStart--;
+        int wordEnd = checkIndex;
+        while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
+            wordEnd++;
+
+        // Don't re-announce the same word
+        if (wordStart == _lastAnnouncedSpellingIndex) return;
+        _lastAnnouncedSpellingIndex = wordStart;
+
+        var word = text.Substring(wordStart, wordEnd - wordStart);
+        var suggestions = error.Suggestions.Take(3).ToList();
+
+        // Track the current spelling error so Alt+1/2/3 can replace it.
+        _currentSpellingWordStart = wordStart;
+        _currentSpellingWordEnd = wordEnd;
+        _currentSpellingSuggestions = suggestions;
+
+        var announce = BuildSpellingAnnouncement(word, suggestions);
+
+        AccessibilityHelper.Announce(this, announce,
+            category: AnnouncementCategory.Result);
+    }
+
+    private void ClearSpellingContext()
+    {
+        _lastAnnouncedSpellingIndex = -1;
+        _currentSpellingWordStart = -1;
+        _currentSpellingWordEnd = -1;
+        _currentSpellingSuggestions = null;
+    }
+
+    /// <summary>
+    /// Builds the spelling announcement string. When AnnounceSpellingSuggestions
+    /// is on, includes up to 3 suggestions. When off, only announces the
+    /// misspelled word. Experienced users can press Alt+1/2/3 to replace.
+    /// </summary>
+    private string BuildSpellingAnnouncement(string word, System.Collections.Generic.List<string> suggestions)
+    {
+        var announceSuggestions = _configService.Load().AnnounceSpellingSuggestions;
+
+        if (!announceSuggestions || suggestions.Count == 0)
+            return $"Misspelling: {word}.";
+
+        return $"Misspelling: {word}. {string.Join(", ", suggestions)}.";
+    }
+
+    /// <summary>
+    /// F7 moves to the next misspelled word; Shift+F7 moves to the previous one.
+    /// Announces the misspelling to screen readers so users know what needs correction.
+    /// </summary>
+    private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Alt+1/2/3: replace the current misspelled word with the corresponding suggestion.
+        // Only works when the caret is on a spelling error that was just announced.
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0
+            && _currentSpellingSuggestions is { Count: > 0 }
+            && _currentSpellingWordStart >= 0
+            && _currentSpellingWordEnd > _currentSpellingWordStart)
+        {
+            int suggestionIndex = e.SystemKey switch
+            {
+                Key.D1 => 0,
+                Key.D2 => 1,
+                Key.D3 => 2,
+                _ => -1
+            };
+            if (suggestionIndex >= 0 && suggestionIndex < _currentSpellingSuggestions.Count)
+            {
+                var replacement = _currentSpellingSuggestions[suggestionIndex];
+                var text = BodyBox.Text;
+                var before = text[.._currentSpellingWordStart];
+                var after = text[_currentSpellingWordEnd..];
+
+                // Suppress spelling announcements while we programmatically change
+                // the text and caret position. Setting BodyBox.Text fires
+                // SelectionChanged before CaretIndex is applied, which would
+                // otherwise announce the first error on the page.
+                _suppressSpellingAnnouncement = true;
+                BodyBox.Text = before + replacement + after;
+                BodyBox.CaretIndex = _currentSpellingWordStart + replacement.Length;
+                _suppressSpellingAnnouncement = false;
+
+                BodyBox.Focus();
+                AccessibilityHelper.Announce(this,
+                    $"Replaced with {replacement}.",
+                    category: AnnouncementCategory.Result);
+                ClearSpellingContext();
+                e.Handled = true;
+                return;
+            }
+        }
+
+        if (e.Key == Key.F7)
+        {
+            var forward = (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
+            NavigateSpellingError(forward);
+            e.Handled = true;
+        }
+    }
+
+    // ── Command Palette ──────────────────────────────────────────────────────
+
+    private void RegisterComposeCommands()
+    {
+        _registry.Register(new CommandDefinition(
+            id: "compose.send", category: "Compose", title: "Send Message",
+            execute: () => _vm.SendCommand.Execute(null),
+            defaultKey: Key.S, defaultModifiers: ModifierKeys.Alt));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.saveDraft", category: "Compose", title: "Save Draft",
+            execute: () => _vm.SaveDraftCommand.Execute(null),
+            defaultKey: Key.S, defaultModifiers: ModifierKeys.Control));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.addAttachments", category: "Compose", title: "Add Attachments…",
+            execute: () => _vm.AddAttachmentsCommand.Execute(null),
+            defaultKey: Key.A, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.insertTemplate", category: "Compose", title: "Insert Template…",
+            execute: () => _vm.InsertTemplateCommand.Execute(null)));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.saveAsTemplate", category: "Compose", title: "Save as Template",
+            execute: () => _vm.SaveAsTemplateCommand.Execute(null)));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.cancel", category: "Compose", title: "Cancel / Close",
+            execute: () => _vm.CancelCommand.Execute(null),
+            defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.focusBody", category: "Compose", title: "Focus Message Body",
+            execute: () => BodyBox.Focus(),
+            defaultKey: Key.Y, defaultModifiers: ModifierKeys.Alt));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.nextMisspelling", category: "Compose", title: "Next Misspelling",
+            execute: () => NavigateSpellingError(forward: true),
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.None));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.prevMisspelling", category: "Compose", title: "Previous Misspelling",
+            execute: () => NavigateSpellingError(forward: false),
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Shift));
+    }
+
+    private void OpenCommandPalette()
+    {
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+        var palette = new CommandPaletteWindow(_registry) { Owner = this };
+        palette.ShowDialog();
+        (previousFocus ?? BodyBox).Focus();
+    }
+
+    /// <summary>
+    /// Programmatically triggers F7-style spelling navigation so the command
+    /// palette entry can invoke it without duplicating the search logic.
+    /// </summary>
+    private void NavigateSpellingError(bool forward)
+    {
+        var text = BodyBox.Text;
+        if (string.IsNullOrEmpty(text)) return;
+
+        int start = BodyBox.CaretIndex;
+        int foundIndex = -1;
+
+        if (forward)
+        {
+            for (int i = start; i < text.Length; i++)
+            {
+                if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
+            }
+        }
+        else
+        {
+            for (int i = Math.Min(start - 1, text.Length - 1); i >= 0; i--)
+            {
+                if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
+            }
+        }
+
+        if (foundIndex >= 0)
+        {
+            int wordStart = foundIndex;
+            while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1])) wordStart--;
+            int wordEnd = foundIndex;
+            while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd])) wordEnd++;
+
+            BodyBox.SelectionStart = wordStart;
+            BodyBox.SelectionLength = wordEnd - wordStart;
+            BodyBox.Focus();
+
+            _lastAnnouncedSpellingIndex = wordStart;
+
+            var word = text.Substring(wordStart, wordEnd - wordStart);
+            var suggestions = BodyBox.GetSpellingError(foundIndex)
+                ?.Suggestions.Take(3).ToList() ?? new System.Collections.Generic.List<string>();
+
+            _currentSpellingWordStart = wordStart;
+            _currentSpellingWordEnd = wordEnd;
+            _currentSpellingSuggestions = suggestions;
+
+            var announce = BuildSpellingAnnouncement(word, suggestions);
+            AccessibilityHelper.Announce(this, announce, category: AnnouncementCategory.Result);
+        }
+        else
+        {
+            ClearSpellingContext();
+            AccessibilityHelper.Announce(this, "No more misspellings found.",
+                category: AnnouncementCategory.Result);
         }
     }
 }

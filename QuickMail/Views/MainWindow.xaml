@@ -471,6 +471,9 @@
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"
                           InputGestureText="F1"/>
+                <MenuItem Header="_Keyboard Tutorial"
+                          AutomationProperties.Name="Keyboard Tutorial"
+                          Click="MenuKeyboardTutorial_Click"/>
             </MenuItem>
 
         </Menu>
@@ -1419,5 +1422,10 @@
                              AutomationProperties.Name="{Binding StatusText, StringFormat='Syncing — {0}'}"/>
             </StatusBarItem>
         </StatusBar>
+
+        <!-- First-run keyboard tutorial overlay (topmost, covers everything when active) -->
+        <local:TutorialOverlay x:Name="TutorialOverlayControl"
+                               Grid.Row="0" Grid.RowSpan="4"
+                               Panel.ZIndex="1000"/>
     </Grid>
 </Window>

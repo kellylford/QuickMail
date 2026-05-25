@@ -53,6 +53,8 @@ sealed class StubImapService : IImapService
 sealed class StubSmtpService : ISmtpService
 {
     public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
+        string organizerEmail, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 sealed class StubAccountService : IAccountService
@@ -177,4 +179,12 @@ sealed class StubConfigService : IConfigService
 
     public void Save(ConfigModel config)
         => _config = config;
+}
+
+sealed class StubTemplateService : ITemplateService
+{
+    public Task<List<MessageTemplate>> LoadAllAsync() => Task.FromResult(new List<MessageTemplate>());
+    public Task<MessageTemplate> AddAsync(MessageTemplate template) => Task.FromResult(template);
+    public Task UpdateAsync(MessageTemplate template) => Task.CompletedTask;
+    public Task DeleteAsync(int id) => Task.CompletedTask;
 }

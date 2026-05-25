@@ -1,0 +1,54 @@
+<UserControl x:Class="QuickMail.Views.TutorialOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="650" d:DesignWidth="1000">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
+
+    <Grid Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibilityConverter}}">
+        <!-- Semi-transparent backdrop -->
+        <Border Background="#CC1E1E1E"/>
+
+        <!-- Centered instruction card -->
+        <Border Background="#F0F0F0"
+                BorderBrush="#0078D4"
+                BorderThickness="2"
+                CornerRadius="8"
+                Padding="32,24"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="400"
+                MaxWidth="600"
+                AutomationProperties.Name="{Binding CurrentStep.InstructionText, FallbackValue='Keyboard tutorial'}">
+            <StackPanel>
+                <!-- Step counter -->
+                <TextBlock FontSize="14"
+                           Foreground="#666666"
+                           Margin="0,0,0,12">
+                    <Run Text="Step "/>
+                    <Run Text="{Binding CurrentStepNumber, Mode=OneWay, FallbackValue=1}"/>
+                    <Run Text=" of "/>
+                    <Run Text="{Binding Steps.Count, Mode=OneWay, FallbackValue=6}"/>
+                </TextBlock>
+
+                <!-- Instruction -->
+                <TextBlock FontSize="22"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           Margin="0,0,0,16"
+                           Text="{Binding CurrentStep.InstructionText, FallbackValue='Press a key...'}"/>
+
+                <!-- Hint -->
+                <TextBlock FontSize="14"
+                           Foreground="#666666"
+                           TextWrapping="Wrap"
+                           Text="Press Escape to skip the tutorial at any time."/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

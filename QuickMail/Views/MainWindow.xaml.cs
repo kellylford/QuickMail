@@ -113,6 +113,14 @@ public partial class MainWindow : Window
     private readonly ILocalStoreService _localStore;
     private readonly IViewService _viewService;
     private readonly IRuleService _ruleService;
+    private readonly ITemplateService _templateService;
+
+    private TutorialViewModel? _tutorialVm;
+
+    // ── Grouped-message tree controllers ──────────────────────────────────────
+    private GroupedMessageTreeController? _convTreeController;
+    private GroupedMessageTreeController? _senderTreeController;
+    private GroupedMessageTreeController? _toTreeController;
 
     public MainWindow(
         MainViewModel vm,
@@ -126,7 +134,8 @@ public partial class MainWindow : Window
         IConfigService configService,
         ILocalStoreService localStore,
         IViewService viewService,
-        IRuleService ruleService)
+        IRuleService ruleService,
+        ITemplateService templateService)
     {
         _vm = vm;
         _smtp = smtp;
@@ -140,6 +149,7 @@ public partial class MainWindow : Window
         _localStore = localStore;
         _viewService = viewService;
         _ruleService = ruleService;
+        _templateService = templateService;
 
         InitializeComponent();
         DataContext = vm;
@@ -164,6 +174,7 @@ public partial class MainWindow : Window
             == MessageBoxResult.Yes;
         vm.RulesManagerRequested += (_, _) => OpenRulesManager();
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
+        vm.TutorialRequested += (_, _) => ShowTutorial();
 
         // Re-focus the active message panel whenever the message collections are replaced
         // (happens after Refresh, Load More, folder changes, and view-mode switches).
@@ -294,6 +305,46 @@ public partial class MainWindow : Window
         ConversationTree.LostKeyboardFocus += (_, e) => LogService.Debug($"[FOCUS] LostFocus ConvTree  to={e.NewFocus?.GetType().Name ?? "null"}");
         SenderGroupTree.GotKeyboardFocus   += (_, e) => LogService.Debug($"[FOCUS] GotFocus  SenderTree from={e.OldFocus?.GetType().Name ?? "null"} selectedItem={SenderGroupTree.SelectedItem?.GetType().Name ?? "null"}");
         SenderGroupTree.LostKeyboardFocus  += (_, e) => LogService.Debug($"[FOCUS] LostFocus SenderTree to={e.NewFocus?.GetType().Name ?? "null"}");
+
+        // ── Grouped-message tree controllers ──────────────────────────────────
+        _convTreeController = new GroupedMessageTreeController(
+            ConversationTree, _vm, "ConvTree",
+            nameof(MainViewModel.Conversations),
+            () => _vm.Conversations.Count,
+            item => item is ConversationGroup g ? _vm.Conversations.IndexOf(g) : -1,
+            idx => _vm.Conversations[idx],
+            g => ((ConversationGroup)g).NormalizedSubject,
+            key => _vm.Conversations.FirstOrDefault(c =>
+                string.Equals(c.NormalizedSubject, key, StringComparison.OrdinalIgnoreCase)),
+            g => ((ConversationGroup)g).Messages,
+            () => GetVisibleConversationItems(_vm.Conversations),
+            TryHandleMessageTreeTypeAhead);
+
+        _senderTreeController = new GroupedMessageTreeController(
+            SenderGroupTree, _vm, "SenderTree",
+            nameof(MainViewModel.SenderGroups),
+            () => _vm.SenderGroups.Count,
+            item => item is SenderGroup g ? _vm.SenderGroups.IndexOf(g) : -1,
+            idx => _vm.SenderGroups[idx],
+            g => ((SenderGroup)g).SenderKey,
+            key => _vm.SenderGroups.FirstOrDefault(g =>
+                string.Equals(g.SenderKey, key, StringComparison.OrdinalIgnoreCase)),
+            g => ((SenderGroup)g).Messages,
+            () => GetVisibleSenderItems(_vm.SenderGroups),
+            TryHandleMessageTreeTypeAhead);
+
+        _toTreeController = new GroupedMessageTreeController(
+            ToGroupTree, _vm, "ToTree",
+            nameof(MainViewModel.ToGroups),
+            () => _vm.ToGroups.Count,
+            item => item is SenderGroup g ? _vm.ToGroups.IndexOf(g) : -1,
+            idx => _vm.ToGroups[idx],
+            g => ((SenderGroup)g).SenderKey,
+            key => _vm.ToGroups.FirstOrDefault(g =>
+                string.Equals(g.SenderKey, key, StringComparison.OrdinalIgnoreCase)),
+            g => ((SenderGroup)g).Messages,
+            () => GetVisibleSenderItems(_vm.ToGroups),
+            TryHandleMessageTreeTypeAhead);
     }
 
     // Debounced UIA notification for rapid status-text changes during sync. Multiple
@@ -469,6 +520,7 @@ public partial class MainWindow : Window
             // Open clicked links in the user's default browser instead of replacing
             // the reading-pane document. NavigateToString sets the document URI to
             // "about:blank", so allow that for the initial render and block everything else.
+            // quickmail: URIs are handled internally for calendar invite actions.
             MessageBody.CoreWebView2.NavigationStarting += (_, args) =>
             {
                 var uri = args.Uri;
@@ -477,6 +529,11 @@ public partial class MainWindow : Window
                     uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
+                if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleQuickMailUri(uri);
+                    return;
+                }
                 OpenExternal(uri);
             };
             MessageBody.CoreWebView2.NewWindowRequested += (_, args) =>
@@ -522,6 +579,28 @@ public partial class MainWindow : Window
             : e.Key == Key.ImeProcessed
                 ? e.ImeProcessedKey
                 : e.Key;
+
+        // ── Tutorial interception (must run before all other handling) ────────────
+        if (_tutorialVm?.IsActive == true)
+        {
+            if (_tutorialVm.CheckKeyPress(key, modifiers))
+            {
+                e.Handled = true;
+                return;
+            }
+            // Wrong key — announce what was pressed so the user gets feedback.
+            // Skip bare modifier keys (Ctrl, Shift, Alt, Win) — they aren't
+            // meaningful attempts and would just be noise.
+            if (!IsModifierKey(key))
+            {
+                var pressed = FormatKeyGesture(key, modifiers);
+                AccessibilityHelper.Announce(this,
+                    $"You pressed {pressed}. Try again.",
+                    interrupt: true, category: AnnouncementCategory.Result);
+            }
+            e.Handled = true;
+            return;
+        }
 
         // ── Navigation shortcuts (hardcoded, not in the command registry) ──────────
         if (modifiers == ModifierKeys.Control)
@@ -1159,11 +1238,7 @@ public partial class MainWindow : Window
     }
 
     private void ConversationTree_PreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        var visibleItems = GetVisibleConversationItems(_vm.Conversations).ToList();
-        if (TryHandleMessageTreeTypeAhead(ConversationTree, ConversationTree.SelectedItem, visibleItems, e.Text))
-            e.Handled = true;
-    }
+        => _convTreeController?.OnPreviewTextInput(sender, e);
 
     // Extends (or shrinks) the MessageList selection by one step in the given direction.
     // Shift+Down adds the next item; Shift+Up adds the previous item (or de-selects
@@ -1221,6 +1296,13 @@ public partial class MainWindow : Window
         var html = await Task.Run(() => BuildMessageHtml(detail));
         if (renderVersion != _messageBodyRenderVersion)
             return;
+
+        // Prepend the calendar invite event card if present.
+        var eventCardHtml = _vm.BuildEventCardHtml();
+        if (!string.IsNullOrEmpty(eventCardHtml))
+        {
+            html = InjectEventCard(html, eventCardHtml);
+        }
 
         // Wait for navigation to finish before focusing so the screen reader
         // gets the rendered document, but never let a complex sender HTML wait forever.
@@ -1359,6 +1441,30 @@ public partial class MainWindow : Window
             ? "This message uses complex HTML, so QuickMail is showing a simplified body."
             : null;
         return BuildPlainTextHtmlDocument(detail.Subject, text, note);
+    }
+
+    /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
+    private static string InjectEventCard(string html, string eventCardHtml)
+    {
+        var bodyTag = "<body";
+        var bodyIdx = html.IndexOf(bodyTag, StringComparison.OrdinalIgnoreCase);
+        if (bodyIdx < 0) return eventCardHtml + html;
+
+        var closeIdx = html.IndexOf('>', bodyIdx);
+        if (closeIdx < 0) return eventCardHtml + html;
+
+        return html.Insert(closeIdx + 1, eventCardHtml);
+    }
+
+    /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
+    private void HandleQuickMailUri(string uri)
+    {
+        if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
+            _vm.AcceptInviteCommand.Execute(null);
+        else if (uri.StartsWith("quickmail:ics-tentative", StringComparison.OrdinalIgnoreCase))
+            _vm.TentativeInviteCommand.Execute(null);
+        else if (uri.StartsWith("quickmail:ics-decline", StringComparison.OrdinalIgnoreCase))
+            _vm.DeclineInviteCommand.Execute(null);
     }
 
     private static bool ShouldUseReaderMode(string html) =>
@@ -1725,6 +1831,74 @@ public partial class MainWindow : Window
         AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result, force: true);
     }
 
+    private void ShowTutorial()
+    {
+        if (_tutorialVm?.IsActive == true) return;
+
+        _tutorialVm = new TutorialViewModel();
+        _tutorialVm.TutorialCompleted += OnTutorialCompleted;
+        _tutorialVm.TutorialCancelled += OnTutorialCancelled;
+        TutorialOverlayControl.SetViewModel(_tutorialVm);
+        _tutorialVm.Start();
+    }
+
+    private void OnTutorialCompleted()
+    {
+        CleanupTutorial();
+        var cfg = _configService.Load();
+        cfg.TutorialCompleted = true;
+        _configService.Save(cfg);
+        AccessibilityHelper.Announce(this, "Tutorial complete. You can replay it anytime from the Help menu.",
+            interrupt: true, category: AnnouncementCategory.Result);
+    }
+
+    private void OnTutorialCancelled()
+    {
+        CleanupTutorial();
+        AccessibilityHelper.Announce(this, "Tutorial cancelled.",
+            interrupt: true, category: AnnouncementCategory.Result);
+    }
+
+    private void CleanupTutorial()
+    {
+        if (_tutorialVm != null)
+        {
+            _tutorialVm.TutorialCompleted -= OnTutorialCompleted;
+            _tutorialVm.TutorialCancelled -= OnTutorialCancelled;
+        }
+        _tutorialVm = null;
+    }
+
+    private void MenuKeyboardTutorial_Click(object sender, RoutedEventArgs e)
+    {
+        ShowTutorial();
+    }
+
+    /// <summary>
+    /// Formats a key + modifiers combination into a human-readable string
+    /// like "Ctrl+Shift+P" or "F6".
+    /// </summary>
+    private static string FormatKeyGesture(Key key, ModifierKeys modifiers)
+    {
+        var parts = new System.Collections.Generic.List<string>();
+        if ((modifiers & ModifierKeys.Control) != 0) parts.Add("Ctrl");
+        if ((modifiers & ModifierKeys.Alt) != 0) parts.Add("Alt");
+        if ((modifiers & ModifierKeys.Shift) != 0) parts.Add("Shift");
+        if ((modifiers & ModifierKeys.Windows) != 0) parts.Add("Win");
+        parts.Add(key.ToString());
+        return string.Join("+", parts);
+    }
+
+    /// <summary>Returns true for bare modifier keys that shouldn't trigger
+    /// a "wrong key" announcement in the tutorial.</summary>
+    private static bool IsModifierKey(Key key) => key switch
+    {
+        Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt
+            or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin
+            or Key.System => true,
+        _ => false
+    };
+
     // Returns the index of the pane that currently holds keyboard focus:
     //   0 = Toolbar, 1 = Account list, 2 = Folder list,
     //   3 = Message list / Conversation tree, 4 = Reading pane (WebView2),
@@ -1791,10 +1965,7 @@ public partial class MainWindow : Window
     // WPF TreeView manages its own focus state natively; we just call Focus() on the
     // control and let it route to the last-focused item (or the first if none).
     private void FocusConversationTreeFirstItem()
-    {
-        if (ConversationTree.Items.Count == 0) { ConversationTree.Focus(); return; }
-        Dispatcher.InvokeAsync(ConversationTree.Focus, DispatcherPriority.Input);
-    }
+        => _convTreeController?.FocusFirstItem();
 
     // Focuses the selected TreeViewItem; falls back to the first item if nothing is selected.
     // fallbackIdx: index to use when tree.SelectedItem is null at dispatch time
@@ -1864,32 +2035,11 @@ public partial class MainWindow : Window
 
     // ── Conversation tree event handlers ────────────────────────────────────────
 
-    // When the ConversationTree gets keyboard focus, ensure an item is highlighted.
     private void ConversationTree_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        LogService.Debug($"[FOCUS] ConvTree GotKeyboardFocus selectedItem={ConversationTree.SelectedItem?.GetType().Name ?? "null"} count={ConversationTree.Items.Count} from={e.OldFocus?.GetType().Name ?? "null"}");
-        // If no item is selected, select and focus the first root item.
-        if (ConversationTree.SelectedItem == null && ConversationTree.Items.Count > 0)
-        {
-            if (ConversationTree.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
-            {
-                LogService.Debug("[FOCUS]   ConvTree GotKeyboardFocus: no selection — selecting first item");
-                first.IsSelected = true;
-                first.Focus();
-            }
-        }
-    }
+        => _convTreeController?.OnGotKeyboardFocus(sender, e);
 
-    // Sync the ViewModel's SelectedMessage when the user navigates to a message leaf node,
-    // so Reply/Forward/Delete commands always operate on the right message.
-    // Also announces the new item to the screen reader — WPF ListView/TreeView do not
-    // reliably fire UIA focus events on arrow-key navigation, so we use RaiseNotificationEvent.
     private void ConversationTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
-    {
-        LogService.Debug($"[FOCUS] ConvTree SelectedItemChanged old={e.OldValue?.GetType().Name ?? "null"} new={e.NewValue?.GetType().Name ?? "null"} {FocusInfo()}");
-        if (e.NewValue is MailMessageSummary msg)
-            _vm.SelectedMessage = msg;
-    }
+        => _convTreeController?.OnSelectedItemChanged(sender, e);
 
     // Keyboard actions in the conversation tree.
     private async void ConversationTree_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -2052,16 +2202,10 @@ public partial class MainWindow : Window
     // ── SenderGroup tree focus helpers ───────────────────────────────────────
 
     private void FocusSenderGroupTreeFirstItem()
-    {
-        if (SenderGroupTree.Items.Count == 0) { SenderGroupTree.Focus(); return; }
-        Dispatcher.InvokeAsync(SenderGroupTree.Focus, DispatcherPriority.Input);
-    }
+        => _senderTreeController?.FocusFirstItem();
 
     private void FocusToGroupTreeFirstItem()
-    {
-        if (ToGroupTree.Items.Count == 0) { ToGroupTree.Focus(); return; }
-        Dispatcher.InvokeAsync(ToGroupTree.Focus, DispatcherPriority.Input);
-    }
+        => _toTreeController?.FocusFirstItem();
 
     // After an async sender-group rebuild, selects and focuses the sender group
     // at the given index (clamped to the new list size).
@@ -2331,25 +2475,10 @@ public partial class MainWindow : Window
     // ── SenderGroup tree event handlers ─────────────────────────────────────
 
     private void SenderGroupTree_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        LogService.Debug($"[FOCUS] SenderTree GotKeyboardFocus selectedItem={SenderGroupTree.SelectedItem?.GetType().Name ?? "null"} count={SenderGroupTree.Items.Count} from={e.OldFocus?.GetType().Name ?? "null"}");
-        if (SenderGroupTree.SelectedItem == null && SenderGroupTree.Items.Count > 0)
-        {
-            if (SenderGroupTree.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
-            {
-                LogService.Debug("[FOCUS]   SenderTree GotKeyboardFocus: no selection — selecting first item");
-                first.IsSelected = true;
-                first.Focus();
-            }
-        }
-    }
+        => _senderTreeController?.OnGotKeyboardFocus(sender, e);
 
     private void SenderGroupTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
-    {
-        LogService.Debug($"[FOCUS] SenderTree SelectedItemChanged old={e.OldValue?.GetType().Name ?? "null"} new={e.NewValue?.GetType().Name ?? "null"} {FocusInfo()}");
-        if (e.NewValue is MailMessageSummary msg)
-            _vm.SelectedMessage = msg;
-    }
+        => _senderTreeController?.OnSelectedItemChanged(sender, e);
 
     private async void SenderGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -2456,24 +2585,10 @@ public partial class MainWindow : Window
     }
 
     private void SenderGroupTree_PreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        var visibleItems = GetVisibleSenderItems(_vm.SenderGroups).ToList();
-        if (TryHandleMessageTreeTypeAhead(SenderGroupTree, SenderGroupTree.SelectedItem, visibleItems, e.Text))
-            e.Handled = true;
-    }
+        => _senderTreeController?.OnPreviewTextInput(sender, e);
 
     private void SenderGroupTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        var source = e.OriginalSource as DependencyObject;
-        while (source != null && source is not TreeViewItem)
-            source = System.Windows.Media.VisualTreeHelper.GetParent(source);
-
-        if (source is TreeViewItem tvi)
-        {
-            tvi.IsSelected = true;
-            tvi.Focus();
-        }
-    }
+        => _senderTreeController?.OnPreviewMouseRightButtonDown(sender, e);
 
     private void SenderGroupTree_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
@@ -2523,25 +2638,10 @@ public partial class MainWindow : Window
     // ── ToGroup tree event handlers ──────────────────────────────────────────
 
     private void ToGroupTree_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        LogService.Debug($"[FOCUS] ToTree GotKeyboardFocus selectedItem={ToGroupTree.SelectedItem?.GetType().Name ?? "null"} count={ToGroupTree.Items.Count} from={e.OldFocus?.GetType().Name ?? "null"}");
-        if (ToGroupTree.SelectedItem == null && ToGroupTree.Items.Count > 0)
-        {
-            if (ToGroupTree.ItemContainerGenerator.ContainerFromIndex(0) is TreeViewItem first)
-            {
-                LogService.Debug("[FOCUS]   ToTree GotKeyboardFocus: no selection — selecting first item");
-                first.IsSelected = true;
-                first.Focus();
-            }
-        }
-    }
+        => _toTreeController?.OnGotKeyboardFocus(sender, e);
 
     private void ToGroupTree_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
-    {
-        LogService.Debug($"[FOCUS] ToTree SelectedItemChanged old={e.OldValue?.GetType().Name ?? "null"} new={e.NewValue?.GetType().Name ?? "null"} {FocusInfo()}");
-        if (e.NewValue is MailMessageSummary msg)
-            _vm.SelectedMessage = msg;
-    }
+        => _toTreeController?.OnSelectedItemChanged(sender, e);
 
     private async void ToGroupTree_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -2648,24 +2748,10 @@ public partial class MainWindow : Window
     }
 
     private void ToGroupTree_PreviewTextInput(object sender, TextCompositionEventArgs e)
-    {
-        var visibleItems = GetVisibleSenderItems(_vm.ToGroups).ToList();
-        if (TryHandleMessageTreeTypeAhead(ToGroupTree, ToGroupTree.SelectedItem, visibleItems, e.Text))
-            e.Handled = true;
-    }
+        => _toTreeController?.OnPreviewTextInput(sender, e);
 
     private void ToGroupTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        var source = e.OriginalSource as DependencyObject;
-        while (source != null && source is not TreeViewItem)
-            source = System.Windows.Media.VisualTreeHelper.GetParent(source);
-
-        if (source is TreeViewItem tvi)
-        {
-            tvi.IsSelected = true;
-            tvi.Focus();
-        }
-    }
+        => _toTreeController?.OnPreviewMouseRightButtonDown(sender, e);
 
     private void ToGroupTree_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
@@ -2711,9 +2797,9 @@ public partial class MainWindow : Window
 
     private void OpenComposeWindow(ComposeModel composeModel)
     {
-        var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap);
+        var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
         composeVm.Seed(composeModel);
-        var window = new ComposeWindow(composeVm, _contactService) { Owner = this };
+        var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService) { Owner = this };
         composeVm.CloseRequested += window.Close;
         window.Show();
     }
@@ -2965,19 +3051,7 @@ public partial class MainWindow : Window
     // ── ConversationTree right-click helpers ─────────────────────────────────
 
     private void ConversationTree_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
-    {
-        // Walk up from the original source to find the TreeViewItem that was clicked,
-        // then select it so SelectedItem is correct when ContextMenuOpening fires.
-        var source = e.OriginalSource as DependencyObject;
-        while (source != null && source is not TreeViewItem)
-            source = System.Windows.Media.VisualTreeHelper.GetParent(source);
-
-        if (source is TreeViewItem tvi)
-        {
-            tvi.IsSelected = true;
-            tvi.Focus();
-        }
-    }
+        => _convTreeController?.OnPreviewMouseRightButtonDown(sender, e);
 
     private void ConversationTree_ContextMenuOpening(object sender, ContextMenuEventArgs e)
     {

@@ -80,6 +80,7 @@ public partial class App : Application
                 localStore.Initialize();
 
             var contactService = new ContactService(profile);
+            var templateService = new TemplateService(profile);
             var ruleService = new RuleService(imapService, localStore, profile.ProfileDir);
             var syncService = new SyncService(imapService, localStore, configService, ruleService);
 
@@ -91,11 +92,11 @@ public partial class App : Application
             var viewService = new ViewService(profile);
 
             var mainVm = new MainViewModel(
-                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService,
+                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode);
             mainVm.LoadAccountList();
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService);
             mainWindow.Show();
         }
         catch (Exception ex)

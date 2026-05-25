@@ -29,6 +29,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IViewService _viewService;
     private readonly ICommandRegistry _commandRegistry;
     private readonly IRuleService _ruleService;
+    private readonly ISmtpService _smtp;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -40,6 +41,18 @@ public partial class MainViewModel : ObservableObject
     private const int PrefetchRadiusAroundOpen = 5;
     private const int PrefetchTopOnFolderLoad  = 10;
     private CancellationTokenSource? _bgSyncCts;
+
+    /// <summary>
+    /// Cancels and disposes the old CTS, creates a new one, and outputs its token.
+    /// Thread-safe: the slot is atomically replaced via Interlocked.Exchange.
+    /// </summary>
+    private static void ReplaceCts(ref CancellationTokenSource? slot, out CancellationToken token)
+    {
+        var cts = new CancellationTokenSource();
+        var previous = Interlocked.Exchange(ref slot, cts);
+        try { previous?.Cancel(); previous?.Dispose(); } catch { /* best effort */ }
+        token = cts.Token;
+    }
 
     // How many days of mail to sync (0 = all); set via the Sync Range menu
     private int _syncDays = 30;
@@ -413,6 +426,7 @@ public partial class MainViewModel : ObservableObject
         ICommandRegistry commandRegistry,
         IViewService viewService,
         IRuleService ruleService,
+        ISmtpService smtpService,
         bool onlineMode = false)
     {
         _imap            = imap;
@@ -425,6 +439,7 @@ public partial class MainViewModel : ObservableObject
         _commandRegistry = commandRegistry;
         _viewService     = viewService;
         _ruleService     = ruleService;
+        _smtp            = smtpService;
         OnlineMode       = onlineMode;
 
         var cfg = _configService.Load();
@@ -432,22 +447,8 @@ public partial class MainViewModel : ObservableObject
         _previewLines = cfg.PreviewLines;
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
-        _viewMode = cfg.ViewMode switch
-        {
-            "conversations" => ViewMode.Conversations,
-            "from"          => ViewMode.From,
-            "to"            => ViewMode.To,
-            _               => ViewMode.Messages,
-        };
-        _activeSort = cfg.Sort switch
-        {
-            "dateAsc"   => MessageSort.DateAscending,
-            "alphaAsc"  => MessageSort.AlphaAscending,
-            "alphaDesc" => MessageSort.AlphaDescending,
-            "countDesc" => MessageSort.CountDescending,
-            "countAsc"  => MessageSort.CountAscending,
-            _           => MessageSort.DateDescending,
-        };
+        _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
+        _activeSort = ConfigModel.ParseSort(cfg.Sort);
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
@@ -582,13 +583,7 @@ public partial class MainViewModel : ObservableObject
 
         // Apply view's mode/filter/sort before clearing search so rebuild
         // schedulers triggered by ViewMode change operate on the right data.
-        ViewMode = view.ViewMode switch
-        {
-            "conversations" => ViewMode.Conversations,
-            "from"          => ViewMode.From,
-            "to"            => ViewMode.To,
-            _               => ViewMode.Messages,
-        };
+        ViewMode = ConfigModel.ParseViewMode(view.ViewMode);
         ActiveFilter = view.Filter switch
         {
             "unread"      => MessageFilter.Unread,
@@ -598,15 +593,7 @@ public partial class MainViewModel : ObservableObject
             "forwarded"   => MessageFilter.Forwarded,
             _             => MessageFilter.All,
         };
-        ActiveSort = view.Sort switch
-        {
-            "dateAsc"   => MessageSort.DateAscending,
-            "alphaAsc"  => MessageSort.AlphaAscending,
-            "alphaDesc" => MessageSort.AlphaDescending,
-            "countDesc" => MessageSort.CountDescending,
-            "countAsc"  => MessageSort.CountAscending,
-            _           => MessageSort.DateDescending,
-        };
+        ActiveSort = ConfigModel.ParseSort(view.Sort);
 
         ActiveDayLimit = view.DaysOfMail;
         SearchText     = string.Empty;
@@ -674,8 +661,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
 
         _folderCts?.Cancel();
-        _folderCts = new CancellationTokenSource();
-        var ct = _folderCts.Token;
+        ReplaceCts(ref _folderCts, out var ct);
 
         try
         {
@@ -797,13 +783,7 @@ public partial class MainViewModel : ObservableObject
         _previewLines = newPreviewLines;
         _showPreview  = newShowPreview;
 
-        var newMode = cfg.ViewMode switch
-        {
-            "conversations" => ViewMode.Conversations,
-            "from"          => ViewMode.From,
-            "to"            => ViewMode.To,
-            _               => ViewMode.Messages,
-        };
+        var newMode = ConfigModel.ParseViewMode(cfg.ViewMode);
         ViewMode = newMode;
 
         var prevSyncDays = _syncDays;
@@ -815,15 +795,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSyncDaysAll));
         OnPropertyChanged(nameof(SyncRangeLabel));
 
-        ActiveSort = cfg.Sort switch
-        {
-            "dateAsc"   => MessageSort.DateAscending,
-            "alphaAsc"  => MessageSort.AlphaAscending,
-            "alphaDesc" => MessageSort.AlphaDescending,
-            "countDesc" => MessageSort.CountDescending,
-            "countAsc"  => MessageSort.CountAscending,
-            _           => MessageSort.DateDescending,
-        };
+        ActiveSort = ConfigModel.ParseSort(cfg.Sort);
 
         if (_syncDays != prevSyncDays)
             _ = RefreshAsync();
@@ -948,6 +920,25 @@ public partial class MainViewModel : ObservableObject
             execute: () => CreateRuleFromMessageCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => HasSelectedMessage));
+
+        registry.Register(new CommandDefinition(
+            id: "mail.acceptInvite", category: "Mail", title: "Accept Invitation",
+            execute: () => AcceptInviteCommand.Execute(null),
+            isAvailable: () => HasCalendarInvite));
+
+        registry.Register(new CommandDefinition(
+            id: "mail.declineInvite", category: "Mail", title: "Decline Invitation",
+            execute: () => DeclineInviteCommand.Execute(null),
+            isAvailable: () => HasCalendarInvite));
+
+        registry.Register(new CommandDefinition(
+            id: "mail.tentativeInvite", category: "Mail", title: "Tentatively Accept Invitation",
+            execute: () => TentativeInviteCommand.Execute(null),
+            isAvailable: () => HasCalendarInvite));
+
+        registry.Register(new CommandDefinition(
+            id: "help.keyboardTutorial", category: "Help", title: "Keyboard Tutorial",
+            execute: () => TutorialRequested?.Invoke(this, EventArgs.Empty)));
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -983,8 +974,7 @@ public partial class MainViewModel : ObservableObject
     public async Task StartBackgroundSyncAsync()
     {
         _bgSyncCts?.Cancel();
-        _bgSyncCts = new CancellationTokenSource();
-        var ct = _bgSyncCts.Token;
+        ReplaceCts(ref _bgSyncCts, out var ct);
 
         await ConnectAllAccountsAsync();
         if (_cachedFolders.Count == 0) return;
@@ -1669,15 +1659,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(SortLabel));
 
         var cfg = _configService.Load();
-        cfg.Sort = value switch
-        {
-            MessageSort.DateAscending   => "dateAsc",
-            MessageSort.AlphaAscending  => "alphaAsc",
-            MessageSort.AlphaDescending => "alphaDesc",
-            MessageSort.CountDescending => "countDesc",
-            MessageSort.CountAscending  => "countAsc",
-            _                           => "dateDesc",
-        };
+        cfg.Sort = ConfigModel.ToConfigString(value);
         _configService.Save(cfg);
 
         if (ViewMode == ViewMode.Messages)
@@ -1711,13 +1693,7 @@ public partial class MainViewModel : ObservableObject
             ToGroups = [];
 
         var cfg = _configService.Load();
-        cfg.ViewMode = value switch
-        {
-            ViewMode.Conversations => "conversations",
-            ViewMode.From          => "from",
-            ViewMode.To            => "to",
-            _                      => "messages",
-        };
+        cfg.ViewMode = ConfigModel.ToConfigString(value);
         _configService.Save(cfg);
 
         if (value == ViewMode.To && SelectedFolder?.FullName == AllMailFolder.FullName && Messages.Any(m => string.IsNullOrWhiteSpace(m.To)))
@@ -1868,9 +1844,9 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
             _connectCts?.Cancel();
-            _connectCts = new CancellationTokenSource();
-            await _imap.ConnectAsync(account, password, _connectCts.Token);
-            var folderList = await _imap.GetFoldersAsync(account.Id, _connectCts.Token);
+            ReplaceCts(ref _connectCts, out var ct);
+            await _imap.ConnectAsync(account, password, ct);
+            var folderList = await _imap.GetFoldersAsync(account.Id, ct);
             _cachedFolders[account.Id] = folderList;
             ApplyAccountStatus(account, folderList);
             RebuildFolderListFromCache();
@@ -1962,9 +1938,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var cts = new CancellationTokenSource();
-            var previousCts = Interlocked.Exchange(ref _folderCts, cts);
-            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
+            ReplaceCts(ref _folderCts, out var ct);
 
             if (!OnlineMode)
             {
@@ -1984,7 +1958,7 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            _ = RefreshFolderFromServerAsync(accountId, folder, loadVersion, cts.Token);
+            _ = RefreshFolderFromServerAsync(accountId, folder, loadVersion, ct);
         }
         catch (OperationCanceledException)
         {
@@ -2059,10 +2033,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            var cts = new CancellationTokenSource();
-            var previousCts = Interlocked.Exchange(ref _messageLoadCts, cts);
-            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
-            var token = cts.Token;
+            ReplaceCts(ref _messageLoadCts, out var token);
 
             MailMessageDetail detail;
             if (OnlineMode)
@@ -2159,11 +2130,9 @@ public partial class MainViewModel : ObservableObject
 
     private void SchedulePrefetch(List<MailMessageSummary> targets, string reason)
     {
-        var cts = new CancellationTokenSource();
-        var previous = Interlocked.Exchange(ref _prefetchCts, cts);
-        try { previous?.Cancel(); previous?.Dispose(); } catch { /* best effort */ }
+        ReplaceCts(ref _prefetchCts, out var ct);
 
-        _ = Task.Run(() => RunPrefetchAsync(targets, reason, cts.Token));
+        _ = Task.Run(() => RunPrefetchAsync(targets, reason, ct));
     }
 
     private async Task RunPrefetchAsync(List<MailMessageSummary> targets, string reason, CancellationToken ct)
@@ -2233,8 +2202,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
 
         _folderCts?.Cancel();
-        _folderCts = new CancellationTokenSource();
-        var ct = _folderCts.Token;
+        ReplaceCts(ref _folderCts, out var ct);
 
         try
         {
@@ -2470,8 +2438,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
 
         _folderCts?.Cancel();
-        _folderCts = new CancellationTokenSource();
-        var ct = _folderCts.Token;
+        ReplaceCts(ref _folderCts, out var ct);
 
         try
         {
@@ -2565,8 +2532,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy = true;
 
         _folderCts?.Cancel();
-        _folderCts = new CancellationTokenSource();
-        var ct = _folderCts.Token;
+        ReplaceCts(ref _folderCts, out var ct);
 
         var all = new List<MailMessageSummary>();
 
@@ -2709,9 +2675,7 @@ public partial class MainViewModel : ObservableObject
         // ── Step 2: IMAP delete + local store cleanup ────────────────────────────
         try
         {
-            var cts = new CancellationTokenSource();
-            var previousCts = Interlocked.Exchange(ref _messageActionCts, cts);
-            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
+            ReplaceCts(ref _messageActionCts, out var ct);
 
             var groups = toDelete.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
@@ -2727,10 +2691,10 @@ public partial class MainViewModel : ObservableObject
 
                 if (sourceKind == SpecialFolderKind.Trash)
                     await _imap.PermanentlyDeleteBatchAsync(
-                        group.Key.AccountId, group.Key.FolderName, uids, cts.Token);
+                        group.Key.AccountId, group.Key.FolderName, uids, ct);
                 else
                     await _imap.MoveToTrashBatchAsync(
-                        group.Key.AccountId, group.Key.FolderName, uids, cts.Token);
+                        group.Key.AccountId, group.Key.FolderName, uids, ct);
 
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
@@ -2764,6 +2728,7 @@ public partial class MainViewModel : ObservableObject
     public event EventHandler<(string Text, AnnouncementCategory Category)>? AnnouncementRequested;
     public event EventHandler? RulesManagerRequested;
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;
+    public event EventHandler? TutorialRequested;
 
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)
     {
@@ -2926,9 +2891,7 @@ public partial class MainViewModel : ObservableObject
         StatusText = "Opening draft…";
         try
         {
-            var cts = new CancellationTokenSource();
-            var previousCts = Interlocked.Exchange(ref _messageLoadCts, cts);
-            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
+            ReplaceCts(ref _messageLoadCts, out var ct);
 
             var detail = await _localStore.LoadDetailAsync(
                 summary.AccountId, summary.FolderName, summary.UniqueId);
@@ -2936,7 +2899,7 @@ public partial class MainViewModel : ObservableObject
             if (detail == null)
             {
                 detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId, cts.Token);
+                    summary.AccountId, summary.FolderName, summary.UniqueId, ct);
             }
 
             var model = new ComposeModel
@@ -2959,7 +2922,7 @@ public partial class MainViewModel : ObservableObject
                     {
                         att.Content = await _imap.DownloadAttachmentAsync(
                             summary.AccountId, summary.FolderName, summary.UniqueId,
-                            att.PartSpecifier, cts.Token);
+                            att.PartSpecifier, ct);
                     }
                     catch (Exception ex)
                     {
@@ -3254,9 +3217,7 @@ public partial class MainViewModel : ObservableObject
         IsBusy     = true;
         try
         {
-            var cts = new CancellationTokenSource();
-            var previousCts = Interlocked.Exchange(ref _messageActionCts, cts);
-            await (previousCts?.CancelAsync() ?? Task.CompletedTask);
+            ReplaceCts(ref _messageActionCts, out var ct);
 
             var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
@@ -3264,7 +3225,7 @@ public partial class MainViewModel : ObservableObject
                 var uids = group.Select(m => m.UniqueId).ToList();
                 await _imap.MoveMessagesAsync(
                     group.Key.AccountId, group.Key.FolderName, uids,
-                    destination.FullName, cts.Token);
+                    destination.FullName, ct);
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
@@ -3510,13 +3471,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void SetViewMode(string? mode)
     {
-        ViewMode = mode?.ToLowerInvariant() switch
-        {
-            "conversations" => ViewMode.Conversations,
-            "from"          => ViewMode.From,
-            "to"            => ViewMode.To,
-            _               => ViewMode.Messages,
-        };
+        ViewMode = ConfigModel.ParseViewMode(mode);
     }
 
     // ── Search command ────────────────────────────────────────────────────────
@@ -3550,15 +3505,7 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void SetSort(string? sort)
     {
-        ActiveSort = sort switch
-        {
-            "dateAsc"   => MessageSort.DateAscending,
-            "alphaAsc"  => MessageSort.AlphaAscending,
-            "alphaDesc" => MessageSort.AlphaDescending,
-            "countDesc" => MessageSort.CountDescending,
-            "countAsc"  => MessageSort.CountAscending,
-            _           => MessageSort.DateDescending,
-        };
+        ActiveSort = ConfigModel.ParseSort(sort);
     }
 
     [RelayCommand]
@@ -3746,5 +3693,137 @@ public partial class MainViewModel : ObservableObject
         return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ")
             .Replace("&nbsp;", " ").Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">")
             .Trim();
+    }
+
+    // ── Calendar invite commands ─────────────────────────────────────────────────
+
+    /// <summary>True when the open message contains a calendar invite.</summary>
+    public bool HasCalendarInvite => IsMessageOpen && MessageDetail?.CalendarInvite != null;
+
+    /// <summary>
+    /// Builds an accessible HTML event card for display in the WebView2 reading pane.
+    /// The card is prepended to the message body HTML by the View.
+    /// </summary>
+    public string BuildEventCardHtml()
+    {
+        var invite = MessageDetail?.CalendarInvite;
+        if (invite == null) return string.Empty;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<div style=\"border:1px solid #888;border-radius:6px;padding:12px;margin:0 0 16px 0;background:#f5f5f5;color:#222;font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;\" role=\"region\" aria-label=\"");
+        sb.Append(System.Net.WebUtility.HtmlEncode(invite.DisplaySummary));
+        sb.Append("\">");
+        sb.Append("<div style=\"font-weight:bold;font-size:15px;margin-bottom:8px;\">Event Invitation</div>");
+
+        if (!string.IsNullOrWhiteSpace(invite.Summary))
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Event:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Summary));
+            sb.Append("</div>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(invite.OrganizerName))
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Organizer:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.OrganizerName));
+            sb.Append("</div>");
+        }
+        else if (!string.IsNullOrWhiteSpace(invite.Organizer))
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Organizer:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Organizer));
+            sb.Append("</div>");
+        }
+
+        if (invite.StartTime.HasValue)
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>When:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.StartTime.Value.ToLocalTime().ToString("f")));
+            if (invite.EndTime.HasValue)
+            {
+                sb.Append(" \u2013 ");
+                sb.Append(System.Net.WebUtility.HtmlEncode(invite.EndTime.Value.ToLocalTime().ToString("t")));
+            }
+            sb.Append("</div>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(invite.Location))
+        {
+            sb.Append("<div style=\"margin-bottom:8px;\"><strong>Location:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Location));
+            sb.Append("</div>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(invite.Description))
+        {
+            sb.Append("<div style=\"margin-bottom:8px;white-space:pre-wrap;\">");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Description));
+            sb.Append("</div>");
+        }
+
+        // Buttons: Accept, Tentative, Decline
+        sb.Append("<div style=\"margin-top:8px;\">");
+        sb.Append("<a href=\"quickmail:ics-accept\" role=\"button\" aria-label=\"Accept invitation\" ");
+        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+        sb.Append("background:#107c10;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Accept</a>");
+        sb.Append("<a href=\"quickmail:ics-tentative\" role=\"button\" aria-label=\"Tentatively accept invitation\" ");
+        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+        sb.Append("background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Tentative</a>");
+        sb.Append("<a href=\"quickmail:ics-decline\" role=\"button\" aria-label=\"Decline invitation\" ");
+        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-bottom:4px;");
+        sb.Append("background:#d13438;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Decline</a>");
+        sb.Append("</div>");
+
+        sb.Append("</div>");
+        return sb.ToString();
+    }
+
+    [RelayCommand]
+    private async Task AcceptInvite()
+    {
+        await SendIcsReply("ACCEPTED", "accepted");
+    }
+
+    [RelayCommand]
+    private async Task DeclineInvite()
+    {
+        await SendIcsReply("DECLINED", "declined");
+    }
+
+    [RelayCommand]
+    private async Task TentativeInvite()
+    {
+        await SendIcsReply("TENTATIVE", "tentatively accepted");
+    }
+
+    private async Task SendIcsReply(string partStat, string actionLabel)
+    {
+        var invite = MessageDetail?.CalendarInvite;
+        if (invite == null) return;
+
+        var account = Accounts.FirstOrDefault(a => a.Id == MessageDetail!.AccountId);
+        if (account == null)
+        {
+            Announce($"Cannot send calendar response: account not found.", AnnouncementCategory.Result);
+            return;
+        }
+
+        try
+        {
+            var attendeeName = account.SenderDisplayName;
+            var attendeeEmail = account.Username;
+            var icsContent = invite.GenerateReply(attendeeEmail, attendeeName, partStat);
+
+            var password = _credentials.GetPassword(account.Id);
+            await _smtp.SendIcsReplyAsync(icsContent, account, password, invite.Organizer ?? "");
+
+            var eventTitle = invite.Summary ?? "calendar event";
+            Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"SendIcsReply ({partStat})", ex);
+            Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
+        }
     }
 }

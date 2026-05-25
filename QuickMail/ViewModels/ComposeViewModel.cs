@@ -20,6 +20,7 @@ public partial class ComposeViewModel : ObservableObject
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly IImapService _imap;
+    private readonly ITemplateService _templateService;
 
     [ObservableProperty] private string _to = string.Empty;
     [ObservableProperty] private string _cc = string.Empty;
@@ -50,12 +51,13 @@ public partial class ComposeViewModel : ObservableObject
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
-    public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IImapService imap)
+    public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IImapService imap, ITemplateService templateService)
     {
         _smtp = smtp;
         _accountService = accountService;
         _credentials = credentials;
         _imap = imap;
+        _templateService = templateService;
         _attachments.CollectionChanged += (_, _) =>
         {
             _isDirty = true;
@@ -94,6 +96,20 @@ public partial class ComposeViewModel : ObservableObject
         SenderAccount = SenderAccounts.FirstOrDefault(a => a.Id == model.AccountId)
                         ?? SenderAccounts.FirstOrDefault(a => a.IsDefault)
                         ?? SenderAccounts.FirstOrDefault();
+
+        // Auto-append signature if this is a new compose (not a draft re-open) and the
+        // account has a signature configured. Drafts already have the signature in the body.
+        if (model.DraftUid == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
+        {
+            var sig = SenderAccount.Signature;
+            // Add separator if body already has content (reply/forward)
+            if (!string.IsNullOrWhiteSpace(Body) && !Body.EndsWith("\n"))
+                Body += "\n";
+            if (!string.IsNullOrWhiteSpace(Body))
+                Body += "\n-- \n";
+            Body += sig;
+            _isDirty = false; // signature insertion is not a user edit
+        }
     }
 
     [RelayCommand]
@@ -224,6 +240,60 @@ public partial class ComposeViewModel : ObservableObject
 
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke();
+
+    /// <summary>
+    /// Opens the template picker. The View subscribes to this event to show the dialog.
+    /// </summary>
+    public event Func<Task<MessageTemplate?>>? InsertTemplateRequested;
+
+    [RelayCommand]
+    private async Task InsertTemplateAsync()
+    {
+        if (InsertTemplateRequested == null) return;
+        var template = await InsertTemplateRequested();
+        if (template == null) return;
+
+        var displayName = !string.IsNullOrWhiteSpace(SenderAccount?.DisplayName)
+            ? SenderAccount!.DisplayName
+            : !string.IsNullOrWhiteSpace(SenderAccount?.Username)
+                ? SenderAccount!.Username
+                : string.Empty;
+        var now = DateTime.Now;
+
+        var body = template.Body
+            .Replace("{sender}", displayName, StringComparison.OrdinalIgnoreCase)
+            .Replace("{date}", now.ToString("d"), StringComparison.OrdinalIgnoreCase)
+            .Replace("{time}", now.ToString("t"), StringComparison.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(template.Subject) && string.IsNullOrWhiteSpace(Subject))
+            Subject = template.Subject
+                .Replace("{sender}", displayName, StringComparison.OrdinalIgnoreCase)
+                .Replace("{date}", now.ToString("d"), StringComparison.OrdinalIgnoreCase)
+                .Replace("{time}", now.ToString("t"), StringComparison.OrdinalIgnoreCase);
+
+        Body += body;
+        StatusText = $"Template '{template.Title}' inserted.";
+    }
+
+    [RelayCommand]
+    private async Task SaveAsTemplateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Body))
+        {
+            StatusText = "Nothing to save — body is empty.";
+            return;
+        }
+
+        var template = new MessageTemplate
+        {
+            Title = Subject.Trim().Length > 0 ? Subject.Trim() : "Untitled",
+            Subject = Subject,
+            Body = Body
+        };
+
+        await _templateService.AddAsync(template);
+        StatusText = $"Template saved as '{template.Title}'.";
+    }
 
     [RelayCommand]
     private async Task AddAttachmentsAsync()
