@@ -94,6 +94,20 @@ public partial class ComposeViewModel : ObservableObject
         SenderAccount = SenderAccounts.FirstOrDefault(a => a.Id == model.AccountId)
                         ?? SenderAccounts.FirstOrDefault(a => a.IsDefault)
                         ?? SenderAccounts.FirstOrDefault();
+
+        // Auto-append signature if this is a new compose (not a draft re-open) and the
+        // account has a signature configured. Drafts already have the signature in the body.
+        if (model.DraftUid == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
+        {
+            var sig = SenderAccount.Signature;
+            // Add separator if body already has content (reply/forward)
+            if (!string.IsNullOrWhiteSpace(Body) && !Body.EndsWith("\n"))
+                Body += "\n";
+            if (!string.IsNullOrWhiteSpace(Body))
+                Body += "\n-- \n";
+            Body += sig;
+            _isDirty = false; // signature insertion is not a user edit
+        }
     }
 
     [RelayCommand]

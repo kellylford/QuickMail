@@ -41,5 +41,6 @@ public partial class AddAccountViewModel : AccountEditorViewModel
         SmtpPort = SmtpPort,
         SmtpUseSsl = SmtpUseSsl,
         SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
+        Signature = Signature,
     };
 }

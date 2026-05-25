@@ -199,11 +199,12 @@
                      AutomationProperties.Name="Message body. Alt+U for Subject, Alt+M for From, Alt+S to send."
                      AcceptsReturn="True" AcceptsTab="True"
                      TextWrapping="Wrap"
-                     SpellCheck.IsEnabled="False"
+                     SpellCheck.IsEnabled="True"
                      VerticalScrollBarVisibility="Auto"
                      FontFamily="Segoe UI"
                      Margin="0,4" TabIndex="7"
-                     VerticalAlignment="Stretch"/>
+                     VerticalAlignment="Stretch"
+                     PreviewKeyDown="BodyBox_PreviewKeyDown"/>
         </Grid>
 
         <!-- Autocomplete popup — positioned below the active address field via code-behind -->

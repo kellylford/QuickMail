@@ -29,6 +29,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private int    _smtpPort = 587;
     [ObservableProperty] private bool   _smtpUseSsl = false;
     [ObservableProperty] private bool   _smtpAcceptInvalidCert = false;
+    [ObservableProperty] private string _signature = string.Empty;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPasswordAuth))]

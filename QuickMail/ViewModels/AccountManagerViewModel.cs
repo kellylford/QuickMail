@@ -61,6 +61,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SmtpPort = value.SmtpPort;
         SmtpUseSsl = value.SmtpUseSsl;
         SmtpAcceptInvalidCert = value.SmtpAcceptInvalidCert;
+        Signature = value.Signature;
         StatusText = string.Empty;
     }
 
@@ -93,6 +94,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SelectedAccount.SmtpPort = SmtpPort;
         SelectedAccount.SmtpUseSsl = SmtpUseSsl;
         SelectedAccount.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
+        SelectedAccount.Signature = Signature;
 
         if (AuthType == AuthType.Password && !string.IsNullOrEmpty(Password))
             _credentials.SavePassword(SelectedAccount.Id, Password);

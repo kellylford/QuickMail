@@ -240,6 +240,7 @@ public partial class ComposeWindow : Window
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Ctrl+V with files → add attachments; Escape → cancel.
+    // F7 → next misspelling; Shift+F7 → previous misspelling.
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Ctrl+V: if the clipboard contains files, paste them as attachments
@@ -268,6 +269,81 @@ public partial class ComposeWindow : Window
         {
             FromCombo.Focus();
             FromCombo.IsDropDownOpen = true;
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>
+    /// F7 moves to the next misspelled word; Shift+F7 moves to the previous one.
+    /// Announces the misspelling to screen readers so users know what needs correction.
+    /// </summary>
+    private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F7)
+        {
+            var forward = (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
+            var text = BodyBox.Text;
+            if (string.IsNullOrEmpty(text)) return;
+
+            int start = BodyBox.CaretIndex;
+            int foundIndex = -1;
+
+            if (forward)
+            {
+                // Search forward from caret to end
+                for (int i = start; i < text.Length; i++)
+                {
+                    if (BodyBox.GetSpellingError(i) != null)
+                    {
+                        foundIndex = i;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // Search backward from caret-1 to beginning
+                for (int i = Math.Min(start - 1, text.Length - 1); i >= 0; i--)
+                {
+                    if (BodyBox.GetSpellingError(i) != null)
+                    {
+                        foundIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            if (foundIndex >= 0)
+            {
+                // Walk to word boundaries so the whole misspelled word is selected.
+                int wordStart = foundIndex;
+                while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1]))
+                    wordStart--;
+                int wordEnd = foundIndex;
+                while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
+                    wordEnd++;
+
+                BodyBox.SelectionStart  = wordStart;
+                BodyBox.SelectionLength = wordEnd - wordStart;
+                BodyBox.Focus();
+
+                var word        = text.Substring(wordStart, wordEnd - wordStart);
+                var suggestions = BodyBox.GetSpellingError(foundIndex)
+                    ?.Suggestions.Take(3).ToList();
+
+                var announce = suggestions is { Count: > 0 }
+                    ? $"Misspelling: {word}. Suggestions: {string.Join(", ", suggestions)}"
+                    : $"Misspelling: {word}. No suggestions available.";
+
+                AccessibilityHelper.Announce(this, announce,
+                    category: AnnouncementCategory.Result);
+            }
+            else
+            {
+                AccessibilityHelper.Announce(this, "No more misspellings found.",
+                    category: AnnouncementCategory.Result);
+            }
+
             e.Handled = true;
         }
     }

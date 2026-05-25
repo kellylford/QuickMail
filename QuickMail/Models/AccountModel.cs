@@ -29,6 +29,12 @@ public partial class AccountModel : ObservableObject
     /// <summary>When true, this account is pre-selected when composing a new message.</summary>
     public bool IsDefault { get; set; } = false;
 
+    /// <summary>
+    /// Plain-text signature appended to new messages and replies/forwards.
+    /// Empty string means no signature. Stored in accounts.json.
+    /// </summary>
+    public string Signature { get; set; } = string.Empty;
+
     // ── Runtime-only status (not serialized, updated after each connection) ──────
 
     [ObservableProperty]
