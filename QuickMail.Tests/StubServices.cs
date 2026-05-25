@@ -53,6 +53,7 @@ sealed class StubImapService : IImapService
 sealed class StubSmtpService : ISmtpService
 {
     public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 sealed class StubAccountService : IAccountService

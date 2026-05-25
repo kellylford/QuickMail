@@ -338,6 +338,25 @@ public class ImapService : IImapService
 
             var attachments = ExtractAttachments(s.Body);
 
+            // Detect and parse text/calendar MIME parts (ICS calendar invites).
+            IcsModel? calendarInvite = null;
+            var calendarPart = FindCalendarPart(s.Body);
+            if (calendarPart != null)
+            {
+                try
+                {
+                    var decoded = await folder.GetBodyPartAsync(mailKitUid, calendarPart, ct);
+                    if (decoded is TextPart tp && !string.IsNullOrWhiteSpace(tp.Text))
+                    {
+                        calendarInvite = IcsModel.Parse(tp.Text);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"ImapService: failed to parse calendar part for UID {uid}: {ex.Message}");
+                }
+            }
+
             return new MailMessageDetail
             {
                 UniqueId      = uid,
@@ -354,6 +373,7 @@ public class ImapService : IImapService
                 PlainTextBody = plainText,
                 HtmlBody      = htmlText,
                 Attachments   = attachments,
+                CalendarInvite = calendarInvite,
             };
         }
         finally { await folder.CloseAsync(false, ct); }
@@ -1229,6 +1249,26 @@ public class ImapService : IImapService
             foreach (var child in multi.BodyParts)
             {
                 var found = FindBodyPartBySpecifier(child, specifier);
+                if (found != null) return found;
+            }
+        return null;
+    }
+
+    /// <summary>
+    /// Finds the first text/calendar body part in the MIME tree, if any.
+    /// Returns null if no calendar part is present.
+    /// </summary>
+    private static BodyPart? FindCalendarPart(BodyPart? part)
+    {
+        if (part == null) return null;
+        if (part is BodyPartBasic basic &&
+            basic.ContentType.MediaType.Equals("text", StringComparison.OrdinalIgnoreCase) &&
+            basic.ContentType.MediaSubtype.Equals("calendar", StringComparison.OrdinalIgnoreCase))
+            return part;
+        if (part is BodyPartMultipart multi)
+            foreach (var child in multi.BodyParts)
+            {
+                var found = FindCalendarPart(child);
                 if (found != null) return found;
             }
         return null;

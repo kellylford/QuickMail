@@ -37,7 +37,7 @@ public class ViewModelConstructionTests
     public void MainViewModel_ConstructsWithoutException()
     {
         var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService());
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
         Assert.NotNull(vm);
     }
 
@@ -45,7 +45,7 @@ public class ViewModelConstructionTests
     public void MainViewModel_LoadAccountList_DoesNotThrow()
     {
         var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService());
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
         vm.LoadAccountList(); // must not throw
     }
 
@@ -71,6 +71,82 @@ public class ViewModelConstructionTests
         var (_, _, _, store2, _, config2, _, _) = MakeServices();
         var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2);
         Assert.NotNull(vm);
+    }
+
+    // ── Calendar invite tests ───────────────────────────────────────────────────
+
+    [Fact]
+    public void MainViewModel_HasCalendarInvite_IsFalseByDefault()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.False(vm.HasCalendarInvite);
+    }
+
+    [Fact]
+    public void MainViewModel_BuildEventCardHtml_ReturnsEmptyWhenNoInvite()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        var html = vm.BuildEventCardHtml();
+
+        Assert.Equal(string.Empty, html);
+    }
+
+    [Fact]
+    public void MainViewModel_AcceptInviteCommand_Exists()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.NotNull(vm.AcceptInviteCommand);
+        Assert.True(vm.AcceptInviteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void MainViewModel_DeclineInviteCommand_Exists()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.NotNull(vm.DeclineInviteCommand);
+        Assert.True(vm.DeclineInviteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void MainViewModel_TentativeInviteCommand_Exists()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        Assert.NotNull(vm.TentativeInviteCommand);
+        Assert.True(vm.TentativeInviteCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void MainViewModel_InviteCommandsRegisteredInRegistry()
+    {
+        var (imap, accounts, creds, store, sync, config, registry, _) = MakeServices();
+        // MainViewModel constructor calls RegisterCommands which registers invite commands
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
+
+        var acceptCmd = registry.FindById("mail.acceptInvite");
+        var declineCmd = registry.FindById("mail.declineInvite");
+        var tentativeCmd = registry.FindById("mail.tentativeInvite");
+
+        Assert.NotNull(acceptCmd);
+        Assert.Equal("Accept Invitation", acceptCmd!.Title);
+        Assert.Equal("Mail", acceptCmd.Category);
+
+        Assert.NotNull(declineCmd);
+        Assert.Equal("Decline Invitation", declineCmd!.Title);
+        Assert.Equal("Mail", declineCmd.Category);
+
+        Assert.NotNull(tentativeCmd);
+        Assert.Equal("Tentatively Accept Invitation", tentativeCmd!.Title);
+        Assert.Equal("Mail", tentativeCmd.Category);
     }
 }
 
@@ -125,7 +201,7 @@ public class XamlParseTests
     {
         EnsureApplication();
         var (imap, accounts, creds, store, sync, config, registry, contacts) = MakeServices();
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService());
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
         // Constructing MainWindow triggers InitializeComponent() which is the real XAML parse.
         var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
             new StubOAuthService(), registry, contacts, config, store, new StubViewService(), new StubRuleService());

@@ -469,6 +469,7 @@ public partial class MainWindow : Window
             // Open clicked links in the user's default browser instead of replacing
             // the reading-pane document. NavigateToString sets the document URI to
             // "about:blank", so allow that for the initial render and block everything else.
+            // quickmail: URIs are handled internally for calendar invite actions.
             MessageBody.CoreWebView2.NavigationStarting += (_, args) =>
             {
                 var uri = args.Uri;
@@ -477,6 +478,11 @@ public partial class MainWindow : Window
                     uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
+                if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleQuickMailUri(uri);
+                    return;
+                }
                 OpenExternal(uri);
             };
             MessageBody.CoreWebView2.NewWindowRequested += (_, args) =>
@@ -1222,6 +1228,13 @@ public partial class MainWindow : Window
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
+        // Prepend the calendar invite event card if present.
+        var eventCardHtml = _vm.BuildEventCardHtml();
+        if (!string.IsNullOrEmpty(eventCardHtml))
+        {
+            html = InjectEventCard(html, eventCardHtml);
+        }
+
         // Wait for navigation to finish before focusing so the screen reader
         // gets the rendered document, but never let a complex sender HTML wait forever.
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1359,6 +1372,30 @@ public partial class MainWindow : Window
             ? "This message uses complex HTML, so QuickMail is showing a simplified body."
             : null;
         return BuildPlainTextHtmlDocument(detail.Subject, text, note);
+    }
+
+    /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
+    private static string InjectEventCard(string html, string eventCardHtml)
+    {
+        var bodyTag = "<body";
+        var bodyIdx = html.IndexOf(bodyTag, StringComparison.OrdinalIgnoreCase);
+        if (bodyIdx < 0) return eventCardHtml + html;
+
+        var closeIdx = html.IndexOf('>', bodyIdx);
+        if (closeIdx < 0) return eventCardHtml + html;
+
+        return html.Insert(closeIdx + 1, eventCardHtml);
+    }
+
+    /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
+    private void HandleQuickMailUri(string uri)
+    {
+        if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
+            _vm.AcceptInviteCommand.Execute(null);
+        else if (uri.StartsWith("quickmail:ics-tentative", StringComparison.OrdinalIgnoreCase))
+            _vm.TentativeInviteCommand.Execute(null);
+        else if (uri.StartsWith("quickmail:ics-decline", StringComparison.OrdinalIgnoreCase))
+            _vm.DeclineInviteCommand.Execute(null);
     }
 
     private static bool ShouldUseReaderMode(string html) =>

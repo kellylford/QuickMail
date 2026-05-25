@@ -29,6 +29,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IViewService _viewService;
     private readonly ICommandRegistry _commandRegistry;
     private readonly IRuleService _ruleService;
+    private readonly ISmtpService _smtp;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -413,6 +414,7 @@ public partial class MainViewModel : ObservableObject
         ICommandRegistry commandRegistry,
         IViewService viewService,
         IRuleService ruleService,
+        ISmtpService smtpService,
         bool onlineMode = false)
     {
         _imap            = imap;
@@ -425,6 +427,7 @@ public partial class MainViewModel : ObservableObject
         _commandRegistry = commandRegistry;
         _viewService     = viewService;
         _ruleService     = ruleService;
+        _smtp            = smtpService;
         OnlineMode       = onlineMode;
 
         var cfg = _configService.Load();
@@ -948,6 +951,21 @@ public partial class MainViewModel : ObservableObject
             execute: () => CreateRuleFromMessageCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => HasSelectedMessage));
+
+        registry.Register(new CommandDefinition(
+            id: "mail.acceptInvite", category: "Mail", title: "Accept Invitation",
+            execute: () => AcceptInviteCommand.Execute(null),
+            isAvailable: () => HasCalendarInvite));
+
+        registry.Register(new CommandDefinition(
+            id: "mail.declineInvite", category: "Mail", title: "Decline Invitation",
+            execute: () => DeclineInviteCommand.Execute(null),
+            isAvailable: () => HasCalendarInvite));
+
+        registry.Register(new CommandDefinition(
+            id: "mail.tentativeInvite", category: "Mail", title: "Tentatively Accept Invitation",
+            execute: () => TentativeInviteCommand.Execute(null),
+            isAvailable: () => HasCalendarInvite));
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -3746,5 +3764,137 @@ public partial class MainViewModel : ObservableObject
         return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ")
             .Replace("&nbsp;", " ").Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">")
             .Trim();
+    }
+
+    // ── Calendar invite commands ─────────────────────────────────────────────────
+
+    /// <summary>True when the open message contains a calendar invite.</summary>
+    public bool HasCalendarInvite => IsMessageOpen && MessageDetail?.CalendarInvite != null;
+
+    /// <summary>
+    /// Builds an accessible HTML event card for display in the WebView2 reading pane.
+    /// The card is prepended to the message body HTML by the View.
+    /// </summary>
+    public string BuildEventCardHtml()
+    {
+        var invite = MessageDetail?.CalendarInvite;
+        if (invite == null) return string.Empty;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append("<div style=\"border:1px solid #888;border-radius:6px;padding:12px;margin:0 0 16px 0;background:#f5f5f5;color:#222;font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;\" role=\"region\" aria-label=\"");
+        sb.Append(System.Net.WebUtility.HtmlEncode(invite.DisplaySummary));
+        sb.Append("\">");
+        sb.Append("<div style=\"font-weight:bold;font-size:15px;margin-bottom:8px;\">Event Invitation</div>");
+
+        if (!string.IsNullOrWhiteSpace(invite.Summary))
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Event:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Summary));
+            sb.Append("</div>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(invite.OrganizerName))
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Organizer:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.OrganizerName));
+            sb.Append("</div>");
+        }
+        else if (!string.IsNullOrWhiteSpace(invite.Organizer))
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Organizer:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Organizer));
+            sb.Append("</div>");
+        }
+
+        if (invite.StartTime.HasValue)
+        {
+            sb.Append("<div style=\"margin-bottom:4px;\"><strong>When:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.StartTime.Value.ToLocalTime().ToString("f")));
+            if (invite.EndTime.HasValue)
+            {
+                sb.Append(" \u2013 ");
+                sb.Append(System.Net.WebUtility.HtmlEncode(invite.EndTime.Value.ToLocalTime().ToString("t")));
+            }
+            sb.Append("</div>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(invite.Location))
+        {
+            sb.Append("<div style=\"margin-bottom:8px;\"><strong>Location:</strong> ");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Location));
+            sb.Append("</div>");
+        }
+
+        if (!string.IsNullOrWhiteSpace(invite.Description))
+        {
+            sb.Append("<div style=\"margin-bottom:8px;white-space:pre-wrap;\">");
+            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Description));
+            sb.Append("</div>");
+        }
+
+        // Buttons: Accept, Tentative, Decline
+        sb.Append("<div style=\"margin-top:8px;\">");
+        sb.Append("<a href=\"quickmail:ics-accept\" role=\"button\" aria-label=\"Accept invitation\" ");
+        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+        sb.Append("background:#107c10;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Accept</a>");
+        sb.Append("<a href=\"quickmail:ics-tentative\" role=\"button\" aria-label=\"Tentatively accept invitation\" ");
+        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+        sb.Append("background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Tentative</a>");
+        sb.Append("<a href=\"quickmail:ics-decline\" role=\"button\" aria-label=\"Decline invitation\" ");
+        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-bottom:4px;");
+        sb.Append("background:#d13438;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Decline</a>");
+        sb.Append("</div>");
+
+        sb.Append("</div>");
+        return sb.ToString();
+    }
+
+    [RelayCommand]
+    private async Task AcceptInvite()
+    {
+        await SendIcsReply("ACCEPTED", "accepted");
+    }
+
+    [RelayCommand]
+    private async Task DeclineInvite()
+    {
+        await SendIcsReply("DECLINED", "declined");
+    }
+
+    [RelayCommand]
+    private async Task TentativeInvite()
+    {
+        await SendIcsReply("TENTATIVE", "tentatively accepted");
+    }
+
+    private async Task SendIcsReply(string partStat, string actionLabel)
+    {
+        var invite = MessageDetail?.CalendarInvite;
+        if (invite == null) return;
+
+        var account = Accounts.FirstOrDefault(a => a.Id == MessageDetail!.AccountId);
+        if (account == null)
+        {
+            Announce($"Cannot send calendar response: account not found.", AnnouncementCategory.Result);
+            return;
+        }
+
+        try
+        {
+            var attendeeName = account.SenderDisplayName;
+            var attendeeEmail = account.Username;
+            var icsContent = invite.GenerateReply(attendeeEmail, attendeeName, partStat);
+
+            var password = _credentials.GetPassword(account.Id);
+            await _smtp.SendIcsReplyAsync(icsContent, account, password);
+
+            var eventTitle = invite.Summary ?? "calendar event";
+            Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"SendIcsReply ({partStat})", ex);
+            Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
+        }
     }
 }

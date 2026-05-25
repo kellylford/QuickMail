@@ -12,4 +12,7 @@ public partial class MailMessageDetail : MailMessageSummary
     public string HtmlBody { get; set; } = string.Empty;
 
     public List<AttachmentModel> Attachments { get; set; } = [];
+
+    /// <summary>Parsed calendar invite, if this message contains a text/calendar MIME part.</summary>
+    public IcsModel? CalendarInvite { get; set; }
 }

@@ -89,6 +89,13 @@ public class IcsModel
                 var line = rawLine.Trim();
                 if (string.IsNullOrEmpty(line)) continue;
 
+                // METHOD is at the VCALENDAR level, not inside VEVENT
+                if (!inVevent && line.StartsWith("METHOD:", StringComparison.OrdinalIgnoreCase))
+                {
+                    model.Method = line[7..];
+                    continue;
+                }
+
                 if (line.StartsWith("BEGIN:VEVENT", StringComparison.OrdinalIgnoreCase))
                 {
                     inVevent = true;
@@ -114,8 +121,10 @@ public class IcsModel
                 switch (propName.ToUpperInvariant())
                 {
                     case "ORGANIZER":
-                        model.Organizer = ExtractCnValue(prop, value);
-                        model.OrganizerName = ExtractCnParam(prop) ?? model.Organizer;
+                        model.OrganizerName = ExtractCnParam(prop);
+                        model.Organizer = ExtractMailtoValue(value);
+                        if (string.IsNullOrWhiteSpace(model.OrganizerName))
+                            model.OrganizerName = model.Organizer;
                         break;
                     case "SUMMARY":
                         model.Summary = UnescapeIcsText(value);
@@ -220,12 +229,9 @@ public class IcsModel
         return match.Success ? match.Groups[1].Value : null;
     }
 
-    /// <summary>Extracts the value from an ORGANIZER line, stripping mailto: prefix.</summary>
-    private static string? ExtractCnValue(string prop, string value)
+    /// <summary>Extracts the email address from a mailto: URI value.</summary>
+    private static string? ExtractMailtoValue(string value)
     {
-        var cn = ExtractCnParam(prop);
-        if (!string.IsNullOrWhiteSpace(cn)) return cn;
-        // Fall back to the email address without mailto:
         return value.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
             ? value[7..]
             : value;

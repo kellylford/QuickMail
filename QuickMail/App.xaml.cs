@@ -91,7 +91,7 @@ public partial class App : Application
             var viewService = new ViewService(profile);
 
             var mainVm = new MainViewModel(
-                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService,
+                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode);
             mainVm.LoadAccountList();
 

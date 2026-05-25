@@ -7,4 +7,10 @@ namespace QuickMail.Services;
 public interface ISmtpService
 {
     Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends an ICS calendar reply (accept/decline/tentative) to the event organizer.
+    /// The <paramref name="icsReplyContent"/> is a full iCalendar REPLY payload.
+    /// </summary>
+    Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password, CancellationToken ct = default);
 }

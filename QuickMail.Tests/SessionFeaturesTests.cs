@@ -115,7 +115,7 @@ public class PreviewSuppressionTests
         var vm = new MainViewModel(
             new StubImapService(), new StubAccountService(), new StubCredentialService(),
             store, new StubOAuthService(), new StubSyncService(), new ZeroPreviewConfig(),
-            new StubCommandRegistry(), new StubViewService(), new StubRuleService());
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService());
 
         await vm.InitialLoadAsync();
 
@@ -130,7 +130,7 @@ public class PreviewSuppressionTests
         var vm = new MainViewModel(
             new StubImapService(), new StubAccountService(), new StubCredentialService(),
             store, new StubOAuthService(), new StubSyncService(), new StubConfigService(),
-            new StubCommandRegistry(), new StubViewService(), new StubRuleService());
+            new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService());
 
         await vm.InitialLoadAsync();
 
@@ -149,7 +149,7 @@ public class OnlineModeTests
             new StubImapService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
-            new StubRuleService(), onlineMode: onlineMode);
+            new StubRuleService(), new StubSmtpService(), onlineMode: onlineMode);
 
     [Fact]
     public void OnlineMode_DefaultIsFalse()
@@ -273,7 +273,7 @@ public class IdleNewMailTests
             imap, new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), sync,
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
-            new StubRuleService());
+            new StubRuleService(), new StubSmtpService());
 
         // Seed the account and connect so _cachedFolders gets the INBOX entry.
         vm.Accounts.Add(account);
@@ -304,7 +304,7 @@ public class IdleNewMailTests
             imap, new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), sync,
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
-            new StubRuleService(), onlineMode: true);
+            new StubRuleService(), new StubSmtpService(), onlineMode: true);
 
         vm.Accounts.Add(account);
         await vm.ConnectAllAccountsAsync();
