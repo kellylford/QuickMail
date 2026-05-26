@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Threading;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -32,9 +33,15 @@ public partial class ComposeWindow : Window
     private bool _suppressSpellingAnnouncement;
 
     // Set to true in PreviewKeyDown when a character-generating key is pressed (typing).
-    // BodyBox_SelectionChanged skips spelling announcements while this is true so errors
-    // are not announced mid-word while the user is still typing.
+    // BodyBox_SelectionChanged skips spelling announcements while this is true; if the
+    // AnnounceSpellingWhileTyping setting is on, a debounce timer fires instead after
+    // the user pauses so the full word (not a partial) is what gets announced.
     private bool _caretMovedByTyping;
+
+    // Debounce timer for spelling announcements while typing. Resets on every character
+    // keystroke; fires ~500 ms after the user pauses, by which point the word is complete.
+    private DispatcherTimer? _spellingTypingTimer;
+    private static readonly TimeSpan SpellingTypingDelay = TimeSpan.FromMilliseconds(500);
 
     public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService)
     {
@@ -340,54 +347,12 @@ public partial class ComposeWindow : Window
     private void BodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
         if (_suppressSpellingAnnouncement) return;
-        var cfg = _configService.Load();
-        if (_caretMovedByTyping  && !cfg.AnnounceSpellingWhileTyping)      return;
-        if (!_caretMovedByTyping && !cfg.AnnounceSpellingWhileNavigating)  return;
-
-        var text = BodyBox.Text;
-        if (string.IsNullOrEmpty(text)) return;
-
-        int caret = BodyBox.CaretIndex;
-        // If the caret is at the very end, check the character just before it
-        int checkIndex = (caret > 0 && caret == text.Length) ? caret - 1 : caret;
-        if (checkIndex < 0 || checkIndex >= text.Length)
-        {
-            ClearSpellingContext();
-            return;
-        }
-
-        // Only announce if the caret is inside a misspelled word
-        var error = BodyBox.GetSpellingError(checkIndex);
-        if (error == null)
-        {
-            ClearSpellingContext();
-            return;
-        }
-
-        // Walk to word boundaries to get the full word
-        int wordStart = checkIndex;
-        while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1]))
-            wordStart--;
-        int wordEnd = checkIndex;
-        while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
-            wordEnd++;
-
-        // Don't re-announce the same word
-        if (wordStart == _lastAnnouncedSpellingIndex) return;
-        _lastAnnouncedSpellingIndex = wordStart;
-
-        var word = text.Substring(wordStart, wordEnd - wordStart);
-        var suggestions = error.Suggestions.Take(3).ToList();
-
-        // Track the current spelling error so Alt+1/2/3 can replace it.
-        _currentSpellingWordStart = wordStart;
-        _currentSpellingWordEnd = wordEnd;
-        _currentSpellingSuggestions = suggestions;
-
-        var announce = BuildSpellingAnnouncement(word, suggestions);
-
-        AccessibilityHelper.Announce(this, announce,
-            category: AnnouncementCategory.Result);
+        // Typing: always skip the immediate check here. If AnnounceSpellingWhileTyping is
+        // on, the debounce timer fires AnnounceSpellingAtCurrentPosition after the user pauses.
+        if (_caretMovedByTyping) return;
+        // Navigation: skip if setting is off.
+        if (!_configService.Load().AnnounceSpellingWhileNavigating) return;
+        AnnounceSpellingAtCurrentPosition();
     }
 
     private void ClearSpellingContext()
@@ -396,6 +361,67 @@ public partial class ComposeWindow : Window
         _currentSpellingWordStart = -1;
         _currentSpellingWordEnd = -1;
         _currentSpellingSuggestions = null;
+    }
+
+    // Core spelling check: finds the misspelled word at the current caret position and
+    // announces it. Called by BodyBox_SelectionChanged (navigation) and by the typing
+    // debounce timer (after a pause while typing with AnnounceSpellingWhileTyping on).
+    private void AnnounceSpellingAtCurrentPosition()
+    {
+        var text = BodyBox.Text;
+        if (string.IsNullOrEmpty(text)) return;
+
+        int caret = BodyBox.CaretIndex;
+        int checkIndex = (caret > 0 && caret == text.Length) ? caret - 1 : caret;
+        if (checkIndex < 0 || checkIndex >= text.Length)
+        {
+            ClearSpellingContext();
+            return;
+        }
+
+        var error = BodyBox.GetSpellingError(checkIndex);
+        if (error == null)
+        {
+            ClearSpellingContext();
+            return;
+        }
+
+        int wordStart = checkIndex;
+        while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1]))
+            wordStart--;
+        int wordEnd = checkIndex;
+        while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd]))
+            wordEnd++;
+
+        if (wordStart == _lastAnnouncedSpellingIndex) return;
+        _lastAnnouncedSpellingIndex = wordStart;
+
+        var word = text.Substring(wordStart, wordEnd - wordStart);
+        var suggestions = error.Suggestions.Take(3).ToList();
+
+        _currentSpellingWordStart = wordStart;
+        _currentSpellingWordEnd = wordEnd;
+        _currentSpellingSuggestions = suggestions;
+
+        AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
+            category: AnnouncementCategory.Result);
+    }
+
+    // Starts or resets the debounce timer used when AnnounceSpellingWhileTyping is on.
+    // Each character keystroke resets the timer; it fires once the user pauses typing.
+    private void ResetSpellingTypingTimer()
+    {
+        if (_spellingTypingTimer == null)
+        {
+            _spellingTypingTimer = new DispatcherTimer { Interval = SpellingTypingDelay };
+            _spellingTypingTimer.Tick += (_, _) =>
+            {
+                _spellingTypingTimer!.Stop();
+                AnnounceSpellingAtCurrentPosition();
+            };
+        }
+        _spellingTypingTimer.Stop();
+        _spellingTypingTimer.Start();
     }
 
     /// <summary>
@@ -446,6 +472,10 @@ public partial class ComposeWindow : Window
         // Track whether this keystroke is character-generating (typing) or navigation so
         // BodyBox_SelectionChanged can suppress mid-word spelling announcements.
         _caretMovedByTyping = IsTypingKey(e.Key, e.KeyboardDevice.Modifiers);
+        if (_caretMovedByTyping && _configService.Load().AnnounceSpellingWhileTyping)
+            ResetSpellingTypingTimer();     // fires after user pauses — announces complete word
+        else if (!_caretMovedByTyping)
+            _spellingTypingTimer?.Stop();   // navigation takes over; cancel any pending timer
 
         // Alt+1/2/3: replace the current misspelled word with the corresponding suggestion.
         // Only works when the caret is on a spelling error that was just announced.

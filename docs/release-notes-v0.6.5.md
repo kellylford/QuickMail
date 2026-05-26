@@ -10,7 +10,7 @@ Three refinements to how spelling errors are announced in the compose window:
 
 **Three independent spelling announcement settings.** The Screen Reader Announcements section in **File → Settings** now has three separate spelling controls:
 
-- **Announce spelling errors when typing** — when on, errors are announced while you type. Off by default.
+- **Announce spelling errors when typing** — when on, errors are announced while you type. A short pause after typing triggers the announcement so you hear the complete word rather than a partial one. Off by default.
 - **Announce spelling errors while navigating** — when on, errors are announced as you arrow through the message body and the caret moves into a misspelled word. On by default. F7 and Shift+F7 always announce regardless of this setting.
 - **Announce spelling suggestions** — when on, up to three correction suggestions are spoken alongside the error. On by default.
 
