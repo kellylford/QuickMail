@@ -31,6 +31,11 @@ public partial class ComposeWindow : Window
     // Suppress spelling announcements during programmatic text changes (e.g. Alt+1 replacement).
     private bool _suppressSpellingAnnouncement;
 
+    // Set to true in PreviewKeyDown when a character-generating key is pressed (typing).
+    // BodyBox_SelectionChanged skips spelling announcements while this is true so errors
+    // are not announced mid-word while the user is still typing.
+    private bool _caretMovedByTyping;
+
     public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService)
     {
         _vm = vm;
@@ -335,6 +340,8 @@ public partial class ComposeWindow : Window
     private void BodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
         if (_suppressSpellingAnnouncement) return;
+        if (_caretMovedByTyping) return;
+        if (!_configService.Load().AnnounceSpellingErrors) return;
 
         var text = BodyBox.Text;
         if (string.IsNullOrEmpty(text)) return;
@@ -405,12 +412,40 @@ public partial class ComposeWindow : Window
         return $"Misspelling: {word}. {string.Join(", ", suggestions)}.";
     }
 
+    // Returns true when the key generates a character in the TextBox (i.e. the user is
+    // mid-word typing), so BodyBox_SelectionChanged can suppress spelling announcements.
+    // Navigation, control, modifier, and function keys return false.
+    private static bool IsTypingKey(Key key, ModifierKeys modifiers)
+    {
+        // Ctrl/Alt combos are shortcuts, never character input
+        if ((modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != ModifierKeys.None)
+            return false;
+
+        return key switch
+        {
+            Key.Back or Key.Delete or Key.Return or Key.Tab or Key.Escape or Key.Space or
+            Key.Left or Key.Right or Key.Up or Key.Down or
+            Key.Home or Key.End or Key.PageUp or Key.PageDown or
+            Key.F1  or Key.F2  or Key.F3  or Key.F4  or Key.F5  or Key.F6  or
+            Key.F7  or Key.F8  or Key.F9  or Key.F10 or Key.F11 or Key.F12 or
+            Key.Insert or Key.PrintScreen or Key.Pause or Key.Scroll or
+            Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or
+            Key.LeftAlt   or Key.RightAlt   or Key.LWin or Key.RWin or
+            Key.CapsLock  or Key.NumLock    or Key.Apps or Key.Sleep => false,
+            _ => true   // all other keys produce a character
+        };
+    }
+
     /// <summary>
     /// F7 moves to the next misspelled word; Shift+F7 moves to the previous one.
     /// Announces the misspelling to screen readers so users know what needs correction.
     /// </summary>
     private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Track whether this keystroke is character-generating (typing) or navigation so
+        // BodyBox_SelectionChanged can suppress mid-word spelling announcements.
+        _caretMovedByTyping = IsTypingKey(e.Key, e.KeyboardDevice.Modifiers);
+
         // Alt+1/2/3: replace the current misspelled word with the corresponding suggestion.
         // Only works when the caret is on a spelling error that was just announced.
         if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0
@@ -505,6 +540,21 @@ public partial class ComposeWindow : Window
             id: "compose.prevMisspelling", category: "Compose", title: "Previous Misspelling",
             execute: () => NavigateSpellingError(forward: false),
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.toggleSpellingAnnouncements", category: "Compose",
+            title: "Toggle Spelling Announcements",
+            execute: ToggleSpellingAnnouncements));
+    }
+
+    private void ToggleSpellingAnnouncements()
+    {
+        var cfg = _configService.Load();
+        cfg.AnnounceSpellingErrors = !cfg.AnnounceSpellingErrors;
+        _configService.Save(cfg);
+        var state = cfg.AnnounceSpellingErrors ? "on" : "off";
+        AccessibilityHelper.Announce(this, $"Spelling error announcements {state}.",
+            interrupt: true, category: AnnouncementCategory.Result, force: true);
     }
 
     private void OpenCommandPalette()
@@ -563,14 +613,18 @@ public partial class ComposeWindow : Window
             _currentSpellingWordEnd = wordEnd;
             _currentSpellingSuggestions = suggestions;
 
-            var announce = BuildSpellingAnnouncement(word, suggestions);
-            AccessibilityHelper.Announce(this, announce, category: AnnouncementCategory.Result);
+            if (_configService.Load().AnnounceSpellingErrors)
+            {
+                var announce = BuildSpellingAnnouncement(word, suggestions);
+                AccessibilityHelper.Announce(this, announce, category: AnnouncementCategory.Result);
+            }
         }
         else
         {
             ClearSpellingContext();
-            AccessibilityHelper.Announce(this, "No more misspellings found.",
-                category: AnnouncementCategory.Result);
+            if (_configService.Load().AnnounceSpellingErrors)
+                AccessibilityHelper.Announce(this, "No more misspellings found.",
+                    category: AnnouncementCategory.Result);
         }
     }
 }

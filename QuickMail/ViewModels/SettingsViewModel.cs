@@ -41,6 +41,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _announceResults;
 
     [ObservableProperty]
+    private bool _announceSpellingErrors;
+
+    [ObservableProperty]
     private bool _announceSpellingSuggestions;
 
     public ObservableCollection<HotkeyRowViewModel> HotkeyRows { get; } = [];
@@ -62,6 +65,7 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceHints       = cfg.AnnounceHints;
         AnnounceStatus      = cfg.AnnounceStatus;
         AnnounceResults     = cfg.AnnounceResults;
+        AnnounceSpellingErrors      = cfg.AnnounceSpellingErrors;
         AnnounceSpellingSuggestions = cfg.AnnounceSpellingSuggestions;
 
         foreach (var cmd in registry.GetAll())
@@ -91,6 +95,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceHints       = AnnounceHints;
         cfg.AnnounceStatus      = AnnounceStatus;
         cfg.AnnounceResults     = AnnounceResults;
+        cfg.AnnounceSpellingErrors      = AnnounceSpellingErrors;
         cfg.AnnounceSpellingSuggestions = AnnounceSpellingSuggestions;
 
         cfg.CustomHotkeys = HotkeyRows

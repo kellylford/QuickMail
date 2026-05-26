@@ -206,6 +206,7 @@ public class ConfigService : IConfigService
                     case "announcehints":        config.AnnounceHints        = ParseBool(value); break;
                     case "announcestatus":       config.AnnounceStatus       = ParseBool(value); break;
                     case "announceresults":      config.AnnounceResults      = ParseBool(value); break;
+                    case "announcespellingerrors":      config.AnnounceSpellingErrors      = ParseBool(value); break;
                     case "announcespellingsuggestions": config.AnnounceSpellingSuggestions = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
                 }
@@ -291,6 +292,12 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"AnnounceResults = {(config.AnnounceResults ? "on" : "off")}");
         sb.AppendLine("# Announce action outcomes such as search result counts and move confirmations.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AnnounceSpellingErrors = {(config.AnnounceSpellingErrors ? "on" : "off")}");
+        sb.AppendLine("# Announce spelling errors when navigating to a misspelled word or using F7.");
+        sb.AppendLine("# When off, spelling navigation still works but nothing is spoken.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 

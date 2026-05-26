@@ -146,9 +146,15 @@
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce outcomes such as search result counts and move confirmations"/>
 
+                                <CheckBox Content="Announce spelling _errors"
+                                          IsChecked="{Binding AnnounceSpellingErrors, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Announce spelling errors when navigating through the message body or using F7"/>
+
                                 <CheckBox Content="Announce spelling _suggestions"
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"
-                                          Margin="16,4,0,0"
+                                          IsEnabled="{Binding AnnounceSpellingErrors}"
+                                          Margin="32,4,0,0"
                                           AutomationProperties.Name="Announce spelling suggestions when navigating into a misspelled word"/>
                             </StackPanel>
                         </GroupBox>
