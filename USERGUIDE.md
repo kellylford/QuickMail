@@ -568,19 +568,27 @@ Common actions available through context menus:
 
 ### Spell check
 
-The message body has spell checking enabled. Misspelled words are underlined with a red squiggle as you type.
+QuickMail supports spelling error detection and announcement while composing messages. A few settings and key commands control how the experience works.
 
-**Navigating errors:** Press **F7** to jump to the next misspelled word; press **Shift+F7** to go back to the previous one. When you land on a misspelling, QuickMail selects the word and announces it through your screen reader.
+#### The default experience
 
-**Inline announcements:** As you move through the message body with arrow keys, QuickMail automatically detects when the caret enters a misspelled word and announces it. You don't need to press F7 — just navigate normally and you'll hear about errors as you encounter them.
+By default you will not hear about spelling errors as you are typing. You will hear about them when navigating through text with cursor keys, or using **F7** and **Shift+F7** to jump from spelling issue to spelling issue.
 
-**Quick replacement:** When a misspelling is announced, press **Alt+1**, **Alt+2**, or **Alt+3** to replace the word with the first, second, or third suggestion. QuickMail announces "Replaced with [word]." and moves on. This lets you correct errors without opening a context menu.
+When a spelling issue is encountered, you will hear the incorrect spelling and three possible replacements. With focus on the error, press **Alt+1**, **Alt+2**, or **Alt+3** to select one of the three replacements you heard. You can also press **Shift+F10** to bring up a context menu with additional spelling suggestions and an option to ignore the word.
 
-**Context menu:** Right-click a misspelled word (or press **Shift+F10**) to see the full list of suggestions and choose one manually.
+#### Adjusting the experience
 
-**Command palette:** Press **Ctrl+Shift+P** in the compose window and type "misspelling" to find **Next Misspelling** and **Previous Misspelling** commands.
+If the defaults for the spell checking experience are not to your liking, you can make adjustments in QuickMail settings from the main QuickMail window, not the compose window. Open **File → Settings** and select the **General** tab. In the **Screen Reader Announcements** section you will find:
 
-**Settings:** Open **Tools → Settings → Screen Reader Announcements** and check or uncheck **Announce spelling suggestions** to control whether suggestions are spoken. When off, only the misspelled word is announced — useful for experienced users who know the Alt+number workflow and prefer less speech.
+- **Announce spelling errors when typing** — turn this on to hear about spelling errors while you type. Announcements are held until you pause so you hear the complete word, not a partial one.
+- **Announce spelling errors while navigating** — turn this off if you do not want to hear about spelling errors as you move through the message body with cursor keys. F7 and Shift+F7 always announce regardless of this setting.
+- **Announce spelling suggestions** — when on, up to three replacement suggestions are spoken alongside the misspelled word. Turn this off if you prefer to hear only the misspelled word and use Alt+1/2/3 or Shift+F10 yourself.
+
+Mix and match these settings for the experience you want.
+
+#### Quickly toggling announcements while composing
+
+If you want to temporarily silence spelling announcements without leaving the compose window, open the compose Command Palette with **Ctrl+Shift+P** and search for **Toggle Spelling Announcements**. This flips the "announce while navigating" setting on or off immediately and QuickMail confirms the change aloud. F7 and Shift+F7 navigation always announces regardless of this toggle.
 
 ### Reply, Reply All, and Forward
 
