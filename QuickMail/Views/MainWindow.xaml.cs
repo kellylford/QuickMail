@@ -79,6 +79,10 @@ public partial class MainWindow : Window
     private object? _typeAheadScope;
     private int _messageBodyRenderVersion;
 
+    // Tracks which pane (GetFocusedPaneIndex) was active when the window last deactivated
+    // so we can restore focus on re-activation.  -1 = not yet deactivated / unknown.
+    private int _paneIndexBeforeDeactivation = -1;
+
     // Debounces StatusText announcements so rapid per-folder sync updates ("5 messages",
     // "12 messages", …) coalesce into a single final reading by the screen reader.
     private DispatcherTimer? _statusAnnounceTimer;
@@ -282,7 +286,9 @@ public partial class MainWindow : Window
 
         PreviewKeyDown += OnWindowKeyDown;
         MainStatusBar.PreviewKeyDown += StatusBar_PreviewKeyDown;
-        Loaded += OnLoaded;
+        Loaded      += OnLoaded;
+        Deactivated += OnDeactivated;
+        Activated   += OnActivated;
 
         // Debug: trace every SelectionChanged on the message list so we can see
         // when and why the selection is reset (only fires when /debug is active).
@@ -1697,6 +1703,36 @@ public partial class MainWindow : Window
         LogService.Debug($"[FOCUS]   → FocusItemAt({idx}) count={MessageList.Items.Count}");
         MessageList.ScrollIntoView(MessageList.Items[idx]);
         Dispatcher.InvokeAsync(() => FocusItemAt(idx), DispatcherPriority.Input);
+    }
+
+    // Records the active pane when the window loses focus (Alt+Tab away, another window
+    // comes foreground, etc.) so we can restore it when the window is re-activated.
+    private void OnDeactivated(object? sender, EventArgs e)
+    {
+        _paneIndexBeforeDeactivation = GetFocusedPaneIndex();
+        LogService.Debug($"[FOCUS] Deactivated pane={_paneIndexBeforeDeactivation}");
+    }
+
+    // Restores keyboard focus to the message list / tree when the window re-activates
+    // after Alt+Tab (or any other reason the window regains foreground).
+    //
+    // WPF's built-in focus restoration silently fails for virtualised list containers
+    // (ListViewItem, TreeViewItem) because the container may have been recycled while
+    // the window was inactive.  WPF leaves focus on the Window itself rather than on
+    // the specific item row.  We compensate by explicitly calling ReturnFocusToMessageList,
+    // which is already smart about view-mode and handles empty lists gracefully.
+    //
+    // For the reading pane (pane 4 / WebView2): WPF cannot focus into a WebView2 control
+    // by itself, so we also restore to the message list in that case.
+    //
+    // All other panes (toolbar, account list, folder list, search, status bar) are
+    // plain WPF controls whose focus WPF restores correctly on its own — we leave
+    // those untouched.
+    private void OnActivated(object? sender, EventArgs e)
+    {
+        LogService.Debug($"[FOCUS] Activated lastPane={_paneIndexBeforeDeactivation} {FocusInfo()}");
+        if (_paneIndexBeforeDeactivation == 3 || _paneIndexBeforeDeactivation == 4)
+            Dispatcher.InvokeAsync(ReturnFocusToMessageList, DispatcherPriority.Input);
     }
 
     // Routes focus to whichever message panel is currently visible.
