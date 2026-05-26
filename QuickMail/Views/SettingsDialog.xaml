@@ -146,10 +146,10 @@
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce outcomes such as search result counts and move confirmations"/>
 
-                                <CheckBox Content="Announce spelling _errors"
+                                <CheckBox Content="Announce spelling errors while _navigating"
                                           IsChecked="{Binding AnnounceSpellingErrors, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when navigating through the message body or using F7"/>
+                                          AutomationProperties.Name="Announce spelling errors when the caret moves into a misspelled word during navigation. F7 always announces regardless of this setting."/>
 
                                 <CheckBox Content="Announce spelling _suggestions"
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"

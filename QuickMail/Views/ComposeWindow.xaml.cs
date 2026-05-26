@@ -613,18 +613,14 @@ public partial class ComposeWindow : Window
             _currentSpellingWordEnd = wordEnd;
             _currentSpellingSuggestions = suggestions;
 
-            if (_configService.Load().AnnounceSpellingErrors)
-            {
-                var announce = BuildSpellingAnnouncement(word, suggestions);
-                AccessibilityHelper.Announce(this, announce, category: AnnouncementCategory.Result);
-            }
+            var announce = BuildSpellingAnnouncement(word, suggestions);
+            AccessibilityHelper.Announce(this, announce, category: AnnouncementCategory.Result);
         }
         else
         {
             ClearSpellingContext();
-            if (_configService.Load().AnnounceSpellingErrors)
-                AccessibilityHelper.Announce(this, "No more misspellings found.",
-                    category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, "No more misspellings found.",
+                category: AnnouncementCategory.Result);
         }
     }
 }
