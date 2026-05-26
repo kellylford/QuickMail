@@ -12,6 +12,7 @@ QuickMail's spell-check announcement behavior has been refined and is now fully 
 
 - **Announce spelling errors when typing** — turn on to hear errors while typing. Announcements are held until you pause so you hear the complete word, not a partial one. Off by default.
 - **Announce spelling errors while navigating** — turn off to silence errors during cursor-key navigation. F7 and Shift+F7 always announce regardless of this setting. On by default.
+- **Alt+F7** — repeats the spelling error and suggestions for the word at the current caret position. Useful after your screen reader's Say Line command to re-hear the error details.
 - **Announce spelling suggestions** — controls whether up to three replacement suggestions are spoken alongside the misspelled word. On by default.
 
 **Quick toggle from the compose window.** Open the compose Command Palette with **Ctrl+Shift+P** and search for **Toggle Spelling Announcements** to flip the "announce while navigating" setting on or off without leaving the compose window. QuickMail confirms the change aloud. F7 and Shift+F7 always announce regardless of this toggle.

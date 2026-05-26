@@ -576,6 +576,21 @@ public partial class ComposeWindow : Window
             id: "compose.toggleSpellingAnnouncements", category: "Compose",
             title: "Toggle Spelling Announcements",
             execute: ToggleSpellingAnnouncements));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.repeatSpelling", category: "Compose",
+            title: "Repeat Spelling Announcement",
+            execute: RepeatSpellingAnnouncement,
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Alt));
+    }
+
+    // Re-announces the spelling error at the current caret position.
+    // Clears the dedup guard first so the same word is spoken again even if it was
+    // the last word announced (e.g. the user wants to hear the suggestions again).
+    private void RepeatSpellingAnnouncement()
+    {
+        _lastAnnouncedSpellingIndex = -1;
+        AnnounceSpellingAtCurrentPosition();
     }
 
     private void ToggleSpellingAnnouncements()

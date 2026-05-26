@@ -574,7 +574,7 @@ QuickMail supports spelling error detection and announcement while composing mes
 
 By default you will not hear about spelling errors as you are typing. You will hear about them when navigating through text with cursor keys, or using **F7** and **Shift+F7** to jump from spelling issue to spelling issue.
 
-When a spelling issue is encountered, you will hear the incorrect spelling and three possible replacements. With focus on the error, press **Alt+1**, **Alt+2**, or **Alt+3** to select one of the three replacements you heard. You can also press **Shift+F10** to bring up a context menu with additional spelling suggestions and an option to ignore the word.
+When a spelling issue is encountered, you will hear the incorrect spelling and three possible replacements. With focus on the error, press **Alt+1**, **Alt+2**, or **Alt+3** to select one of the three replacements you heard. You can also press **Shift+F10** to bring up a context menu with additional spelling suggestions and an option to ignore the word. After you hear a spelling error announced, you can use your screen reader's Say Line command to read the word in context. To have the spelling error and suggestions repeated, press **Alt+F7**.
 
 #### Adjusting the experience
 
@@ -613,6 +613,7 @@ These are also available as buttons in the toolbar.
 | Alt+Y | Jump to the message body |
 | F7 | Jump to next misspelling |
 | Shift+F7 | Jump to previous misspelling |
+| Alt+F7 | Repeat spelling announcement for current word |
 | Alt+1/2/3 | Replace misspelling with 1st/2nd/3rd suggestion |
 | Ctrl+Shift+P | Open command palette |
 | Ctrl+Shift+A | Add file attachments |
