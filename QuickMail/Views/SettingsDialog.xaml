@@ -146,10 +146,10 @@
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce outcomes such as search result counts and move confirmations"/>
 
-                                <CheckBox Content="Announce spelling errors while _typing"
+                                <CheckBox Content="Announce spelling errors _when typing"
                                           IsChecked="{Binding AnnounceSpellingWhileTyping, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors while typing a word before it is complete"/>
+                                          AutomationProperties.Name="Announce spelling errors when typing"/>
 
                                 <CheckBox Content="Announce spelling errors while _navigating"
                                           IsChecked="{Binding AnnounceSpellingWhileNavigating, Mode=TwoWay}"

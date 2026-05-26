@@ -297,8 +297,7 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceSpellingWhileTyping = {(config.AnnounceSpellingWhileTyping ? "on" : "off")}");
-        sb.AppendLine("# Announce spelling errors while actively typing a word. Default off.");
-        sb.AppendLine("# When on, errors may be announced before the word is finished.");
+        sb.AppendLine("# Announce spelling errors when typing. Default off.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
