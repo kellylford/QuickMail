@@ -281,12 +281,21 @@ public partial class ComposeWindow : Window
 
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
     // Ctrl+Shift+P → Command Palette; F7 → next misspelling; Shift+F7 → previous misspelling.
+    // Ctrl+Enter → Send message (secondary shortcut alongside Alt+S).
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // Ctrl+Shift+P: open the command palette
         if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             OpenCommandPalette();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+Enter: send the message (secondary shortcut alongside Alt+S)
+        if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            _vm.SendCommand.Execute(null);
             e.Handled = true;
             return;
         }
