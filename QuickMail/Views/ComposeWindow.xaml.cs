@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
+using System.Net.Mail;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -7,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Threading;
+using QuickMail.Controls;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -20,14 +24,14 @@ public partial class ComposeWindow : Window
     private readonly ITemplateService   _templateService;
     private readonly IConfigService     _configService;
     private readonly CommandRegistry    _registry = new();
-    private TextBox? _activeAddressBox;
+    private TokenizedAddressBox? _activeAddressControl;
     private CancellationTokenSource? _autocompleteCts;
     private int _lastAnnouncedSpellingIndex = -1;
 
     // Track the current spelling error so Alt+1/2/3 can replace it with a suggestion.
     private int _currentSpellingWordStart = -1;
     private int _currentSpellingWordEnd = -1;
-    private System.Collections.Generic.List<string>? _currentSpellingSuggestions;
+    private List<string>? _currentSpellingSuggestions;
 
     // Suppress spelling announcements during programmatic text changes (e.g. Alt+1 replacement).
     private bool _suppressSpellingAnnouncement;
@@ -62,7 +66,6 @@ public partial class ComposeWindow : Window
         };
 
         // Wire the View confirmation callback so the VM stays out of System.Windows.
-        // Mirrors the pattern used by MainViewModel.ConfirmationRequested.
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
@@ -79,9 +82,9 @@ public partial class ComposeWindow : Window
 
         foreach (var box in new[] { ToBox, CcBox, BccBox })
         {
-            box.TextChanged       += AddressBox_TextChanged;
-            box.PreviewKeyDown    += AddressBox_PreviewKeyDown;
-            box.LostKeyboardFocus += AddressBox_LostKeyboardFocus;
+            box.InputTextChanged           += AddressBox_InputTextChanged;
+            box.PreviewKeyDown             += AddressBox_PreviewKeyDown;
+            box.IsKeyboardFocusWithinChanged += AddressBox_IsKeyboardFocusWithinChanged;
         }
 
         // Reply / Reply-All: To is already filled in, so land in the body at the top.
@@ -89,9 +92,7 @@ public partial class ComposeWindow : Window
         Loaded += (_, _) =>
         {
             if (string.IsNullOrWhiteSpace(_vm.To))
-            {
-                ToBox.Focus();
-            }
+                ToBox.FocusInput();
             else
             {
                 BodyBox.Focus();
@@ -104,13 +105,12 @@ public partial class ComposeWindow : Window
 
     // ── Autocomplete ─────────────────────────────────────────────────────────
 
-    private async void AddressBox_TextChanged(object sender, TextChangedEventArgs e)
+    private async void AddressBox_InputTextChanged(object? sender, TextChangedEventArgs e)
     {
-        _activeAddressBox = (TextBox)sender;
-        var searchToken = GetCurrentToken(_activeAddressBox.Text, _activeAddressBox.CaretIndex);
+        _activeAddressControl = (TokenizedAddressBox)sender!;
+        var searchToken = _activeAddressControl.CurrentInputText.Trim();
         if (searchToken.Length < 1) { AutoCompletePopup.IsOpen = false; return; }
 
-        // Cancel any previous search and create a new cancellation token
         _autocompleteCts?.Cancel();
         _autocompleteCts = new CancellationTokenSource();
 
@@ -120,7 +120,7 @@ public partial class ComposeWindow : Window
             if (results.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
 
             SuggestionList.ItemsSource = results;
-            AutoCompletePopup.PlacementTarget = _activeAddressBox;
+            AutoCompletePopup.PlacementTarget = _activeAddressControl;
             AutoCompletePopup.Placement       = PlacementMode.Bottom;
             AutoCompletePopup.IsOpen          = true;
 
@@ -130,7 +130,7 @@ public partial class ComposeWindow : Window
         }
         catch (OperationCanceledException)
         {
-            // Search was cancelled by a more recent keystroke, ignore
+            // Superseded by a newer keystroke
         }
     }
 
@@ -151,13 +151,14 @@ public partial class ComposeWindow : Window
         }
     }
 
-    private void AddressBox_LostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    private void AddressBox_IsKeyboardFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        if ((bool)e.NewValue) return; // focus arrived — nothing to do
         Dispatcher.InvokeAsync(() =>
         {
             if (!SuggestionList.IsKeyboardFocusWithin)
                 AutoCompletePopup.IsOpen = false;
-        }, System.Windows.Threading.DispatcherPriority.Background);
+        }, DispatcherPriority.Background);
     }
 
     internal void SuggestionList_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -170,13 +171,13 @@ public partial class ComposeWindow : Window
         else if (e.Key == Key.Escape)
         {
             AutoCompletePopup.IsOpen = false;
-            _activeAddressBox?.Focus();
+            _activeAddressControl?.FocusInput();
             e.Handled = true;
         }
         else if (e.Key == Key.Up && SuggestionList.SelectedIndex <= 0)
         {
             AutoCompletePopup.IsOpen = false;
-            _activeAddressBox?.Focus();
+            _activeAddressControl?.FocusInput();
             e.Handled = true;
         }
     }
@@ -188,28 +189,88 @@ public partial class ComposeWindow : Window
 
     private void AcceptSuggestion(ContactModel contact)
     {
-        if (_activeAddressBox == null) return;
-        var text  = _activeAddressBox.Text;
-        var caret = _activeAddressBox.CaretIndex;
-        var sub   = text[..caret];
-        var lastComma = sub.LastIndexOf(',');
-        var lastSemi = sub.LastIndexOf(';');
-        var last = Math.Max(lastComma, lastSemi);
-        // Determine which separator to use: whatever was last used, or default to semicolon
-        var separator = lastSemi > lastComma ? ";" : ",";
-        var prefix = last < 0 ? string.Empty : text[..(last + 1)] + " ";
-        var suffix = text[caret..].TrimStart();
-        _activeAddressBox.Text       = prefix + contact.Display + separator + " " + suffix;
-        _activeAddressBox.CaretIndex = (prefix + contact.Display + separator + " ").Length;
-        AutoCompletePopup.IsOpen     = false;
-        _activeAddressBox.Focus();
+        if (_activeAddressControl == null) return;
+        _activeAddressControl.AcceptSuggestion(contact.DisplayName ?? string.Empty, contact.EmailAddress);
+        AutoCompletePopup.IsOpen = false;
     }
 
-    private static string GetCurrentToken(string text, int caretIndex)
+    // ── Ctrl+K: Check Addresses ───────────────────────────────────────────────
+
+    private async void CheckAddresses()
     {
-        var sub  = text[..caretIndex];
-        var last = Math.Max(sub.LastIndexOf(','), sub.LastIndexOf(';'));
-        return last < 0 ? sub.Trim() : sub[(last + 1)..].Trim();
+        int total = ToBox.GetChips().Count + CcBox.GetChips().Count + BccBox.GetChips().Count;
+        if (total == 0)
+        {
+            AccessibilityHelper.Announce(this, "No addresses to check.", category: AnnouncementCategory.Result);
+            return;
+        }
+
+        int resolved = 0, invalid = 0;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+        foreach (var box in new[] { ToBox, CcBox, BccBox })
+        {
+            var chips = box.GetChips().ToList();
+            for (int i = 0; i < chips.Count; i++)
+            {
+                if (cts.IsCancellationRequested) break;
+                var chip = chips[i];
+
+                if (!IsValidEmailAddress(chip.EmailAddress))
+                {
+                    if (!chip.EmailAddress.Contains('@'))
+                    {
+                        // Might be a bare name — try contact lookup
+                        var results = await _contactService.SearchContactsAsync(chip.EmailAddress, cts.Token);
+                        if (results.Count == 1)
+                        {
+                            box.UpdateChip(i, results[0].DisplayName ?? string.Empty, results[0].EmailAddress, isInvalid: false);
+                            resolved++;
+                        }
+                        else
+                        {
+                            box.UpdateChip(i, chip.DisplayName, chip.EmailAddress, isInvalid: true);
+                            invalid++;
+                        }
+                    }
+                    else
+                    {
+                        box.UpdateChip(i, chip.DisplayName, chip.EmailAddress, isInvalid: true);
+                        invalid++;
+                    }
+                }
+                else if (string.IsNullOrWhiteSpace(chip.DisplayName))
+                {
+                    // Valid email — try to enrich with a contact display name
+                    var results = await _contactService.SearchContactsAsync(chip.EmailAddress, cts.Token);
+                    var match = results.FirstOrDefault(r =>
+                        r.EmailAddress.Equals(chip.EmailAddress, StringComparison.OrdinalIgnoreCase));
+                    if (match != null && !string.IsNullOrEmpty(match.DisplayName))
+                    {
+                        box.UpdateChip(i, match.DisplayName, chip.EmailAddress, isInvalid: false);
+                        resolved++;
+                    }
+                }
+            }
+        }
+
+        string summary;
+        if (invalid > 0)
+            summary = $"{total} address{(total == 1 ? "" : "es")} checked. {invalid} unrecognized.";
+        else if (resolved > 0)
+            summary = $"{total} address{(total == 1 ? "" : "es")} checked. {resolved} resolved from contacts.";
+        else
+            summary = $"{total} address{(total == 1 ? "" : "es")} checked. All valid.";
+
+        _vm.StatusText = summary;
+        AccessibilityHelper.Announce(this, summary, category: AnnouncementCategory.Result);
+    }
+
+    private static bool IsValidEmailAddress(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@')) return false;
+        try { return new MailAddress(email).Host.Contains('.'); }
+        catch { return false; }
     }
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
@@ -234,8 +295,6 @@ public partial class ComposeWindow : Window
         if (result == MessageBoxResult.No)
         {
             // Synchronous path — still inside the original Close() call stack.
-            // Setting e.Cancel = false lets that Close() proceed normally
-            // without a nested Close() call, which would crash WPF.
             Closing -= OnWindowClosing;
             e.Cancel = false;
             return;
@@ -243,12 +302,9 @@ public partial class ComposeWindow : Window
 
         // result == Yes: save the draft first
         await _vm.SaveDraftCommand.ExecuteAsync(null);
-        // Only close if the save succeeded (status won't say "failed")
-        if (_vm.StatusText.Contains("failed", System.StringComparison.OrdinalIgnoreCase))
+        if (_vm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase))
             return;
 
-        // After an await the original Close() has already returned (e.Cancel was true),
-        // so we need a fresh Close() here to actually close the window.
         Closing -= OnWindowClosing;
         Close();
     }
@@ -350,16 +406,12 @@ public partial class ComposeWindow : Window
     /// <summary>
     /// When the caret moves into a misspelled word during normal cursor navigation,
     /// announce it to screen readers so users hear about spelling errors without
-    /// needing to press F7. WPF's SpellCheck shows red squiggly underlines visually
-    /// but does not expose them through UIA, so we detect them manually.
+    /// needing to press F7.
     /// </summary>
     private void BodyBox_SelectionChanged(object sender, RoutedEventArgs e)
     {
         if (_suppressSpellingAnnouncement) return;
-        // Typing: always skip the immediate check here. If AnnounceSpellingWhileTyping is
-        // on, the debounce timer fires AnnounceSpellingAtCurrentPosition after the user pauses.
         if (_caretMovedByTyping) return;
-        // Navigation: skip if setting is off.
         if (!_configService.Load().AnnounceSpellingWhileNavigating) return;
         AnnounceSpellingAtCurrentPosition();
     }
@@ -372,9 +424,6 @@ public partial class ComposeWindow : Window
         _currentSpellingSuggestions = null;
     }
 
-    // Core spelling check: finds the misspelled word at the current caret position and
-    // announces it. Called by BodyBox_SelectionChanged (navigation) and by the typing
-    // debounce timer (after a pause while typing with AnnounceSpellingWhileTyping on).
     private void AnnounceSpellingAtCurrentPosition()
     {
         var text = BodyBox.Text;
@@ -416,8 +465,6 @@ public partial class ComposeWindow : Window
             category: AnnouncementCategory.Result);
     }
 
-    // Starts or resets the debounce timer used when AnnounceSpellingWhileTyping is on.
-    // Each character keystroke resets the timer; it fires once the user pauses typing.
     private void ResetSpellingTypingTimer()
     {
         if (_spellingTypingTimer == null)
@@ -433,27 +480,16 @@ public partial class ComposeWindow : Window
         _spellingTypingTimer.Start();
     }
 
-    /// <summary>
-    /// Builds the spelling announcement string. When AnnounceSpellingSuggestions
-    /// is on, includes up to 3 suggestions. When off, only announces the
-    /// misspelled word. Experienced users can press Alt+1/2/3 to replace.
-    /// </summary>
-    private string BuildSpellingAnnouncement(string word, System.Collections.Generic.List<string> suggestions)
+    private string BuildSpellingAnnouncement(string word, List<string> suggestions)
     {
         var announceSuggestions = _configService.Load().AnnounceSpellingSuggestions;
-
         if (!announceSuggestions || suggestions.Count == 0)
             return $"Misspelling: {word}.";
-
         return $"Misspelling: {word}. {string.Join(", ", suggestions)}.";
     }
 
-    // Returns true when the key generates a character in the TextBox (i.e. the user is
-    // mid-word typing), so BodyBox_SelectionChanged can suppress spelling announcements.
-    // Navigation, control, modifier, and function keys return false.
     private static bool IsTypingKey(Key key, ModifierKeys modifiers)
     {
-        // Ctrl/Alt combos are shortcuts, never character input
         if ((modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != ModifierKeys.None)
             return false;
 
@@ -468,26 +504,22 @@ public partial class ComposeWindow : Window
             Key.LeftShift or Key.RightShift or Key.LeftCtrl or Key.RightCtrl or
             Key.LeftAlt   or Key.RightAlt   or Key.LWin or Key.RWin or
             Key.CapsLock  or Key.NumLock    or Key.Apps or Key.Sleep => false,
-            _ => true   // all other keys produce a character
+            _ => true
         };
     }
 
     /// <summary>
     /// F7 moves to the next misspelled word; Shift+F7 moves to the previous one.
-    /// Announces the misspelling to screen readers so users know what needs correction.
     /// </summary>
     private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // Track whether this keystroke is character-generating (typing) or navigation so
-        // BodyBox_SelectionChanged can suppress mid-word spelling announcements.
         _caretMovedByTyping = IsTypingKey(e.Key, e.KeyboardDevice.Modifiers);
         if (_caretMovedByTyping && _configService.Load().AnnounceSpellingWhileTyping)
-            ResetSpellingTypingTimer();     // fires after user pauses — announces complete word
+            ResetSpellingTypingTimer();
         else if (!_caretMovedByTyping)
-            _spellingTypingTimer?.Stop();   // navigation takes over; cancel any pending timer
+            _spellingTypingTimer?.Stop();
 
         // Alt+1/2/3: replace the current misspelled word with the corresponding suggestion.
-        // Only works when the caret is on a spelling error that was just announced.
         if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0
             && _currentSpellingSuggestions is { Count: > 0 }
             && _currentSpellingWordStart >= 0
@@ -507,18 +539,13 @@ public partial class ComposeWindow : Window
                 var before = text[.._currentSpellingWordStart];
                 var after = text[_currentSpellingWordEnd..];
 
-                // Suppress spelling announcements while we programmatically change
-                // the text and caret position. Setting BodyBox.Text fires
-                // SelectionChanged before CaretIndex is applied, which would
-                // otherwise announce the first error on the page.
                 _suppressSpellingAnnouncement = true;
                 BodyBox.Text = before + replacement + after;
                 BodyBox.CaretIndex = _currentSpellingWordStart + replacement.Length;
                 _suppressSpellingAnnouncement = false;
 
                 BodyBox.Focus();
-                AccessibilityHelper.Announce(this,
-                    $"Replaced with {replacement}.",
+                AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
                     category: AnnouncementCategory.Result);
                 ClearSpellingContext();
                 e.Handled = true;
@@ -572,6 +599,11 @@ public partial class ComposeWindow : Window
             defaultKey: Key.Y, defaultModifiers: ModifierKeys.Alt));
 
         _registry.Register(new CommandDefinition(
+            id: "compose.checkAddresses", category: "Compose", title: "Check Addresses",
+            execute: CheckAddresses,
+            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control));
+
+        _registry.Register(new CommandDefinition(
             id: "compose.nextMisspelling", category: "Compose", title: "Next Misspelling",
             execute: () => NavigateSpellingError(forward: true),
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.None));
@@ -593,9 +625,6 @@ public partial class ComposeWindow : Window
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.Alt));
     }
 
-    // Re-announces the spelling error at the current caret position.
-    // Clears the dedup guard first so the same word is spoken again even if it was
-    // the last word announced (e.g. the user wants to hear the suggestions again).
     private void RepeatSpellingAnnouncement()
     {
         _lastAnnouncedSpellingIndex = -1;
@@ -620,10 +649,6 @@ public partial class ComposeWindow : Window
         (previousFocus ?? BodyBox).Focus();
     }
 
-    /// <summary>
-    /// Programmatically triggers F7-style spelling navigation so the command
-    /// palette entry can invoke it without duplicating the search logic.
-    /// </summary>
     private void NavigateSpellingError(bool forward)
     {
         var text = BodyBox.Text;
@@ -662,14 +687,14 @@ public partial class ComposeWindow : Window
 
             var word = text.Substring(wordStart, wordEnd - wordStart);
             var suggestions = BodyBox.GetSpellingError(foundIndex)
-                ?.Suggestions.Take(3).ToList() ?? new System.Collections.Generic.List<string>();
+                ?.Suggestions.Take(3).ToList() ?? new List<string>();
 
             _currentSpellingWordStart = wordStart;
             _currentSpellingWordEnd = wordEnd;
             _currentSpellingSuggestions = suggestions;
 
-            var announce = BuildSpellingAnnouncement(word, suggestions);
-            AccessibilityHelper.Announce(this, announce, category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(word, suggestions),
+                category: AnnouncementCategory.Result);
         }
         else
         {
