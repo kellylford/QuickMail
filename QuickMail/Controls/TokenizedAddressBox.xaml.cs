@@ -247,6 +247,9 @@ public partial class TokenizedAddressBox : UserControl
             ((Button)ChipPanel.Children[Math.Min(index, _chips.Count - 1)]).Focus();
     }
 
+    private static string ChipAccessibleName(AddressChipModel chip) =>
+        chip.IsInvalid ? $"Unrecognized: {chip.FullAddress}" : chip.FullAddress;
+
     private Button CreateChipButton(AddressChipModel chip, int index)
     {
         var fullAddress = chip.FullAddress;
@@ -258,9 +261,9 @@ public partial class TokenizedAddressBox : UserControl
             Style = (Style)FindResource("ChipStyle")
         };
         ApplyChipValidationStyle(btn, chip.IsInvalid);
-        // Accessible name is the full address; the label text alone would be ambiguous
-        // when only a display name is shown (e.g. "Kelly Ford" vs the email).
-        AutomationProperties.SetName(btn, fullAddress);
+        // Accessible name is the full address; prefix "Unrecognized:" when validation fails
+        // so screen readers convey the error state without relying on colour alone.
+        AutomationProperties.SetName(btn, ChipAccessibleName(chip));
         btn.Click += (_, _) => btn.Focus();
         btn.PreviewKeyDown += ChipButton_PreviewKeyDown;
         btn.ContextMenu = CreateChipContextMenu(chip, btn);
@@ -276,7 +279,7 @@ public partial class TokenizedAddressBox : UserControl
         var fullAddress = chip.FullAddress;
         btn.ToolTip = fullAddress;
         ApplyChipValidationStyle(btn, chip.IsInvalid);
-        AutomationProperties.SetName(btn, fullAddress);
+        AutomationProperties.SetName(btn, ChipAccessibleName(chip));
         btn.ContextMenu = CreateChipContextMenu(chip, btn);
     }
 

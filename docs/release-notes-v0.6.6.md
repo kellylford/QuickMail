@@ -21,7 +21,7 @@ The **To**, **Cc**, and **Bcc** fields in the compose window now keep each confi
 - **Add to Address Book** — saves the contact silently with no dialog (shows a message if the address is already saved)
 - **Remove** — removes this address from the field
 
-**Check Addresses (Ctrl+K):** Validates every address in all three fields. Addresses that cannot be validated are highlighted in red. Bare names with no @ sign are looked up in your address book — if a single match is found, the address resolves to the full name and email automatically. A summary is announced when the check completes.
+**Check Addresses (Ctrl+K):** Validates every address in all three fields. Addresses that cannot be validated are highlighted in red and their accessible name changes to begin with "Unrecognized:" so screen readers convey the problem without relying on colour alone. Bare names with no @ sign are looked up in your address book — if a single match is found, the address resolves to the full name and email automatically. A summary is announced when the check completes.
 
 **Screen reader behavior:** Each address button's accessible name is the full RFC address (for example, "Kelly Ford &lt;kelly@example.com&gt;"). When you Tab into a field that already has addresses, those addresses are announced immediately so you are not left wondering whether the field is empty.
 

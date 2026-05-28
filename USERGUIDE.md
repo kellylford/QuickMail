@@ -609,13 +609,13 @@ The **To**, **Cc**, and **Bcc** fields keep each confirmed address separate. Whe
 
 Press `Ctrl+K` or open the compose Command Palette and search for **Check Addresses** to validate every address in all three fields at once:
 
-- Addresses that cannot be validated are highlighted in red.
+- Addresses that cannot be validated are highlighted in red, and their accessible name changes to begin with "Unrecognized:" so screen readers convey the problem without relying on colour alone.
 - Bare names with no @ sign are looked up in your address book. If a single match is found, the address is automatically resolved to the full name and email.
 - A summary is announced when the check is complete — for example, "3 addresses checked. All valid."
 
 **Screen reader behavior:**
 
-- Each address button's accessible name is the full RFC address — for example, "Kelly Ford &lt;kelly@example.com&gt;".
+- Each address button's accessible name is the full RFC address — for example, "Kelly Ford &lt;kelly@example.com&gt;". If the address failed validation, the name begins with "Unrecognized:".
 - When you Tab into a field that already has addresses, those addresses are announced immediately so you are not left wondering whether the field is empty.
 
 ### Spell check
