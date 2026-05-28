@@ -100,14 +100,17 @@ public partial class TokenizedAddressBox : UserControl
     {
         // AutomationProperties set on the outer UserControl don't reach the inner InputBox
         // because focus lands on InputBox (the UserControl is Focusable=False). Transfer
-        // LabeledBy and HelpText so screen readers can name the focused element correctly.
+        // LabeledBy to InputBox and clear it from the outer control so only one element
+        // in the UIA tree carries the label — otherwise screen readers announce the name
+        // twice when tabbing in (once for the container, once for the focused input).
+        // HelpText is intentionally not propagated: screen readers announce it on every
+        // focus, which is too verbose for a field visited repeatedly.
         var labeledBy = AutomationProperties.GetLabeledBy(this);
         if (labeledBy != null)
+        {
             AutomationProperties.SetLabeledBy(InputBox, labeledBy);
-
-        var helpText = AutomationProperties.GetHelpText(this);
-        if (!string.IsNullOrEmpty(helpText))
-            AutomationProperties.SetHelpText(InputBox, helpText);
+            AutomationProperties.SetLabeledBy(this, null);
+        }
     }
 
     /// <summary>Text currently being typed — the search token for autocomplete.</summary>

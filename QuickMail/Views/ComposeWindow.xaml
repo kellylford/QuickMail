@@ -100,7 +100,7 @@
 
             <!-- To -->
             <TextBlock Grid.Row="1" Grid.Column="0"
-                       x:Name="ToLabel" Text="_To:"
+                       x:Name="ToLabel" Text="To:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <controls:TokenizedAddressBox Grid.Row="1" Grid.Column="1"
                      x:Name="ToBox"
@@ -111,7 +111,7 @@
 
             <!-- Cc -->
             <TextBlock Grid.Row="2" Grid.Column="0"
-                       x:Name="CcLabel" Text="_Cc:"
+                       x:Name="CcLabel" Text="Cc:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <controls:TokenizedAddressBox Grid.Row="2" Grid.Column="1"
                      x:Name="CcBox"
@@ -121,7 +121,7 @@
 
             <!-- Bcc -->
             <TextBlock Grid.Row="3" Grid.Column="0"
-                       x:Name="BccLabel" Text="_Bcc:"
+                       x:Name="BccLabel" Text="Bcc:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <controls:TokenizedAddressBox Grid.Row="3" Grid.Column="1"
                      x:Name="BccBox"
