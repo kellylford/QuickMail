@@ -16,6 +16,23 @@ public partial class AddressBookViewModel : ObservableObject
     private readonly IContactService _contactService;
     private List<ContactModel> _allContacts = [];
 
+    private Action<ContactModel>? _toInsertAction;
+    private Action<ContactModel>? _ccInsertAction;
+    private Action<ContactModel>? _bccInsertAction;
+
+    public bool HasInsertActions => _toInsertAction != null;
+
+    public void SetInsertActions(
+        Action<ContactModel> toAction,
+        Action<ContactModel> ccAction,
+        Action<ContactModel> bccAction)
+    {
+        _toInsertAction = toAction;
+        _ccInsertAction = ccAction;
+        _bccInsertAction = bccAction;
+        OnPropertyChanged(nameof(HasInsertActions));
+    }
+
     public AddressBookViewModel(IContactService contactService)
     {
         _contactService = contactService;
@@ -61,6 +78,15 @@ public partial class AddressBookViewModel : ObservableObject
         NewEmail = string.Empty;
         await LoadAsync();
     }
+
+    [RelayCommand]
+    private void AddToTo() { if (SelectedContact is { } c) _toInsertAction?.Invoke(c); }
+
+    [RelayCommand]
+    private void AddToCc() { if (SelectedContact is { } c) _ccInsertAction?.Invoke(c); }
+
+    [RelayCommand]
+    private void AddToBcc() { if (SelectedContact is { } c) _bccInsertAction?.Invoke(c); }
 
     public async Task DeleteConfirmedAsync()
     {

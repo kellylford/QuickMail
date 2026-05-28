@@ -21,6 +21,39 @@
                  Margin="0,0,0,6"
                  TabIndex="0"/>
 
+        <!-- Insert into message — visible only when opened from Compose (Ctrl+Shift+B) -->
+        <StackPanel DockPanel.Dock="Top"
+                    Orientation="Horizontal"
+                    Margin="0,0,0,6">
+            <StackPanel.Style>
+                <Style TargetType="StackPanel">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding HasInsertActions}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </StackPanel.Style>
+            <TextBlock Text="Add selected contact to:"
+                       VerticalAlignment="Center" Margin="0,0,8,0"/>
+            <Button Content="To"
+                    Command="{Binding AddToToCommand}"
+                    IsEnabled="{Binding HasSelectedContact}"
+                    AutomationProperties.Name="Add to To field"
+                    MinWidth="50" Margin="0,0,4,0" TabIndex="1"/>
+            <Button Content="Cc"
+                    Command="{Binding AddToCcCommand}"
+                    IsEnabled="{Binding HasSelectedContact}"
+                    AutomationProperties.Name="Add to Cc field"
+                    MinWidth="50" Margin="0,0,4,0" TabIndex="2"/>
+            <Button Content="Bcc"
+                    Command="{Binding AddToBccCommand}"
+                    IsEnabled="{Binding HasSelectedContact}"
+                    AutomationProperties.Name="Add to Bcc field"
+                    MinWidth="50" TabIndex="3"/>
+        </StackPanel>
+
         <!-- Add-contact form + action buttons -->
         <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
@@ -43,7 +76,7 @@
                      Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=NewNameLabel}"
                      TextChanged="NewNameBox_TextChanged"
-                     Margin="4,0" TabIndex="2"/>
+                     Margin="4,0" TabIndex="5"/>
 
             <Label Grid.Column="2"
                    x:Name="NewEmailLabel"
@@ -56,25 +89,25 @@
                      Text="{Binding NewEmail, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=NewEmailLabel}"
                      TextChanged="NewEmailBox_TextChanged"
-                     Margin="4,0" TabIndex="3"
+                     Margin="4,0" TabIndex="6"
                      PreviewKeyDown="NewEmailBox_PreviewKeyDown"/>
 
             <Button Grid.Column="4"
                     Content="_Add"
                     Command="{Binding AddContactCommand}"
                     AutomationProperties.Name="Add contact"
-                    Margin="8,0,0,0" MinWidth="60" TabIndex="4"/>
+                    Margin="8,0,0,0" MinWidth="60" TabIndex="7"/>
             <Button Grid.Column="5"
                     Content="_Delete"
                     Click="DeleteButton_Click"
                     AutomationProperties.Name="Delete selected contact"
                     IsEnabled="{Binding HasSelectedContact}"
-                    Margin="4,0,0,0" MinWidth="60" TabIndex="5"/>
+                    Margin="4,0,0,0" MinWidth="60" TabIndex="8"/>
             <Button Grid.Column="6"
                     Content="Close"
                     IsCancel="True"
                     AutomationProperties.Name="Close address book"
-                    Margin="12,0,0,0" MinWidth="60" TabIndex="6"
+                    Margin="12,0,0,0" MinWidth="60" TabIndex="9"
                     Click="Close_Click"/>
         </Grid>
 
@@ -83,7 +116,7 @@
                   ItemsSource="{Binding FilteredContacts}"
                   SelectedItem="{Binding SelectedContact}"
                   AutomationProperties.Name="Contacts"
-                  TabIndex="1"
+                  TabIndex="4"
                   KeyboardNavigation.TabNavigation="Once"
                   KeyboardNavigation.DirectionalNavigation="Contained"
                   PreviewKeyDown="ContactList_PreviewKeyDown">

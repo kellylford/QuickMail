@@ -710,6 +710,22 @@ public partial class ComposeWindow : Window
             title: "Repeat Spelling Announcement",
             execute: RepeatSpellingAnnouncement,
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.Alt));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.openAddressBook", category: "Compose", title: "Address Book",
+            execute: OpenAddressBook,
+            defaultKey: Key.B, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+    }
+
+    private void OpenAddressBook()
+    {
+        var vm = new AddressBookViewModel(_contactService);
+        vm.SetInsertActions(
+            toAction:  c => ToBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
+            ccAction:  c => CcBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
+            bccAction: c => BccBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress));
+        var win = new AddressBookWindow(vm) { Owner = this };
+        win.ShowDialog();
     }
 
     private void RepeatSpellingAnnouncement()

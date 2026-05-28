@@ -123,6 +123,10 @@ public partial class TokenizedAddressBox : UserControl
     /// Called by ComposeWindow before Send so no typed address is silently dropped.</summary>
     public void CommitPendingInput() => CommitCurrentInput();
 
+    /// <summary>Adds a contact as a chip without changing keyboard focus. Use when inserting from the address book.</summary>
+    public void AddAddress(string displayName, string emailAddress)
+        => AddChip(new AddressChipModel { DisplayName = displayName, EmailAddress = emailAddress });
+
     /// <summary>Commits a contact suggestion as a chip and refocuses the input.</summary>
     public void AcceptSuggestion(string displayName, string emailAddress)
     {
