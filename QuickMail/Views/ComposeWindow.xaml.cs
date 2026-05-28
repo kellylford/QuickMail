@@ -26,6 +26,10 @@ public partial class ComposeWindow : Window
     private readonly CommandRegistry    _registry = new();
     private TokenizedAddressBox? _activeAddressControl;
     private CancellationTokenSource? _autocompleteCts;
+    // Suppresses the chip-list announcement on the next focus-arrived event.
+    // Set before moving focus into the autocomplete popup so the return trip
+    // doesn't re-announce addresses the user is actively editing.
+    private bool _suppressNextFocusAnnouncement;
     private int _lastAnnouncedSpellingIndex = -1;
 
     // Track the current spelling error so Alt+1/2/3 can replace it with a suggestion.
@@ -91,6 +95,14 @@ public partial class ComposeWindow : Window
         // Commit any typing left in address boxes before the VM's Send check runs.
         SendButton.Click += (_, _) => CommitAllAddressInputs();
 
+        // When the autocomplete popup closes for any reason, restore the suppress flag
+        // so the address box will commit normally on the next LostKeyboardFocus.
+        AutoCompletePopup.Closed += (_, _) =>
+        {
+            if (_activeAddressControl != null)
+                _activeAddressControl.SuppressLostFocusCommit = false;
+        };
+
         // Reply / Reply-All: To is already filled in, so land in the body at the top.
         // New compose / Forward: To is empty, so land in the To field.
         Loaded += (_, _) =>
@@ -143,6 +155,14 @@ public partial class ComposeWindow : Window
         if (!AutoCompletePopup.IsOpen) return;
         if (e.Key == Key.Down)
         {
+            // Suppress the LostKeyboardFocus commit before moving focus into the popup.
+            // The popup lives in a separate HwndSource so IsKeyboardFocusWithin on the
+            // address box becomes false the moment SuggestionList gets focus, which
+            // would otherwise cause CommitPendingInput to run on the partial input.
+            ((TokenizedAddressBox)sender).SuppressLostFocusCommit = true;
+            // Also suppress the chip-list announcement for the return trip — the user
+            // is actively editing this field and doesn't need it read back to them.
+            _suppressNextFocusAnnouncement = true;
             SuggestionList.Focus();
             SuggestionList.SelectedIndex = 0;
             (SuggestionList.ItemContainerGenerator.ContainerFromIndex(0) as ListBoxItem)?.Focus();
@@ -157,7 +177,28 @@ public partial class ComposeWindow : Window
 
     private void AddressBox_IsKeyboardFocusWithinChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if ((bool)e.NewValue) return; // focus arrived — nothing to do
+        if ((bool)e.NewValue)
+        {
+            // Focus arrived in this address box.  If there are already chips, announce
+            // them so the user knows the field isn't empty — without this, a screen
+            // reader lands on the edit cursor after all the chips and just says "Edit".
+            if (!_suppressNextFocusAnnouncement)
+            {
+                var box = (TokenizedAddressBox)sender;
+                var chips = box.GetChips();
+                if (chips.Count > 0)
+                {
+                    var text = chips.Count <= 5
+                        ? string.Join(", ", chips.Select(c => c.Label))
+                        : $"{chips.Count} addresses";
+                    AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Result);
+                }
+            }
+            _suppressNextFocusAnnouncement = false;
+            return;
+        }
+
+        // Focus left — close the autocomplete popup unless it's the popup that took focus.
         Dispatcher.InvokeAsync(() =>
         {
             if (!SuggestionList.IsKeyboardFocusWithin)
@@ -169,8 +210,14 @@ public partial class ComposeWindow : Window
     {
         if (e.Key == Key.Enter || e.Key == Key.Tab)
         {
-            if (SuggestionList.SelectedItem is ContactModel c) AcceptSuggestion(c);
+            // Mark handled immediately so the Enter key does not reach the IsDefault
+            // Send button.  AcceptSuggestion is deferred so focus does not transition
+            // from the popup's HwndSource to the main window while the key event is
+            // still routing — that mid-event transition is what triggers the default
+            // button.
             e.Handled = true;
+            if (SuggestionList.SelectedItem is ContactModel c)
+                Dispatcher.InvokeAsync(() => AcceptSuggestion(c), DispatcherPriority.Input);
         }
         else if (e.Key == Key.Escape)
         {

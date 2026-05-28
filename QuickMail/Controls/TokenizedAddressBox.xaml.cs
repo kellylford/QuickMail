@@ -8,8 +8,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using MimeKit;
-using QuickMail.Models;
-using QuickMail.Views;
 
 namespace QuickMail.Controls;
 
@@ -21,6 +19,14 @@ public partial class TokenizedAddressBox : UserControl
     // deferred source→target binding feedback that would otherwise re-parse our
     // own value and destroy the chips.
     private string _lastSerializedText = string.Empty;
+
+    /// <summary>
+    /// When true the LostKeyboardFocus handler will not auto-commit the input.
+    /// Set by ComposeWindow while focus is in the autocomplete popup (which lives
+    /// outside this control's visual tree) so navigating to a suggestion does not
+    /// prematurely commit a partial address as a chip.
+    /// </summary>
+    internal bool SuppressLostFocusCommit { get; set; }
 
     public static readonly DependencyProperty AddressTextProperty =
         DependencyProperty.Register(nameof(AddressText), typeof(string), typeof(TokenizedAddressBox),
@@ -78,7 +84,7 @@ public partial class TokenizedAddressBox : UserControl
         InputBox.LostKeyboardFocus += (_, _) =>
             Dispatcher.InvokeAsync(() =>
             {
-                if (!IsKeyboardFocusWithin)
+                if (!IsKeyboardFocusWithin && !SuppressLostFocusCommit)
                     CommitPendingInput();
             }, System.Windows.Threading.DispatcherPriority.Background);
 
@@ -103,7 +109,10 @@ public partial class TokenizedAddressBox : UserControl
     {
         InputBox.Text = string.Empty;
         AddChip(new AddressChipModel { DisplayName = displayName, EmailAddress = emailAddress });
-        FocusInput();
+        // Defer focus return so that the key event that triggered acceptance (Enter)
+        // finishes routing in the popup's HwndSource before focus transitions to the
+        // main window — otherwise the IsDefault Send button activates.
+        Dispatcher.InvokeAsync(FocusInput, System.Windows.Threading.DispatcherPriority.Background);
     }
 
     /// <summary>Returns a snapshot of current chips for Ctrl+K validation.</summary>
@@ -134,8 +143,10 @@ public partial class TokenizedAddressBox : UserControl
         {
             foreach (var addr in list.OfType<MailboxAddress>())
             {
-                // Skip malformed addresses that MimeKit accepted but have no actual email
+                // Skip bare words / local-only strings MimeKit accepted but that aren't
+                // routable email addresses (e.g. "k", "hello" with no domain).
                 if (string.IsNullOrWhiteSpace(addr.Address)) continue;
+                if (!addr.Address.Contains('@')) continue;
                 var chip = new AddressChipModel
                 {
                     DisplayName = addr.Name ?? string.Empty,
@@ -166,6 +177,7 @@ public partial class TokenizedAddressBox : UserControl
             foreach (var addr in list.OfType<MailboxAddress>())
             {
                 if (string.IsNullOrWhiteSpace(addr.Address)) continue;
+                if (!addr.Address.Contains('@')) continue;
                 AddChip(new AddressChipModel { DisplayName = addr.Name ?? string.Empty, EmailAddress = addr.Address });
                 added = true;
             }
@@ -227,11 +239,6 @@ public partial class TokenizedAddressBox : UserControl
         // when only a display name is shown (e.g. "Kelly Ford" vs the email).
         AutomationProperties.SetName(btn, fullAddress);
         btn.Click += (_, _) => btn.Focus();
-        btn.GotKeyboardFocus += (_, _) =>
-            AccessibilityHelper.Announce(
-                Window.GetWindow(this) as UIElement ?? this,
-                "Press Delete or Backspace to remove. Right-click for more options.",
-                category: AnnouncementCategory.Hint);
         btn.PreviewKeyDown += ChipButton_PreviewKeyDown;
         btn.ContextMenu = CreateChipContextMenu(chip, btn);
         return btn;
