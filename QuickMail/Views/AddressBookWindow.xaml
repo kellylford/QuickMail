@@ -37,17 +37,17 @@
             </StackPanel.Style>
             <TextBlock Text="Add selected contact to:"
                        VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <Button Content="To"
+            <Button Content="_To"
                     Command="{Binding AddToToCommand}"
                     IsEnabled="{Binding HasSelectedContact}"
                     AutomationProperties.Name="Add to To field"
                     MinWidth="50" Margin="0,0,4,0" TabIndex="1"/>
-            <Button Content="Cc"
+            <Button Content="_Cc"
                     Command="{Binding AddToCcCommand}"
                     IsEnabled="{Binding HasSelectedContact}"
                     AutomationProperties.Name="Add to Cc field"
                     MinWidth="50" Margin="0,0,4,0" TabIndex="2"/>
-            <Button Content="Bcc"
+            <Button Content="_Bcc"
                     Command="{Binding AddToBccCommand}"
                     IsEnabled="{Binding HasSelectedContact}"
                     AutomationProperties.Name="Add to Bcc field"
