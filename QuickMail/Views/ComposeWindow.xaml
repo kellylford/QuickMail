@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:QuickMail.Controls"
         mc:Ignorable="d"
         Title="Compose Message"
         Height="540" Width="680"
@@ -49,6 +50,7 @@
                     MinWidth="120" Margin="6,0,0,0"
                     TabIndex="8"/>
             <Button DockPanel.Dock="Right"
+                    x:Name="SendButton"
                     Content="Send (Alt+S)"
                     Command="{Binding SendCommand}"
                     AutomationProperties.Name="Send message (Alt+S)"
@@ -97,20 +99,20 @@
             <TextBlock Grid.Row="1" Grid.Column="0"
                        x:Name="ToLabel" Text="_To:"
                        VerticalAlignment="Center" Margin="0,4"/>
-            <TextBox Grid.Row="1" Grid.Column="1"
+            <controls:TokenizedAddressBox Grid.Row="1" Grid.Column="1"
                      x:Name="ToBox"
-                     Text="{Binding To, UpdateSourceTrigger=PropertyChanged}"
+                     AddressText="{Binding To, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=ToLabel}"
-                     AutomationProperties.HelpText="Separate multiple addresses with semicolons"
+                     AutomationProperties.HelpText="Type an address and press comma, semicolon, or Tab to add it. Arrow keys navigate between addresses. Delete removes the focused address."
                      Margin="0,4" TabIndex="1"/>
 
             <!-- Cc -->
             <TextBlock Grid.Row="2" Grid.Column="0"
                        x:Name="CcLabel" Text="_Cc:"
                        VerticalAlignment="Center" Margin="0,4"/>
-            <TextBox Grid.Row="2" Grid.Column="1"
+            <controls:TokenizedAddressBox Grid.Row="2" Grid.Column="1"
                      x:Name="CcBox"
-                     Text="{Binding Cc, UpdateSourceTrigger=PropertyChanged}"
+                     AddressText="{Binding Cc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=CcLabel}"
                      Margin="0,4" TabIndex="2"/>
 
@@ -118,9 +120,9 @@
             <TextBlock Grid.Row="3" Grid.Column="0"
                        x:Name="BccLabel" Text="_Bcc:"
                        VerticalAlignment="Center" Margin="0,4"/>
-            <TextBox Grid.Row="3" Grid.Column="1"
+            <controls:TokenizedAddressBox Grid.Row="3" Grid.Column="1"
                      x:Name="BccBox"
-                     Text="{Binding Bcc, UpdateSourceTrigger=PropertyChanged}"
+                     AddressText="{Binding Bcc, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=BccLabel}"
                      Margin="0,4" TabIndex="3"/>
 

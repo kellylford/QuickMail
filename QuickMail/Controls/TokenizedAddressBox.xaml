@@ -1,0 +1,71 @@
+<UserControl x:Class="QuickMail.Controls.TokenizedAddressBox"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Focusable="False"
+             KeyboardNavigation.TabNavigation="Local">
+    <UserControl.Resources>
+        <!-- Chip pill button — overrides the global Button style so it stays compact -->
+        <Style x:Key="ChipStyle" TargetType="Button">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Focusable" Value="True"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+            <Setter Property="Padding" Value="6,1"/>
+            <Setter Property="Margin" Value="2,2"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ChipBorder"
+                                CornerRadius="10"
+                                Padding="{TemplateBinding Padding}"
+                                BorderThickness="1"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                Background="{TemplateBinding Background}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="ChipBorder" Property="BorderBrush"
+                                        Value="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"/>
+                                <Setter TargetName="ChipBorder" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ChipBorder" Property="Background"
+                                        Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Border x:Name="OuterBorder"
+            BorderThickness="1"
+            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+            Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+            Padding="2"
+            MinHeight="26">
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      MaxHeight="96"
+                      Focusable="False">
+            <WrapPanel x:Name="ChipPanel"
+                       Orientation="Horizontal"
+                       VerticalAlignment="Center">
+                <TextBox x:Name="InputBox"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         FocusVisualStyle="{x:Null}"
+                         Padding="2,0"
+                         MinWidth="100"
+                         VerticalAlignment="Center"/>
+            </WrapPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>
