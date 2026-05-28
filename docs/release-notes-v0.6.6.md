@@ -2,30 +2,28 @@
 
 ## New Features
 
-### Address chips in To, Cc, and Bcc
+### Address fields now keep each address separate
 
-The **To**, **Cc**, and **Bcc** fields in the compose window now work as token fields. When you commit an address it becomes a chip — a button showing the contact's name (or email address if no name is known). Multiple addresses appear as a row of chips before the text input cursor.
-
-**Committing an address:** Type an address or name and press **Tab**, **Enter**, **comma**, or **semicolon**. Or select a contact from the autocomplete dropdown that appears as you type.
+The **To**, **Cc**, and **Bcc** fields in the compose window now keep each confirmed address as its own button. Type an address and press **Tab**, **Enter**, **comma**, or **semicolon** to confirm it — or select a contact from the autocomplete dropdown. Multiple addresses appear as a row of buttons before the text input cursor. Each one can be navigated to, removed, or copied independently.
 
 **Keyboard navigation:**
 
-- **Left / Right arrow** — move focus between chips
-- **Right arrow** on the last chip — move back to the text input
-- **Left arrow** at the start of the text input — move to the last chip
-- **Delete** or **Backspace** on a focused chip — remove that address
-- **Backspace** in an empty text input — remove the last chip
-- **Ctrl+C** on a focused chip — copy the full address to the clipboard
+- **Left / Right arrow** — move focus between addresses
+- **Right arrow** on the last address — move back to the text input
+- **Left arrow** at the start of the text input — move to the last address
+- **Delete** or **Backspace** on a focused address — remove that address
+- **Backspace** in an empty text input — remove the last address
+- **Ctrl+C** on a focused address — copy the full address to the clipboard
 
-**Context menu (right-click or Shift+F10 on a chip):**
+**Context menu (right-click or Shift+F10 on an address):**
 
 - **Copy Address** — copies the full name and email to the clipboard
 - **Add to Address Book** — saves the contact silently with no dialog (shows a message if the address is already saved)
 - **Remove** — removes this address from the field
 
-**Check Addresses (Ctrl+K):** Validates every address in all three fields. Addresses that cannot be validated are highlighted in red. Bare names with no @ sign are looked up in your address book — if a single match is found, the chip resolves to the full address automatically. A summary is announced when the check completes.
+**Check Addresses (Ctrl+K):** Validates every address in all three fields. Addresses that cannot be validated are highlighted in red. Bare names with no @ sign are looked up in your address book — if a single match is found, the address resolves to the full name and email automatically. A summary is announced when the check completes.
 
-**Screen reader behavior:** Each chip's accessible name is the full RFC address (for example, "Kelly Ford &lt;kelly@example.com&gt;"). When you Tab into a field that already has addresses, those addresses are announced immediately so you are not left wondering whether the field is empty.
+**Screen reader behavior:** Each address button's accessible name is the full RFC address (for example, "Kelly Ford &lt;kelly@example.com&gt;"). When you Tab into a field that already has addresses, those addresses are announced immediately so you are not left wondering whether the field is empty.
 
 ---
 

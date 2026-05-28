@@ -528,7 +528,7 @@ When composing a message, as you type in the **To**, **Cc**, or **Bcc** fields, 
 
 - Type at least one character to see suggestions. The number of matches is announced.
 - Press **Down arrow** to move into the suggestion list.
-- Use **Up/Down** arrows to select a contact, then press **Enter** or **Tab** to accept it as a chip.
+- Use **Up/Down** arrows to select a contact, then press **Enter** or **Tab** to confirm it.
 - Press **Escape** to dismiss the suggestions without selecting.
 - Press **Up arrow** on the first item to return focus to the text field.
 
@@ -567,25 +567,25 @@ Common actions available through context menus:
 
 ### Address fields (To, Cc, Bcc)
 
-The **To**, **Cc**, and **Bcc** fields work as token fields. When you commit an address it becomes a compact chip — a button showing the contact's name (or email address if no name is known). Multiple addresses appear as a row of chips before the text cursor.
+The **To**, **Cc**, and **Bcc** fields keep each confirmed address separate. When you finish typing an address it becomes its own button — showing the contact's name, or the email address if no name is known. Each button can be navigated to, removed, or copied independently. Multiple addresses appear as a row of buttons before the text cursor.
 
 **Entering an address:**
 
-- Type an address or name and press **Tab**, **Enter**, **comma (,)**, or **semicolon (;)** to commit it as a chip.
+- Type an address or name and press **Tab**, **Enter**, **comma (,)**, or **semicolon (;)** to confirm it.
 - Or type a few characters and select a contact from the autocomplete dropdown that appears (see [Autocomplete in compose](#autocomplete-in-compose)).
 
-**Navigating chips with the keyboard:**
+**Navigating addresses with the keyboard:**
 
 | Key | Action |
 |-----|--------|
-| **Left / Right arrow** | Move focus between chips |
-| **Right arrow** on the last chip | Move focus back to the text input |
-| **Left arrow** at the start of the text input | Move focus to the last chip |
-| **Delete** or **Backspace** on a focused chip | Remove that address |
-| **Backspace** in an empty text input | Remove the last chip |
-| **Ctrl+C** on a focused chip | Copy the full address to the clipboard |
+| **Left / Right arrow** | Move focus between addresses |
+| **Right arrow** on the last address | Move focus back to the text input |
+| **Left arrow** at the start of the text input | Move focus to the last address |
+| **Delete** or **Backspace** on a focused address | Remove that address |
+| **Backspace** in an empty text input | Remove the last address |
+| **Ctrl+C** on a focused address | Copy the full address to the clipboard |
 
-**Context menu (right-click or Shift+F10 on a chip):**
+**Context menu (right-click or Shift+F10 on an address):**
 
 | Option | Action |
 |--------|--------|
@@ -598,12 +598,12 @@ The **To**, **Cc**, and **Bcc** fields work as token fields. When you commit an 
 Press `Ctrl+K` or open the compose Command Palette and search for **Check Addresses** to validate every address in all three fields at once:
 
 - Addresses that cannot be validated are highlighted in red.
-- Bare names with no @ sign are looked up in your address book. If a single match is found, the chip is automatically resolved to the full address.
+- Bare names with no @ sign are looked up in your address book. If a single match is found, the address is automatically resolved to the full name and email.
 - A summary is announced when the check is complete — for example, "3 addresses checked. All valid."
 
 **Screen reader behavior:**
 
-- Each chip's accessible name is the full RFC address — for example, "Kelly Ford &lt;kelly@example.com&gt;".
+- Each address button's accessible name is the full RFC address — for example, "Kelly Ford &lt;kelly@example.com&gt;".
 - When you Tab into a field that already has addresses, those addresses are announced immediately so you are not left wondering whether the field is empty.
 
 ### Spell check
@@ -800,9 +800,9 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Alt+U | Jump to Subject field |
 | Alt+M | Jump to From (account) field |
 | Alt+Y | Jump to message body |
-| Left / Right arrow (on address chip) | Move between address chips |
-| Delete / Backspace (on address chip) | Remove focused address |
-| Ctrl+C (on address chip) | Copy address to clipboard |
+| Left / Right arrow (on an address) | Move between addresses |
+| Delete / Backspace (on an address) | Remove focused address |
+| Ctrl+C (on an address) | Copy address to clipboard |
 | F7 | Jump to next misspelling |
 | Shift+F7 | Jump to previous misspelling |
 | Alt+F7 | Repeat spelling announcement |
