@@ -50,6 +50,7 @@
                     MinWidth="120" Margin="6,0,0,0"
                     TabIndex="8"/>
             <Button DockPanel.Dock="Right"
+                    x:Name="SendButton"
                     Content="Send (Alt+S)"
                     Command="{Binding SendCommand}"
                     AutomationProperties.Name="Send message (Alt+S)"

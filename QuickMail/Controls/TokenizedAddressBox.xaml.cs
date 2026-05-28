@@ -1,19 +1,26 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using MimeKit;
+using QuickMail.Models;
+using QuickMail.Views;
 
 namespace QuickMail.Controls;
 
 public partial class TokenizedAddressBox : UserControl
 {
     private readonly List<AddressChipModel> _chips = new();
-    private bool _updatingFromProperty;
+
+    // Tracks the last string we serialized from chips so we can ignore WPF's
+    // deferred source→target binding feedback that would otherwise re-parse our
+    // own value and destroy the chips.
+    private string _lastSerializedText = string.Empty;
 
     public static readonly DependencyProperty AddressTextProperty =
         DependencyProperty.Register(nameof(AddressText), typeof(string), typeof(TokenizedAddressBox),
@@ -30,14 +37,26 @@ public partial class TokenizedAddressBox : UserControl
     private static void OnAddressTextChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var ctrl = (TokenizedAddressBox)d;
-        if (ctrl._updatingFromProperty) return;
-        ctrl._updatingFromProperty = true;
-        try { ctrl.LoadChipsFromText((string)(e.NewValue ?? string.Empty)); }
-        finally { ctrl._updatingFromProperty = false; }
+        var newValue = (string)(e.NewValue ?? string.Empty);
+
+        // Skip if this is feedback from our own UpdateAddressText call (deferred TwoWay
+        // binding can fire after our flag has already cleared, so we compare by value).
+        if (newValue == ctrl._lastSerializedText) return;
+
+        // Record the incoming value before loading so the inevitable deferred feedback
+        // from vm.PropertyChanged → binding → this DP is recognised and skipped.
+        ctrl._lastSerializedText = newValue;
+        ctrl.LoadChipsFromText(newValue);
     }
 
-    /// <summary>Raised when the inner input TextBox text changes. Used by ComposeWindow for autocomplete.</summary>
+    /// <summary>Fires when the inner TextBox text changes. Used by ComposeWindow for autocomplete.</summary>
     public event TextChangedEventHandler? InputTextChanged;
+
+    /// <summary>
+    /// Called by ComposeWindow when the user chooses "Add to Address Book" from a chip's context menu.
+    /// Parameters are (displayName, emailAddress). The delegate may be async.
+    /// </summary>
+    public Func<string, string, Task>? AddToContactsRequested { get; set; }
 
     public TokenizedAddressBox()
     {
@@ -46,10 +65,12 @@ public partial class TokenizedAddressBox : UserControl
         InputBox.TextChanged += (s, e) =>
         {
             InputTextChanged?.Invoke(this, e);
-            UpdateAddressText();
-            // Auto-commit if pasted content includes delimiters
+
+            // Auto-commit pasted content that contains delimiters.  Don't call
+            // UpdateAddressText here — doing so causes a WPF binding feedback loop
+            // that destroys chips whenever the user types (see _lastSerializedText).
             if (InputBox.Text.Contains(',') || InputBox.Text.Contains(';'))
-                CommitCurrentInput();
+                CommitPendingInput();
         };
 
         InputBox.PreviewKeyDown += InputBox_PreviewKeyDown;
@@ -57,9 +78,8 @@ public partial class TokenizedAddressBox : UserControl
         InputBox.LostKeyboardFocus += (_, _) =>
             Dispatcher.InvokeAsync(() =>
             {
-                // If focus stayed within the control (e.g. moved to a chip), don't commit
                 if (!IsKeyboardFocusWithin)
-                    CommitCurrentInput();
+                    CommitPendingInput();
             }, System.Windows.Threading.DispatcherPriority.Background);
 
         IsKeyboardFocusWithinChanged += (_, _) =>
@@ -68,11 +88,15 @@ public partial class TokenizedAddressBox : UserControl
                 : SystemColors.ControlDarkBrush;
     }
 
-    /// <summary>The text currently being typed in the input box. Used as the autocomplete search token.</summary>
+    /// <summary>Text currently being typed — the search token for autocomplete.</summary>
     public string CurrentInputText => InputBox.Text;
 
     /// <summary>Moves keyboard focus to the inner text input.</summary>
     public void FocusInput() => InputBox.Focus();
+
+    /// <summary>Commits any text in the inner input box as chips.
+    /// Called by ComposeWindow before Send so no typed address is silently dropped.</summary>
+    public void CommitPendingInput() => CommitCurrentInput();
 
     /// <summary>Commits a contact suggestion as a chip and refocuses the input.</summary>
     public void AcceptSuggestion(string displayName, string emailAddress)
@@ -82,7 +106,7 @@ public partial class TokenizedAddressBox : UserControl
         FocusInput();
     }
 
-    /// <summary>Returns a snapshot of the current chips for Ctrl+K validation.</summary>
+    /// <summary>Returns a snapshot of current chips for Ctrl+K validation.</summary>
     public IReadOnlyList<AddressChipModel> GetChips() => _chips.AsReadOnly();
 
     /// <summary>Updates a chip's data and visual state after validation.</summary>
@@ -110,6 +134,8 @@ public partial class TokenizedAddressBox : UserControl
         {
             foreach (var addr in list.OfType<MailboxAddress>())
             {
+                // Skip malformed addresses that MimeKit accepted but have no actual email
+                if (string.IsNullOrWhiteSpace(addr.Address)) continue;
                 var chip = new AddressChipModel
                 {
                     DisplayName = addr.Name ?? string.Empty,
@@ -121,7 +147,7 @@ public partial class TokenizedAddressBox : UserControl
         }
         else
         {
-            // Unparseable text — put into InputBox for the user to correct
+            // Unparseable — put into InputBox for the user to correct
             InputBox.Text = text;
         }
     }
@@ -131,22 +157,34 @@ public partial class TokenizedAddressBox : UserControl
         var raw = InputBox.Text.Trim().TrimEnd(',', ';').Trim();
         if (string.IsNullOrEmpty(raw)) { InputBox.Text = string.Empty; return; }
 
-        // Clear first so UpdateAddressText called from AddChip doesn't include raw text
+        // Clear first so UpdateAddressText called from AddChip excludes this raw text
         InputBox.Text = string.Empty;
 
         if (InternetAddressList.TryParse(raw, out var list))
         {
+            bool added = false;
             foreach (var addr in list.OfType<MailboxAddress>())
+            {
+                if (string.IsNullOrWhiteSpace(addr.Address)) continue;
                 AddChip(new AddressChipModel { DisplayName = addr.Name ?? string.Empty, EmailAddress = addr.Address });
+                added = true;
+            }
+            if (!added)
+            {
+                // MimeKit parsed it but produced no usable address — treat as bare email
+                if (raw.Contains('@'))
+                    AddChip(new AddressChipModel { EmailAddress = raw });
+                else
+                    InputBox.Text = raw; // return unrecognised text to the input box
+            }
         }
         else if (raw.Contains('@'))
         {
-            // Bare email without display name
             AddChip(new AddressChipModel { EmailAddress = raw });
         }
         else
         {
-            // Not recognizable as an address — return to input box so user can fix it
+            // Not recognisable — return to the input box so the user can fix it
             InputBox.Text = raw;
         }
     }
@@ -166,10 +204,8 @@ public partial class TokenizedAddressBox : UserControl
         _chips.RemoveAt(index);
         ChipPanel.Children.RemoveAt(index);
         UpdateAddressText();
-        // Re-index remaining chip button Tags
         for (int i = index; i < _chips.Count; i++)
             ((Button)ChipPanel.Children[i]).Tag = i;
-        // Move focus to the adjacent chip or the input box
         if (_chips.Count == 0)
             FocusInput();
         else
@@ -179,30 +215,23 @@ public partial class TokenizedAddressBox : UserControl
     private Button CreateChipButton(AddressChipModel chip, int index)
     {
         var fullAddress = chip.FullAddress;
-        var panel = new StackPanel { Orientation = Orientation.Horizontal };
-        panel.Children.Add(new System.Windows.Controls.TextBlock
-        {
-            Text = chip.Label,
-            VerticalAlignment = VerticalAlignment.Center
-        });
-        panel.Children.Add(new System.Windows.Controls.TextBlock
-        {
-            Text = " ×",
-            VerticalAlignment = VerticalAlignment.Center,
-            Foreground = SystemColors.GrayTextBrush,
-            FontSize = 10
-        });
-
         var btn = new Button
         {
-            Content = panel,
+            Content = chip.Label,
             Tag = index,
             ToolTip = fullAddress,
             Style = (Style)FindResource("ChipStyle")
         };
         ApplyChipValidationStyle(btn, chip.IsInvalid);
+        // Accessible name is the full address; the label text alone would be ambiguous
+        // when only a display name is shown (e.g. "Kelly Ford" vs the email).
         AutomationProperties.SetName(btn, fullAddress);
         btn.Click += (_, _) => btn.Focus();
+        btn.GotKeyboardFocus += (_, _) =>
+            AccessibilityHelper.Announce(
+                Window.GetWindow(this) as UIElement ?? this,
+                "Press Delete or Backspace to remove. Right-click for more options.",
+                category: AnnouncementCategory.Hint);
         btn.PreviewKeyDown += ChipButton_PreviewKeyDown;
         btn.ContextMenu = CreateChipContextMenu(chip, btn);
         return btn;
@@ -213,11 +242,11 @@ public partial class TokenizedAddressBox : UserControl
         if (index < 0 || index >= _chips.Count) return;
         var chip = _chips[index];
         var btn = (Button)ChipPanel.Children[index];
-        var panel = (StackPanel)btn.Content;
-        ((System.Windows.Controls.TextBlock)panel.Children[0]).Text = chip.Label;
-        btn.ToolTip = chip.FullAddress;
+        btn.Content = chip.Label;
+        var fullAddress = chip.FullAddress;
+        btn.ToolTip = fullAddress;
         ApplyChipValidationStyle(btn, chip.IsInvalid);
-        AutomationProperties.SetName(btn, chip.FullAddress);
+        AutomationProperties.SetName(btn, fullAddress);
         btn.ContextMenu = CreateChipContextMenu(chip, btn);
     }
 
@@ -238,32 +267,33 @@ public partial class TokenizedAddressBox : UserControl
     private ContextMenu CreateChipContextMenu(AddressChipModel chip, Button btn)
     {
         var menu = new ContextMenu();
+
         var copy = new MenuItem { Header = "Copy _Address" };
         copy.Click += (_, _) => Clipboard.SetText(chip.FullAddress);
+
+        var addToBook = new MenuItem { Header = "Add to Address _Book" };
+        addToBook.Click += async (_, _) =>
+        {
+            if (AddToContactsRequested != null)
+                await AddToContactsRequested(chip.DisplayName, chip.EmailAddress);
+        };
+
         var remove = new MenuItem { Header = "_Remove" };
         remove.Click += (_, _) => RemoveChipAt((int)btn.Tag);
+
         menu.Items.Add(copy);
+        menu.Items.Add(addToBook);
+        menu.Items.Add(new Separator());
         menu.Items.Add(remove);
         return menu;
     }
 
     private void UpdateAddressText()
     {
-        if (_updatingFromProperty) return;
-        _updatingFromProperty = true;
-        try
-        {
-            var parts = _chips.Select(c => c.Serialize()).ToList();
-            // Include any uncommitted text so SendAsync doesn't see an empty To field
-            var inputRaw = InputBox.Text.Trim().TrimEnd(',', ';').Trim();
-            if (!string.IsNullOrEmpty(inputRaw))
-                parts.Add(inputRaw);
-            AddressText = string.Join("; ", parts);
-        }
-        finally
-        {
-            _updatingFromProperty = false;
-        }
+        var serialized = string.Join("; ", _chips.Select(c => c.Serialize()));
+        _lastSerializedText = serialized;
+        if (AddressText != serialized)
+            AddressText = serialized;
     }
 
     // ── Keyboard handlers ─────────────────────────────────────────────────────
@@ -272,7 +302,6 @@ public partial class TokenizedAddressBox : UserControl
     {
         var mods = Keyboard.Modifiers;
 
-        // Comma or semicolon: commit current input and stay in the field
         if ((e.Key == Key.OemComma || e.Key == Key.OemSemicolon) && mods == ModifierKeys.None)
         {
             CommitCurrentInput();
@@ -280,7 +309,6 @@ public partial class TokenizedAddressBox : UserControl
             return;
         }
 
-        // Enter: commit and stay
         if (e.Key == Key.Return && mods == ModifierKeys.None)
         {
             CommitCurrentInput();
@@ -288,14 +316,12 @@ public partial class TokenizedAddressBox : UserControl
             return;
         }
 
-        // Tab: commit pending text, then let Tab move focus to next field
         if (e.Key == Key.Tab)
         {
             CommitCurrentInput();
-            return; // don't mark Handled — Tab propagates normally
+            return; // don't mark Handled — let Tab move focus to the next field
         }
 
-        // Backspace on empty input: remove last chip
         if (e.Key == Key.Back && string.IsNullOrEmpty(InputBox.Text) && _chips.Count > 0)
         {
             RemoveChipAt(_chips.Count - 1);
@@ -303,7 +329,6 @@ public partial class TokenizedAddressBox : UserControl
             return;
         }
 
-        // Left arrow at position 0: move focus to last chip
         if (e.Key == Key.Left && InputBox.CaretIndex == 0 && _chips.Count > 0)
         {
             ((Button)ChipPanel.Children[_chips.Count - 1]).Focus();
@@ -342,10 +367,4 @@ public partial class TokenizedAddressBox : UserControl
         }
     }
 
-    private void UserControl_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
-    {
-        // Redirect focus arriving directly on the UserControl to the input box
-        if (e.NewFocus == this)
-            FocusInput();
-    }
 }

@@ -82,10 +82,14 @@ public partial class ComposeWindow : Window
 
         foreach (var box in new[] { ToBox, CcBox, BccBox })
         {
-            box.InputTextChanged           += AddressBox_InputTextChanged;
-            box.PreviewKeyDown             += AddressBox_PreviewKeyDown;
+            box.InputTextChanged             += AddressBox_InputTextChanged;
+            box.PreviewKeyDown               += AddressBox_PreviewKeyDown;
             box.IsKeyboardFocusWithinChanged += AddressBox_IsKeyboardFocusWithinChanged;
+            box.AddToContactsRequested       =  AddChipToContacts;
         }
+
+        // Commit any typing left in address boxes before the VM's Send check runs.
+        SendButton.Click += (_, _) => CommitAllAddressInputs();
 
         // Reply / Reply-All: To is already filled in, so land in the body at the top.
         // New compose / Forward: To is empty, so land in the To field.
@@ -192,6 +196,41 @@ public partial class ComposeWindow : Window
         if (_activeAddressControl == null) return;
         _activeAddressControl.AcceptSuggestion(contact.DisplayName ?? string.Empty, contact.EmailAddress);
         AutoCompletePopup.IsOpen = false;
+    }
+
+    // ── Address helpers ───────────────────────────────────────────────────────
+
+    private void CommitAllAddressInputs()
+    {
+        foreach (var box in new[] { ToBox, CcBox, BccBox })
+            box.CommitPendingInput();
+    }
+
+    private async Task AddChipToContacts(string displayName, string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var existing = await _contactService.SearchContactsAsync(email, cts.Token);
+        var dup = existing.FirstOrDefault(c =>
+            c.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase));
+        if (dup != null)
+        {
+            var msg = $"{email} is already in your address book.";
+            _vm.StatusText = msg;
+            AccessibilityHelper.Announce(this, msg, category: AnnouncementCategory.Result);
+        }
+        else
+        {
+            await _contactService.UpsertContactAsync(new Models.ContactModel
+            {
+                DisplayName = displayName,
+                EmailAddress = email
+            });
+            var label = string.IsNullOrWhiteSpace(displayName) ? email : $"{displayName} ({email})";
+            var msg = $"Added {label} to address book.";
+            _vm.StatusText = msg;
+            AccessibilityHelper.Announce(this, msg, category: AnnouncementCategory.Result);
+        }
     }
 
     // ── Ctrl+K: Check Addresses ───────────────────────────────────────────────
@@ -351,6 +390,7 @@ public partial class ComposeWindow : Window
         // Ctrl+Enter: send the message (secondary shortcut alongside Alt+S)
         if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.Control)
         {
+            CommitAllAddressInputs();
             _vm.SendCommand.Execute(null);
             e.Handled = true;
             return;
@@ -567,7 +607,7 @@ public partial class ComposeWindow : Window
     {
         _registry.Register(new CommandDefinition(
             id: "compose.send", category: "Compose", title: "Send Message",
-            execute: () => _vm.SendCommand.Execute(null),
+            execute: () => { CommitAllAddressInputs(); _vm.SendCommand.Execute(null); },
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Alt));
 
         _registry.Register(new CommandDefinition(
