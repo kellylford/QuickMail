@@ -1,10 +1,17 @@
 # Selection Keyboard Shortcuts — Combined PM & Dev Specification
 
-**Status:** Draft — Awaiting Review  
-**Version:** 1.0  
-**Date:** 2026-05-28  
+**Status:** Implemented  
+**Version:** 1.1  
+**Date:** 2026-05-29  
 **Author:** AI coding agent (based on comprehensive app audit)  
 **Target release:** v0.6.8
+
+### Implementation notes (v1.1)
+
+- **5.4 (Home/End multi-select preservation) cut** per request — not implemented.
+- **`IsDescendantOf` helper not added** — an identical static helper already existed in `MainWindow` with signature `(DependencyObject ancestor, DependencyObject descendant)`. `IsMessageListFocused` reuses it with corrected argument order (`IsDescendantOf(MessageList, dep)`).
+- **`SelectAllMessages` uses no batch scope** — `BatchObservableCollection.BeginBatchScope()` suppresses `CollectionChanged` events on the underlying data collection, not `SelectionChanged` on `ListView`. The batch scope would be a no-op around `MessageList.SelectAll()`, so it was omitted for clarity.
+- **`ExtendSelectionToBottom` loop starts at `anchorIndex`** (spec says inclusive) — the `Contains` guard prevents double-adding already-selected items, so this is correct and identical to the spec.
 
 ---
 
@@ -493,7 +500,7 @@ private void ExtendSelectionToBottom()
 
 ---
 
-### 5.4 Message List — Home/End (Move Focus Without Losing Selection)
+### (CUT, do not do) 5.4 Message List — Home/End (Move Focus Without Losing Selection)
 
 **What:** Pressing Home or End (without modifiers) in the message list should move focus to the first or last item without collapsing a multi-select to a single item.
 

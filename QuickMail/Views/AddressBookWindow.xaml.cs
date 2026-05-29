@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using QuickMail.Models;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -47,6 +49,16 @@ public partial class AddressBookWindow : Window
 
     private async void ContactList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            ContactList.SelectAll();
+            AccessibilityHelper.Announce(this,
+                $"{ContactList.SelectedItems.Count} contact{(ContactList.SelectedItems.Count == 1 ? "" : "s")} selected.",
+                category: AnnouncementCategory.Result);
+            return;
+        }
+
         if (e.Key == Key.Delete && _vm.SelectedContact != null)
         {
             var contact = _vm.SelectedContact;

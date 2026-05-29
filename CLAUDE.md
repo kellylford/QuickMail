@@ -258,6 +258,7 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | Ctrl+Shift+B | `contacts.openAddressBook` | Address Book |
 | F1 | `help.userGuide` | Open User Guide |
 | *(unassigned)* | `settings.toggleCustomAnnouncements` | Toggle Custom Announcements |
+| Ctrl+A | `mail.selectAll` | Select All Messages (message list focus only) |
 | Shift+, | `mail.jumpToFirstInGroup` | First Message in Group |
 | Shift+. | `mail.jumpToLastInGroup` | Last Message in Group |
 | *(unassigned)* | `mail.acceptInvite` | Accept Invitation |

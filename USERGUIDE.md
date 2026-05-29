@@ -188,7 +188,15 @@ For more about virtual folders, including the per-account All Mail folders, see 
 
 ### Selecting multiple messages
 
-Hold **Shift** and press **Up** or **Down** in the message list to extend your selection. You can then act on all selected messages at once (for example, pressing **Delete** removes them all).
+Hold **Shift** and press **Up** or **Down** to extend your selection one message at a time. For larger selections:
+
+| Shortcut | What it does |
+|----------|-------------|
+| **Ctrl+A** | Select all messages in the current folder |
+| **Ctrl+Shift+Home** | Extend selection from the current message to the first message in the list |
+| **Ctrl+Shift+End** | Extend selection from the current message to the last message in the list |
+
+Once you have multiple messages selected you can act on all of them at once — for example, pressing **Delete** removes them all.
 
 ## Performance and concurrency
 
@@ -510,7 +518,8 @@ QuickMail includes a built-in address book for storing email addresses and displ
 - Click on any contact to view its details in the edit fields below.
 - To add a contact manually, type in the **Name** and **Email** fields and press **Enter** or click **Add**.
 - To edit a contact's name, select it in the list, edit the **Name** field, and click **Add** to save the changes.
-- To delete a contact, select it in the list and click **Delete** (or press **Delete**).
+- To select all contacts in the list, press **Ctrl+A** while the contact list has focus.
+- To delete a contact, select it in the list and press **Delete**. To delete multiple contacts, select them with **Ctrl+A** and press **Delete**.
 
 ### Opening the address book from a compose window
 
@@ -595,6 +604,7 @@ The **To**, **Cc**, and **Bcc** fields keep each confirmed address separate. Whe
 | **Left arrow** at the start of the text input | Move focus to the last address |
 | **Delete** or **Backspace** on a focused address | Remove that address |
 | **Backspace** in an empty text input | Remove the last address |
+| **Ctrl+A** in an empty text input | Remove all addresses in the field |
 | **Ctrl+C** on a focused address | Copy the full address to the clipboard |
 
 **Context menu (right-click or Shift+F10 on an address):**
@@ -796,7 +806,10 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Ctrl+Shift+E | Empty Trash |
 | Ctrl+Shift+B | Open Address Book |
 | Ctrl+Shift+G | Grab addresses from open message |
-| Shift+Up / Shift+Down | Extend message selection |
+| Ctrl+A | Select all messages in the message list |
+| Ctrl+Shift+Home | Extend selection to the first message in the list |
+| Ctrl+Shift+End | Extend selection to the last message in the list |
+| Shift+Up / Shift+Down | Extend message selection one item at a time |
 | Shift+, (< ) | Jump to the first (newest) message in the current group — grouped views only |
 | Shift+. (> ) | Jump to the last (oldest) message in the current group — grouped views only |
 | Shift+F10 | Open context menu for focused item |
@@ -815,6 +828,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Alt+Y | Jump to message body |
 | Left / Right arrow (on an address) | Move between addresses |
 | Delete / Backspace (on an address) | Remove focused address |
+| Ctrl+A (in empty address input) | Remove all addresses in that field |
 | Ctrl+C (on an address) | Copy address to clipboard |
 | F7 | Jump to next misspelling |
 | Shift+F7 | Jump to previous misspelling |

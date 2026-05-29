@@ -524,6 +524,12 @@ public partial class MainWindow : Window
             defaultKey: Key.OemPeriod, defaultModifiers: ModifierKeys.Shift,
             isAvailable: IsGroupedViewActive));
 
+        _registry.Register(new CommandDefinition(
+            id: "mail.selectAll", category: "Mail", title: "Select All Messages",
+            execute: SelectAllMessages,
+            defaultKey: Key.A, defaultModifiers: ModifierKeys.Control,
+            isAvailable: IsMessageListFocused));
+
         // Initialise the embedded browser.  Wire Escape before doing anything else.
         try
         {
@@ -1284,6 +1290,16 @@ public partial class MainWindow : Window
             e.Handled = true;
             ExtendMessageSelection(e.Key == Key.Down ? 1 : -1);
         }
+        else if (e.Key == Key.Home && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            e.Handled = true;
+            ExtendSelectionToTop();
+        }
+        else if (e.Key == Key.End && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            e.Handled = true;
+            ExtendSelectionToBottom();
+        }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
                  && Keyboard.Modifiers == ModifierKeys.None
                  && MessageList.Items.Count == 0)
@@ -1341,6 +1357,122 @@ public partial class MainWindow : Window
                 container.Focus();
             LogService.Debug($"ExtendMessageSelection after Focus(): selectedAfterFocus={MessageList.SelectedItems.Count}");
         }, DispatcherPriority.Input);
+    }
+
+    private void SelectAllMessages()
+    {
+        if (MessageList.Items.Count == 0) return;
+        MessageList.SelectAll();
+        var count = MessageList.SelectedItems.Count;
+        AccessibilityHelper.Announce(this,
+            $"{count} message{(count == 1 ? "" : "s")} selected.",
+            category: AnnouncementCategory.Result);
+    }
+
+    private bool IsMessageListFocused()
+    {
+        var focused = Keyboard.FocusedElement;
+        return focused == MessageList
+            || (focused is DependencyObject dep && IsDescendantOf(MessageList, dep));
+    }
+
+    private void ExtendSelectionToTop()
+    {
+        if (MessageList.Items.Count == 0) return;
+
+        int anchorIndex = -1;
+        if (MessageList.SelectedItems.Count > 0)
+        {
+            anchorIndex = MessageList.Items.Count;
+            foreach (var item in MessageList.SelectedItems)
+            {
+                var idx = MessageList.Items.IndexOf(item);
+                if (idx >= 0 && idx < anchorIndex)
+                    anchorIndex = idx;
+            }
+        }
+
+        if (anchorIndex < 0)
+        {
+            MessageList.SelectedIndex = 0;
+            MessageList.ScrollIntoView(MessageList.Items[0]);
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (MessageList.ItemContainerGenerator.ContainerFromIndex(0) is ListViewItem container)
+                    container.Focus();
+            }, DispatcherPriority.Input);
+            AccessibilityHelper.Announce(this, "1 message selected.", category: AnnouncementCategory.Result);
+            return;
+        }
+
+        for (int i = 0; i <= anchorIndex; i++)
+        {
+            var item = MessageList.Items[i];
+            if (!MessageList.SelectedItems.Contains(item))
+                MessageList.SelectedItems.Add(item);
+        }
+
+        MessageList.ScrollIntoView(MessageList.Items[0]);
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (MessageList.ItemContainerGenerator.ContainerFromIndex(0) is ListViewItem container)
+                container.Focus();
+        }, DispatcherPriority.Input);
+
+        var count = MessageList.SelectedItems.Count;
+        AccessibilityHelper.Announce(this,
+            $"{count} message{(count == 1 ? "" : "s")} selected.",
+            category: AnnouncementCategory.Result);
+    }
+
+    private void ExtendSelectionToBottom()
+    {
+        if (MessageList.Items.Count == 0) return;
+
+        int lastIndex = MessageList.Items.Count - 1;
+
+        int anchorIndex = -1;
+        if (MessageList.SelectedItems.Count > 0)
+        {
+            foreach (var item in MessageList.SelectedItems)
+            {
+                var idx = MessageList.Items.IndexOf(item);
+                if (idx > anchorIndex)
+                    anchorIndex = idx;
+            }
+        }
+
+        if (anchorIndex < 0)
+        {
+            MessageList.SelectedIndex = lastIndex;
+            MessageList.ScrollIntoView(MessageList.Items[lastIndex]);
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (MessageList.ItemContainerGenerator.ContainerFromIndex(lastIndex) is ListViewItem container)
+                    container.Focus();
+            }, DispatcherPriority.Input);
+            AccessibilityHelper.Announce(this, "1 message selected.", category: AnnouncementCategory.Result);
+            return;
+        }
+
+        for (int i = anchorIndex; i <= lastIndex; i++)
+        {
+            var item = MessageList.Items[i];
+            if (!MessageList.SelectedItems.Contains(item))
+                MessageList.SelectedItems.Add(item);
+        }
+
+        MessageList.ScrollIntoView(MessageList.Items[lastIndex]);
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (MessageList.ItemContainerGenerator.ContainerFromIndex(lastIndex) is ListViewItem container)
+                container.Focus();
+        }, DispatcherPriority.Input);
+
+        var count = MessageList.SelectedItems.Count;
+        AccessibilityHelper.Announce(this,
+            $"{count} message{(count == 1 ? "" : "s")} selected.",
+            category: AnnouncementCategory.Result);
     }
 
     // Render the message body in the browser and move focus into it

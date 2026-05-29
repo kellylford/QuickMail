@@ -8,6 +8,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using MimeKit;
+using QuickMail.Models;
+using QuickMail.Views;
 
 namespace QuickMail.Controls;
 
@@ -353,6 +355,19 @@ public partial class TokenizedAddressBox : UserControl
         {
             CommitCurrentInput();
             return; // don't mark Handled — let Tab move focus to the next field
+        }
+
+        if (e.Key == Key.A && mods == ModifierKeys.Control
+            && string.IsNullOrEmpty(InputBox.Text) && _chips.Count > 0)
+        {
+            var count = _chips.Count;
+            while (_chips.Count > 0)
+                RemoveChipAt(_chips.Count - 1);
+            AccessibilityHelper.Announce(this,
+                $"{count} address{(count == 1 ? "" : "es")} removed.",
+                category: AnnouncementCategory.Result);
+            e.Handled = true;
+            return;
         }
 
         if (e.Key == Key.Back && string.IsNullOrEmpty(InputBox.Text) && _chips.Count > 0)
