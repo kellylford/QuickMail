@@ -535,12 +535,15 @@ public partial class MainWindow : Window
         // (one item). When the message list has focus with multiple items selected, bypass
         // the registry entirely so MessageList_PreviewKeyDown handles it instead — that
         // handler reads MessageList.SelectedItems and deletes everything.
+        // Also bypass when a group tree has focus: those trees have their own PreviewKeyDown
+        // handlers that call LandOn* before deleting so focus lands on the next item correctly.
         _registry.Register(new CommandDefinition(
             id: "mail.delete", category: "Mail", title: "Delete",
             execute: () => _vm.DeleteMessageCommand.Execute(null),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.HasSelectedMessage
-                && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)));
+                && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
+                && !IsGroupTreeFocused()));
 
         // Initialise the embedded browser.  Wire Escape before doing anything else.
         try
@@ -1392,6 +1395,19 @@ public partial class MainWindow : Window
         var focused = Keyboard.FocusedElement;
         return focused == MessageList
             || (focused is DependencyObject dep && IsDescendantOf(MessageList, dep));
+    }
+
+    private bool IsGroupTreeFocused()
+    {
+        var focused = Keyboard.FocusedElement;
+        if (focused == null) return false;
+        if (focused == SenderGroupTree || focused == ToGroupTree || focused == ConversationTree)
+            return true;
+        if (focused is DependencyObject dep)
+            return IsDescendantOf(SenderGroupTree, dep)
+                || IsDescendantOf(ToGroupTree, dep)
+                || IsDescendantOf(ConversationTree, dep);
+        return false;
     }
 
     private void ExtendSelectionToTop()
