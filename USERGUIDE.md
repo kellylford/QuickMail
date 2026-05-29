@@ -602,10 +602,12 @@ The **To**, **Cc**, and **Bcc** fields keep each confirmed address separate. Whe
 | **Left / Right arrow** | Move focus between addresses |
 | **Right arrow** on the last address | Move focus back to the text input |
 | **Left arrow** at the start of the text input | Move focus to the last address |
-| **Delete** or **Backspace** on a focused address | Remove that address |
+| **Ctrl+A** | Select all address chips in the field |
+| **Delete** or **Backspace** (with chips selected) | Remove all selected addresses |
+| **Delete** or **Backspace** on a single focused chip | Remove that address |
 | **Backspace** in an empty text input | Remove the last address |
-| **Ctrl+A** in an empty text input | Move focus to the first address chip |
-| **Ctrl+C** on a focused address | Copy the full address to the clipboard |
+| **Ctrl+C** (with chips selected) | Copy all selected addresses to the clipboard |
+| **Ctrl+C** on a single focused chip | Copy that address to the clipboard |
 
 **Context menu (right-click or Shift+F10 on an address):**
 
@@ -828,7 +830,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Alt+Y | Jump to message body |
 | Left / Right arrow (on an address) | Move between addresses |
 | Delete / Backspace (on an address) | Remove focused address |
-| Ctrl+A (in empty address input) | Move focus to the first address chip |
+| Ctrl+A (in address field) | Select all address chips |
 | Ctrl+C (on an address) | Copy address to clipboard |
 | F7 | Jump to next misspelling |
 | Shift+F7 | Jump to previous misspelling |

@@ -8,12 +8,15 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using MimeKit;
+using QuickMail.Models;
+using QuickMail.Views;
 
 namespace QuickMail.Controls;
 
 public partial class TokenizedAddressBox : UserControl
 {
     private readonly List<AddressChipModel> _chips = new();
+    private readonly HashSet<int> _selectedChipIndices = new();
 
     // Tracks the last string we serialized from chips so we can ignore WPF's
     // deferred source→target binding feedback that would otherwise re-parse our
@@ -82,6 +85,8 @@ public partial class TokenizedAddressBox : UserControl
         };
 
         InputBox.PreviewKeyDown += InputBox_PreviewKeyDown;
+
+        InputBox.GotKeyboardFocus += (_, _) => ClearChipSelection();
 
         InputBox.LostKeyboardFocus += (_, _) =>
             Dispatcher.InvokeAsync(() =>
@@ -159,6 +164,7 @@ public partial class TokenizedAddressBox : UserControl
         while (ChipPanel.Children.Count > 1)
             ChipPanel.Children.RemoveAt(0);
         _chips.Clear();
+        _selectedChipIndices.Clear();
 
         if (string.IsNullOrWhiteSpace(text)) return;
 
@@ -264,7 +270,7 @@ public partial class TokenizedAddressBox : UserControl
         // Accessible name is the full address; prefix "Unrecognized:" when validation fails
         // so screen readers convey the error state without relying on colour alone.
         AutomationProperties.SetName(btn, ChipAccessibleName(chip));
-        btn.Click += (_, _) => btn.Focus();
+        btn.Click += (_, _) => { ClearChipSelection(); btn.Focus(); };
         btn.PreviewKeyDown += ChipButton_PreviewKeyDown;
         btn.ContextMenu = CreateChipContextMenu(chip, btn);
         return btn;
@@ -295,6 +301,61 @@ public partial class TokenizedAddressBox : UserControl
             btn.ClearValue(BackgroundProperty);
             btn.ClearValue(BorderBrushProperty);
         }
+    }
+
+    // ── Chip multi-select ─────────────────────────────────────────────────────
+
+    private void SetChipSelected(int index, bool selected)
+    {
+        if (index < 0 || index >= _chips.Count) return;
+        var btn = (Button)ChipPanel.Children[index];
+        if (selected)
+        {
+            btn.Background = SystemColors.HighlightBrush;
+            btn.Foreground = SystemColors.HighlightTextBrush;
+        }
+        else
+        {
+            btn.ClearValue(ForegroundProperty);
+            ApplyChipValidationStyle(btn, _chips[index].IsInvalid);
+        }
+    }
+
+    private void ClearChipSelection()
+    {
+        foreach (var idx in _selectedChipIndices)
+            SetChipSelected(idx, false);
+        _selectedChipIndices.Clear();
+    }
+
+    private void SelectAllChips()
+    {
+        if (_chips.Count == 0) return;
+        ClearChipSelection();
+        for (int i = 0; i < _chips.Count; i++)
+        {
+            _selectedChipIndices.Add(i);
+            SetChipSelected(i, true);
+        }
+        AccessibilityHelper.Announce(this,
+            $"{_chips.Count} address{(_chips.Count == 1 ? "" : "es")} selected.",
+            category: AnnouncementCategory.Result);
+    }
+
+    private void RemoveSelectedChips()
+    {
+        var indices = _selectedChipIndices.OrderByDescending(i => i).ToList();
+        _selectedChipIndices.Clear();
+        foreach (var idx in indices)
+        {
+            if (idx < 0 || idx >= _chips.Count) continue;
+            _chips.RemoveAt(idx);
+            ChipPanel.Children.RemoveAt(idx);
+        }
+        UpdateAddressText();
+        for (int i = 0; i < _chips.Count; i++)
+            ((Button)ChipPanel.Children[i]).Tag = i;
+        FocusInput();
     }
 
     private ContextMenu CreateChipContextMenu(AddressChipModel chip, Button btn)
@@ -358,7 +419,15 @@ public partial class TokenizedAddressBox : UserControl
         if (e.Key == Key.A && mods == ModifierKeys.Control
             && string.IsNullOrEmpty(InputBox.Text) && _chips.Count > 0)
         {
-            ((Button)ChipPanel.Children[0]).Focus();
+            SelectAllChips();
+            e.Handled = true;
+            return;
+        }
+
+        if ((e.Key == Key.Back || e.Key == Key.Delete)
+            && string.IsNullOrEmpty(InputBox.Text) && _selectedChipIndices.Count > 0)
+        {
+            RemoveSelectedChips();
             e.Handled = true;
             return;
         }
@@ -372,6 +441,7 @@ public partial class TokenizedAddressBox : UserControl
 
         if (e.Key == Key.Left && InputBox.CaretIndex == 0 && _chips.Count > 0)
         {
+            ClearChipSelection();
             ((Button)ChipPanel.Children[_chips.Count - 1]).Focus();
             e.Handled = true;
         }
@@ -386,23 +456,36 @@ public partial class TokenizedAddressBox : UserControl
         {
             case Key.Delete:
             case Key.Back:
-                RemoveChipAt(index);
+                if (_selectedChipIndices.Count > 1 && _selectedChipIndices.Contains(index))
+                    RemoveSelectedChips();
+                else
+                    RemoveChipAt(index);
                 e.Handled = true;
                 break;
 
             case Key.Left:
+                ClearChipSelection();
                 if (index > 0) ((Button)ChipPanel.Children[index - 1]).Focus();
                 e.Handled = true;
                 break;
 
             case Key.Right:
+                ClearChipSelection();
                 if (index < _chips.Count - 1) ((Button)ChipPanel.Children[index + 1]).Focus();
                 else FocusInput();
                 e.Handled = true;
                 break;
 
+            case Key.A when Keyboard.Modifiers == ModifierKeys.Control:
+                SelectAllChips();
+                e.Handled = true;
+                break;
+
             case Key.C when Keyboard.Modifiers == ModifierKeys.Control:
-                Clipboard.SetText(_chips[index].FullAddress);
+                var addresses = _selectedChipIndices.Count > 1
+                    ? string.Join("; ", _selectedChipIndices.OrderBy(i => i).Select(i => _chips[i].FullAddress))
+                    : _chips[index].FullAddress;
+                Clipboard.SetText(addresses);
                 e.Handled = true;
                 break;
         }

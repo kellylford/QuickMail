@@ -20,7 +20,7 @@ These compose naturally with the existing **Shift+Up/Down** selection: after pre
 
 **In the Address Book:** Press **Ctrl+A** while the contact list has focus to select all visible contacts.
 
-**In Compose address fields (To/Cc/Bcc):** Press **Ctrl+A** in an empty address field to move focus to the first address chip. You can then navigate chips with the arrow keys and remove them with **Delete** or **Backspace**. When the field has typed text (not yet committed as a chip), **Ctrl+A** selects that text as usual.
+**In Compose address fields (To/Cc/Bcc):** Press **Ctrl+A** to select all address chips in the field. Selected chips are highlighted. Press **Delete** or **Backspace** to remove them all, or **Ctrl+C** to copy all their addresses. Any arrow-key navigation or click clears the selection. When the field has typed text (not yet committed as a chip), **Ctrl+A** selects that text as usual.
 
 ---
 
