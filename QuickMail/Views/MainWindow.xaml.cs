@@ -2477,6 +2477,56 @@ public partial class MainWindow : Window
 
     // ── Message-level focus helpers for grouped views ────────────────────────
 
+    // Finds the ScrollViewer inside a TreeView so we can set the scroll offset directly.
+    private static System.Windows.Controls.ScrollViewer? FindScrollViewer(System.Windows.DependencyObject d)
+    {
+        int n = System.Windows.Media.VisualTreeHelper.GetChildrenCount(d);
+        for (int i = 0; i < n; i++)
+        {
+            var child = System.Windows.Media.VisualTreeHelper.GetChild(d, i);
+            if (child is System.Windows.Controls.ScrollViewer sv) return sv;
+            var found = FindScrollViewer(child);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    // Scrolls a SenderGroup-based tree so that the message at msgIdx within targetGroup
+    // is within the virtual viewport, ensuring its container is generated on the next layout
+    // pass. Uses item-based scroll offsets (CanContentScroll="True").
+    private static void ScrollSenderGroupMessageIntoView(
+        TreeView tree,
+        IEnumerable<SenderGroup> groups,
+        SenderGroup targetGroup,
+        int msgIdx)
+    {
+        int offset = 0;
+        foreach (var g in groups)
+        {
+            offset++; // group header
+            if (ReferenceEquals(g, targetGroup)) { offset += msgIdx; break; }
+            if (g.IsExpanded) offset += g.Messages.Count;
+        }
+        FindScrollViewer(tree)?.ScrollToVerticalOffset(offset);
+    }
+
+    // Same for ConversationGroup-based trees.
+    private static void ScrollConversationMessageIntoView(
+        TreeView tree,
+        IEnumerable<ConversationGroup> groups,
+        ConversationGroup targetGroup,
+        int msgIdx)
+    {
+        int offset = 0;
+        foreach (var g in groups)
+        {
+            offset++;
+            if (ReferenceEquals(g, targetGroup)) { offset += msgIdx; break; }
+            if (g.IsExpanded) offset += g.Messages.Count;
+        }
+        FindScrollViewer(tree)?.ScrollToVerticalOffset(offset);
+    }
+
     private void FocusSenderGroupMessage(SenderGroup group, int msgIdx, bool isRetry = false)
     {
         var target   = group.Messages[msgIdx];
@@ -2491,12 +2541,18 @@ public partial class MainWindow : Window
         var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
         if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
         if (!isRetry)
+        {
+            // After a full rebuild the TreeView scroll resets to 0. Scroll the target into
+            // the viewport now; the resulting layout pass (Render priority) generates its
+            // container before the Background-priority retry runs.
+            ScrollSenderGroupMessageIntoView(SenderGroupTree, _vm.SenderGroups, group, msgIdx);
             Dispatcher.InvokeAsync(() =>
             {
                 var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
                 if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
                 else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
             }, DispatcherPriority.Background);
+        }
         else { groupTvi.IsSelected = true; groupTvi.Focus(); }
     }
 
@@ -2547,12 +2603,15 @@ public partial class MainWindow : Window
         var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
         if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
         if (!isRetry)
+        {
+            ScrollSenderGroupMessageIntoView(ToGroupTree, _vm.ToGroups, group, msgIdx);
             Dispatcher.InvokeAsync(() =>
             {
                 var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
                 if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
                 else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
             }, DispatcherPriority.Background);
+        }
         else { groupTvi.IsSelected = true; groupTvi.Focus(); }
     }
 
@@ -2603,12 +2662,15 @@ public partial class MainWindow : Window
         var msgTvi = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
         if (msgTvi != null) { msgTvi.IsSelected = true; msgTvi.Focus(); return; }
         if (!isRetry)
+        {
+            ScrollConversationMessageIntoView(ConversationTree, _vm.Conversations, group, msgIdx);
             Dispatcher.InvokeAsync(() =>
             {
                 var t2 = groupTvi.ItemContainerGenerator.ContainerFromItem(target) as TreeViewItem;
                 if (t2 != null) { t2.IsSelected = true; t2.Focus(); }
                 else             { groupTvi.IsSelected = true; groupTvi.Focus(); }
             }, DispatcherPriority.Background);
+        }
         else { groupTvi.IsSelected = true; groupTvi.Focus(); }
     }
 
