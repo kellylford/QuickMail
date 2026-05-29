@@ -59,16 +59,9 @@ public partial class AddressBookWindow : Window
             return;
         }
 
-        if (e.Key == Key.Delete && _vm.SelectedContact != null)
+        if (e.Key == Key.Delete && ContactList.SelectedItems.Count > 0)
         {
-            var contact = _vm.SelectedContact;
-            var result = MessageBox.Show(
-                $"Delete {contact.Display}?",
-                "Confirm Delete",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-            if (result == MessageBoxResult.Yes)
-                await _vm.DeleteConfirmedAsync();
+            await DeleteSelectedContactsAsync();
             e.Handled = true;
         }
     }
@@ -98,15 +91,22 @@ public partial class AddressBookWindow : Window
 
     private async void DeleteButton_Click(object sender, RoutedEventArgs e)
     {
-        if (_vm.SelectedContact == null) return;
-        var contact = _vm.SelectedContact;
-        var result = MessageBox.Show(
-            $"Delete {contact.Display}?",
-            "Confirm Delete",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question);
+        if (ContactList.SelectedItems.Count == 0) return;
+        await DeleteSelectedContactsAsync();
+    }
+
+    private async Task DeleteSelectedContactsAsync()
+    {
+        var selected = ContactList.SelectedItems.OfType<ContactModel>().ToList();
+        if (selected.Count == 0) return;
+
+        var prompt = selected.Count == 1
+            ? $"Delete {selected[0].Display}?"
+            : $"Delete {selected.Count} contacts?";
+        var result = MessageBox.Show(prompt, "Confirm Delete",
+            MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (result == MessageBoxResult.Yes)
-            await _vm.DeleteConfirmedAsync();
+            await _vm.DeleteMultipleAsync(selected);
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();

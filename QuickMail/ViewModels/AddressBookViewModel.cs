@@ -97,6 +97,19 @@ public partial class AddressBookViewModel : ObservableObject
         SelectedContact = null;
     }
 
+    public async Task DeleteMultipleAsync(IReadOnlyList<ContactModel> contacts)
+    {
+        foreach (var contact in contacts)
+            await _contactService.DeleteContactAsync(contact.Id);
+        foreach (var contact in contacts)
+        {
+            _allContacts.Remove(contact);
+            FilteredContacts.Remove(contact);
+        }
+        if (contacts.Contains(SelectedContact))
+            SelectedContact = null;
+    }
+
     private void ApplyFilter(string query)
     {
         FilteredContacts.Clear();
