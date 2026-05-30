@@ -6,7 +6,7 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public interface IImapService : IDisposable
+public interface IMailService : IDisposable
 {
     Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default);
     Task DisconnectAsync(Guid accountId, CancellationToken ct = default);

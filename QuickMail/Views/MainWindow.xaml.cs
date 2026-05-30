@@ -70,7 +70,7 @@ public partial class MainWindow : Window
     private readonly ISmtpService _smtp;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
-    private readonly IImapService _imap;
+    private readonly IMailService _imap;
     private readonly IOAuthService _oauth;
     private readonly ICommandRegistry _registry;
     private bool _webViewReady;
@@ -131,7 +131,7 @@ public partial class MainWindow : Window
         ISmtpService smtp,
         IAccountService accountService,
         ICredentialService credentials,
-        IImapService imap,
+        IMailService imap,
         IOAuthService oauth,
         ICommandRegistry registry,
         IContactService contactService,

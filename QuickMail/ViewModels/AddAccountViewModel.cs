@@ -7,7 +7,7 @@ namespace QuickMail.ViewModels;
 
 public partial class AddAccountViewModel : AccountEditorViewModel
 {
-    public AddAccountViewModel(IImapService imap, IOAuthService oauth)
+    public AddAccountViewModel(IMailService imap, IOAuthService oauth)
         : base(imap, oauth) { }
 
     protected override void OnAuthTypeChangedInternal(AuthType value)

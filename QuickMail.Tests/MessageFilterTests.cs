@@ -64,7 +64,7 @@ public class MessageFilterTests
     {
         var store = new FilterableStore(messages);
         return new MainViewModel(
-            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             store, new StubOAuthService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService());
     }

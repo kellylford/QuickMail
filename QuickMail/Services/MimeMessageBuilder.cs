@@ -8,7 +8,7 @@ namespace QuickMail.Services;
 /// <summary>
 /// Builds a <see cref="MimeMessage"/> from a <see cref="ComposeModel"/> and
 /// <see cref="AccountModel"/>, shared by <see cref="SmtpService"/> and
-/// <see cref="ImapService"/> (draft saving).
+/// <see cref="ImapMailService"/> (draft saving).
 /// </summary>
 public static class MimeMessageBuilder
 {

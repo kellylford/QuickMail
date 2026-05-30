@@ -29,7 +29,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public AccountManagerViewModel(
         IAccountService accountService,
         ICredentialService credentials,
-        IImapService imap,
+        IMailService imap,
         IOAuthService oauth,
         ILocalStoreService localStore,
         IConfigService configService)
@@ -65,7 +65,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         StatusText = string.Empty;
     }
 
-    public AddAccountViewModel CreateAddAccountViewModel() => new(ImapService, OAuthService);
+    public AddAccountViewModel CreateAddAccountViewModel() => new(ImapMailService, OAuthService);
 
     public void CommitNewAccount(AccountModel account, string password)
     {

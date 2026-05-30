@@ -15,7 +15,7 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class ImapService : IImapService
+public class ImapMailService : IMailService
 {
     private const int DefaultMaxConnectionsPerAccount = 6;
     private const int AbsoluteMaxConnectionsPerAccount = 15;
@@ -32,7 +32,7 @@ public class ImapService : IImapService
 
     public event Action<Guid>? InboxNewMailDetected;
 
-    public ImapService(IOAuthService oauth, IConfigService? config = null)
+    public ImapMailService(IOAuthService oauth, IConfigService? config = null)
     {
         _oauth  = oauth;
         _config = config;
@@ -353,7 +353,7 @@ public class ImapService : IImapService
                 }
                 catch (Exception ex)
                 {
-                    LogService.Log($"ImapService: failed to parse calendar part for UID {uid}: {ex.Message}");
+                    LogService.Log($"ImapMailService: failed to parse calendar part for UID {uid}: {ex.Message}");
                 }
             }
 
@@ -926,7 +926,7 @@ public class ImapService : IImapService
     private void ThrowIfDisposed()
     {
         if (_disposed)
-            throw new ObjectDisposedException(nameof(ImapService));
+            throw new ObjectDisposedException(nameof(ImapMailService));
     }
 
     private static bool SameConnectionSettings(AccountModel left, AccountModel right) =>
@@ -1003,7 +1003,7 @@ public class ImapService : IImapService
 
     private sealed class AccountConnectionPool : IDisposable
     {
-        private readonly ImapService _owner;
+        private readonly ImapMailService _owner;
         private readonly SemaphoreSlim _slots;
         private readonly SemaphoreSlim _backgroundSlots;
         private readonly object _gate = new();
@@ -1012,7 +1012,7 @@ public class ImapService : IImapService
         private bool _disposed;
 
         public AccountConnectionPool(
-            ImapService owner, AccountModel account, string? password, int maxConnections)
+            ImapMailService owner, AccountModel account, string? password, int maxConnections)
         {
             _owner = owner;
             Account = CloneAccount(account);

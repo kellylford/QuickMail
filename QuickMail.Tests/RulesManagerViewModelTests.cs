@@ -293,7 +293,7 @@ public class RulesManagerViewModelTests
         var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
         try
         {
-            var realService = new RuleService(new StubImapService(), new StubLocalStoreService(), dir);
+            var realService = new RuleService(new StubImapMailService(), new StubLocalStoreService(), dir);
             var msg = MakeMsg(from: "alice@example.com");
             var vm = new RulesManagerViewModel(realService, accounts: [], selectedMessagesForTest: [msg]);
             vm.NewRuleCommand.Execute(null);
@@ -313,7 +313,7 @@ public class RulesManagerViewModelTests
         var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
         try
         {
-            var realService = new RuleService(new StubImapService(), new StubLocalStoreService(), dir);
+            var realService = new RuleService(new StubImapMailService(), new StubLocalStoreService(), dir);
             var msg = MakeMsg(from: "bob@example.com");
             var vm = new RulesManagerViewModel(realService, accounts: [], selectedMessagesForTest: [msg]);
             vm.NewRuleCommand.Execute(null);

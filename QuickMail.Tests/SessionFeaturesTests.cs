@@ -114,7 +114,7 @@ public class PreviewSuppressionTests
     {
         var store = new PreviewStore(MessagesWithPreviews);
         var vm = new MainViewModel(
-            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             store, new StubOAuthService(), new StubSyncService(), new ZeroPreviewConfig(),
             new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService());
 
@@ -129,7 +129,7 @@ public class PreviewSuppressionTests
         // Default StubConfigService returns PreviewLines = 3 (from ConfigModel defaults).
         var store = new PreviewStore(MessagesWithPreviews);
         var vm = new MainViewModel(
-            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             store, new StubOAuthService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubViewService(), new StubRuleService(), new StubSmtpService());
 
@@ -147,7 +147,7 @@ public class OnlineModeTests
 {
     private static MainViewModel MakeVm(bool onlineMode = false) =>
         new MainViewModel(
-            new StubImapService(), new StubAccountService(), new StubCredentialService(),
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
             new StubRuleService(), new StubSmtpService(), onlineMode: onlineMode);
@@ -180,10 +180,10 @@ public class OnlineModeTests
 
 public class IdleNewMailTests
 {
-    sealed class FireableImapService : IImapService
+    sealed class FireableImapMailService : IMailService
     {
         private readonly Guid _accountId;
-        public FireableImapService(Guid accountId) => _accountId = accountId;
+        public FireableImapMailService(Guid accountId) => _accountId = accountId;
 
         public event Action<Guid>? InboxNewMailDetected;
         public void FireNewMail() => InboxNewMailDetected?.Invoke(_accountId);
@@ -260,7 +260,7 @@ public class IdleNewMailTests
     public async Task NewMailDetected_TriggersSyncForMatchingInbox()
     {
         var accountId = Guid.NewGuid();
-        var imap = new FireableImapService(accountId);
+        var imap = new FireableImapMailService(accountId);
         var sync = new SpySyncService();
         var account = new AccountModel
         {
@@ -293,7 +293,7 @@ public class IdleNewMailTests
     public async Task NewMailDetected_OnlineMode_CallsSyncOneFolderOnline()
     {
         var accountId = Guid.NewGuid();
-        var imap = new FireableImapService(accountId);
+        var imap = new FireableImapMailService(accountId);
         var sync = new SpySyncService();
         var account = new AccountModel
         {

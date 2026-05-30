@@ -23,12 +23,12 @@ namespace QuickMail.Tests;
 /// </summary>
 public class ViewModelConstructionTests
 {
-    private static (StubImapService imap, StubAccountService accounts, StubCredentialService creds,
+    private static (StubImapMailService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
         StubCommandRegistry registry, StubContactService contacts, StubTemplateService templates)
         MakeServices()
     {
-        return (new StubImapService(), new StubAccountService(), new StubCredentialService(),
+        return (new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubContactService(), new StubTemplateService());
     }
@@ -329,12 +329,12 @@ public class XamlParseTests
         window.Close();
     }
 
-    private static (StubImapService imap, StubAccountService accounts, StubCredentialService creds,
+    private static (StubImapMailService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
         StubCommandRegistry registry, StubContactService contacts, StubTemplateService templates)
         MakeServices()
     {
-        return (new StubImapService(), new StubAccountService(), new StubCredentialService(),
+        return (new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubSyncService(), new StubConfigService(),
             new StubCommandRegistry(), new StubContactService(), new StubTemplateService());
     }

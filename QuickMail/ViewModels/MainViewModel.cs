@@ -19,7 +19,7 @@ namespace QuickMail.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-    private readonly IImapService _imap;
+    private readonly IMailService _imap;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
@@ -419,7 +419,7 @@ public partial class MainViewModel : ObservableObject
     public bool OnlineMode { get; }
 
     public MainViewModel(
-        IImapService imap,
+        IMailService imap,
         IAccountService accountService,
         ICredentialService credentials,
         ILocalStoreService localStore,

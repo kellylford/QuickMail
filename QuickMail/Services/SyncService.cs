@@ -10,12 +10,12 @@ namespace QuickMail.Services;
 
 public class SyncService : ISyncService
 {
-    private readonly IImapService _imap;
+    private readonly IMailService _imap;
     private readonly ILocalStoreService _store;
     private readonly IConfigService _config;
     private readonly IRuleService _rules;
 
-    public SyncService(IImapService imap, ILocalStoreService store, IConfigService config, IRuleService rules)
+    public SyncService(IMailService imap, ILocalStoreService store, IConfigService config, IRuleService rules)
     {
         _imap   = imap;
         _store  = store;

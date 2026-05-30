@@ -28,7 +28,7 @@ public class ComposeViewModelTemplateTests
             new StubSmtpService(),
             new StubAccountService(),
             new StubCredentialService(),
-            new StubImapService(),
+            new StubImapMailService(),
             templates);
         return (vm, templates);
     }

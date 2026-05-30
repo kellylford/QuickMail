@@ -72,7 +72,7 @@ public partial class App : Application
             var credentialService = new CredentialService();
             var oauthService      = new OAuthService(profile);
             var configService     = new ConfigService(profile);
-            var imapService       = new ImapService(oauthService, configService);
+            var mailService       = new ImapMailService(oauthService, configService);
             var smtpService       = new SmtpService(oauthService);
 
             var localStore = new LocalStoreService(profile);
@@ -81,8 +81,8 @@ public partial class App : Application
 
             var contactService = new ContactService(profile);
             var templateService = new TemplateService(profile);
-            var ruleService = new RuleService(imapService, localStore, profile.ProfileDir);
-            var syncService = new SyncService(imapService, localStore, configService, ruleService);
+            var ruleService = new RuleService(mailService, localStore, profile.ProfileDir);
+            var syncService = new SyncService(mailService, localStore, configService, ruleService);
 
             var startupCfg = configService.Load();
             Views.AccessibilityHelper.Configure(startupCfg);
@@ -94,11 +94,11 @@ public partial class App : Application
             var viewService = new ViewService(profile);
 
             var mainVm = new MainViewModel(
-                imapService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
+                mailService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode);
             mainVm.LoadAccountList();
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, imapService, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailService, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService);
             mainWindow.Show();
         }
         catch (Exception ex)

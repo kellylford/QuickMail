@@ -42,7 +42,7 @@ public class RuleServiceTests
 
     private static RuleService CreateService(string dataDir)
     {
-        return new RuleService(new StubImapService(), new StubLocalStoreService(), dataDir);
+        return new RuleService(new StubImapMailService(), new StubLocalStoreService(), dataDir);
     }
 
     // ── Load / Save tests ───────────────────────────────────────────────────

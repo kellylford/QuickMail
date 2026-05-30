@@ -12,7 +12,7 @@ using QuickMail.Services;
 
 namespace QuickMail.Tests;
 
-sealed class StubImapService : IImapService
+sealed class StubImapMailService : IMailService
 {
     public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => Task.CompletedTask;
     public Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;

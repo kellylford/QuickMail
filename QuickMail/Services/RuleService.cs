@@ -12,14 +12,14 @@ namespace QuickMail.Services;
 public class RuleService : IRuleService
 {
     private readonly string _filePath;
-    private readonly IImapService _imap;
+    private readonly IMailService _imap;
     private readonly ILocalStoreService _store;
     private List<MailRule> _cache = [];
     private bool _loaded;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public RuleService(IImapService imap, ILocalStoreService store, string? dataDirectory = null)
+    public RuleService(IMailService imap, ILocalStoreService store, string? dataDirectory = null)
     {
         _imap = imap;
         _store = store;
@@ -220,7 +220,7 @@ public class RuleService : IRuleService
             ct.ThrowIfCancellationRequested();
             try
             {
-                // ImapService doesn't have a dedicated MarkUnreadAsync — we update
+                // ImapMailService doesn't have a dedicated MarkUnreadAsync — we update
                 // the local store only. Full IMAP unread will be added in a follow-up.
                 msg.IsRead = false;
                 await _store.UpdateIsReadAsync(msg.AccountId, msg.FolderName, msg.UniqueId, false);

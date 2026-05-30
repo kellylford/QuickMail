@@ -19,7 +19,7 @@ public partial class ComposeViewModel : ObservableObject
     private readonly ISmtpService _smtp;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
-    private readonly IImapService _imap;
+    private readonly IMailService _imap;
     private readonly ITemplateService _templateService;
 
     [ObservableProperty] private string _to = string.Empty;
@@ -51,7 +51,7 @@ public partial class ComposeViewModel : ObservableObject
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
-    public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IImapService imap, ITemplateService templateService)
+    public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService)
     {
         _smtp = smtp;
         _accountService = accountService;

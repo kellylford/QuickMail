@@ -287,7 +287,7 @@ public class SavedViewsMainViewModelTests
     // -- Factory -------------------------------------------------------------
 
     private static MainViewModel MakeVm(IEnumerable<SavedView>? views = null)
-        => new(new StubImapService(),
+        => new(new StubImapMailService(),
                new StubAccountService(),
                new StubCredentialService(),
                new StubLocalStoreService(),
@@ -775,7 +775,7 @@ public class SavedViewsMainViewModelTests
     // Regression test: persisting DaysOfMail and setting ActiveDayLimit isn't
     // enough — Messages must also be filtered when the view is applied.
 
-    sealed class DatedImap : IImapService
+    sealed class DatedImap : IMailService
     {
         private readonly List<MailMessageSummary> _messages;
         public DatedImap(IEnumerable<MailMessageSummary> messages) => _messages = new(messages);
@@ -838,8 +838,8 @@ public class SavedViewsMainViewModelTests
         public Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<uint>());
     }
 
-    private static MainViewModel MakeVmWithStore(IEnumerable<SavedView> views, ILocalStoreService store, IImapService? imap = null)
-        => new(imap ?? new StubImapService(),
+    private static MainViewModel MakeVmWithStore(IEnumerable<SavedView> views, ILocalStoreService store, IMailService? imap = null)
+        => new(imap ?? new StubImapMailService(),
                new StubAccountService(),
                new StubCredentialService(),
                store,
