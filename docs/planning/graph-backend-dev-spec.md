@@ -196,6 +196,8 @@ Strict ordering. Each PR is mergeable on its own and leaves the app behaviorally
     - Gate off (default): combo not visible / shows only one option, IMAP account creation works identically to today.
     - Gate on (`config.ini` has `[features]\nGraphBackend=true`, or `--feature GraphBackend`): two options in combo, IMAP path still works identically.
 
+**`TestConnectionAsync` for Graph accounts:** `AccountEditorViewModel.TestConnectionAsync` is currently IMAP-specific — it guards on `ImapHost`, builds an `AccountModel` with IMAP fields, and calls `ConnectAsync`. For a `MicrosoftGraph` account those fields are empty. Make it a `virtual` method on the base `AccountEditorViewModel` that branches on `BackendKind` before the IMAP path: for `MicrosoftGraph`, skip the IMAP host/port validation and let `ConnectAsync` (routed to `GraphMailService` by `MailServiceRouter`) exercise the Graph `GET /me` probe, surfacing success/failure through the same `StatusText`. Because Graph `ConnectAsync` is not implemented until PR 4, a Graph "test connection" in PR 3 reports "not yet implemented" — consistent with step 15, keeping PR 3 a pure refactor + UI scaffold. A future Graph-specific editor can override the virtual cleanly.
+
 ### PR 4 — Graph read path (4-6 evenings)
 
 1. `Graph/GraphClient.cs`: thin `HttpClient` wrapper. Holds `IOAuthService`. Methods: `GetAsync<T>`, `PostAsync<T>`, `PatchAsync<T>`, `DeleteAsync`. Honors `Retry-After` on 429. Auto-pages on `@odata.nextLink`. Adds `Authorization: Bearer {token}` from `OAuthService.GetAccessTokenAsync(account, GraphScopes)`.
@@ -243,7 +245,7 @@ Strict ordering. Each PR is mergeable on its own and leaves the app behaviorally
 
 1. `IChangeNotifier.cs`: defines `event Action<Guid>? InboxNewMailDetected; void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct); void StopWatchers();`.
 2. `ImapMailService`: remove `StartIdleWatchers`, `StopIdleWatchers`, `InboxNewMailDetected` from `IMailService`. Move those into `ImapChangeNotifier`, which holds the existing IDLE pool logic.
-3. `GraphChangeNotifier`: one polling `Task` per Graph account. Each tick: `GET /mailFolders/Inbox/messages/delta?$skipToken={stored}`. If response contains ≥1 message, raise `InboxNewMailDetected(accountId)`; persist new `@odata.deltaLink` skip token to `DeltaToken` table.
+3. `GraphChangeNotifier`: one polling `Task` per Graph account. Each tick: request the stored `@odata.deltaLink` URL (or start a fresh `…/messages/delta` enumeration on the first run), following `@odata.nextLink` to the end of the page set. If any page contains ≥1 message, raise `InboxNewMailDetected(accountId)`; persist the final page's `@odata.deltaLink` URL to the `DeltaToken` table as the cursor for the next tick. The within-tick `@odata.nextLink`/`$skipToken` paging cursor is never persisted (see §6.12).
 4. Poll interval: 60s default, configurable via `config.ini` as `GraphPollSeconds` (clamped 30-600).
 5. `App.xaml.cs`: wire a `ChangeNotifierRouter` (or inline both notifiers and start both).
 6. `MainViewModel.StartIdleWatchers` call site: rename to `StartChangeWatchers`.
@@ -414,6 +416,8 @@ public string MessageId { get; set; } = string.Empty;
 Everything else unchanged. `MailMessageDetail : MailMessageSummary` inherits.
 
 **Sort behavior note:** when sorting messages by `MessageId` for backend-internal purposes (e.g. IMAP `GetMaxMessageKeyAsync`), the IMAP impl returns the zero-padded UID (`uid.ToString("D10")`) so string comparison preserves numeric order. Graph never compares IDs — it uses the delta token instead.
+
+**`GetMessagesSinceAsync` backend contract (resolves the PR 2 semantic gap):** after PR 2 the signature becomes `GetMessagesSinceAsync(Guid accountId, string folderName, string messageId, int initialCount, …)`. The `messageId` argument is meaningful **only** to the IMAP backend, which parses it back to a `uint` UID and requests `UID > messageId`. **`GraphMailService` ignores `messageId` entirely** and instead reads the folder's stored `@odata.deltaLink` cursor (see §6.12) to perform an incremental delta enumeration; an empty/`"0"` argument requests a first/full sync on both backends. This difference is invisible at the call site by design — `SyncService` passes the value it has and lets each backend interpret it. PR 4 implementers: do **not** attempt to honor `messageId` in `GraphMailService`; treating it as a UID range there is a bug.
 
 ### 6.6 `LocalStoreService.cs` — Schema Migration v2
 
@@ -886,20 +890,36 @@ public class GraphChangeNotifier : IChangeNotifier
         {
             try
             {
-                var token = await _store.GetDeltaTokenAsync(account.Id, "Inbox");
-                var url = string.IsNullOrEmpty(token)
+                // The stored cursor is a full @odata.deltaLink URL captured at the end of
+                // the previous tick (null on the very first poll → start a fresh delta
+                // enumeration). IMPORTANT: @odata.deltaLink (persisted; drives the NEXT
+                // tick) and @odata.nextLink/$skipToken (paging WITHIN this tick) are two
+                // different cursors. Only the deltaLink is ever persisted.
+                var deltaLink = await _store.GetDeltaTokenAsync(account.Id, "Inbox");
+                var url = string.IsNullOrEmpty(deltaLink)
                     ? "/me/mailFolders/Inbox/messages/delta?$select=id"
-                    : $"/me/mailFolders/Inbox/messages/delta?$skipToken={Uri.EscapeDataString(token)}";
+                    : deltaLink; // request the stored deltaLink URL verbatim
 
-                var resp = await _client.GetAsync<GraphDeltaResponse>(account.Id, url, ct);
-                if (resp?.Value?.Length > 0)
+                var sawMessages = false;
+                string? nextDeltaLink = null;
+
+                // Drain this tick's pages: follow @odata.nextLink to exhaustion, then keep
+                // the final page's @odata.deltaLink as the cursor for the next tick.
+                while (!string.IsNullOrEmpty(url))
+                {
+                    var resp = await _client.GetAsync<GraphDeltaResponse>(account.Id, url, ct);
+                    if (resp?.Value?.Length > 0)
+                        sawMessages = true;
+
+                    nextDeltaLink = resp?.DeltaLink ?? nextDeltaLink; // set only on the final page
+                    url = resp?.NextLink;                             // null on the final page
+                }
+
+                if (sawMessages)
                     InboxNewMailDetected?.Invoke(account.Id);
 
-                if (!string.IsNullOrEmpty(resp?.DeltaLink))
-                {
-                    var newToken = ExtractSkipToken(resp.DeltaLink);
-                    await _store.SetDeltaTokenAsync(account.Id, "Inbox", newToken);
-                }
+                if (!string.IsNullOrEmpty(nextDeltaLink))
+                    await _store.SetDeltaTokenAsync(account.Id, "Inbox", nextDeltaLink);
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex) { LogService.Log($"GraphChangeNotifier {account.AccountLabel}", ex); }
@@ -917,6 +937,18 @@ public class GraphChangeNotifier : IChangeNotifier
     }
 }
 ```
+
+`GraphDeltaResponse` exposes both cursors so the loop above can tell them apart:
+```csharp
+public class GraphDeltaResponse
+{
+    [JsonPropertyName("value")]            public GraphMessage[]? Value { get; set; }
+    [JsonPropertyName("@odata.nextLink")]  public string? NextLink { get; set; }  // within-tick paging; transient
+    [JsonPropertyName("@odata.deltaLink")] public string? DeltaLink { get; set; } // next-tick cursor; persist this
+}
+```
+
+The value persisted via `SetDeltaTokenAsync` is the **full `@odata.deltaLink` URL**, requested verbatim on the next tick — there is no `ExtractSkipToken` step. (The `folderId`/`deltaToken` parameter names below are historical; the stored string is a URL, not a bare token.)
 
 `ILocalStoreService` grows two methods:
 ```csharp
@@ -1082,7 +1114,7 @@ The existing INI parser already iterates sections. Add a case for `[features]` t
 **Consumer pattern in `AddAccountViewModel`:**
 
 ```csharp
-public AddAccountViewModel(IFeatureGate gate, IImapService imap, IOAuthService oauth) : base(imap, oauth)
+public AddAccountViewModel(IFeatureGate gate, IMailService mailService, IOAuthService oauth) : base(mailService, oauth)
 {
     var backends = new List<BackendKindOption>
     {
@@ -1295,7 +1327,7 @@ After every PR lands, before merge, the contributor runs this checklist on the d
 | `accounts.json` from old version has no `backendKind` | System.Text.Json defaults to `ImapSmtp` — backward compatible |
 | User adds Graph account but tenant has no Exchange Online mailbox | `/me` returns 200 but `GET /mailFolders` returns 404; surface: "No Exchange mailbox is associated with this account." |
 | Schema migration fails partway | Wrapped in transaction; rollback leaves v1 intact; backup file is the safety net |
-| Delta token expires (rare; Graph occasionally invalidates) | `GET delta?$skipToken=...` returns 410 Gone; clear the stored token and re-poll without it (full resync of changes) |
+| Stored deltaLink expires (rare; Graph occasionally invalidates) | requesting the stored `@odata.deltaLink` returns 410 Gone; clear the stored cursor and re-poll from a fresh `…/messages/delta` enumeration (full resync of changes) |
 | Long-running attachment download cancelled by user | Existing `CancellationToken` path applies; cancel propagates to `HttpClient` |
 
 ---
