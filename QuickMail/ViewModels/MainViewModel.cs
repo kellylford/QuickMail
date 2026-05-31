@@ -708,15 +708,15 @@ public partial class MainViewModel : ObservableObject
                     }
                     else
                     {
-                        var maxUid = await _localStore.GetMaxUidAsync(vf.AccountId, vf.FolderFullName);
-                        if (maxUid == 0 && _syncDays > 0)
+                        var maxKey = await _localStore.GetMaxMessageKeyAsync(vf.AccountId, vf.FolderFullName);
+                        if (maxKey == "0" && _syncDays > 0)
                             msgs = await _imap.GetMessagesSinceDateAsync(
                                 vf.AccountId, vf.FolderFullName, DateTime.UtcNow.AddDays(-_syncDays), ct);
                         else
                         {
                             var initialCount = _configService.Load().InitialSyncCount;
                             msgs = await _imap.GetMessagesSinceAsync(
-                                vf.AccountId, vf.FolderFullName, maxUid, initialCount, ct);
+                                vf.AccountId, vf.FolderFullName, maxKey, initialCount, ct);
                         }
                     }
                     newMessages.AddRange(msgs);
@@ -730,13 +730,13 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             var existingKeys = Messages
-                .Select(m => (m.UniqueId, m.AccountId, m.FolderName))
+                .Select(m => (m.MessageId, m.AccountId, m.FolderName))
                 .ToHashSet();
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
-                var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
+                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
                 if (!existingKeys.Add(key)) continue;
                 if (!MatchesFilter(msg) || !MatchesDayLimit(msg)) continue;
                 InsertMessageSorted(msg);
@@ -1128,16 +1128,16 @@ public partial class MainViewModel : ObservableObject
         // instead of an O(n) scan per item — that would dominate a multi-thousand-message
         // All Mail view and freeze the UI thread. Use _rawMessages (not Messages) as the
         // canonical set so filtered-out messages still prevent duplicates.
-        var seen = new HashSet<(uint, Guid, string)>(_rawMessages.Count);
+        var seen = new HashSet<(string, Guid, string)>(_rawMessages.Count);
         foreach (var e in _rawMessages)
-            seen.Add((e.UniqueId, e.AccountId, e.FolderName));
+            seen.Add((e.MessageId, e.AccountId, e.FolderName));
 
         // Collect truly new messages; add them to _rawMessages immediately so the
         // search pool stays in sync with what the list will eventually show.
         var toInsert = new List<MailMessageSummary>();
         foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
-            if (!seen.Add((msg.UniqueId, msg.AccountId, msg.FolderName)))
+            if (!seen.Add((msg.MessageId, msg.AccountId, msg.FolderName)))
                 continue;
             _rawMessages.Add(msg);
             if (!MatchesFilter(msg)) continue;
@@ -1214,26 +1214,26 @@ public partial class MainViewModel : ObservableObject
     {
         // Build a key→item map once so each removed key is an O(1) lookup
         // instead of a Messages.FirstOrDefault scan per item.
-        var byKey = new Dictionary<(uint, Guid, string), MailMessageSummary>(Messages.Count);
+        var byKey = new Dictionary<(string, Guid, string), MailMessageSummary>(Messages.Count);
         foreach (var e in Messages)
-            byKey[(e.UniqueId, e.AccountId, e.FolderName)] = e;
+            byKey[(e.MessageId, e.AccountId, e.FolderName)] = e;
 
         // Build a key set for fast _rawMessages removal.
-        var removedKeys = new HashSet<(uint, Guid, string)>(removed.Count);
+        var removedKeys = new HashSet<(string, Guid, string)>(removed.Count);
         foreach (var msg in removed)
-            removedKeys.Add((msg.UniqueId, msg.AccountId, msg.FolderName));
+            removedKeys.Add((msg.MessageId, msg.AccountId, msg.FolderName));
 
         // Capture which messages are still in _rawMessages before removal so we only
         // decrement inbox counts for messages we're actually removing here.  Messages
         // removed by DeleteMessagesAsync have already been cleaned from _rawMessages
         // (and their counts decremented), so they won't appear in this set.
-        var rawKeys = new HashSet<(uint, Guid, string)>(
-            _rawMessages.Select(m => (m.UniqueId, m.AccountId, m.FolderName)));
+        var rawKeys = new HashSet<(string, Guid, string)>(
+            _rawMessages.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
         var actuallyRemovedFromRaw = removed
-            .Where(m => rawKeys.Contains((m.UniqueId, m.AccountId, m.FolderName)))
+            .Where(m => rawKeys.Contains((m.MessageId, m.AccountId, m.FolderName)))
             .ToList();
 
-        _rawMessages.RemoveAll(m => removedKeys.Contains((m.UniqueId, m.AccountId, m.FolderName)));
+        _rawMessages.RemoveAll(m => removedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
 
         // Update account inbox counts for the messages we actually removed from _rawMessages.
         UpdateAccountCountsAfterRemoval(actuallyRemovedFromRaw);
@@ -1241,7 +1241,7 @@ public partial class MainViewModel : ObservableObject
         bool removedOpen = false;
         foreach (var msg in removed)
         {
-            var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
+            var key = (msg.MessageId, msg.AccountId, msg.FolderName);
             if (!byKey.TryGetValue(key, out var existing)) continue;
 
             if (SelectedMessage == existing) removedOpen = true;
@@ -2055,15 +2055,15 @@ public partial class MainViewModel : ObservableObject
             if (OnlineMode)
             {
                 detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId, token);
+                    summary.AccountId, summary.FolderName, summary.MessageId, token);
             }
             else
             {
                 // Serve from cache when available; fall back to IMAP and cache the result.
                 detail = await _localStore.LoadDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId)
+                    summary.AccountId, summary.FolderName, summary.MessageId)
                     ?? await _imap.GetMessageDetailAsync(
-                        summary.AccountId, summary.FolderName, summary.UniqueId, token);
+                        summary.AccountId, summary.FolderName, summary.MessageId, token);
                 _ = _localStore.UpsertDetailAsync(detail);
             }
 
@@ -2076,7 +2076,7 @@ public partial class MainViewModel : ObservableObject
             summary.HasAttachments = detail.Attachments.Count > 0;
             if (!OnlineMode)
             {
-                _ = _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.UniqueId, true);
+                _ = _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.MessageId, true);
 
                 // Extract preview and persist if not already set.
                 if (string.IsNullOrEmpty(summary.Preview))
@@ -2086,7 +2086,7 @@ public partial class MainViewModel : ObservableObject
                     if (!string.IsNullOrEmpty(preview))
                     {
                         summary.Preview = preview;
-                        _ = _localStore.UpdatePreviewAsync(summary.AccountId, summary.FolderName, summary.UniqueId, preview);
+                        _ = _localStore.UpdatePreviewAsync(summary.AccountId, summary.FolderName, summary.MessageId, preview);
                     }
                 }
             }
@@ -2166,23 +2166,23 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var cached = await _localStore.LoadDetailAsync(
-                summary.AccountId, summary.FolderName, summary.UniqueId);
+                summary.AccountId, summary.FolderName, summary.MessageId);
             if (cached != null || ct.IsCancellationRequested) return;
 
             var detail = await _imap.PrefetchMessageDetailAsync(
-                summary.AccountId, summary.FolderName, summary.UniqueId, ct);
+                summary.AccountId, summary.FolderName, summary.MessageId, ct);
             if (ct.IsCancellationRequested) return;
             await _localStore.UpsertDetailAsync(detail);
-            LogService.Debug($"Prefetched UID={summary.UniqueId} folder={summary.FolderName}");
+            LogService.Debug($"Prefetched UID={summary.MessageId} folder={summary.FolderName}");
         }
         catch (OperationCanceledException) { /* expected on switch */ }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not connected"))
         {
             // Prefetch raced startup or a disconnect; the next prefetch trigger
             // (folder load, message open) will retry once the account is up.
-            LogService.Debug($"Prefetch skipped UID={summary.UniqueId} (account not connected)");
+            LogService.Debug($"Prefetch skipped UID={summary.MessageId} (account not connected)");
         }
-        catch (Exception ex) { LogService.Log($"Prefetch UID={summary.UniqueId}", ex); }
+        catch (Exception ex) { LogService.Log($"Prefetch UID={summary.MessageId}", ex); }
     }
 
     [RelayCommand]
@@ -2266,7 +2266,7 @@ public partial class MainViewModel : ObservableObject
                     return;
 
                 var repaired = newMessages
-                    .GroupBy(m => (m.AccountId, m.FolderName, m.UniqueId))
+                    .GroupBy(m => (m.AccountId, m.FolderName, m.MessageId))
                     .Select(g => g.OrderByDescending(m => m.Date).First())
                     .OrderByDescending(m => m.Date)
                     .ToList();
@@ -2299,7 +2299,7 @@ public partial class MainViewModel : ObservableObject
             }
 
             var existingKeys = Messages
-                .Select(m => (m.UniqueId, m.AccountId, m.FolderName))
+                .Select(m => (m.MessageId, m.AccountId, m.FolderName))
                 .ToHashSet();
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
@@ -2307,7 +2307,7 @@ public partial class MainViewModel : ObservableObject
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                     return;
 
-                var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
+                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
                 if (!existingKeys.Add(key))
                     continue;
 
@@ -2393,18 +2393,18 @@ public partial class MainViewModel : ObservableObject
             ct.ThrowIfCancellationRequested();
             try
             {
-                var maxUid = await _localStore.GetMaxUidAsync(account.Id, folder.FullName);
+                var maxKey = await _localStore.GetMaxMessageKeyAsync(account.Id, folder.FullName);
                 List<MailMessageSummary> msgs;
-                if (maxUid == 0 && _syncDays > 0)
+                if (maxKey == "0" && _syncDays > 0)
                 {
                     // Fresh start with a date filter: use SEARCH SINCE rather than last-500 fallback.
                     msgs = await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct);
                 }
                 else
                 {
-                    // Incremental sync: UID-based is correct (fetch everything newer than last seen).
+                    // Incremental sync: key-based is correct (fetch everything newer than last seen).
                     var initialCount = _configService.Load().InitialSyncCount;
-                    msgs = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, maxUid, initialCount, ct);
+                    msgs = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, maxKey, initialCount, ct);
                 }
                 result.AddRange(msgs);
             }
@@ -2492,14 +2492,14 @@ public partial class MainViewModel : ObservableObject
             }
 
             var existingKeys = Messages
-                .Select(m => (m.UniqueId, m.AccountId, m.FolderName))
+                .Select(m => (m.MessageId, m.AccountId, m.FolderName))
                 .ToHashSet();
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-                var key = (msg.UniqueId, msg.AccountId, msg.FolderName);
+                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
                 if (!existingKeys.Add(key))
                     continue;
 
@@ -2641,11 +2641,11 @@ public partial class MainViewModel : ObservableObject
         StatusText = $"Marked {label} as read.";
 
         _ = _localStore.UpdateIsReadBatchAsync(
-            unread.Select(m => (m.AccountId, m.FolderName, m.UniqueId)), true);
+            unread.Select(m => (m.AccountId, m.FolderName, m.MessageId)), true);
 
         foreach (var group in unread.GroupBy(m => (m.AccountId, m.FolderName)))
         {
-            var uids = group.Select(m => m.UniqueId).ToList();
+            var uids = group.Select(m => m.MessageId).ToList();
             _ = _imap.MarkReadBatchAsync(group.Key.AccountId, group.Key.FolderName, uids);
         }
 
@@ -2683,9 +2683,9 @@ public partial class MainViewModel : ObservableObject
 
         // Remove from _rawMessages so OnMessagesRemoved (fired by background sync) won't
         // double-count these messages when updating inbox totals.
-        var toDeleteKeys = new HashSet<(uint, Guid, string)>(
-            toDelete.Select(m => (m.UniqueId, m.AccountId, m.FolderName)));
-        _rawMessages.RemoveAll(m => toDeleteKeys.Contains((m.UniqueId, m.AccountId, m.FolderName)));
+        var toDeleteKeys = new HashSet<(string, Guid, string)>(
+            toDelete.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
+        _rawMessages.RemoveAll(m => toDeleteKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
 
         // Immediately update account inbox counts for messages deleted from Inbox-kind folders.
         UpdateAccountCountsAfterRemoval(toDelete);
@@ -2719,7 +2719,7 @@ public partial class MainViewModel : ObservableObject
             var groups = toDelete.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
             {
-                var uids = group.Select(m => m.UniqueId).ToList();
+                var uids = group.Select(m => m.MessageId).ToList();
 
                 // Messages already in Trash must be permanently deleted (expunge);
                 // moving them to trash again is a no-op on most servers.
@@ -2817,7 +2817,7 @@ public partial class MainViewModel : ObservableObject
                         try
                         {
                             att.Content = await _imap.DownloadAttachmentAsync(
-                                summary.AccountId, summary.FolderName, summary.UniqueId,
+                                summary.AccountId, summary.FolderName, summary.MessageId,
                                 att.PartSpecifier, cts.Token);
                         }
                         catch (Exception ex)
@@ -2849,7 +2849,7 @@ public partial class MainViewModel : ObservableObject
 
         // Fast path: detail already loaded for this exact message.
         if (MessageDetail != null &&
-            MessageDetail.UniqueId   == summary.UniqueId &&
+            MessageDetail.MessageId   == summary.MessageId &&
             MessageDetail.AccountId  == summary.AccountId &&
             MessageDetail.FolderName == summary.FolderName)
             return MessageDetail;
@@ -2863,13 +2863,13 @@ public partial class MainViewModel : ObservableObject
         try
         {
             var detail = await _localStore.LoadDetailAsync(
-                summary.AccountId, summary.FolderName, summary.UniqueId);
+                summary.AccountId, summary.FolderName, summary.MessageId);
 
             if (detail == null)
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId, cts.Token);
+                    summary.AccountId, summary.FolderName, summary.MessageId, cts.Token);
                 _ = _localStore.UpsertDetailAsync(detail);
             }
 
@@ -2934,12 +2934,12 @@ public partial class MainViewModel : ObservableObject
             ReplaceCts(ref _messageLoadCts, out var ct);
 
             var detail = await _localStore.LoadDetailAsync(
-                summary.AccountId, summary.FolderName, summary.UniqueId);
+                summary.AccountId, summary.FolderName, summary.MessageId);
 
             if (detail == null)
             {
                 detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId, ct);
+                    summary.AccountId, summary.FolderName, summary.MessageId, ct);
             }
 
             var model = new ComposeModel
@@ -2949,7 +2949,7 @@ public partial class MainViewModel : ObservableObject
                 Cc              = detail.Cc,
                 Subject         = detail.Subject,
                 Body            = detail.PlainTextBody,
-                DraftUid        = summary.UniqueId,
+                DraftMessageId  = summary.MessageId,
                 DraftFolderName = summary.FolderName,
             };
 
@@ -2961,7 +2961,7 @@ public partial class MainViewModel : ObservableObject
                     try
                     {
                         att.Content = await _imap.DownloadAttachmentAsync(
-                            summary.AccountId, summary.FolderName, summary.UniqueId,
+                            summary.AccountId, summary.FolderName, summary.MessageId,
                             att.PartSpecifier, ct);
                     }
                     catch (Exception ex)
@@ -3306,7 +3306,7 @@ public partial class MainViewModel : ObservableObject
             var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
             {
-                var uids = group.Select(m => m.UniqueId).ToList();
+                var uids = group.Select(m => m.MessageId).ToList();
                 await _imap.MoveMessagesAsync(
                     group.Key.AccountId, group.Key.FolderName, uids,
                     destination.FullName, ct);
@@ -3350,7 +3350,7 @@ public partial class MainViewModel : ObservableObject
             foreach (var group in groups)
                 await _imap.CopyMessagesAsync(
                     group.Key.AccountId, group.Key.FolderName,
-                    group.Select(m => m.UniqueId).ToList(),
+                    group.Select(m => m.MessageId).ToList(),
                     destination.FullName, cts.Token);
 
             StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} copied to {destination.DisplayName}.";
@@ -3622,7 +3622,7 @@ public partial class MainViewModel : ObservableObject
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
                     MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.UniqueId, att.PartSpecifier, cts.Token);
+                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {
@@ -3662,7 +3662,7 @@ public partial class MainViewModel : ObservableObject
                 if (!att.IsLoaded && att.PartSpecifier != null)
                     att.Content = await _imap.DownloadAttachmentAsync(
                         MessageDetail.AccountId, MessageDetail.FolderName,
-                        MessageDetail.UniqueId, att.PartSpecifier, cts.Token);
+                        MessageDetail.MessageId, att.PartSpecifier, cts.Token);
 
                 if (att.Content != null)
                 {
@@ -3698,7 +3698,7 @@ public partial class MainViewModel : ObservableObject
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
                 att.Content = await _imap.DownloadAttachmentAsync(
                     MessageDetail.AccountId, MessageDetail.FolderName,
-                    MessageDetail.UniqueId, att.PartSpecifier, cts.Token);
+                    MessageDetail.MessageId, att.PartSpecifier, cts.Token);
             }
             catch (Exception ex)
             {

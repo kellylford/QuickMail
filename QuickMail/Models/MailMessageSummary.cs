@@ -5,7 +5,7 @@ namespace QuickMail.Models;
 
 public partial class MailMessageSummary : ObservableObject
 {
-    public uint UniqueId { get; set; }
+    public string MessageId { get; set; } = string.Empty;
     public Guid AccountId { get; set; }
     public string FolderName { get; set; } = string.Empty;
     public string From { get; set; } = string.Empty;

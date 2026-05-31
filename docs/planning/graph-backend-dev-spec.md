@@ -162,9 +162,9 @@ Strict ordering. Each PR is mergeable on its own and leaves the app behaviorally
 
 ### PR 2 — UID → string (3-5 evenings)
 
-1. `MailMessageSummary.UniqueId: uint` → `MessageId: string`.
+1. `MailMessageSummary.UniqueId: uint` → `MessageId: string`. **Naming collision (discovered during PR 2):** `MailMessageDetail` already exposed a `MessageId` property holding the RFC822 Internet Message-ID header (used for reply threading). Rename that existing property to `InternetMessageId` — the term Microsoft Graph itself uses (`internetMessageId`) — so the new storage-key property can take the `MessageId` name. Update its two readers: the `ComposeViewModel` reply builder (`InReplyToMessageId = detail.InternetMessageId`) and the `ImapMailService` detail mapping.
 2. `AttachmentModel.PartSpecifier` keeps its type (still `string?`) — no change in PR 2; renamed in PR 6.
-3. `IMailService`: every `uint uid` → `string messageId`; every `IList<uint> uids` → `IList<string> messageIds`; `GetMaxUidAsync` → `GetMaxMessageKeyAsync` (returns `string` — IMAP impl returns zero-padded UID; Graph impl returns the delta token).
+3. `IMailService` / `ILocalStoreService`: every `uint uid` → `string messageId`; every `IList<uint> uids` → `IList<string> messageIds`. Rename the IMAP-flavored query methods to backend-agnostic names: `GetMaxUidAsync` → `GetMaxMessageKeyAsync` (returns a `string` numeric high-water mark — see §6.5), `GetAllUidsAsync` → `GetAllMessageIdsAsync`, and `IMailService.GetFolderUidsAsync` → `GetFolderMessageIdsAsync`. `AppendDraftAsync` returns `string` and takes `string? replaceMessageId`.
 4. `ILocalStoreService`: same changes.
 5. `LocalStoreService`: rewrite schema migration logic. Bump `CurrentSchemaVersion` to 2. Migration SQL per PM spec Appendix C.
 6. `LocalStoreService.Initialize`: pre-migration backup of `mail.db` → `mail.db.pre-v2` if `user_version < 2`.
@@ -172,8 +172,10 @@ Strict ordering. Each PR is mergeable on its own and leaves the app behaviorally
 8. `SyncService`: `maxUid` (`uint`) → `maxKey` (`string`); IMAP backend interprets, Graph backend ignores.
 9. `RuleService`: 12 occurrences of `UniqueId` → `MessageId`.
 10. `MainViewModel`: 44 occurrences. The compiler is your friend — `uint` → `string` won't compile until every site is updated.
-11. Migration test: `LocalStoreServiceMigrationTests` — seed a v1 schema with 1000 rows, run migration, assert all rows survive with correct text IDs.
+11. Migration tests: `LocalStoreServiceMigrationTests` — seed a v1 (INTEGER `unique_id`) database, run `Initialize()`, and assert: rows survive with `CAST`-converted text ids, the `unique_id` column is now `TEXT`, `user_version` is bumped to 2, the `DeltaToken` table exists, the `mail.db.pre-v2` backup is created, and `GetMaxMessageKeyAsync` returns the numeric max (`"42"`, not `"5"`). Plus fresh-DB tests (no backup is written, and a string id round-trips).
 12. Full test suite, manual smoke on a Gmail account: open app, fetch mail, read a message, mark unread, move to folder, send a reply, delete. Compare with pre-PR behavior.
+
+**Additional consumer renames (fall out of the compiler-driven `uint` → `string` sweep):** `ComposeModel.DraftUid (uint?)` → `DraftMessageId (string?)` plus the matching `ComposeViewModel._draftUid` field and `MainViewModel` initializer; `SyncService` and `MainViewModel` locals `maxUid` → `maxKey`.
 
 ### PR 3 — Backend kind + router + feature gate (2-3 evenings)
 
@@ -415,7 +417,7 @@ public string MessageId { get; set; } = string.Empty;
 
 Everything else unchanged. `MailMessageDetail : MailMessageSummary` inherits.
 
-**Sort behavior note:** when sorting messages by `MessageId` for backend-internal purposes (e.g. IMAP `GetMaxMessageKeyAsync`), the IMAP impl returns the zero-padded UID (`uid.ToString("D10")`) so string comparison preserves numeric order. Graph never compares IDs — it uses the delta token instead.
+**High-water-mark note:** the IMAP backend stores the plain decimal UID string (e.g. `"42"`, no zero-padding) as `MessageId`. `LocalStoreService.GetMaxMessageKeyAsync` computes the numeric high-water mark with `SELECT MAX(CAST(unique_id AS INTEGER))` and returns it as a string, so `"9"` sorts below `"10"` correctly without any padding scheme. Graph rows carry non-numeric ids; `CAST` yields 0 for them, which is harmless because Graph never reads this value (it tracks a delta token instead).
 
 **`GetMessagesSinceAsync` backend contract (resolves the PR 2 semantic gap):** after PR 2 the signature becomes `GetMessagesSinceAsync(Guid accountId, string folderName, string messageId, int initialCount, …)`. The `messageId` argument is meaningful **only** to the IMAP backend, which parses it back to a `uint` UID and requests `UID > messageId`. **`GraphMailService` ignores `messageId` entirely** and instead reads the folder's stored `@odata.deltaLink` cursor (see §6.12) to perform an incremental delta enumeration; an empty/`"0"` argument requests a first/full sync on both backends. This difference is invisible at the call site by design — `SyncService` passes the value it has and lets each backend interpret it. PR 4 implementers: do **not** attempt to honor `messageId` in `GraphMailService`; treating it as a UID range there is a bug.
 
