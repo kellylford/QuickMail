@@ -483,7 +483,7 @@ IMAP uses IDLE — a persistent TCP connection that the server pushes notificati
 
 1. **Webhook subscriptions** — Microsoft POSTs to a URL when mail arrives. Requires a publicly reachable HTTPS URL. **Not viable for a desktop app** without a relay service.
 
-2. **Delta queries** — client polls `GET /me/mailFolders/{id}/messages/delta?$skipToken=…`, server returns only changes since the last token. **Right choice for a desktop app.**
+2. **Delta queries** — client polls a persisted `@odata.deltaLink` URL (or a fresh `/messages/delta` on the first call); server returns only changes since the last cursor. **Right choice for a desktop app.**
 
 `GraphChangeNotifier` polls every account's INBOX delta endpoint on a 60-second cadence (configurable in `config.ini`). When the delta returns ≥1 new message, it raises `InboxNewMailDetected(accountId)` — the same event consumers already handle.
 
@@ -689,7 +689,7 @@ Reference for Phase 4-6 implementers. All endpoints are `https://graph.microsoft
 | `ConnectAsync` | `GET /me?$select=id,userPrincipalName` (validates token; no real connection) |
 | `GetFoldersAsync` | `GET /mailFolders?$top=100&$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount` (paginated; flattens to existing tree) |
 | `GetMessageSummariesAsync` | `GET /mailFolders/{id}/messages?$top={N}&$orderby=receivedDateTime desc&$select=id,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments` |
-| `GetMessagesSinceAsync` | `GET /mailFolders/{id}/messages/delta?$skipToken={token}` (first call: no skipToken) |
+| `GetMessagesSinceAsync` | Delta polling via persisted `@odata.deltaLink` URL (first call: fresh `/mailFolders/{id}/messages/delta` enumeration; subsequent calls request the stored deltaLink verbatim) |
 | `GetMessagesSinceDateAsync` | `GET /mailFolders/{id}/messages?$filter=receivedDateTime ge {iso}&$top=1000` |
 | `GetMessageDetailAsync` | `GET /messages/{id}?$select=id,subject,body,from,toRecipients,ccRecipients,internetMessageId,attachments&$expand=attachments($select=id,name,contentType,size,isInline)` |
 | `MarkReadAsync` | `PATCH /messages/{id}` with `{ "isRead": true }` |
