@@ -180,10 +180,10 @@ public class OnlineModeTests
 
 public class IdleNewMailTests
 {
-    sealed class FireableImapMailService : IMailService
+    sealed class FireableMailService : IMailService
     {
         private readonly Guid _accountId;
-        public FireableImapMailService(Guid accountId) => _accountId = accountId;
+        public FireableMailService(Guid accountId) => _accountId = accountId;
 
         public event Action<Guid>? InboxNewMailDetected;
         public void FireNewMail() => InboxNewMailDetected?.Invoke(_accountId);
@@ -260,7 +260,7 @@ public class IdleNewMailTests
     public async Task NewMailDetected_TriggersSyncForMatchingInbox()
     {
         var accountId = Guid.NewGuid();
-        var imap = new FireableImapMailService(accountId);
+        var imap = new FireableMailService(accountId);
         var sync = new SpySyncService();
         var account = new AccountModel
         {
@@ -293,7 +293,7 @@ public class IdleNewMailTests
     public async Task NewMailDetected_OnlineMode_CallsSyncOneFolderOnline()
     {
         var accountId = Guid.NewGuid();
-        var imap = new FireableImapMailService(accountId);
+        var imap = new FireableMailService(accountId);
         var sync = new SpySyncService();
         var account = new AccountModel
         {

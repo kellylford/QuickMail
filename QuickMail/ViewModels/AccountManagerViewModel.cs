@@ -65,7 +65,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         StatusText = string.Empty;
     }
 
-    public AddAccountViewModel CreateAddAccountViewModel() => new(ImapMailService, OAuthService);
+    public AddAccountViewModel CreateAddAccountViewModel() => new(MailService, OAuthService);
 
     public void CommitNewAccount(AccountModel account, string password)
     {

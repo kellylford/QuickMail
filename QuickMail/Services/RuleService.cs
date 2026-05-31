@@ -220,8 +220,8 @@ public class RuleService : IRuleService
             ct.ThrowIfCancellationRequested();
             try
             {
-                // ImapMailService doesn't have a dedicated MarkUnreadAsync — we update
-                // the local store only. Full IMAP unread will be added in a follow-up.
+                // IMailService has no MarkUnreadAsync yet — we update the local store
+                // only. Full server-side unread will be added in a follow-up.
                 msg.IsRead = false;
                 await _store.UpdateIsReadAsync(msg.AccountId, msg.FolderName, msg.UniqueId, false);
             }

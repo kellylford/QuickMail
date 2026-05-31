@@ -14,7 +14,7 @@ namespace QuickMail.ViewModels;
 /// </summary>
 public abstract partial class AccountEditorViewModel : ObservableObject
 {
-    protected readonly IMailService ImapMailService;
+    protected readonly IMailService MailService;
     protected readonly IOAuthService OAuthService;
 
     [ObservableProperty] private string _accountName = string.Empty;
@@ -49,9 +49,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         set => AuthType = value == 0 ? AuthType.Password : AuthType.OAuth2Microsoft;
     }
 
-    protected AccountEditorViewModel(IMailService imap, IOAuthService oauth)
+    protected AccountEditorViewModel(IMailService mailService, IOAuthService oauth)
     {
-        ImapMailService = imap;
+        MailService = mailService;
         OAuthService = oauth;
     }
 
@@ -111,8 +111,8 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             };
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var pwd = IsPasswordAuth ? Password : null;
-            await ImapMailService.ConnectAsync(testAccount, pwd, cts.Token);
-            await ImapMailService.DisconnectAsync(testAccount.Id, cts.Token);
+            await MailService.ConnectAsync(testAccount, pwd, cts.Token);
+            await MailService.DisconnectAsync(testAccount.Id, cts.Token);
             StatusText = "Connection successful!";
         }
         catch (Exception ex)
