@@ -2099,7 +2099,7 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            StatusText = "Message loaded. Press Escape to return to message list.";
+            StatusText = "Message loaded.";
 
             if (!OnlineMode)
                 StartPrefetchAroundOpen(summary);

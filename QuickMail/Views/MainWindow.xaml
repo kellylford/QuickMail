@@ -1395,7 +1395,7 @@
                    Grid.Row="3"
                    KeyboardNavigation.TabNavigation="None"
                    KeyboardNavigation.DirectionalNavigation="Contained"
-                   AutomationProperties.Name="{Binding StatusText, StringFormat='Status bar — {0}', FallbackValue='Status bar'}">
+                   AutomationProperties.Name="Status bar">
 
             <!-- Region 1: Status message (informational) -->
             <StatusBarItem x:Name="StatusTextItem"
@@ -1403,7 +1403,7 @@
                 <TextBox x:Name="StatusTextBox"
                          Style="{StaticResource StatusTextBoxStyle}"
                          Text="{Binding StatusText, Mode=OneWay}"
-                         AutomationProperties.Name="{Binding StatusText, StringFormat='Status — {0}'}"/>
+                         AutomationProperties.Name="Status"/>
             </StatusBarItem>
 
             <!-- Region 2: Connection state (informational) -->
@@ -1412,7 +1412,7 @@
                 <TextBox x:Name="ConnectionStatusTextBox"
                          Style="{StaticResource StatusTextBoxStyle}"
                          Text="{Binding ConnectionStatusText, Mode=OneWay}"
-                         AutomationProperties.Name="{Binding ConnectionStatusText, StringFormat='Connection — {0}'}"/>
+                         AutomationProperties.Name="Connection"/>
             </StatusBarItem>
 
             <!-- Spacer: pushes Rules and Progress to the right -->
