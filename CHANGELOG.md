@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.6.7
+
+### New Features
+
+- **To Me filter** — New filter (View → Filter → To Me) shows only messages where one of your configured account addresses appears in the To field. Mailing list messages are excluded via `List-Id` header detection, with a retroactive domain-pattern backfill for existing database rows.
+- **Selection keyboard shortcuts** — Ctrl+A selects all messages in the list; Ctrl+Shift+Home/End extend selection to the first or last message. Ctrl+A also works in the Address Book (select all contacts) and in compose address fields (select all chips).
+- **Mark as Read (Ctrl+Q)** — Marks the selected message, group, or entire folder as read without opening it.
+- **Action-first log format** — New option in Settings → Advanced puts the message before the timestamp in quickmail.log, making each line readable from the start.
+
+### Accessibility fixes
+
+- **Status bar** — Screen readers no longer announce the status text multiple times when focus moves to the status bar (Ctrl+9). Content is now announced exactly once. The persistent "Press Escape to return to message list" hint has been removed from the status text; it is delivered as a one-time announcement immediately after a message opens.
+
+---
+
 ## v0.6.3
 
 ### Accessibility

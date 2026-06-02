@@ -58,7 +58,7 @@ The menu bar at the top of the window provides access to all major features, org
 |------|----------|
 | **File** | New Message, Manage Accounts, Address Book, Settings (`Ctrl+,`), Exit |
 | **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
-| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views, Clear View), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
+| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded / To Me), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views, Clear View), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
 | **Help** | User Guide |
 
 All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
@@ -277,6 +277,7 @@ The **View → Filter** submenu (and the command palette) let you narrow the mes
 | **With Attachments** | Messages that have at least one attachment |
 | **Replied** | Messages you have replied to |
 | **Forwarded** | Messages you have forwarded |
+| **To Me** | Messages where one of your account addresses appears in the To field, excluding mailing list messages |
 
 **Applying a filter:**
 - Open **View → Filter** and choose an option, or
