@@ -1395,24 +1395,24 @@
                    Grid.Row="3"
                    KeyboardNavigation.TabNavigation="None"
                    KeyboardNavigation.DirectionalNavigation="Contained"
-                   AutomationProperties.Name="Status bar">
+                   AutomationProperties.Name="">
 
-            <!-- Region 1: Status message (informational) -->
+            <!-- Region 1: Status message (informational).
+                 TextBlock (ControlType.Text) has no ValuePattern, so the text
+                 content is the accessible name and is announced exactly once. -->
             <StatusBarItem x:Name="StatusTextItem"
-                           KeyboardNavigation.IsTabStop="True">
-                <TextBox x:Name="StatusTextBox"
-                         Style="{StaticResource StatusTextBoxStyle}"
-                         Text="{Binding StatusText, Mode=OneWay}"
-                         AutomationProperties.Name="Status"/>
+                           KeyboardNavigation.IsTabStop="False">
+                <TextBlock x:Name="StatusTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}"
+                           Text="{Binding StatusText, Mode=OneWay}"/>
             </StatusBarItem>
 
             <!-- Region 2: Connection state (informational) -->
             <StatusBarItem x:Name="ConnectionStatusItem"
-                           KeyboardNavigation.IsTabStop="True">
-                <TextBox x:Name="ConnectionStatusTextBox"
-                         Style="{StaticResource StatusTextBoxStyle}"
-                         Text="{Binding ConnectionStatusText, Mode=OneWay}"
-                         AutomationProperties.Name="Connection"/>
+                           KeyboardNavigation.IsTabStop="False">
+                <TextBlock x:Name="ConnectionStatusTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}"
+                           Text="{Binding ConnectionStatusText, Mode=OneWay}"/>
             </StatusBarItem>
 
             <!-- Spacer: pushes Rules and Progress to the right -->
