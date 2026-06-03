@@ -90,7 +90,7 @@ public partial class AddressBookWindow : Window
         _registry.Register(new CommandDefinition(
             id: "contacts.focusGroupsPane", category: "Contacts", title: "Focus Groups Pane",
             defaultKey: Key.G, defaultModifiers: ModifierKeys.Control,
-            execute: () => { MainTabs.SelectedIndex = 1; GroupsList.Focus(); }));
+            execute: FocusGroupsPane));
 
         _registry.Register(new CommandDefinition(
             id: "contacts.manageGroups", category: "Contacts", title: "Manage Groups…",
@@ -262,9 +262,33 @@ public partial class AddressBookWindow : Window
 
     private void FocusGroupsPane()
     {
+        // Focus the most useful starting point for the user's first
+        // interaction with the Groups tab. With no groups, the list is
+        // empty so the most useful first stop is the New button (which
+        // focuses the name box when its content is empty). With at least
+        // one group, the list has something to navigate to.
         MainTabs.SelectedIndex = 1;
-        GroupsList.Focus();
+        if (_vm.Groups.Count == 0)
+            NewGroupButton.Focus();
+        else
+            GroupsList.Focus();
         OnAnnouncement("Groups tab", AnnouncementCategory.Status);
+    }
+
+    /// <summary>
+    /// When the New group button is clicked with an empty name box,
+    /// focus the name box so the user can type a name and press Enter
+    /// to create the group. The bound <c>CreateGroupCommand</c> runs
+    /// regardless, but its <c>Execute</c> method returns early when
+    /// the name is empty — so the click is a no-op for the VM, and
+    /// the focus jump is the only effect.
+    /// </summary>
+    private void NewGroupButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_vm.NewGroupName))
+            NewGroupNameBox.Focus();
+        // If the name already has text, the bound Command runs normally
+        // and creates the group with that name.
     }
 
     private void NewNameBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)

@@ -268,6 +268,7 @@
                                  x:Name="NewGroupNameBox"
                                  Text="{Binding NewGroupName, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.Name="New or rename group"
+                                 IsTabStop="False"
                                  Margin="4,0" TabIndex="22"
                                  PreviewKeyDown="NewGroupNameBox_PreviewKeyDown"/>
                         <Button Grid.Column="2"
@@ -275,7 +276,8 @@
                                 Content="_New"
                                 Command="{Binding CreateGroupCommand}"
                                 AutomationProperties.Name="New group"
-                                Margin="8,0,0,0" MinWidth="60" TabIndex="23"/>
+                                Margin="8,0,0,0" MinWidth="60" TabIndex="23"
+                                Click="NewGroupButton_Click"/>
                         <Button Grid.Column="3"
                                 Content="_Rename"
                                 Command="{Binding RenameGroupCommand}"
