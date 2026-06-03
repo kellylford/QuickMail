@@ -38,10 +38,9 @@
                 <!-- Single properties list; section header rows are interleaved as focusable items -->
                 <ListView x:Name="PropertiesList"
                           ItemsSource="{Binding Rows}"
-                          SelectionMode="Single"
+                          SelectionMode="Extended"
                           KeyboardNavigation.TabNavigation="Once"
                           AutomationProperties.Name="{Binding Title}"
-                          AutomationProperties.HelpText="Press Enter or Ctrl+C to copy the selected row."
                           KeyDown="PropertyList_KeyDown">
                     <ListView.View>
                         <GridView>

@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -34,6 +35,9 @@ public partial class PropertiesWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         PropertiesList.Focus();
+        AccessibilityHelper.Announce(this,
+            "Press Enter or Ctrl+C to copy the selected row.",
+            category: AnnouncementCategory.Hint);
     }
 
     private void PropertyList_KeyDown(object sender, KeyEventArgs e)
@@ -41,11 +45,27 @@ public partial class PropertiesWindow : Window
         if ((e.Key == Key.C && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
             || e.Key == Key.Return)
         {
-            if (sender is ListView lv && lv.SelectedItem is FlatRow row)
+            if (sender is not ListView lv) return;
+
+            var selected = lv.SelectedItems.OfType<FlatRow>()
+                             .Where(r => !r.IsHeader)
+                             .ToList();
+
+            if (selected.Count == 0) return;
+
+            if (selected.Count == 1)
+                _vm.CopyRowCommand.Execute(selected[0]);
+            else
             {
-                _vm.CopyRowCommand.Execute(row);
-                e.Handled = true;
+                var text = string.Join(Environment.NewLine,
+                    selected.Select(r => $"{r.Label}: {r.Value}"));
+                Clipboard.SetText(text);
+                AccessibilityHelper.Announce(this,
+                    $"{selected.Count} rows copied",
+                    category: AnnouncementCategory.Result);
             }
+
+            e.Handled = true;
         }
     }
 
