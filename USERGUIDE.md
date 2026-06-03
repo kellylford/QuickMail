@@ -818,23 +818,29 @@ A security warning is shown before opening executable file types.
 | What has focus | What opens |
 |----------------|------------|
 | A message in the message list | Message headers, storage details, and format/attachment summary |
+| A conversation header (Conversations view) | Subject, message count, unread count, participants, and date range |
+| A sender group header (From view) | Sender, message count, unread count, most recent date, and newest subject |
+| A recipient group header (To view) | Recipient, message count, unread count, most recent date, and newest subject |
 | A folder in the folder tree | Folder name, path, account, and message counts |
 | An account in the account list | Server settings and authentication method (no password shown) |
 | A contact in the address book | Display name, email address, group memberships, and last-used date |
 | A group in the address book | Group name, member count, and a list of members |
 | An attachment in the reading pane | File name, MIME type, and size |
 
+In grouped views (Conversations, From, To), Alt+Enter on a group header row shows group-level properties. To see properties for an individual message inside a group, expand the group, navigate to the message, and press Alt+Enter.
+
 ### Navigating the Properties dialog
 
-- The dialog opens with focus on the first row of the first section. Use **Up/Down arrows** to move between rows within a section.
-- Press **Tab** to move between sections.
-- Press **Enter** or **Ctrl+C** on a selected row to copy "Field: Value" to the clipboard. A screen reader announcement confirms the copy.
-- Press **Alt+C** or activate **Copy all** to copy every section as formatted plain text.
+- The dialog opens with focus on the properties list. Use **Up/Down arrows** to move through all rows. Section names appear as focusable entries within the list and are announced when you navigate to them.
+- Press **Tab** to move to the **Copy all** and **Close** buttons.
+- Press **Enter** or **Ctrl+C** on a selected row to copy it to the clipboard. Section header rows copy just the name; data rows copy "Field: Value". A screen reader announcement confirms the copy.
+- Press **Ctrl+A** to select all rows; pressing **Enter** or **Ctrl+C** then copies all selected rows at once.
+- Activate **Copy all** to copy every property as formatted plain text organized by section.
 - Press **Escape** or activate **Close** to close the dialog. Focus returns to where it was before.
 
 ### Screen reader experience
 
-Each row in the Properties dialog is announced as a single "Field: Value" phrase — for example, "From: Alice Smith &lt;alice@example.com&gt;" — so you do not need to read column headers separately. Section headings are announced as group landmarks.
+Each data row is announced as a single "Field: Value" phrase — for example, "From: Alice Smith &lt;alice@example.com&gt;" — without reading column headers separately. Section header rows are announced by name (for example, "Headers") as you navigate to them.
 
 ### What is not shown
 
@@ -900,7 +906,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Shift+. (> ) | Jump to the last (oldest) message in the current group — grouped views only |
 | Shift+F10 | Open context menu for focused item |
 | Escape | Close reading pane |
-| Alt+Enter | View Properties for the selected message, folder, or account |
+| Alt+Enter | View Properties for the selected item (message, group, folder, account, contact, or attachment) |
 
 ### Compose window
 
