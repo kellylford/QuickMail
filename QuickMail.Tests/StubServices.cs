@@ -157,6 +157,7 @@ sealed class StubSyncService : ISyncService
     public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     public Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
     public Task SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
+    public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
 }
 
 sealed class StubCommandRegistry : ICommandRegistry

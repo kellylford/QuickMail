@@ -18,6 +18,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -180,6 +181,11 @@ public partial class MainWindow : Window
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
         vm.AboutRequested += (_, _) => ShowAboutDialog();
+        vm.PropertiesRequested += propertiesVm =>
+        {
+            var win = new PropertiesWindow(propertiesVm) { Owner = this };
+            win.ShowDialog();
+        };
 
         // Re-focus the active message panel whenever the message collections are replaced
         // (happens after Refresh, Load More, folder changes, and view-mode switches).
@@ -491,6 +497,69 @@ public partial class MainWindow : Window
             id: "view.focusStatusBar", category: "View", title: "Focus Status Bar",
             execute: FocusStatusBar,
             defaultKey: Key.D9, defaultModifiers: ModifierKeys.Control));
+
+        _registry.Register(new CommandDefinition(
+            id: "view.showProperties", category: "View", title: "View Properties",
+            execute: () =>
+            {
+                // Attachment list: it sits outside MessageBody in the visual tree so
+                // GetFocusedPaneIndex() returns 0 for it. Handle here before the
+                // pane-index path so the window handler doesn't shadow the attachment.
+                if (ReadingPaneAttachmentList.IsKeyboardFocusWithin
+                    && ReadingPaneAttachmentList.SelectedItem is AttachmentModel att)
+                {
+                    var (attTitle, attSections) = AttachmentPropertiesBuilder.Build(att);
+                    new PropertiesWindow(new PropertiesViewModel(attTitle, attSections)) { Owner = this }
+                        .ShowDialog();
+                    return;
+                }
+
+                var pane = GetFocusedPaneIndex();
+
+                // FolderList is a TreeView: arrow-key navigation updates TreeView.SelectedItem
+                // but there is no SelectedItemChanged handler, so _vm.SelectedFolder lags
+                // behind until Enter commits the selection. Pass the live node directly.
+                var focusedFolder = pane == 2
+                    ? (FolderList.SelectedItem as FolderTreeNode)?.Folder
+                    : null;
+
+                // Group headers in the grouped trees show group-level properties rather
+                // than falling back to the first message. Individual message children
+                // (SelectedItem is MailMessageSummary) fall through to ShowPropertiesAsync.
+                if (pane == 3)
+                {
+                    if (ConversationTree.IsKeyboardFocusWithin
+                        && ConversationTree.SelectedItem is ConversationGroup cg)
+                    {
+                        var (cgTitle, cgSections) = ConversationPropertiesBuilder.Build(cg);
+                        new PropertiesWindow(new PropertiesViewModel(cgTitle, cgSections)) { Owner = this }
+                            .ShowDialog();
+                        return;
+                    }
+                    if (SenderGroupTree.IsKeyboardFocusWithin
+                        && SenderGroupTree.SelectedItem is SenderGroup sg)
+                    {
+                        var (sgTitle, sgSections) = SenderGroupPropertiesBuilder.Build(sg);
+                        new PropertiesWindow(new PropertiesViewModel(sgTitle, sgSections)) { Owner = this }
+                            .ShowDialog();
+                        return;
+                    }
+                    if (ToGroupTree.IsKeyboardFocusWithin
+                        && ToGroupTree.SelectedItem is SenderGroup tg)
+                    {
+                        var (tgTitle, tgSections) = SenderGroupPropertiesBuilder.Build(tg, isToGroup: true);
+                        new PropertiesWindow(new PropertiesViewModel(tgTitle, tgSections)) { Owner = this }
+                            .ShowDialog();
+                        return;
+                    }
+                }
+
+                _ = _vm.ShowPropertiesAsync(pane, focusedFolder, focusedMessage: null);
+            },
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => _vm.SelectedMessage != null
+                            || _vm.SelectedFolder  != null
+                            || _vm.SelectedAccount != null));
 
         _registry.Register(new CommandDefinition(
             id: "contacts.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
@@ -1873,6 +1942,20 @@ public partial class MainWindow : Window
             ReadingPaneAttachmentList.Focus();
         else
             DateField.Focus();
+    }
+
+    // Alt+Enter on a selected attachment opens Attachment Properties directly.
+    private void ReadingPaneAttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.Alt
+            && ReadingPaneAttachmentList.SelectedItem is AttachmentModel attachment)
+        {
+            var (title, sections) = AttachmentPropertiesBuilder.Build(attachment);
+            var win = new PropertiesWindow(new PropertiesViewModel(title, sections)) { Owner = this };
+            win.ShowDialog();
+            e.Handled = true;
+        }
     }
 
     // Close the reading pane safely: cancel any in-flight render/focus chain and

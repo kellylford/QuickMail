@@ -35,6 +35,7 @@ public partial class AddressBookWindow : Window
             // single-shot behavior of the contact-delete flow.)
             vm.AnnouncementRequested += OnAnnouncement;
             vm.ConfirmRequested     += OnConfirm;
+            vm.PropertiesRequested  += OnPropertiesRequested;
             await vm.LoadAsync();
             SearchBox.Focus();
         };
@@ -44,6 +45,7 @@ public partial class AddressBookWindow : Window
             // short-lived (e.g. unit tests).
             vm.AnnouncementRequested -= OnAnnouncement;
             vm.ConfirmRequested     -= OnConfirm;
+            vm.PropertiesRequested  -= OnPropertiesRequested;
         };
 
         vm.PropertyChanged += (_, e) =>
@@ -137,6 +139,12 @@ public partial class AddressBookWindow : Window
             MessageBox.Show(this, body, title, MessageBoxButton.YesNo, MessageBoxImage.Question)
             == MessageBoxResult.Yes);
 
+    private void OnPropertiesRequested(PropertiesViewModel vm)
+    {
+        var win = new PropertiesWindow(vm) { Owner = this };
+        win.ShowDialog();
+    }
+
     // ── Keyboard wiring ──────────────────────────────────────────────────────
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -196,6 +204,16 @@ public partial class AddressBookWindow : Window
                 e.Handled = true;
                 return;
             }
+        }
+
+        // Alt+Enter — show Properties for the selected contact or group.
+        if (e.Key == Key.System && e.SystemKey == Key.Return
+            && Keyboard.Modifiers == ModifierKeys.Alt
+            && (_vm.HasSelectedContact || _vm.HasSelectedGroup))
+        {
+            _ = _vm.ShowPropertiesCommand.ExecuteAsync(null);
+            e.Handled = true;
+            return;
         }
 
         // Dispatch any registered command whose key/modifiers match.

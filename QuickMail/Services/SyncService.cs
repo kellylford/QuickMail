@@ -27,6 +27,8 @@ public class SyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
     public event Action<int>? RulesApplied;
 
+    private readonly Dictionary<Guid, DateTimeOffset> _lastSyncedUtc = new();
+
     public async Task SyncAllAccountsAsync(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
@@ -67,6 +69,8 @@ public class SyncService : ISyncService
                     LogService.Log($"Sync {account.AccountLabel}/{folder.DisplayName}", ex);
                 }
             }
+
+            _lastSyncedUtc[account.Id] = DateTimeOffset.UtcNow;
         }
 
         // Fetch previews only after ALL folder syncs complete so preview IMAP calls
@@ -272,4 +276,7 @@ public class SyncService : ISyncService
             LogService.Log($"FetchAndApplyPreviews {account.AccountLabel}/{folder.FullName}", ex);
         }
     }
+
+    public DateTimeOffset? LastSyncedUtc(Guid accountId) =>
+        _lastSyncedUtc.TryGetValue(accountId, out var t) ? t : null;
 }

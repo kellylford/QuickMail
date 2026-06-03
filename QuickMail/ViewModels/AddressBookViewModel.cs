@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -366,4 +367,32 @@ public partial class AddressBookViewModel : ObservableObject
 
     private Task<bool> RequestConfirmAsync(string title, string body) =>
         ConfirmRequested?.Invoke(title, body) ?? Task.FromResult(false);
+
+    /// <summary>
+    /// Raised when a Properties dialog should be shown. The View subscribes and
+    /// calls new PropertiesWindow(vm).ShowDialog().
+    /// </summary>
+    public event Action<PropertiesViewModel>? PropertiesRequested;
+
+    [RelayCommand]
+    private async Task ShowPropertiesAsync()
+    {
+        if (SelectedContact is { } contact)
+        {
+            var groupIds   = await _contactService.ListGroupsForContactAsync(contact.Id);
+            var allGroups  = await _contactService.LoadAllGroupsAsync();
+            var groupNames = allGroups
+                .Where(g => groupIds.Contains(g.Id))
+                .Select(g => g.Name)
+                .ToList();
+            var (title, sections) = ContactPropertiesBuilder.Build(contact, groupNames);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        else if (SelectedGroup is { } group)
+        {
+            var members   = SelectedGroupMembers.ToList();
+            var (title, sections) = GroupPropertiesBuilder.Build(group, members);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+    }
 }

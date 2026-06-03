@@ -2778,10 +2778,70 @@ public partial class MainViewModel : ObservableObject
     public event EventHandler? TutorialRequested;
     public event EventHandler? AboutRequested;
 
+    /// <summary>
+    /// Raised when a Properties dialog should be shown. The View subscribes and
+    /// calls new PropertiesWindow(vm).ShowDialog().
+    /// </summary>
+    public event Action<PropertiesViewModel>? PropertiesRequested;
+
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)
     {
         if (!string.IsNullOrEmpty(text))
             AnnouncementRequested?.Invoke(this, (text, category));
+    }
+
+    // Pane indices from MainWindow.GetFocusedPaneIndex():
+    //   0 = Toolbar, 1 = Account list, 2 = Folder tree,
+    //   3 = Message list / conversation trees, 4 = Reading pane, 5 = Status bar
+    // focusedFolder overrides SelectedFolder for pane 2: the folder tree's TreeView
+    // updates its internal SelectedItem on arrow-key navigation but has no
+    // SelectedItemChanged handler, so SelectedFolder lags until Enter commits it.
+    // focusedMessage overrides SelectedMessage for pane 3: grouped-tree OnSelectedItemChanged
+    // only fires for individual MailMessageSummary items, not group headers, so SelectedMessage
+    // is stale when a ConversationGroup or SenderGroup header is focused.
+    public async Task ShowPropertiesAsync(int paneIndex, MailFolderModel? focusedFolder = null, MailMessageSummary? focusedMessage = null)
+    {
+        // pane 0 means toolbar or unknown focus (e.g. command palette has focus, or WPF
+        // moved focus to the menu bar when Alt was pressed). Fall back to whichever
+        // context item is most specifically selected so the command still does something
+        // useful from the command palette or via Alt+Enter with menu-bar focus.
+        if (paneIndex == 0)
+        {
+            if (focusedMessage != null || SelectedMessage != null) paneIndex = 3;
+            else if (SelectedFolder != null)                       paneIndex = 2;
+            else if (SelectedAccount != null)                      paneIndex = 1;
+            else return;
+        }
+
+        if ((paneIndex == 3 || paneIndex == 4) && (focusedMessage ?? SelectedMessage) is { } msg)
+        {
+            // Load detail if not already open (detail may already be in MessageDetail
+            // when the reading pane is open for this message).
+            var detail = (MessageDetail?.UniqueId == msg.UniqueId
+                          && MessageDetail?.AccountId == msg.AccountId
+                          && MessageDetail?.FolderName == msg.FolderName)
+                ? MessageDetail
+                : await _localStore.LoadDetailAsync(msg.AccountId, msg.FolderName, msg.UniqueId);
+
+            var accountName = Accounts.FirstOrDefault(a => a.Id == msg.AccountId)?.AccountLabel
+                              ?? "Unknown";
+            var (title, sections) = MessagePropertiesBuilder.Build(msg, detail, accountName);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        else if (paneIndex == 2 && (focusedFolder ?? SelectedFolder) is { } folder)
+        {
+            var accountName = Accounts.FirstOrDefault(a => a.Id == folder.AccountId)?.AccountLabel
+                              ?? "Unknown";
+            var (title, sections) = FolderPropertiesBuilder.Build(folder, accountName);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        else if (paneIndex == 1 && SelectedAccount is { } acct)
+        {
+            var lastSync = _syncService.LastSyncedUtc(acct.Id);
+            var (title, sections) = AccountPropertiesBuilder.Build(acct, lastSync);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        // No-op for toolbar, status bar, or when nothing is selected.
     }
 
     [RelayCommand]

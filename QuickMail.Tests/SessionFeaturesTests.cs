@@ -254,6 +254,8 @@ public class IdleNewMailTests
             SyncOneFolderOnlineCalled.TrySetResult((account, folder));
             return Task.CompletedTask;
         }
+
+        public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
     }
 
     [Fact]

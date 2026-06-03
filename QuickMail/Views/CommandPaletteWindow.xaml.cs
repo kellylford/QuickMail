@@ -91,8 +91,13 @@ public partial class CommandPaletteWindow : Window
     {
         if (_vm.SelectedCommand != null)
         {
-            _vm.ExecuteSelectedCommand.Execute(null);
+            var cmd = _vm.SelectedCommand;
+            // Close the palette first so focus returns to the main window before the
+            // command runs. Commands like view.showProperties call GetFocusedPaneIndex()
+            // to determine context; if the palette window still has focus when Execute()
+            // runs, the pane index is wrong and the command silently does nothing.
             DialogResult = true;
+            Owner?.Dispatcher.InvokeAsync(() => cmd.Execute(), System.Windows.Threading.DispatcherPriority.Input);
         }
     }
 }

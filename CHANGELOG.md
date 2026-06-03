@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.6.9
+
+### New Features
+
+- **Alt+Enter View Properties** — pressing Alt+Enter opens a read-only Properties dialog for the focused item: a message, conversation group, sender/recipient group, folder, account, contact, address book group, or attachment. Group headers in Conversations, From, and To views show group-level properties (subject, participants, date range for conversations; sender/count for sender and recipient groups) rather than falling back to a message.
+
+### Accessibility fixes
+
+- **Properties dialog is one continuous list** — all fields and section headers are in a single arrow-navigable list with no separate focus stops between sections. Section headers are focusable entries. Ctrl+A selects all rows for bulk copy.
+- **Properties hint respects hint suppression** — the copy-row instruction is delivered through the hint system and silenced when hints are turned off in Settings.
+
+### Bug Fixes
+
+- **Alt+Enter from command palette** — now shows properties for the correct item instead of doing nothing.
+- **Alt+Enter on folder tree** — now reads the live focused folder rather than the last committed selection.
+
+---
+
 ## v0.6.8
 
 ### New Features
