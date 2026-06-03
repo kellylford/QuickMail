@@ -556,6 +556,54 @@ When composing a message, as you type in the **To**, **Cc**, or **Bcc** fields, 
 
 Contacts are sorted by how recently they were used, so your most-contacted people appear first.
 
+### Contact groups
+
+The Address Book window has a second tab called **Groups** that lets you bundle contacts into named groups for faster addressing. Groups are stored locally as a separate JSON file in your AppData folder and never leave your machine.
+
+**Opening the Groups tab**
+
+- In the Address Book window, select the **Groups** tab at the top of the window, or press **Ctrl+G** to jump to the groups list.
+- Press **Ctrl+Shift+M** to open a dedicated **Group Manager** window that focuses on managing groups (rename, add or remove members, delete) without the address book around it.
+
+**Creating a group**
+
+1. Make sure the **Groups** tab is selected.
+2. Type a name in the **New group** text box at the bottom.
+3. Press **Enter** or click **New**. The new group appears in the list and is selected automatically.
+
+**Adding contacts to a group**
+
+1. Select a group in the groups list. The members of that group appear in the right pane.
+2. Switch to the **Contacts** tab and select the contact you want to add.
+3. Switch back to **Groups**, select the target group, and press **Enter** on it (or use the dedicated group-manager flow). The member list refreshes and the screen reader announces the addition.
+
+You can also open the **Group Manager** window with **Ctrl+Shift+M** and use **Enter** on a candidate to add them, or **Delete** on a member to remove them.
+
+**Inserting a group into a message**
+
+When you have a compose window open, the Address Book window can insert every member of a group into the **To**, **Cc**, or **Bcc** field in one step:
+
+1. Open the Address Book from the compose window with **Ctrl+Shift+B**.
+2. Switch to the **Groups** tab and select a group.
+3. Choose **To**, **Cc**, or **Bcc** from the field buttons. Every member of the group is inserted in one operation, sorted by recency of use. The screen reader announces the final count.
+
+**Renaming and deleting groups**
+
+- To rename a group, select it in the groups list, type the new name in the **New group** text box, and click **Rename** (or press **F2**).
+- To delete a group, select it and press **Delete** (or click **Delete**). A confirmation appears. Deleting a group does **not** delete the contacts in it.
+
+**Keyboard reference for the Address Book window**
+
+| Action | Shortcut |
+|--------|----------|
+| Switch to Contacts tab | `Ctrl+1` |
+| Switch to Groups tab | `Ctrl+G` |
+| Focus groups pane (when on the Groups tab) | `Ctrl+G` |
+| New group | `Ctrl+Shift+N` |
+| Rename group | `F2` |
+| Delete group | `Delete` |
+| Open Group Manager | `Ctrl+Shift+M` |
+
 ---
 
 ## Command palette
