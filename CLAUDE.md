@@ -83,6 +83,7 @@ Groups (`GroupModel`) are flat, local-only, and keyed by an incrementing integer
 - `SenderGroupBuilder` — groups messages by From or To; used for From/To view modes
 - `MimeMessageBuilder` — builds a `MimeMessage` from `ComposeModel` + `AccountModel`; shared by `SmtpService` and `ImapService` (draft saving)
 - `AddressParser` — splits comma/semicolon-delimited address strings into `MailboxAddress` objects
+- `MessagePropertiesBuilder`, `FolderPropertiesBuilder`, `AccountPropertiesBuilder`, `ContactPropertiesBuilder`, `GroupPropertiesBuilder`, `AttachmentPropertiesBuilder` — transform model objects into `(title, sections[])` for `PropertiesViewModel`. Pure static functions, no DI, testable without UI. Each takes the relevant model(s) and returns a list of `PropertySection` records containing `PropertyItem` (label/value) rows.
 - `FolderTreeBuilder` — builds `FolderTreeNode` hierarchy from a flat `MailFolderModel` list; auto-detects IMAP path separator (`.` or `/`)
 
 ### Helpers
@@ -269,6 +270,7 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | *(unassigned)* | `mail.declineInvite` | Decline Invitation |
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
+| Alt+Enter | `view.showProperties` | View Properties |
 
 **Compose window shortcuts** (Alt+S, Ctrl+Enter, Ctrl+S, Ctrl+Shift+A, F7, Shift+F7, Alt+Y, Alt+U, Alt+M, Escape) are registered or hardcoded in `ComposeWindow.xaml.cs`. Registry-based ones appear in the compose window's command palette (`Ctrl+Shift+P`) but are **not** user-customisable via the Settings dialog. The main window's `CommandRegistry` and `hotkeys.json` do not include compose commands. `Ctrl+Enter` is hardcoded (like `Ctrl+Shift+P`) as a second send gesture so it does not create a duplicate "Send Message" entry in the palette.
 

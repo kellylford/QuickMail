@@ -18,6 +18,7 @@ using System.Windows.Interop;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -180,6 +181,11 @@ public partial class MainWindow : Window
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
         vm.AboutRequested += (_, _) => ShowAboutDialog();
+        vm.PropertiesRequested += propertiesVm =>
+        {
+            var win = new PropertiesWindow(propertiesVm) { Owner = this };
+            win.ShowDialog();
+        };
 
         // Re-focus the active message panel whenever the message collections are replaced
         // (happens after Refresh, Load More, folder changes, and view-mode switches).
@@ -491,6 +497,14 @@ public partial class MainWindow : Window
             id: "view.focusStatusBar", category: "View", title: "Focus Status Bar",
             execute: FocusStatusBar,
             defaultKey: Key.D9, defaultModifiers: ModifierKeys.Control));
+
+        _registry.Register(new CommandDefinition(
+            id: "view.showProperties", category: "View", title: "View Properties",
+            execute: () => _ = _vm.ShowPropertiesAsync(GetFocusedPaneIndex()),
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => _vm.SelectedMessage != null
+                            || _vm.SelectedFolder  != null
+                            || _vm.SelectedAccount != null));
 
         _registry.Register(new CommandDefinition(
             id: "contacts.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
@@ -1873,6 +1887,20 @@ public partial class MainWindow : Window
             ReadingPaneAttachmentList.Focus();
         else
             DateField.Focus();
+    }
+
+    // Alt+Enter on a selected attachment opens Attachment Properties directly.
+    private void ReadingPaneAttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.Alt
+            && ReadingPaneAttachmentList.SelectedItem is AttachmentModel attachment)
+        {
+            var (title, sections) = AttachmentPropertiesBuilder.Build(attachment);
+            var win = new PropertiesWindow(new PropertiesViewModel(title, sections)) { Owner = this };
+            win.ShowDialog();
+            e.Handled = true;
+        }
     }
 
     // Close the reading pane safely: cancel any in-flight render/focus chain and

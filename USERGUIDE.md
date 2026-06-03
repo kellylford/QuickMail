@@ -811,6 +811,37 @@ A security warning is shown before opening executable file types.
 
 ---
 
+## Viewing properties (Alt+Enter)
+
+**Alt+Enter** is the Windows standard shortcut for "Properties." In QuickMail it opens a read-only Properties dialog for whatever is currently selected.
+
+| What has focus | What opens |
+|----------------|------------|
+| A message in the message list | Message headers, storage details, and format/attachment summary |
+| A folder in the folder tree | Folder name, path, account, and message counts |
+| An account in the account list | Server settings and authentication method (no password shown) |
+| A contact in the address book | Display name, email address, group memberships, and last-used date |
+| A group in the address book | Group name, member count, and a list of members |
+| An attachment in the reading pane | File name, MIME type, and size |
+
+### Navigating the Properties dialog
+
+- The dialog opens with focus on the first row of the first section. Use **Up/Down arrows** to move between rows within a section.
+- Press **Tab** to move between sections.
+- Press **Enter** or **Ctrl+C** on a selected row to copy "Field: Value" to the clipboard. A screen reader announcement confirms the copy.
+- Press **Alt+C** or activate **Copy all** to copy every section as formatted plain text.
+- Press **Escape** or activate **Close** to close the dialog. Focus returns to where it was before.
+
+### Screen reader experience
+
+Each row in the Properties dialog is announced as a single "Field: Value" phrase — for example, "From: Alice Smith &lt;alice@example.com&gt;" — so you do not need to read column headers separately. Section headings are announced as group landmarks.
+
+### What is not shown
+
+Account properties show the authentication method ("OAuth2" or "Password, stored in Windows Credential Manager") but never display a password or token. Raw message headers are available in Message Properties if they were cached when the message was opened; the section is hidden otherwise.
+
+---
+
 ## Deleting messages
 
 - Select one or more messages and press **Delete**. Use **Shift+Up/Down** to select multiple.
@@ -869,6 +900,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Shift+. (> ) | Jump to the last (oldest) message in the current group — grouped views only |
 | Shift+F10 | Open context menu for focused item |
 | Escape | Close reading pane |
+| Alt+Enter | View Properties for the selected message, folder, or account |
 
 ### Compose window
 

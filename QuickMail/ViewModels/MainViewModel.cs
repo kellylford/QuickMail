@@ -2778,10 +2778,52 @@ public partial class MainViewModel : ObservableObject
     public event EventHandler? TutorialRequested;
     public event EventHandler? AboutRequested;
 
+    /// <summary>
+    /// Raised when a Properties dialog should be shown. The View subscribes and
+    /// calls new PropertiesWindow(vm).ShowDialog().
+    /// </summary>
+    public event Action<PropertiesViewModel>? PropertiesRequested;
+
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)
     {
         if (!string.IsNullOrEmpty(text))
             AnnouncementRequested?.Invoke(this, (text, category));
+    }
+
+    // Pane indices from MainWindow.GetFocusedPaneIndex():
+    //   0 = Toolbar, 1 = Account list, 2 = Folder tree,
+    //   3 = Message list / conversation trees, 4 = Reading pane, 5 = Status bar
+    public async Task ShowPropertiesAsync(int paneIndex)
+    {
+        if ((paneIndex == 3 || paneIndex == 4) && SelectedMessage is { } msg)
+        {
+            // Load detail if not already open (detail may already be in MessageDetail
+            // when the reading pane is open for this message).
+            var detail = (MessageDetail?.UniqueId == msg.UniqueId
+                          && MessageDetail?.AccountId == msg.AccountId
+                          && MessageDetail?.FolderName == msg.FolderName)
+                ? MessageDetail
+                : await _localStore.LoadDetailAsync(msg.AccountId, msg.FolderName, msg.UniqueId);
+
+            var accountName = Accounts.FirstOrDefault(a => a.Id == msg.AccountId)?.AccountLabel
+                              ?? "Unknown";
+            var (title, sections) = MessagePropertiesBuilder.Build(msg, detail, accountName);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        else if (paneIndex == 2 && SelectedFolder is { } folder)
+        {
+            var accountName = Accounts.FirstOrDefault(a => a.Id == folder.AccountId)?.AccountLabel
+                              ?? "Unknown";
+            var (title, sections) = FolderPropertiesBuilder.Build(folder, accountName);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        else if (paneIndex == 1 && SelectedAccount is { } acct)
+        {
+            var lastSync = _syncService.LastSyncedUtc(acct.Id);
+            var (title, sections) = AccountPropertiesBuilder.Build(acct, lastSync);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        // No-op for toolbar, status bar, or when nothing is selected.
     }
 
     [RelayCommand]

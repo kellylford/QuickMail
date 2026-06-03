@@ -843,7 +843,8 @@
                                                   FallbackValue=Collapsed}"
                                      KeyboardNavigation.TabNavigation="Once"
                                      KeyboardNavigation.DirectionalNavigation="Contained"
-                                     AutomationProperties.Name="Attachments">
+                                     AutomationProperties.Name="Attachments"
+                                     PreviewKeyDown="ReadingPaneAttachmentList_PreviewKeyDown">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileSizeDisplay}"/>

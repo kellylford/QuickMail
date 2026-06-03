@@ -42,4 +42,10 @@ public interface ISyncService
     /// touching the local store, then fires <see cref="FolderSynced"/> so the UI updates.
     /// </summary>
     Task SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
+
+    /// <summary>
+    /// Returns the UTC time of the last completed sync for the given account,
+    /// or null if the account has never been synced in this session.
+    /// </summary>
+    DateTimeOffset? LastSyncedUtc(Guid accountId);
 }

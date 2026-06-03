@@ -361,6 +361,19 @@ public class XamlParseTests
         window.Close();
     }
 
+    [StaFact]
+    public void PropertiesWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new PropertiesViewModel("Test Properties", [
+            new("Headers", [new("From", "alice@example.com")]),
+            new("Storage", [new("Folder", "INBOX")]),
+        ]);
+        var window = new PropertiesWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
     private static (StubImapMailService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
         StubCommandRegistry registry, StubContactService contacts, StubTemplateService templates)
