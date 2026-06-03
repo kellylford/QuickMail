@@ -28,7 +28,7 @@
         <TabControl x:Name="MainTabs"
                     KeyboardNavigation.TabNavigation="Local"
                     TabIndex="0">
-            <TabItem Header="_Contacts"
+            <TabItem Header="Contacts"
                      AutomationProperties.Name="Contacts"
                      KeyboardNavigation.TabNavigation="Local">
                 <DockPanel Margin="0,6,0,0">
@@ -150,7 +150,7 @@
                 </DockPanel>
             </TabItem>
 
-            <TabItem Header="_Groups"
+            <TabItem Header="Groups"
                      AutomationProperties.Name="Groups"
                      KeyboardNavigation.TabNavigation="Local">
                 <Grid Margin="0,6,0,0">
