@@ -523,25 +523,38 @@ public partial class MainWindow : Window
                     ? (FolderList.SelectedItem as FolderTreeNode)?.Folder
                     : null;
 
-                // Grouped trees (conversations, sender, recipient): OnSelectedItemChanged
-                // only fires for MailMessageSummary, not for group headers. When a group
-                // header is focused SelectedMessage retains its previous (stale) value.
-                // Derive the correct message from the focused tree's selected item.
-                MailMessageSummary? focusedMessage = null;
+                // Group headers in the grouped trees show group-level properties rather
+                // than falling back to the first message. Individual message children
+                // (SelectedItem is MailMessageSummary) fall through to ShowPropertiesAsync.
                 if (pane == 3)
                 {
                     if (ConversationTree.IsKeyboardFocusWithin
-                        && ConversationTree.SelectedItem is ConversationGroup cg && cg.Messages.Count > 0)
-                        focusedMessage = cg.Messages[0];
-                    else if (SenderGroupTree.IsKeyboardFocusWithin
-                        && SenderGroupTree.SelectedItem is SenderGroup sg && sg.Messages.Count > 0)
-                        focusedMessage = sg.Messages[0];
-                    else if (ToGroupTree.IsKeyboardFocusWithin
-                        && ToGroupTree.SelectedItem is SenderGroup tg && tg.Messages.Count > 0)
-                        focusedMessage = tg.Messages[0];
+                        && ConversationTree.SelectedItem is ConversationGroup cg)
+                    {
+                        var (cgTitle, cgSections) = ConversationPropertiesBuilder.Build(cg);
+                        new PropertiesWindow(new PropertiesViewModel(cgTitle, cgSections)) { Owner = this }
+                            .ShowDialog();
+                        return;
+                    }
+                    if (SenderGroupTree.IsKeyboardFocusWithin
+                        && SenderGroupTree.SelectedItem is SenderGroup sg)
+                    {
+                        var (sgTitle, sgSections) = SenderGroupPropertiesBuilder.Build(sg);
+                        new PropertiesWindow(new PropertiesViewModel(sgTitle, sgSections)) { Owner = this }
+                            .ShowDialog();
+                        return;
+                    }
+                    if (ToGroupTree.IsKeyboardFocusWithin
+                        && ToGroupTree.SelectedItem is SenderGroup tg)
+                    {
+                        var (tgTitle, tgSections) = SenderGroupPropertiesBuilder.Build(tg, isToGroup: true);
+                        new PropertiesWindow(new PropertiesViewModel(tgTitle, tgSections)) { Owner = this }
+                            .ShowDialog();
+                        return;
+                    }
                 }
 
-                _ = _vm.ShowPropertiesAsync(pane, focusedFolder, focusedMessage);
+                _ = _vm.ShowPropertiesAsync(pane, focusedFolder, focusedMessage: null);
             },
             defaultKey: Key.Return, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.SelectedMessage != null

@@ -35,39 +35,36 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="8" KeyboardNavigation.TabNavigation="Local">
 
-                <!-- Field sections (one GroupBox per section) -->
-                <ItemsControl x:Name="FieldSectionsControl"
-                              ItemsSource="{Binding FieldSections}"
-                              KeyboardNavigation.TabNavigation="Continue"
-                              Focusable="False">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <GroupBox Header="{Binding Header}" Margin="0,4,0,0">
-                                <ListView ItemsSource="{Binding Items}"
-                                          SelectionMode="Single"
-                                          KeyboardNavigation.TabNavigation="Once"
-                                          AutomationProperties.Name="{Binding Header}"
-                                          AutomationProperties.HelpText="Press Enter or Ctrl+C to copy the selected row."
-                                          KeyDown="PropertyList_KeyDown">
-                                    <ListView.View>
-                                        <GridView>
-                                            <GridViewColumn Header="Field" Width="140"
-                                                DisplayMemberBinding="{Binding Label}"/>
-                                            <GridViewColumn Header="Value" Width="300"
-                                                DisplayMemberBinding="{Binding Value}"/>
-                                        </GridView>
-                                    </ListView.View>
-                                    <ListView.ItemContainerStyle>
-                                        <Style TargetType="ListViewItem">
-                                            <Setter Property="AutomationProperties.Name"
-                                                Value="{Binding Converter={x:Static local:PropertyItemNameConverter.Instance}}"/>
-                                        </Style>
-                                    </ListView.ItemContainerStyle>
-                                </ListView>
-                            </GroupBox>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <!-- Single properties list; section header rows are interleaved as focusable items -->
+                <ListView x:Name="PropertiesList"
+                          ItemsSource="{Binding Rows}"
+                          SelectionMode="Single"
+                          KeyboardNavigation.TabNavigation="Once"
+                          AutomationProperties.Name="{Binding Title}"
+                          AutomationProperties.HelpText="Press Enter or Ctrl+C to copy the selected row."
+                          KeyDown="PropertyList_KeyDown">
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Field" Width="140"
+                                DisplayMemberBinding="{Binding Label}"/>
+                            <GridViewColumn Header="Value" Width="300"
+                                DisplayMemberBinding="{Binding Value}"/>
+                        </GridView>
+                    </ListView.View>
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="AutomationProperties.Name"
+                                Value="{Binding Converter={x:Static local:PropertyItemNameConverter.Instance}}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsHeader}" Value="True">
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                    <Setter Property="Background"
+                                        Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                </ListView>
 
                 <!-- Raw headers expander (message context only, hidden when RawHeaders is null) -->
                 <Expander Header="Raw headers"
@@ -83,39 +80,6 @@
                              FontFamily="Consolas"
                              AutomationProperties.Name="Raw message headers"/>
                 </Expander>
-
-                <!-- Sub-list sections (Members, Attachments) -->
-                <ItemsControl ItemsSource="{Binding SubListSections}"
-                              KeyboardNavigation.TabNavigation="Continue"
-                              Focusable="False">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <GroupBox Header="{Binding Header}" Margin="0,4,0,0">
-                                <ListView ItemsSource="{Binding Items}"
-                                          SelectionMode="Single"
-                                          KeyboardNavigation.TabNavigation="Once"
-                                          AutomationProperties.Name="{Binding Header}"
-                                          AutomationProperties.HelpText="Press Enter or Ctrl+C to copy the selected row."
-                                          KeyDown="PropertyList_KeyDown">
-                                    <ListView.View>
-                                        <GridView>
-                                            <GridViewColumn Header="Name" Width="200"
-                                                DisplayMemberBinding="{Binding Label}"/>
-                                            <GridViewColumn Header="Detail" Width="240"
-                                                DisplayMemberBinding="{Binding Value}"/>
-                                        </GridView>
-                                    </ListView.View>
-                                    <ListView.ItemContainerStyle>
-                                        <Style TargetType="ListViewItem">
-                                            <Setter Property="AutomationProperties.Name"
-                                                Value="{Binding Converter={x:Static local:PropertyItemNameConverter.Instance}}"/>
-                                        </Style>
-                                    </ListView.ItemContainerStyle>
-                                </ListView>
-                            </GroupBox>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
 
             </StackPanel>
         </ScrollViewer>

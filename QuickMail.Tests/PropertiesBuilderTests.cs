@@ -421,3 +421,171 @@ public class AttachmentPropertiesBuilderTests
         Assert.Contains(sections[0].Items, i => i.Label == "Size" && i.Value == "Unknown");
     }
 }
+
+// ── ConversationPropertiesBuilder ───────────────────────────────────────────
+
+public class ConversationPropertiesBuilderTests
+{
+    private static MailMessageSummary MakeMsg(string from, bool isRead = false,
+        DateTimeOffset? date = null) => new()
+    {
+        UniqueId   = 1,
+        AccountId  = Guid.NewGuid(),
+        FolderName = "INBOX",
+        From       = from,
+        Subject    = "Hello",
+        Date       = date ?? new DateTimeOffset(2026, 6, 2, 10, 0, 0, TimeSpan.Zero),
+        IsRead     = isRead,
+    };
+
+    [Fact]
+    public void Build_SingleMessage_ShowsSubjectAndDate()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          = [MakeMsg("alice@example.com")],
+        };
+
+        var (title, sections) = ConversationPropertiesBuilder.Build(group);
+        var items = sections[0].Items;
+
+        Assert.Equal("Conversation Properties", title);
+        Assert.Contains(items, i => i.Label == "Subject" && i.Value == "Hello");
+        Assert.Contains(items, i => i.Label == "Date");
+        Assert.DoesNotContain(items, i => i.Label == "Newest");
+    }
+
+    [Fact]
+    public void Build_MultipleMessages_ShowsNewestAndOldest()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                MakeMsg("alice@example.com", date: new DateTimeOffset(2026, 6, 3, 0, 0, 0, TimeSpan.Zero)),
+                MakeMsg("bob@example.com",   date: new DateTimeOffset(2026, 6, 1, 0, 0, 0, TimeSpan.Zero)),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+        var items = sections[0].Items;
+
+        Assert.Contains(items, i => i.Label == "Newest");
+        Assert.Contains(items, i => i.Label == "Oldest");
+        Assert.DoesNotContain(items, i => i.Label == "Date");
+    }
+
+    [Fact]
+    public void Build_CountsUnreadMessages()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                MakeMsg("alice@example.com", isRead: false),
+                MakeMsg("bob@example.com",   isRead: true),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+        Assert.Contains(sections[0].Items, i => i.Label == "Unread" && i.Value == "1");
+    }
+
+    [Fact]
+    public void Build_DeduplicatesParticipants()
+    {
+        var group = new ConversationGroup
+        {
+            NormalizedSubject = "hello",
+            Messages          =
+            [
+                MakeMsg("alice@example.com"),
+                MakeMsg("alice@example.com"),
+                MakeMsg("bob@example.com"),
+            ],
+        };
+
+        var (_, sections) = ConversationPropertiesBuilder.Build(group);
+        var participants = sections[0].Items.First(i => i.Label == "Participants").Value;
+
+        Assert.Contains("alice@example.com", participants);
+        Assert.Contains("bob@example.com",   participants);
+        // alice appears only once
+        Assert.Equal(1, participants.Split("alice@example.com").Length - 1);
+    }
+}
+
+// ── SenderGroupPropertiesBuilder ────────────────────────────────────────────
+
+public class SenderGroupPropertiesBuilderTests
+{
+    private static MailMessageSummary MakeMsg(bool isRead = false) => new()
+    {
+        UniqueId   = 1,
+        AccountId  = Guid.NewGuid(),
+        FolderName = "INBOX",
+        From       = "alice@example.com",
+        Subject    = "Hello",
+        Date       = new DateTimeOffset(2026, 6, 2, 10, 0, 0, TimeSpan.Zero),
+        IsRead     = isRead,
+    };
+
+    [Fact]
+    public void Build_FromGroup_UsesSenderLabel()
+    {
+        var group = new SenderGroup
+        {
+            SenderKey = "alice@example.com",
+            Messages  = [MakeMsg()],
+        };
+
+        var (title, sections) = SenderGroupPropertiesBuilder.Build(group);
+
+        Assert.Equal("Sender Group Properties", title);
+        Assert.Contains(sections[0].Items, i => i.Label == "Sender" && i.Value == "alice@example.com");
+    }
+
+    [Fact]
+    public void Build_ToGroup_UsesRecipientLabel()
+    {
+        var group = new SenderGroup
+        {
+            SenderKey = "alice@example.com",
+            Messages  = [MakeMsg()],
+        };
+
+        var (title, sections) = SenderGroupPropertiesBuilder.Build(group, isToGroup: true);
+
+        Assert.Equal("Recipient Group Properties", title);
+        Assert.Contains(sections[0].Items, i => i.Label == "Recipient" && i.Value == "alice@example.com");
+    }
+
+    [Fact]
+    public void Build_CountsUnreadMessages()
+    {
+        var group = new SenderGroup
+        {
+            SenderKey = "alice@example.com",
+            Messages  = [MakeMsg(isRead: false), MakeMsg(isRead: true)],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+        Assert.Contains(sections[0].Items, i => i.Label == "Unread" && i.Value == "1");
+    }
+
+    [Fact]
+    public void Build_AllRead_ShowsNoneForUnread()
+    {
+        var group = new SenderGroup
+        {
+            SenderKey = "alice@example.com",
+            Messages  = [MakeMsg(isRead: true)],
+        };
+
+        var (_, sections) = SenderGroupPropertiesBuilder.Build(group);
+        Assert.Contains(sections[0].Items, i => i.Label == "Unread" && i.Value == "None");
+    }
+}

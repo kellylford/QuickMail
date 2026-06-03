@@ -23,49 +23,60 @@ public class PropertiesViewModelTests
     }
 
     [Fact]
-    public void FieldSections_ExcludesMembersSection()
+    public void Rows_InterleavesSectionHeadersWithDataRows()
+    {
+        var vm = new PropertiesViewModel("Test", [
+            new("Headers", [new("From", "alice@example.com")]),
+            new("Storage", [new("Folder", "INBOX")]),
+        ]);
+
+        // 2 section header rows + 2 data rows
+        Assert.Equal(4, vm.Rows.Count);
+
+        Assert.True(vm.Rows[0].IsHeader);
+        Assert.Equal("Headers", vm.Rows[0].Label);
+
+        Assert.False(vm.Rows[1].IsHeader);
+        Assert.Equal("From",    vm.Rows[1].Label);
+
+        Assert.True(vm.Rows[2].IsHeader);
+        Assert.Equal("Storage", vm.Rows[2].Label);
+
+        Assert.False(vm.Rows[3].IsHeader);
+        Assert.Equal("Folder",  vm.Rows[3].Label);
+    }
+
+    [Fact]
+    public void Rows_ContainsAllSectionsIncludingSubLists()
     {
         var vm = new PropertiesViewModel("Test", [
             new("Group",   [new("Name", "Team")]),
-            new("Members", [new("Alice", "alice@example.com")]),
+            new("Members", [new("Alice", "alice@example.com"), new("Bob", "bob@example.com")]),
         ]);
 
-        Assert.DoesNotContain(vm.FieldSections, s => s.Header == "Members");
-        Assert.Contains(vm.FieldSections, s => s.Header == "Group");
+        // 2 section headers + 3 data rows
+        Assert.Equal(5, vm.Rows.Count);
     }
 
     [Fact]
-    public void SubListSections_IncludesMembersSection()
+    public void Rows_SkipsEmptySections()
     {
         var vm = new PropertiesViewModel("Test", [
-            new("Group",   [new("Name", "Team")]),
-            new("Members", [new("Alice", "alice@example.com")]),
+            new("A", [new("X", "1")]),
+            new("B", []),
+            new("C", [new("Y", "2")]),
         ]);
 
-        Assert.Contains(vm.SubListSections, s => s.Header == "Members");
+        // Section B is empty so no header or rows for it: 2 headers + 2 data = 4
+        Assert.Equal(4, vm.Rows.Count);
+        Assert.DoesNotContain(vm.Rows, r => r.SectionName == "B");
     }
 
     [Fact]
-    public void FieldSections_ExcludesAttachmentsSection()
+    public void Rows_EmptyWhenNoSections()
     {
-        var vm = new PropertiesViewModel("Test", [
-            new("Headers",     [new("From", "alice@example.com")]),
-            new("Attachments", [new("report.pdf", "245 KB")]),
-        ]);
-
-        Assert.DoesNotContain(vm.FieldSections, s => s.Header == "Attachments");
-        Assert.Contains(vm.SubListSections, s => s.Header == "Attachments");
-    }
-
-    [Fact]
-    public void SubListSections_IsCasInsensitiveForSectionNames()
-    {
-        var vm = new PropertiesViewModel("Test", [
-            new("members", [new("Alice", "alice@example.com")]),
-        ]);
-
-        Assert.Contains(vm.SubListSections, s => s.Header == "members");
-        Assert.Empty(vm.FieldSections);
+        var vm = new PropertiesViewModel("Test", []);
+        Assert.Empty(vm.Rows);
     }
 
     [Fact]
@@ -115,29 +126,39 @@ public class PropertiesViewModelTests
     public void CopyRow_PutsLabelColonValueOnClipboard()
     {
         var vm = Make();
-        var item = new PropertyItem("From", "alice@example.com");
+        var row = new FlatRow("Headers", "From", "alice@example.com");
 
-        vm.CopyRowCommand.Execute(item);
+        vm.CopyRowCommand.Execute(row);
 
         var text = Clipboard.GetText();
         Assert.Equal("From: alice@example.com", text);
     }
 
     [Fact]
+    public void CopyRow_HeaderRow_DoesNotRaiseAnnouncement()
+    {
+        bool announced = false;
+        var vm = Make();
+        vm.AnnouncementRequested += (_, _) => announced = true;
+
+        // Returns early before touching clipboard, so no STA needed.
+        vm.CopyRowCommand.Execute(vm.Rows.First(r => r.IsHeader));
+
+        Assert.False(announced);
+    }
+
+    [Fact]
     public void CopyRow_RaisesAnnouncementRequested()
     {
-        // Clipboard.SetText requires STA, but we can still test the event fires.
-        // Use a STA thread.
         string? announced = null;
         var vm = Make();
         vm.AnnouncementRequested += (text, _) => announced = text;
 
-        var item = new PropertyItem("Subject", "Hello World");
+        var row = new FlatRow("Headers", "Subject", "Hello World");
 
-        // Run on STA thread since CopyRow calls Clipboard.SetText.
         var thread = new Thread(() =>
         {
-            vm.CopyRowCommand.Execute(item);
+            vm.CopyRowCommand.Execute(row);
         });
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
@@ -152,7 +173,6 @@ public class PropertiesViewModelTests
     public void CopyRow_NullItem_DoesNothing()
     {
         var vm = Make();
-        // Should not throw
         vm.CopyRowCommand.Execute(null);
     }
 

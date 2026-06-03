@@ -16,12 +16,13 @@ public partial class PropertiesViewModel : ObservableObject
     /// <summary>Non-null only for message context when raw headers are available.</summary>
     public string? RawHeaders { get; }
 
-    /// <summary>Sections rendered as a standard field/value list. "Members" and
-    /// "Attachments" sections are routed to <see cref="SubListSections"/> instead.</summary>
-    public IReadOnlyList<PropertySection> FieldSections { get; }
+    /// <summary>
+    /// All rows in display order. Section headers (IsHeader = true) are interleaved
+    /// with data rows so the entire list is navigable as a single focus sequence.
+    /// </summary>
+    public IReadOnlyList<FlatRow> Rows { get; }
 
-    /// <summary>Sections rendered as a secondary list (Members, Attachments).</summary>
-    public IReadOnlyList<PropertySection> SubListSections { get; }
+    private readonly IReadOnlyList<PropertySection> _sections;
 
     /// <summary>Raised when the VM wants to announce text to the screen reader.
     /// The View subscribes and calls AccessibilityHelper.Announce.</summary>
@@ -34,21 +35,23 @@ public partial class PropertiesViewModel : ObservableObject
     {
         Title      = title;
         RawHeaders = rawHeaders;
+        _sections  = sections;
 
-        var subListNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            { "Members", "Attachments" };
-
-        FieldSections   = sections.Where(s => !subListNames.Contains(s.Header)).ToList();
-        SubListSections = sections.Where(s =>  subListNames.Contains(s.Header)).ToList();
+        Rows = sections
+            .Where(s => s.Items.Count > 0)
+            .SelectMany(s => Enumerable.Concat(
+                [new FlatRow(s.Header, s.Header, string.Empty, IsHeader: true)],
+                s.Items.Select(item => new FlatRow(s.Header, item.Label, item.Value))))
+            .ToList();
     }
 
     [RelayCommand]
-    private void CopyRow(PropertyItem? item)
+    private void CopyRow(FlatRow? row)
     {
-        if (item is null) return;
-        Clipboard.SetText($"{item.Label}: {item.Value}");
+        if (row is null || row.IsHeader) return;
+        Clipboard.SetText($"{row.Label}: {row.Value}");
         AnnouncementRequested?.Invoke(
-            $"Copied: {item.Label}: {item.Value}",
+            $"Copied: {row.Label}: {row.Value}",
             AnnouncementCategory.Result);
     }
 
@@ -58,7 +61,7 @@ public partial class PropertiesViewModel : ObservableObject
         var sb = new StringBuilder();
         sb.AppendLine(Title);
         sb.AppendLine(new string('─', Title.Length));
-        foreach (var section in FieldSections.Concat(SubListSections))
+        foreach (var section in _sections)
         {
             sb.AppendLine();
             sb.AppendLine(section.Header);
@@ -75,3 +78,9 @@ public partial class PropertiesViewModel : ObservableObject
         AnnouncementRequested?.Invoke("All properties copied", AnnouncementCategory.Result);
     }
 }
+
+/// <summary>
+/// A single row in the properties ListView. Section header rows (IsHeader = true) act as
+/// in-list separators and are focusable but not copyable.
+/// </summary>
+public record FlatRow(string SectionName, string Label, string Value, bool IsHeader = false);
