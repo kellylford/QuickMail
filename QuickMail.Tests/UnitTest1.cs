@@ -82,6 +82,27 @@ public class ViewModelConstructionTests
     }
 
     [Fact]
+    public void GroupManagerViewModel_ConstructsWithoutException()
+    {
+        var (_, _, _, _, _, _, _, contacts, _) = MakeServices();
+        var vm = new GroupManagerViewModel(contacts);
+        Assert.NotNull(vm);
+    }
+
+    [Fact]
+    public void AddressBookViewModel_HasGroupCollections_AfterConstruction()
+    {
+        var (_, _, _, _, _, _, _, contacts, _) = MakeServices();
+        var vm = new AddressBookViewModel(contacts);
+        Assert.NotNull(vm.Groups);
+        Assert.Empty(vm.Groups);
+        Assert.NotNull(vm.SelectedGroupMembers);
+        Assert.Empty(vm.SelectedGroupMembers);
+        Assert.False(vm.HasSelectedGroup);
+        Assert.Equal(string.Empty, vm.NewGroupName);
+    }
+
+    [Fact]
     public void TutorialViewModel_ConstructsWithoutException()
     {
         var vm = new TutorialViewModel();
@@ -256,6 +277,17 @@ public class XamlParseTests
         var (_, _, _, _, _, _, _, contacts, _) = MakeServices();
         var vm = new AddressBookViewModel(contacts);
         var window = new AddressBookWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
+    public void GroupManagerWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var (_, _, _, _, _, _, _, contacts, _) = MakeServices();
+        var vm = new GroupManagerViewModel(contacts);
+        var window = new GroupManagerWindow(vm);
         Assert.NotNull(window);
         window.Close();
     }
