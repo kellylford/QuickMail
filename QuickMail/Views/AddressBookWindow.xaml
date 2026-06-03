@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:QuickMail.Views"
         mc:Ignorable="d"
         Title="Address Book"
         Height="520" Width="700"
@@ -131,16 +132,20 @@
                               PreviewKeyDown="ContactList_PreviewKeyDown">
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
-                                <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                             </Style>
                         </ListView.ItemContainerStyle>
-                        <ListView.View>
-                            <GridView>
-                                <GridViewColumn Header="Name"  Width="220" DisplayMemberBinding="{Binding DisplayName}"/>
-                                <GridViewColumn Header="Email" Width="320" DisplayMemberBinding="{Binding EmailAddress}"/>
-                            </GridView>
-                        </ListView.View>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal"
+                                            AutomationProperties.Name="{Binding Display}">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="  &lt;"/>
+                                    <TextBlock Text="{Binding EmailAddress}" Foreground="#666"/>
+                                    <TextBlock Text="&gt;"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
                     </ListView>
                 </DockPanel>
             </TabItem>
@@ -174,16 +179,20 @@
                                   PreviewKeyDown="GroupsList_PreviewKeyDown">
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem">
-                                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
-                            <ListView.View>
-                                <GridView>
-                                    <GridViewColumn Header="Name"    Width="160" DisplayMemberBinding="{Binding Name}"/>
-                                    <GridViewColumn Header="Members" Width="60"  DisplayMemberBinding="{Binding ResolvedMemberCount}"/>
-                                </GridView>
-                            </ListView.View>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal"
+                                                AutomationProperties.Name="{Binding Display}">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="  "/>
+                                        <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
+                                                   Foreground="#666"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
                         </ListView>
                     </DockPanel>
 
@@ -223,16 +232,20 @@
                                   PreviewKeyDown="GroupMembersList_PreviewKeyDown">
                             <ListView.ItemContainerStyle>
                                 <Style TargetType="ListViewItem">
-                                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
-                            <ListView.View>
-                                <GridView>
-                                    <GridViewColumn Header="Name"  Width="160" DisplayMemberBinding="{Binding DisplayName}"/>
-                                    <GridViewColumn Header="Email" Width="200" DisplayMemberBinding="{Binding EmailAddress}"/>
-                                </GridView>
-                            </ListView.View>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal"
+                                                AutomationProperties.Name="{Binding Display}">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="  &lt;"/>
+                                        <TextBlock Text="{Binding EmailAddress}" Foreground="#666"/>
+                                        <TextBlock Text="&gt;"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
                         </ListView>
                     </DockPanel>
 

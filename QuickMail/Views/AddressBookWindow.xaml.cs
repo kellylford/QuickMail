@@ -167,6 +167,18 @@ public partial class AddressBookWindow : Window
 
     private async void ContactList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Ctrl+G switches to the Groups tab. The registered command in
+        // _registry.FindByGesture runs at the window level, but ListView
+        // handles Ctrl+G as its built-in "go to first row" gesture in a
+        // tunneling handler, so it never reaches the registry. Handle it
+        // here so it works regardless of which list has focus.
+        if (e.Key == Key.G && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            FocusGroupsPane();
+            return;
+        }
+
         if (e.Key == Key.A && Keyboard.Modifiers == ModifierKeys.Control)
         {
             e.Handled = true;
@@ -208,6 +220,16 @@ public partial class AddressBookWindow : Window
 
     private void GroupsList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        // Ctrl+G toggles back to the Contacts tab and focuses the search box.
+        if (e.Key == Key.G && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            MainTabs.SelectedIndex = 0;
+            SearchBox.Focus();
+            OnAnnouncement("Contacts tab", AnnouncementCategory.Status);
+            return;
+        }
+
         if (e.Key == Key.F2)
         {
             // F2 moves focus to the rename textbox and pre-selects the name.
@@ -224,11 +246,25 @@ public partial class AddressBookWindow : Window
 
     private void GroupMembersList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.G && Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            FocusGroupsPane();
+            return;
+        }
+
         if (e.Key == Key.Delete && GroupMembersList.SelectedItem is ContactModel c)
         {
             _vm.RemoveContactFromGroupCommand.Execute(c);
             e.Handled = true;
         }
+    }
+
+    private void FocusGroupsPane()
+    {
+        MainTabs.SelectedIndex = 1;
+        GroupsList.Focus();
+        OnAnnouncement("Groups tab", AnnouncementCategory.Status);
     }
 
     private void NewNameBox_TextChanged(object sender, System.Windows.Controls.TextChangedEventArgs e)
