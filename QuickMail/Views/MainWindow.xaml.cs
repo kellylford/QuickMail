@@ -3315,7 +3315,27 @@ public partial class MainWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm  = new AddressBookViewModel(_contactService);
+        var vm = new AddressBookViewModel(_contactService);
+
+        // When the address book is opened standalone (not from a compose window) the
+        // insert actions open a new compose window on demand.  All calls from a single
+        // address-book session share the same compose window (lazily created on the
+        // first insert) so picking a group inserts all members into one message.
+        ComposeWindow? pending = null;
+        ComposeWindow GetOrOpenCompose()
+        {
+            if (pending?.IsLoaded == true) return pending;
+            var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
+            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService) { Owner = this };
+            cvm.CloseRequested += pending.Close;
+            pending.Show();
+            return pending;
+        }
+        vm.SetInsertActions(
+            toAction:  c => GetOrOpenCompose().AddToAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
+            ccAction:  c => GetOrOpenCompose().AddCcAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
+            bccAction: c => GetOrOpenCompose().AddBccAddress(c.DisplayName ?? string.Empty, c.EmailAddress));
+
         var win = new AddressBookWindow(vm) { Owner = this };
         win.ShowDialog();
     }

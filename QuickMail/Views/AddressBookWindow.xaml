@@ -3,136 +3,327 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:QuickMail.Views"
         mc:Ignorable="d"
         Title="Address Book"
-        Height="480" Width="580"
-        MinHeight="320" MinWidth="420"
+        Height="520" Width="700"
+        MinHeight="380" MinWidth="520"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
+        AutomationProperties.Name="Address Book"
         PreviewKeyDown="Window_PreviewKeyDown">
 
+    <Window.Resources>
+        <Style x:Key="InsertRow" TargetType="StackPanel">
+            <Setter Property="Visibility" Value="Collapsed"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding HasInsertActions}" Value="True">
+                    <Setter Property="Visibility" Value="Visible"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
     <DockPanel Margin="10">
+        <TabControl x:Name="MainTabs"
+                    KeyboardNavigation.TabNavigation="Local"
+                    TabIndex="0">
+            <TabItem Header="Contacts"
+                     AutomationProperties.Name="Contacts"
+                     KeyboardNavigation.TabNavigation="Local">
+                <DockPanel Margin="0,6,0,0">
+                    <!-- Search -->
+                    <TextBox DockPanel.Dock="Top"
+                             x:Name="SearchBox"
+                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.Name="Search contacts"
+                             Margin="0,0,0,6"
+                             TabIndex="0"/>
 
-        <!-- Search -->
-        <TextBox DockPanel.Dock="Top"
-                 x:Name="SearchBox"
-                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                 AutomationProperties.Name="Search contacts"
-                 Margin="0,0,0,6"
-                 TabIndex="0"/>
+                    <!-- Insert into message — visible only when opened from Compose (Ctrl+Shift+B) -->
+                    <StackPanel DockPanel.Dock="Top"
+                                Style="{StaticResource InsertRow}"
+                                Orientation="Horizontal"
+                                Margin="0,0,0,6">
+                        <TextBlock Text="Add selected contact to:"
+                                   VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <Button Content="_To"
+                                Command="{Binding AddToToCommand}"
+                                IsEnabled="{Binding HasSelectedContact}"
+                                AutomationProperties.Name="Add to To field"
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="1"/>
+                        <Button Content="_Cc"
+                                Command="{Binding AddToCcCommand}"
+                                IsEnabled="{Binding HasSelectedContact}"
+                                AutomationProperties.Name="Add to Cc field"
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="2"/>
+                        <Button Content="_Bcc"
+                                Command="{Binding AddToBccCommand}"
+                                IsEnabled="{Binding HasSelectedContact}"
+                                AutomationProperties.Name="Add to Bcc field"
+                                MinWidth="50" TabIndex="3"/>
+                    </StackPanel>
 
-        <!-- Insert into message — visible only when opened from Compose (Ctrl+Shift+B) -->
-        <StackPanel DockPanel.Dock="Top"
-                    Orientation="Horizontal"
-                    Margin="0,0,0,6">
-            <StackPanel.Style>
-                <Style TargetType="StackPanel">
-                    <Setter Property="Visibility" Value="Collapsed"/>
-                    <Style.Triggers>
-                        <DataTrigger Binding="{Binding HasInsertActions}" Value="True">
-                            <Setter Property="Visibility" Value="Visible"/>
-                        </DataTrigger>
-                    </Style.Triggers>
-                </Style>
-            </StackPanel.Style>
-            <TextBlock Text="Add selected contact to:"
-                       VerticalAlignment="Center" Margin="0,0,8,0"/>
-            <Button Content="_To"
-                    Command="{Binding AddToToCommand}"
-                    IsEnabled="{Binding HasSelectedContact}"
-                    AutomationProperties.Name="Add to To field"
-                    MinWidth="50" Margin="0,0,4,0" TabIndex="1"/>
-            <Button Content="_Cc"
-                    Command="{Binding AddToCcCommand}"
-                    IsEnabled="{Binding HasSelectedContact}"
-                    AutomationProperties.Name="Add to Cc field"
-                    MinWidth="50" Margin="0,0,4,0" TabIndex="2"/>
-            <Button Content="_Bcc"
-                    Command="{Binding AddToBccCommand}"
-                    IsEnabled="{Binding HasSelectedContact}"
-                    AutomationProperties.Name="Add to Bcc field"
-                    MinWidth="50" TabIndex="3"/>
-        </StackPanel>
+                    <!-- Add-contact form + action buttons -->
+                    <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
 
-        <!-- Add-contact form + action buttons -->
-        <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
+                        <Label Grid.Column="0"
+                               x:Name="NewNameLabel"
+                               Content="_Name:"
+                               Target="{Binding ElementName=NewNameBox}"
+                               VerticalAlignment="Center"/>
+                        <TextBox Grid.Column="1"
+                                 x:Name="NewNameBox"
+                                 Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=NewNameLabel}"
+                                 TextChanged="NewNameBox_TextChanged"
+                                 Margin="4,0" TabIndex="5"/>
 
-            <Label Grid.Column="0"
-                   x:Name="NewNameLabel"
-                   Content="_Name:"
-                   Target="{Binding ElementName=NewNameBox}"
-                   VerticalAlignment="Center"/>
-            <TextBox Grid.Column="1"
-                     x:Name="NewNameBox"
-                     Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.LabeledBy="{Binding ElementName=NewNameLabel}"
-                     TextChanged="NewNameBox_TextChanged"
-                     Margin="4,0" TabIndex="5"/>
+                        <Label Grid.Column="2"
+                               x:Name="NewEmailLabel"
+                               Content="_Email:"
+                               Target="{Binding ElementName=NewEmailBox}"
+                               VerticalAlignment="Center"
+                               Margin="8,0,0,0"/>
+                        <TextBox Grid.Column="3"
+                                 x:Name="NewEmailBox"
+                                 Text="{Binding NewEmail, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=NewEmailLabel}"
+                                 TextChanged="NewEmailBox_TextChanged"
+                                 Margin="4,0" TabIndex="6"
+                                 PreviewKeyDown="NewEmailBox_PreviewKeyDown"/>
 
-            <Label Grid.Column="2"
-                   x:Name="NewEmailLabel"
-                   Content="_Email:"
-                   Target="{Binding ElementName=NewEmailBox}"
-                   VerticalAlignment="Center"
-                   Margin="8,0,0,0"/>
-            <TextBox Grid.Column="3"
-                     x:Name="NewEmailBox"
-                     Text="{Binding NewEmail, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.LabeledBy="{Binding ElementName=NewEmailLabel}"
-                     TextChanged="NewEmailBox_TextChanged"
-                     Margin="4,0" TabIndex="6"
-                     PreviewKeyDown="NewEmailBox_PreviewKeyDown"/>
+                        <Button Grid.Column="4"
+                                Content="_Add"
+                                Command="{Binding AddContactCommand}"
+                                AutomationProperties.Name="Add contact"
+                                Margin="8,0,0,0" MinWidth="60" TabIndex="7"/>
+                        <Button Grid.Column="5"
+                                Content="_Delete"
+                                Click="DeleteButton_Click"
+                                AutomationProperties.Name="Delete selected contact"
+                                IsEnabled="{Binding HasSelectedContact}"
+                                Margin="4,0,0,0" MinWidth="60" TabIndex="8"/>
+                        <Button Grid.Column="6"
+                                Content="Close"
+                                IsCancel="True"
+                                AutomationProperties.Name="Close address book"
+                                Margin="12,0,0,0" MinWidth="60" TabIndex="9"
+                                Click="Close_Click"/>
+                    </Grid>
 
-            <Button Grid.Column="4"
-                    Content="_Add"
-                    Command="{Binding AddContactCommand}"
-                    AutomationProperties.Name="Add contact"
-                    Margin="8,0,0,0" MinWidth="60" TabIndex="7"/>
-            <Button Grid.Column="5"
-                    Content="_Delete"
-                    Click="DeleteButton_Click"
-                    AutomationProperties.Name="Delete selected contact"
-                    IsEnabled="{Binding HasSelectedContact}"
-                    Margin="4,0,0,0" MinWidth="60" TabIndex="8"/>
-            <Button Grid.Column="6"
-                    Content="Close"
-                    IsCancel="True"
-                    AutomationProperties.Name="Close address book"
-                    Margin="12,0,0,0" MinWidth="60" TabIndex="9"
-                    Click="Close_Click"/>
-        </Grid>
+                    <!-- Contact list -->
+                    <ListView x:Name="ContactList"
+                              ItemsSource="{Binding FilteredContacts}"
+                              SelectedItem="{Binding SelectedContact}"
+                              AutomationProperties.Name="Contacts"
+                              TabIndex="4"
+                              KeyboardNavigation.TabNavigation="Once"
+                              KeyboardNavigation.DirectionalNavigation="Contained"
+                              PreviewKeyDown="ContactList_PreviewKeyDown"
+                              ContextMenuOpening="ContactList_ContextMenuOpening">
+                        <ListView.ContextMenu>
+                            <ContextMenu AutomationProperties.Name="Add to group"/>
+                        </ListView.ContextMenu>
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal"
+                                            AutomationProperties.Name="{Binding Display}">
+                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                    <TextBlock Text="  &lt;"/>
+                                    <TextBlock Text="{Binding EmailAddress}" Foreground="#666"/>
+                                    <TextBlock Text="&gt;"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </DockPanel>
+            </TabItem>
 
-        <!-- Contact list -->
-        <ListView x:Name="ContactList"
-                  ItemsSource="{Binding FilteredContacts}"
-                  SelectedItem="{Binding SelectedContact}"
-                  AutomationProperties.Name="Contacts"
-                  TabIndex="4"
-                  KeyboardNavigation.TabNavigation="Once"
-                  KeyboardNavigation.DirectionalNavigation="Contained"
-                  PreviewKeyDown="ContactList_PreviewKeyDown">
-            <ListView.ItemContainerStyle>
-                <Style TargetType="ListViewItem">
-                    <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
-                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                </Style>
-            </ListView.ItemContainerStyle>
-            <ListView.View>
-                <GridView>
-                    <GridViewColumn Header="Name"  Width="200" DisplayMemberBinding="{Binding DisplayName}"/>
-                    <GridViewColumn Header="Email" Width="300" DisplayMemberBinding="{Binding EmailAddress}"/>
-                </GridView>
-            </ListView.View>
-        </ListView>
+            <TabItem Header="Groups"
+                     AutomationProperties.Name="Groups"
+                     KeyboardNavigation.TabNavigation="Local">
+                <Grid Margin="0,6,0,0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*" MinWidth="180"/>
+                        <ColumnDefinition Width="3*" MinWidth="240"/>
+                    </Grid.ColumnDefinitions>
 
+                    <!-- Left: groups list -->
+                    <DockPanel Grid.Row="0" Grid.Column="0">
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="Groups"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,3"
+                                   AutomationProperties.Name="Groups header"/>
+                        <ListView x:Name="GroupsList"
+                                  ItemsSource="{Binding Groups}"
+                                  SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
+                                  AutomationProperties.Name="Groups"
+                                  TabIndex="20"
+                                  KeyboardNavigation.TabNavigation="Once"
+                                  PreviewKeyDown="GroupsList_PreviewKeyDown">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal"
+                                                AutomationProperties.Name="{Binding Display}">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="  "/>
+                                        <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
+                                                   Foreground="#666"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </DockPanel>
+
+                    <!-- Right: members of selected group + insert buttons -->
+                    <DockPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,0">
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="{Binding SelectedGroup.Display, StringFormat='Members of {0}'}"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,3"
+                                   AutomationProperties.Name="Group member list header"/>
+                        <StackPanel DockPanel.Dock="Top"
+                                    Style="{StaticResource InsertRow}"
+                                    Orientation="Horizontal"
+                                    Margin="0,0,0,4">
+                            <TextBlock Text="Insert all into:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Button Content="_To"
+                                    Command="{Binding AddGroupToToCommand}"
+                                    IsEnabled="{Binding HasSelectedGroup}"
+                                    AutomationProperties.Name="Add all group members to To"
+                                    MinWidth="48" Margin="0,0,3,0"/>
+                            <Button Content="_Cc"
+                                    Command="{Binding AddGroupToCcCommand}"
+                                    IsEnabled="{Binding HasSelectedGroup}"
+                                    AutomationProperties.Name="Add all group members to Cc"
+                                    MinWidth="48" Margin="0,0,3,0"/>
+                            <Button Content="_Bcc"
+                                    Command="{Binding AddGroupToBccCommand}"
+                                    IsEnabled="{Binding HasSelectedGroup}"
+                                    AutomationProperties.Name="Add all group members to Bcc"
+                                    MinWidth="48"/>
+                        </StackPanel>
+                        <ListView x:Name="GroupMembersList"
+                                  ItemsSource="{Binding SelectedGroupMembers}"
+                                  AutomationProperties.Name="Group members"
+                                  TabIndex="21"
+                                  KeyboardNavigation.TabNavigation="Once"
+                                  PreviewKeyDown="GroupMembersList_PreviewKeyDown">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal"
+                                                AutomationProperties.Name="{Binding Display}">
+                                        <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
+                                        <TextBlock Text="  &lt;"/>
+                                        <TextBlock Text="{Binding EmailAddress}" Foreground="#666"/>
+                                        <TextBlock Text="&gt;"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </DockPanel>
+
+                    <!-- Bottom action area: name entry (hidden until needed) + buttons.
+                         Buttons are direct Grid children (not wrapped) so the BFS tab-order
+                         scan finds them before the insert-row buttons in the right pane. -->
+                    <Grid Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,8,0,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Row 0: Name entry — Collapsed until New or Rename is activated -->
+                        <DockPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="6"
+                                   x:Name="GroupNameEntryPanel"
+                                   Visibility="Collapsed" Margin="0,0,0,6">
+                            <Label DockPanel.Dock="Left"
+                                   x:Name="GroupNameLabel"
+                                   Content="Name:"
+                                   Target="{Binding ElementName=NewGroupNameBox}"
+                                   VerticalAlignment="Center"/>
+                            <TextBox x:Name="NewGroupNameBox"
+                                     Text="{Binding NewGroupName, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.Name="Group name"
+                                     IsTabStop="False"
+                                     Margin="4,0"
+                                     PreviewKeyDown="NewGroupNameBox_PreviewKeyDown"/>
+                        </DockPanel>
+
+                        <!-- Row 1: buttons as direct Grid children (Col 4 is the * spacer that
+                             pushes Close to the right without wrapping in a DockPanel) -->
+                        <Button Grid.Row="1" Grid.Column="0"
+                                x:Name="NewGroupButton"
+                                Content="_New"
+                                AutomationProperties.Name="New group"
+                                MinWidth="60" Margin="0,0,4,0" TabIndex="23"
+                                Click="NewGroupButton_Click"/>
+                        <Button Grid.Row="1" Grid.Column="1"
+                                x:Name="RenameGroupButton"
+                                Content="_Rename"
+                                IsEnabled="{Binding HasSelectedGroup}"
+                                AutomationProperties.Name="Rename selected group"
+                                MinWidth="60" Margin="0,0,4,0" TabIndex="24"
+                                Click="RenameGroupButton_Click"/>
+                        <Button Grid.Row="1" Grid.Column="2"
+                                Content="_Delete"
+                                Command="{Binding DeleteGroupCommand}"
+                                IsEnabled="{Binding HasSelectedGroup}"
+                                AutomationProperties.Name="Delete selected group"
+                                MinWidth="60" Margin="0,0,4,0" TabIndex="25"/>
+                        <Button Grid.Row="1" Grid.Column="3"
+                                x:Name="ManageGroupsButton"
+                                Content="_Manage…"
+                                AutomationProperties.Name="Open Group Manager"
+                                MinWidth="70" Margin="0,0,4,0" TabIndex="26"
+                                Click="ManageGroupsButton_Click"/>
+                        <!-- Col 4 (*) is empty — acts as spacer to right-align Close -->
+                        <Button Grid.Row="1" Grid.Column="5"
+                                Content="Close"
+                                IsCancel="True"
+                                AutomationProperties.Name="Close address book"
+                                MinWidth="60" TabIndex="27"
+                                Click="Close_Click"/>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
     </DockPanel>
 </Window>

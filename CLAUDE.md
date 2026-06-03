@@ -64,7 +64,9 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 
 **ConfigService** reads/writes `config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
 
-**ContactService** stores the address book in `contacts.json`. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
+**ContactService** stores the address book in `contacts.json` and contact groups in `groups.json`. Both files share a single `SemaphoreSlim` load lock so concurrent group and contact writes cannot tear. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
+
+Groups (`GroupModel`) are flat, local-only, and keyed by an incrementing integer `Id` with a list of `MemberContactIds`. `LoadAllGroupsAsync` returns groups sorted by `LastUsedTicks` descending; `TouchGroupAsync` bumps the timestamp so a freshly-inserted group sorts to the top. The model exposes computed `ResolvedMemberCount` and `MissingContactCount` (both `[JsonIgnore]`) and a human-readable `Display` ("Name, N members" / "(M missing)" / "Empty group") so the UI does not have to recompute them. The full group surface is on `IContactService`: `LoadAllGroupsAsync`, `CreateGroupAsync`, `RenameGroupAsync`, `DeleteGroupAsync`, `AddMemberAsync`, `RemoveMemberAsync`, `ListGroupsForContactAsync`, `TouchGroupAsync`. A corrupt `groups.json` is renamed to `groups.json.bak-{timestamp}` and treated as empty, matching the recovery behaviour used for views, rules, and templates.
 
 **RuleService** loads/saves mail rules from `rules.json`. Each `MailRule` has AND-combined conditions (FromContains, ToContains, SubjectContains, BodyContains, MustHaveAttachments) and one action (MarkAsRead, MarkAsUnread, MoveToFolder, Delete). `ApplyRulesAsync` is called by `SyncService` on incoming messages; `ApplyRulesToExistingAsync` runs on demand against the full cache. Rules can be scoped to one account via `AccountId` (null = all accounts). File writes use an atomic temp-then-rename pattern.
 
@@ -96,6 +98,8 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 - View modes: Messages, Conversations, From, and To.
 - `OnFolderSynced` and `OnMessagesRemoved` must use key-based lookups, not repeated `Messages.Any()` / `FirstOrDefault()` scans over large All Mail views.
 - `_suppressFolderSyncUpdates` silences sync events during startup; `_suppressFilterRebuild` prevents stale filter application during folder transitions.
+
+**AddressBookViewModel** owns the Address Book window's two-tab state (Contacts and Groups). It exposes `Groups: ObservableCollection<GroupModel>` sorted by `LastUsedTicks` descending and a derived `SelectedGroupMembers: ObservableCollection<ContactModel>` rebuilt whenever `SelectedGroup` changes. Confirmation dialogs and screen reader announcements are surfaced via `event Func<string, string, Task<bool>>? ConfirmRequested` and `event Action<string, AnnouncementCategory>? AnnouncementRequested`; the View subscribes and shows the dialog or calls `AccessibilityHelper.Announce` directly. The `InsertGroup(Action<ContactModel>)` private helper iterates `SelectedGroupMembers` in recency order and calls the inserter for each — the Compose window sets those inserters via `SetInsertActions(to, cc, bcc)` so a group can be dropped into any address field with one command. **GroupManagerViewModel** is a sibling VM that powers the standalone `GroupManagerWindow` (`Ctrl+Shift+M`); it shares the same `IContactService` instance and raises `GroupsChanged` for the parent to refresh.
 
 ### Virtual Folders
 

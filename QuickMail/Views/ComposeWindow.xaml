@@ -236,14 +236,30 @@
                     BorderThickness="1"
                     Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
                 <ListBox x:Name="SuggestionList"
-                         MaxHeight="160"
-                         MinWidth="260"
+                         MaxHeight="200"
+                         MinWidth="300"
                          AutomationProperties.Name="Address suggestions"
                          IsTabStop="True"
                          KeyboardNavigation.TabNavigation="Cycle"
-                         DisplayMemberPath="Display"
                          PreviewKeyDown="SuggestionList_PreviewKeyDown"
-                         MouseLeftButtonUp="SuggestionList_MouseLeftButtonUp"/>
+                         MouseLeftButtonUp="SuggestionList_MouseLeftButtonUp">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
+                            <Setter Property="Padding" Value="6,3"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding PrimaryText}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding SecondaryText}"
+                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
+                                           FontSize="11"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </Border>
         </Popup>
     </DockPanel>

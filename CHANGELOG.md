@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.6.8
+
+### New Features
+
+- **Contact groups** — The Address Book window now has a **Groups** tab alongside the flat contact list. Create, rename, and delete groups; add and remove members; insert the whole group into To/Cc/Bcc with a single action. The Group Manager dialog (`Ctrl+Shift+M`) is a focused view of the same operations. Group data is stored locally in a separate `groups.json`; nothing leaves the machine.
+
+### Bug Fixes
+
+- **Group / contact concurrency** — Group operations and contact operations now share a single load lock, so a group write cannot tear or block a concurrent contact write.
+
 ## v0.6.7
 
 ### New Features
