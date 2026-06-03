@@ -500,7 +500,17 @@ public partial class MainWindow : Window
 
         _registry.Register(new CommandDefinition(
             id: "view.showProperties", category: "View", title: "View Properties",
-            execute: () => _ = _vm.ShowPropertiesAsync(GetFocusedPaneIndex()),
+            execute: () =>
+            {
+                var pane = GetFocusedPaneIndex();
+                // FolderList is a TreeView: arrow-key navigation updates TreeView.SelectedItem
+                // but there is no SelectedItemChanged handler, so _vm.SelectedFolder lags
+                // behind until Enter commits the selection. Pass the live node directly.
+                var focusedFolder = pane == 2
+                    ? (FolderList.SelectedItem as FolderTreeNode)?.Folder
+                    : null;
+                _ = _vm.ShowPropertiesAsync(pane, focusedFolder);
+            },
             defaultKey: Key.Return, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.SelectedMessage != null
                             || _vm.SelectedFolder  != null

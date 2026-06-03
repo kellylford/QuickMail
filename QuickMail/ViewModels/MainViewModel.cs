@@ -2793,7 +2793,10 @@ public partial class MainViewModel : ObservableObject
     // Pane indices from MainWindow.GetFocusedPaneIndex():
     //   0 = Toolbar, 1 = Account list, 2 = Folder tree,
     //   3 = Message list / conversation trees, 4 = Reading pane, 5 = Status bar
-    public async Task ShowPropertiesAsync(int paneIndex)
+    // focusedFolder overrides SelectedFolder for pane 2: the folder tree's TreeView
+    // updates its internal SelectedItem on arrow-key navigation but has no
+    // SelectedItemChanged handler, so SelectedFolder lags until Enter commits it.
+    public async Task ShowPropertiesAsync(int paneIndex, MailFolderModel? focusedFolder = null)
     {
         // pane 0 means toolbar or unknown focus (e.g. command palette has focus, or WPF
         // moved focus to the menu bar when Alt was pressed). Fall back to whichever
@@ -2822,7 +2825,7 @@ public partial class MainViewModel : ObservableObject
             var (title, sections) = MessagePropertiesBuilder.Build(msg, detail, accountName);
             PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
         }
-        else if (paneIndex == 2 && SelectedFolder is { } folder)
+        else if (paneIndex == 2 && (focusedFolder ?? SelectedFolder) is { } folder)
         {
             var accountName = Accounts.FirstOrDefault(a => a.Id == folder.AccountId)?.AccountLabel
                               ?? "Unknown";
