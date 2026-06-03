@@ -4,64 +4,67 @@
 
 ### Contact groups
 
-The Address Book now includes a **Groups** tab alongside the existing flat contact list. Groups let you bundle contacts under a name and insert every member into a To, Cc, or Bcc field in a single step. All group data is stored locally in a separate JSON file in your AppData folder; nothing leaves your machine.
+The Address Book now has a **Groups** tab alongside the contacts list. Groups let you bundle any number of contacts under a name, then insert every member into a To, Cc, or Bcc field in a single step — either from the address book itself or by typing the group name in a compose address field and selecting it from the autocomplete list.
+
+All group data is stored locally in `groups.json` in your AppData folder and never leaves your machine. Groups are completely separate from `contacts.json`; adding or removing a group never touches your individual contacts.
 
 **Opening the Groups tab**
 
-- In the Address Book window, choose the **Groups** tab at the top, or press **Ctrl+G** to jump straight to the groups list.
-- For a focused, dialog-only experience, press **Ctrl+Shift+M** to open the **Group Manager** window. It has the same create / rename / delete / add-member / remove-member actions but without the contacts list around it.
+- In the Address Book window, choose the **Groups** tab at the top, or press **Ctrl+G** to jump to the groups list from anywhere in the window. Pressing **Ctrl+G** again returns you to the Contacts tab.
+- Press **Ctrl+Shift+M** (or activate the **Manage…** button on the Groups tab) to open the standalone **Group Manager** window for heavier editing — renaming, bulk member changes, and deletion — without the contacts list in the way.
 
 **Creating a group**
 
-1. In the **Groups** tab, type a name in the **New group** text box at the bottom.
-2. Press **Enter** or click **New**. The new group appears in the list and is selected automatically.
+Press **Ctrl+Shift+N** from anywhere in the Address Book, or activate the **New** button on the Groups tab. A name field appears above the buttons. Type the name and press **Enter**. Press **Escape** to cancel without creating a group.
 
 **Adding contacts to a group**
 
-In the Address Book window:
-
-1. Switch to the **Contacts** tab and select the contact you want to add.
-2. Switch back to the **Groups** tab, select the target group, and press **Enter** on the group (or use the dedicated flow).
-
-The member list on the right refreshes and the screen reader announces "Added {name} to {group}".
-
-In the **Group Manager** window (`Ctrl+Shift+M`):
-
-1. Select a group on the left.
-2. Select a contact in the **Available contacts** list and press **Enter** to add them, or **Delete** to remove a member from the middle list.
+- From the **Contacts** tab, select a contact, then press **Shift+F10** (or the **Apps** key) to open the context menu and choose which group to add them to.
+- In the **Group Manager** window, select a group on the left, then press **Enter** on a candidate in the lower list to add them. Pressing **Enter** again on a contact who is already a member removes them — the action always toggles, so you never get a repeated "Added" announcement.
 
 **Inserting a group into a message**
 
-When a compose window is open, the Address Book window can insert every member of a group into the To, Cc, or Bcc field in one operation:
+From the **compose** address fields, type any part of a group name and the autocomplete list shows matching groups (above individual contacts). Selecting a group expands all its members directly into the field. The screen reader announces the count: "Inserted N addresses from group 'X'".
 
-1. Open the Address Book from the compose window with **Ctrl+Shift+B**.
-2. Switch to the **Groups** tab and select a group.
-3. Choose **To**, **Cc**, or **Bcc** from the field buttons. Every member is inserted, sorted by recency of use. The screen reader announces the final count, including any members that were silently skipped because their contact was deleted.
+From the **Address Book** window, select a group on the Groups tab and press **Alt+T**, **Alt+C**, or **Alt+B** — or activate the **To**, **Cc**, or **Bcc** buttons. Every member is inserted in order of recency. If opened from the main window (not from a compose window), a new compose window opens automatically to receive the addresses.
 
-**Renaming, deleting, and missing contacts**
+**Renaming a group**
 
-- **F2** renames the selected group; **Delete** removes it after a confirmation prompt. Deleting a group does **not** delete the contacts that were in it.
-- If a contact referenced by a group is later deleted, the group keeps the member ID and the right pane shows a "N members (M missing)" annotation so you can see when cleanup is needed.
+Select a group in the list and press **F2**, or activate the **Rename** button. The name field appears pre-filled with the current name. Edit it and press **Enter** to save, or **Escape** to cancel.
+
+**Deleting a group**
+
+Select a group and press **Delete** (or activate the **Delete** button). A confirmation appears. Deleting a group does **not** delete the contacts that were in it.
+
+**Missing contacts**
+
+If a contact referenced by a group is later deleted, the group retains the membership record. The groups list shows "N members (M missing)" so you can see when cleanup is needed. The missing member is silently skipped during insertion and the screen reader notes the skip count.
 
 **Keyboard reference for the Address Book window**
 
 | Action | Shortcut |
 |--------|----------|
-| Switch to Contacts tab | `Ctrl+1` |
-| Switch to Groups tab / focus groups pane | `Ctrl+G` |
-| New group | `Ctrl+Shift+N` |
-| Rename group | `F2` |
-| Delete group | `Delete` |
+| Switch to Groups tab / return to Contacts tab | `Ctrl+G` |
+| New group (shows name field) | `Ctrl+Shift+N` |
+| Rename selected group | `F2` |
+| Delete selected group | `Delete` |
+| Add selected contact to a group | `Shift+F10` or `Apps` key (context menu) |
 | Open Group Manager | `Ctrl+Shift+M` |
+| Insert group into To field | `Alt+T` |
+| Insert group into Cc field | `Alt+C` |
+| Insert group into Bcc field | `Alt+B` |
 
 ---
 
 ## Bug Fixes
 
-- **Group / contact concurrency** — Group operations (create, rename, add member, remove member) and contact operations now share a single load lock, so a group write cannot tear or block a concurrent contact write. The same lock also covers corrupt-file recovery on first load.
+- **Delete key on group members list** — pressing Delete while focus is in the group members list now removes the focused member from the group instead of deleting the entire group.
+- **Alt+T / Alt+C / Alt+B** — these shortcuts now work correctly on the Groups tab as well as the Contacts tab, and they work when the address book is opened standalone (not just from a compose window).
 
 ## Internal
 
-- `IContactService` gained eight group methods (`LoadAllGroupsAsync`, `CreateGroupAsync`, `RenameGroupAsync`, `DeleteGroupAsync`, `AddMemberAsync`, `RemoveMemberAsync`, `ListGroupsForContactAsync`, `TouchGroupAsync`). `StubContactService` implements the same surface for tests.
-- `ContactService` writes groups to a new `groups.json` file (separate from `contacts.json`) using the same atomic temp-then-rename pattern. A corrupt `groups.json` is renamed to `groups.json.bak-{timestamp}` and treated as empty, matching the recovery behaviour already used for `views.json`, `rules.json`, and `templates.json`.
-- 32 new tests across `ContactServiceGroupTests` (18), `AddressBookViewModelGroupTests` (8), and `GroupManagerViewModelTests` (6) cover group CRUD, membership, missing-contact handling, atomic write, corrupt-file recovery, and concurrent group/contact writes. Total test count is now 376, all green.
+- `IContactService` gained nine group methods: `LoadAllGroupsAsync`, `CreateGroupAsync`, `RenameGroupAsync`, `DeleteGroupAsync`, `AddMemberAsync`, `RemoveMemberAsync`, `ListGroupsForContactAsync`, `TouchGroupAsync`, and `SearchGroupsAsync`. `StubContactService` implements the same surface for tests.
+- `ContactService` writes groups to `groups.json` (separate from `contacts.json`) using the same atomic temp-then-rename pattern. A corrupt `groups.json` is renamed to `groups.json.bak-{timestamp}` and treated as empty, matching the recovery behaviour already used for `views.json`, `rules.json`, and `templates.json`.
+- `GroupModel` exposes computed `ResolvedMemberCount` and `MissingContactCount` (`[JsonIgnore]`) so the UI never recomputes them.
+- `AddressSuggestion` (internal to `ComposeWindow`) wraps either a `ContactModel` or a `GroupModel`; the autocomplete popup uses a two-line item template (bold name / dimmed secondary text) and sets `AutomationProperties.Name` to the full accessible label on each row.
+- 59 new tests added across `ContactServiceGroupTests`, `AddressBookViewModelGroupTests`, `GroupManagerViewModelTests`, `GroupsTabFocusTests`, and `GroupSubtitleConverterTests`. Total test count is now 391, all green.

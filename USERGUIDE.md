@@ -581,12 +581,14 @@ You can also manage group membership in the **Group Manager** window (**Ctrl+Shi
 
 **Inserting a group into a message**
 
-The address book inserts every member of a group into the **To**, **Cc**, or **Bcc** field in one step. This works whether the address book was opened from a compose window or from the main window:
+The quickest way is to type the group name directly in a **To**, **Cc**, or **Bcc** field while composing. The autocomplete list shows matching groups above individual contacts. Select a group from the list and press **Enter** — every member is inserted at once and the screen reader announces the count.
+
+You can also use the Address Book:
 
 1. Switch to the **Groups** tab and select a group.
-2. Press **Alt+T**, **Alt+C**, or **Alt+B** — or choose **To**, **Cc**, or **Bcc** from the insert row. Every member of the group is inserted in one operation, sorted by recency of use. The screen reader announces the final count.
+2. Press **Alt+T**, **Alt+C**, or **Alt+B** — or activate the **To**, **Cc**, or **Bcc** buttons. Every member is inserted in order of recency. The screen reader announces the final count.
 
-If opened from the main window, a new compose window opens automatically to receive the addresses.
+If the address book was opened from the main window (not from a compose window), a new compose window opens automatically to receive the addresses.
 
 **Deleting groups**
 
@@ -597,7 +599,7 @@ Select a group and press **Delete** (or activate the **Delete** button). A confi
 | Action | Shortcut |
 |--------|----------|
 | Switch to Groups tab / return to Contacts tab | `Ctrl+G` |
-| New group (focuses name box if empty) | `Ctrl+Shift+N` |
+| New group (shows name field) | `Ctrl+Shift+N` |
 | Rename selected group | `F2` |
 | Delete selected group | `Delete` |
 | Add selected contact to a group | `Shift+F10` or `Apps` key (opens context menu) |
