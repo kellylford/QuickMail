@@ -13,6 +13,12 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 The installer requires the **Microsoft Edge WebView2 Runtime** to render HTML messages. It is preinstalled on Windows 11 and most recent Windows 10 systems; the installer downloads and installs it automatically when missing.
 
+### Uninstalling
+
+Uninstall from **Windows Settings → Apps**. The uninstaller gives you a choice: remove the app only, or remove the app and all your local data — the accounts configuration, mail cache, contacts, rules, templates, and saved views stored in `%AppData%\QuickMail`. Passwords in Windows Credential Manager are never touched.
+
+Uninstalling QuickMail does not affect your mail on the server. Nothing on the server is ever changed unless you take an explicit action in the app. The only time QuickMail permanently deletes messages is when you choose **Empty Trash**.
+
 ---
 
 ## New Features
