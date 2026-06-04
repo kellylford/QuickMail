@@ -3,6 +3,7 @@ bin/
 obj/
 publish/
 *.exe
+installer/Output/
 
 # User-specific files
 *.user

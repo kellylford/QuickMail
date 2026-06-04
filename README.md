@@ -24,11 +24,16 @@ A keyboard-first WPF desktop email client for Windows. Multi-account IMAP/SMTP w
 ## Build & Run
 
 ```bat
-build.bat          # build
-build.bat run      # build + launch
-build.bat publish  # self-contained win-x64 exe → publish/
+build.bat            # build
+build.bat run        # build + launch
+build.bat publish    # self-contained win-x64 exe → publish/
+build.bat installer  # publish + build the Windows installer → installer/Output/
 build.bat clean
 ```
+
+Building the installer additionally requires [Inno Setup 6](https://jrsoftware.org/isdl.php).
+It produces `installer/Output/quickmail-v<version>-setup.exe`. See [`installer/README.md`](installer/README.md)
+for details.
 
 Or with the CLI:
 
