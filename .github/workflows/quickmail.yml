@@ -40,6 +40,15 @@ jobs:
           path: publish/QuickMail.exe
           if-no-files-found: error
 
+      - name: Install Inno Setup
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: choco install innosetup --no-progress
+
+      - name: Build installer
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\quickmail.iss'
+        shell: pwsh
+
       # Create a GitHub Release when a version tag is pushed (e.g. v1.2.0)
       # Release notes are read from docs/release-notes-<tag>.md if present,
       # otherwise GitHub auto-generates notes from commits.
@@ -48,5 +57,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: QuickMail ${{ github.ref_name }}
-          files: publish/QuickMail.exe
+          files: |
+            publish/QuickMail.exe
+            installer/Output/quickmail-v*-setup.exe
           body_path: docs/release-notes-${{ github.ref_name }}.md
