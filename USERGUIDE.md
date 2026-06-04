@@ -6,6 +6,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 
 ## Contents
 
+- [Installing QuickMail](#installing-quickmail)
 - [Layout](#layout)
 - [Menu bar](#menu-bar)
 - [Connecting accounts](#connecting-accounts)
@@ -32,6 +33,29 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 - [Data storage](#data-storage)
 - [Configuration file](#configuration-file)
 - [Command-line options](#command-line-options)
+
+---
+
+## Installing QuickMail
+
+Two download options are available from the [Releases page](https://github.com/kellylford/QuickMail/releases):
+
+| Download | When to use |
+|----------|-------------|
+| **`quickmail-vX.X.X-setup.exe`** — Windows installer | Recommended for most users. Installs per-user with no elevation required and registers an uninstaller in Windows Settings. |
+| **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run it directly. |
+
+Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
+
+### WebView2 Runtime
+
+QuickMail uses the **Microsoft Edge WebView2 Runtime** to render HTML messages. It is preinstalled on Windows 11 and most recent Windows 10 systems. If it is missing, the installer downloads and installs it automatically. If you are using the standalone executable and WebView2 is absent, download it from [Microsoft's WebView2 page](https://developer.microsoft.com/microsoft-edge/webview2/).
+
+### Uninstalling
+
+If you used the installer, open **Windows Settings → Apps** and remove QuickMail from there. During uninstall you will be offered the option to delete your data folder (`%AppData%\QuickMail`), which contains your accounts, mail cache, contacts, rules, and saved views. Passwords stored in Windows Credential Manager are never removed automatically.
+
+If you used the standalone executable, simply delete the file. Your data folder at `%AppData%\QuickMail` can be deleted manually if you no longer need it.
 
 ---
 

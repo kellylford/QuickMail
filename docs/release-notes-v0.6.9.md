@@ -1,5 +1,20 @@
 # QuickMail v0.6.9 Release Notes
 
+## Download
+
+Two options are available for v0.6.9:
+
+| Download | When to use |
+|----------|-------------|
+| **`quickmail-v0.6.9-setup.exe`** — Windows installer | Recommended for most users. Installs per-user with no elevation required, checks for the WebView2 Runtime, and registers an uninstaller. |
+| **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run. |
+
+Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
+
+The installer requires the **Microsoft Edge WebView2 Runtime** to render HTML messages. It is preinstalled on Windows 11 and most recent Windows 10 systems; the installer downloads and installs it automatically when missing.
+
+---
+
 ## New Features
 
 ### View Properties (Alt+Enter)
