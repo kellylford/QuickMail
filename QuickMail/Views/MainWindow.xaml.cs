@@ -2508,17 +2508,7 @@ public partial class MainWindow : Window
             if (ConversationTree.SelectedItem is MailMessageSummary msg)
             {
                 e.Handled = true;
-                if (_vm.IsSelectedFolderDrafts)
-                {
-                    _vm.SelectedMessage = msg;
-                    await _vm.OpenDraftCommand.ExecuteAsync(null);
-                }
-                else
-                {
-                    await _vm.SelectMessageCommand.ExecuteAsync(msg);
-                    if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                        await ShowMessageBodyAsync(_vm.MessageDetail);
-                }
+                await OpenMessageFromListAsync(msg);
             }
             else if (ConversationTree.SelectedItem is ConversationGroup group)
             {
@@ -2527,16 +2517,7 @@ public partial class MainWindow : Window
                 {
                     var singleMsg = group.Messages[0];
                     _vm.SelectedMessage = singleMsg;
-                    if (_vm.IsSelectedFolderDrafts)
-                    {
-                        await _vm.OpenDraftCommand.ExecuteAsync(null);
-                    }
-                    else
-                    {
-                        await _vm.SelectMessageCommand.ExecuteAsync(singleMsg);
-                        if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                            await ShowMessageBodyAsync(_vm.MessageDetail);
-                    }
+                    await OpenMessageFromListAsync(singleMsg);
                 }
                 else
                 {
@@ -3084,17 +3065,7 @@ public partial class MainWindow : Window
             if (SenderGroupTree.SelectedItem is MailMessageSummary msg)
             {
                 e.Handled = true;
-                if (_vm.IsSelectedFolderDrafts)
-                {
-                    _vm.SelectedMessage = msg;
-                    await _vm.OpenDraftCommand.ExecuteAsync(null);
-                }
-                else
-                {
-                    await _vm.SelectMessageCommand.ExecuteAsync(msg);
-                    if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                        await ShowMessageBodyAsync(_vm.MessageDetail);
-                }
+                await OpenMessageFromListAsync(msg);
             }
             else if (SenderGroupTree.SelectedItem is SenderGroup group)
             {
@@ -3103,16 +3074,7 @@ public partial class MainWindow : Window
                 {
                     var singleMsg = group.Messages[0];
                     _vm.SelectedMessage = singleMsg;
-                    if (_vm.IsSelectedFolderDrafts)
-                    {
-                        await _vm.OpenDraftCommand.ExecuteAsync(null);
-                    }
-                    else
-                    {
-                        await _vm.SelectMessageCommand.ExecuteAsync(singleMsg);
-                        if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                            await ShowMessageBodyAsync(_vm.MessageDetail);
-                    }
+                    await OpenMessageFromListAsync(singleMsg);
                 }
                 else
                 {
@@ -3247,17 +3209,7 @@ public partial class MainWindow : Window
             if (ToGroupTree.SelectedItem is MailMessageSummary msg)
             {
                 e.Handled = true;
-                if (_vm.IsSelectedFolderDrafts)
-                {
-                    _vm.SelectedMessage = msg;
-                    await _vm.OpenDraftCommand.ExecuteAsync(null);
-                }
-                else
-                {
-                    await _vm.SelectMessageCommand.ExecuteAsync(msg);
-                    if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                        await ShowMessageBodyAsync(_vm.MessageDetail);
-                }
+                await OpenMessageFromListAsync(msg);
             }
             else if (ToGroupTree.SelectedItem is SenderGroup group)
             {
@@ -3266,16 +3218,7 @@ public partial class MainWindow : Window
                 {
                     var singleMsg = group.Messages[0];
                     _vm.SelectedMessage = singleMsg;
-                    if (_vm.IsSelectedFolderDrafts)
-                    {
-                        await _vm.OpenDraftCommand.ExecuteAsync(null);
-                    }
-                    else
-                    {
-                        await _vm.SelectMessageCommand.ExecuteAsync(singleMsg);
-                        if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                            await ShowMessageBodyAsync(_vm.MessageDetail);
-                    }
+                    await OpenMessageFromListAsync(singleMsg);
                 }
                 else
                 {

@@ -109,6 +109,8 @@ public partial class MessageWindow : Window
 
             if (_vm.MessageDetail != null)
                 await ShowMessageBodyAsync(_vm.MessageDetail);
+            else if (_vm.SelectedMessage != null)
+                await LoadSelectedMessageAsync();
         }
         catch (Exception ex)
         {
