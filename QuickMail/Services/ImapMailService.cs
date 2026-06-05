@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Globalization;
 using System.Linq;
@@ -267,7 +268,7 @@ public class ImapMailService : IMailService
                       | MessageSummaryItems.PreviewText;   // free if server supports PREVIEW
 
             IList<IMessageSummary> summaries;
-            if (string.IsNullOrEmpty(sinceMessageId) || sinceMessageId == "0")
+            if (sinceMessageId == "0")
             {
                 if (folder.Count == 0) return new List<MailMessageSummary>();
                 var count = initialCount > 0 ? initialCount : folder.Count;
@@ -474,7 +475,9 @@ public class ImapMailService : IMailService
         {
             var newUid = await draftsFolder.AppendAsync(msg, MessageFlags.Draft, ct);
             LogService.Log($"AppendDraft: saved draft to {draftsFolder.FullName} UID={newUid?.Id}");
-            return (newUid?.Id ?? 0u).ToString(CultureInfo.InvariantCulture);
+            // Empty (not "0") signals "server didn't echo a UID" so the next save appends a new
+            // draft instead of issuing a delete against the invalid UID 0.
+            return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;
         }
         finally { await draftsFolder.CloseAsync(false, ct); }
     }
@@ -1187,8 +1190,11 @@ public class ImapMailService : IMailService
 
     // IMAP message keys are decimal UID strings (MailMessageSummary.MessageId). Parse one back to
     // a MailKit UniqueId at the service boundary.
-    private static UniqueId ToUid(string messageId) =>
-        new UniqueId(uint.Parse(messageId, CultureInfo.InvariantCulture));
+    private static UniqueId ToUid(string messageId)
+    {
+        Debug.Assert(!string.IsNullOrEmpty(messageId), "IMAP MessageId must be a non-empty decimal UID string");
+        return new UniqueId(uint.Parse(messageId, CultureInfo.InvariantCulture));
+    }
 
     private static MailMessageSummary SummaryToModel(IMessageSummary s, Guid accountId, string folderName) =>
         new()

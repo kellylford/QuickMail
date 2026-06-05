@@ -66,6 +66,18 @@ public class LocalStoreServiceMigrationTests
             insert.ExecuteNonQuery();
         }
 
+        // A matching detail row for unique_id 42 — the migration rebuilds MessageDetail too,
+        // so this covers that table's INTEGER -> TEXT conversion.
+        using (var insertDetail = conn.CreateCommand())
+        {
+            insertDetail.CommandText = """
+                INSERT INTO MessageDetail(unique_id, account_id, folder_name, to_addr, plain_body)
+                VALUES (42, $aid, 'Inbox', 'recipient@x.com', 'body forty-two');
+                """;
+            insertDetail.Parameters.AddWithValue("$aid", accountId.ToString());
+            insertDetail.ExecuteNonQuery();
+        }
+
         using (var ver = conn.CreateCommand())
         {
             ver.CommandText = "PRAGMA user_version = 1;";
@@ -119,8 +131,16 @@ public class LocalStoreServiceMigrationTests
         Assert.Contains(loaded, m => m.MessageId == "5"  && m.Subject == "five");
         Assert.Contains(loaded, m => m.MessageId == "42" && m.Subject == "forty-two");
 
-        // unique_id column is now TEXT.
+        // The MessageDetail row survives the rebuild and is keyed by the text id.
+        var detail = await store.LoadDetailAsync(accountId, "Inbox", "42");
+        Assert.NotNull(detail);
+        Assert.Equal("42", detail!.MessageId);
+        Assert.Equal("recipient@x.com", detail.To);
+        Assert.Equal("body forty-two", detail.PlainTextBody);
+
+        // unique_id column is now TEXT on both tables.
         Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "unique_id"));
+        Assert.Equal("TEXT", ColumnType(dbPath, "MessageDetail",  "unique_id"));
     }
 
     [Fact]

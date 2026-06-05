@@ -23,7 +23,7 @@ public interface IMailService : IDisposable
 
     /// <summary>
     /// Incremental fetch for background sync.
-    /// When <paramref name="sinceMessageId"/> is empty or "0" (first sync), returns the last
+    /// When <paramref name="sinceMessageId"/> is "0" (first sync), returns the last
     /// <paramref name="initialCount"/> messages. Otherwise the IMAP backend parses it as a UID and
     /// returns only messages with UID &gt; that value. The Graph backend ignores this argument and
     /// uses the folder's stored delta token instead (see the GraphChangeNotifier spec).

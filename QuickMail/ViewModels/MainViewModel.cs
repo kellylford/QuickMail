@@ -2173,16 +2173,16 @@ public partial class MainViewModel : ObservableObject
                 summary.AccountId, summary.FolderName, summary.MessageId, ct);
             if (ct.IsCancellationRequested) return;
             await _localStore.UpsertDetailAsync(detail);
-            LogService.Debug($"Prefetched UID={summary.MessageId} folder={summary.FolderName}");
+            LogService.Debug($"Prefetched msgId={summary.MessageId} folder={summary.FolderName}");
         }
         catch (OperationCanceledException) { /* expected on switch */ }
         catch (InvalidOperationException ex) when (ex.Message.Contains("not connected"))
         {
             // Prefetch raced startup or a disconnect; the next prefetch trigger
             // (folder load, message open) will retry once the account is up.
-            LogService.Debug($"Prefetch skipped UID={summary.MessageId} (account not connected)");
+            LogService.Debug($"Prefetch skipped msgId={summary.MessageId} (account not connected)");
         }
-        catch (Exception ex) { LogService.Log($"Prefetch UID={summary.MessageId}", ex); }
+        catch (Exception ex) { LogService.Log($"Prefetch msgId={summary.MessageId}", ex); }
     }
 
     [RelayCommand]
