@@ -173,43 +173,85 @@ public partial class MessageWindow : Window
 
         if (version != _renderVersion) return;
 
+        await FocusMessageBodyAsync(version, detail.Subject);
+    }
+
+    private async Task FocusMessageBodyAsync(int version, string? subject)
+    {
+        var focusLabel = string.IsNullOrWhiteSpace(subject)
+            ? "Message body"
+            : $"Message body. {subject.Trim()}";
+
         await Dispatcher.InvokeAsync(() =>
         {
             MessageBody.Focus();
             Keyboard.Focus(MessageBody);
+        }, DispatcherPriority.Input);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            if (version != _renderVersion) return;
+
+            await Dispatcher.InvokeAsync(FocusMessageBodyHost, DispatcherPriority.Input);
+
             try
             {
-                ((System.Windows.Interop.IKeyboardInputSink)MessageBody).TabInto(
-                    new TraversalRequest(FocusNavigationDirection.First));
+                if (await TryFocusDocumentAsync(focusLabel))
+                    break;
             }
-            catch { /* ignore */ }
+            catch (Exception ex)
+            {
+                if (attempt == 4)
+                    LogService.Log("MessageWindow.FocusMessageBody", ex);
+            }
+
+            await Task.Delay(100);
+        }
+
+        if (version != _renderVersion) return;
+
+        await Dispatcher.InvokeAsync(() =>
+        {
+            FocusMessageBodyHost();
+            AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
         }, DispatcherPriority.Input);
+    }
+
+    private void FocusMessageBodyHost()
+    {
+        MessageBody.Focus();
+        Keyboard.Focus(MessageBody);
+        try
+        {
+            ((System.Windows.Interop.IKeyboardInputSink)MessageBody).TabInto(
+                new TraversalRequest(FocusNavigationDirection.First));
+        }
+        catch { /* ignore */ }
     }
 
     private void MessageBody_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        // Ensure WebView2 document body is focused for screen reader reading.
-        _ = TryFocusDocumentAsync(detail: _vm.MessageDetail?.Subject);
+        _ = TryFocusDocumentAsync(_vm.MessageDetail?.Subject is { } s && !string.IsNullOrWhiteSpace(s)
+            ? $"Message body. {s.Trim()}"
+            : "Message body");
     }
 
-    private async Task TryFocusDocumentAsync(string? detail)
+    private async Task<bool> TryFocusDocumentAsync(string focusLabel)
     {
-        if (MessageBody.CoreWebView2 == null) return;
-        try
-        {
-            var label = JsonSerializer.Serialize(
-                string.IsNullOrWhiteSpace(detail) ? "Message body" : $"Message body. {detail.Trim()}");
-            await MessageBody.CoreWebView2.ExecuteScriptAsync(
-                "(() => {" +
-                "const body=document.body;" +
-                "if(!body)return;" +
-                "body.setAttribute('tabindex','0');" +
-                "body.setAttribute('role','document');" +
-                $"body.setAttribute('aria-label',{label});" +
-                "body.focus({{preventScroll:true}});" +
-                "})()");
-        }
-        catch { /* ignore */ }
+        if (MessageBody.CoreWebView2 == null) return false;
+        var label = JsonSerializer.Serialize(focusLabel);
+        var result = await MessageBody.CoreWebView2.ExecuteScriptAsync(
+            "(() => {" +
+            "const body=document.body;" +
+            "if(!body)return false;" +
+            "window.focus();" +
+            "body.setAttribute('tabindex','0');" +
+            "body.setAttribute('role','document');" +
+            $"body.setAttribute('aria-label',{label});" +
+            "body.focus({preventScroll:true});" +
+            "return document.hasFocus()&&document.activeElement===body;" +
+            "})()");
+        return string.Equals(result, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnPreviewKeyDown(object sender, KeyEventArgs e)
