@@ -42,15 +42,18 @@ public partial class MessageWindow : Window
     // Services needed for loading message bodies.
     private readonly Services.IMailService        _imap;
     private readonly Services.ILocalStoreService  _localStore;
+    private readonly CoreWebView2Environment?     _sharedEnv;
 
     public MessageWindow(
         MessageWindowViewModel vm,
         Services.IMailService imap,
-        Services.ILocalStoreService localStore)
+        Services.ILocalStoreService localStore,
+        CoreWebView2Environment? sharedEnv = null)
     {
         _vm         = vm;
         _imap       = imap;
         _localStore = localStore;
+        _sharedEnv  = sharedEnv;
 
         InitializeComponent();
         DataContext = vm;
@@ -70,10 +73,9 @@ public partial class MessageWindow : Window
     {
         try
         {
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "QuickMail", "WebView2");
-            var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            var env = _sharedEnv ?? await CoreWebView2Environment.CreateAsync(null,
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                             "QuickMail", "WebView2"));
             await MessageBody.EnsureCoreWebView2Async(env);
             _webViewReady = true;
 

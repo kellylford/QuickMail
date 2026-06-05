@@ -75,6 +75,7 @@ public partial class MainWindow : Window
     private readonly IOAuthService _oauth;
     private readonly ICommandRegistry _registry;
     private bool _webViewReady;
+    private CoreWebView2Environment? _webViewEnvironment;
     private string _typeAheadBuffer = string.Empty;
     private DateTime _typeAheadLastInputUtc = DateTime.MinValue;
     private object? _typeAheadScope;
@@ -700,8 +701,8 @@ public partial class MainWindow : Window
             var userDataFolder = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "QuickMail", "WebView2");
-            var env = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
-            await MessageBody.EnsureCoreWebView2Async(env);
+            _webViewEnvironment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
+            await MessageBody.EnsureCoreWebView2Async(_webViewEnvironment);
             _webViewReady = true;
 
             // Disable unnecessary browser chrome / context menus
@@ -3434,7 +3435,7 @@ public partial class MainWindow : Window
         };
         winVm.MessageList.Add(summary);
 
-        var win = new MessageWindow(winVm, _imap, _localStore) { Owner = this };
+        var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment) { Owner = this };
         win.MoveToMainWindowRequested += (_, vm) =>
         {
             if (vm.OriginalSummary != null)
