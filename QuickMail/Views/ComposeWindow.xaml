@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:QuickMail.Controls"
         mc:Ignorable="d"
-        Title="Compose Message"
+        Title="{Binding WindowTitle}"
         Height="540" Width="680"
         MinHeight="360" MinWidth="480"
         WindowStartupLocation="CenterOwner"

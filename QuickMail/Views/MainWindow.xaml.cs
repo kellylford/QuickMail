@@ -187,6 +187,14 @@ public partial class MainWindow : Window
             win.ShowDialog();
         };
 
+        vm.TabPromoteToWindowRequested += PromoteTabToWindow;
+
+        vm.PropertyChanged += async (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.ActiveTab))
+                await OnActiveTabChangedAsync();
+        };
+
         // Re-focus the active message panel whenever the message collections are replaced
         // (happens after Refresh, Load More, folder changes, and view-mode switches).
         //
@@ -614,6 +622,78 @@ public partial class MainWindow : Window
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()));
 
+        // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
+        _registry.Register(new CommandDefinition(
+            id: "view.focusAccounts", category: "View", title: "Focus Account List",
+            execute: () => AccountList.Focus(),
+            defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt));
+
+        _registry.Register(new CommandDefinition(
+            id: "view.focusMessages", category: "View", title: "Focus Message List",
+            execute: () =>
+            {
+                if (_vm.IsConversationsView)      ConversationTree.Focus();
+                else if (_vm.IsFromView)           SenderGroupTree.Focus();
+                else if (_vm.IsToView)             ToGroupTree.Focus();
+                else                               MessageList.Focus();
+            },
+            defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt));
+
+        // ── Tab & Window Management commands ─────────────────────────────────────
+        _registry.Register(new CommandDefinition(
+            id: "tabs.next", category: "View", title: "Next Tab",
+            execute: () => _vm.ActivateNextTab(),
+            defaultKey: Key.Tab, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => _vm.OpenTabs.Count > 1));
+
+        _registry.Register(new CommandDefinition(
+            id: "tabs.previous", category: "View", title: "Previous Tab",
+            execute: () => _vm.ActivatePrevTab(),
+            defaultKey: Key.Tab, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => _vm.OpenTabs.Count > 1));
+
+        _registry.Register(new CommandDefinition(
+            id: "tabs.close", category: "View", title: "Close Tab",
+            execute: () => { if (_vm.ActiveTab != null) _vm.CloseTab(_vm.ActiveTab); },
+            defaultKey: Key.W, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => _vm.ActiveTab != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "tabs.closeOthers", category: "View", title: "Close Other Tabs",
+            execute: () => _vm.CloseAllOtherTabs(),
+            isAvailable: () => _vm.OpenTabs.Count > 1));
+
+        _registry.Register(new CommandDefinition(
+            id: "tabs.list", category: "View", title: "Tab List…",
+            execute: OpenTabList,
+            defaultKey: Key.OemTilde, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => _vm.OpenTabs.Count > 0));
+
+        _registry.Register(new CommandDefinition(
+            id: "tabs.moveLeft", category: "View", title: "Move Tab Left",
+            execute: () => _vm.MoveTabLeft(),
+            isAvailable: () => _vm.ActiveTab != null && _vm.OpenTabs.Count > 1));
+
+        _registry.Register(new CommandDefinition(
+            id: "tabs.moveRight", category: "View", title: "Move Tab Right",
+            execute: () => _vm.MoveTabRight(),
+            isAvailable: () => _vm.ActiveTab != null && _vm.OpenTabs.Count > 1));
+
+        _registry.Register(new CommandDefinition(
+            id: "tabs.promote", category: "View", title: "Move Tab to New Window",
+            execute: () => _vm.PromoteActiveTabToWindow(),
+            isAvailable: () => _vm.ActiveTab != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.openInNewTab", category: "Mail", title: "Open in New Tab",
+            execute: () => { if (_vm.SelectedMessage != null) _vm.OpenMessageTab(_vm.SelectedMessage); },
+            isAvailable: () => _vm.SelectedMessage != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.openInWindow", category: "Mail", title: "Open in New Window",
+            execute: () => { if (_vm.SelectedMessage != null) OpenMessageInNewWindow(_vm.SelectedMessage); },
+            isAvailable: () => _vm.SelectedMessage != null));
+
         // Initialise the embedded browser.  Wire Escape before doing anything else.
         try
         {
@@ -746,24 +826,51 @@ public partial class MainWindow : Window
             switch (key)
             {
                 case Key.D0: ToolbarFirstButton.Focus(); e.Handled = true; return;
-                case Key.D1: AccountList.Focus();        e.Handled = true; return;
+
+                case Key.D1:
+                    if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(1); e.Handled = true; return; }
+                    AccountList.Focus(); e.Handled = true; return;
+
                 case Key.D2:
+                    if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(2); e.Handled = true; return; }
+                    FocusFolderTree(); e.Handled = true; return;
+
                 case Key.NumPad2:
                 case Key.Y:
-                    FocusFolderTree();
-                    e.Handled = true;
-                    return;
+                    FocusFolderTree(); e.Handled = true; return;
+
                 case Key.D3:
-                    if (_vm.IsConversationsView)
-                        ConversationTree.Focus();
-                    else if (_vm.IsFromView)
-                        SenderGroupTree.Focus();
-                    else if (_vm.IsToView)
-                        ToGroupTree.Focus();
-                    else
-                        MessageList.Focus();
-                    e.Handled = true;
-                    return;
+                    if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(3); e.Handled = true; return; }
+                    if (_vm.IsConversationsView) ConversationTree.Focus();
+                    else if (_vm.IsFromView)      SenderGroupTree.Focus();
+                    else if (_vm.IsToView)         ToGroupTree.Focus();
+                    else                           MessageList.Focus();
+                    e.Handled = true; return;
+
+                case Key.D4: if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(4); e.Handled = true; return; } break;
+                case Key.D5: if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(5); e.Handled = true; return; } break;
+                case Key.D6: if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(6); e.Handled = true; return; } break;
+                case Key.D7: if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(7); e.Handled = true; return; } break;
+                case Key.D8: if (_vm.ShowTabStrip) { _vm.ActivateTabByIndex(8); e.Handled = true; return; } break;
+
+                case Key.D9:
+                    if (_vm.ShowTabStrip) { _vm.ActivateLastTab(); e.Handled = true; return; }
+                    break; // falls through to registry (view.focusStatusBar)
+            }
+        }
+        else if (modifiers == (ModifierKeys.Control | ModifierKeys.Alt))
+        {
+            // Pane navigation via Ctrl+Alt+1/2/3 — always available regardless of tab mode.
+            switch (key)
+            {
+                case Key.D1: AccountList.Focus(); e.Handled = true; return;
+                case Key.D2: FocusFolderTree();   e.Handled = true; return;
+                case Key.D3:
+                    if (_vm.IsConversationsView) ConversationTree.Focus();
+                    else if (_vm.IsFromView)      SenderGroupTree.Focus();
+                    else if (_vm.IsToView)         ToGroupTree.Focus();
+                    else                           MessageList.Focus();
+                    e.Handled = true; return;
             }
         }
         else if (modifiers == ModifierKeys.None)
@@ -1303,18 +1410,7 @@ public partial class MainWindow : Window
     private async void MessageList_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
         if (MessageList.SelectedItem is MailMessageSummary summary)
-        {
-            if (_vm.IsSelectedFolderDrafts)
-            {
-                await _vm.OpenDraftCommand.ExecuteAsync(null);
-            }
-            else
-            {
-                await _vm.SelectMessageCommand.ExecuteAsync(summary);
-                if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                    await ShowMessageBodyAsync(_vm.MessageDetail);
-            }
-        }
+            await OpenMessageFromListAsync(summary);
     }
 
     // Enter on a message: load body; Delete: delete all selected messages;
@@ -1353,16 +1449,7 @@ public partial class MainWindow : Window
         if (e.Key == Key.Enter && MessageList.SelectedItem is MailMessageSummary summary)
         {
             e.Handled = true;
-            if (_vm.IsSelectedFolderDrafts)
-            {
-                await _vm.OpenDraftCommand.ExecuteAsync(null);
-            }
-            else
-            {
-                await _vm.SelectMessageCommand.ExecuteAsync(summary);
-                if (_vm.IsMessageOpen && _vm.MessageDetail != null)
-                    await ShowMessageBodyAsync(_vm.MessageDetail);
-            }
+            await OpenMessageFromListAsync(summary);
         }
         else if (e.Key == Key.Delete && MessageList.SelectedItems.Count > 0)
         {
@@ -3304,6 +3391,125 @@ public partial class MainWindow : Window
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);
         if (dialog.ShowDialog() == true)
             _vm.RefreshAccountList();
+    }
+
+    // ── Tab & Window Management handlers ────────────────────────────────────────
+
+    /// <summary>
+    /// Routes message opening based on the configured MessageOpenMode.
+    /// Drafts always open in a compose window regardless of mode.
+    /// </summary>
+    private async Task OpenMessageFromListAsync(MailMessageSummary summary)
+    {
+        if (_vm.IsSelectedFolderDrafts)
+        {
+            await _vm.OpenDraftCommand.ExecuteAsync(null);
+            return;
+        }
+
+        switch (_vm.MessageOpenMode)
+        {
+            case MessageOpenMode.Tab:
+                _vm.OpenMessageTab(summary);
+                break;
+
+            case MessageOpenMode.Window:
+                OpenMessageInNewWindow(summary);
+                break;
+
+            default: // ReadingPane
+                await _vm.SelectMessageCommand.ExecuteAsync(summary);
+                if (_vm.IsMessageOpen && _vm.MessageDetail != null)
+                    await ShowMessageBodyAsync(_vm.MessageDetail);
+                break;
+        }
+    }
+
+    private void TabCloseButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is System.Windows.Controls.Button { Tag: MessageTabViewModel tab })
+            _vm.CloseTab(tab);
+    }
+
+    private void TabStrip_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        // Selection changes from two sources:
+        // 1. User clicks a tab → ListBox updates SelectedItem → binding updates _vm.ActiveTab
+        // 2. VM updates _vm.ActiveTab (Ctrl+Tab etc) → binding updates ListBox.SelectedItem
+        // In both cases the binding fires OnActiveTabChangedAsync via PropertyChanged.
+        // Nothing extra needed here; the handler is wired for drag/drop future use.
+    }
+
+    private async Task OnActiveTabChangedAsync()
+    {
+        var tab = _vm.ActiveTab;
+        if (tab == null)
+        {
+            _vm.IsMessageOpen = false;
+            return;
+        }
+
+        // Scroll active tab into view in the strip (fire-and-forget).
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (TabStrip.SelectedItem != null)
+                TabStrip.ScrollIntoView(TabStrip.SelectedItem);
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+
+        // Load via SelectMessageCommand (handles SelectedMessage, IsRead, cache, etc.)
+        await _vm.SelectMessageCommand.ExecuteAsync(tab.Summary);
+        if (_vm.IsMessageOpen && _vm.MessageDetail != null)
+        {
+            tab.Detail   = _vm.MessageDetail;
+            tab.IsLoaded = true;
+            await ShowMessageBodyAsync(_vm.MessageDetail);
+        }
+    }
+
+    private void OpenTabList()
+    {
+        var tabListWindow = new TabListWindow(_vm);
+        tabListWindow.Owner = this;
+
+        // Position the overlay near the centre/top of the main window.
+        tabListWindow.Left = Left + (ActualWidth  - tabListWindow.Width)  / 2;
+        tabListWindow.Top  = Top  + (ActualHeight - 400) / 3;
+
+        tabListWindow.ShowDialog();
+
+        // If the user activated a tab, load its message.
+        if (tabListWindow.DialogResult == true)
+            _ = OnActiveTabChangedAsync();
+    }
+
+    private void OpenMessageInNewWindow(MailMessageSummary summary)
+    {
+        var winVm = new MessageWindowViewModel
+        {
+            OriginalSummary  = summary,
+            SelectedMessage  = summary,
+        };
+        winVm.MessageList.Add(summary);
+
+        var win = new MessageWindow(winVm, _imap, _localStore) { Owner = this };
+        win.MoveToMainWindowRequested += (_, vm) =>
+        {
+            if (vm.OriginalSummary != null)
+                _vm.OpenMessageTab(vm.OriginalSummary);
+        };
+
+        // Offset from previous windows so they don't stack exactly.
+        var offset = Application.Current.Windows.OfType<MessageWindow>().Count() * 24;
+        win.Left = Left + 60 + offset;
+        win.Top  = Top  + 40 + offset;
+
+        win.Show();
+    }
+
+    private void PromoteTabToWindow(MessageTabViewModel tab)
+    {
+        _vm.CloseTab(tab);
+        OpenMessageInNewWindow(tab.Summary);
     }
 
     // ── Folder context menu handlers ─────────────────────────────────────────

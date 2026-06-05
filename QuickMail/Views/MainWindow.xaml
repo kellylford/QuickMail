@@ -783,6 +783,60 @@
             <!-- Right pane: messages + body (body docked to bottom, hidden until Enter on a message) -->
             <DockPanel Grid.Column="2">
 
+                <!-- Tab strip — visible only when message tabs are open -->
+                <Border DockPanel.Dock="Top"
+                        x:Name="TabStripBorder"
+                        BorderThickness="0,0,0,1"
+                        BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                        Visibility="{Binding ShowTabStrip, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <ListBox x:Name="TabStrip"
+                             ItemsSource="{Binding OpenTabs}"
+                             SelectedItem="{Binding ActiveTab, Mode=TwoWay}"
+                             SelectionMode="Single"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             KeyboardNavigation.TabNavigation="Once"
+                             AutomationProperties.Name="Open message tabs. Ctrl+Tab for next tab, Ctrl+Shift+Tab for previous tab, Ctrl+W to close."
+                             SelectionChanged="TabStrip_SelectionChanged">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal"/>
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="8,5"/>
+                                <Setter Property="Margin" Value="0,0,1,0"/>
+                                <Setter Property="AutomationProperties.Name" Value="{Binding Title}"/>
+                                <Setter Property="ToolTip" Value="{Binding Title}"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Title}"
+                                               MaxWidth="160"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                    <Button Content="✕"
+                                            Width="16" Height="16"
+                                            Padding="0"
+                                            Margin="6,0,0,0"
+                                            FontSize="9"
+                                            Click="TabCloseButton_Click"
+                                            Tag="{Binding}"
+                                            IsTabStop="False"
+                                            AutomationProperties.Name="Close this tab"
+                                            ToolTip="Close tab (Ctrl+W)"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Border>
+
                 <!-- Body pane — hidden until IsMessageOpen; Escape returns to MessageList -->
                 <Border DockPanel.Dock="Bottom"
                         BorderThickness="0,1,0,0"

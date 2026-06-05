@@ -151,6 +151,11 @@ public class ConfigService : IConfigService
                     section  = "global";
                     acctGuid = Guid.Empty;
                 }
+                else if (header == "windowing")
+                {
+                    section  = "windowing";
+                    acctGuid = Guid.Empty;
+                }
                 else if (header.StartsWith("account:") &&
                          Guid.TryParse(header["account:".Length..], out var g))
                 {
@@ -214,6 +219,26 @@ public class ConfigService : IConfigService
                         config.LogFormat = value.ToLowerInvariant() == "timefirst" ? "timeFirst" : "actionFirst";
                         break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
+                }
+            }
+            else if (section == "windowing")
+            {
+                switch (key)
+                {
+                    case "messageopenmode":
+                        config.Windowing.MessageOpenMode = value.ToLowerInvariant() switch
+                        {
+                            "tab"    => Models.MessageOpenMode.Tab,
+                            "window" => Models.MessageOpenMode.Window,
+                            _        => Models.MessageOpenMode.ReadingPane,
+                        };
+                        break;
+                    case "confirmclosetabwithunsaved":
+                        config.Windowing.ConfirmCloseTabWithUnsaved = ParseBool(value);
+                        break;
+                    case "tabsrememberacrossrestart":
+                        config.Windowing.TabsRememberAcrossRestart = ParseBool(value);
+                        break;
                 }
             }
             else if (section == "account" && acctGuid != Guid.Empty)
@@ -331,6 +356,27 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");
         sb.AppendLine("# Whether the first-run keyboard tutorial has been completed.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        // ── [windowing] ──────────────────────────────────────────────────────────
+
+        sb.AppendLine("[windowing]");
+        sb.AppendLine();
+
+        var modeStr = config.Windowing.MessageOpenMode switch
+        {
+            Models.MessageOpenMode.Tab    => "tab",
+            Models.MessageOpenMode.Window => "window",
+            _                             => "readingPane",
+        };
+        sb.AppendLine($"MessageOpenMode = {modeStr}");
+        sb.AppendLine("# Where Enter / click on a message opens it.");
+        sb.AppendLine("# Values: readingPane (default), tab, window.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ConfirmCloseTabWithUnsaved = {(config.Windowing.ConfirmCloseTabWithUnsaved ? "on" : "off")}");
+        sb.AppendLine("# Confirm before closing a tab with unsaved changes.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 

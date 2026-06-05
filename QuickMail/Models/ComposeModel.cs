@@ -3,8 +3,23 @@ using System.Collections.Generic;
 
 namespace QuickMail.Models;
 
+/// <summary>What kind of composition is being performed — drives the window/tab title prefix.</summary>
+public enum ComposeKind
+{
+    NewMessage,
+    Reply,
+    ReplyAll,
+    Forward,
+    EditDraft,
+    NewDraft,
+    EditTemplate,
+}
+
 public class ComposeModel
 {
+    /// <summary>What kind of composition this is; used to determine the window title prefix.</summary>
+    public ComposeKind Kind { get; set; } = ComposeKind.NewMessage;
+
     public Guid AccountId { get; set; }
     public string To { get; set; } = string.Empty;
     public string Cc { get; set; } = string.Empty;

@@ -263,6 +263,52 @@
 
                 </Grid>
             </TabItem>
+
+            <!-- Windowing Tab -->
+            <TabItem Header="_Windowing" AutomationProperties.Name="Windowing settings tab">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <!-- Message open mode -->
+                        <GroupBox Header="_Message Open Mode" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Message open mode settings">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="DimGray" FontSize="11"
+                                           Text="Choose where messages open when you press Enter or select one."/>
+                                <RadioButton Content="Reading _pane (default)"
+                                             IsChecked="{Binding IsReadingPaneMode, Mode=TwoWay}"
+                                             GroupName="MessageOpenMode"
+                                             AutomationProperties.Name="Reading pane — opens messages in the reading pane below the message list. This is the default behaviour."/>
+                                <TextBlock Text="Enter opens a message in the reading pane below the list."
+                                           Foreground="DimGray" FontSize="11" Margin="16,2,0,8"/>
+                                <RadioButton Content="_Tab"
+                                             IsChecked="{Binding IsTabMode, Mode=TwoWay}"
+                                             GroupName="MessageOpenMode"
+                                             AutomationProperties.Name="Tab — opens messages in a tab strip above the message list."/>
+                                <TextBlock Text="Enter opens a message as a new tab. Ctrl+Tab cycles tabs. Ctrl+W closes."
+                                           TextWrapping="Wrap"
+                                           Foreground="DimGray" FontSize="11" Margin="16,2,0,8"/>
+                                <RadioButton Content="_Window"
+                                             IsChecked="{Binding IsWindowMode, Mode=TwoWay}"
+                                             GroupName="MessageOpenMode"
+                                             AutomationProperties.Name="Window — opens each message in its own window."/>
+                                <TextBlock Text="Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window."
+                                           TextWrapping="Wrap"
+                                           Foreground="DimGray" FontSize="11" Margin="16,2,0,0"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Tab behaviour -->
+                        <GroupBox Header="_Tab Behaviour" Padding="10" Margin="0,0,0,0"
+                                  AutomationProperties.Name="Tab behaviour settings">
+                            <StackPanel>
+                                <CheckBox Content="_Confirm before closing a tab with unsaved changes"
+                                          IsChecked="{Binding ConfirmCloseTabWithUnsaved, Mode=TwoWay}"
+                                          AutomationProperties.Name="Show a confirmation dialog before closing a tab that has unsaved draft changes"/>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
         </TabControl>
 
         <!-- Buttons -->

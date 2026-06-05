@@ -25,7 +25,24 @@ public partial class ComposeViewModel : ObservableObject
     [ObservableProperty] private string _to = string.Empty;
     [ObservableProperty] private string _cc = string.Empty;
     [ObservableProperty] private string _bcc = string.Empty;
-    [ObservableProperty] private string _subject = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    private string _subject = string.Empty;
+
+    /// <summary>What kind of composition this is; drives the window title prefix.</summary>
+    public ComposeKind ComposeKind { get; private set; } = ComposeKind.NewMessage;
+
+    /// <summary>Dynamic window title: "{prefix} — {subject or Untitled}".</summary>
+    public string WindowTitle => ComposeKind switch
+    {
+        ComposeKind.Reply        => "Reply",
+        ComposeKind.ReplyAll     => "Reply All",
+        ComposeKind.Forward      => "Forward",
+        ComposeKind.EditDraft    => "Draft",
+        ComposeKind.NewDraft     => "Draft",
+        ComposeKind.EditTemplate => "Edit Template",
+        _                        => "Compose",
+    } + " — " + (string.IsNullOrWhiteSpace(Subject) ? "Untitled" : Subject.Trim());
     [ObservableProperty] private string _body = string.Empty;
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private bool _isBusy = false;
@@ -77,6 +94,8 @@ public partial class ComposeViewModel : ObservableObject
         _inReplyToMessageId = model.InReplyToMessageId;
         _draftUid           = model.DraftUid;
         _draftFolderName    = model.DraftFolderName;
+        ComposeKind         = model.Kind;
+        OnPropertyChanged(nameof(WindowTitle));
 
         To      = model.To;
         Cc      = model.Cc;
@@ -402,6 +421,7 @@ public partial class ComposeViewModel : ObservableObject
 
         return new ComposeModel
         {
+            Kind      = ComposeKind.Reply,
             AccountId = accountId,
             To = string.IsNullOrEmpty(detail.ReplyTo) ? detail.From : detail.ReplyTo,
             Subject = subject,
@@ -440,7 +460,8 @@ public partial class ComposeViewModel : ObservableObject
             .Select(g => g.First())
             .ToList();
 
-        model.Cc = string.Join(", ", recipients.Select(a => a.ToString()));
+        model.Cc   = string.Join(", ", recipients.Select(a => a.ToString()));
+        model.Kind = ComposeKind.ReplyAll;
         return model;
     }
 
@@ -458,9 +479,10 @@ public partial class ComposeViewModel : ObservableObject
 
         return new ComposeModel
         {
+            Kind      = ComposeKind.Forward,
             AccountId = accountId,
-            Subject = subject,
-            Body = header + detail.PlainTextBody
+            Subject   = subject,
+            Body      = header + detail.PlainTextBody
         };
     }
 }

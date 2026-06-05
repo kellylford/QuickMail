@@ -81,6 +81,11 @@ public class ConfigModel
     /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
     public bool TutorialCompleted { get; set; } = false;
 
+    // ── Windowing (Phase 6) ───────────────────────────────────────────────────────
+
+    /// <summary>Tab and window management preferences.</summary>
+    public WindowingPreferences Windowing { get; set; } = new();
+
     // ── Custom hotkey overrides ──────────────────────────────────────────────────
 
     /// <summary>User-defined keyboard shortcut overrides, stored in hotkeys.json.</summary>

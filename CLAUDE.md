@@ -244,10 +244,14 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | Key | Command ID | Title |
 |---|---|---|
 | Ctrl+0 | *(hardcoded)* | Focus toolbar |
-| Ctrl+1 | *(hardcoded)* | Focus account list |
-| Ctrl+2 / Ctrl+Y | `view.focusFolders` | Focus Folder Tree |
-| Ctrl+3 | *(hardcoded)* | Focus message list |
-| Ctrl+9 | `view.focusStatusBar` | Focus Status Bar |
+| Ctrl+1 | *(hardcoded)* | Focus account list (or tab 1 when tabs are open) |
+| Ctrl+2 / Ctrl+Y | `view.focusFolders` | Focus Folder Tree (or tab 2 when tabs are open) |
+| Ctrl+3 | *(hardcoded)* | Focus message list (or tab 3 when tabs are open) |
+| Ctrl+4–8 | *(hardcoded)* | Jump to tab 4–8 (when tabs are open) |
+| Ctrl+9 | *(hardcoded/registry)* | Jump to last tab (tabs open) or `view.focusStatusBar` (no tabs) |
+| Ctrl+Alt+1 | `view.focusAccounts` | Focus Account List (always) |
+| Ctrl+Alt+2 | *(hardcoded)* | Focus Folder Tree (always) |
+| Ctrl+Alt+3 | `view.focusMessages` | Focus Message List (always) |
 | F6 / Shift+F6 | *(hardcoded)* | Cycle panes |
 | Escape | *(hardcoded)* | Close reading pane |
 | Ctrl+Shift+P | *(hardcoded)* | Command Palette |
@@ -274,6 +278,16 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
 | Alt+Enter | `view.showProperties` | View Properties |
+| Ctrl+Tab | `tabs.next` | Next Tab |
+| Ctrl+Shift+Tab | `tabs.previous` | Previous Tab |
+| Ctrl+W | `tabs.close` | Close Tab |
+| Ctrl+Shift+` | `tabs.list` | Tab List… |
+| *(unassigned)* | `tabs.closeOthers` | Close Other Tabs |
+| *(unassigned)* | `tabs.moveLeft` | Move Tab Left |
+| *(unassigned)* | `tabs.moveRight` | Move Tab Right |
+| *(unassigned)* | `tabs.promote` | Move Tab to New Window |
+| *(unassigned)* | `mail.openInNewTab` | Open in New Tab |
+| *(unassigned)* | `mail.openInWindow` | Open in New Window |
 
 **Compose window shortcuts** (Alt+S, Ctrl+Enter, Ctrl+S, Ctrl+Shift+A, F7, Shift+F7, Alt+Y, Alt+U, Alt+M, Escape) are registered or hardcoded in `ComposeWindow.xaml.cs`. Registry-based ones appear in the compose window's command palette (`Ctrl+Shift+P`) but are **not** user-customisable via the Settings dialog. The main window's `CommandRegistry` and `hotkeys.json` do not include compose commands. `Ctrl+Enter` is hardcoded (like `Ctrl+Shift+P`) as a second send gesture so it does not create a duplicate "Send Message" entry in the palette.
 

@@ -416,6 +416,149 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    // ── Tab & Window Management (Phase 6) ────────────────────────────────────────
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowTabStrip))]
+    [NotifyPropertyChangedFor(nameof(ReadingPaneVisible))]
+    private ObservableCollection<MessageTabViewModel> _openTabs = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReadingPaneVisible))]
+    private MessageTabViewModel? _activeTab;
+
+    public bool ShowTabStrip => OpenTabs.Count > 0;
+
+    /// <summary>
+    /// True when the inline reading pane should be shown.
+    /// In ReadingPane mode this is driven by IsMessageOpen.
+    /// In Tab/Window mode the reading pane is driven by the active tab, but the
+    /// existing IsMessageOpen flag is still used as the gate (it is set when
+    /// the active tab activates its message).
+    /// </summary>
+    public bool ReadingPaneVisible => IsMessageOpen;
+
+    /// <summary>Current message open mode, read from config on startup.</summary>
+    public MessageOpenMode MessageOpenMode { get; private set; } = MessageOpenMode.ReadingPane;
+
+    // ── Tab commands ──────────────────────────────────────────────────────────────
+
+    public void OpenMessageTab(MailMessageSummary summary)
+    {
+        // Duplicate: activate the existing tab if already open.
+        var existing = OpenTabs.FirstOrDefault(t => t.Summary.UniqueId == summary.UniqueId
+                                                  && t.Summary.AccountId == summary.AccountId);
+        if (existing != null)
+        {
+            ActiveTab = existing;
+            return;
+        }
+
+        var tab = new MessageTabViewModel(summary)
+        {
+            SourceFolderName = summary.FolderName,
+            AccountId        = summary.AccountId,
+        };
+        tab.CloseRequested += t => CloseTab((MessageTabViewModel)t);
+        OpenTabs.Add(tab);
+        ActiveTab = tab;
+        OnPropertyChanged(nameof(ShowTabStrip));
+        Announce($"Opened tab: {tab.Title}. {OpenTabs.Count} tab{(OpenTabs.Count == 1 ? "" : "s")} open.");
+    }
+
+    public void CloseTab(MessageTabViewModel tab)
+    {
+        var idx = OpenTabs.IndexOf(tab);
+        if (idx < 0) return;
+
+        OpenTabs.Remove(tab);
+        OnPropertyChanged(nameof(ShowTabStrip));
+
+        var remaining = OpenTabs.Count;
+        Announce($"Closed tab: {tab.Title}. {remaining} tab{(remaining == 1 ? "" : "s")} remaining.");
+
+        if (ActiveTab == tab)
+        {
+            if (OpenTabs.Count == 0)
+            {
+                ActiveTab      = null;
+                IsMessageOpen  = false;
+                MessageDetail  = null;
+            }
+            else
+            {
+                // Activate the tab at the same position, or the last one.
+                ActiveTab = OpenTabs[Math.Min(idx, OpenTabs.Count - 1)];
+            }
+        }
+    }
+
+    public void ActivateNextTab()
+    {
+        if (OpenTabs.Count <= 1) return;
+        var idx = ActiveTab == null ? 0 : (OpenTabs.IndexOf(ActiveTab) + 1) % OpenTabs.Count;
+        ActiveTab = OpenTabs[idx];
+        Announce($"Tab {idx + 1} of {OpenTabs.Count}: {ActiveTab.Title}.");
+    }
+
+    public void ActivatePrevTab()
+    {
+        if (OpenTabs.Count <= 1) return;
+        var idx = ActiveTab == null ? OpenTabs.Count - 1
+                                    : (OpenTabs.IndexOf(ActiveTab) - 1 + OpenTabs.Count) % OpenTabs.Count;
+        ActiveTab = OpenTabs[idx];
+        Announce($"Tab {idx + 1} of {OpenTabs.Count}: {ActiveTab.Title}.");
+    }
+
+    public void ActivateTabByIndex(int oneBasedIndex)
+    {
+        if (oneBasedIndex < 1 || oneBasedIndex > OpenTabs.Count) return;
+        ActiveTab = OpenTabs[oneBasedIndex - 1];
+    }
+
+    public void ActivateLastTab()
+    {
+        if (OpenTabs.Count == 0) return;
+        ActiveTab = OpenTabs[^1];
+    }
+
+    public void MoveTabLeft()
+    {
+        if (ActiveTab == null) return;
+        var idx = OpenTabs.IndexOf(ActiveTab);
+        if (idx <= 0) return;
+        OpenTabs.Move(idx, idx - 1);
+        Announce($"Tab moved to position {idx}.");
+    }
+
+    public void MoveTabRight()
+    {
+        if (ActiveTab == null) return;
+        var idx = OpenTabs.IndexOf(ActiveTab);
+        if (idx < 0 || idx >= OpenTabs.Count - 1) return;
+        OpenTabs.Move(idx, idx + 1);
+        Announce($"Tab moved to position {idx + 2}.");
+    }
+
+    public void CloseAllOtherTabs()
+    {
+        if (ActiveTab == null || OpenTabs.Count <= 1) return;
+        var toClose = OpenTabs.Where(t => t != ActiveTab).ToList();
+        foreach (var t in toClose) OpenTabs.Remove(t);
+        OnPropertyChanged(nameof(ShowTabStrip));
+    }
+
+    /// <summary>
+    /// Raised to ask MainWindow to promote the given tab to a new MessageWindow.
+    /// </summary>
+    public event Action<MessageTabViewModel>? TabPromoteToWindowRequested;
+
+    public void PromoteActiveTabToWindow()
+    {
+        if (ActiveTab == null) return;
+        TabPromoteToWindowRequested?.Invoke(ActiveTab);
+    }
+
     /// <summary>When true the app was launched with --online: all folder/message data is fetched
     /// live from IMAP and nothing is read from or written to the local SQLite cache.</summary>
     public bool OnlineMode { get; }
@@ -453,6 +596,7 @@ public partial class MainViewModel : ObservableObject
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
+        MessageOpenMode = cfg.Windowing.MessageOpenMode;
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
 
         _syncService.FolderSynced    += OnFolderSynced;
@@ -3012,6 +3156,7 @@ public partial class MainViewModel : ObservableObject
 
             var model = new ComposeModel
             {
+                Kind            = ComposeKind.EditDraft,
                 AccountId       = summary.AccountId,
                 To              = detail.To,
                 Cc              = detail.Cc,

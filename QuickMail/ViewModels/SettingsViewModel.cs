@@ -52,6 +52,33 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _confirmEmptyTrash;
 
+    // ── Windowing ──────────────────────────────────────────────────────────────────
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReadingPaneMode))]
+    [NotifyPropertyChangedFor(nameof(IsTabMode))]
+    [NotifyPropertyChangedFor(nameof(IsWindowMode))]
+    private string _messageOpenMode = "readingPane";
+
+    public bool IsReadingPaneMode
+    {
+        get => MessageOpenMode == "readingPane";
+        set { if (value) MessageOpenMode = "readingPane"; }
+    }
+    public bool IsTabMode
+    {
+        get => MessageOpenMode == "tab";
+        set { if (value) MessageOpenMode = "tab"; }
+    }
+    public bool IsWindowMode
+    {
+        get => MessageOpenMode == "window";
+        set { if (value) MessageOpenMode = "window"; }
+    }
+
+    [ObservableProperty]
+    private bool _confirmCloseTabWithUnsaved = true;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLogFormatActionFirst))]
     [NotifyPropertyChangedFor(nameof(IsLogFormatTimeFirst))]
@@ -93,6 +120,13 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceSpellingSuggestions      = cfg.AnnounceSpellingSuggestions;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         LogFormat                        = cfg.LogFormat;
+        MessageOpenMode = cfg.Windowing.MessageOpenMode switch
+        {
+            Models.MessageOpenMode.Tab    => "tab",
+            Models.MessageOpenMode.Window => "window",
+            _                             => "readingPane",
+        };
+        ConfirmCloseTabWithUnsaved = cfg.Windowing.ConfirmCloseTabWithUnsaved;
 
         foreach (var cmd in registry.GetAll())
         {
@@ -126,6 +160,13 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceSpellingSuggestions      = AnnounceSpellingSuggestions;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.LogFormat                        = LogFormat;
+        cfg.Windowing.MessageOpenMode = MessageOpenMode switch
+        {
+            "tab"    => Models.MessageOpenMode.Tab,
+            "window" => Models.MessageOpenMode.Window,
+            _        => Models.MessageOpenMode.ReadingPane,
+        };
+        cfg.Windowing.ConfirmCloseTabWithUnsaved = ConfirmCloseTabWithUnsaved;
 
         cfg.CustomHotkeys = HotkeyRows
             .Where(r => r.HasCustomBinding)

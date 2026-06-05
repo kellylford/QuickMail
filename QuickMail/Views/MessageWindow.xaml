@@ -1,0 +1,119 @@
+<Window x:Class="QuickMail.Views.MessageWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:vm="clr-namespace:QuickMail.ViewModels"
+        mc:Ignorable="d"
+        Title="{Binding WindowTitle}"
+        Height="560" Width="720"
+        MinHeight="300" MinWidth="480"
+        WindowStartupLocation="Manual"
+        d:DataContext="{d:DesignInstance Type=vm:MessageWindowViewModel}"
+        Closing="OnClosing"
+        PreviewKeyDown="OnPreviewKeyDown">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Minimal toolbar -->
+        <ToolBarTray DockPanel.Dock="Top" IsLocked="True">
+            <ToolBar Band="1" BandIndex="1">
+                <Button x:Name="PrevButton"
+                        Content="◀ Previous"
+                        Command="{Binding PreviousMessageCommand}"
+                        Padding="6,2"
+                        ToolTip="Previous message (Alt+Left)"
+                        AutomationProperties.Name="Previous message"/>
+                <Button x:Name="NextButton"
+                        Content="Next ▶"
+                        Command="{Binding NextMessageCommand}"
+                        Padding="6,2"
+                        ToolTip="Next message (Alt+Right)"
+                        AutomationProperties.Name="Next message"/>
+                <Separator/>
+                <Button Content="Move to Main Window"
+                        Command="{Binding MoveToMainWindowCommand}"
+                        Padding="6,2"
+                        AutomationProperties.Name="Move this message to the main window as a tab"/>
+            </ToolBar>
+        </ToolBarTray>
+
+        <!-- Header fields -->
+        <Border DockPanel.Dock="Top"
+                BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+                Padding="8,6,8,6">
+            <StackPanel>
+                <TextBox x:Name="SubjectField"
+                         Text="{Binding MessageDetail.Subject, FallbackValue='', Mode=OneWay}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         BorderThickness="0" Background="Transparent"
+                         FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"
+                         AutomationProperties.Name="Subject"/>
+                <TextBox x:Name="FromField"
+                         Text="{Binding MessageDetail.From, FallbackValue='', Mode=OneWay}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         BorderThickness="0" Background="Transparent"
+                         Margin="0,2,0,0"
+                         AutomationProperties.Name="From"/>
+                <TextBox x:Name="ToField"
+                         Text="{Binding MessageDetail.To, FallbackValue='', Mode=OneWay}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         BorderThickness="0" Background="Transparent"
+                         AutomationProperties.Name="To"/>
+                <TextBox x:Name="CcField"
+                         Text="{Binding MessageDetail.Cc, FallbackValue='', Mode=OneWay}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         BorderThickness="0" Background="Transparent"
+                         AutomationProperties.Name="Cc">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding MessageDetail.Cc}" Value="">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding MessageDetail.Cc}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+                <TextBox x:Name="DateField"
+                         Text="{Binding MessageDetail.Date, StringFormat='{}{0:f}', FallbackValue='', Mode=OneWay}"
+                         IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                         BorderThickness="0" Background="Transparent"
+                         AutomationProperties.Name="Date"/>
+
+                <!-- Attachments -->
+                <ListBox x:Name="AttachmentList"
+                         ItemsSource="{Binding MessageDetail.Attachments}"
+                         SelectionMode="Single"
+                         BorderThickness="0"
+                         Margin="0,4,0,0"
+                         Visibility="{Binding MessageDetail.HasAttachments,
+                                      Converter={StaticResource BoolToVisibilityConverter},
+                                      FallbackValue=Collapsed}"
+                         KeyboardNavigation.TabNavigation="Once"
+                         KeyboardNavigation.DirectionalNavigation="Contained"
+                         AutomationProperties.Name="Attachments">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileSizeDisplay}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </StackPanel>
+        </Border>
+
+        <!-- Message body -->
+        <wv2:WebView2 x:Name="MessageBody"
+                      AutomationProperties.Name="Message body"
+                      KeyboardNavigation.IsTabStop="True"
+                      GotKeyboardFocus="MessageBody_GotKeyboardFocus"/>
+    </DockPanel>
+</Window>
