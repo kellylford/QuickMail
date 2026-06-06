@@ -34,7 +34,7 @@ public partial class ComposeViewModel : ObservableObject
     [ObservableProperty] private ObservableCollection<AttachmentModel> _attachments = [];
 
     private string? _inReplyToMessageId;
-    private uint? _draftUid;
+    private string? _draftMessageId;
     private string? _draftFolderName;
     private bool _isDirty;
     private bool _isSent;
@@ -75,7 +75,7 @@ public partial class ComposeViewModel : ObservableObject
     public void Seed(ComposeModel model)
     {
         _inReplyToMessageId = model.InReplyToMessageId;
-        _draftUid           = model.DraftUid;
+        _draftMessageId     = model.DraftMessageId;
         _draftFolderName    = model.DraftFolderName;
 
         To      = model.To;
@@ -99,7 +99,7 @@ public partial class ComposeViewModel : ObservableObject
 
         // Auto-append signature if this is a new compose (not a draft re-open) and the
         // account has a signature configured. Drafts already have the signature in the body.
-        if (model.DraftUid == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
+        if (model.DraftMessageId == null && SenderAccount != null && !string.IsNullOrWhiteSpace(SenderAccount.Signature))
         {
             var sig = SenderAccount.Signature;
             // Add separator if body already has content (reply/forward)
@@ -142,7 +142,7 @@ public partial class ComposeViewModel : ObservableObject
             }
 
             var compose = BuildComposeModel(account.Id);
-            _draftUid = await _imap.AppendDraftAsync(account.Id, compose, _draftUid, cts.Token);
+            _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, cts.Token);
             _isDirty = false;
             StatusText = "Draft saved.";
         }
@@ -213,12 +213,12 @@ public partial class ComposeViewModel : ObservableObject
             });
 
             // Delete the draft from the server (if one was saved)
-            if (_draftUid.HasValue && _draftFolderName != null)
+            if (!string.IsNullOrEmpty(_draftMessageId) && _draftFolderName != null)
             {
                 try
                 {
                     using var delCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-                    await _imap.MoveToTrashAsync(account.Id, _draftFolderName, _draftUid.Value, delCts.Token);
+                    await _imap.MoveToTrashAsync(account.Id, _draftFolderName, _draftMessageId, delCts.Token);
                 }
                 catch (Exception ex)
                 {
@@ -382,7 +382,7 @@ public partial class ComposeViewModel : ObservableObject
         Subject             = Subject,
         Body                = Body,
         InReplyToMessageId  = _inReplyToMessageId,
-        DraftUid            = _draftUid,
+        DraftMessageId      = _draftMessageId,
         DraftFolderName     = _draftFolderName,
         Attachments         = Attachments.ToList(),
     };
@@ -406,7 +406,7 @@ public partial class ComposeViewModel : ObservableObject
             To = string.IsNullOrEmpty(detail.ReplyTo) ? detail.From : detail.ReplyTo,
             Subject = subject,
             Body = attribution + quoted,
-            InReplyToMessageId = detail.MessageId
+            InReplyToMessageId = detail.InternetMessageId
         };
     }
 

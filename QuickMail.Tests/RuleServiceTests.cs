@@ -27,7 +27,7 @@ public class RuleServiceTests
     {
         return new MailMessageSummary
         {
-            UniqueId = uid,
+            MessageId = uid.ToString(),
             AccountId = accountId ?? Guid.NewGuid(),
             FolderName = folderName,
             From = from,
@@ -227,7 +227,7 @@ public class RuleServiceTests
 
         var result = svc.TestRule(rule, new[] { withAtt, withoutAtt });
         Assert.Single(result);
-        Assert.Equal(1u, result[0].UniqueId);
+        Assert.Equal("1", result[0].MessageId);
     }
 
     [Fact]
@@ -245,7 +245,7 @@ public class RuleServiceTests
 
         var result = svc.TestRule(rule, new[] { matchAll, matchSome });
         Assert.Single(result);
-        Assert.Equal(1u, result[0].UniqueId);
+        Assert.Equal("1", result[0].MessageId);
     }
 
     [Fact]

@@ -14,7 +14,7 @@ public class MessagePropertiesBuilderTests
     private static MailMessageSummary MakeSummary(string from = "alice@example.com", string to = "bob@example.com",
         string subject = "Hello", bool isRead = false) => new()
     {
-        UniqueId  = 1,
+        MessageId  = "1",
         AccountId = Guid.NewGuid(),
         FolderName = "INBOX",
         From    = from,
@@ -76,12 +76,12 @@ public class MessagePropertiesBuilderTests
         var s = MakeSummary();
         var d = new MailMessageDetail
         {
-            UniqueId    = s.UniqueId,
-            AccountId   = s.AccountId,
-            FolderName  = s.FolderName,
-            MessageId   = "<abc@example.com>",
-            Attachments = [new() { FileName = "file.pdf", FileSize = 1024 }],
-            HtmlBody    = "<p>Hello</p>",
+            MessageId        = s.MessageId,
+            AccountId        = s.AccountId,
+            FolderName       = s.FolderName,
+            InternetMessageId = "<abc@example.com>",
+            Attachments      = [new() { FileName = "file.pdf", FileSize = 1024 }],
+            HtmlBody         = "<p>Hello</p>",
         };
 
         var (_, sections) = MessagePropertiesBuilder.Build(s, d, "Work");
@@ -96,7 +96,7 @@ public class MessagePropertiesBuilderTests
         var s = MakeSummary();
         var d = new MailMessageDetail
         {
-            UniqueId   = s.UniqueId,
+            MessageId  = s.MessageId,
             AccountId  = s.AccountId,
             FolderName = s.FolderName,
             HtmlBody   = "<p>Hello</p>",
@@ -429,7 +429,7 @@ public class ConversationPropertiesBuilderTests
     private static MailMessageSummary MakeMsg(string from, bool isRead = false,
         DateTimeOffset? date = null) => new()
     {
-        UniqueId   = 1,
+        MessageId  = "1",
         AccountId  = Guid.NewGuid(),
         FolderName = "INBOX",
         From       = from,
@@ -524,7 +524,7 @@ public class SenderGroupPropertiesBuilderTests
 {
     private static MailMessageSummary MakeMsg(bool isRead = false) => new()
     {
-        UniqueId   = 1,
+        MessageId  = "1",
         AccountId  = Guid.NewGuid(),
         FolderName = "INBOX",
         From       = "alice@example.com",

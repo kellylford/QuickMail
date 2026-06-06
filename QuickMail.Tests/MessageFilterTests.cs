@@ -29,24 +29,24 @@ public class MessageFilterTests
         public Task<List<MailMessageSummary>> LoadAllSummariesAsync() => Task.FromResult(new List<MailMessageSummary>(_messages));
         public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId) => Task.FromResult(new List<MailMessageSummary>(_messages));
         public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>(_messages));
-        public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds) => Task.CompletedTask;
+        public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
         public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
-        public Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead) => Task.CompletedTask;
-        public Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, uint UniqueId)> items, bool isRead) => Task.CompletedTask;
-        public Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview) => Task.CompletedTask;
-        public Task UpdatePreviewsBatchAsync(Guid accountId, string folderName, IEnumerable<(uint UniqueId, string Preview)> updates) => Task.CompletedTask;
+        public Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead) => Task.CompletedTask;
+        public Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead) => Task.CompletedTask;
+        public Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview) => Task.CompletedTask;
+        public Task UpdatePreviewsBatchAsync(Guid accountId, string folderName, IEnumerable<(string MessageId, string Preview)> updates) => Task.CompletedTask;
         public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
         public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
-        public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, uint uniqueId) => Task.FromResult<MailMessageDetail?>(null);
-        public Task<uint> GetMaxUidAsync(Guid accountId, string folderName) => Task.FromResult(0u);
-        public Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<uint>());
+        public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
+        public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
+        public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
     private static MailMessageSummary MakeMsg(bool isRead = false, bool hasAttachments = false,
         bool isReplied = false, bool isForwarded = false, uint uid = 1)
-        => new() { UniqueId = uid, IsRead = isRead, HasAttachments = hasAttachments,
+        => new() { MessageId = uid.ToString(), IsRead = isRead, HasAttachments = hasAttachments,
                    IsReplied = isReplied, IsForwarded = isForwarded };
 
     private static readonly MailMessageSummary[] SampleMessages =

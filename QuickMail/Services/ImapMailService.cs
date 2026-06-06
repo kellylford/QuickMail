@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Globalization;
 using System.Linq;
 using System.Net.Sockets;
 using System.Threading;
@@ -253,7 +255,7 @@ public class ImapMailService : IMailService
     }
 
     public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(
-        Guid accountId, string folderName, uint sinceUid, int initialCount, CancellationToken ct = default)
+        Guid accountId, string folderName, string sinceMessageId, int initialCount, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
         var client = lease.Client;
@@ -267,7 +269,7 @@ public class ImapMailService : IMailService
                       | MessageSummaryItems.PreviewText;   // free if server supports PREVIEW
 
             IList<IMessageSummary> summaries;
-            if (sinceUid == 0)
+            if (sinceMessageId == "0")
             {
                 if (folder.Count == 0) return new List<MailMessageSummary>();
                 var count = initialCount > 0 ? initialCount : folder.Count;
@@ -276,6 +278,7 @@ public class ImapMailService : IMailService
             }
             else
             {
+                var sinceUid = uint.Parse(sinceMessageId, CultureInfo.InvariantCulture);
                 var range = new UniqueIdRange(new UniqueId(sinceUid + 1), UniqueId.MaxValue);
                 summaries = await folder.FetchAsync((IList<UniqueId>)range, items, _mailingListHeaders, ct);
             }
@@ -288,15 +291,15 @@ public class ImapMailService : IMailService
     // ── Message detail ───────────────────────────────────────────────────────────
 
     public Task<MailMessageDetail> GetMessageDetailAsync(
-        Guid accountId, string folderName, uint uid, CancellationToken ct = default) =>
-        GetMessageDetailCoreAsync(accountId, folderName, uid, markRead: true, ImapLeasePriority.Foreground, ct);
+        Guid accountId, string folderName, string messageId, CancellationToken ct = default) =>
+        GetMessageDetailCoreAsync(accountId, folderName, messageId, markRead: true, ImapLeasePriority.Foreground, ct);
 
     public Task<MailMessageDetail> PrefetchMessageDetailAsync(
-        Guid accountId, string folderName, uint uid, CancellationToken ct = default) =>
-        GetMessageDetailCoreAsync(accountId, folderName, uid, markRead: false, ImapLeasePriority.Background, ct);
+        Guid accountId, string folderName, string messageId, CancellationToken ct = default) =>
+        GetMessageDetailCoreAsync(accountId, folderName, messageId, markRead: false, ImapLeasePriority.Background, ct);
 
     private async Task<MailMessageDetail> GetMessageDetailCoreAsync(
-        Guid accountId, string folderName, uint uid,
+        Guid accountId, string folderName, string messageId,
         bool markRead, ImapLeasePriority priority, CancellationToken ct)
     {
         using var lease = await RentClientAsync(accountId, ct, priority);
@@ -307,7 +310,7 @@ public class ImapMailService : IMailService
 
         try
         {
-            var mailKitUid = new UniqueId(uid);
+            var mailKitUid = ToUid(messageId);
             var summaries  = await folder.FetchAsync(
                 new[] { mailKitUid },
                 MessageSummaryItems.UniqueId
@@ -317,7 +320,7 @@ public class ImapMailService : IMailService
                 ct);
 
             var s = summaries.FirstOrDefault()
-                ?? throw new InvalidOperationException($"Message UID {uid} not found.");
+                ?? throw new InvalidOperationException($"Message UID {messageId} not found.");
 
             string plainText = string.Empty;
             string htmlText  = string.Empty;
@@ -354,13 +357,13 @@ public class ImapMailService : IMailService
                 }
                 catch (Exception ex)
                 {
-                    LogService.Log($"ImapMailService: failed to parse calendar part for UID {uid}: {ex.Message}");
+                    LogService.Log($"ImapMailService: failed to parse calendar part for UID {messageId}: {ex.Message}");
                 }
             }
 
             return new MailMessageDetail
             {
-                UniqueId      = uid,
+                MessageId     = messageId,
                 AccountId     = accountId,
                 FolderName    = folderName,
                 From          = FormatAddressList(s.Envelope?.From),
@@ -370,7 +373,7 @@ public class ImapMailService : IMailService
                 Subject       = s.Envelope?.Subject ?? "(no subject)",
                 Date          = s.Envelope?.Date ?? DateTimeOffset.MinValue,
                 IsRead        = markRead || (s.Flags & MessageFlags.Seen) != 0,
-                MessageId     = s.Envelope?.MessageId ?? string.Empty,
+                InternetMessageId = s.Envelope?.MessageId ?? string.Empty,
                 PlainTextBody = plainText,
                 HtmlBody      = htmlText,
                 Attachments   = attachments,
@@ -382,28 +385,28 @@ public class ImapMailService : IMailService
 
     // ── Mutations ────────────────────────────────────────────────────────────────
 
-    public async Task MarkReadAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default)
+    public async Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try   { await folder.AddFlagsAsync(new UniqueId(uid), MessageFlags.Seen, true, ct); }
+        try   { await folder.AddFlagsAsync(ToUid(messageId), MessageFlags.Seen, true, ct); }
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    public async Task MarkReadBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
+    public async Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
-        if (uids.Count == 0) return;
+        if (messageIds.Count == 0) return;
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try   { await folder.AddFlagsAsync(uids.Select(u => new UniqueId(u)).ToList(), MessageFlags.Seen, true, ct); }
+        try   { await folder.AddFlagsAsync(messageIds.Select(ToUid).ToList(), MessageFlags.Seen, true, ct); }
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
+    public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
@@ -411,7 +414,7 @@ public class ImapMailService : IMailService
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
         try
         {
-            var uidList = uids.Select(u => new UniqueId(u)).ToList();
+            var uidList = messageIds.Select(ToUid).ToList();
             var trash   = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
             if (trash != null) await folder.MoveToAsync(uidList, trash, ct);
             else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
@@ -419,7 +422,7 @@ public class ImapMailService : IMailService
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    public async Task MoveToTrashAsync(Guid accountId, string folderName, uint uid, CancellationToken ct = default)
+    public async Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
@@ -428,8 +431,9 @@ public class ImapMailService : IMailService
         try
         {
             var trash = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
-            if (trash != null) await folder.MoveToAsync(new UniqueId(uid), trash, ct);
-            else               await folder.AddFlagsAsync(new UniqueId(uid), MessageFlags.Deleted, true, ct);
+            var mailKitUid = ToUid(messageId);
+            if (trash != null) await folder.MoveToAsync(mailKitUid, trash, ct);
+            else               await folder.AddFlagsAsync(mailKitUid, MessageFlags.Deleted, true, ct);
         }
         finally { await folder.CloseAsync(false, ct); }
     }
@@ -444,8 +448,8 @@ public class ImapMailService : IMailService
         return drafts?.FullName;
     }
 
-    public async Task<uint> AppendDraftAsync(
-        Guid accountId, ComposeModel draft, uint? replaceUid, CancellationToken ct = default)
+    public async Task<string> AppendDraftAsync(
+        Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client  = lease.Client;
@@ -456,12 +460,12 @@ public class ImapMailService : IMailService
 
         var msg = MimeMessageBuilder.Build(draft, account);
 
-        if (replaceUid.HasValue)
+        if (!string.IsNullOrEmpty(replaceMessageId))
         {
             await draftsFolder.OpenAsync(FolderAccess.ReadWrite, ct);
             try
             {
-                await draftsFolder.AddFlagsAsync(new UniqueId(replaceUid.Value), MessageFlags.Deleted, true, ct);
+                await draftsFolder.AddFlagsAsync(ToUid(replaceMessageId), MessageFlags.Deleted, true, ct);
                 await draftsFolder.ExpungeAsync(ct);
             }
             finally { await draftsFolder.CloseAsync(false, ct); }
@@ -472,7 +476,9 @@ public class ImapMailService : IMailService
         {
             var newUid = await draftsFolder.AppendAsync(msg, MessageFlags.Draft, ct);
             LogService.Log($"AppendDraft: saved draft to {draftsFolder.FullName} UID={newUid?.Id}");
-            return newUid?.Id ?? 0;
+            // Empty (not "0") signals "server didn't echo a UID" so the next save appends a new
+            // draft instead of issuing a delete against the invalid UID 0.
+            return newUid?.Id is uint id ? id.ToString(CultureInfo.InvariantCulture) : string.Empty;
         }
         finally { await draftsFolder.CloseAsync(false, ct); }
     }
@@ -504,25 +510,25 @@ public class ImapMailService : IMailService
 
     // ── Copy / Move messages ─────────────────────────────────────────────────────
 
-    public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default)
+    public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         var dest   = await client.GetFolderAsync(destinationFolder, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
-        try   { await folder.CopyToAsync(uids.Select(u => new UniqueId(u)).ToList(), dest, ct); }
+        try   { await folder.CopyToAsync(messageIds.Select(ToUid).ToList(), dest, ct); }
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<uint> uids, string destinationFolder, CancellationToken ct = default)
+    public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         var dest   = await client.GetFolderAsync(destinationFolder, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try   { await folder.MoveToAsync(uids.Select(u => new UniqueId(u)).ToList(), dest, ct); }
+        try   { await folder.MoveToAsync(messageIds.Select(ToUid).ToList(), dest, ct); }
         finally { await folder.CloseAsync(false, ct); }
     }
 
@@ -633,7 +639,7 @@ public class ImapMailService : IMailService
 
     // ── UID queries ──────────────────────────────────────────────────────────────
 
-    public async Task<IList<uint>> GetFolderUidsAsync(Guid accountId, string folderName, CancellationToken ct = default)
+    public async Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
         var client = lease.Client;
@@ -641,21 +647,21 @@ public class ImapMailService : IMailService
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            if (folder.Count == 0) return (IList<uint>)Array.Empty<uint>();
+            if (folder.Count == 0) return (IList<string>)Array.Empty<string>();
             var uids = await folder.SearchAsync(SearchQuery.All, ct);
-            return (IList<uint>)uids.Select(u => u.Id).ToList();
+            return (IList<string>)uids.Select(u => u.Id.ToString(CultureInfo.InvariantCulture)).ToList();
         }
         finally { await folder.CloseAsync(false, ct); }
     }
 
     // ── Body-download preview fallback (used when server lacks IMAP PREVIEW) ────
 
-    public async Task<IReadOnlyDictionary<uint, string>> FetchPreviewsAsync(
-        Guid accountId, string folderName, IList<uint> uids,
+    public async Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
+        Guid accountId, string folderName, IList<string> messageIds,
         int maxLines, CancellationToken ct = default)
     {
-        if (uids.Count == 0 || maxLines <= 0)
-            return new Dictionary<uint, string>();
+        if (messageIds.Count == 0 || maxLines <= 0)
+            return new Dictionary<string, string>();
 
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
         var client = lease.Client;
@@ -663,8 +669,8 @@ public class ImapMailService : IMailService
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            var result = new Dictionary<uint, string>();
-            var mailKitUids = uids.Select(u => new UniqueId(u)).ToList();
+            var result = new Dictionary<string, string>();
+            var mailKitUids = messageIds.Select(ToUid).ToList();
             var summaries   = await folder.FetchAsync(
                 mailKitUids,
                 MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure,
@@ -688,12 +694,12 @@ public class ImapMailService : IMailService
                     }
 
                     var preview = ExtractPreviewLines(text, maxLines);
-                    if (!string.IsNullOrEmpty(preview)) result[s.UniqueId.Id] = preview;
+                    if (!string.IsNullOrEmpty(preview)) result[s.UniqueId.Id.ToString(CultureInfo.InvariantCulture)] = preview;
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { LogService.Log($"FetchPreview/{s.UniqueId}", ex); }
             }
-            return (IReadOnlyDictionary<uint, string>)result;
+            return (IReadOnlyDictionary<string, string>)result;
         }
         finally { await folder.CloseAsync(false, ct); }
     }
@@ -823,7 +829,7 @@ public class ImapMailService : IMailService
     // ── Attachment download ───────────────────────────────────────────────────────
 
     public async Task<byte[]> DownloadAttachmentAsync(
-        Guid accountId, string folderName, uint uid, string partSpecifier, CancellationToken ct = default)
+        Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
@@ -831,14 +837,14 @@ public class ImapMailService : IMailService
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
         try
         {
-            var mailKitUid = new UniqueId(uid);
+            var mailKitUid = ToUid(messageId);
             var summaries  = await folder.FetchAsync(
                 new[] { mailKitUid },
                 MessageSummaryItems.UniqueId | MessageSummaryItems.BodyStructure,
                 ct);
 
             var s        = summaries.FirstOrDefault()
-                ?? throw new InvalidOperationException($"Message UID {uid} not found.");
+                ?? throw new InvalidOperationException($"Message UID {messageId} not found.");
             var bodyPart = FindBodyPartBySpecifier(s.Body, partSpecifier)
                 ?? throw new InvalidOperationException($"Body part '{partSpecifier}' not found.");
 
@@ -1183,10 +1189,18 @@ public class ImapMailService : IMailService
         }
     }
 
+    // IMAP message keys are decimal UID strings (MailMessageSummary.MessageId). Parse one back to
+    // a MailKit UniqueId at the service boundary.
+    private static UniqueId ToUid(string messageId)
+    {
+        Debug.Assert(!string.IsNullOrEmpty(messageId), "IMAP MessageId must be a non-empty decimal UID string");
+        return new UniqueId(uint.Parse(messageId, CultureInfo.InvariantCulture));
+    }
+
     private static MailMessageSummary SummaryToModel(IMessageSummary s, Guid accountId, string folderName) =>
         new()
         {
-            UniqueId    = s.UniqueId.Id,
+            MessageId   = s.UniqueId.Id.ToString(CultureInfo.InvariantCulture),
             AccountId   = accountId,
             FolderName  = folderName,
             From        = FormatAddressListDisplay(s.Envelope?.From),
@@ -1331,7 +1345,7 @@ public class ImapMailService : IMailService
                     ? mb.Name
                     : a.ToString()));
 
-    public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<uint> uids, CancellationToken ct = default)
+    public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
@@ -1339,7 +1353,7 @@ public class ImapMailService : IMailService
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
         try
         {
-            var uidList = uids.Select(u => new UniqueId(u)).ToList();
+            var uidList = messageIds.Select(ToUid).ToList();
             await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
             await folder.ExpungeAsync(ct);
         }

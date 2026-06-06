@@ -13,7 +13,7 @@ public class RulesManagerViewModelTests
     private static MailMessageSummary MakeMsg(string from = "alice@example.com", Guid? accountId = null)
         => new()
         {
-            UniqueId = 1,
+            MessageId = "1",
             AccountId = accountId ?? Guid.NewGuid(),
             FolderName = "INBOX",
             From = from,

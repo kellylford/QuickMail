@@ -1615,7 +1615,7 @@ public partial class MainWindow : Window
         if (!completed)
         {
             MessageBody.CoreWebView2.NavigationCompleted -= OnNavigated;
-            LogService.Log($"ShowMessageBody: WebView navigation timed out for UID {detail.UniqueId}");
+            LogService.Log($"ShowMessageBody: WebView navigation timed out for UID {detail.MessageId}");
         }
 
         if (renderVersion != _messageBodyRenderVersion)
