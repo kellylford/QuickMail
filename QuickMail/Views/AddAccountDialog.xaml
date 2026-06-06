@@ -25,6 +25,19 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
 
+                <!-- Backend selector — shown only when the feature gate offers more than one backend.
+                     Default users (single backend) see no extra UI, identical to before. -->
+                <StackPanel Visibility="{Binding ShowBackendPicker, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock x:Name="LblBackend" Text="Account _Type:" Margin="0,0,0,2"/>
+                    <ComboBox x:Name="BackendComboBox"
+                              ItemsSource="{Binding AvailableBackends}"
+                              SelectedItem="{Binding SelectedBackend, Mode=TwoWay}"
+                              SelectionChanged="BackendComboBox_SelectionChanged"
+                              AutomationProperties.LabeledBy="{Binding ElementName=LblBackend}"
+                              AutomationProperties.Name="Account type"/>
+                    <Separator Margin="0,12"/>
+                </StackPanel>
+
                 <TextBlock Text="Account Details" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
 
                 <TextBlock x:Name="LblAccountName" Text="_Account Name:" Margin="0,4,0,2"/>
@@ -72,6 +85,9 @@
                             HorizontalAlignment="Left" MinWidth="200" TabIndex="5"/>
                 </StackPanel>
 
+                <!-- IMAP + SMTP server settings — collapsed for Microsoft Graph accounts,
+                     which authenticate via OAuth and need no host configuration. -->
+                <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
                 <Separator Margin="0,12"/>
 
                 <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
@@ -119,6 +135,7 @@
                           IsChecked="{Binding SmtpAcceptInvalidCert}"
                           AutomationProperties.Name="SMTP accept invalid SSL certificates"
                           Margin="0,0,0,6" TabIndex="10"/>
+                </StackPanel>
 
                 <Separator Margin="0,6"/>
 

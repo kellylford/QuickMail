@@ -1,4 +1,4 @@
-using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -7,23 +7,60 @@ namespace QuickMail.ViewModels;
 
 public partial class AddAccountViewModel : AccountEditorViewModel
 {
-    public AddAccountViewModel(IMailService mailService, IOAuthService oauth)
-        : base(mailService, oauth) { }
+    public AddAccountViewModel(IFeatureGate gate, IMailService mailService, IOAuthService oauth)
+        : base(mailService, oauth)
+    {
+        var backends = new List<BackendKindOption>
+        {
+            new(BackendKind.ImapSmtp, "Standard IMAP/SMTP"),
+        };
+        if (gate.IsEnabled(FeatureFlag.GraphBackend))
+            backends.Add(new(BackendKind.MicrosoftGraph, "Microsoft 365 / Outlook.com"));
+
+        AvailableBackends = backends;
+        _selectedBackend = backends[0];
+    }
+
+    /// <summary>Backend options offered in the dialog, derived from the feature gate.</summary>
+    public IReadOnlyList<BackendKindOption> AvailableBackends { get; }
+
+    /// <summary>
+    /// True when more than one backend is available — the dialog renders a combo box. When only
+    /// one option exists (the default), it renders a static label to reduce clutter.
+    /// </summary>
+    public bool ShowBackendPicker => AvailableBackends.Count > 1;
+
+    [ObservableProperty]
+    private BackendKindOption _selectedBackend;
+
+    partial void OnSelectedBackendChanged(BackendKindOption value)
+    {
+        BackendKind = value?.Kind ?? BackendKind.ImapSmtp;
+        if (BackendKind == BackendKind.MicrosoftGraph)
+        {
+            // Graph accounts authenticate via OAuth and need no IMAP/SMTP host configuration.
+            AuthType = AuthType.OAuth2Microsoft;
+            ImapHost = string.Empty;
+            SmtpHost = string.Empty;
+            Password = string.Empty;
+        }
+    }
 
     protected override void OnAuthTypeChangedInternal(AuthType value)
     {
-        if (value == AuthType.OAuth2Microsoft)
+        // Auto-fill personal Outlook.com IMAP/SMTP settings only for the IMAP backend — a Graph
+        // account also uses OAuth but must NOT get IMAP host defaults.
+        if (value == AuthType.OAuth2Microsoft && BackendKind == BackendKind.ImapSmtp)
         {
-            // Personal Outlook.com IMAP/SMTP server settings
-            ImapHost             = "outlook.office365.com";
-            ImapPort             = 993;
-            ImapUseSsl           = true;
+            ImapHost              = "outlook.office365.com";
+            ImapPort              = 993;
+            ImapUseSsl            = true;
             ImapAcceptInvalidCert = false;
-            SmtpHost             = "smtp-mail.outlook.com";
-            SmtpPort             = 587;
-            SmtpUseSsl           = false;
+            SmtpHost              = "smtp-mail.outlook.com";
+            SmtpPort              = 587;
+            SmtpUseSsl            = false;
             SmtpAcceptInvalidCert = false;
-            Password             = string.Empty;
+            Password              = string.Empty;
         }
     }
 
@@ -33,6 +70,7 @@ public partial class AddAccountViewModel : AccountEditorViewModel
         DisplayName = DisplayName,
         Username = Username,
         AuthType = AuthType,
+        BackendKind = BackendKind,
         ImapHost = ImapHost,
         ImapPort = ImapPort,
         ImapUseSsl = ImapUseSsl,

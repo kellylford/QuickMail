@@ -77,7 +77,7 @@ public class ViewModelConstructionTests
     {
         var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
         var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
-        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2);
+        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate());
         Assert.NotNull(vm);
     }
 
@@ -242,7 +242,7 @@ public class XamlParseTests
         var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
         // Constructing MainWindow triggers InitializeComponent() which is the real XAML parse.
         var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
-            new StubOAuthService(), registry, contacts, config, store, new StubViewService(), new StubRuleService(), templates);
+            new StubOAuthService(), registry, contacts, config, store, new StubViewService(), new StubRuleService(), templates, new StubFeatureGate());
         Assert.NotNull(window);
         window.Close();
     }
@@ -264,8 +264,22 @@ public class XamlParseTests
         EnsureApplication();
         var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
         var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
-        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2);
+        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate());
         var window = new AccountManagerDialog(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
+    public void AddAccountDialog_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var (imap, _, _, _, _, _, _, _, _) = MakeServices();
+        // Gate ON so the backend combo and its bindings (AvailableBackends / SelectedBackend /
+        // ShowBackendPicker / IsImapBackend) are exercised during the XAML parse.
+        var gate = new StubFeatureGate { [FeatureFlag.GraphBackend] = true };
+        var vm = new AddAccountViewModel(gate, imap, new StubOAuthService());
+        var window = new AddAccountDialog(vm);
         Assert.NotNull(window);
         window.Close();
     }

@@ -204,3 +204,13 @@ sealed class StubTemplateService : ITemplateService
     public Task UpdateAsync(MessageTemplate template) => Task.CompletedTask;
     public Task DeleteAsync(int id) => Task.CompletedTask;
 }
+
+sealed class StubFeatureGate : IFeatureGate
+{
+    private readonly Dictionary<FeatureFlag, bool> _flags = new();
+
+    /// <summary>Enable/disable a flag for the test, e.g. <c>gate[FeatureFlag.GraphBackend] = true;</c></summary>
+    public bool this[FeatureFlag flag] { set => _flags[flag] = value; }
+
+    public bool IsEnabled(FeatureFlag flag) => _flags.TryGetValue(flag, out var v) && v;
+}

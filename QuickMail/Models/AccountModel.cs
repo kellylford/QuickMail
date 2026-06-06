@@ -14,6 +14,12 @@ public partial class AccountModel : ObservableObject
     public string Username { get; set; } = string.Empty;
     public AuthType AuthType { get; set; } = AuthType.Password;
 
+    /// <summary>Which protocol stack this account uses. Fixed at account creation.</summary>
+    public BackendKind BackendKind { get; set; } = BackendKind.ImapSmtp;
+
+    /// <summary>Optional Azure AD tenant ID for Graph accounts. Null = "common" authority.</summary>
+    public string? TenantId { get; set; }
+
     // IMAP
     public string ImapHost { get; set; } = string.Empty;
     public int ImapPort { get; set; } = 993;

@@ -159,6 +159,11 @@ public class ConfigService : IConfigService
                     if (!config.Accounts.ContainsKey(acctGuid))
                         config.Accounts[acctGuid] = new AccountOverrideConfig();
                 }
+                else if (header == "features")
+                {
+                    section  = "features";
+                    acctGuid = Guid.Empty;
+                }
                 else
                 {
                     section = null;
@@ -170,8 +175,9 @@ public class ConfigService : IConfigService
             var eq = line.IndexOf('=');
             if (eq < 0) continue;
 
-            var key   = line[..eq].Trim().ToLowerInvariant();
-            var value = line[(eq + 1)..].Trim();
+            var rawKey = line[..eq].Trim();
+            var key    = rawKey.ToLowerInvariant();
+            var value  = line[(eq + 1)..].Trim();
 
             if (section == "global")
             {
@@ -225,6 +231,11 @@ public class ConfigService : IConfigService
                         if (int.TryParse(value, out var pl)) ovr.PreviewLines = Math.Max(0, pl);
                         break;
                 }
+            }
+            else if (section == "features")
+            {
+                // Preserve the original key case so IFeatureGate matches FeatureFlag.ToString().
+                config.Features[rawKey] = value;
             }
         }
 
@@ -348,6 +359,18 @@ public class ConfigService : IConfigService
                 sb.AppendLine("# Override preview lines for this account. Remove to use global setting.");
                 sb.AppendLine();
             }
+        }
+
+        // ── [features] ─────────────────────────────────────────────────────────────
+        // Only written when at least one flag has been set, so the default config stays clean.
+        if (config.Features.Count > 0)
+        {
+            sb.AppendLine("[features]");
+            sb.AppendLine("# Experimental feature flags. Values: true, false.");
+            sb.AppendLine();
+            foreach (var (name, value) in config.Features)
+                sb.AppendLine($"{name} = {value}");
+            sb.AppendLine();
         }
 
         return sb.ToString();

@@ -73,6 +73,7 @@ public partial class MainWindow : Window
     private readonly ICredentialService _credentials;
     private readonly IMailService _imap;
     private readonly IOAuthService _oauth;
+    private readonly IFeatureGate _featureGate;
     private readonly ICommandRegistry _registry;
     private bool _webViewReady;
     private string _typeAheadBuffer = string.Empty;
@@ -140,7 +141,8 @@ public partial class MainWindow : Window
         ILocalStoreService localStore,
         IViewService viewService,
         IRuleService ruleService,
-        ITemplateService templateService)
+        ITemplateService templateService,
+        IFeatureGate featureGate)
     {
         _vm = vm;
         _smtp = smtp;
@@ -155,6 +157,7 @@ public partial class MainWindow : Window
         _viewService = viewService;
         _ruleService = ruleService;
         _templateService = templateService;
+        _featureGate = featureGate;
 
         InitializeComponent();
         DataContext = vm;
@@ -3290,7 +3293,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManager()
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate);
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         if (dialog.ShowDialog() == true)
             _vm.RefreshAccountList();
@@ -3298,7 +3301,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManagerForAccount(AccountModel account)
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate);
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);

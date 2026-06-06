@@ -16,6 +16,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     private readonly ILocalStoreService _localStore;
     private readonly IConfigService _configService;
     private readonly IOAuthService _oauth;
+    private readonly IFeatureGate _featureGate;
 
     [ObservableProperty]
     private ObservableCollection<AccountModel> _accounts = [];
@@ -32,7 +33,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         IMailService imap,
         IOAuthService oauth,
         ILocalStoreService localStore,
-        IConfigService configService)
+        IConfigService configService,
+        IFeatureGate featureGate)
         : base(imap, oauth)
     {
         _accountService = accountService;
@@ -40,6 +42,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _oauth          = oauth;
         _localStore     = localStore;
         _configService  = configService;
+        _featureGate    = featureGate;
         Accounts = new ObservableCollection<AccountModel>(accountService.LoadAccounts());
     }
 
@@ -65,7 +68,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         StatusText = string.Empty;
     }
 
-    public AddAccountViewModel CreateAddAccountViewModel() => new(MailService, OAuthService);
+    public AddAccountViewModel CreateAddAccountViewModel() => new(_featureGate, MailService, OAuthService);
 
     public void CommitNewAccount(AccountModel account, string password)
     {

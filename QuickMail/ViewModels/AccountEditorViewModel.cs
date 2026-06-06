@@ -37,6 +37,17 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(AuthTypeIndex))]
     private AuthType _authType = AuthType.Password;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsGraphBackend))]
+    [NotifyPropertyChangedFor(nameof(IsImapBackend))]
+    private BackendKind _backendKind = BackendKind.ImapSmtp;
+
+    /// <summary>True when this account uses the Microsoft Graph backend (drives IMAP/SMTP field visibility).</summary>
+    public bool IsGraphBackend => BackendKind == BackendKind.MicrosoftGraph;
+
+    /// <summary>True when this account uses the standard IMAP/SMTP backend.</summary>
+    public bool IsImapBackend => BackendKind == BackendKind.ImapSmtp;
+
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private bool   _isBusy = false;
 
@@ -89,6 +100,14 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [RelayCommand]
     private async Task TestConnectionAsync()
     {
+        // Branch on backend before the IMAP-specific validation. Graph accounts have no IMAP
+        // host/port; their connectivity probe (GET /me) lands with the Graph backend in PR 4.
+        if (IsGraphBackend)
+        {
+            StatusText = "Connection testing for Microsoft 365 accounts is available once the Graph backend ships.";
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(Username))
         {
             StatusText = "Fill in IMAP host and username first.";

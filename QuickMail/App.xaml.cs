@@ -72,8 +72,14 @@ public partial class App : Application
             var credentialService = new CredentialService();
             var oauthService      = new OAuthService(profile);
             var configService     = new ConfigService(profile);
-            var mailService       = new ImapMailService(oauthService, configService);
+            var imapBackend       = new ImapMailService(oauthService, configService);
             var smtpService       = new SmtpService(oauthService);
+
+            // Per-account mail backend router. v0.7 ships a single backend (IMAP); PR 4 adds Graph
+            // and routes Microsoft 365 accounts to it. Every existing account binds to IMAP here.
+            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend });
+            foreach (var account in accountService.LoadAccounts())
+                mailRouter.RegisterAccount(account.Id, imapBackend);
 
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
@@ -81,12 +87,15 @@ public partial class App : Application
 
             var contactService = new ContactService(profile);
             var templateService = new TemplateService(profile);
-            var ruleService = new RuleService(mailService, localStore, profile.ProfileDir);
-            var syncService = new SyncService(mailService, localStore, configService, ruleService);
+            var ruleService = new RuleService(mailRouter, localStore, profile.ProfileDir);
+            var syncService = new SyncService(mailRouter, localStore, configService, ruleService);
 
             var startupCfg = configService.Load();
             Views.AccessibilityHelper.Configure(startupCfg);
             LogService.Format = startupCfg.LogFormat;
+
+            // Feature gate: CLI --feature flags > config.ini [features] section > built-in defaults.
+            var featureGate = new ConfigFeatureGate(startupCfg, ParseFeatureFlags(e.Args));
 
             var commandRegistry = new CommandRegistry();
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
@@ -94,11 +103,11 @@ public partial class App : Application
             var viewService = new ViewService(profile);
 
             var mainVm = new MainViewModel(
-                mailService, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
+                mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode);
             mainVm.LoadAccountList();
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailService, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate);
             mainWindow.Show();
         }
         catch (Exception ex)
@@ -115,6 +124,17 @@ public partial class App : Application
     /// Parses --profileDir from args, validates the path, and returns a ProfileContext.
     /// Returns null (and shows an error dialog) if the path is unusable.
     /// </summary>
+    /// <summary>
+    /// Parses repeated <c>--feature &lt;Name&gt;</c> CLI flags. Each occurrence enables the named
+    /// feature gate for this run (highest precedence, above config.ini and built-in defaults).
+    /// </summary>
+    private static System.Collections.Generic.IEnumerable<string> ParseFeatureFlags(string[] args)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+            if (args[i].Equals("--feature", StringComparison.OrdinalIgnoreCase))
+                yield return args[i + 1];
+    }
+
     private static bool IsHelpRequest(string[] args)
     {
         var helpFlags = new[] { "--help", "-help", "-h", "/?" };

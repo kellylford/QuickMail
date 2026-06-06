@@ -86,6 +86,14 @@ public class ConfigModel
     /// <summary>User-defined keyboard shortcut overrides, stored in hotkeys.json.</summary>
     public List<HotkeyBinding> CustomHotkeys { get; set; } = [];
 
+    // ── Feature flags ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raw key/value pairs from the config.ini [features] section (e.g. "GraphBackend" = "true").
+    /// Resolved through <see cref="QuickMail.Services.IFeatureGate"/>; absent keys fall back to built-in defaults.
+    /// </summary>
+    public Dictionary<string, string> Features { get; set; } = [];
+
     // ── Per-account overrides ─────────────────────────────────────────────────────
 
     public Dictionary<Guid, AccountOverrideConfig> Accounts { get; set; } = [];

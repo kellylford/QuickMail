@@ -400,6 +400,7 @@ public class MailServiceRouter : IMailService
 - Router itself implements `IMailService` so `MainViewModel`, `SyncService`, `RuleService` are unchanged — they always saw `IMailService`.
 - Backends are constructed once in `App.xaml.cs` and registered per-account at account load.
 - `RegisterAccount` is idempotent — re-registration replaces the binding.
+- **PR 3 implementation note:** `For()` falls back to the first (default) backend for any unregistered account rather than throwing. In v0.7 the only backend is IMAP, so runtime-added accounts route correctly without plumbing the router through the VM/View layer (QuickMail has no `MainViewModel.AddAccountAsync` hook; accounts are added via the Account Manager dialog and picked up by `RefreshAccountList`). PR 4 (when a second backend exists) must register Graph accounts explicitly at add time, since the fallback assumes IMAP.
 
 ### 6.5 `MailMessageSummary.cs` — string MessageId
 
