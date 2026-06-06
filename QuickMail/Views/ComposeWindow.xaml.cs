@@ -17,6 +17,38 @@ using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
 
+/// <summary>
+/// A single item in the autocomplete suggestion list. Wraps either a
+/// <see cref="ContactModel"/> (one address) or a <see cref="GroupModel"/>
+/// (expands to all member addresses on accept).
+/// </summary>
+internal sealed class AddressSuggestion
+{
+    public ContactModel? Contact { get; }
+    public GroupModel?   Group   { get; }
+    public bool IsGroup => Group is not null;
+
+    /// <summary>Bold first line shown in the popup row.</summary>
+    public string PrimaryText => IsGroup
+        ? Group!.Name
+        : string.IsNullOrWhiteSpace(Contact!.DisplayName) ? Contact.EmailAddress : Contact.DisplayName;
+
+    /// <summary>Dimmed second line shown below the primary text.</summary>
+    public string SecondaryText => IsGroup
+        ? $"{Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")} — group"
+        : Contact!.EmailAddress;
+
+    /// <summary>Full accessible name read by the screen reader for the list item.</summary>
+    public string Display => IsGroup
+        ? $"{Group!.Name}, group, {Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")}"
+        : string.IsNullOrWhiteSpace(Contact!.DisplayName)
+            ? Contact.EmailAddress
+            : $"{Contact.DisplayName} {Contact.EmailAddress}";
+
+    public AddressSuggestion(ContactModel c) { Contact = c; }
+    public AddressSuggestion(GroupModel g)   { Group   = g; }
+}
+
 public partial class ComposeWindow : Window
 {
     private readonly ComposeViewModel   _vm;
@@ -132,16 +164,27 @@ public partial class ComposeWindow : Window
 
         try
         {
-            var results = await _contactService.SearchContactsAsync(searchToken, _autocompleteCts.Token);
-            if (results.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
+            var ct = _autocompleteCts.Token;
+            // Run both searches concurrently (both are cache-backed so fast).
+            var contactTask = _contactService.SearchContactsAsync(searchToken, ct);
+            var groupTask   = _contactService.SearchGroupsAsync(searchToken, ct);
+            await Task.WhenAll(contactTask, groupTask);
 
-            SuggestionList.ItemsSource = results;
+            // Groups appear first: picking a group is more efficient than picking
+            // many individuals. Empty groups are already excluded by SearchGroupsAsync.
+            var combined = groupTask.Result.Select(g => new AddressSuggestion(g))
+                .Concat(contactTask.Result.Select(c => new AddressSuggestion(c)))
+                .ToList();
+
+            if (combined.Count == 0) { AutoCompletePopup.IsOpen = false; return; }
+
+            SuggestionList.ItemsSource        = combined;
             AutoCompletePopup.PlacementTarget = _activeAddressControl;
             AutoCompletePopup.Placement       = PlacementMode.Bottom;
             AutoCompletePopup.IsOpen          = true;
 
             AccessibilityHelper.Announce(this,
-                results.Count == 1 ? "1 suggestion" : $"{results.Count} suggestions",
+                combined.Count == 1 ? "1 suggestion" : $"{combined.Count} suggestions",
                 category: AnnouncementCategory.Result);
         }
         catch (OperationCanceledException)
@@ -216,8 +259,8 @@ public partial class ComposeWindow : Window
             // still routing — that mid-event transition is what triggers the default
             // button.
             e.Handled = true;
-            if (SuggestionList.SelectedItem is ContactModel c)
-                Dispatcher.InvokeAsync(() => AcceptSuggestion(c), DispatcherPriority.Input);
+            if (SuggestionList.SelectedItem is AddressSuggestion s)
+                Dispatcher.InvokeAsync(() => AcceptSuggestion(s), DispatcherPriority.Input);
         }
         else if (e.Key == Key.Escape)
         {
@@ -235,14 +278,59 @@ public partial class ComposeWindow : Window
 
     internal void SuggestionList_MouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
-        if (SuggestionList.SelectedItem is ContactModel c) AcceptSuggestion(c);
+        if (SuggestionList.SelectedItem is AddressSuggestion s) AcceptSuggestion(s);
     }
 
-    private void AcceptSuggestion(ContactModel contact)
+    private void AcceptSuggestion(AddressSuggestion suggestion)
     {
         if (_activeAddressControl == null) return;
-        _activeAddressControl.AcceptSuggestion(contact.DisplayName ?? string.Empty, contact.EmailAddress);
+        if (suggestion.IsGroup)
+            AcceptGroupSuggestion(suggestion.Group!);
+        else
+            AcceptContactSuggestion(suggestion.Contact!);
         AutoCompletePopup.IsOpen = false;
+    }
+
+    private void AcceptContactSuggestion(ContactModel contact)
+    {
+        _activeAddressControl!.AcceptSuggestion(contact.DisplayName ?? string.Empty, contact.EmailAddress);
+    }
+
+    /// <summary>
+    /// Expands a group suggestion into individual address chips — one per resolved
+    /// member. The input text is cleared on the first chip (via AcceptSuggestion on
+    /// TokenizedAddressBox) and subsequent members are added via AddAddress. Async
+    /// because loading the contact list is cache-backed but needs to be awaited.
+    /// </summary>
+    private async void AcceptGroupSuggestion(GroupModel group)
+    {
+        // Capture the target box before any await so it cannot change out from under us.
+        var targetBox = _activeAddressControl;
+        if (targetBox == null) return;
+
+        var allContacts = await _contactService.LoadAllContactsAsync();
+        var byId = allContacts.ToDictionary(c => c.Id);
+        var members = group.MemberContactIds
+            .Where(id => byId.ContainsKey(id))
+            .Select(id => byId[id])
+            .OrderByDescending(c => c.LastUsedTicks)
+            .ThenBy(c => c.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (members.Count == 0) return;
+
+        // First member clears the partial input text; remaining just add chips.
+        targetBox.AcceptSuggestion(members[0].DisplayName ?? string.Empty, members[0].EmailAddress);
+        for (int i = 1; i < members.Count; i++)
+            targetBox.AddAddress(members[i].DisplayName ?? string.Empty, members[i].EmailAddress);
+
+        _ = _contactService.TouchGroupAsync(group.Id);
+
+        AccessibilityHelper.Announce(this,
+            members.Count == 1
+                ? $"Inserted 1 address from group '{group.Name}'"
+                : $"Inserted {members.Count} addresses from group '{group.Name}'",
+            category: AnnouncementCategory.Result);
     }
 
     // ── Address helpers ───────────────────────────────────────────────────────
@@ -727,6 +815,14 @@ public partial class ComposeWindow : Window
         var win = new AddressBookWindow(vm) { Owner = this };
         win.ShowDialog();
     }
+
+    /// <summary>
+    /// Adds an address token to the To field. Called by <c>MainWindow</c> when
+    /// the address book is opened standalone and the user picks a contact or group.
+    /// </summary>
+    public void AddToAddress(string name, string email)  => ToBox.AddAddress(name, email);
+    public void AddCcAddress(string name, string email)  => CcBox.AddAddress(name, email);
+    public void AddBccAddress(string name, string email) => BccBox.AddAddress(name, email);
 
     private void RepeatSpellingAnnouncement()
     {

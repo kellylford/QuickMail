@@ -379,6 +379,12 @@
                               IsChecked="{Binding IsFilterForwarded, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="forwarded"/>
+                    <Separator/>
+                    <MenuItem Header="To _Me"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterToMe, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="tome"/>
                 </MenuItem>
                 <MenuItem Header="S_ort">
                     <MenuItem Header="Newest _First"
@@ -837,7 +843,8 @@
                                                   FallbackValue=Collapsed}"
                                      KeyboardNavigation.TabNavigation="Once"
                                      KeyboardNavigation.DirectionalNavigation="Contained"
-                                     AutomationProperties.Name="Attachments">
+                                     AutomationProperties.Name="Attachments"
+                                     PreviewKeyDown="ReadingPaneAttachmentList_PreviewKeyDown">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileSizeDisplay}"/>
@@ -1389,24 +1396,24 @@
                    Grid.Row="3"
                    KeyboardNavigation.TabNavigation="None"
                    KeyboardNavigation.DirectionalNavigation="Contained"
-                   AutomationProperties.Name="{Binding StatusText, StringFormat='Status bar — {0}', FallbackValue='Status bar'}">
+                   AutomationProperties.Name="">
 
-            <!-- Region 1: Status message (informational) -->
+            <!-- Region 1: Status message (informational).
+                 TextBlock (ControlType.Text) has no ValuePattern, so the text
+                 content is the accessible name and is announced exactly once. -->
             <StatusBarItem x:Name="StatusTextItem"
-                           KeyboardNavigation.IsTabStop="True">
-                <TextBox x:Name="StatusTextBox"
-                         Style="{StaticResource StatusTextBoxStyle}"
-                         Text="{Binding StatusText, Mode=OneWay}"
-                         AutomationProperties.Name="{Binding StatusText, StringFormat='Status — {0}'}"/>
+                           KeyboardNavigation.IsTabStop="False">
+                <TextBlock x:Name="StatusTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}"
+                           Text="{Binding StatusText, Mode=OneWay}"/>
             </StatusBarItem>
 
             <!-- Region 2: Connection state (informational) -->
             <StatusBarItem x:Name="ConnectionStatusItem"
-                           KeyboardNavigation.IsTabStop="True">
-                <TextBox x:Name="ConnectionStatusTextBox"
-                         Style="{StaticResource StatusTextBoxStyle}"
-                         Text="{Binding ConnectionStatusText, Mode=OneWay}"
-                         AutomationProperties.Name="{Binding ConnectionStatusText, StringFormat='Connection — {0}'}"/>
+                           KeyboardNavigation.IsTabStop="False">
+                <TextBlock x:Name="ConnectionStatusTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}"
+                           Text="{Binding ConnectionStatusText, Mode=OneWay}"/>
             </StatusBarItem>
 
             <!-- Spacer: pushes Rules and Progress to the right -->

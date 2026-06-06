@@ -307,6 +307,7 @@ public partial class MainViewModel : ObservableObject
     public bool IsFilterWithAttachments => ActiveFilter == MessageFilter.WithAttachments;
     public bool IsFilterReplied         => ActiveFilter == MessageFilter.Replied;
     public bool IsFilterForwarded       => ActiveFilter == MessageFilter.Forwarded;
+    public bool IsFilterToMe            => ActiveFilter == MessageFilter.ToMe;
     public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
     public string FilterLabel => ActiveFilter switch
     {
@@ -315,6 +316,7 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.WithAttachments => "With Attachments",
         MessageFilter.Replied         => "Replied",
         MessageFilter.Forwarded       => "Forwarded",
+        MessageFilter.ToMe            => "To Me",
         _                             => string.Empty,
     };
 
@@ -594,6 +596,7 @@ public partial class MainViewModel : ObservableObject
             "attachments" => MessageFilter.WithAttachments,
             "replied"     => MessageFilter.Replied,
             "forwarded"   => MessageFilter.Forwarded,
+            "tome"        => MessageFilter.ToMe,
             _             => MessageFilter.All,
         };
         ActiveSort = ConfigModel.ParseSort(view.Sort);
@@ -886,6 +889,10 @@ public partial class MainViewModel : ObservableObject
         registry.Register(new CommandDefinition(
             id: "view.filterForwarded", category: "View", title: "Show Forwarded Only",
             execute: () => SetFilterCommand.Execute("forwarded")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterToMe", category: "View", title: "Show Messages Addressed to Me",
+            execute: () => SetFilterCommand.Execute("tome")));
 
         registry.Register(new CommandDefinition(
             id: "view.sortDateDesc", category: "View", title: "Sort: Newest First",
@@ -1356,6 +1363,7 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.WithAttachments => msg.HasAttachments,
         MessageFilter.Replied         => msg.IsReplied,
         MessageFilter.Forwarded       => msg.IsForwarded,
+        MessageFilter.ToMe            => !msg.IsMailingList && Accounts.Any(a => msg.To.Contains(a.Username, StringComparison.OrdinalIgnoreCase)),
         _                             => true,
     };
 
@@ -1652,16 +1660,16 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsFilterWithAttachments));
         OnPropertyChanged(nameof(IsFilterReplied));
         OnPropertyChanged(nameof(IsFilterForwarded));
+        OnPropertyChanged(nameof(IsFilterToMe));
         OnPropertyChanged(nameof(IsFilterActive));
         OnPropertyChanged(nameof(FilterLabel));
         OnPropertyChanged(nameof(WindowTitle));
 
         if (_suppressFilterRebuild) return;
 
-        if (ViewMode == ViewMode.Messages)
-            ApplyFiltersAndSearch();
-        else
-            RebuildActiveGroupView();
+        // Always rebuild Messages from _rawMessages; OnMessagesChanged then triggers
+        // RebuildActiveGroupView automatically for Conversations/From/To view modes.
+        ApplyFiltersAndSearch();
     }
 
     partial void OnActiveSortChanged(MessageSort value)
@@ -2091,7 +2099,7 @@ public partial class MainViewModel : ObservableObject
                 }
             }
 
-            StatusText = "Message loaded. Press Escape to return to message list.";
+            StatusText = "Message loaded.";
 
             if (!OnlineMode)
                 StartPrefetchAroundOpen(summary);
@@ -2770,10 +2778,70 @@ public partial class MainViewModel : ObservableObject
     public event EventHandler? TutorialRequested;
     public event EventHandler? AboutRequested;
 
+    /// <summary>
+    /// Raised when a Properties dialog should be shown. The View subscribes and
+    /// calls new PropertiesWindow(vm).ShowDialog().
+    /// </summary>
+    public event Action<PropertiesViewModel>? PropertiesRequested;
+
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)
     {
         if (!string.IsNullOrEmpty(text))
             AnnouncementRequested?.Invoke(this, (text, category));
+    }
+
+    // Pane indices from MainWindow.GetFocusedPaneIndex():
+    //   0 = Toolbar, 1 = Account list, 2 = Folder tree,
+    //   3 = Message list / conversation trees, 4 = Reading pane, 5 = Status bar
+    // focusedFolder overrides SelectedFolder for pane 2: the folder tree's TreeView
+    // updates its internal SelectedItem on arrow-key navigation but has no
+    // SelectedItemChanged handler, so SelectedFolder lags until Enter commits it.
+    // focusedMessage overrides SelectedMessage for pane 3: grouped-tree OnSelectedItemChanged
+    // only fires for individual MailMessageSummary items, not group headers, so SelectedMessage
+    // is stale when a ConversationGroup or SenderGroup header is focused.
+    public async Task ShowPropertiesAsync(int paneIndex, MailFolderModel? focusedFolder = null, MailMessageSummary? focusedMessage = null)
+    {
+        // pane 0 means toolbar or unknown focus (e.g. command palette has focus, or WPF
+        // moved focus to the menu bar when Alt was pressed). Fall back to whichever
+        // context item is most specifically selected so the command still does something
+        // useful from the command palette or via Alt+Enter with menu-bar focus.
+        if (paneIndex == 0)
+        {
+            if (focusedMessage != null || SelectedMessage != null) paneIndex = 3;
+            else if (SelectedFolder != null)                       paneIndex = 2;
+            else if (SelectedAccount != null)                      paneIndex = 1;
+            else return;
+        }
+
+        if ((paneIndex == 3 || paneIndex == 4) && (focusedMessage ?? SelectedMessage) is { } msg)
+        {
+            // Load detail if not already open (detail may already be in MessageDetail
+            // when the reading pane is open for this message).
+            var detail = (MessageDetail?.MessageId == msg.MessageId
+                          && MessageDetail?.AccountId == msg.AccountId
+                          && MessageDetail?.FolderName == msg.FolderName)
+                ? MessageDetail
+                : await _localStore.LoadDetailAsync(msg.AccountId, msg.FolderName, msg.MessageId);
+
+            var accountName = Accounts.FirstOrDefault(a => a.Id == msg.AccountId)?.AccountLabel
+                              ?? "Unknown";
+            var (title, sections) = MessagePropertiesBuilder.Build(msg, detail, accountName);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        else if (paneIndex == 2 && (focusedFolder ?? SelectedFolder) is { } folder)
+        {
+            var accountName = Accounts.FirstOrDefault(a => a.Id == folder.AccountId)?.AccountLabel
+                              ?? "Unknown";
+            var (title, sections) = FolderPropertiesBuilder.Build(folder, accountName);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        else if (paneIndex == 1 && SelectedAccount is { } acct)
+        {
+            var lastSync = _syncService.LastSyncedUtc(acct.Id);
+            var (title, sections) = AccountPropertiesBuilder.Build(acct, lastSync);
+            PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
+        }
+        // No-op for toolbar, status bar, or when nothing is selected.
     }
 
     [RelayCommand]
@@ -3579,6 +3647,7 @@ public partial class MainViewModel : ObservableObject
             "attachments" => MessageFilter.WithAttachments,
             "replied"     => MessageFilter.Replied,
             "forwarded"   => MessageFilter.Forwarded,
+            "tome"        => MessageFilter.ToMe,
             _             => MessageFilter.All,
         };
         return Task.CompletedTask;

@@ -13,11 +13,14 @@ build.bat            # debug build
 build.bat release    # release build
 build.bat run        # debug build + launch
 build.bat publish    # self-contained single-file win-x64 -> publish/QuickMail.exe
+build.bat installer  # publish + compile Inno Setup installer -> installer/Output/quickmail-v<version>-setup.exe
 build.bat smoke      # build + launch for 6s
 build.bat clean
 ```
 
 Or directly: `dotnet run --project QuickMail`.
+
+The `installer` target requires [Inno Setup 6](https://jrsoftware.org/isdl.php) (`ISCC.exe`). The installer is defined in `installer/quickmail.iss`; see [Installer](#installer) below.
 
 Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing.
 
@@ -64,7 +67,9 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 
 **ConfigService** reads/writes `config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
 
-**ContactService** stores the address book in `contacts.json`. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
+**ContactService** stores the address book in `contacts.json` and contact groups in `groups.json`. Both files share a single `SemaphoreSlim` load lock so concurrent group and contact writes cannot tear. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
+
+Groups (`GroupModel`) are flat, local-only, and keyed by an incrementing integer `Id` with a list of `MemberContactIds`. `LoadAllGroupsAsync` returns groups sorted by `LastUsedTicks` descending; `TouchGroupAsync` bumps the timestamp so a freshly-inserted group sorts to the top. The model exposes computed `ResolvedMemberCount` and `MissingContactCount` (both `[JsonIgnore]`) and a human-readable `Display` ("Name, N members" / "(M missing)" / "Empty group") so the UI does not have to recompute them. The full group surface is on `IContactService`: `LoadAllGroupsAsync`, `CreateGroupAsync`, `RenameGroupAsync`, `DeleteGroupAsync`, `AddMemberAsync`, `RemoveMemberAsync`, `ListGroupsForContactAsync`, `TouchGroupAsync`. A corrupt `groups.json` is renamed to `groups.json.bak-{timestamp}` and treated as empty, matching the recovery behaviour used for views, rules, and templates.
 
 **RuleService** loads/saves mail rules from `rules.json`. Each `MailRule` has AND-combined conditions (FromContains, ToContains, SubjectContains, BodyContains, MustHaveAttachments) and one action (MarkAsRead, MarkAsUnread, MoveToFolder, Delete). `ApplyRulesAsync` is called by `SyncService` on incoming messages; `ApplyRulesToExistingAsync` runs on demand against the full cache. Rules can be scoped to one account via `AccountId` (null = all accounts). File writes use an atomic temp-then-rename pattern.
 
@@ -81,6 +86,7 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 - `SenderGroupBuilder` — groups messages by From or To; used for From/To view modes
 - `MimeMessageBuilder` — builds a `MimeMessage` from `ComposeModel` + `AccountModel`; shared by `SmtpService` and `ImapService` (draft saving)
 - `AddressParser` — splits comma/semicolon-delimited address strings into `MailboxAddress` objects
+- `MessagePropertiesBuilder`, `FolderPropertiesBuilder`, `AccountPropertiesBuilder`, `ContactPropertiesBuilder`, `GroupPropertiesBuilder`, `AttachmentPropertiesBuilder` — transform model objects into `(title, sections[])` for `PropertiesViewModel`. Pure static functions, no DI, testable without UI. Each takes the relevant model(s) and returns a list of `PropertySection` records containing `PropertyItem` (label/value) rows.
 - `FolderTreeBuilder` — builds `FolderTreeNode` hierarchy from a flat `MailFolderModel` list; auto-detects IMAP path separator (`.` or `/`)
 
 ### Helpers
@@ -96,6 +102,8 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 - View modes: Messages, Conversations, From, and To.
 - `OnFolderSynced` and `OnMessagesRemoved` must use key-based lookups, not repeated `Messages.Any()` / `FirstOrDefault()` scans over large All Mail views.
 - `_suppressFolderSyncUpdates` silences sync events during startup; `_suppressFilterRebuild` prevents stale filter application during folder transitions.
+
+**AddressBookViewModel** owns the Address Book window's two-tab state (Contacts and Groups). It exposes `Groups: ObservableCollection<GroupModel>` sorted by `LastUsedTicks` descending and a derived `SelectedGroupMembers: ObservableCollection<ContactModel>` rebuilt whenever `SelectedGroup` changes. Confirmation dialogs and screen reader announcements are surfaced via `event Func<string, string, Task<bool>>? ConfirmRequested` and `event Action<string, AnnouncementCategory>? AnnouncementRequested`; the View subscribes and shows the dialog or calls `AccessibilityHelper.Announce` directly. The `InsertGroup(Action<ContactModel>)` private helper iterates `SelectedGroupMembers` in recency order and calls the inserter for each — the Compose window sets those inserters via `SetInsertActions(to, cc, bcc)` so a group can be dropped into any address field with one command. **GroupManagerViewModel** is a sibling VM that powers the standalone `GroupManagerWindow` (`Ctrl+Shift+M`); it shares the same `IContactService` instance and raises `GroupsChanged` for the parent to refresh.
 
 ### Virtual Folders
 
@@ -265,9 +273,25 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | *(unassigned)* | `mail.declineInvite` | Decline Invitation |
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
+| Alt+Enter | `view.showProperties` | View Properties |
 
 **Compose window shortcuts** (Alt+S, Ctrl+Enter, Ctrl+S, Ctrl+Shift+A, F7, Shift+F7, Alt+Y, Alt+U, Alt+M, Escape) are registered or hardcoded in `ComposeWindow.xaml.cs`. Registry-based ones appear in the compose window's command palette (`Ctrl+Shift+P`) but are **not** user-customisable via the Settings dialog. The main window's `CommandRegistry` and `hotkeys.json` do not include compose commands. `Ctrl+Enter` is hardcoded (like `Ctrl+Shift+P`) as a second send gesture so it does not create a duplicate "Send Message" entry in the palette.
 
+
+## Installer
+
+`installer/quickmail.iss` is an Inno Setup 6 script that packages the **self-contained single-file** `publish/QuickMail.exe` into a Windows installer. `build.bat installer` runs `dotnet publish` then `ISCC.exe`, emitting `installer/Output/quickmail-v<version>-setup.exe` (gitignored).
+
+Key facts:
+
+- **Only `QuickMail.exe` is shipped.** Because the build is self-contained (the .NET 8 runtime is bundled in the exe), there is **no .NET runtime dependency**. The `.pdb` and `Microsoft.Web.WebView2.*.xml` files that also appear in `publish/` are intentionally excluded.
+- **The single external prerequisite is the WebView2 Runtime**, installed on demand via `Dependency_AddWebView2` from the bundled `installer/CodeDependencies.iss` (the standard DomGries dependency helper, vendored verbatim — leave it unmodified).
+- **Version is read from the exe** at compile time via `GetVersionNumbersString`, so it always matches `FileVersion` in the csproj — never hardcode it in the `.iss`.
+- **Per-user install by default** (`PrivilegesRequired=lowest` + `PrivilegesRequiredOverridesAllowed=dialog`); the user may opt into an all-users install, which elevates.
+- **No app mutex exists**, so `CloseApplications=yes` uses the Restart Manager to detect a running copy during an upgrade.
+- Uninstall offers to delete user data under `%APPDATA%\QuickMail`; Credential Manager entries are left untouched.
+- English-only UI strings live in `installer/Languages/Custom.en.isl` (define only messages not already in Inno's `Default.isl`).
+- The installer is a downstream packaging artifact — it does **not** alter the GitHub Actions release, which still ships the bare self-contained `QuickMail.exe`.
 
 ## Dependencies
 

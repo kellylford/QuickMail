@@ -6,6 +6,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 
 ## Contents
 
+- [Installing QuickMail](#installing-quickmail)
 - [Layout](#layout)
 - [Menu bar](#menu-bar)
 - [Connecting accounts](#connecting-accounts)
@@ -35,6 +36,29 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 
 ---
 
+## Installing QuickMail
+
+Two download options are available from the [Releases page](https://github.com/kellylford/QuickMail/releases):
+
+| Download | When to use |
+|----------|-------------|
+| **`quickmail-vX.X.X-setup.exe`** — Windows installer | Recommended for most users. Installs per-user with no elevation required and registers an uninstaller in Windows Settings. |
+| **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run it directly. |
+
+Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
+
+### WebView2 Runtime
+
+QuickMail uses the **Microsoft Edge WebView2 Runtime** to render HTML messages. It is preinstalled on Windows 11 and most recent Windows 10 systems. If it is missing, the installer downloads and installs it automatically. If you are using the standalone executable and WebView2 is absent, download it from [Microsoft's WebView2 page](https://developer.microsoft.com/microsoft-edge/webview2/).
+
+### Uninstalling
+
+If you used the installer, open **Windows Settings → Apps** and remove QuickMail from there. During uninstall you will be offered the option to delete your data folder (`%AppData%\QuickMail`), which contains your accounts, mail cache, contacts, rules, and saved views. Passwords stored in Windows Credential Manager are never removed automatically.
+
+If you used the standalone executable, simply delete the file. Your data folder at `%AppData%\QuickMail` can be deleted manually if you no longer need it.
+
+---
+
 ## Layout
 
 QuickMail uses a three-pane layout:
@@ -58,7 +82,7 @@ The menu bar at the top of the window provides access to all major features, org
 |------|----------|
 | **File** | New Message, Manage Accounts, Address Book, Settings (`Ctrl+,`), Exit |
 | **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
-| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views, Clear View), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
+| **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded / To Me), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views, Clear View), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
 | **Help** | User Guide |
 
 All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
@@ -277,6 +301,7 @@ The **View → Filter** submenu (and the command palette) let you narrow the mes
 | **With Attachments** | Messages that have at least one attachment |
 | **Replied** | Messages you have replied to |
 | **Forwarded** | Messages you have forwarded |
+| **To Me** | Messages where one of your account addresses appears in the To field, excluding mailing list messages |
 
 **Applying a filter:**
 - Open **View → Filter** and choose an option, or
@@ -555,6 +580,58 @@ When composing a message, as you type in the **To**, **Cc**, or **Bcc** fields, 
 
 Contacts are sorted by how recently they were used, so your most-contacted people appear first.
 
+### Contact groups
+
+The Address Book window has a second tab called **Groups** that lets you bundle contacts into named groups for faster addressing. Groups are stored locally as a separate JSON file in your AppData folder and never leave your machine.
+
+**Opening the Groups tab**
+
+- In the Address Book window, select the **Groups** tab at the top of the window, or press **Ctrl+G** to jump to the groups list.
+- Press **Ctrl+Shift+M** to open a dedicated **Group Manager** window that focuses on managing groups (rename, add or remove members, delete) without the address book around it.
+
+**Creating a group**
+
+Press **Ctrl+Shift+N** from anywhere in the address book, or activate the **New** button on the Groups tab. A **Name** field appears above the buttons. Type the group name and press **Enter** to create it. Press **Escape** to dismiss the name field without creating a group.
+
+The new group appears in the list and is selected automatically.
+
+To rename a group, select it and press **F2** (or activate the **Rename** button). The same name field appears pre-filled with the current name. Edit and press **Enter** to save, or **Escape** to cancel.
+
+**Adding contacts to a group**
+
+From the **Contacts** tab, select a contact and press **Shift+F10** (or the **Apps** key) to open the context menu, then choose the group to add the contact to.
+
+You can also manage group membership in the **Group Manager** window (**Ctrl+Shift+M** or the **Manage…** button on the Groups tab). Select a group on the left, then press **Enter** on a contact in the candidate list to add or remove them — pressing **Enter** on a contact that is already a member removes them, so the action always toggles.
+
+**Inserting a group into a message**
+
+The quickest way is to type the group name directly in a **To**, **Cc**, or **Bcc** field while composing. The autocomplete list shows matching groups above individual contacts. Select a group from the list and press **Enter** — every member is inserted at once and the screen reader announces the count.
+
+You can also use the Address Book:
+
+1. Switch to the **Groups** tab and select a group.
+2. Press **Alt+T**, **Alt+C**, or **Alt+B** — or activate the **To**, **Cc**, or **Bcc** buttons. Every member is inserted in order of recency. The screen reader announces the final count.
+
+If the address book was opened from the main window (not from a compose window), a new compose window opens automatically to receive the addresses.
+
+**Deleting groups**
+
+Select a group and press **Delete** (or activate the **Delete** button). A confirmation appears. Deleting a group does **not** delete the contacts in it.
+
+**Keyboard reference for the Address Book window**
+
+| Action | Shortcut |
+|--------|----------|
+| Switch to Groups tab / return to Contacts tab | `Ctrl+G` |
+| New group (shows name field) | `Ctrl+Shift+N` |
+| Rename selected group | `F2` |
+| Delete selected group | `Delete` |
+| Add selected contact to a group | `Shift+F10` or `Apps` key (opens context menu) |
+| Open Group Manager | `Ctrl+Shift+M` |
+| Insert group into To field | `Alt+T` |
+| Insert group into Cc field | `Alt+C` |
+| Insert group into Bcc field | `Alt+B` |
+
 ---
 
 ## Command palette
@@ -758,6 +835,43 @@ A security warning is shown before opening executable file types.
 
 ---
 
+## Viewing properties (Alt+Enter)
+
+**Alt+Enter** is the Windows standard shortcut for "Properties." In QuickMail it opens a read-only Properties dialog for whatever is currently selected.
+
+| What has focus | What opens |
+|----------------|------------|
+| A message in the message list | Message headers, storage details, and format/attachment summary |
+| A conversation header (Conversations view) | Subject, message count, unread count, participants, and date range |
+| A sender group header (From view) | Sender, message count, unread count, most recent date, and newest subject |
+| A recipient group header (To view) | Recipient, message count, unread count, most recent date, and newest subject |
+| A folder in the folder tree | Folder name, path, account, and message counts |
+| An account in the account list | Server settings and authentication method (no password shown) |
+| A contact in the address book | Display name, email address, group memberships, and last-used date |
+| A group in the address book | Group name, member count, and a list of members |
+| An attachment in the reading pane | File name, MIME type, and size |
+
+In grouped views (Conversations, From, To), Alt+Enter on a group header row shows group-level properties. To see properties for an individual message inside a group, expand the group, navigate to the message, and press Alt+Enter.
+
+### Navigating the Properties dialog
+
+- The dialog opens with focus on the properties list. Use **Up/Down arrows** to move through all rows. Section names appear as focusable entries within the list and are announced when you navigate to them.
+- Press **Tab** to move to the **Copy all** and **Close** buttons.
+- Press **Enter** or **Ctrl+C** on a selected row to copy it to the clipboard. Section header rows copy just the name; data rows copy "Field: Value". A screen reader announcement confirms the copy.
+- Press **Ctrl+A** to select all rows; pressing **Enter** or **Ctrl+C** then copies all selected rows at once.
+- Activate **Copy all** to copy every property as formatted plain text organized by section.
+- Press **Escape** or activate **Close** to close the dialog. Focus returns to where it was before.
+
+### Screen reader experience
+
+Each data row is announced as a single "Field: Value" phrase — for example, "From: Alice Smith &lt;alice@example.com&gt;" — without reading column headers separately. Section header rows are announced by name (for example, "Headers") as you navigate to them.
+
+### What is not shown
+
+Account properties show the authentication method ("OAuth2" or "Password, stored in Windows Credential Manager") but never display a password or token. Raw message headers are available in Message Properties if they were cached when the message was opened; the section is hidden otherwise.
+
+---
+
 ## Deleting messages
 
 - Select one or more messages and press **Delete**. Use **Shift+Up/Down** to select multiple.
@@ -816,6 +930,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Shift+. (> ) | Jump to the last (oldest) message in the current group — grouped views only |
 | Shift+F10 | Open context menu for focused item |
 | Escape | Close reading pane |
+| Alt+Enter | View Properties for the selected item (message, group, folder, account, contact, or attachment) |
 
 ### Compose window
 

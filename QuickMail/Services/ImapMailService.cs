@@ -209,6 +209,7 @@ public class ImapMailService : IMailService
                 | MessageSummaryItems.Envelope
                 | MessageSummaryItems.Flags
                 | MessageSummaryItems.PreviewText,   // free if server supports PREVIEW
+                _mailingListHeaders,
                 ct);
 
             var result = summaries
@@ -241,7 +242,7 @@ public class ImapMailService : IMailService
                       | MessageSummaryItems.Flags
                       | MessageSummaryItems.PreviewText;
 
-            var summaries = await folder.FetchAsync(uids, items, ct);
+            var summaries = await folder.FetchAsync(uids, items, _mailingListHeaders, ct);
             var result    = summaries
                 .OrderByDescending(s => s.Envelope?.Date ?? DateTimeOffset.MinValue)
                 .Select(s => SummaryToModel(s, accountId, folderName))
@@ -273,13 +274,13 @@ public class ImapMailService : IMailService
                 if (folder.Count == 0) return new List<MailMessageSummary>();
                 var count = initialCount > 0 ? initialCount : folder.Count;
                 var startIndex = Math.Max(0, folder.Count - count);
-                summaries = await folder.FetchAsync(startIndex, -1, items, ct);
+                summaries = await folder.FetchAsync(startIndex, -1, items, _mailingListHeaders, ct);
             }
             else
             {
                 var sinceUid = uint.Parse(sinceMessageId, CultureInfo.InvariantCulture);
                 var range = new UniqueIdRange(new UniqueId(sinceUid + 1), UniqueId.MaxValue);
-                summaries = await folder.FetchAsync((IList<UniqueId>)range, items, ct);
+                summaries = await folder.FetchAsync((IList<UniqueId>)range, items, _mailingListHeaders, ct);
             }
 
             return summaries.Select(s => SummaryToModel(s, accountId, folderName)).ToList();
@@ -1203,7 +1204,7 @@ public class ImapMailService : IMailService
             AccountId   = accountId,
             FolderName  = folderName,
             From        = FormatAddressListDisplay(s.Envelope?.From),
-            To          = FormatAddressListDisplay(s.Envelope?.To),
+            To          = FormatAddressList(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
             IsRead      = (s.Flags & MessageFlags.Seen)     != 0,
@@ -1211,7 +1212,8 @@ public class ImapMailService : IMailService
             IsForwarded = s.Keywords?.Any(k =>
                               k.Equals("$Forwarded", StringComparison.OrdinalIgnoreCase) ||
                               k.Equals("Forwarded",  StringComparison.OrdinalIgnoreCase)) == true,
-            Preview     = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
+            Preview       = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
+            IsMailingList = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
         };
 
     private static IMailFolder? FindSpecialFolder(ImapClient client, params SpecialFolder[] candidates)
@@ -1327,6 +1329,8 @@ public class ImapMailService : IMailService
         if ((attrs & FolderAttributes.Drafts) != 0) return SpecialFolderKind.Drafts;
         return SpecialFolderKind.None;
     }
+
+    private static readonly string[] _mailingListHeaders = { "List-Id" };
 
     private static string FormatAddressList(InternetAddressList? list) =>
         list == null || list.Count == 0

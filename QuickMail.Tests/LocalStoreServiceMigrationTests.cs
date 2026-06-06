@@ -154,7 +154,7 @@ public class LocalStoreServiceMigrationTests
         store.Initialize();
 
         Assert.True(File.Exists(dbPath + ".pre-v2"), "pre-v2 backup should be created");
-        Assert.Equal(2, ReadUserVersion(dbPath));
+        Assert.Equal(3, ReadUserVersion(dbPath));
         Assert.True(TableExists(dbPath, "DeltaToken"), "DeltaToken table should exist after migration");
     }
 
@@ -183,7 +183,7 @@ public class LocalStoreServiceMigrationTests
         store.Initialize();
 
         Assert.False(File.Exists(dbPath + ".pre-v2"), "fresh DB must not produce a backup");
-        Assert.Equal(2, ReadUserVersion(dbPath));
+        Assert.Equal(3, ReadUserVersion(dbPath));
         Assert.True(TableExists(dbPath, "DeltaToken"));
         Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "unique_id"));
     }

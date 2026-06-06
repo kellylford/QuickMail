@@ -1,6 +1,6 @@
 # Mail Rules — Development Specification
 
-**Status:** Complete (with revisions)  
+**Status:**  Implemented
 **Version:** 1.1  
 **Date:** 2026-05-22  
 **Based on:** `mail-rules-pm-spec.md` (Approved)  

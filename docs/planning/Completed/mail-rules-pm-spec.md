@@ -1,6 +1,6 @@
 # Mail Rules — Product Management Specification
 
-**Status:** Approved  
+**Status:** Implemented
 **Version:** 1.1  
 **Date:** 2026-05-22  
 **Author:** Design & PM  

@@ -694,6 +694,7 @@ public partial class ViewManagerViewModel : ObservableObject
         MessageFilter.WithAttachments => "attachments",
         MessageFilter.Replied         => "replied",
         MessageFilter.Forwarded       => "forwarded",
+        MessageFilter.ToMe            => "tome",
         _                             => "all",
     };
 

@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.6.9
+
+### New Features
+
+- **Alt+Enter View Properties** — pressing Alt+Enter opens a read-only Properties dialog for the focused item: a message, conversation group, sender/recipient group, folder, account, contact, address book group, or attachment. Group headers in Conversations, From, and To views show group-level properties (subject, participants, date range for conversations; sender/count for sender and recipient groups) rather than falling back to a message.
+
+### Accessibility fixes
+
+- **Properties dialog is one continuous list** — all fields and section headers are in a single arrow-navigable list with no separate focus stops between sections. Section headers are focusable entries. Ctrl+A selects all rows for bulk copy.
+- **Properties hint respects hint suppression** — the copy-row instruction is delivered through the hint system and silenced when hints are turned off in Settings.
+
+### Bug Fixes
+
+- **Alt+Enter from command palette** — now shows properties for the correct item instead of doing nothing.
+- **Alt+Enter on folder tree** — now reads the live focused folder rather than the last committed selection.
+
+---
+
+## v0.6.8
+
+### New Features
+
+- **Contact groups** — The Address Book window now has a **Groups** tab alongside the flat contact list. Create, rename, and delete groups; add and remove members; insert the whole group into To/Cc/Bcc with a single action. The Group Manager dialog (`Ctrl+Shift+M`) is a focused view of the same operations. Group data is stored locally in a separate `groups.json`; nothing leaves the machine.
+
+### Bug Fixes
+
+- **Group / contact concurrency** — Group operations and contact operations now share a single load lock, so a group write cannot tear or block a concurrent contact write.
+
+## v0.6.7
+
+### New Features
+
+- **To Me filter** — New filter (View → Filter → To Me) shows only messages where one of your configured account addresses appears in the To field. Mailing list messages are excluded via `List-Id` header detection, with a retroactive domain-pattern backfill for existing database rows.
+- **Selection keyboard shortcuts** — Ctrl+A selects all messages in the list; Ctrl+Shift+Home/End extend selection to the first or last message. Ctrl+A also works in the Address Book (select all contacts) and in compose address fields (select all chips).
+- **Mark as Read (Ctrl+Q)** — Marks the selected message, group, or entire folder as read without opening it.
+- **Action-first log format** — New option in Settings → Advanced puts the message before the timestamp in quickmail.log, making each line readable from the start.
+
+### Accessibility fixes
+
+- **Status bar** — Screen readers no longer announce the status text multiple times when focus moves to the status bar (Ctrl+9). Content is now announced exactly once. The persistent "Press Escape to return to message list" hint has been removed from the status text; it is delivered as a one-time announcement immediately after a message opens.
+
+---
+
 ## v0.6.3
 
 ### Accessibility

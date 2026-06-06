@@ -20,4 +20,7 @@ public enum MessageFilter
 
     /// <summary>Only messages that have been forwarded.</summary>
     Forwarded,
+
+    /// <summary>Only messages where the user's own address appears in the To field.</summary>
+    ToMe,
 }

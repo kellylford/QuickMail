@@ -97,6 +97,16 @@
         </Setter>
     </Style>
 
+    <!-- TextBlock styled as a focusable status bar display region.
+         ControlType.Text has no ValuePattern, so screen readers announce
+         only the text content once — not name + value separately. -->
+    <Style x:Key="StatusTextBlockStyle" TargetType="TextBlock">
+        <Setter Property="Background"       Value="Transparent"/>
+        <Setter Property="Cursor"           Value="Arrow"/>
+        <Setter Property="Focusable"        Value="True"/>
+        <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
+    </Style>
+
     <!-- Button styled to look like a status bar label.
          ControlType.Button + InvokePattern means screen readers announce
          "button" and users know they can activate it with Enter/Space.

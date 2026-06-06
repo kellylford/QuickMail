@@ -105,6 +105,19 @@ sealed class StubContactService : IContactService
     public Task<List<ContactModel>> SearchContactsAsync(string prefix, CancellationToken ct = default) => Task.FromResult(new List<ContactModel>());
     public Task<List<ContactModel>> LoadAllContactsAsync() => Task.FromResult(new List<ContactModel>());
     public Task DeleteContactAsync(int id) => Task.CompletedTask;
+
+    // Groups — no-op stubs. Tests that need real group behaviour construct
+    // a real ContactService pointed at a temp directory.
+    public Task<List<GroupModel>> LoadAllGroupsAsync() => Task.FromResult(new List<GroupModel>());
+    public Task<int> CreateGroupAsync(string name) => Task.FromResult(0);
+    public Task RenameGroupAsync(int id, string newName) => Task.CompletedTask;
+    public Task DeleteGroupAsync(int id) => Task.CompletedTask;
+    public Task AddMemberAsync(int groupId, int contactId) => Task.CompletedTask;
+    public Task RemoveMemberAsync(int groupId, int contactId) => Task.CompletedTask;
+    public Task<List<int>> ListGroupsForContactAsync(int contactId) => Task.FromResult(new List<int>());
+    public Task TouchGroupAsync(int groupId) => Task.CompletedTask;
+    public Task<List<GroupModel>> SearchGroupsAsync(string prefix, CancellationToken ct = default)
+        => Task.FromResult(new List<GroupModel>());
 }
 
 sealed class StubViewService : IViewService
@@ -144,6 +157,7 @@ sealed class StubSyncService : ISyncService
     public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
     public Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
     public Task SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
+    public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
 }
 
 sealed class StubCommandRegistry : ICommandRegistry

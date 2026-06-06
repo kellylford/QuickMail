@@ -34,6 +34,8 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     private bool _hasAttachments;
 
+    public bool IsMailingList { get; set; }
+
     /// <summary>
     /// Single-word status shown in the status column.
     /// Priority: Replied > Fwd > New > (blank for read with no special flag).
