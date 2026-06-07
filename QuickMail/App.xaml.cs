@@ -76,14 +76,18 @@ public partial class App : Application
             var smtpService       = new SmtpService(oauthService);
 
             // Per-account mail backend router. v0.7 ships a single backend (IMAP); PR 4 adds Graph
-            // and routes Microsoft 365 accounts to it. Every existing account binds to IMAP here.
+            // and routes Microsoft 365 accounts to it.
             var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend });
-            foreach (var account in accountService.LoadAccounts())
-                mailRouter.RegisterAccount(account.Id, imapBackend);
 
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
                 localStore.Initialize();
+
+            // Load accounts once — after the store is initialized — and reuse the list for both
+            // router registration and the view model, avoiding a second synchronous accounts.json read.
+            var accounts = accountService.LoadAccounts();
+            foreach (var account in accounts)
+                mailRouter.RegisterAccount(account.Id, imapBackend);
 
             var contactService = new ContactService(profile);
             var templateService = new TemplateService(profile);
@@ -94,8 +98,9 @@ public partial class App : Application
             Views.AccessibilityHelper.Configure(startupCfg);
             LogService.Format = startupCfg.LogFormat;
 
-            // Feature gate: CLI --feature flags > config.ini [features] section > built-in defaults.
-            var featureGate = new ConfigFeatureGate(startupCfg, ParseFeatureFlags(e.Args));
+            // Feature gate: CLI --feature/--no-feature > config.ini [features] section > built-in defaults.
+            var (enableFlags, disableFlags) = ParseFeatureFlags(e.Args);
+            var featureGate = new ConfigFeatureGate(startupCfg, enableFlags, disableFlags);
 
             var commandRegistry = new CommandRegistry();
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
@@ -105,7 +110,7 @@ public partial class App : Application
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode);
-            mainVm.LoadAccountList();
+            mainVm.LoadAccountList(accounts);
 
             var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate);
             mainWindow.Show();
@@ -121,18 +126,22 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Parses --profileDir from args, validates the path, and returns a ProfileContext.
-    /// Returns null (and shows an error dialog) if the path is unusable.
+    /// Parses repeated <c>--feature &lt;Name&gt;</c> (force-on) and <c>--no-feature &lt;Name&gt;</c>
+    /// (force-off) CLI flags. CLI flags are the highest-precedence feature-gate source; for a given
+    /// flag an explicit <c>--no-feature</c> wins over <c>--feature</c>.
     /// </summary>
-    /// <summary>
-    /// Parses repeated <c>--feature &lt;Name&gt;</c> CLI flags. Each occurrence enables the named
-    /// feature gate for this run (highest precedence, above config.ini and built-in defaults).
-    /// </summary>
-    private static System.Collections.Generic.IEnumerable<string> ParseFeatureFlags(string[] args)
+    private static (List<string> Enable, List<string> Disable) ParseFeatureFlags(string[] args)
     {
+        var enable = new List<string>();
+        var disable = new List<string>();
         for (int i = 0; i < args.Length - 1; i++)
+        {
             if (args[i].Equals("--feature", StringComparison.OrdinalIgnoreCase))
-                yield return args[i + 1];
+                enable.Add(args[i + 1]);
+            else if (args[i].Equals("--no-feature", StringComparison.OrdinalIgnoreCase))
+                disable.Add(args[i + 1]);
+        }
+        return (enable, disable);
     }
 
     private static bool IsHelpRequest(string[] args)
@@ -145,6 +154,10 @@ public partial class App : Application
         return false;
     }
 
+    /// <summary>
+    /// Parses --profileDir from args, validates the path, and returns a ProfileContext.
+    /// Returns null (and shows an error dialog) if the path is unusable.
+    /// </summary>
     private static ProfileContext? ResolveProfile(string[] args)
     {
         var rawDir = ProfileContext.ParseProfileDir(args);

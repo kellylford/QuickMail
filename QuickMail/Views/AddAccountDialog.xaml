@@ -33,8 +33,7 @@
                               ItemsSource="{Binding AvailableBackends}"
                               SelectedItem="{Binding SelectedBackend, Mode=TwoWay}"
                               SelectionChanged="BackendComboBox_SelectionChanged"
-                              AutomationProperties.LabeledBy="{Binding ElementName=LblBackend}"
-                              AutomationProperties.Name="Account type"/>
+                              AutomationProperties.LabeledBy="{Binding ElementName=LblBackend}"/>
                     <Separator Margin="0,12"/>
                 </StackPanel>
 

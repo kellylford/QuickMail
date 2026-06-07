@@ -466,9 +466,9 @@ public partial class MainViewModel : ObservableObject
         UpdateRulesStatusText();
     }
 
-    public void LoadAccountList()
+    public void LoadAccountList(List<AccountModel>? preloaded = null)
     {
-        Accounts = new ObservableCollection<AccountModel>(_accountService.LoadAccounts());
+        Accounts = new ObservableCollection<AccountModel>(preloaded ?? _accountService.LoadAccounts());
     }
 
     // ── Saved-views lifecycle ─────────────────────────────────────────────────────

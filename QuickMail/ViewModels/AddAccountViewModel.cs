@@ -35,6 +35,10 @@ public partial class AddAccountViewModel : AccountEditorViewModel
 
     partial void OnSelectedBackendChanged(BackendKindOption value)
     {
+        // ORDER MATTERS: set BackendKind BEFORE AuthType. Assigning AuthType below triggers
+        // OnAuthTypeChangedInternal, which reads BackendKind to decide whether to auto-fill the
+        // Outlook.com IMAP/SMTP hosts. If AuthType were assigned first, a Graph account would
+        // wrongly receive IMAP host defaults.
         BackendKind = value?.Kind ?? BackendKind.ImapSmtp;
         if (BackendKind == BackendKind.MicrosoftGraph)
         {

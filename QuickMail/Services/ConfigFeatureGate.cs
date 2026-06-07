@@ -19,22 +19,25 @@ public class ConfigFeatureGate : IFeatureGate
     };
 
     private readonly IReadOnlyDictionary<string, string> _configFlags;
-    private readonly IReadOnlySet<string> _cliFlags;
+    private readonly IReadOnlySet<string> _cliEnable;
+    private readonly IReadOnlySet<string> _cliDisable;
 
-    public ConfigFeatureGate(ConfigModel config, IEnumerable<string> cliFlags)
+    public ConfigFeatureGate(ConfigModel config, IEnumerable<string> cliEnable, IEnumerable<string>? cliDisable = null)
     {
         // Case-insensitive so "GraphBackend" / "graphbackend" in config.ini resolve identically.
         _configFlags = new Dictionary<string, string>(
             config.Features ?? new Dictionary<string, string>(), StringComparer.OrdinalIgnoreCase);
-        _cliFlags = new HashSet<string>(cliFlags ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        _cliEnable  = new HashSet<string>(cliEnable  ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+        _cliDisable = new HashSet<string>(cliDisable ?? Array.Empty<string>(), StringComparer.OrdinalIgnoreCase);
     }
 
     public bool IsEnabled(FeatureFlag flag)
     {
         var name = flag.ToString();
 
-        // 1. CLI override (presence of the flag name enables it).
-        if (_cliFlags.Contains(name)) return true;
+        // 1. CLI override (highest precedence). An explicit --no-feature wins over --feature.
+        if (_cliDisable.Contains(name)) return false;
+        if (_cliEnable.Contains(name)) return true;
 
         // 2. config.ini [features] section.
         if (_configFlags.TryGetValue(name, out var raw) && bool.TryParse(raw, out var configValue))

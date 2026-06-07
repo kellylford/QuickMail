@@ -114,7 +114,8 @@ public class MailServiceRouterTests
         public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
         public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
         public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
-        public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
+        public IReadOnlyList<AccountModel>? LastIdleAccounts { get; private set; }
+        public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) => LastIdleAccounts = accounts;
         public void StopIdleWatchers() { }
         public void Dispose() { }
     }
@@ -170,4 +171,64 @@ public class MailServiceRouterTests
     [Fact]
     public void EmptyBackends_Throws()
         => Assert.Throws<ArgumentException>(() => new MailServiceRouter(Array.Empty<IMailService>()));
+
+    [Fact]
+    public void StartIdleWatchers_PassesEachBackendOnlyItsAccounts()
+    {
+        var imap = new RecordingMailService();
+        var graph = new RecordingMailService();
+        var router = new MailServiceRouter(new IMailService[] { imap, graph });
+
+        var imapAcct = new AccountModel { Id = Guid.NewGuid() };
+        var graphAcct = new AccountModel { Id = Guid.NewGuid() };
+        router.RegisterAccount(imapAcct.Id, imap);
+        router.RegisterAccount(graphAcct.Id, graph);
+
+        router.StartIdleWatchers(new[] { imapAcct, graphAcct });
+
+        Assert.NotNull(imap.LastIdleAccounts);
+        Assert.NotNull(graph.LastIdleAccounts);
+        Assert.Equal(new[] { imapAcct.Id }, imap.LastIdleAccounts!.Select(a => a.Id));
+        Assert.Equal(new[] { graphAcct.Id }, graph.LastIdleAccounts!.Select(a => a.Id));
+    }
+}
+
+public class ConfigFeatureGateTests
+{
+    private static ConfigModel ConfigWith(string key, string value)
+    {
+        var c = new ConfigModel();
+        c.Features[key] = value;
+        return c;
+    }
+
+    [Fact]
+    public void Default_GraphBackendOff()
+        => Assert.False(new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>())
+            .IsEnabled(FeatureFlag.GraphBackend));
+
+    [Fact]
+    public void Config_EnablesFlag()
+        => Assert.True(new ConfigFeatureGate(ConfigWith("GraphBackend", "true"), Array.Empty<string>())
+            .IsEnabled(FeatureFlag.GraphBackend));
+
+    [Fact]
+    public void Config_IsCaseInsensitive()
+        => Assert.True(new ConfigFeatureGate(ConfigWith("graphbackend", "true"), Array.Empty<string>())
+            .IsEnabled(FeatureFlag.GraphBackend));
+
+    [Fact]
+    public void CliEnable_OverridesDefault()
+        => Assert.True(new ConfigFeatureGate(new ConfigModel(), new[] { "GraphBackend" })
+            .IsEnabled(FeatureFlag.GraphBackend));
+
+    [Fact]
+    public void CliDisable_OverridesConfigEnabled()
+        => Assert.False(new ConfigFeatureGate(ConfigWith("GraphBackend", "true"), Array.Empty<string>(), new[] { "GraphBackend" })
+            .IsEnabled(FeatureFlag.GraphBackend));
+
+    [Fact]
+    public void CliDisable_WinsOverCliEnable()
+        => Assert.False(new ConfigFeatureGate(new ConfigModel(), new[] { "GraphBackend" }, new[] { "GraphBackend" })
+            .IsEnabled(FeatureFlag.GraphBackend));
 }

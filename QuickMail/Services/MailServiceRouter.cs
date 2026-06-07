@@ -146,8 +146,19 @@ public class MailServiceRouter : IMailService
     // list to all backends is correct because an account is only ever registered to one backend.
     public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
     {
+        // Give each backend only the accounts registered to it (unregistered accounts fall back to
+        // the default backend), so a backend never spins up watcher tasks for accounts it doesn't own.
+        var byBackend = new Dictionary<IMailService, List<AccountModel>>();
+        foreach (var account in accounts)
+        {
+            var backend = _byAccount.TryGetValue(account.Id, out var b) ? b : _defaultBackend;
+            if (!byBackend.TryGetValue(backend, out var list))
+                byBackend[backend] = list = new List<AccountModel>();
+            list.Add(account);
+        }
+
         foreach (var b in _allBackends)
-            b.StartIdleWatchers(accounts, ct);
+            b.StartIdleWatchers(byBackend.TryGetValue(b, out var list) ? list : new List<AccountModel>(), ct);
     }
 
     public void StopIdleWatchers()
