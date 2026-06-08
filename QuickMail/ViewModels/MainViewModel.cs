@@ -2288,7 +2288,8 @@ public partial class MainViewModel : ObservableObject
                 return;
 
             MessageDetail = detail;
-            IsMessageOpen = true;
+            // Window mode shows messages in standalone windows; never open the reading pane there.
+            IsMessageOpen = MessageOpenMode != MessageOpenMode.Window;
             summary.IsRead = true;
             summary.HasAttachments = detail.Attachments.Count > 0;
             if (!OnlineMode)

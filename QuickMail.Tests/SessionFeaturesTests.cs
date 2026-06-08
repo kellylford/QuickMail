@@ -1,8 +1,9 @@
-// Tests for features added in the 0.6.x session:
+// Tests for features added in the 0.6.x and 0.7.x sessions:
 //   • DateDisplay format (12-hour clock, M/d/yyyy for older dates)
 //   • Preview suppression when PreviewLines = 0
 //   • OnlineMode flag on MainViewModel
 //   • IDLE new-mail detection triggering a targeted inbox sync
+//   • Mode-transition invariants for MessageOpenMode (ReadingPane ↔ Tab ↔ Window)
 
 using System;
 using System.Collections.Generic;
@@ -320,5 +321,75 @@ public class IdleNewMailTests
         Assert.Equal(accountId, result.Account.Id);
         Assert.Equal(SpecialFolderKind.Inbox, result.Folder.Kind);
         Assert.False(sync.SyncOneFolderCalled.Task.IsCompleted);
+    }
+}
+
+// ── MessageOpenMode transition invariants ────────────────────────────────────
+// These tests catch the class of bug where switching modes leaves stale reading-
+// pane state visible. The invariant: when MessageOpenMode != ReadingPane,
+// IsMessageOpen must be false. ApplySettings is responsible for enforcing it.
+
+public class MessageOpenModeTransitionTests
+{
+    private static MainViewModel MakeVm() =>
+        new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService());
+
+    private static ConfigModel CfgWith(MessageOpenMode mode) =>
+        new ConfigModel { Windowing = new WindowingPreferences { MessageOpenMode = mode } };
+
+    [Fact]
+    public void ApplySettings_ReadingPaneToWindow_ClearsIsMessageOpen()
+    {
+        var vm = MakeVm();
+        vm.IsMessageOpen = true;
+        vm.MessageDetail = new MailMessageDetail();
+
+        vm.ApplySettings(CfgWith(MessageOpenMode.Window));
+
+        Assert.False(vm.IsMessageOpen);
+        Assert.Null(vm.MessageDetail);
+    }
+
+    [Fact]
+    public void ApplySettings_ReadingPaneToTab_ClearsIsMessageOpen()
+    {
+        var vm = MakeVm();
+        vm.IsMessageOpen = true;
+        vm.MessageDetail = new MailMessageDetail();
+
+        vm.ApplySettings(CfgWith(MessageOpenMode.Tab));
+
+        Assert.False(vm.IsMessageOpen);
+        Assert.Null(vm.MessageDetail);
+    }
+
+    [Fact]
+    public void ApplySettings_SameMode_DoesNotClearIsMessageOpen()
+    {
+        var vm = MakeVm();
+        vm.IsMessageOpen = true;
+
+        // Applying ReadingPane when already in ReadingPane: not a transition, should not clear.
+        vm.ApplySettings(CfgWith(MessageOpenMode.ReadingPane));
+
+        Assert.True(vm.IsMessageOpen);
+    }
+
+    [Fact]
+    public void ApplySettings_WindowToReadingPane_DoesNotClearIsMessageOpen()
+    {
+        var vm = MakeVm();
+        vm.ApplySettings(CfgWith(MessageOpenMode.Window));
+
+        // Now switch back; IsMessageOpen was already false (never set to true in Window mode).
+        // Verify the transition does not touch IsMessageOpen (it was already false).
+        vm.IsMessageOpen = false;
+        vm.ApplySettings(CfgWith(MessageOpenMode.ReadingPane));
+
+        Assert.False(vm.IsMessageOpen); // still false — not set by the transition
     }
 }
