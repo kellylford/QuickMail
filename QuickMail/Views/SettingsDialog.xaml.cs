@@ -1,8 +1,11 @@
 using System;
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Helpers;
+using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -119,6 +122,16 @@ public partial class SettingsDialog : Window
         {
             LogService.Log("[Settings] Announce failed", ex);
         }
+    }
+
+    private void RadioButton_Checked(object sender, RoutedEventArgs e)
+    {
+        if (sender is not RadioButton { IsLoaded: true } rb) return;
+        var name = AutomationProperties.GetName(rb);
+        if (string.IsNullOrEmpty(name))
+            name = rb.Content?.ToString() ?? string.Empty;
+        if (!string.IsNullOrEmpty(name))
+            AccessibilityHelper.Announce(rb, name, category: AnnouncementCategory.Result);
     }
 
     private void RestoreDefaultButton_Click(object sender, RoutedEventArgs e)

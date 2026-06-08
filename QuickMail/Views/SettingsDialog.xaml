@@ -186,18 +186,23 @@
                         <!-- Log Format Group -->
                         <GroupBox Header="_Log Format" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Log format settings">
-                            <StackPanel>
+                            <StackPanel KeyboardNavigation.TabNavigation="Once"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle">
                                 <RadioButton Content="_Action first (recommended)"
                                              IsChecked="{Binding IsLogFormatActionFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
-                                             AutomationProperties.Name="Action first — message then timestamp. Easier to scan with a screen reader since the log is already chronological."/>
+                                             Checked="RadioButton_Checked"
+                                             AutomationProperties.Name="Action first"
+                                             AutomationProperties.HelpText="Message then timestamp — easier to scan since the log is already chronological."/>
                                 <TextBlock Text="Example: Sync completed: 42 messages  [2024-11-15 14:23:45.123]"
                                            Foreground="DimGray" FontSize="11" Margin="16,2,0,8"
                                            FontFamily="Consolas"/>
                                 <RadioButton Content="_Time first"
                                              IsChecked="{Binding IsLogFormatTimeFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
-                                             AutomationProperties.Name="Time first — timestamp then message. The original log format."/>
+                                             Checked="RadioButton_Checked"
+                                             AutomationProperties.Name="Time first"
+                                             AutomationProperties.HelpText="Timestamp then message — the original log format."/>
                                 <TextBlock Text="Example: 2024-11-15 14:23:45.123  Sync completed: 42 messages"
                                            Foreground="DimGray" FontSize="11" Margin="16,2,0,0"
                                            FontFamily="Consolas"/>
@@ -279,6 +284,7 @@
                                     <RadioButton Content="Reading _pane (default)"
                                                  IsChecked="{Binding IsReadingPaneMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
+                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Reading pane"
                                                  AutomationProperties.HelpText="Opens messages in the reading pane below the message list. This is the default behaviour."/>
                                     <TextBlock Text="Enter opens a message in the reading pane below the list."
@@ -286,6 +292,7 @@
                                     <RadioButton Content="_Tab"
                                                  IsChecked="{Binding IsTabMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
+                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Tab"
                                                  AutomationProperties.HelpText="Opens messages in a tab strip above the message list."/>
                                     <TextBlock Text="Enter opens a message as a new tab. Ctrl+Tab cycles tabs. Ctrl+W closes."
@@ -294,6 +301,7 @@
                                     <RadioButton Content="_Window"
                                                  IsChecked="{Binding IsWindowMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
+                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Window"
                                                  AutomationProperties.HelpText="Opens each message in its own window."/>
                                     <TextBlock Text="Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window."
