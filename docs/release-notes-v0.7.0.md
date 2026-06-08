@@ -68,6 +68,12 @@ With `Ctrl+1`–`8` now doing double duty (pane focus when no tabs are open; tab
 - **Message window loading indicator** uses `AutomationProperties.LiveSetting="Polite"` so the "Loading…" text is announced when the indicator appears.
 - **Message window F6 cycle** is fully implemented: toolbar → header fields → message body, with F6 relayed from inside the WebView2 message body via the same postMessage mechanism used in the main window.
 - **Message window command palette** (`Ctrl+Shift+P`) surfaces all window-scoped actions for users who prefer not to remember individual shortcuts.
+- **Tab strip close buttons are now keyboard-accessible.** When the tab strip has focus, Left/Right arrows navigate between tab headers and their individual close buttons (✕). Pressing Right from a tab header moves to that tab's close button; pressing Right again moves to the next tab header. Previously the close buttons were only reachable with a pointing device.
+- **`Ctrl+W` works from inside the message body.** The shortcut is now relayed from the WebView2 message body back to WPF in both Tab mode (closes the active tab) and Window mode (closes the window), so it is not necessary to move focus out of the message to close.
+- **`Ctrl+W` in Reading Pane mode closes the reading pane.** A new **Close Message** command (`Ctrl+W` default) is registered for Reading Pane mode, giving it consistent behavior across all three reading modes.
+- **Radio button selections in Settings are announced.** When the selected option changes in the Message Open Mode or Log Format radio groups, the newly selected option is announced to screen readers. WPF's built-in `SelectionItemPatternOnElementSelected` event fires correctly but screen readers require a parent `ISelectionProvider` container — which a plain StackPanel does not provide — so the announcement is supplemented via the `AccessibilityHelper.Announce` pathway.
+- **Log Format radio group on the Advanced tab** now uses single-tab-stop / arrow-key navigation, consistent with the Message Open Mode group and standard radio group behavior.
+- **Tutorial overlay is hidden from the accessibility tree while inactive.** The overlay is placed over the main content area; when not in use it was still reachable by screen reader virtual cursor navigation. Setting `Visibility=Collapsed` when inactive removes it from the tree entirely.
 
 ---
 
@@ -80,6 +86,9 @@ With `Ctrl+1`–`8` now doing double duty (pane focus when no tabs are open; tab
 - **Focus was not restored to the message list when a message window closed.** The main window now scrolls back to the row that was selected when the window opened.
 - **Sync guards and address-grab availability did not account for messages open in windows.** Commands that should remain available while reading a message (`Grab Addresses`, sync-related guards) now check whether a message is open in a window, not only whether the reading pane is visible.
 - **MessageListTabViewModel sentinel tab** was missing. In Tab mode, the tab strip was hidden when no message tabs were open, stranding keyboard focus. A non-closeable "Messages" sentinel tab is now always present in Tab mode so the strip stays visible and the focus cycle remains intact.
+- **Reading pane stayed visible when a message opened in Window mode.** When Reading mode was set to Window, the reading pane was not always cleared before the new window opened, leaving the previous message visible in the background.
+- **Deferred selection update could reopen the reading pane in Window mode.** A background `SelectMessageAsync` completion could arrive after a Window-mode open was already in progress and re-show the reading pane. Async version stamps now discard these stale completions.
+- **Closing a tab moved focus to the reading pane instead of the tab strip.** After the active tab closed, focus jumped to the message list or reading pane. Focus now stays on the tab strip, landing on the next logical tab.
 
 ---
 

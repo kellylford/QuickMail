@@ -158,6 +158,12 @@ Open **File → Settings** (or press `Ctrl+,`) to change application-wide prefer
 | **Show Message Status** | Whether the read/unread/replied/forwarded status indicator appears in the message list. |
 | **Initial Sync Count** | Maximum messages fetched per folder on the first sync of a newly connected account. |
 
+### Advanced tab
+
+| Setting | What it controls |
+|---------|------------------|
+| **Log Format** | How timestamps appear in the log file. **Action first** (default) — message text first, timestamp in brackets at the end of the line; easier to scan since the log is already in chronological order. **Time first** — timestamp at the start of each line, which was the original format. |
+
 ### Windowing tab
 
 Controls where messages open when you select them.
@@ -165,6 +171,7 @@ Controls where messages open when you select them.
 | Setting | What it controls |
 |---------|------------------|
 | **Reading mode** | **Reading Pane** (default) — opens messages in the reading pane inside the main window, one at a time. **Tab** — opens each message in a new tab in the main window's tab strip. **Window** — opens each message in a new standalone window. |
+| **Confirm before closing a tab** | When enabled, closing a tab that has unsaved draft changes shows a confirmation dialog before closing. |
 
 Regardless of the Reading mode setting, pressing **Ctrl+Enter** on a message always opens it in a new standalone window.
 
@@ -258,8 +265,10 @@ When Reading mode is **Tab**, a tab strip appears below the main toolbar. Each o
 |--------|-----|
 | Open a message in a new tab | Press **Enter** on a message in the list |
 | Open a message in a new window instead | Press **Ctrl+Enter** |
-| Close the active tab | Press **Ctrl+W**, or activate the close button on the tab |
+| Close the active tab | Press **Ctrl+W**, or activate the close button (✕) on the tab |
 | Close all other tabs | Use the **Close Other Tabs** command in the command palette |
+
+`Ctrl+W` works regardless of where keyboard focus is — including from inside the message body. In **Reading Pane** mode, `Ctrl+W` closes the reading pane instead of a tab.
 
 **Navigating tabs:**
 
@@ -272,7 +281,7 @@ When Reading mode is **Tab**, a tab strip appears below the main toolbar. Each o
 | `Ctrl+Alt+4` | Move keyboard focus to the tab strip itself |
 | `Ctrl+Shift+`` (backtick)` | Open the tab list overlay |
 
-When the tab strip has focus, use **Left/Right** arrows to highlight tabs and **Enter** or **Space** to activate the highlighted tab.
+When the tab strip has focus, use **Left/Right** arrows to navigate. Each tab has two keyboard stops: the tab header (press **Enter** or **Space** to activate it) and its close button — **✕** (press **Enter** or **Space** to close the tab). Pressing **Right** from a tab header moves to that tab's close button; pressing **Right** again moves to the next tab's header.
 
 **Tab list overlay (`Ctrl+Shift+\``):**
 
@@ -304,6 +313,7 @@ A message window is a standalone window that shows a single message. It has a to
 | `Alt+Left` | Go to the previous message |
 | `Alt+Right` | Go to the next message |
 | `Ctrl+Shift+P` | Open the command palette for this window |
+| `Ctrl+W` | Close the window |
 | `Escape` | Close the window |
 
 The command palette in a message window contains **Previous Message**, **Next Message**, **Move to Main Window**, and **Close Window**.
@@ -1015,7 +1025,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 |----------|--------|
 | Ctrl+Tab | Next tab |
 | Ctrl+Shift+Tab | Previous tab |
-| Ctrl+W | Close active tab |
+| Ctrl+W | Close active tab (Tab mode) / Close reading pane (Reading Pane mode) |
 | Ctrl+Shift+` | Open tab list overlay |
 
 #### Mail actions
@@ -1058,6 +1068,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Alt+Left | Previous message |
 | Alt+Right | Next message |
 | Ctrl+Shift+P | Open command palette |
+| Ctrl+W | Close window |
 | Escape | Close window |
 
 ### Compose window
