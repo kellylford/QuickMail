@@ -29,7 +29,7 @@ public sealed partial class MessageTabViewModel : TabSessionViewModel
         : base(new TabSessionModel
         {
             Kind       = TabKind.Message,
-            ContentKey = summary.UniqueId,
+            ContentKey = summary.MessageId,
             Title      = TruncateTitle(summary.Subject),
             Tooltip    = summary.Subject ?? string.Empty,
         })

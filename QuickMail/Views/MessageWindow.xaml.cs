@@ -163,14 +163,14 @@ public partial class MessageWindow : Window
             try
             {
                 detail = await _localStore.LoadDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId);
+                    summary.AccountId, summary.FolderName, summary.MessageId);
             }
             catch { /* local store unavailable — fetch from IMAP below */ }
 
             if (detail == null)
             {
                 detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.UniqueId, ct);
+                    summary.AccountId, summary.FolderName, summary.MessageId, ct);
             }
 
             ct.ThrowIfCancellationRequested();

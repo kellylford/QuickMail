@@ -3460,7 +3460,7 @@ public partial class MainWindow : Window
             winVm.MessageList.Add(msg);
 
         // Pre-populate detail if already loaded in the reading pane (issue 48).
-        if (_vm.SelectedMessage?.UniqueId == summary.UniqueId && _vm.MessageDetail != null)
+        if (_vm.SelectedMessage?.MessageId == summary.MessageId && _vm.MessageDetail != null)
             winVm.MessageDetail = _vm.MessageDetail;
 
         // The reading pane must not show while the message is in a separate window.

@@ -458,7 +458,7 @@ public partial class MainViewModel : ObservableObject
 
         // Duplicate: activate the existing tab if already open.
         var existing = OpenTabs.OfType<MessageTabViewModel>()
-                               .FirstOrDefault(t => t.Summary.UniqueId == summary.UniqueId
+                               .FirstOrDefault(t => t.Summary.MessageId == summary.MessageId
                                                  && t.Summary.AccountId == summary.AccountId);
         if (existing != null)
         {
