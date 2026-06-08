@@ -1233,6 +1233,12 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        // Apply default view now that connections are ready, so the user sees the right
+        // view during sync rather than waiting ~40s for sync to complete (issue #57).
+        var defaultView = SavedViews.FirstOrDefault(v => v.IsDefault);
+        if (defaultView != null)
+            await ApplyViewAsync(defaultView);
+
         StatusText = "Syncing mail…";
         ConnectionStatusText = "Syncing…";
         _suppressFolderSyncUpdates = true;
@@ -1240,33 +1246,15 @@ public partial class MainViewModel : ObservableObject
         {
             await _syncService.SyncAllAccountsAsync(Accounts, _cachedFolders, ct);
 
-            // Sync done — reload from the local store once so the UI reflects
-            // every folder that was synced without N intermediate screen-reader
-            // announcements.  Only reload if the user hasn't navigated away.
-            var sel = SelectedFolder;
-            if (sel != null)
-            {
-                List<MailMessageSummary> fresh;
-                if (sel.FullName == AllMailFolder.FullName)
-                    fresh = await _localStore.LoadAllSummariesAsync();
-                else if (TryGetAccountIdFromSentinel(sel.FullName, out var aid))
-                    fresh = await _localStore.LoadAllSummariesAsync(aid);
-                else
-                    fresh = null!; // user is on a specific folder — don't overwrite it
-
-                if (fresh != null)
-                    SetMessages(fresh);
-            }
+            // Sync done — refresh the current view/folder once so the UI reflects every
+            // folder that was synced without N intermediate screen-reader announcements.
+            // RefreshAsync handles all virtual-folder and saved-view types correctly.
+            await RefreshAsync();
 
             var count = Messages.Count;
             StatusText = $"{count} messages.";
             ConnectionStatusText = $"{Accounts.Count} account{(Accounts.Count == 1 ? "" : "s")} connected";
             Announce($"{count} {(count == 1 ? "message" : "messages")} loaded.", AnnouncementCategory.Status);
-
-            // Apply default view (if any) after the initial sync is complete.
-            var defaultView = SavedViews.FirstOrDefault(v => v.IsDefault);
-            if (defaultView != null)
-                await ApplyViewAsync(defaultView);
         }
         catch (OperationCanceledException) { /* sync cancelled — normal */ }
         catch (Exception ex)
