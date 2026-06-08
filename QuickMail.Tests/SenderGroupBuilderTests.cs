@@ -15,7 +15,7 @@ public class SenderGroupBuilderTests
     private static MailMessageSummary Msg(string from = "", string to = "", int dayOffset = 0)
         => new()
         {
-            UniqueId   = (uint)Math.Abs((from + to + dayOffset).GetHashCode()),
+            MessageId  = Math.Abs((from + to + dayOffset).GetHashCode()).ToString(),
             AccountId  = Guid.NewGuid(),
             FolderName = "Inbox",
             From       = from,

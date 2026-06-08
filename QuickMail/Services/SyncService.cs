@@ -97,17 +97,17 @@ public class SyncService : ISyncService
         // IDLE-triggered sync in non-online (SQLite cache) mode.
         //
         // We intentionally mirror SyncOneFolderOnlineAsync rather than calling
-        // SyncFolderAsync here.  SyncFolderAsync queries maxUid from the store and
-        // fetches only messages *after* that UID — but by the time IDLE fires,
+        // SyncFolderAsync here.  SyncFolderAsync queries the max message key from the store
+        // and fetches only messages *after* that key — but by the time IDLE fires,
         // RefreshFolderFromServerAsync has usually already stored the new messages and
-        // advanced maxUid.  That causes SyncFolderAsync to see incoming.Count == 0,
+        // advanced the max key.  That causes SyncFolderAsync to see incoming.Count == 0,
         // skip FolderSynced, and produce no announcement.
         //
-        // Fetching the last 50 by count (sinceUid: 0) guarantees FolderSynced fires
-        // whenever the server has messages.  OnFolderSynced deduplicates by UID so
+        // Fetching the last 50 by count (sinceMessageId: "0") guarantees FolderSynced fires
+        // whenever the server has messages.  OnFolderSynced deduplicates by message id so
         // already-visible messages are discarded; only genuinely new arrivals are inserted.
         LogService.Log($"IDLE targeted sync: fetching {account.AccountLabel}/{folder.FullName}");
-        var incoming = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, sinceUid: 0, initialCount: 50, ct);
+        var incoming = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, sinceMessageId: "0", initialCount: 50, ct);
         LogService.Log($"IDLE targeted sync: {incoming.Count} messages fetched from {account.AccountLabel}/{folder.FullName}");
         if (incoming.Count > 0)
         {
@@ -121,7 +121,7 @@ public class SyncService : ISyncService
         // Fetch the last 50 messages. OnFolderSynced deduplicates by UID so already-visible
         // messages are harmlessly skipped; only truly new arrivals are inserted.
         LogService.Log($"IDLE targeted sync: fetching {account.AccountLabel}/{folder.FullName}");
-        var incoming = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, sinceUid: 0, initialCount: 50, ct);
+        var incoming = await _imap.GetMessagesSinceAsync(account.Id, folder.FullName, sinceMessageId: "0", initialCount: 50, ct);
         LogService.Log($"IDLE targeted sync: {incoming.Count} messages fetched from {account.AccountLabel}/{folder.FullName}");
         if (incoming.Count > 0)
         {
@@ -132,11 +132,11 @@ public class SyncService : ISyncService
     private async Task<List<MailMessageSummary>> SyncFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
     {
         // ── New messages ─────────────────────────────────────────────────────────
-        var maxUid   = await _store.GetMaxUidAsync(account.Id, folder.FullName);
+        var maxKey   = await _store.GetMaxMessageKeyAsync(account.Id, folder.FullName);
         var cfg      = _config.Load();
         List<MailMessageSummary> incoming;
 
-        if (maxUid == 0 && cfg.SyncDays > 0)
+        if (maxKey == "0" && cfg.SyncDays > 0)
         {
             // Fresh start with a date filter: use SEARCH SINCE rather than count-based fallback.
             incoming = await _imap.GetMessagesSinceDateAsync(
@@ -145,7 +145,7 @@ public class SyncService : ISyncService
         else
         {
             incoming = await _imap.GetMessagesSinceAsync(
-                account.Id, folder.FullName, maxUid, cfg.InitialSyncCount, ct);
+                account.Id, folder.FullName, maxKey, cfg.InitialSyncCount, ct);
         }
 
         if (incoming.Count > 0)
@@ -179,7 +179,7 @@ public class SyncService : ISyncService
                     {
                         await _store.DeleteSummariesAsync(
                             group.Key.AccountId, group.Key.FolderName,
-                            group.Select(m => m.UniqueId));
+                            group.Select(m => m.MessageId));
                     }
                     catch (Exception ex)
                     {
@@ -201,22 +201,22 @@ public class SyncService : ISyncService
 
         // ── Remote deletions ─────────────────────────────────────────────────────
         // Only meaningful when we already have local data for this folder.
-        var localUids = await _store.GetAllUidsAsync(account.Id, folder.FullName);
-        if (localUids.Count == 0) return incoming;
+        var localIds = await _store.GetAllMessageIdsAsync(account.Id, folder.FullName);
+        if (localIds.Count == 0) return incoming;
 
-        var serverUids = await _imap.GetFolderUidsAsync(account.Id, folder.FullName, ct);
-        var serverSet  = new HashSet<uint>(serverUids);
-        var deletedUids = localUids.Where(u => !serverSet.Contains(u)).ToList();
+        var serverIds  = await _imap.GetFolderMessageIdsAsync(account.Id, folder.FullName, ct);
+        var serverSet  = new HashSet<string>(serverIds);
+        var deletedIds = localIds.Where(id => !serverSet.Contains(id)).ToList();
 
-        if (deletedUids.Count == 0) return incoming;
+        if (deletedIds.Count == 0) return incoming;
 
-        LogService.Log($"Sync {account.AccountLabel}/{folder.FullName}: {deletedUids.Count} remote deletion(s)");
-        await _store.DeleteSummariesAsync(account.Id, folder.FullName, deletedUids);
+        LogService.Log($"Sync {account.AccountLabel}/{folder.FullName}: {deletedIds.Count} remote deletion(s)");
+        await _store.DeleteSummariesAsync(account.Id, folder.FullName, deletedIds);
 
-        var removed = deletedUids
-            .Select(uid => new MailMessageSummary
+        var removed = deletedIds
+            .Select(id => new MailMessageSummary
             {
-                UniqueId   = uid,
+                MessageId  = id,
                 AccountId  = account.Id,
                 FolderName = folder.FullName,
             })
@@ -235,28 +235,28 @@ public class SyncService : ISyncService
         try
         {
             // Only fetch bodies for messages the server didn't fill via IMAP PREVIEW.
-            var uids = incoming
+            var ids = incoming
                 .Where(s => string.IsNullOrEmpty(s.Preview))
                 .OrderByDescending(s => s.Date)
                 .Take(100)
-                .Select(s => s.UniqueId)
+                .Select(s => s.MessageId)
                 .ToList();
-            if (uids.Count == 0) return;
+            if (ids.Count == 0) return;
 
             var previewLines = _config.Load().GetPreviewLines(account.Id);
             if (previewLines <= 0) return;
             var previews = await _imap.FetchPreviewsAsync(
-                account.Id, folder.FullName, uids, previewLines, ct);
+                account.Id, folder.FullName, ids, previewLines, ct);
 
             // Match each summary in 'incoming' to its preview, building both the
             // UI-apply list and the persistence list in one pass.
-            var updates = new List<(uint UniqueId, string Preview)>(previews.Count);
+            var updates = new List<(string MessageId, string Preview)>(previews.Count);
             var uiApply = new List<(MailMessageSummary Summary, string Preview)>(previews.Count);
             foreach (var s in incoming)
             {
-                if (!previews.TryGetValue(s.UniqueId, out var p)) continue;
+                if (!previews.TryGetValue(s.MessageId, out var p)) continue;
                 uiApply.Add((s, p));
-                updates.Add((s.UniqueId, p));
+                updates.Add((s.MessageId, p));
             }
             if (uiApply.Count == 0) return;
 

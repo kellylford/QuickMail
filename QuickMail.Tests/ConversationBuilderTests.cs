@@ -17,7 +17,7 @@ public class ConversationBuilderTests
     private static MailMessageSummary Msg(string subject, int dayOffset = 0, string from = "x@example.com")
         => new()
         {
-            UniqueId   = (uint)Math.Abs(subject.GetHashCode() ^ dayOffset),
+            MessageId  = Math.Abs(subject.GetHashCode() ^ dayOffset).ToString(),
             AccountId  = Guid.NewGuid(),
             FolderName = "Inbox",
             From       = from,

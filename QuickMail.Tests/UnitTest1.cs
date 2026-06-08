@@ -396,7 +396,7 @@ public class LocalStoreServiceTests
 
         var summary = new MailMessageSummary
         {
-            UniqueId = 42,
+            MessageId = "42",
             AccountId = Guid.NewGuid(),
             FolderName = "Inbox",
             From = "Sender <sender@example.com>",
@@ -426,7 +426,7 @@ public class LocalStoreServiceTests
         var accountId = Guid.NewGuid();
         var summary = new MailMessageSummary
         {
-            UniqueId   = 7,
+            MessageId  = "7",
             AccountId  = accountId,
             FolderName = "Inbox",
             From       = "x@example.com",
@@ -438,7 +438,7 @@ public class LocalStoreServiceTests
         // UpsertDetailAsync flips the has_attachments flag when attachments are present.
         await store.UpsertDetailAsync(new MailMessageDetail
         {
-            UniqueId    = 7,
+            MessageId   = "7",
             AccountId   = accountId,
             FolderName  = "Inbox",
             Attachments = new() { new AttachmentModel { FileName = "doc.pdf", ContentType = "application/pdf" } },
@@ -465,10 +465,10 @@ public class LocalStoreServiceTests
         store.Initialize();
 
         var accountId = Guid.NewGuid();
-        var ids = Enumerable.Range(1, 1100).Select(i => (uint)i).ToList(); // crosses two chunks
+        var ids = Enumerable.Range(1, 1100).ToList(); // crosses two chunks
         var summaries = ids.Select(id => new MailMessageSummary
         {
-            UniqueId   = id,
+            MessageId  = id.ToString(),
             AccountId  = accountId,
             FolderName = "Inbox",
             Subject    = $"msg{id}",
@@ -476,12 +476,12 @@ public class LocalStoreServiceTests
         });
         await store.UpsertSummariesAsync(summaries);
 
-        var toDelete = ids.Where(i => i % 2 == 0).ToList(); // 550 ids
+        var toDelete = ids.Where(i => i % 2 == 0).Select(i => i.ToString()).ToList(); // 550 ids
         await store.DeleteSummariesAsync(accountId, "Inbox", toDelete);
 
         var remaining = await store.LoadFolderSummariesAsync(accountId, "Inbox");
         Assert.Equal(550, remaining.Count);
-        Assert.All(remaining, m => Assert.Equal(1u, m.UniqueId % 2));
+        Assert.All(remaining, m => Assert.Equal(1, int.Parse(m.MessageId) % 2));
     }
 
     [Fact]
@@ -505,7 +505,7 @@ public class LocalStoreServiceTests
         store.Initialize();
 
         // Must not throw on empty input.
-        await store.DeleteSummariesAsync(Guid.NewGuid(), "Inbox", Array.Empty<uint>());
+        await store.DeleteSummariesAsync(Guid.NewGuid(), "Inbox", Array.Empty<string>());
     }
 
     [Fact]
@@ -517,7 +517,7 @@ public class LocalStoreServiceTests
 
         await store.UpsertSummariesAsync([new MailMessageSummary
         {
-            UniqueId   = 1,
+            MessageId  = "1",
             AccountId  = Guid.NewGuid(),
             FolderName = "Inbox",
             From       = "x@example.com",

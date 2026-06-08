@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -12,21 +13,38 @@ namespace QuickMail.Services;
 public class LocalStoreService : ILocalStoreService
 {
     private readonly string _connectionString;
+    private readonly string _dbPath;
 
     public LocalStoreService(ProfileContext profile)
     {
-        _connectionString = $"Data Source={Path.Combine(profile.ProfileDir, "mail.db")};Mode=ReadWriteCreate;";
+        _dbPath = Path.Combine(profile.ProfileDir, "mail.db");
+        _connectionString = $"Data Source={_dbPath};Mode=ReadWriteCreate;";
     }
 
     public void Initialize()
     {
+        // Pre-migration backup: if we're upgrading from a pre-v2 (INTEGER unique_id) database,
+        // copy mail.db to mail.db.pre-v2 before touching it. The v2 migration is one-way, so the
+        // backup is the safety net. Preserved indefinitely; the user can delete it manually.
+        if (File.Exists(_dbPath))
+        {
+            using var probe = new SqliteConnection($"Data Source={_dbPath};Mode=ReadOnly;");
+            probe.Open();
+            if (GetUserVersion(probe) < 2)
+            {
+                var backupPath = _dbPath + ".pre-v2";
+                File.Copy(_dbPath, backupPath, overwrite: true);
+                LogService.Log($"LocalStoreService: backed up mail.db to {backupPath} before v2 migration");
+            }
+        }
+
         using var conn = Open();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = """
             PRAGMA journal_mode=WAL;
 
             CREATE TABLE IF NOT EXISTS MessageSummary (
-                unique_id    INTEGER NOT NULL,
+                unique_id    TEXT    NOT NULL,
                 account_id   TEXT    NOT NULL,
                 folder_name  TEXT    NOT NULL,
                 from_disp    TEXT    NOT NULL DEFAULT '',
@@ -43,7 +61,7 @@ public class LocalStoreService : ILocalStoreService
                 ON MessageSummary(date_ticks DESC);
 
             CREATE TABLE IF NOT EXISTS MessageDetail (
-                unique_id   INTEGER NOT NULL,
+                unique_id   TEXT    NOT NULL,
                 account_id  TEXT    NOT NULL,
                 folder_name TEXT    NOT NULL,
                 to_addr     TEXT    NOT NULL DEFAULT '',
@@ -74,9 +92,10 @@ public class LocalStoreService : ILocalStoreService
     //
     // Migration numbering:
     //   0 → 1   to_addr backfill from MessageDetail
-    //   1 → 2   is_mailing_list backfill from to_addr patterns
-    // Add new migrations as: if (version < 3) { ...; SetUserVersion(conn, 3); }
-    private const int CurrentSchemaVersion = 2;
+    //   1 → 2   unique_id INTEGER → TEXT (string MessageId); add DeltaToken table
+    //   2 → 3   is_mailing_list backfill from to_addr patterns
+    // Add new migrations as: if (version < 4) { ...; }
+    private const int CurrentSchemaVersion = 3;
 
     private static void RunDataMigrations(SqliteConnection conn)
     {
@@ -101,6 +120,72 @@ public class LocalStoreService : ILocalStoreService
         }
 
         if (version < 2)
+        {
+            // Convert unique_id from INTEGER to TEXT for both tables, and add the DeltaToken
+            // table used by the Graph backend. Rebuild-and-rename is the standard SQLite idiom
+            // for a column type change. Wrapped in a transaction: on failure the rollback leaves
+            // the v1 schema intact (the mail.db.pre-v2 backup is the second safety net).
+            using var tx = conn.BeginTransaction();
+            using var migrateCmd = conn.CreateCommand();
+            migrateCmd.Transaction = tx;
+            migrateCmd.CommandText = """
+                CREATE TABLE MessageSummary_v2 (
+                    unique_id    TEXT    NOT NULL,
+                    account_id   TEXT    NOT NULL,
+                    folder_name  TEXT    NOT NULL,
+                    from_disp    TEXT    NOT NULL DEFAULT '',
+                    to_addr      TEXT    NOT NULL DEFAULT '',
+                    subject      TEXT    NOT NULL DEFAULT '',
+                    date_ticks   INTEGER NOT NULL,
+                    is_read      INTEGER NOT NULL DEFAULT 0,
+                    preview_text TEXT    NOT NULL DEFAULT '',
+                    is_replied   INTEGER NOT NULL DEFAULT 0,
+                    is_forwarded INTEGER NOT NULL DEFAULT 0,
+                    has_attachments INTEGER NOT NULL DEFAULT 0,
+                    is_mailing_list INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY (unique_id, account_id, folder_name)
+                );
+                INSERT INTO MessageSummary_v2
+                SELECT CAST(unique_id AS TEXT), account_id, folder_name, from_disp, to_addr,
+                       subject, date_ticks, is_read, preview_text, is_replied, is_forwarded,
+                       has_attachments, is_mailing_list
+                FROM MessageSummary;
+                DROP TABLE MessageSummary;
+                ALTER TABLE MessageSummary_v2 RENAME TO MessageSummary;
+                CREATE INDEX idx_summary_date ON MessageSummary(date_ticks DESC);
+
+                CREATE TABLE MessageDetail_v2 (
+                    unique_id   TEXT NOT NULL,
+                    account_id  TEXT NOT NULL,
+                    folder_name TEXT NOT NULL,
+                    to_addr     TEXT NOT NULL DEFAULT '',
+                    cc          TEXT NOT NULL DEFAULT '',
+                    reply_to    TEXT NOT NULL DEFAULT '',
+                    plain_body  TEXT NOT NULL DEFAULT '',
+                    html_body   TEXT NOT NULL DEFAULT '',
+                    attachments_json TEXT DEFAULT NULL,
+                    PRIMARY KEY (unique_id, account_id, folder_name)
+                );
+                INSERT INTO MessageDetail_v2
+                SELECT CAST(unique_id AS TEXT), account_id, folder_name, to_addr, cc,
+                       reply_to, plain_body, html_body, attachments_json
+                FROM MessageDetail;
+                DROP TABLE MessageDetail;
+                ALTER TABLE MessageDetail_v2 RENAME TO MessageDetail;
+
+                CREATE TABLE DeltaToken (
+                    account_id   TEXT NOT NULL,
+                    folder_id    TEXT NOT NULL,
+                    delta_token  TEXT NOT NULL,
+                    updated_utc  INTEGER NOT NULL,
+                    PRIMARY KEY (account_id, folder_id)
+                );
+                """;
+            migrateCmd.ExecuteNonQuery();
+            tx.Commit();
+        }
+
+        if (version < 3)
         {
             // Best-effort backfill: flag rows whose to_addr contains a recognisable
             // mailing-list domain. The IMAP List-Id header detection handles newly
@@ -170,7 +255,7 @@ public class LocalStoreService : ILocalStoreService
                 is_mailing_list = excluded.is_mailing_list,
                 preview_text   = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END;
             """;
-        var pUid       = cmd.Parameters.Add("$uid",       SqliteType.Integer);
+        var pUid       = cmd.Parameters.Add("$uid",       SqliteType.Text);
         var pAid       = cmd.Parameters.Add("$aid",       SqliteType.Text);
         var pFn        = cmd.Parameters.Add("$fn",        SqliteType.Text);
         var pFrom      = cmd.Parameters.Add("$from",      SqliteType.Text);
@@ -185,7 +270,7 @@ public class LocalStoreService : ILocalStoreService
 
         foreach (var s in summaries)
         {
-            pUid.Value       = (long)s.UniqueId;
+            pUid.Value       = s.MessageId;
             pAid.Value       = s.AccountId.ToString();
             pFn.Value        = s.FolderName;
             pFrom.Value      = s.From;
@@ -247,12 +332,12 @@ public class LocalStoreService : ILocalStoreService
         return result is long value && value != 0;
     }
 
-    public async Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<uint> uniqueIds)
+    public async Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds)
     {
         // Chunk so the IN list stays well under SQLite's compiled-parameter limit (~999).
         // Two round-trips per chunk regardless of size beats 2N round-trips for the old loop.
         const int chunkSize = 500;
-        var ids = uniqueIds as IList<uint> ?? uniqueIds.ToList();
+        var ids = messageIds as IList<string> ?? messageIds.ToList();
         if (ids.Count == 0) return;
 
         await using var conn = await OpenAsync();
@@ -270,7 +355,7 @@ public class LocalStoreService : ILocalStoreService
             cmd.Parameters.AddWithValue("$aid", accountId.ToString());
             cmd.Parameters.AddWithValue("$fn",  folderName);
             for (int i = 0; i < count; i++)
-                cmd.Parameters.AddWithValue($"$u{i}", (long)ids[offset + i]);
+                cmd.Parameters.AddWithValue($"$u{i}", ids[offset + i]);
             await cmd.ExecuteNonQueryAsync();
         }
 
@@ -290,7 +375,7 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
-    public async Task UpdateIsReadAsync(Guid accountId, string folderName, uint uniqueId, bool isRead)
+    public async Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead)
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
@@ -298,13 +383,13 @@ public class LocalStoreService : ILocalStoreService
             "UPDATE MessageSummary SET is_read=$read " +
             "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
         cmd.Parameters.AddWithValue("$read", isRead ? 1 : 0);
-        cmd.Parameters.AddWithValue("$uid",  (long)uniqueId);
+        cmd.Parameters.AddWithValue("$uid",  messageId);
         cmd.Parameters.AddWithValue("$aid",  accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",   folderName);
         await cmd.ExecuteNonQueryAsync();
     }
 
-    public async Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, uint UniqueId)> items, bool isRead)
+    public async Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead)
     {
         await using var conn = await OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
@@ -314,13 +399,13 @@ public class LocalStoreService : ILocalStoreService
             "UPDATE MessageSummary SET is_read=$read " +
             "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
         var pRead = cmd.Parameters.Add("$read", Microsoft.Data.Sqlite.SqliteType.Integer);
-        var pUid  = cmd.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Integer);
+        var pUid  = cmd.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Text);
         var pAid  = cmd.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
         var pFn   = cmd.Parameters.Add("$fn",   Microsoft.Data.Sqlite.SqliteType.Text);
         pRead.Value = isRead ? 1 : 0;
-        foreach (var (accountId, folderName, uniqueId) in items)
+        foreach (var (accountId, folderName, messageId) in items)
         {
-            pUid.Value = (long)uniqueId;
+            pUid.Value = messageId;
             pAid.Value = accountId.ToString();
             pFn.Value  = folderName;
             await cmd.ExecuteNonQueryAsync();
@@ -328,7 +413,7 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
-    public async Task UpdatePreviewAsync(Guid accountId, string folderName, uint uniqueId, string preview)
+    public async Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview)
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
@@ -336,16 +421,16 @@ public class LocalStoreService : ILocalStoreService
             "UPDATE MessageSummary SET preview_text=$preview " +
             "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
         cmd.Parameters.AddWithValue("$preview", preview);
-        cmd.Parameters.AddWithValue("$uid",     (long)uniqueId);
+        cmd.Parameters.AddWithValue("$uid",     messageId);
         cmd.Parameters.AddWithValue("$aid",     accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",      folderName);
         await cmd.ExecuteNonQueryAsync();
     }
 
     public async Task UpdatePreviewsBatchAsync(
-        Guid accountId, string folderName, IEnumerable<(uint UniqueId, string Preview)> updates)
+        Guid accountId, string folderName, IEnumerable<(string MessageId, string Preview)> updates)
     {
-        var list = updates as IList<(uint, string)> ?? updates.ToList();
+        var list = updates as IList<(string, string)> ?? updates.ToList();
         if (list.Count == 0) return;
 
         await using var conn = await OpenAsync();
@@ -355,14 +440,14 @@ public class LocalStoreService : ILocalStoreService
             "UPDATE MessageSummary SET preview_text=$preview " +
             "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
         var pPrev = cmd.Parameters.Add("$preview", SqliteType.Text);
-        var pUid  = cmd.Parameters.Add("$uid",     SqliteType.Integer);
+        var pUid  = cmd.Parameters.Add("$uid",     SqliteType.Text);
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
 
-        foreach (var (uid, preview) in list)
+        foreach (var (messageId, preview) in list)
         {
             pPrev.Value = preview;
-            pUid.Value  = (long)uid;
+            pUid.Value  = messageId;
             await cmd.ExecuteNonQueryAsync();
         }
 
@@ -389,7 +474,7 @@ public class LocalStoreService : ILocalStoreService
                 html_body        = excluded.html_body,
                 attachments_json = excluded.attachments_json;
             """;
-        cmd.Parameters.AddWithValue("$uid",    (long)d.UniqueId);
+        cmd.Parameters.AddWithValue("$uid",    d.MessageId);
         cmd.Parameters.AddWithValue("$aid",    d.AccountId.ToString());
         cmd.Parameters.AddWithValue("$fn",     d.FolderName);
         cmd.Parameters.AddWithValue("$to",     d.To);
@@ -406,7 +491,7 @@ public class LocalStoreService : ILocalStoreService
             "UPDATE MessageSummary SET has_attachments=$ha " +
             "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
         cmd2.Parameters.AddWithValue("$ha",  d.Attachments.Count > 0 ? 1 : 0);
-        cmd2.Parameters.AddWithValue("$uid", (long)d.UniqueId);
+        cmd2.Parameters.AddWithValue("$uid", d.MessageId);
         cmd2.Parameters.AddWithValue("$aid", d.AccountId.ToString());
         cmd2.Parameters.AddWithValue("$fn",  d.FolderName);
         await cmd2.ExecuteNonQueryAsync();
@@ -414,7 +499,7 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
-    public async Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, uint uniqueId)
+    public async Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId)
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
@@ -425,7 +510,7 @@ public class LocalStoreService : ILocalStoreService
             JOIN MessageSummary s USING (unique_id, account_id, folder_name)
             WHERE d.unique_id=$uid AND d.account_id=$aid AND d.folder_name=$fn;
             """;
-        cmd.Parameters.AddWithValue("$uid", (long)uniqueId);
+        cmd.Parameters.AddWithValue("$uid", messageId);
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
 
@@ -453,7 +538,7 @@ public class LocalStoreService : ILocalStoreService
 
         return new MailMessageDetail
         {
-            UniqueId      = uniqueId,
+            MessageId     = messageId,
             AccountId     = accountId,
             FolderName    = folderName,
             To            = r.GetString(0),
@@ -469,7 +554,7 @@ public class LocalStoreService : ILocalStoreService
         };
     }
 
-    public async Task<HashSet<uint>> GetAllUidsAsync(Guid accountId, string folderName)
+    public async Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName)
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
@@ -477,24 +562,28 @@ public class LocalStoreService : ILocalStoreService
             "SELECT unique_id FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
-        var result = new HashSet<uint>();
+        var result = new HashSet<string>();
         await using var r = await cmd.ExecuteReaderAsync();
         while (await r.ReadAsync())
-            result.Add((uint)r.GetInt64(0));
+            result.Add(r.GetString(0));
         return result;
     }
 
-    public async Task<uint> GetMaxUidAsync(Guid accountId, string folderName)
+    public async Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName)
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
+        // IMAP stores plain decimal UID strings; compute the numeric high-water mark via CAST so
+        // "9" < "10" sorts correctly (lexicographic MAX would not). Graph rows are non-numeric and
+        // CAST to 0 — harmless, since Graph never reads this value.
         cmd.CommandText =
-            "SELECT COALESCE(MAX(unique_id), 0) FROM MessageSummary " +
+            "SELECT COALESCE(MAX(CAST(unique_id AS INTEGER)), 0) FROM MessageSummary " +
             "WHERE account_id=$aid AND folder_name=$fn;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         cmd.Parameters.AddWithValue("$fn",  folderName);
         var result = await cmd.ExecuteScalarAsync();
-        return result is long l ? (uint)l : 0u;
+        var max = result is long l ? l : 0L;
+        return max.ToString(CultureInfo.InvariantCulture);
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────────
@@ -507,7 +596,7 @@ public class LocalStoreService : ILocalStoreService
         {
             list.Add(new MailMessageSummary
             {
-                UniqueId    = (uint)r.GetInt64(0),
+                MessageId   = r.GetString(0),
                 AccountId   = Guid.Parse(r.GetString(1)),
                 FolderName  = r.GetString(2),
                 From        = r.GetString(3),

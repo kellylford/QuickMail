@@ -15,7 +15,7 @@ public class ComposeViewModelReplyTests
     private static MailMessageDetail MakeDetail(string from, string to, string cc, string? replyTo = null)
         => new()
         {
-            UniqueId      = 1,
+            MessageId     = "1",
             AccountId     = Guid.NewGuid(),
             FolderName    = "Inbox",
             From          = from,

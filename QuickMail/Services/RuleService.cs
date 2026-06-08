@@ -79,7 +79,7 @@ public class RuleService : IRuleService
         LogService.Debug($"ApplyRulesAsync: {enabledRules.Count} enabled rules, {incoming.Count} incoming messages for account {accountId}");
         if (enabledRules.Count == 0) return (0, []);
 
-        var affectedKeys = new HashSet<(uint Uid, Guid AccountId, string FolderName)>();
+        var affectedKeys = new HashSet<(string MessageId, Guid AccountId, string FolderName)>();
         var removedMessages = new List<MailMessageSummary>();
 
         foreach (var rule in enabledRules)
@@ -98,12 +98,12 @@ public class RuleService : IRuleService
             if (matched.Count > 0)
             {
                 foreach (var m in matched.Take(3))
-                    LogService.Debug($"    Match: From='{m.From}' Subject='{m.Subject}' UID={m.UniqueId} Folder={m.FolderName}");
+                    LogService.Debug($"    Match: From='{m.From}' Subject='{m.Subject}' UID={m.MessageId} Folder={m.FolderName}");
             }
             if (matched.Count == 0) continue;
 
             foreach (var m in matched)
-                affectedKeys.Add((m.UniqueId, m.AccountId, m.FolderName));
+                affectedKeys.Add((m.MessageId, m.AccountId, m.FolderName));
 
             try
             {
@@ -113,10 +113,10 @@ public class RuleService : IRuleService
                 // UI doesn't show them in the original folder after FolderSynced fires.
                 if (rule.Action is RuleAction.MoveToFolder or RuleAction.Delete)
                 {
-                    var matchedKeys = new HashSet<(uint Uid, Guid AccountId, string FolderName)>();
+                    var matchedKeys = new HashSet<(string MessageId, Guid AccountId, string FolderName)>();
                     foreach (var m in matched)
-                        matchedKeys.Add((m.UniqueId, m.AccountId, m.FolderName));
-                    incoming.RemoveAll(m => matchedKeys.Contains((m.UniqueId, m.AccountId, m.FolderName)));
+                        matchedKeys.Add((m.MessageId, m.AccountId, m.FolderName));
+                    incoming.RemoveAll(m => matchedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
                     removedMessages.AddRange(matched);
                 }
             }
@@ -201,14 +201,14 @@ public class RuleService : IRuleService
             ct.ThrowIfCancellationRequested();
             try
             {
-                await _imap.MarkReadAsync(msg.AccountId, msg.FolderName, msg.UniqueId, ct);
+                await _imap.MarkReadAsync(msg.AccountId, msg.FolderName, msg.MessageId, ct);
                 msg.IsRead = true;
-                await _store.UpdateIsReadAsync(msg.AccountId, msg.FolderName, msg.UniqueId, true);
+                await _store.UpdateIsReadAsync(msg.AccountId, msg.FolderName, msg.MessageId, true);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                LogService.Log($"MarkRead failed for UID {msg.UniqueId}", ex);
+                LogService.Log($"MarkRead failed for UID {msg.MessageId}", ex);
             }
         }
     }
@@ -223,12 +223,12 @@ public class RuleService : IRuleService
                 // IMailService has no MarkUnreadAsync yet — we update the local store
                 // only. Full server-side unread will be added in a follow-up.
                 msg.IsRead = false;
-                await _store.UpdateIsReadAsync(msg.AccountId, msg.FolderName, msg.UniqueId, false);
+                await _store.UpdateIsReadAsync(msg.AccountId, msg.FolderName, msg.MessageId, false);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
             {
-                LogService.Log($"MarkUnread failed for UID {msg.UniqueId}", ex);
+                LogService.Log($"MarkUnread failed for UID {msg.MessageId}", ex);
             }
         }
     }
@@ -241,7 +241,7 @@ public class RuleService : IRuleService
         foreach (var group in groups)
         {
             ct.ThrowIfCancellationRequested();
-            var uids = group.Select(m => m.UniqueId).ToList();
+            var uids = group.Select(m => m.MessageId).ToList();
             try
             {
                 await _imap.MoveMessagesAsync(
@@ -261,7 +261,7 @@ public class RuleService : IRuleService
         foreach (var group in groups)
         {
             ct.ThrowIfCancellationRequested();
-            var uids = group.Select(m => m.UniqueId).ToList();
+            var uids = group.Select(m => m.MessageId).ToList();
             try
             {
                 await _imap.MoveToTrashBatchAsync(
@@ -316,7 +316,7 @@ public class RuleService : IRuleService
                     {
                         await store.DeleteSummariesAsync(
                             group.Key.AccountId, group.Key.FolderName,
-                            group.Select(m => m.UniqueId));
+                            group.Select(m => m.MessageId));
                     }
                     removedMessages.AddRange(matched);
                 }

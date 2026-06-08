@@ -28,7 +28,7 @@ public static class MessagePropertiesBuilder
         {
             new("Account",  accountName),
             new("Folder",   summary.FolderName),
-            new("IMAP UID", summary.UniqueId.ToString()),
+            new("IMAP UID", summary.MessageId),
             new("Status",   FormatStatus(summary)),
         };
 
