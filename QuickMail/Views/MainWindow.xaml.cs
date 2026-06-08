@@ -640,7 +640,7 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "view.focusTabs", category: "View", title: "Focus Tab Strip",
             execute: () => { if (_vm.ShowTabStrip) TabStrip.Focus(); },
-            defaultKey: Key.D4, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
+            defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.ShowTabStrip));
 
         // ── Tab & Window Management commands ─────────────────────────────────────

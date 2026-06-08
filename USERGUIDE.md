@@ -203,7 +203,7 @@ Custom bindings are saved to `hotkeys.json` in your AppData folder and apply imm
 | Focus the account list | `Ctrl+1` (or `Ctrl+Alt+1` when tabs are open), then use **Up/Down** arrow keys |
 | Focus the folder tree | `Ctrl+2` or `Ctrl+Y` (or `Ctrl+Alt+2` when tabs are open), then use **Up/Down** + **Enter** |
 | Focus the message list | `Ctrl+3` (or `Ctrl+Alt+3` when tabs are open), then use **Up/Down** to move between messages |
-| Focus the tab strip | `Ctrl+Alt+4` (when tab strip is visible) |
+| Focus the tab strip | `Ctrl+Shift+T` (when tab strip is visible) |
 | Open a message in the reading pane | Press **Enter** or select the message |
 | Move focus into the reading pane | **F6** after a message is open |
 | Return focus to the message list | **Escape** or **F6** from the reading pane |
@@ -278,7 +278,7 @@ When Reading mode is **Tab**, a tab strip appears below the main toolbar. Each o
 | `Ctrl+Shift+Tab` | Move to the previous tab |
 | `Ctrl+1` … `Ctrl+8` | Jump to tab number N (1 = first, 8 = eighth) |
 | `Ctrl+9` | Jump to the last tab |
-| `Ctrl+Alt+4` | Move keyboard focus to the tab strip itself |
+| `Ctrl+Shift+T` | Move keyboard focus to the tab strip itself |
 | `Ctrl+Shift+`` (backtick)` | Open the tab list overlay |
 
 When the tab strip has focus, use **Left/Right** arrows to navigate. Each tab has two keyboard stops: the tab header (press **Enter** or **Space** to activate it) and its close button — **✕** (press **Enter** or **Space** to close the tab). Pressing **Right** from a tab header moves to that tab's close button; pressing **Right** again moves to the next tab's header.
@@ -1012,7 +1012,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Ctrl+Alt+1 | Focus account list (always works, even when tabs are open) |
 | Ctrl+Alt+2 | Focus folder tree (always works) |
 | Ctrl+Alt+3 | Focus message list (always works) |
-| Ctrl+Alt+4 | Focus tab strip (when tab strip is visible) |
+| Ctrl+Shift+T | Focus tab strip (when tab strip is visible) |
 | Ctrl+0 | Focus toolbar |
 | F6 | Cycle focus forward through panes |
 | Shift+F6 | Cycle focus backward through panes |

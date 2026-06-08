@@ -308,7 +308,7 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 | *(unassigned)* | `mail.declineInvite` | Decline Invitation |
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
-| Ctrl+Alt+4 | `view.focusTabs` | Focus Tab Strip |
+| Ctrl+Shift+T | `view.focusTabs` | Focus Tab Strip |
 | Alt+Enter | `view.showProperties` | View Properties |
 | Ctrl+Tab | `tabs.next` | Next Tab |
 | Ctrl+Shift+Tab | `tabs.previous` | Previous Tab |

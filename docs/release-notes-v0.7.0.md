@@ -27,7 +27,7 @@ Messages can now be opened in three ways, controlled by a new **Reading mode** s
 - `Ctrl+1` through `Ctrl+8` jump to tab N; `Ctrl+9` jumps to the last tab.
 - `Ctrl+W` closes the active tab.
 - `Ctrl+Shift+`` ` (backtick) opens a **tab list overlay** — a navigable list of all open tabs, similar to the Alt+Tab switcher.
-- `Ctrl+Alt+4` focuses the tab strip itself for arrow-key navigation.
+- `Ctrl+Shift+T` focuses the tab strip itself for arrow-key navigation.
 - The **Move Tab to New Window** command (command palette) detaches the active tab into a standalone window.
 
 **Window** — each message opens in its own standalone window. Useful when you want messages on a second monitor or open side-by-side.
@@ -54,7 +54,7 @@ With `Ctrl+1`–`8` now doing double duty (pane focus when no tabs are open; tab
 | `Ctrl+Alt+1` | Focus account list (works whether or not tabs are open) |
 | `Ctrl+Alt+2` | Focus folder tree (always) |
 | `Ctrl+Alt+3` | Focus message list (always) |
-| `Ctrl+Alt+4` | Focus tab strip (when visible) |
+| `Ctrl+Shift+T` | Focus tab strip (when visible) |
 
 `Ctrl+1`–`3` continue to focus the panes when no tabs are open, so existing muscle memory is preserved.
 
