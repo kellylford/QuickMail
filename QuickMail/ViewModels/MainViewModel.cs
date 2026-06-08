@@ -1001,6 +1001,12 @@ public partial class MainViewModel : ObservableObject
 
         var prevMode    = MessageOpenMode;
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
+        if (prevMode != MessageOpenMode && MessageOpenMode != MessageOpenMode.ReadingPane)
+        {
+            // Switched away from Reading Pane — hide the inline reading pane.
+            IsMessageOpen = false;
+            MessageDetail = null;
+        }
         if (prevMode == MessageOpenMode.Tab && MessageOpenMode != MessageOpenMode.Tab)
             RemoveMessageListTab();
         else

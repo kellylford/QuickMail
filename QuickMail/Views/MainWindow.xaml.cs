@@ -3463,6 +3463,9 @@ public partial class MainWindow : Window
         if (_vm.SelectedMessage?.UniqueId == summary.UniqueId && _vm.MessageDetail != null)
             winVm.MessageDetail = _vm.MessageDetail;
 
+        // The reading pane must not show while the message is in a separate window.
+        _vm.IsMessageOpen = false;
+
         // Track that a message window is open so sync guards and commands work (issue 43).
         _vm.IsMessageOpenInWindow = true;
 
