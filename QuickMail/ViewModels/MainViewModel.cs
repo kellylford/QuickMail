@@ -250,6 +250,13 @@ public partial class MainViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
     private bool _isMessageOpen;
 
+    partial void OnIsMessageOpenChanged(bool value)
+    {
+        LogService.Debug(
+            $"[DEBUG] IsMessageOpen={value} Mode={MessageOpenMode}\n" +
+            new System.Diagnostics.StackTrace(true).ToString());
+    }
+
     [ObservableProperty]
     private ViewMode _viewMode = ViewMode.Messages;
 
