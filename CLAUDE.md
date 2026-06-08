@@ -351,6 +351,7 @@ Before a feature branch is committed:
 3. **Keyboard-only walkthrough.** Perform the full user journey using only the keyboard — Tab, arrow keys, Enter, Escape, F6. If focus is lost or stranded at any point, it is a bug, not a follow-up.
 4. **No silent empty state from caught exceptions.** A `catch` block that swallows an exception and leaves the UI blank is never acceptable. If a primary data source fails (e.g. SQLite unavailable in `--online` mode), the catch must fall through to a visible fallback (e.g. IMAP fetch) or surface an error. Catch blocks that silently return convert failures into debugging marathons. See the **standard fetch pattern** in the Runtime Modes section — the local store and IMAP calls must be in separate catch scopes so a local store failure does not prevent the IMAP fallback from running.
 5. **Test in `--online` mode** for any feature that calls `LocalStoreService`. Run with `--online` and verify the feature works correctly from IMAP alone. Features that only pass in normal mode are incomplete.
+6. **If the feature affects startup state, verify it activates before the user sees content.** Any feature that influences what the user sees or hears at launch (default view, folder selection, announcement text, connection status, etc.) must be applied in `InitialLoadAsync`, not deferred to the end of `StartBackgroundSyncAsync`. Deferring to post-sync means the user sees a different state for 20–40 seconds before the feature takes effect.
 
 ## Spec Writing Requirements
 
