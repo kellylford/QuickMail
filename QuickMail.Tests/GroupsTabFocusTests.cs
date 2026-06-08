@@ -29,6 +29,7 @@ using Xunit;
 
 namespace QuickMail.Tests;
 
+[Collection("WpfTests")]
 public class GroupsTabFocusTests
 {
     private static string TempDir() =>

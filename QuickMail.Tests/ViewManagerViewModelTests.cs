@@ -235,6 +235,7 @@ public class ViewManagerViewModelTests
 /// <see cref="CreateNewViewButton_VisibleWhenNoViewSelected"/> would have directly
 /// caught the ConverterParameter=Inverse bug before it shipped.
 /// </summary>
+[Collection("WpfTests")]
 public class ViewManagerWindowTests
 {
     private static void EnsureApplication()

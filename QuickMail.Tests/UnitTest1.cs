@@ -194,6 +194,7 @@ public class ViewModelConstructionTests
 /// Requires STA thread (via [StaFact]) but no visible window is shown.
 /// A minimal Application is created once per process if needed.
 /// </summary>
+[Collection("WpfTests")]
 public class XamlParseTests
 {
     /// Ensure Application.Current exists and has the app's resource dictionaries loaded —
