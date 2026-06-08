@@ -5,7 +5,7 @@
 ### New Features
 
 - **Tabs and windows** — Messages can now open in a reading pane (original behavior), a tab, or a standalone window. Controlled by the new **Reading mode** setting in **Settings → Windowing**. Tab mode adds a strip below the toolbar with `Ctrl+Tab`/`Ctrl+Shift+Tab` navigation, `Ctrl+1`–`9` tab jumping, `Ctrl+W` to close, and a tab list overlay (`Ctrl+Shift+\``). Window mode opens each message in its own window with Previous/Next navigation, F6 focus cycling, and a command palette (`Ctrl+Shift+P`).
-- **Always-reliable pane shortcuts** — `Ctrl+Alt+1`–`4` focus the account list, folder tree, message list, and tab strip regardless of whether tabs are open, complementing the existing `Ctrl+1`–`3` shortcuts.
+- **Always-reliable pane shortcuts** — `Ctrl+Alt+1`–`3` focus the account list, folder tree, and message list regardless of whether tabs are open. `Ctrl+Shift+T` focuses the tab strip.
 
 ### Accessibility
 
