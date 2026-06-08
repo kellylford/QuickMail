@@ -155,8 +155,8 @@ public class ImapMailService : IMailService
                     UnreadCount        = folder.Unread,
                     MessageCount       = folder.Count,
                     AccountId          = accountId,
-                    ExcludeFromAllMail = IsExcludedFromAllMail(folder.Attributes),
-                    Kind               = GetSpecialFolderKind(folder.Attributes)
+                    ExcludeFromAllMail = IsExcludedFromAllMail(folder.Attributes, folder.FullName),
+                    Kind               = GetSpecialFolderKind(folder.Attributes, folder.FullName)
                 });
             }
             catch (Exception ex)
@@ -168,8 +168,8 @@ public class ImapMailService : IMailService
                     DisplayName        = folder.Name,
                     UnreadCount        = 0,
                     AccountId          = accountId,
-                    ExcludeFromAllMail = IsExcludedFromAllMail(folder.Attributes),
-                    Kind               = GetSpecialFolderKind(folder.Attributes)
+                    ExcludeFromAllMail = IsExcludedFromAllMail(folder.Attributes, folder.FullName),
+                    Kind               = GetSpecialFolderKind(folder.Attributes, folder.FullName)
                 });
             }
         }
@@ -327,14 +327,28 @@ public class ImapMailService : IMailService
 
             if (s.HtmlBody != null)
             {
-                var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.HtmlBody, ct);
-                if (bodyPart is TextPart tp) htmlText = tp.Text ?? string.Empty;
+                try
+                {
+                    var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.HtmlBody, ct);
+                    if (bodyPart is TextPart tp) htmlText = tp.Text ?? string.Empty;
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"ImapMailService: failed to fetch HTML body for UID {messageId} in {folderName}: {ex.Message}");
+                }
             }
 
             if (s.TextBody != null)
             {
-                var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.TextBody, ct);
-                if (bodyPart is TextPart tp) plainText = tp.Text ?? string.Empty;
+                try
+                {
+                    var bodyPart = await folder.GetBodyPartAsync(mailKitUid, s.TextBody, ct);
+                    if (bodyPart is TextPart tp) plainText = tp.Text ?? string.Empty;
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"ImapMailService: failed to fetch plain-text body for UID {messageId} in {folderName}: {ex.Message}");
+                }
             }
 
             if (markRead)
@@ -415,7 +429,7 @@ public class ImapMailService : IMailService
         try
         {
             var uidList = messageIds.Select(ToUid).ToList();
-            var trash   = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
+            var trash   = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
             if (trash != null) await folder.MoveToAsync(uidList, trash, ct);
             else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
         }
@@ -430,7 +444,7 @@ public class ImapMailService : IMailService
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
         try
         {
-            var trash = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
+            var trash = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
             var mailKitUid = ToUid(messageId);
             if (trash != null) await folder.MoveToAsync(mailKitUid, trash, ct);
             else               await folder.AddFlagsAsync(mailKitUid, MessageFlags.Deleted, true, ct);
@@ -444,7 +458,7 @@ public class ImapMailService : IMailService
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
-        var drafts = FindSpecialFolder(client, SpecialFolder.Drafts);
+        var drafts = await FindSpecialFolderAsync(client, ct, SpecialFolder.Drafts);
         return drafts?.FullName;
     }
 
@@ -455,7 +469,7 @@ public class ImapMailService : IMailService
         var client  = lease.Client;
         var account = _accounts[accountId];
 
-        var draftsFolder = FindSpecialFolder(client, SpecialFolder.Drafts)
+        var draftsFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Drafts)
             ?? throw new InvalidOperationException("No Drafts folder found for this account.");
 
         var msg = MimeMessageBuilder.Build(draft, account);
@@ -490,7 +504,7 @@ public class ImapMailService : IMailService
         var client  = lease.Client;
         var account = _accounts[accountId];
 
-        var sentFolder = FindSpecialFolder(client, SpecialFolder.Sent);
+        var sentFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Sent);
         if (sentFolder == null)
         {
             LogService.Log($"AppendToSent: no Sent folder found for account {accountId}");
@@ -557,7 +571,7 @@ public class ImapMailService : IMailService
             var uids = await folder.SearchAsync(SearchQuery.All, ct);
             if (uids.Count > 0)
             {
-                var trash = FindSpecialFolder(client, SpecialFolder.Trash);
+                var trash = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash);
                 if (trash != null) await folder.MoveToAsync(uids, trash, ct);
                 else               await folder.AddFlagsAsync(uids, MessageFlags.Deleted, true, ct);
             }
@@ -616,7 +630,7 @@ public class ImapMailService : IMailService
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
         var client = lease.Client;
-        var trash  = FindSpecialFolder(client, SpecialFolder.Trash, SpecialFolder.Junk);
+        var trash  = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
 
         if (trash == null)
         {
@@ -1216,12 +1230,42 @@ public class ImapMailService : IMailService
             IsMailingList = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
         };
 
-    private static IMailFolder? FindSpecialFolder(ImapClient client, params SpecialFolder[] candidates)
+    private static async Task<IMailFolder?> FindSpecialFolderAsync(
+        ImapClient client, CancellationToken ct, params SpecialFolder[] candidates)
     {
+        // Attribute-based lookup (fast, no network round-trip)
         foreach (var sf in candidates)
         {
             try { return client.GetFolder(sf); }
-            catch { /* not available */ }
+            catch { }
+        }
+
+        // Name-based fallback for servers that don't advertise special-use attributes (e.g. Courier IMAP)
+        var names = candidates
+            .SelectMany<SpecialFolder, string>(sf => sf switch
+            {
+                SpecialFolder.Trash  => ["Trash"],
+                SpecialFolder.Junk   => ["Junk", "Spam"],
+                SpecialFolder.Sent   => ["Sent"],
+                SpecialFolder.Drafts => ["Drafts"],
+                _                   => []
+            })
+            .Distinct()
+            .ToArray();
+
+        if (names.Length == 0) return null;
+
+        foreach (var ns in client.PersonalNamespaces)
+        {
+            IMailFolder root;
+            try { root = client.GetFolder(ns); }
+            catch { continue; }
+
+            foreach (var name in names)
+            {
+                try { return await root.GetSubfolderAsync(name, ct); }
+                catch { }
+            }
         }
         return null;
     }
@@ -1317,16 +1361,26 @@ public class ImapMailService : IMailService
             .Trim();
     }
 
-    private static bool IsExcludedFromAllMail(FolderAttributes attrs) =>
-        (attrs & (FolderAttributes.Trash | FolderAttributes.Junk |
-                  FolderAttributes.Sent  | FolderAttributes.Drafts)) != 0;
+    private static bool IsExcludedFromAllMail(FolderAttributes attrs, string fullName)
+    {
+        var kind = GetSpecialFolderKind(attrs, fullName);
+        return kind is SpecialFolderKind.Trash or SpecialFolderKind.Junk
+                    or SpecialFolderKind.Sent  or SpecialFolderKind.Drafts;
+    }
 
-    private static SpecialFolderKind GetSpecialFolderKind(FolderAttributes attrs)
+    private static SpecialFolderKind GetSpecialFolderKind(FolderAttributes attrs, string fullName)
     {
         if ((attrs & FolderAttributes.Trash)  != 0) return SpecialFolderKind.Trash;
         if ((attrs & FolderAttributes.Junk)   != 0) return SpecialFolderKind.Junk;
         if ((attrs & FolderAttributes.Sent)   != 0) return SpecialFolderKind.Sent;
         if ((attrs & FolderAttributes.Drafts) != 0) return SpecialFolderKind.Drafts;
+        // Name-based fallback for servers that don't advertise special-use attributes (e.g. Courier IMAP)
+        var leaf = fullName.Split('/', '.').LastOrDefault() ?? fullName;
+        if (leaf.Equals("Trash",  StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Trash;
+        if (leaf.Equals("Junk",   StringComparison.OrdinalIgnoreCase) ||
+            leaf.Equals("Spam",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Junk;
+        if (leaf.Equals("Sent",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Sent;
+        if (leaf.Equals("Drafts", StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Drafts;
         return SpecialFolderKind.None;
     }
 
