@@ -98,4 +98,4 @@ With `Ctrl+1`–`8` now doing double duty (pane focus when no tabs are open; tab
 - `MessageListTabViewModel` — new sentinel VM for the non-closeable "Messages" tab in Tab mode; extends `TabSessionViewModel` with `CanClose = false`.
 - `TabSessionModel.TabKind` gains a `MessageList` variant for the sentinel tab.
 - `MainViewModel.IsMessageOpenInWindow` — new observable property set when one or more standalone message windows are open; guards that previously checked only `IsMessageOpen` now check both.
-- 440 tests, all green (one pre-existing clipboard-API failure in the test runner environment is unrelated to this change).
+- 449 tests, all green (one pre-existing clipboard-API failure in the test runner environment is unrelated to this change).
