@@ -10,7 +10,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </UserControl.Resources>
 
-    <Grid Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibilityConverter}}">
+    <Grid Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibilityConverter}, FallbackValue=Collapsed}">
         <!-- Semi-transparent backdrop -->
         <Border Background="#CC1E1E1E"/>
 
