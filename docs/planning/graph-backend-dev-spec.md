@@ -796,6 +796,14 @@ public class GraphMailService : IMailService
 }
 ```
 
+**PR 4 implementation notes (as built):**
+- `GraphMailService.StartIdleWatchers`/`StopIdleWatchers` are **no-ops**, not throwing — Graph has no IMAP IDLE (notifications arrive via delta polling in PR 7), and throwing would break a mixed IMAP+Graph account list at startup. `NoOpAsync`, `PollAsync` (→0), `FetchPreviewsAsync` (→empty; Graph fills `bodyPreview` natively), and `CountTrashMessagesAsync` (→0; real count in PR 5/6) are likewise safe no-ops so the read/sync path never throws. All true mutations + `DownloadAttachmentAsync` + folder CRUD throw `NotImplementedException` (PR 5/6).
+- **Runtime registration (the PR 3 follow-up):** `MainViewModel.RegisterAccountBackend` — set by `App.xaml.cs` to `a => router.RegisterAccount(a.Id, BackendFor(a))` — runs for every account in `LoadAccountList`, so accounts added at runtime via `RefreshAccountList` bind to the correct backend by `BackendKind` instead of falling back to IMAP.
+- **Scopes:** `GraphMailScopes` requests `Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.Read`, `User.Read`, `User.ReadBasic.All`, `offline_access` (one consent covers PRs 4–6 + directory search). The Add Account "Sign in with Microsoft" button sets the temp account's `BackendKind` so sign-in requests Graph scopes via the per-call overload.
+- **Bounded vs full fetch:** message-summary fetches use a single page bounded by `$top` (mirroring IMAP's `initialCount`); folder lists and `GetFolderMessageIdsAsync` follow `@odata.nextLink` to completion.
+- **Test Connection for Graph:** a not-yet-saved account isn't registered in the router (which would route it to the IMAP fallback), so the Graph "Test Connection" directs the user to "Sign in with Microsoft" — the sign-in itself (token + `/me`) is the verification. A dedicated probe can be added once in-progress-account registration is supported.
+- `GetMaxMessageKeyAsync` is always `"0"` for Graph (non-numeric ids `CAST` to 0), so a Graph folder always takes the "recent N / since-date" sync branch — correct; delta makes it efficient in PR 7.
+
 ### 6.11 `GraphSmtpService.cs` — Send Path
 
 **Path:** `QuickMail/Services/GraphSmtpService.cs`

@@ -189,7 +189,9 @@ public class IdleNewMailTests
         public FireableMailService(Guid accountId) => _accountId = accountId;
 
         public event Action<Guid>? InboxNewMailDetected;
+#pragma warning disable CS0067 // not raised by this fake
         public event Action<Guid, bool>? AccountReachabilityChanged;
+#pragma warning restore CS0067
         public void FireNewMail() => InboxNewMailDetected?.Invoke(_accountId);
 
         // Return one INBOX folder so ConnectAllAccountsAsync populates _cachedFolders.

@@ -1,5 +1,6 @@
 using System.Threading.Tasks;
 using System.Windows;
+using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 using QuickMail.Views;
@@ -73,21 +74,23 @@ public partial class App : Application
             var oauthService      = new OAuthService(profile);
             var configService     = new ConfigService(profile);
             var imapBackend       = new ImapMailService(oauthService, configService);
+            var graphBackend      = new GraphMailService(oauthService, configService);
             var smtpService       = new SmtpService(oauthService);
 
-            // Per-account mail backend router. v0.7 ships a single backend (IMAP); PR 4 adds Graph
-            // and routes Microsoft 365 accounts to it.
-            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend });
+            // Per-account mail backend router. Each account is registered to the backend its
+            // BackendKind selects (IMAP by default, Graph for Microsoft 365 accounts).
+            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend });
+            IMailService BackendFor(AccountModel a)
+                => a.BackendKind == BackendKind.MicrosoftGraph ? graphBackend : imapBackend;
 
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
                 localStore.Initialize();
 
-            // Load accounts once — after the store is initialized — and reuse the list for both
-            // router registration and the view model, avoiding a second synchronous accounts.json read.
+            // Load accounts once — after the store is initialized — and reuse the list for the VM.
+            // Router registration runs via mainVm.RegisterAccountBackend (set below), which also
+            // covers accounts added at runtime through RefreshAccountList.
             var accounts = accountService.LoadAccounts();
-            foreach (var account in accounts)
-                mailRouter.RegisterAccount(account.Id, imapBackend);
 
             var contactService = new ContactService(profile);
             var templateService = new TemplateService(profile);
@@ -110,6 +113,7 @@ public partial class App : Application
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode);
+            mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
             var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate);

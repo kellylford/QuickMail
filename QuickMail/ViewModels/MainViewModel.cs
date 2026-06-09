@@ -670,9 +670,19 @@ public partial class MainViewModel : ObservableObject
         UpdateRulesStatusText();
     }
 
+    /// <summary>
+    /// Set by the composition root to bind each account to its mail backend (IMAP or Graph) in the
+    /// router before the account is connected. Invoked for every account on load/refresh, so accounts
+    /// added at runtime via <see cref="RefreshAccountList"/> are registered to the correct backend.
+    /// </summary>
+    public Action<AccountModel>? RegisterAccountBackend { get; set; }
+
     public void LoadAccountList(List<AccountModel>? preloaded = null)
     {
-        Accounts = new ObservableCollection<AccountModel>(preloaded ?? _accountService.LoadAccounts());
+        var accounts = preloaded ?? _accountService.LoadAccounts();
+        foreach (var account in accounts)
+            RegisterAccountBackend?.Invoke(account);
+        Accounts = new ObservableCollection<AccountModel>(accounts);
     }
 
     // ── Saved-views lifecycle ─────────────────────────────────────────────────────

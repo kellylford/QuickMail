@@ -15,6 +15,12 @@ public interface IOAuthService
     Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default);
 
     /// <summary>
+    /// Returns an access token for the given explicit scope set (used by the Graph backend to
+    /// request Graph scopes rather than the account's default IMAP scopes). Silent-then-interactive.
+    /// </summary>
+    Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default);
+
+    /// <summary>
     /// Forces a browser-based interactive sign-in and returns the token + the
     /// signed-in username (UPN) so the caller can populate the Username field.
     /// </summary>

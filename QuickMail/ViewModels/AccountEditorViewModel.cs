@@ -82,7 +82,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
-            var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft };
+            var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind };
             var result = await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
             Username = result.Username;
             StatusText = $"Signed in as {result.Username}";
@@ -104,7 +104,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         // host/port; their connectivity probe (GET /me) lands with the Graph backend in PR 4.
         if (IsGraphBackend)
         {
-            StatusText = "Connection testing for Microsoft 365 accounts is available once the Graph backend ships.";
+            // A Graph account is verified by the OAuth sign-in itself (it acquires a Graph token and
+            // populates the username from /me). There is no separate host/port to probe.
+            StatusText = "For Microsoft 365, use Sign in with Microsoft to verify access.";
             return;
         }
 

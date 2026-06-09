@@ -78,7 +78,9 @@ public class MailServiceRouterTests
         public void RaiseNewMail(Guid accountId) => InboxNewMailDetected?.Invoke(accountId);
 
         public event Action<Guid>? InboxNewMailDetected;
+#pragma warning disable CS0067 // not raised by this fake
         public event Action<Guid, bool>? AccountReachabilityChanged;
+#pragma warning restore CS0067
 
         public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
         {

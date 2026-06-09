@@ -14,13 +14,26 @@ public class OAuthService : IOAuthService
     private const string ClientId  = "bcdc84f1-d37c-4581-b14a-a01f7b3a1312";
     private const string Authority = "https://login.microsoftonline.com/common";
 
-    // Scopes required for IMAP + SMTP access
-    private static readonly string[] Scopes =
+    // Delegated scopes per backend. An account's BackendKind selects which set is requested.
+    public static readonly string[] ImapSmtpScopes =
     [
         "https://outlook.office.com/IMAP.AccessAsUser.All",
         "https://outlook.office.com/SMTP.Send",
-        "offline_access"
+        "offline_access",
     ];
+
+    public static readonly string[] GraphMailScopes =
+    [
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/Mail.Send",
+        "https://graph.microsoft.com/MailboxSettings.Read",
+        "https://graph.microsoft.com/User.Read",
+        "https://graph.microsoft.com/User.ReadBasic.All",
+        "offline_access",
+    ];
+
+    private static string[] DefaultScopesFor(AccountModel account)
+        => account.BackendKind == BackendKind.MicrosoftGraph ? GraphMailScopes : ImapSmtpScopes;
 
     private readonly string _cacheDir;
     private const string CacheFileName = "msal.cache";
@@ -55,7 +68,10 @@ public class OAuthService : IOAuthService
         LogService.Log("OAuthService: token cache registered.");
     }
 
-    public async Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default)
+    public Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default)
+        => GetAccessTokenAsync(account, DefaultScopesFor(account), ct);
+
+    public async Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
@@ -65,7 +81,7 @@ public class OAuthService : IOAuthService
         {
             try
             {
-                var silent = await _msal.AcquireTokenSilent(Scopes, msalAccount).ExecuteAsync(ct);
+                var silent = await _msal.AcquireTokenSilent(scopes, msalAccount).ExecuteAsync(ct);
                 LogService.Log($"OAuthService: silent token acquired for {account.Username}");
                 return silent.AccessToken;
             }
@@ -75,15 +91,18 @@ public class OAuthService : IOAuthService
             }
         }
 
-        var result = await SignInInteractiveAsync(account, ct);
+        var result = await SignInInteractiveAsync(account, scopes, ct);
         return result.AccessToken;
     }
 
-    public async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
+    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
+        => SignInInteractiveAsync(account, DefaultScopesFor(account), ct);
+
+    public async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
         LogService.Log($"OAuthService: starting interactive sign-in for {account.Username}");
 
-        var builder = _msal.AcquireTokenInteractive(Scopes)
+        var builder = _msal.AcquireTokenInteractive(scopes)
             // Opens the system default browser; no embedded WebView dependency
             .WithUseEmbeddedWebView(false)
             // Force credential entry when a specific account is expected,
