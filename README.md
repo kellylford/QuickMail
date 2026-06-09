@@ -56,8 +56,19 @@ dotnet run --project QuickMail
 | Ctrl+Shift+R | Reply all |
 | Ctrl+F | Forward |
 | Ctrl+Shift+F | Search folders |
+| Ctrl+Shift+B | Open Address Book |
 | Delete | Delete selected message(s) / conversation |
 | Escape | Close reading pane |
+
+### Address Book (Ctrl+Shift+B)
+
+| Key | Action |
+|-----|--------|
+| F2 | Edit selected contact |
+| Delete | Delete selected contact |
+| Ctrl+Shift+P | Command palette (Add, Edit, Save, Cancel, etc.) |
+
+For the full list of keyboard shortcuts including customization options, see [`docs/release-notes-v0.7.1.md`](docs/release-notes-v0.7.1.md) (Address Book contacts management) and the **Keyboard Shortcuts** tab in Settings.
 
 ## Project Layout
 
