@@ -19,7 +19,10 @@
   - [5.1 Representing a shared mailbox — two approaches](#51-representing-a-shared-mailbox--two-approaches)
   - [5.2 Recommended: linked-account model](#52-recommended-linked-account-model)
   - [5.3 SQLite impact](#53-sqlite-impact)
-- [6. Authentication & Scopes](#6-authentication--scopes)
+- [6. Authentication, Scopes & the Microsoft Consent Model](#6-authentication-scopes--the-microsoft-consent-model)
+  - [6.1 The scopes](#61-the-scopes)
+  - [6.2 Who owns the app registration — declaration vs. consent](#62-who-owns-the-app-registration--declaration-vs-consent)
+  - [6.3 Friction for end users — and how we handle it](#63-friction-for-end-users--and-how-we-handle-it)
 - [7. Autodiscover Client](#7-autodiscover-client)
 - [8. IMAP Connection for a Shared Mailbox](#8-imap-connection-for-a-shared-mailbox)
 - [9. User Experience](#9-user-experience)
@@ -120,7 +123,9 @@ public string SharedAddress { get; set; } = ""; // SMTP address placed in the XO
 - **Approach B: none** — no schema change; shared mailboxes are just more `account_id`s.
 - Approach A (if chosen): schema v3 → v4 rebuild-and-rename migration adding `mailbox` to both tables' PK, plus a `mailbox` parameter across the store/service interfaces. (The v2 migration in `LocalStoreService` is the template.)
 
-## 6. Authentication & Scopes
+## 6. Authentication, Scopes & the Microsoft Consent Model
+
+### 6.1 The scopes
 
 `OAuthService` requests a single static `Scopes` array. Add the discovery scope:
 
@@ -135,8 +140,32 @@ private static readonly string[] Scopes =
 ```
 
 - **Consent impact:** adding a scope changes the consent screen. Existing OAuth users will see a re-consent prompt the next time their refresh token expires (scope lists are global per app registration). Worth a one-line release note.
-- **Azure prerequisite:** the app registration must have `EWS.AccessAsUser.All` (Office 365 Exchange Online → Delegated) added and admin-consented where the tenant requires it. **Blocking external dependency** — §14.
 - Access (§3.1) does not depend on this scope; if discovery is unavailable (scope absent / tenant blocks EWS), the feature degrades gracefully to the manual fallback.
+
+### 6.2 Who owns the app registration — declaration vs. consent
+
+This is the most misunderstood part, so stating it plainly: **the app registration is QuickMail's own identity as an application — there is exactly one, it lives in the maintainer's tenant, and it is NOT per-mailbox or per-user-tenant.** App registrations are also a **Microsoft-only** concept; they have nothing to do with Gmail, Fastmail, or any non-Microsoft IMAP server (those use password/app-password, or in Gmail's case a separate Google OAuth client). Everything in this section applies **only** to the Microsoft OAuth account type.
+
+Two distinct things happen in two different places:
+
+| | Where | Who | What |
+|---|---|---|---|
+| **Declaration** | QuickMail's app registration (maintainer's tenant) | Maintainer, once | "QuickMail *may request* these scopes" |
+| **Consent / grant** | The signing-in user's home tenant (e.g. an `icanbrew.net` O365 tenant) | The user, at sign-in | "I allow QuickMail to access my mail" |
+
+When a user signs in, MSAL runs the OAuth flow against **their** home tenant using QuickMail's client ID; Entra auto-creates a *service principal* (a local stub of QuickMail) in that tenant on first consent. **End users never create or edit an app registration** — they click "allow." So adding `EWS.AccessAsUser.All` is a **one-time, app-wide** action by the maintainer (declaration); each user's tenant merely consents. Testing against a personal O365 mailbox therefore needs no registration work by the tester — just sign in and consent.
+
+**Prerequisite to verify:** QuickMail's registration must be configured **multi-tenant + personal Microsoft accounts** ("accounts in any organizational directory and personal Microsoft accounts"). If it were single-tenant, only the maintainer's own tenant could connect at all — a blocker for every other user. This already governs the existing IMAP-OAuth path, so it is presumably set correctly; worth confirming once.
+
+### 6.3 Friction for end users — and how we handle it
+
+Because users never touch a registration, the only real friction is tenant policy, not user capability:
+
+1. **Tenants that require admin consent.** `EWS.AccessAsUser.All` and the Graph `Mail.*` scopes are user-consentable by default, but many organizations disable user consent for third-party apps, so an IT admin must approve QuickMail once for the whole org. We cannot bypass a tenant's security policy, but we **handle it gracefully**: detect the "admin approval required" error (e.g. `AADSTS65001` / `AADSTS90094`), show a clear message, and offer an **admin-consent URL** the user can forward to IT. One admin approval then covers every user in the org.
+2. **"Unverified publisher" warning** (and tenants that block unverified apps). Resolved by **publisher verification** on the maintainer's registration — a one-time maintainer action; afterwards the consent prompt reads "QuickMail (verified)".
+3. **Hostile / locked-down tenant that blocks the shared app entirely.** Escape hatch: an optional **per-account custom client ID** (a power user pastes their own org's app-registration client ID). This stays a rare advanced fallback — already deferred in the Graph PM spec — not the default path.
+
+**Net effect:** personal accounts and ordinary tenants → sign in and consent, nothing else; locked-down org → one admin approval (we surface the prompt + link); truly hostile tenant → optional own-client-ID override. No end user is ever asked to create an app registration.
 
 ## 7. Autodiscover Client
 
