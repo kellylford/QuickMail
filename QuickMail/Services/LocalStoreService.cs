@@ -618,7 +618,7 @@ public class LocalStoreService : ILocalStoreService
     {
         await using var conn = await OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT COUNT(*) FROM MessageSummary WHERE AccountId = @id";
+        cmd.CommandText = "SELECT COUNT(*) FROM MessageSummary WHERE account_id = @id";
         cmd.Parameters.AddWithValue("@id", accountId.ToString());
         var result = await cmd.ExecuteScalarAsync();
         return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
@@ -628,7 +628,7 @@ public class LocalStoreService : ILocalStoreService
     {
         await using var conn = await OpenAsync();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT MIN(Date) FROM MessageSummary WHERE AccountId = @id";
+        cmd.CommandText = "SELECT MIN(date_ticks) FROM MessageSummary WHERE account_id = @id";
         cmd.Parameters.AddWithValue("@id", accountId.ToString());
         var result = await cmd.ExecuteScalarAsync();
         if (result == null || result == DBNull.Value) return null;
