@@ -1458,24 +1458,19 @@
                    KeyboardNavigation.DirectionalNavigation="Contained"
                    AutomationProperties.Name="">
 
-            <!-- Region 1: Status message (informational).
-                 TextBlock (ControlType.Text) has no ValuePattern, so the text
-                 content is the accessible name and is announced exactly once. -->
+            <!-- Region 1: Status message + Last sync time (informational).
+                 Combined into one item so screen readers read them as a complete unit.
+                 E.g., "7323 messages. Synced 9:29 AM" or "Connecting and syncing... Never synced" -->
             <StatusBarItem x:Name="StatusTextItem"
                            KeyboardNavigation.IsTabStop="False">
-                <TextBlock x:Name="StatusTextBox"
-                           Style="{StaticResource StatusTextBlockStyle}"
-                           Text="{Binding StatusText, Mode=OneWay}"/>
-            </StatusBarItem>
-
-            <!-- Region 1b: Last sync time (always present for consistent screen reader structure) -->
-            <StatusBarItem x:Name="LastSyncTextItem"
-                           KeyboardNavigation.IsTabStop="False"
-                           MinWidth="100">
-                <TextBlock x:Name="LastSyncTextBox"
-                           Style="{StaticResource StatusTextBlockStyle}"
-                           Text="{Binding LastSyncText, Mode=OneWay}"
-                           AutomationProperties.Name="Last sync time"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock x:Name="StatusTextBox"
+                               Style="{StaticResource StatusTextBlockStyle}"
+                               Text="{Binding StatusText, Mode=OneWay}"/>
+                    <TextBlock Style="{StaticResource StatusTextBlockStyle}"
+                               Text="{Binding LastSyncText, StringFormat='. {0}', Mode=OneWay}"
+                               Margin="0"/>
+                </StackPanel>
             </StatusBarItem>
 
             <!-- Region 2: Connection state (informational) -->
