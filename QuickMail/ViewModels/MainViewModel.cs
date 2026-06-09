@@ -1265,6 +1265,10 @@ public partial class MainViewModel : ObservableObject
 
         StatusText = "Syncing mail…";
         ConnectionStatusText = "Syncing…";
+        // If we've never synced before, show "In progress" instead of "Never synced"
+        // to avoid the confusing impression that syncing will never happen
+        if (LastSyncText == "Never synced")
+            LastSyncText = "In progress";
         _suppressFolderSyncUpdates = true;
 
         // Start progress announcements for long syncs (10-second interval).
