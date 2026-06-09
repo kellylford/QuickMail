@@ -1470,7 +1470,8 @@
 
             <!-- Region 1b: Last sync time (always present for consistent screen reader structure) -->
             <StatusBarItem x:Name="LastSyncTextItem"
-                           KeyboardNavigation.IsTabStop="False">
+                           KeyboardNavigation.IsTabStop="False"
+                           MinWidth="100">
                 <TextBlock x:Name="LastSyncTextBox"
                            Style="{StaticResource StatusTextBlockStyle}"
                            Text="{Binding LastSyncText, Mode=OneWay}"
