@@ -184,6 +184,20 @@ All custom screen reader announcements are user-configurable and governed by `Co
 
 **Example**: Sync status updates use `AnnouncementCategory.Status` so users who disable background progress announcements won't hear every folder completion. Message counts at sync end use `AnnouncementCategory.Status` (when `AnnounceStatus` is on) and appear as visual status bar text regardless (for sighted users and always-visible state).
 
+### Screen Reader User Experience — Defer to User Expertise
+
+**Critical principle**: When working on accessibility features, AI should NEVER make claims about how screen readers work or what the user experience is without explicit user guidance. The person using the assistive technology is the expert.
+
+- **Never assume** screen reader behavior based on training data or general knowledge
+- **Always ask clarifying questions** about what the user actually hears/experiences rather than explaining it back to them
+- **Trust the user's report** of their actual experience — they have the real data from using the technology
+- **Document user feedback** accurately — if a user with decades of assistive technology experience reports a problem, that report is authoritative
+
+When accessibility issues arise, the investigation should be user-centric:
+1. Ask: "What do you hear/experience right now?"
+2. Ask: "What should you hear/experience instead?"
+3. Verify the fix matches the user's actual experience, not theoretical expectations
+
 ## Modal Dialog Rules — Enforced
 
 These rules prevent a class of crashes (`STATUS_CALLBACK_RETURNED_THREAD_APT_CHANGED`) that
