@@ -62,6 +62,19 @@ public class BoolToColumnWidthConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>
+/// Converts a string to Visibility: empty/null → Collapsed, non-empty → Visible.
+/// Used to hide the last sync time status bar item when there's no sync info to display.
+/// </summary>
+public class StringToVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
+        string.IsNullOrEmpty(value as string) ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 public partial class MainWindow : Window
 {
     private static readonly TimeSpan TypeAheadResetDelay = TimeSpan.FromSeconds(1);

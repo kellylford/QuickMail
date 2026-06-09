@@ -38,4 +38,16 @@ public interface ILocalStoreService
 
     /// <summary>Returns all message ids stored locally for this folder.</summary>
     Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName);
+
+    /// <summary>
+    /// Counts all message summaries stored for the given account.
+    /// Returns 0 if the account has no messages or does not exist.
+    /// </summary>
+    Task<int> CountSummariesAsync(Guid accountId);
+
+    /// <summary>
+    /// Returns the oldest message date stored for the given account, or null if no messages exist.
+    /// Used to display the cache window in Account Properties.
+    /// </summary>
+    Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId);
 }

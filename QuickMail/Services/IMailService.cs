@@ -50,6 +50,19 @@ public interface IMailService : IDisposable
     Task NoOpAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>
+    /// Raised when an account's reachability changes (connection lost due to IDLE watcher failure,
+    /// or connection restored after successful IDLE reconnect). The bool indicates current reachability.
+    /// Fired on the ThreadPool; handlers should marshal to UI thread if needed.
+    /// </summary>
+    event Action<Guid, bool>? AccountReachabilityChanged;
+
+    /// <summary>
+    /// Counts messages in the Trash folder (if it exists) without opening other folders.
+    /// Returns 0 if Trash does not exist or is empty.
+    /// </summary>
+    Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default);
+
+    /// <summary>
     /// Raised on the ThreadPool when IMAP IDLE detects new mail in the INBOX of the given account.
     /// The handler should marshal to the UI thread if needed.
     /// </summary>

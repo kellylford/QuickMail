@@ -16,6 +16,7 @@
         <BooleanToVisibilityConverter    x:Key="BoolToVisibilityConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <local:BoolToColumnWidthConverter       x:Key="BoolToColumnWidthConverter"/>
+        <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
 
         <!-- ── Shared context menus ── -->
 
@@ -1465,6 +1466,16 @@
                 <TextBlock x:Name="StatusTextBox"
                            Style="{StaticResource StatusTextBlockStyle}"
                            Text="{Binding StatusText, Mode=OneWay}"/>
+            </StatusBarItem>
+
+            <!-- Region 1b: Last sync time (informational) -->
+            <StatusBarItem x:Name="LastSyncTextItem"
+                           KeyboardNavigation.IsTabStop="False"
+                           Visibility="{Binding LastSyncText, Converter={StaticResource StringToVisibilityConverter}, Mode=OneWay}">
+                <TextBlock x:Name="LastSyncTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}"
+                           Text="{Binding LastSyncText, Mode=OneWay}"
+                           AutomationProperties.Name="Last sync time"/>
             </StatusBarItem>
 
             <!-- Region 2: Connection state (informational) -->

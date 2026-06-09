@@ -793,6 +793,7 @@ public class SavedViewsMainViewModelTests
         public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
         public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
         public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IList<string>>(Array.Empty<string>());
         public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default) => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
@@ -810,6 +811,7 @@ public class SavedViewsMainViewModelTests
         public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
 #pragma warning disable CS0067
         public event Action<Guid>? InboxNewMailDetected;
+        public event Action<Guid, bool>? AccountReachabilityChanged;
 #pragma warning restore CS0067
         public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
         public void StopIdleWatchers() { }
@@ -836,6 +838,8 @@ public class SavedViewsMainViewModelTests
         public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
         public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
         public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
+        public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
+        public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
     }
 
     private static MainViewModel MakeVmWithStore(IEnumerable<SavedView> views, ILocalStoreService store, IMailService? imap = null)

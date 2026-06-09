@@ -11,7 +11,7 @@ namespace QuickMail.Helpers;
 public static class AccountPropertiesBuilder
 {
     public static (string Title, IReadOnlyList<PropertySection> Sections)
-        Build(AccountModel account, DateTimeOffset? lastSyncedUtc)
+        Build(AccountModel account, DateTimeOffset? lastSyncedUtc, int cacheCount = 0, DateTimeOffset? oldestCached = null, string? syncWindow = null)
     {
         var identity = new List<PropertyItem>
         {
@@ -47,11 +47,28 @@ public static class AccountPropertiesBuilder
                     : "Not yet synced"),
         };
 
-        return ("Account Properties", [
+        var sections = new List<PropertySection>
+        {
             new("Identity",        identity),
             new("Incoming (IMAP)", imap),
             new("Outgoing (SMTP)", smtp),
             new("Authentication",  auth),
-        ]);
+        };
+
+        // Add Sync section if cache information is available (not in --online mode).
+        if (!string.IsNullOrEmpty(syncWindow))
+        {
+            var sync = new List<PropertyItem>
+            {
+                new("Messages in cache", cacheCount.ToString("N0")),
+                new("Oldest cached", oldestCached.HasValue
+                    ? oldestCached.Value.ToLocalTime().ToString("f")
+                    : "None"),
+                new("Sync window", syncWindow),
+            };
+            sections.Add(new("Sync", sync));
+        }
+
+        return ("Account Properties", sections);
     }
 }

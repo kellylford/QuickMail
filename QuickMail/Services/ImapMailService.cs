@@ -30,8 +30,10 @@ public class ImapMailService : IMailService
     private readonly ConcurrentDictionary<Guid, string>  _passwords     = new();
     private readonly ConcurrentDictionary<Guid, SemaphoreSlim> _poolLocks = new();
     private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _idleCts = new();
+    private readonly ConcurrentDictionary<Guid, int> _idleRetryCount = new();
     private bool _disposed;
 
+    public event Action<Guid, bool>? AccountReachabilityChanged;
     public event Action<Guid>? InboxNewMailDetected;
 
     public ImapMailService(IOAuthService oauth, IConfigService? config = null)
@@ -752,7 +754,7 @@ public class ImapMailService : IMailService
 
     private async Task RunIdleWatcherAsync(Guid accountId, CancellationToken ct)
     {
-        // Retry loop — reconnect on transient failures.
+        // Retry loop — reconnect on transient failures with exponential backoff.
         while (!ct.IsCancellationRequested)
         {
             ImapClient? client = null;
@@ -776,6 +778,13 @@ public class ImapMailService : IMailService
                 await inbox.OpenAsync(FolderAccess.ReadOnly, ct);
 
                 LogService.Log($"IDLE watcher [{account.Username}]: watching INBOX (Count={inbox.Count}).");
+
+                // Successfully connected — reset retry count and fire reachability event.
+                if (_idleRetryCount.TryGetValue(accountId, out var retryCount) && retryCount > 0)
+                {
+                    _idleRetryCount[accountId] = 0;
+                    AccountReachabilityChanged?.Invoke(accountId, true);
+                }
 
                 inbox.CountChanged += OnCountChanged;
                 try
@@ -807,11 +816,20 @@ public class ImapMailService : IMailService
             }
             catch (Exception ex)
             {
-                LogService.Log($"IDLE watcher [{accountId}] error — will retry in 60s: {ex.Message}");
+                // Exponential backoff: 30s, 60s, 120s cap
+                var retryCount = _idleRetryCount.AddOrUpdate(accountId, 1, (_, rc) => rc + 1);
+                var delaySeconds = retryCount == 1 ? 30 : retryCount == 2 ? 60 : 120;
+
+                LogService.Log($"IDLE watcher [{accountId}] error (attempt {retryCount}) — will retry in {delaySeconds}s: {ex.Message}");
+
+                // Mark account as unreachable on first retry failure
+                if (retryCount == 1)
+                    AccountReachabilityChanged?.Invoke(accountId, false);
+
                 if (client != null) DisposeClient(client);
                 client = null;
 
-                try { await Task.Delay(TimeSpan.FromSeconds(60), ct); }
+                try { await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct); }
                 catch (OperationCanceledException) { break; }
             }
             finally
@@ -1427,6 +1445,35 @@ public class ImapMailService : IMailService
         {
             // Pool will discard the dead client on Return via IsClientUsable; just log.
             LogService.Log($"NoOp failed for {accountId}: {ex.GetType().Name}");
+        }
+    }
+
+    public async Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default)
+    {
+        if (!_pools.ContainsKey(accountId)) return 0;
+        try
+        {
+            using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+            var client = lease.Client;
+            var trashFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
+            if (trashFolder == null) return 0;
+
+            await trashFolder.OpenAsync(FolderAccess.ReadOnly, ct);
+            try
+            {
+                var uids = await trashFolder.SearchAsync(SearchQuery.All, ct);
+                return uids.Count;
+            }
+            finally
+            {
+                await trashFolder.CloseAsync(false, ct);
+            }
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            LogService.Log($"CountTrashMessages failed for {accountId}: {ex.GetType().Name}");
+            return 0;
         }
     }
 

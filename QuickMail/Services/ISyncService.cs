@@ -26,6 +26,12 @@ public interface ISyncService
     /// </summary>
     event Action<int>? RulesApplied;
 
+    /// <summary>
+    /// Fired on the UI thread as folders complete during SyncAllAccountsAsync.
+    /// Parameters are (completedFolders, totalFolders) for progress reporting.
+    /// </summary>
+    event Action<int, int>? SyncProgressChanged;
+
     Task SyncAllAccountsAsync(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,

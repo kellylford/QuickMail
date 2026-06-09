@@ -29,7 +29,10 @@ public class MailServiceRouter : IMailService
             throw new ArgumentException("MailServiceRouter requires at least one backend.", nameof(backends));
         _defaultBackend = _allBackends[0];
         foreach (var b in _allBackends)
+        {
             b.InboxNewMailDetected += OnInnerInboxNewMail;
+            b.AccountReachabilityChanged += OnInnerAccountReachabilityChanged;
+        }
     }
 
     /// <summary>Bind an account to a specific backend. Called once at account-load time and once per Add Account. Idempotent.</summary>
@@ -51,7 +54,10 @@ public class MailServiceRouter : IMailService
 
     // ── Event aggregation ────────────────────────────────────────────────────────
     public event Action<Guid>? InboxNewMailDetected;
+    public event Action<Guid, bool>? AccountReachabilityChanged;
+
     private void OnInnerInboxNewMail(Guid accountId) => InboxNewMailDetected?.Invoke(accountId);
+    private void OnInnerAccountReachabilityChanged(Guid accountId, bool isReachable) => AccountReachabilityChanged?.Invoke(accountId, isReachable);
 
     // ── Per-account delegation ─────────────────────────────────────────────────────
     public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
@@ -95,6 +101,9 @@ public class MailServiceRouter : IMailService
 
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default)
         => For(accountId).NoOpAsync(accountId, ct);
+
+    public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default)
+        => For(accountId).CountTrashMessagesAsync(accountId, ct);
 
     public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
         => For(accountId).EmptyTrashAsync(accountId, ct);
@@ -172,6 +181,7 @@ public class MailServiceRouter : IMailService
         foreach (var b in _allBackends)
         {
             b.InboxNewMailDetected -= OnInnerInboxNewMail;
+            b.AccountReachabilityChanged -= OnInnerAccountReachabilityChanged;
             b.Dispose();
         }
     }

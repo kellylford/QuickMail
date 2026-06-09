@@ -78,6 +78,7 @@ public class MailServiceRouterTests
         public void RaiseNewMail(Guid accountId) => InboxNewMailDetected?.Invoke(accountId);
 
         public event Action<Guid>? InboxNewMailDetected;
+        public event Action<Guid, bool>? AccountReachabilityChanged;
 
         public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
         {
@@ -99,6 +100,7 @@ public class MailServiceRouterTests
         public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
         public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
         public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IList<string>>(Array.Empty<string>());
         public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default) => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());

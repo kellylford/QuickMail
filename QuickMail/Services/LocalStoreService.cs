@@ -614,6 +614,28 @@ public class LocalStoreService : ILocalStoreService
         return list;
     }
 
+    public async Task<int> CountSummariesAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM MessageSummary WHERE AccountId = @id";
+        cmd.Parameters.AddWithValue("@id", accountId.ToString());
+        var result = await cmd.ExecuteScalarAsync();
+        return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+    }
+
+    public async Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT MIN(Date) FROM MessageSummary WHERE AccountId = @id";
+        cmd.Parameters.AddWithValue("@id", accountId.ToString());
+        var result = await cmd.ExecuteScalarAsync();
+        if (result == null || result == DBNull.Value) return null;
+        var ticks = Convert.ToInt64(result);
+        return ticks > 0 ? new DateTimeOffset(ticks, TimeSpan.Zero) : null;
+    }
+
     private SqliteConnection Open()
     {
         var c = new SqliteConnection(_connectionString);

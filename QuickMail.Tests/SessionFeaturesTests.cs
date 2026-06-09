@@ -101,6 +101,8 @@ public class PreviewSuppressionTests
         public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
         public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
         public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
+        public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
+        public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
     }
 
     private static readonly MailMessageSummary[] MessagesWithPreviews =
@@ -187,6 +189,7 @@ public class IdleNewMailTests
         public FireableMailService(Guid accountId) => _accountId = accountId;
 
         public event Action<Guid>? InboxNewMailDetected;
+        public event Action<Guid, bool>? AccountReachabilityChanged;
         public void FireNewMail() => InboxNewMailDetected?.Invoke(_accountId);
 
         // Return one INBOX folder so ConnectAllAccountsAsync populates _cachedFolders.
@@ -209,6 +212,7 @@ public class IdleNewMailTests
         public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
         public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
         public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IList<string>>(Array.Empty<string>());
         public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default) => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
@@ -238,6 +242,7 @@ public class IdleNewMailTests
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
         public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
         public event Action<int>? RulesApplied;
+        public event Action<int, int>? SyncProgressChanged;
 #pragma warning restore CS0067
 
         public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts,

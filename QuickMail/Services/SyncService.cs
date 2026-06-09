@@ -26,6 +26,7 @@ public class SyncService : ISyncService
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
     public event Action<int>? RulesApplied;
+    public event Action<int, int>? SyncProgressChanged;
 
     private readonly Dictionary<Guid, DateTimeOffset> _lastSyncedUtc = new();
 
@@ -36,7 +37,18 @@ public class SyncService : ISyncService
     {
         var previewJobs = new List<(AccountModel Account, MailFolderModel Folder, List<MailMessageSummary> Incoming)>();
 
-        foreach (var account in accounts)
+        // Count total syncable folders for progress reporting.
+        var accountList = accounts.ToList();
+        int totalFolders = 0;
+        foreach (var account in accountList)
+        {
+            if (cachedFolders.TryGetValue(account.Id, out var folders))
+                totalFolders += folders.Count(f => !f.ExcludeFromAllMail);
+        }
+
+        int completedFolders = 0;
+
+        foreach (var account in accountList)
         {
             ct.ThrowIfCancellationRequested();
             if (!cachedFolders.TryGetValue(account.Id, out var folders)) continue;
@@ -68,6 +80,10 @@ public class SyncService : ISyncService
                 {
                     LogService.Log($"Sync {account.AccountLabel}/{folder.DisplayName}", ex);
                 }
+
+                // Fire progress event after each folder completes.
+                completedFolders++;
+                await Application.Current.Dispatcher.InvokeAsync(() => SyncProgressChanged?.Invoke(completedFolders, totalFolders));
             }
 
             _lastSyncedUtc[account.Id] = DateTimeOffset.UtcNow;

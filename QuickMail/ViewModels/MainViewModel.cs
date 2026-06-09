@@ -371,6 +371,9 @@ public partial class MainViewModel : ObservableObject
     private string _connectionStatusText = "Offline";
 
     [ObservableProperty]
+    private string _lastSyncText = string.Empty;
+
+    [ObservableProperty]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -1213,7 +1216,27 @@ public partial class MainViewModel : ObservableObject
         await ConnectAllAccountsAsync();
         if (_cachedFolders.Count == 0) return;
 
-        _imap.StartIdleWatchers(Accounts.ToList(), ct);
+        var accountList = Accounts.ToList();
+        _imap.StartIdleWatchers(accountList, ct);
+
+        // Subscribe to account reachability changes (IDLE watcher connection lost/restored).
+        // No announcement — this is internal bookkeeping.
+        _imap.AccountReachabilityChanged += (accountId, isReachable) =>
+        {
+            var account = accountList.FirstOrDefault(a => a.Id == accountId);
+            if (account != null)
+            {
+                var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                ApplyAccountStatus(account, folders);
+            }
+        };
+
+        // Subscribe to sync progress updates.
+        _syncService.SyncProgressChanged += (done, total) =>
+        {
+            if (total > 0)
+                StatusText = $"Syncing… ({done} of {total} folders)";
+        };
 
         if (SelectedFolder?.FullName == AllMailFolder.FullName && ViewMode == ViewMode.To)
         {
@@ -1242,6 +1265,11 @@ public partial class MainViewModel : ObservableObject
         StatusText = "Syncing mail…";
         ConnectionStatusText = "Syncing…";
         _suppressFolderSyncUpdates = true;
+
+        // Start progress announcements for long syncs (10-second interval).
+        using var progressCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var progressTask = AnnounceLoadingProgressAsync(progressCts.Token);
+
         try
         {
             await _syncService.SyncAllAccountsAsync(Accounts, _cachedFolders, ct);
@@ -1253,19 +1281,28 @@ public partial class MainViewModel : ObservableObject
 
             var count = Messages.Count;
             StatusText = $"{count} messages.";
+            LastSyncText = $"Synced {DateTime.Now:t}";
             ConnectionStatusText = $"{Accounts.Count} account{(Accounts.Count == 1 ? "" : "s")} connected";
             Announce($"{count} {(count == 1 ? "message" : "messages")} loaded.", AnnouncementCategory.Status);
+
+            // Start periodic NOOP heartbeat (10-minute interval) to keep connections alive
+            // and detect mid-session drops on non-INBOX folders.
+            _ = StartPeriodicNoOpAsync(accountList, ct);
         }
         catch (OperationCanceledException) { /* sync cancelled — normal */ }
         catch (Exception ex)
         {
             LogService.Log("BackgroundSync", ex);
             StatusText = $"Sync error: {ex.Message}";
-            ConnectionStatusText = "Connection error";
+            // Only set "Connection error" if no accounts connected at all.
+            if (_cachedFolders.Count == 0)
+                ConnectionStatusText = "Connection error";
         }
         finally
         {
             _suppressFolderSyncUpdates = false;
+            progressCts.Cancel();
+            try { await progressTask.ConfigureAwait(false); } catch { }
         }
     }
 
@@ -1278,6 +1315,27 @@ public partial class MainViewModel : ObservableObject
                 await Task.Delay(10_000, ct);
                 var count = Messages.Count;
                 Announce($"{count} {(count == 1 ? "message" : "messages")} loaded so far.", AnnouncementCategory.Status);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task StartPeriodicNoOpAsync(IReadOnlyList<AccountModel> accounts, CancellationToken ct)
+    {
+        // 10-minute heartbeat to keep pool connections alive and detect mid-session drops.
+        // Runs fire-and-forget; cancellation is controlled by the application-level ct.
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromMinutes(10), ct);
+                foreach (var account in accounts)
+                {
+                    if (ct.IsCancellationRequested) break;
+                    try { await _imap.NoOpAsync(account.Id, ct); }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { LogService.Log($"NOOP for {account.AccountLabel}", ex); }
+                }
             }
         }
         catch (OperationCanceledException) { }
@@ -1704,24 +1762,53 @@ public partial class MainViewModel : ObservableObject
             if (string.IsNullOrEmpty(password)) return (account.Id, null);
         }
 
-        try
+        // Startup retry: up to 3 attempts with backoff (30s, 45s, 60s timeouts).
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await _imap.ConnectAsync(account, password, connectCts.Token);
-            using var folderCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
-            var folderList = await _imap.GetFoldersAsync(account.Id, folderCts.Token);
-            return (account.Id, folderList);
+            try
+            {
+                // Timeouts increase per attempt: 30s, 45s, 60s
+                int connectTimeout = attempt switch { 1 => 30, 2 => 45, _ => 60 };
+                int delaySeconds = attempt == 1 ? 15 : 30;
+                using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(connectTimeout));
+                await _imap.ConnectAsync(account, password, connectCts.Token);
+                using var folderCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+                var folderList = await _imap.GetFoldersAsync(account.Id, folderCts.Token);
+                return (account.Id, folderList);
+            }
+            catch (OperationCanceledException) when (attempt < 3)
+            {
+                // Per-attempt timeout — retry with backoff
+                int delaySeconds = attempt == 1 ? 15 : 30;
+                LogService.Log($"ConnectAll/{account.AccountLabel}: attempt {attempt} timed out — retrying in {delaySeconds}s");
+                try { await Task.Delay(TimeSpan.FromSeconds(delaySeconds), CancellationToken.None); }
+                catch { /* best effort */ }
+                continue;
+            }
+            catch (Exception ex) when (attempt < 3)
+            {
+                // Transient error — retry with backoff
+                int delaySeconds = attempt == 1 ? 15 : 30;
+                LogService.Log($"ConnectAll/{account.AccountLabel}: attempt {attempt} failed ({ex.Message}) — retrying in {delaySeconds}s");
+                try { await Task.Delay(TimeSpan.FromSeconds(delaySeconds), CancellationToken.None); }
+                catch { /* best effort */ }
+                continue;
+            }
+            catch (OperationCanceledException)
+            {
+                // Outer CTS cancelled — exit immediately
+                LogService.Log($"ConnectAll/{account.AccountLabel}: cancelled by user");
+                return (account.Id, null);
+            }
+            catch (Exception ex)
+            {
+                // Final attempt failed
+                LogService.Log($"ConnectAll/{account.AccountLabel}: final attempt failed", ex);
+                return (account.Id, null);
+            }
         }
-        catch (OperationCanceledException)
-        {
-            LogService.Log($"ConnectAll/{account.AccountLabel}: timed out");
-            return (account.Id, null);
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"ConnectAll/{account.AccountLabel}", ex);
-            return (account.Id, null);
-        }
+
+        return (account.Id, null);
     }
 
     private void RebuildFolderListFromCache()
@@ -2929,6 +3016,7 @@ public partial class MainViewModel : ObservableObject
         }
 
         // ── Step 2: IMAP delete + local store cleanup ────────────────────────────
+        var affectedFolders = new List<(Guid AccountId, MailFolderModel Folder)>();
         try
         {
             ReplaceCts(ref _messageActionCts, out var ct);
@@ -2944,6 +3032,11 @@ public partial class MainViewModel : ObservableObject
                     ? acctFolders.FirstOrDefault(f =>
                           f.FullName.Equals(group.Key.FolderName, StringComparison.OrdinalIgnoreCase))?.Kind
                     : null;
+
+                var sourceFolder = acctFolders?.FirstOrDefault(f =>
+                    f.FullName.Equals(group.Key.FolderName, StringComparison.OrdinalIgnoreCase));
+                if (sourceFolder != null)
+                    affectedFolders.Add((group.Key.AccountId, sourceFolder));
 
                 if (sourceKind == SpecialFolderKind.Trash)
                     await _imap.PermanentlyDeleteBatchAsync(
@@ -2967,8 +3060,33 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusText = $"Delete failed: {ex.Message}";
+            // Honest uncertainty message — the delete may have partially or fully succeeded.
+            StatusText = "Delete may not have completed — refreshing.";
             LogService.Log("DeleteMessages", ex);
+
+            // Schedule targeted sync of affected folders to reconcile the UI with server state.
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                foreach (var (accountId, folder) in affectedFolders)
+                {
+                    if (_bgSyncCts?.Token.IsCancellationRequested ?? true) break;
+                    try
+                    {
+                        if (OnlineMode)
+                            await _syncService.SyncOneFolderOnlineAsync(
+                                Accounts.FirstOrDefault(a => a.Id == accountId) ?? Accounts.First(),
+                                folder,
+                                CancellationToken.None);
+                        else
+                            await _syncService.SyncOneFolderAsync(
+                                Accounts.FirstOrDefault(a => a.Id == accountId) ?? Accounts.First(),
+                                folder,
+                                CancellationToken.None);
+                    }
+                    catch (Exception syncEx) { LogService.Log($"Delete reconciliation sync failed", syncEx); }
+                }
+            });
         }
         finally
         {
@@ -3047,7 +3165,30 @@ public partial class MainViewModel : ObservableObject
         else if (paneIndex == 1 && SelectedAccount is { } acct)
         {
             var lastSync = _syncService.LastSyncedUtc(acct.Id);
-            var (title, sections) = AccountPropertiesBuilder.Build(acct, lastSync);
+
+            // Fetch cache statistics if not in --online mode.
+            int cacheCount = 0;
+            DateTimeOffset? oldestCached = null;
+            string? syncWindow = null;
+
+            if (!OnlineMode)
+            {
+                try
+                {
+                    cacheCount = await _localStore.CountSummariesAsync(acct.Id);
+                    oldestCached = await _localStore.GetOldestMessageDateAsync(acct.Id);
+
+                    var syncDays = _configService.Load().SyncDays;
+                    syncWindow = syncDays == 0 ? "All mail" : $"Last {syncDays} days";
+                }
+                catch (Exception ex)
+                {
+                    // On database errors, skip sync section.
+                    LogService.Log("ShowProperties: cache stats failed", ex);
+                }
+            }
+
+            var (title, sections) = AccountPropertiesBuilder.Build(acct, lastSync, cacheCount, oldestCached, syncWindow);
             PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
         }
         // No-op for toolbar, status bar, or when nothing is selected.
@@ -3328,8 +3469,32 @@ public partial class MainViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            StatusText = $"Empty trash failed: {ex.Message}";
+            // Post-failure verification: check if trash is actually empty on the server.
+            // If it is, the operation succeeded despite the exception (TCP drop on ACK).
             LogService.Log("EmptyTrash", ex);
+            try
+            {
+                using var verifyCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                foreach (var account in accountsToEmpty)
+                {
+                    int remaining = await _imap.CountTrashMessagesAsync(account.Id, verifyCts.Token);
+                    if (remaining == 0)
+                    {
+                        // Server succeeded — report success
+                        trashEmptied = true;
+                        LogService.Log("EmptyTrash: verification passed — trash is empty on server");
+                        break;
+                    }
+                }
+            }
+            catch (Exception verifyEx)
+            {
+                LogService.Log("EmptyTrash: verification failed", verifyEx);
+            }
+
+            // If not verified as empty, report the error
+            if (!trashEmptied)
+                StatusText = $"Empty trash failed: {ex.Message}";
         }
         finally
         {
