@@ -160,12 +160,29 @@ Trash, Junk, Sent, and Drafts are excluded from `\x00AllMail` via `folder.Exclud
 - **Logging**: `LogService` appends to `quickmail.log`; `LogService.Debug()` writes only when `/debug` is present. Avoid logging credentials or unnecessary PII.
 - **Inclusive language in documentation and UI text**: Use verbs like "activate", "select", "choose", or "press" instead of "click".
 - **Screen reader references**: Do not name a specific screen reader product (NVDA, JAWS, VoiceOver, Narrator, etc.) in documentation, release notes, commit messages, or UI text unless the content is specific to that product. Use the generic term "screen readers" instead.
-- **Programmatic screen reader announcements**: All custom announcements must go through `AccessibilityHelper.Announce()`. Never call `RaiseNotificationEvent` directly. Every call must pass a `category` argument — choose the most specific one:
-  - `AnnouncementCategory.Hint` — instructional text the user will already know after initial familiarization (e.g. "Press Escape to return to the list"). Users can silence these in Settings.
-  - `AnnouncementCategory.Status` — background progress the user didn't explicitly trigger (e.g. sync counts, connection state). Users can silence these in Settings.
-  - `AnnouncementCategory.Result` — direct outcome of a user action (e.g. "3 messages found", "Moved to Archive"). This is the default parameter value.
-  - Use `force: true` only for feedback about the announcement system itself (the toggle confirmation), so it is always heard regardless of settings.
-  - Do not bake instructional text into `AutomationProperties.Name` on controls. Keep the name a short identifying label ("Search messages", not "Search messages. Press Tab to move to results."). If the instruction is worth surfacing, deliver it as a `Hint` announce at the moment the control is focused or activated.
+
+### Screen Reader Announcement Infrastructure
+
+All custom screen reader announcements are user-configurable and governed by `ConfigModel` settings (`config.ini`):
+
+**Configuration settings** (in `[config.ini]`, all optional, default to `true` except spelling-while-typing):
+- `CustomAnnouncements` — Master on/off switch for all programmatic announcements
+- `AnnounceHints` — Instructional tips (e.g. "Press Escape to return")
+- `AnnounceStatus` — Background progress (e.g. "Syncing…", "N messages loaded", connection state)
+- `AnnounceResults` — Action outcomes (e.g. "3 messages moved", "Delete may not have completed")
+- `AnnounceSpellingWhileTyping` — Misspellings during typing (off by default, adds overhead)
+- `AnnounceSpellingWhileNavigating` — Misspellings on navigation
+
+**Implementation rules:**
+- **All custom announcements must go through `AccessibilityHelper.Announce(text, category, force)`**. Never call `RaiseNotificationEvent` directly.
+- **Every call must pass a `category` argument** — maps to config settings above:
+  - `AnnouncementCategory.Hint` → respects `AnnounceHints` setting
+  - `AnnouncementCategory.Status` → respects `AnnounceStatus` setting (sync progress, loading, connection state)
+  - `AnnouncementCategory.Result` → respects `AnnounceResults` setting (search counts, operation confirmations)
+- **`force: true`** bypasses config settings — use only for meta-announcements (e.g. "Custom announcements toggled on/off"). All regular content respects user preferences.
+- **Do not bake instructional text into `AutomationProperties.Name`** on controls. Keep the name a short identifying label ("Search messages", not "Search messages. Press Tab to move to results."). If the instruction is worth surfacing, deliver it as a `Hint` announce at the moment the control is focused or activated.
+
+**Example**: Sync status updates use `AnnouncementCategory.Status` so users who disable background progress announcements won't hear every folder completion. Message counts at sync end use `AnnouncementCategory.Status` (when `AnnounceStatus` is on) and appear as visual status bar text regardless (for sighted users and always-visible state).
 
 ## Modal Dialog Rules — Enforced
 
@@ -374,7 +391,7 @@ Explicitly list every change to shared infrastructure:
 - Which panes are added to or removed from the F6 ring
 - Which commands are added to `CommandRegistry`, with category and whether a default key is assigned
 - Which `AutomationProperties.Name` values are introduced or changed
-- Which `AccessibilityHelper.Announce` calls are added, with category
+- Which `AccessibilityHelper.Announce` calls are added, with category (Hint/Status/Result). **Reminder**: announcements in each category are gated by user configuration (`AnnounceHints`, `AnnounceStatus`, `AnnounceResults`) — specs must explicitly choose the category so implementation respects user preferences.
 - Whether VM state properties (e.g. `IsMessageOpen`) need updating to reflect the new feature
 
 ### Out of scope
@@ -433,7 +450,7 @@ Explicitly list every change to shared infrastructure:
 - Which panes are added to or removed from the F6 ring
 - Which commands are added to `CommandRegistry`, with category and whether a default key is assigned
 - Which `AutomationProperties.Name` values are introduced or changed
-- Which `AccessibilityHelper.Announce` calls are added, with category
+- Which `AccessibilityHelper.Announce` calls are added, with category (Hint/Status/Result). **Reminder**: announcements in each category are gated by user configuration (`AnnounceHints`, `AnnounceStatus`, `AnnounceResults`) — specs must explicitly choose the category so implementation respects user preferences.
 - Whether VM state properties (e.g. `IsMessageOpen`) need updating to reflect the new feature
 
 ### Out of scope
