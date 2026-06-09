@@ -1458,19 +1458,15 @@
                    KeyboardNavigation.DirectionalNavigation="Contained"
                    AutomationProperties.Name="">
 
-            <!-- Region 1: Status message + Last sync time (informational).
-                 Combined into one item so screen readers read them as a complete unit.
+            <!-- Region 1: Status message + Last sync time (single TextBlock for unified screen reader reading).
                  E.g., "7323 messages. Synced 9:29 AM" or "Connecting and syncing... Never synced" -->
             <StatusBarItem x:Name="StatusTextItem"
                            KeyboardNavigation.IsTabStop="False">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock x:Name="StatusTextBox"
-                               Style="{StaticResource StatusTextBlockStyle}"
-                               Text="{Binding StatusText, Mode=OneWay}"/>
-                    <TextBlock Style="{StaticResource StatusTextBlockStyle}"
-                               Text="{Binding LastSyncText, StringFormat='. {0}', Mode=OneWay}"
-                               Margin="0"/>
-                </StackPanel>
+                <TextBlock x:Name="StatusTextBox"
+                           Style="{StaticResource StatusTextBlockStyle}">
+                    <Run Text="{Binding StatusText, Mode=OneWay}"/>
+                    <Run Text="{Binding LastSyncText, StringFormat=' {0}', Mode=OneWay}"/>
+                </TextBlock>
             </StatusBarItem>
 
             <!-- Region 2: Connection state (informational) -->
