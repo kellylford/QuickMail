@@ -1243,10 +1243,27 @@ public partial class MainViewModel : ObservableObject
         };
 
         // Subscribe to sync progress updates.
+        // Announce every 10 folders to avoid excessive screen reader chatter.
+        int lastAnnouncedAt = 0;
         _syncService.SyncProgressChanged += (done, total) =>
         {
             if (total > 0)
+            {
                 StatusText = $"Syncing… ({done} of {total} folders)";
+
+                // Announce progress every 10 folders or at the end.
+                if (done % 10 == 0 && done > lastAnnouncedAt)
+                {
+                    Announce($"Synced {done} of {total} folders.", AnnouncementCategory.Status);
+                    lastAnnouncedAt = done;
+                }
+                else if (done == total && done > lastAnnouncedAt)
+                {
+                    // Announce at the end if we haven't already announced this milestone.
+                    Announce($"Sync complete.", AnnouncementCategory.Status);
+                    lastAnnouncedAt = done;
+                }
+            }
         };
 
         if (SelectedFolder?.FullName == AllMailFolder.FullName && ViewMode == ViewMode.To)
