@@ -8,7 +8,8 @@
         Height="660" Width="720"
         MinHeight="500" MinWidth="580"
         WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize">
+        ResizeMode="CanResize"
+        Loaded="Window_Loaded">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
@@ -42,7 +43,8 @@
                         AutomationProperties.Name="Set selected account as default for new messages"
                         MinWidth="75"/>
             </StackPanel>
-            <ListBox ItemsSource="{Binding Accounts}"
+            <ListBox x:Name="AccountListBox"
+                     ItemsSource="{Binding Accounts}"
                      SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
                      AutomationProperties.Name="Account list"
                      TextSearch.TextPath="AccountLabelWithDefault"
@@ -89,15 +91,17 @@
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
                          TabIndex="2"/>
 
-                <!-- Authentication type -->
-                <TextBlock x:Name="LblAuthType" Text="_Authentication:" Margin="0,8,0,2"/>
-                <ComboBox SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
-                          AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
-                          AutomationProperties.Name="Authentication method"
-                          TabIndex="3">
-                    <ComboBoxItem>Password</ComboBoxItem>
-                    <ComboBoxItem>Microsoft OAuth2 (Outlook.com)</ComboBoxItem>
-                </ComboBox>
+                <!-- Authentication type — hidden for Microsoft 365 (Graph), which is always OAuth. -->
+                <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
+                    <TextBlock x:Name="LblAuthType" Text="_Authentication:" Margin="0,8,0,2"/>
+                    <ComboBox SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
+                              AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
+                              AutomationProperties.Name="Authentication method"
+                              TabIndex="3">
+                        <ComboBoxItem>Password</ComboBoxItem>
+                        <ComboBoxItem>Microsoft OAuth2 (Outlook.com)</ComboBoxItem>
+                    </ComboBox>
+                </StackPanel>
 
                 <!-- Password panel -->
                 <StackPanel Visibility="{Binding IsPasswordAuth, Converter={StaticResource BoolToVisibility}}">
@@ -118,6 +122,8 @@
                             HorizontalAlignment="Left" MinWidth="200" TabIndex="5"/>
                 </StackPanel>
 
+                <!-- IMAP + SMTP server settings — hidden for Microsoft 365 (Graph) accounts. -->
+                <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
                 <Separator Margin="0,12"/>
 
                 <!-- IMAP Settings -->
@@ -167,6 +173,7 @@
                           IsChecked="{Binding SmtpAcceptInvalidCert}"
                           AutomationProperties.Name="SMTP accept invalid SSL certificates"
                           Margin="0,0,0,6" TabIndex="10"/>
+                </StackPanel>
 
                 <Separator Margin="0,6"/>
 

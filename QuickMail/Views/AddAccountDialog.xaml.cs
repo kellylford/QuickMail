@@ -27,8 +27,12 @@ public partial class AddAccountDialog : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        AccountNameBox.Focus();
-        Keyboard.Focus(AccountNameBox);
+        // Land on the Account Type picker first when it's shown (more than one backend available),
+        // so the choice that changes which fields matter comes before those fields. When there's
+        // only one backend the picker is hidden, so start on Account Name as before.
+        var first = _vm.ShowBackendPicker ? (Control)BackendComboBox : AccountNameBox;
+        first.Focus();
+        Keyboard.Focus(first);
     }
 
     private void OnIsBusyChanged()

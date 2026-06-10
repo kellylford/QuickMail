@@ -49,6 +49,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     partial void OnSelectedAccountChanged(AccountModel? value)
     {
         if (value == null) return;
+        BackendKind = value.BackendKind; // drives IsGraphBackend/IsImapBackend → hides auth + IMAP/SMTP for Graph
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;
         Username = value.Username;
