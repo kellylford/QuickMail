@@ -4,7 +4,7 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public interface ISmtpService
+public interface ISendMailService
 {
     Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default);
 

@@ -53,7 +53,7 @@ sealed class StubImapMailService : IMailService
     public void Dispose() { }
 }
 
-sealed class StubSmtpService : ISmtpService
+sealed class StubSmtpService : ISendMailService
 {
     public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,

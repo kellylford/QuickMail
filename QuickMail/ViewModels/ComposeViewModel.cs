@@ -16,7 +16,7 @@ namespace QuickMail.ViewModels;
 
 public partial class ComposeViewModel : ObservableObject
 {
-    private readonly ISmtpService _smtp;
+    private readonly ISendMailService _smtp;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly IMailService _imap;
@@ -118,7 +118,7 @@ public partial class ComposeViewModel : ObservableObject
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
-    public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null)
+    public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null)
     {
         _smtp = smtp;
         _accountService = accountService;

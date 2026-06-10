@@ -29,7 +29,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IViewService _viewService;
     private readonly ICommandRegistry _commandRegistry;
     private readonly IRuleService _ruleService;
-    private readonly ISmtpService _smtp;
+    private readonly ISendMailService _smtp;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -633,7 +633,7 @@ public partial class MainViewModel : ObservableObject
         ICommandRegistry commandRegistry,
         IViewService viewService,
         IRuleService ruleService,
-        ISmtpService smtpService,
+        ISendMailService smtpService,
         bool onlineMode = false)
     {
         _imap            = imap;

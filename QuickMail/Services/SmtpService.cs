@@ -1,24 +1,33 @@
 using System.Reflection;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using MailKit.Net.Smtp;
 using MailKit.Security;
-using MimeKit;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class SmtpService : ISmtpService
+public class SmtpService : ISendMailService
 {
     private readonly IOAuthService _oauth;
+    private readonly ISendMailService _graphSmtp;
     private static readonly string UserAgent =
         "QuickMail/" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0");
 
-    public SmtpService(IOAuthService oauth) => _oauth = oauth;
+    public SmtpService(IOAuthService oauth, ISendMailService graphSmtp)
+    {
+        _oauth = oauth;
+        _graphSmtp = graphSmtp;
+    }
 
     public async Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
     {
+        if (account.BackendKind == BackendKind.MicrosoftGraph)
+        {
+            await _graphSmtp.SendAsync(compose, account, password, ct);
+            return;
+        }
+
         var message = MimeMessageBuilder.Build(compose, account, UserAgent);
 
         using var client = new SmtpClient();
@@ -61,24 +70,13 @@ public class SmtpService : ISmtpService
     public async Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
         string organizerEmail, CancellationToken ct = default)
     {
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(account.SenderDisplayName, account.Username));
-
-        if (string.IsNullOrWhiteSpace(organizerEmail))
-            throw new ArgumentException("Organizer email is required for ICS reply.", nameof(organizerEmail));
-
-        message.To.Add(MailboxAddress.Parse(organizerEmail));
-
-        message.Subject = "Calendar Response";
-
-        var calendarPart = new TextPart("calendar")
+        if (account.BackendKind == BackendKind.MicrosoftGraph)
         {
-            ContentTransferEncoding = ContentEncoding.Base64,
-        };
-        calendarPart.ContentType.Parameters.Add("method", "REPLY");
-        calendarPart.SetText(Encoding.UTF8, icsReplyContent);
+            await _graphSmtp.SendIcsReplyAsync(icsReplyContent, account, password, organizerEmail, ct);
+            return;
+        }
 
-        message.Body = calendarPart;
+        var message = MimeMessageBuilder.BuildIcsReply(account, icsReplyContent, organizerEmail);
 
         using var client = new SmtpClient();
 

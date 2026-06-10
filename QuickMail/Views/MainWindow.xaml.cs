@@ -80,7 +80,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan TypeAheadResetDelay = TimeSpan.FromSeconds(1);
 
     private readonly MainViewModel _vm;
-    private readonly ISmtpService _smtp;
+    private readonly ISendMailService _smtp;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly IMailService _imap;
@@ -127,7 +127,7 @@ public partial class MainWindow : Window
 
     public MainWindow(
         MainViewModel vm,
-        ISmtpService smtp,
+        ISendMailService smtp,
         IAccountService accountService,
         ICredentialService credentials,
         IMailService imap,

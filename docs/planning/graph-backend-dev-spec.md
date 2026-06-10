@@ -33,7 +33,7 @@
    - [6.8 `OAuthService.cs` — Per-Call Scopes](#68-oauthservicecs--per-call-scopes)
    - [6.9 `AddAccountViewModel.cs` & Dialog — Account Type Combo](#69-addaccountviewmodelcs--dialog--account-type-combo)
    - [6.10 `GraphMailService.cs` — Read Path](#610-graphmailservicecs--read-path)
-   - [6.11 `GraphSmtpService.cs` — Send Path](#611-graphsmtpservicecs--send-path)
+   - [6.11 `GraphSendMailService.cs` — Send Path](#611-graphsendmailservicecs--send-path)
    - [6.12 `GraphChangeNotifier.cs` — Delta Polling](#612-graphchangenotifiercs--delta-polling)
    - [6.13 `App.xaml.cs` — DI Wiring](#613-appxamlcs--di-wiring)
 7. [Tests](#7-tests)
@@ -78,7 +78,7 @@ This spec implements the [Microsoft Graph Backend PM spec](graph-backend-pm-spec
 | 2 | `uint UniqueId` → `string MessageId`; SQLite schema migration v2 | v0.7 | ~800 |
 | 3 | `BackendKind` + `MailServiceRouter` + **`IFeatureGate` infrastructure** + Add Account UI combo (Microsoft 365 option visible only when `FeatureFlag.GraphBackend` is on) | v0.7 | ~500 |
 | 4 | `GraphMailService` read path + `OAuthService` per-call scopes | v0.8 | ~600 |
-| 5 | `GraphSmtpService` send path | v0.8 | ~150 |
+| 5 | `GraphSendMailService` send path | v0.8 | ~150 |
 | 6 | Graph attachments, folder CRUD, move/copy/delete | v0.8 | ~400 |
 | 7 | `IChangeNotifier`, `ImapChangeNotifier` (extracted), `GraphChangeNotifier` (delta polling) | v0.8 | ~300 |
 | 8 | Tests: `GraphMailServiceTests`, `MailServiceRouterTests`, `FeatureGateTests`, migration round-trip | v0.8 | ~450 |
@@ -100,7 +100,7 @@ Total: ~3100 LOC across ~27 files touched.
 | 6 | `QuickMail/Services/ImapMailService.cs` | 1 | Renamed class (file move from `ImapService.cs`) |
 | 7 | `QuickMail/Services/MailServiceRouter.cs` | 3 | Per-account `IMailService` dispatcher |
 | 8 | `QuickMail/Services/GraphMailService.cs` | 4 | Graph backend |
-| 9 | `QuickMail/Services/GraphSmtpService.cs` | 5 | Graph send via `/me/sendMail` |
+| 9 | `QuickMail/Services/GraphSendMailService.cs` | 5 | Graph send via `/me/sendMail` |
 | 10 | `QuickMail/Services/IChangeNotifier.cs` | 7 | Abstraction over IDLE / delta polling |
 | 11 | `QuickMail/Services/ImapChangeNotifier.cs` | 7 | Extracted from `ImapMailService.StartIdleWatchers` |
 | 12 | `QuickMail/Services/GraphChangeNotifier.cs` | 7 | Delta polling loop |
@@ -222,7 +222,7 @@ Strict ordering. Each PR is mergeable on its own and leaves the app behaviorally
 
 ### PR 5 — Graph send (1-2 evenings)
 
-1. `GraphSmtpService.cs`: implements `ISmtpService`. `SendAsync` posts the MIME from `MimeMessageBuilder` to `POST /me/sendMail` with `Content-Type: text/plain` and base64-encoded MIME body. Graph auto-saves to Sent — `AppendToSentAsync` becomes a no-op for Graph.
+1. `GraphSendMailService.cs`: implements `ISendMailService`. `SendAsync` posts the MIME from `MimeMessageBuilder` to `POST /me/sendMail` with `Content-Type: text/plain` and base64-encoded MIME body. Graph auto-saves to Sent — `AppendToSentAsync` becomes a no-op for Graph.
 2. `App.xaml.cs`: SMTP service is a router too — `SmtpServiceRouter` (simpler than mail; one method). Or: the existing `SmtpService` checks `account.BackendKind` and delegates. Simpler — go with the second.
 3. Modify `SmtpService.SendAsync`: at the top, `if (account.BackendKind == BackendKind.MicrosoftGraph) { await _graphSmtp.SendAsync(...); return; }`.
 4. Smoke: compose and send from an M365 account; verify it appears in Sent.
@@ -809,9 +809,9 @@ public class GraphMailService : IMailService
 - **`--online` mode (#62):** `GraphMailService` has **no `ILocalStoreService` dependency** — every read (connect, folders, summaries, detail, since-date) goes straight to Graph, so `--online` (which leaves the SQLite schema uncreated) is fully supported for Graph accounts with no behavioral difference. `GraphMailService_HasNoLocalStoreDependency_SoOnlineModeWorks` asserts this structurally so the property can't regress. The local-store-first/Graph-fallback pattern lives in `MainViewModel` (router → Graph), unchanged. No `--online`-specific limitations for Graph.
 - **429 retry (#64):** `GraphClient`'s `Retry-After`/default-delay handling is now covered by `GraphClientTests`; the default no-header delay is constructor-injectable (`defaultRetryDelay`, defaults to 2 s) so tests run without real waits.
 
-### 6.11 `GraphSmtpService.cs` — Send Path
+### 6.11 `GraphSendMailService.cs` — Send Path
 
-**Path:** `QuickMail/Services/GraphSmtpService.cs`
+**Path:** `QuickMail/Services/GraphSendMailService.cs`
 
 ```csharp
 using System;
@@ -826,13 +826,13 @@ using QuickMail.Services.Graph;
 
 namespace QuickMail.Services;
 
-public class GraphSmtpService : ISmtpService
+public class GraphSendMailService : ISendMailService
 {
     private readonly GraphClient _client;
     private static readonly string UserAgent =
         "QuickMail/" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0");
 
-    public GraphSmtpService(IOAuthService oauth) => _client = new GraphClient(oauth);
+    public GraphSendMailService(IOAuthService oauth) => _client = new GraphClient(oauth);
 
     public async Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
     {
@@ -845,12 +845,19 @@ public class GraphSmtpService : ISmtpService
         using var content = new ByteArrayContent(mimeBytes);
         content.Headers.ContentType = new MediaTypeHeaderValue("text/plain");
 
-        LogService.Log($"GraphSmtpService: sending {mimeBytes.Length} bytes via /me/sendMail");
+        LogService.Log($"GraphSendMailService: sending {mimeBytes.Length} bytes via /me/sendMail");
         await _client.PostRawAsync(account.Id, "/me/sendMail", content, ct);
-        LogService.Log("GraphSmtpService: send complete");
+        LogService.Log("GraphSendMailService: send complete");
     }
 }
 ```
+
+**PR 5 implementation notes (as built):**
+- **Naming (the class is named for what it does, not a protocol).** Built as **`GraphSendMailService`**, and the send abstraction `ISmtpService` was renamed to **`ISendMailService`** — "SMTP" implied the wire protocol, but the Graph path is pure REST (`/me/sendMail`). The genuinely-SMTP MailKit implementation keeps the accurate name `SmtpService`. `ISendMailService` (not `ISendMessageService`) because the contract is mail-shaped — `ComposeModel`/attachments/`SendIcsReplyAsync`/email account — and would not fit a future SMS/other-channel sender, which would get its own abstraction.
+- **Base64 MIME, not raw.** `/me/sendMail` with `Content-Type: text/plain` requires the body to be the **base64-encoded** MIME message (the raw-bytes snippet above was illustrative). `GraphSendMailService` builds the MIME with `MimeMessageBuilder`, base64-encodes it, and POSTs the ASCII base64 via `GraphClient.PostRawAsync`. Graph auto-saves to Sent.
+- **`GraphClient.PostRawAsync`** was added; `SendAsync` was refactored to take a `Func<HttpContent>?` content factory so the body is rebuilt on each 429 retry (an `HttpContent` can't be resent once consumed). Existing `GetAsync`/`PatchAsync` are unchanged in behavior.
+- **Both send methods dispatch.** `SmtpService` takes the `GraphSendMailService` as `ISendMailService graphSmtp` and routes **both** `SendAsync` and `SendIcsReplyAsync` to it when `BackendKind == MicrosoftGraph` — so calendar accept/decline replies also work for Graph accounts (via `/sendMail`). The ICS-reply MIME building moved to `MimeMessageBuilder.BuildIcsReply`, shared by both backends.
+- **`AppendToSentAsync` is a no-op for Graph** (was `NotImplementedException`) since `/sendMail` auto-saves; the post-send append in `ComposeViewModel` therefore no longer logs a benign failure for Graph accounts.
 
 `SmtpService.SendAsync` dispatches by `BackendKind`:
 
@@ -994,7 +1001,7 @@ foreach (var account in accountService.LoadAccounts())
 }
 
 // SMTP — single service that delegates internally:
-var graphSmtpService = new GraphSmtpService(oauthService);
+var graphSendMail = new GraphSendMailService(oauthService);
 var smtpService = new SmtpService(oauthService, graphSmtpService);
 
 // Change notifier — composite over both backends:

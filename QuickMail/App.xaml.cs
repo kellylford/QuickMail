@@ -75,7 +75,8 @@ public partial class App : Application
             var configService     = new ConfigService(profile);
             var imapBackend       = new ImapMailService(oauthService, configService);
             var graphBackend      = new GraphMailService(oauthService, configService);
-            var smtpService       = new SmtpService(oauthService);
+            var graphSendMail     = new GraphSendMailService(oauthService);
+            var smtpService       = new SmtpService(oauthService, graphSendMail);
 
             // Per-account mail backend router. Each account is registered to the backend its
             // BackendKind selects (IMAP by default, Graph for Microsoft 365 accounts).

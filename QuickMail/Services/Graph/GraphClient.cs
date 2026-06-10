@@ -63,12 +63,28 @@ public sealed class GraphClient : IDisposable
     public async Task PatchAsync(AccountModel account, string path, object body, CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(body, JsonOpts);
-        using var resp = await SendAsync(account, HttpMethod.Patch, path, json, ct);
+        using var resp = await SendAsync(account, HttpMethod.Patch, path,
+            () => new StringContent(json, Encoding.UTF8, "application/json"), ct);
+        await EnsureSuccessAsync(resp, ct);
+    }
+
+    /// <summary>
+    /// POSTs an already-encoded raw body with an explicit content type. Used by the Graph send
+    /// path: <c>/me/sendMail</c> takes a base64-encoded MIME message as <c>text/plain</c>.
+    /// </summary>
+    public async Task PostRawAsync(AccountModel account, string path, byte[] body, string contentType, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Post, path, () =>
+        {
+            var content = new ByteArrayContent(body);
+            content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            return content;
+        }, ct);
         await EnsureSuccessAsync(resp, ct);
     }
 
     private async Task<HttpResponseMessage> SendAsync(
-        AccountModel account, HttpMethod method, string pathOrUrl, string? jsonBody, CancellationToken ct)
+        AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, CancellationToken ct)
     {
         var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : BaseUrl + pathOrUrl;
 
@@ -78,8 +94,8 @@ public sealed class GraphClient : IDisposable
             var token = await _oauth.GetAccessTokenAsync(account, OAuthService.GraphMailScopes, ct);
             using var req = new HttpRequestMessage(method, url);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
-            if (jsonBody != null)
-                req.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+            if (contentFactory != null)
+                req.Content = contentFactory(); // fresh per attempt — content can't be resent after a 429
 
             var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if (resp.StatusCode != (HttpStatusCode)429 || attempt >= 2)

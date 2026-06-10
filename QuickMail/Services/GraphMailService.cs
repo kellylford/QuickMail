@@ -236,8 +236,9 @@ public class GraphMailService : IMailService
         => throw NotYet(nameof(EmptyTrashAsync));
     public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
         => throw NotYet(nameof(AppendDraftAsync));
+    // Graph's /sendMail auto-saves the sent message to the Sent folder, so there is nothing to append.
     public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default)
-        => throw NotYet(nameof(AppendToSentAsync));
+        => Task.CompletedTask;
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
         => throw NotYet(nameof(DownloadAttachmentAsync));
     public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)

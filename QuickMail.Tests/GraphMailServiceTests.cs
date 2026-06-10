@@ -216,8 +216,15 @@ public class GraphMailServiceTests
         // These throw synchronously (expression-bodied `=> throw ...`), so the discard keeps the
         // lambda an Action rather than a Func<Task>.
         Assert.Throws<NotImplementedException>(() => { _ = svc.MoveToTrashAsync(Guid.NewGuid(), "inbox", "m1"); });
-        Assert.Throws<NotImplementedException>(() => { _ = svc.AppendToSentAsync(Guid.NewGuid(), new ComposeModel()); });
         Assert.Throws<NotImplementedException>(() => { _ = svc.CreateFolderAsync(Guid.NewGuid(), null, "New"); });
+    }
+
+    [Fact]
+    public void AppendToSentAsync_IsNoOp_ForGraph()
+    {
+        // Graph /sendMail auto-saves to Sent, so the post-send append is a no-op (not a throw).
+        var (svc, _) = Make(url => (HttpStatusCode.OK, "{}"));
+        Assert.True(svc.AppendToSentAsync(Guid.NewGuid(), new ComposeModel()).IsCompletedSuccessfully);
     }
 
     [Fact]

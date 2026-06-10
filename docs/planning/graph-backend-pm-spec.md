@@ -137,7 +137,7 @@ The proposal does not chase Outlook on feature breadth (categories, focused inbo
 **v0.8+ — Graph backend (gated, opt-in):**
 - "Microsoft 365" option in Add Account dialog (**only visible when `FeatureFlag.GraphBackend` is enabled**)
 - Full `GraphMailService` implementation: connect, list folders, list messages, get message detail, mark read/unread, move/copy, delete (to Trash), download attachments
-- `GraphSmtpService`: send via `/me/sendMail` (accepts MIME from `MimeMessageBuilder`)
+- `GraphSendMailService`: send via `/me/sendMail` (accepts MIME from `MimeMessageBuilder`)
 - Drafts: append/replace/delete via `/me/messages`
 - Folder CRUD: create/rename/delete/move folders via `/me/mailFolders`
 - New-mail notifications via `delta` polling (replacing IDLE for Graph accounts)
@@ -577,7 +577,7 @@ The single gated surface is the **Add Account combo option**. Everything else is
 | `QuickMail/Services/ImapMailService.cs` | Renamed `ImapService` |
 | `QuickMail/Services/MailServiceRouter.cs` | Per-account dispatcher implementing `IMailService` |
 | `QuickMail/Services/GraphMailService.cs` | New Graph backend |
-| `QuickMail/Services/GraphSmtpService.cs` | New Graph send (via `/me/sendMail`) |
+| `QuickMail/Services/GraphSendMailService.cs` | New Graph send (via `/me/sendMail`) |
 | `QuickMail/Services/IChangeNotifier.cs` | Abstraction over IDLE / delta polling |
 | `QuickMail/Services/ImapChangeNotifier.cs` | Extracted from `ImapService.StartIdleWatchers` |
 | `QuickMail/Services/GraphChangeNotifier.cs` | Delta polling loop |
@@ -617,7 +617,7 @@ Sequenced so that each phase is independently mergeable and reversible until the
 | 2 | `uint UniqueId` → `string MessageId`. SQLite schema migration v2. | None (behavioral parity verified by full test suite + manual smoke) | **3-5** (the painful one) |
 | 3 | `BackendKind` enum + `MailServiceRouter` + `IFeatureGate` infrastructure + Add Account UI combo (Microsoft 365 option present but gated off by default) | New UI element when gate is on; no functional change when gate is off (default) | 2-3 |
 | 4 | `GraphMailService` read path: connect, GetFolders, GetMessageSummaries, GetMessagesSince*, GetMessageDetail, MarkRead | First end-to-end Graph read (only reachable when gate is on) | 4-6 |
-| 5 | `GraphSmtpService`: send via `/me/sendMail`. `AppendToSent` is no-op for Graph. | First Graph send | 1-2 |
+| 5 | `GraphSendMailService`: send via `/me/sendMail`. `AppendToSent` is no-op for Graph. | First Graph send | 1-2 |
 | 6 | Attachments + folder CRUD + move/copy/delete on Graph | Feature parity for daily use | 3-5 |
 | 7 | `GraphChangeNotifier`: delta polling + `IChangeNotifier` abstraction; extract `ImapChangeNotifier` from existing IDLE code | New-mail notifications for Graph accounts | 3-4 |
 | 8 | Tests: `GraphMailServiceTests` with `HttpMessageHandler` stub, `MailServiceRouterTests`, `FeatureGateTests`, migration round-trip test | None (coverage) | 2-3 |

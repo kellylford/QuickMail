@@ -1,5 +1,7 @@
+using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using MimeKit;
 using QuickMail.Helpers;
 using QuickMail.Models;
@@ -86,6 +88,34 @@ public static class MimeMessageBuilder
             message.Body = bodyEntity;
         }
 
+        return message;
+    }
+
+    /// <summary>
+    /// Builds a calendar REPLY message (accept/decline/tentative) addressed to the event organizer.
+    /// Shared by the SMTP and Graph send paths.
+    /// </summary>
+    /// <param name="account">The sender account (used for the From header).</param>
+    /// <param name="icsReplyContent">A full iCalendar REPLY payload.</param>
+    /// <param name="organizerEmail">The event organizer's address (the reply recipient).</param>
+    public static MimeMessage BuildIcsReply(AccountModel account, string icsReplyContent, string organizerEmail)
+    {
+        if (string.IsNullOrWhiteSpace(organizerEmail))
+            throw new ArgumentException("Organizer email is required for ICS reply.", nameof(organizerEmail));
+
+        var message = new MimeMessage();
+        message.From.Add(new MailboxAddress(account.SenderDisplayName, account.Username));
+        message.To.Add(MailboxAddress.Parse(organizerEmail));
+        message.Subject = "Calendar Response";
+
+        var calendarPart = new TextPart("calendar")
+        {
+            ContentTransferEncoding = ContentEncoding.Base64,
+        };
+        calendarPart.ContentType.Parameters.Add("method", "REPLY");
+        calendarPart.SetText(Encoding.UTF8, icsReplyContent);
+
+        message.Body = calendarPart;
         return message;
     }
 }

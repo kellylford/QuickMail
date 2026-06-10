@@ -56,7 +56,7 @@ When someone sends a calendar invite (ICS file attachment), QuickMail currently 
 |------|--------|
 | `QuickMail/Models/MailMessageDetail.cs` | Add `IcsModel? CalendarInvite` property |
 | `QuickMail/Services/ImapService.cs` | Detect `text/calendar` parts, parse with `IcsModel.Parse()` |
-| `QuickMail/Services/ISmtpService.cs` | Add `SendIcsReplyAsync` method |
+| `QuickMail/Services/ISendMailService.cs` | Add `SendIcsReplyAsync` method |
 | `QuickMail/Services/SmtpService.cs` | Implement ICS reply sending |
 | `QuickMail/ViewModels/MainViewModel.cs` | Add invite commands, build event card HTML |
 | `QuickMail/Views/MainWindow.xaml.cs` | Register new commands in CommandRegistry |
