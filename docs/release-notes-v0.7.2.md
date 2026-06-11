@@ -20,12 +20,12 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 Composing email gets its largest update yet. Every compose window now offers three editing modes:
 
 - **Plain Text** — the classic experience, unchanged.
-- **Markdown** — write Markdown source in the familiar text editor; QuickMail renders it to formatted HTML when the message is sent. A live visual preview is available on **F8**.
+- **Markdown** — write Markdown source in the familiar text editor; QuickMail renders it to formatted HTML when the message is sent. Press **F8** to open a rendered preview in a separate window.
 - **HTML** — a rich text editor with real formatting: bold, italic, underline, strikethrough, three heading levels, bullet and numbered lists, and links.
 
 Switch modes at any time with **Ctrl+Shift+1/2/3**, the **View** menu, or the mode selector in the compose status row. Content converts between modes automatically; switching from a rich mode down to Plain Text asks for confirmation first, because formatting would be lost. Messages composed in Markdown or HTML are sent with both a formatted HTML part and a plain text part, so every recipient's mail app can display them.
 
-**Accessibility was the design constraint, not an afterthought.** The HTML editor is a native Windows rich edit control, not an embedded browser — screen readers stay in their normal edit cursor with no virtual cursor or browse mode. The Markdown preview is deliberately not focusable, so keyboard focus can never be trapped in it.
+**Accessibility was the design constraint, not an afterthought.** The HTML editor is a native Windows rich edit control, not an embedded browser — screen readers stay in their normal edit cursor with no virtual cursor or browse mode.
 
 ### Formatting Commands
 
@@ -41,9 +41,23 @@ Formatting works in both rich modes — in HTML mode the commands apply real for
 | Clear formatting | `Ctrl+Space` |
 | Announce formatting state | `Ctrl+T` |
 | Show formatting list | `Ctrl+Shift+T` |
-| Toggle Markdown preview | `F8` (Markdown mode) |
+| Open Markdown preview | `F8` (Markdown mode) |
 
 One exception: Markdown has no underline syntax, so underline is available in HTML mode only — invoking it in Markdown explains this aloud.
+
+### Heading Commands Apply to the Selected Paragraph
+
+Heading shortcuts (`Ctrl+Alt+1/2/3`) and menu items now apply to the paragraph the selection begins in, not the caret position. Previously, selecting a line and pressing a heading shortcut could apply the heading to the paragraph *after* the selection when the caret happened to land at the start of the next paragraph. Headings also now apply to every paragraph touched by the selection when multiple lines are selected.
+
+### Announce Formatting While Navigating (HTML Mode)
+
+In HTML compose mode, QuickMail now announces the block type whenever the caret moves to a paragraph with a different type — for example, moving onto a heading line announces "Heading 2" without needing to press `Ctrl+T`. This is on by default and can be turned off under **Settings → Screen Reader Announcements → Announce formatting while navigating in HTML compose**.
+
+This announcement is HTML-mode-only. Markdown mode does not produce automatic formatting announcements, since the raw Markdown syntax is already present in the text.
+
+### Markdown Preview Window (F8)
+
+In Markdown mode, pressing **F8** opens a dedicated preview window that renders your message as formatted HTML. The preview window is fully focusable, so screen readers switch into browse mode and you can read the rendered output exactly as a recipient would see it. Links open in your default browser. Press **Escape** or **Ctrl+W** to close the preview and return focus to the editor. Pressing **F8** again while the preview is open closes it.
 
 **Two ways to check formatting at the cursor:**
 
@@ -127,7 +141,8 @@ The status bar continues to show "Syncing mail…" without duplicating announcem
 ## Bug Fixes
 
 - **HTML compose mode was silent to screen readers.** Entering HTML mode replaced the rich editor's document, which permanently disconnected the text from the UI Automation layer — screen readers read nothing of what was actually in the editor. The editor now keeps one document for its lifetime and loads content into it in place, with an automated regression test asserting what assistive technology actually receives across mode switches.
-- **Markdown preview could steal keyboard focus.** Opening the preview (F8) initializes an embedded web view, which could silently move focus into the invisible preview surface — keystrokes and screen reader navigation went nowhere. Focus is now restored to the editor after the preview loads.
+- **F7 (next misspelling) always reported "No misspellings found" in compose.** The spell navigation search started at the current caret position and searched forward — with the caret at the end of the text after typing, the forward pass found nothing and gave up. Spell navigation now wraps: it searches from the caret to the end, then wraps from the beginning if nothing was found in the first pass. The same wrap applies to Shift+F7 searching backward.
+- **Heading shortcut applied to the wrong paragraph when text was selected.** When you selected text and pressed a heading shortcut, the heading was applied to the paragraph at the caret (the active end of the selection) rather than the paragraph where the selection started. If the selection ended at a paragraph boundary, this meant the heading landed on the *next* paragraph — the one after your selected text. The heading now applies to the paragraph the selection begins in, matching what users expect.
 - **Escape closed the whole compose window from open menus and dropdowns.** Escape now closes the open menu, combo dropdown, or address autocomplete first; only when nothing transient is open does it close the window.
 - **Formatting announcements were silenced by focus changes.** Invoking a formatting command from the menu restored focus to the editor, and the focus speech overrode the result announcement — all you heard was "message body." Formatting feedback is now timed to land after focus settles.
 - **Duplicate sync progress announcements.** The status bar text and explicit screen reader announcements were both being read aloud during sync, creating redundant chatter. Now only the explicit announcements (which respect user settings) are spoken, eliminating duplicates.
@@ -149,8 +164,11 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 - `MarkdownEditing` — pure, unit-tested text operations behind the Markdown formatting commands, applied through `TextBox.SelectedText` so each toggle is one undo unit
 - **Never replace `RichTextBox.Document`** — WPF's automation peer binds to the original document's text container and never rebinds; all loads go through `RichTextDocumentConverter.LoadInto`. Guarded by `ComposeUiaTextPatternTests`, which asserts UIA TextPattern content through real mode switches
 - `FormattingListWindow` — the Show Formatting list; shares its state-reading code with the spoken announcement
+- `MarkdownPreviewWindow` — focusable WebView2 preview window opened by F8 in Markdown mode; JS key relay returns F6/Escape/Ctrl+W to WPF; links open in the default browser; rich CSS with dark-mode support via `prefers-color-scheme`
+- `AnnounceFormattingWhileNavigating` config key (default on): fires an announcement when the caret moves to a paragraph with a different block type in HTML mode; suppressed during mode switches and programmatic loads
 - Auto-save: `ComposeViewModel.AutoSaveAsync` driven by a `DispatcherTimer`; config keys `AutoSaveDrafts` and `AutoSaveIntervalSeconds` (clamped 30–600); failure announcements arm once per failure streak
 - New Settings → General → Composing group (auto-save toggle, interval, `DefaultComposeMode`)
+- New Settings → Screen Reader Announcements → Announce formatting while navigating in HTML compose
 
 ### Microsoft Graph Support
 

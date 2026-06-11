@@ -908,9 +908,11 @@ Two commands report the formatting in effect where your cursor is. Both work in 
 
 ### Markdown preview (F8)
 
-In Markdown mode, press **F8** to open a visual preview of the rendered result below the editor. The preview refreshes as you type, after a brief pause.
+In Markdown mode, press **F8** to open a preview window that renders your message as formatted HTML — the same output your recipient will see. The preview window is fully focusable: screen readers switch into browse mode so you can read and navigate the rendered content just like any webpage.
 
-The preview is a visual aid only: it is deliberately not focusable, so keyboard focus can never be trapped in it, and it is not exposed for review. Press **F8** again to hide it.
+Links in the preview open in your default browser. Press **Escape** or **Ctrl+W** to close the preview and return focus to the compose editor. Pressing **F8** again while the preview is open also closes it.
+
+The preview is a snapshot of your message at the moment you open it. To refresh it with later edits, close and reopen with **F8**.
 
 ### Address fields (To, Cc, Bcc)
 
@@ -973,6 +975,7 @@ If the defaults for the spell checking experience are not to your liking, you ca
 - **Announce spelling errors when typing** — turn this on to hear about spelling errors while you type. Announcements are held until you pause so you hear the complete word, not a partial one.
 - **Announce spelling errors while navigating** — turn this off if you do not want to hear about spelling errors as you move through the message body with cursor keys. F7 and Shift+F7 always announce regardless of this setting.
 - **Announce spelling suggestions** — when on, up to three replacement suggestions are spoken alongside the misspelled word. Turn this off if you prefer to hear only the misspelled word and use Alt+1/2/3 or Shift+F10 yourself.
+- **Announce formatting while navigating in HTML compose** — when on (the default), moving the caret to a paragraph with a different block type in HTML mode announces what it is — for example, moving onto a heading announces "Heading 2" without pressing `Ctrl+T`. Turn this off if you prefer to check formatting on demand only. This setting has no effect in Plain Text or Markdown mode.
 
 Mix and match these settings for the experience you want.
 
@@ -1012,7 +1015,7 @@ These are also available as buttons in the toolbar.
 | Ctrl+Space | Clear formatting (rich modes) |
 | Ctrl+T | Announce formatting at the cursor (rich modes) |
 | Ctrl+Shift+T | Show formatting at the cursor in a list (rich modes) |
-| F8 | Show or hide the Markdown preview (Markdown mode) |
+| F8 | Open or close the Markdown preview window (Markdown mode) |
 | F7 | Jump to next misspelling |
 | Shift+F7 | Jump to previous misspelling |
 | Alt+F7 | Repeat spelling announcement for current word |
@@ -1258,7 +1261,7 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Ctrl+Space | Clear formatting (rich modes) |
 | Ctrl+T | Announce formatting at the cursor (rich modes) |
 | Ctrl+Shift+T | Show formatting at the cursor in a list (rich modes) |
-| F8 | Toggle Markdown preview (Markdown mode) |
+| F8 | Open or close the Markdown preview window (Markdown mode) |
 | Left / Right arrow (on an address) | Move between addresses |
 | Delete / Backspace (on an address) | Remove focused address |
 | Delete / Backspace (with chips selected) | Remove all selected addresses |
