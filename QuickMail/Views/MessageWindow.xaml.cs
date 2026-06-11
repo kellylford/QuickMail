@@ -73,6 +73,36 @@ public partial class MessageWindow : Window
     private void RegisterLocalCommands()
     {
         _localRegistry.Register(new CommandDefinition(
+            id: "message.reply", category: "Mail", title: "Reply",
+            execute: () => _vm.ReplyCommand.Execute(null),
+            defaultKey: Key.R, defaultModifiers: ModifierKeys.Control));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.replyAll", category: "Mail", title: "Reply All",
+            execute: () => _vm.ReplyAllCommand.Execute(null),
+            defaultKey: Key.R, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.forward", category: "Mail", title: "Forward",
+            execute: () => _vm.ForwardCommand.Execute(null),
+            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.delete", category: "Mail", title: "Delete",
+            execute: () => _vm.DeleteMessageCommand.Execute(null),
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.markRead", category: "Mail", title: "Mark as Read",
+            execute: () => _vm.MarkReadCommand.Execute(null),
+            defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "message.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
+            execute: () => _vm.GrabAddressesCommand.Execute(null),
+            defaultKey: Key.G, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _localRegistry.Register(new CommandDefinition(
             id: "window.previousMessage", category: "Mail", title: "Previous Message",
             execute: () => _vm.PreviousMessageCommand.Execute(null),
             isAvailable: () => _vm.CanNavigatePrevious));
@@ -344,6 +374,36 @@ public partial class MessageWindow : Window
         else if (key == Key.Right && mod == ModifierKeys.Alt)
         {
             _vm.NextMessageCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.R && mod == ModifierKeys.Control)
+        {
+            _vm.ReplyCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.R && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            _vm.ReplyAllCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.F && mod == ModifierKeys.Control)
+        {
+            _vm.ForwardCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.Delete && mod == ModifierKeys.None)
+        {
+            _vm.DeleteMessageCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.Q && mod == ModifierKeys.Control)
+        {
+            _vm.MarkReadCommand.Execute(null);
+            e.Handled = true;
+        }
+        else if (key == Key.G && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            _vm.GrabAddressesCommand.Execute(null);
             e.Handled = true;
         }
         else if (key == Key.F6 && mod == ModifierKeys.None)

@@ -330,13 +330,26 @@ To move a tab out of the main window and into its own standalone window, use the
 
 ### Message windows
 
-A message window is a standalone window that shows a single message. It has a toolbar with **Previous** and **Next** buttons for navigating among the messages in the same folder, and a **Move to Main Window** button to move the message back to the main window's tab strip.
+A message window is a standalone window that shows a single message. It has a full menu bar (**File**, **Message**, **Navigate**), a toolbar with common actions, and a status bar showing the message's position in the folder (for example, "Message 3 of 47").
 
 **Opening a message window:**
 
 - Press **Ctrl+Enter** on any message in the message list — this always opens a new window regardless of the Reading mode setting.
 - Set Reading mode to **Window** in Settings → Windowing, then press **Enter** on any message.
 - Use **Move Tab to New Window** from the command palette when in Tab mode.
+
+**Acting on a message from its window:**
+
+All the mail actions you'd use from the main window are available directly in the message window — via the menu bar, the toolbar, keyboard shortcuts, or the command palette:
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+R` | Reply |
+| `Ctrl+Shift+R` | Reply All |
+| `Ctrl+F` | Forward |
+| `Delete` | Delete (closes the window after deleting) |
+| `Ctrl+Q` | Mark as Read |
+| `Ctrl+Shift+G` | Grab Addresses from Message |
 
 **Navigating inside a message window:**
 
@@ -349,11 +362,11 @@ A message window is a standalone window that shows a single message. It has a to
 | `Ctrl+W` | Close the window |
 | `Escape` | Close the window |
 
-The command palette in a message window contains **Previous Message**, **Next Message**, **Move to Main Window**, and **Close Window**.
+The command palette includes all message actions (Reply, Reply All, Forward, Delete, Mark as Read, Grab Addresses) as well as navigation commands (Previous Message, Next Message, Move to Main Window, Close Window).
 
 **Moving a message back to the main window:**
 
-Activate the **Move to Main Window** button in the window's toolbar, or use **Move to Main Window** from the command palette. The message opens as a new tab in the main window's tab strip and the standalone window closes.
+Activate the **Move to Main Window** button in the toolbar, or choose **Navigate → Move to Main Window** from the menu bar, or use the command palette. The message opens as a new tab in the main window's tab strip and the standalone window closes.
 
 **When a message window closes:**
 

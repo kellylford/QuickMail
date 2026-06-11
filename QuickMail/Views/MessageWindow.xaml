@@ -19,7 +19,59 @@
     </Window.Resources>
 
     <DockPanel>
-        <!-- Minimal toolbar -->
+        <!-- Menu bar (Alt / F10 to open) -->
+        <Menu DockPanel.Dock="Top" IsMainMenu="True">
+            <MenuItem Header="_File">
+                <MenuItem Header="Close _Window"
+                          AutomationProperties.Name="Close Window"
+                          Command="{Binding CloseCommand}"
+                          InputGestureText="Ctrl+W"/>
+            </MenuItem>
+            <MenuItem Header="_Message">
+                <MenuItem Header="_Reply"
+                          AutomationProperties.Name="Reply"
+                          Command="{Binding ReplyCommand}"
+                          InputGestureText="Ctrl+R"/>
+                <MenuItem Header="Reply _All"
+                          AutomationProperties.Name="Reply All"
+                          Command="{Binding ReplyAllCommand}"
+                          InputGestureText="Ctrl+Shift+R"/>
+                <MenuItem Header="_Forward"
+                          AutomationProperties.Name="Forward"
+                          Command="{Binding ForwardCommand}"
+                          InputGestureText="Ctrl+F"/>
+                <Separator/>
+                <MenuItem Header="_Delete"
+                          AutomationProperties.Name="Delete"
+                          Command="{Binding DeleteMessageCommand}"
+                          InputGestureText="Delete"/>
+                <MenuItem Header="_Mark as Read"
+                          AutomationProperties.Name="Mark as Read"
+                          Command="{Binding MarkReadCommand}"
+                          InputGestureText="Ctrl+Q"/>
+                <Separator/>
+                <MenuItem Header="_Grab Addresses from Message"
+                          AutomationProperties.Name="Grab Addresses from Message"
+                          Command="{Binding GrabAddressesCommand}"
+                          InputGestureText="Ctrl+Shift+G"/>
+            </MenuItem>
+            <MenuItem Header="_Navigate">
+                <MenuItem Header="_Previous Message"
+                          AutomationProperties.Name="Previous Message"
+                          Command="{Binding PreviousMessageCommand}"
+                          InputGestureText="Alt+Left"/>
+                <MenuItem Header="_Next Message"
+                          AutomationProperties.Name="Next Message"
+                          Command="{Binding NextMessageCommand}"
+                          InputGestureText="Alt+Right"/>
+                <Separator/>
+                <MenuItem Header="Move to _Main Window"
+                          AutomationProperties.Name="Move to Main Window"
+                          Command="{Binding MoveToMainWindowCommand}"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- Toolbar -->
         <ToolBarTray DockPanel.Dock="Top" IsLocked="True">
             <ToolBar Band="1" BandIndex="1">
                 <Button x:Name="PrevButton"
@@ -35,12 +87,43 @@
                         ToolTip="Next message (Alt+Right)"
                         AutomationProperties.Name="Next message"/>
                 <Separator/>
+                <Button Content="Reply"
+                        Command="{Binding ReplyCommand}"
+                        Padding="6,2"
+                        ToolTip="Reply (Ctrl+R)"
+                        AutomationProperties.Name="Reply"/>
+                <Button Content="Reply All"
+                        Command="{Binding ReplyAllCommand}"
+                        Padding="6,2"
+                        ToolTip="Reply All (Ctrl+Shift+R)"
+                        AutomationProperties.Name="Reply All"/>
+                <Button Content="Forward"
+                        Command="{Binding ForwardCommand}"
+                        Padding="6,2"
+                        ToolTip="Forward (Ctrl+F)"
+                        AutomationProperties.Name="Forward"/>
+                <Separator/>
+                <Button Content="Delete"
+                        Command="{Binding DeleteMessageCommand}"
+                        Padding="6,2"
+                        ToolTip="Delete (Delete)"
+                        AutomationProperties.Name="Delete"/>
+                <Separator/>
                 <Button Content="Move to Main Window"
                         Command="{Binding MoveToMainWindowCommand}"
                         Padding="6,2"
                         AutomationProperties.Name="Move this message to the main window as a tab"/>
             </ToolBar>
         </ToolBarTray>
+
+        <!-- Status bar -->
+        <StatusBar DockPanel.Dock="Bottom"
+                   AutomationProperties.Name="Status">
+            <StatusBarItem>
+                <TextBlock Text="{Binding PositionText, Mode=OneWay}"
+                           AutomationProperties.LiveSetting="Off"/>
+            </StatusBarItem>
+        </StatusBar>
 
         <!-- Header fields -->
         <Border DockPanel.Dock="Top"

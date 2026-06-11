@@ -88,6 +88,25 @@ QuickMail now includes a read-only Microsoft Graph backend alongside IMAP, enabl
 
 ## UX Improvements
 
+### Message Windows Now Have Full Mail Actions
+
+When a message is opened in a standalone window (via **Ctrl+Enter** or Reading mode set to **Window**), the window previously offered only navigation — Previous, Next, and Move to Main Window. All mail actions are now available directly from the message window without needing to return to the main window first.
+
+A full menu bar (**File**, **Message**, **Navigate**) provides access to every command, alongside a toolbar with the most common actions and keyboard shortcuts matching the main window:
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+R` | Reply |
+| `Ctrl+Shift+R` | Reply All |
+| `Ctrl+F` | Forward |
+| `Delete` | Delete |
+| `Ctrl+Q` | Mark as Read |
+| `Ctrl+Shift+G` | Grab Addresses from Message |
+
+The command palette (`Ctrl+Shift+P`) now includes all of these commands in addition to the navigation commands. A status bar at the bottom of the window shows the message's position in the folder — for example, "Message 3 of 47".
+
+Deleting a message from its window closes the window immediately; focus returns to the originating position in the message list.
+
 ### Sync Progress Announcements
 
 Screen reader users will experience significantly quieter sync progress announcements:
