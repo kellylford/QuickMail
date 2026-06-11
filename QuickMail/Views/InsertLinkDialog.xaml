@@ -1,0 +1,45 @@
+<Window x:Class="QuickMail.Views.InsertLinkDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Insert Link"
+        Width="420" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.Row="0" Grid.Column="0"
+                   x:Name="UrlLabel" Text="_URL:"
+                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <TextBox Grid.Row="0" Grid.Column="1"
+                 x:Name="UrlBox"
+                 AutomationProperties.LabeledBy="{Binding ElementName=UrlLabel}"
+                 Margin="0,4" TabIndex="0"
+                 TextChanged="UrlBox_TextChanged"/>
+
+        <TextBlock Grid.Row="1" Grid.Column="0"
+                   x:Name="TextLabel" Text="_Display text:"
+                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <TextBox Grid.Row="1" Grid.Column="1"
+                 x:Name="DisplayTextBox"
+                 AutomationProperties.LabeledBy="{Binding ElementName=TextLabel}"
+                 Margin="0,4" TabIndex="1"/>
+
+        <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                    Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+            <Button x:Name="OkButton" Content="OK" IsDefault="True" IsEnabled="False"
+                    MinWidth="80" Margin="0,0,6,0" TabIndex="2"
+                    Click="Ok_Click"/>
+            <Button Content="Cancel" IsCancel="True" MinWidth="80" TabIndex="3"/>
+        </StackPanel>
+    </Grid>
+</Window>

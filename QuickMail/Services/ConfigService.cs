@@ -225,6 +225,14 @@ public class ConfigService : IConfigService
                         config.LogFormat = value.ToLowerInvariant() == "timefirst" ? "timeFirst" : "actionFirst";
                         break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
+                    case "defaultcomposemode":
+                        config.DefaultComposeMode = value.ToLowerInvariant() switch
+                        {
+                            "markdown" => Models.ComposeMode.Markdown,
+                            "html"     => Models.ComposeMode.Html,
+                            _          => Models.ComposeMode.PlainText,
+                        };
+                        break;
                 }
             }
             else if (section == "windowing")
@@ -368,6 +376,17 @@ public class ConfigService : IConfigService
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");
         sb.AppendLine("# Whether the first-run keyboard tutorial has been completed.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"DefaultComposeMode = {config.DefaultComposeMode switch
+        {
+            Models.ComposeMode.Markdown => "markdown",
+            Models.ComposeMode.Html     => "html",
+            _                           => "plain",
+        }}");
+        sb.AppendLine("# Editing mode new compose windows start in.");
+        sb.AppendLine("# Drafts and templates always reopen in plain text.");
+        sb.AppendLine("# Values: plain, markdown, html.");
         sb.AppendLine();
 
         // ── [windowing] ──────────────────────────────────────────────────────────

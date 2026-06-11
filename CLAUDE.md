@@ -354,6 +354,8 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
 
 **Compose window shortcuts** (Alt+S, Ctrl+Enter, Ctrl+S, Ctrl+Shift+A, F7, Shift+F7, Alt+Y, Alt+U, Alt+M, Escape) are registered or hardcoded in `ComposeWindow.xaml.cs`. Registry-based ones appear in the compose window's command palette (`Ctrl+Shift+P`) but are **not** user-customisable via the Settings dialog. The main window's `CommandRegistry` and `hotkeys.json` do not include compose commands. `Ctrl+Enter` is hardcoded (like `Ctrl+Shift+P`) as a second send gesture so it does not create a duplicate "Send Message" entry in the palette.
 
+**Compose modes** (`ComposeMode`: PlainText / Markdown / Html) are switched with `Ctrl+Shift+1/2/3` or the mode ComboBox in the status row. Plain Text and Markdown edit in `BodyBox` (TextBox); HTML mode edits in `RichBodyBox` — a native WPF `RichTextBox`, deliberately **not** WebView2 `contenteditable`, so screen readers stay in their normal edit cursor with no virtual cursor. Formatting commands (Ctrl+B/I/U, Ctrl+Shift+X strikethrough, Ctrl+Alt+1/2/3 headings, Ctrl+Shift+L/N lists, Ctrl+L insert link, Ctrl+Space clear formatting, Ctrl+Shift+Space announce formatting state) are HTML-mode-only via `IsAvailable`; `F8` toggles the Markdown preview (a non-focusable WebView2 — visual only, so it can never trap keyboard focus). Conversions run through `IMarkdownService` (Markdig) and `RichTextDocumentConverter` (FlowDocument ↔ HTML/Markdown; heading level, pre, hr, and blockquote tracked via `Paragraph.Tag`). Rich-mode messages are sent as `multipart/alternative` by `MimeMessageBuilder` whenever `ComposeModel.HtmlBody` is non-empty. Every formatting action announces its result ("Bold on", "Heading 2") via `AccessibilityHelper.Announce` with `AnnouncementCategory.Result`. The default mode for new composes is `DefaultComposeMode` in `config.ini` (plain/markdown/html); drafts and templates always reopen in plain text.
+
 ## Accessibility Checklist — Apply to Every XAML Change
 
 Before committing any XAML, verify each of these:
@@ -491,6 +493,7 @@ Key facts:
 | Package | Version | Purpose |
 |---|---|---|
 | MailKit | 4.16.0 | IMAP + SMTP protocol |
+| Markdig | 1.2.0 | Markdown ↔ HTML for compose modes |
 | CommunityToolkit.Mvvm | 8.4.2 | ObservableProperty, RelayCommand |
 | Microsoft.Data.Sqlite | 10.0.7 | Local message cache |
 | Microsoft.Web.WebView2 | 1.0.3912.50 | HTML email rendering |

@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:QuickMail.Controls"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         Height="540" Width="680"
@@ -21,6 +22,64 @@
                AllowDrop="True"
                DragOver="Window_DragOver"
                Drop="Window_Drop">
+
+        <!-- Formatting toolbar — visible in HTML mode only (managed in code-behind) -->
+        <ToolBarTray DockPanel.Dock="Top" x:Name="FormattingToolbarTray" Visibility="Collapsed">
+            <ToolBar KeyboardNavigation.TabNavigation="Once"
+                     KeyboardNavigation.DirectionalNavigation="Cycle">
+                <Button x:Name="BoldButton" Content="B" FontWeight="Bold" MinWidth="28"
+                        AutomationProperties.Name="Bold"
+                        AutomationProperties.AcceleratorKey="Ctrl+B"
+                        ToolTip="Bold (Ctrl+B)" Click="ToolbarBold_Click"/>
+                <Button Content="I" FontStyle="Italic" MinWidth="28"
+                        AutomationProperties.Name="Italic"
+                        AutomationProperties.AcceleratorKey="Ctrl+I"
+                        ToolTip="Italic (Ctrl+I)" Click="ToolbarItalic_Click"/>
+                <Button MinWidth="28"
+                        AutomationProperties.Name="Underline"
+                        AutomationProperties.AcceleratorKey="Ctrl+U"
+                        ToolTip="Underline (Ctrl+U)" Click="ToolbarUnderline_Click">
+                    <TextBlock Text="U" TextDecorations="Underline"/>
+                </Button>
+                <Button MinWidth="28"
+                        AutomationProperties.Name="Strikethrough"
+                        AutomationProperties.AcceleratorKey="Ctrl+Shift+X"
+                        ToolTip="Strikethrough (Ctrl+Shift+X)" Click="ToolbarStrikethrough_Click">
+                    <TextBlock Text="S" TextDecorations="Strikethrough"/>
+                </Button>
+                <Separator/>
+                <Button Content="H1" MinWidth="28"
+                        AutomationProperties.Name="Heading 1"
+                        AutomationProperties.AcceleratorKey="Ctrl+Alt+1"
+                        ToolTip="Heading 1 (Ctrl+Alt+1)" Click="ToolbarHeading1_Click"/>
+                <Button Content="H2" MinWidth="28"
+                        AutomationProperties.Name="Heading 2"
+                        AutomationProperties.AcceleratorKey="Ctrl+Alt+2"
+                        ToolTip="Heading 2 (Ctrl+Alt+2)" Click="ToolbarHeading2_Click"/>
+                <Button Content="H3" MinWidth="28"
+                        AutomationProperties.Name="Heading 3"
+                        AutomationProperties.AcceleratorKey="Ctrl+Alt+3"
+                        ToolTip="Heading 3 (Ctrl+Alt+3)" Click="ToolbarHeading3_Click"/>
+                <Separator/>
+                <Button Content="• List" MinWidth="40"
+                        AutomationProperties.Name="Bullet list"
+                        AutomationProperties.AcceleratorKey="Ctrl+Shift+L"
+                        ToolTip="Bullet List (Ctrl+Shift+L)" Click="ToolbarBulletList_Click"/>
+                <Button Content="1. List" MinWidth="40"
+                        AutomationProperties.Name="Numbered list"
+                        AutomationProperties.AcceleratorKey="Ctrl+Shift+N"
+                        ToolTip="Numbered List (Ctrl+Shift+N)" Click="ToolbarNumberedList_Click"/>
+                <Separator/>
+                <Button Content="Link" MinWidth="40"
+                        AutomationProperties.Name="Insert link"
+                        AutomationProperties.AcceleratorKey="Ctrl+L"
+                        ToolTip="Insert Link (Ctrl+L)" Click="ToolbarInsertLink_Click"/>
+                <Button Content="Clear" MinWidth="40"
+                        AutomationProperties.Name="Clear formatting"
+                        AutomationProperties.AcceleratorKey="Ctrl+Space"
+                        ToolTip="Clear Formatting (Ctrl+Space)" Click="ToolbarClearFormatting_Click"/>
+            </ToolBar>
+        </ToolBarTray>
 
         <!-- Status / progress bar -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
@@ -59,6 +118,16 @@
                     IsDefault="True"
                     MinWidth="80"
                     TabIndex="7"/>
+            <ComboBox DockPanel.Dock="Left"
+                      x:Name="ModeSelector"
+                      MinWidth="110" Margin="0,0,6,0"
+                      AutomationProperties.Name="Compose mode"
+                      TabIndex="12"
+                      SelectionChanged="ModeSelector_SelectionChanged">
+                <ComboBoxItem Content="Plain Text"/>
+                <ComboBoxItem Content="Markdown"/>
+                <ComboBoxItem Content="HTML"/>
+            </ComboBox>
             <TextBlock VerticalAlignment="Center"
                        Text="{Binding StatusText}"
                        AutomationProperties.Name="Send status"
@@ -211,20 +280,57 @@
                 </TextBlock.Style>
             </TextBlock>
 
-            <!-- Body -->
-            <TextBox Grid.Row="9" Grid.ColumnSpan="2"
-                     x:Name="BodyBox"
-                     Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.Name="Message body"
-                     AutomationProperties.AcceleratorKey="Alt+Y"
-                     AcceptsReturn="True" AcceptsTab="True"
-                     TextWrapping="Wrap"
-                     SpellCheck.IsEnabled="True"
-                     VerticalScrollBarVisibility="Auto"
-                     FontFamily="Segoe UI"
-                     Margin="0,4" TabIndex="7"
-                     VerticalAlignment="Stretch"
-                     PreviewKeyDown="BodyBox_PreviewKeyDown"/>
+            <!-- Body: plain/Markdown TextBox, rich HTML editor, and Markdown preview.
+                 Only one editor is visible at a time; visibility is swapped in
+                 code-behind when the compose mode changes. -->
+            <Grid Grid.Row="9" Grid.ColumnSpan="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition x:Name="PreviewRow" Height="0"/>
+                </Grid.RowDefinitions>
+
+                <TextBox Grid.Row="0"
+                         x:Name="BodyBox"
+                         Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.Name="Message body"
+                         AutomationProperties.AcceleratorKey="Alt+Y"
+                         AcceptsReturn="True" AcceptsTab="True"
+                         TextWrapping="Wrap"
+                         SpellCheck.IsEnabled="True"
+                         VerticalScrollBarVisibility="Auto"
+                         FontFamily="Segoe UI"
+                         Margin="0,4" TabIndex="7"
+                         VerticalAlignment="Stretch"
+                         PreviewKeyDown="BodyBox_PreviewKeyDown"/>
+
+                <RichTextBox Grid.Row="0"
+                             x:Name="RichBodyBox"
+                             Visibility="Collapsed"
+                             AutomationProperties.Name="Message body"
+                             AutomationProperties.AcceleratorKey="Alt+Y"
+                             AcceptsReturn="True" AcceptsTab="True"
+                             SpellCheck.IsEnabled="True"
+                             VerticalScrollBarVisibility="Auto"
+                             FontFamily="Segoe UI"
+                             Margin="0,4" TabIndex="7"
+                             VerticalAlignment="Stretch"
+                             TextChanged="RichBodyBox_TextChanged"/>
+
+                <GridSplitter Grid.Row="1"
+                              x:Name="PreviewSplitter"
+                              Height="4" HorizontalAlignment="Stretch"
+                              Visibility="Collapsed"
+                              Focusable="False"/>
+
+                <!-- Markdown preview: visual-only rendering of the Markdown source.
+                     Not focusable, so keyboard focus can never be trapped inside it. -->
+                <wv2:WebView2 Grid.Row="2"
+                              x:Name="PreviewView"
+                              Visibility="Collapsed"
+                              KeyboardNavigation.IsTabStop="False"
+                              Focusable="False"/>
+            </Grid>
         </Grid>
 
         <!-- Autocomplete popup — positioned below the active address field via code-behind -->

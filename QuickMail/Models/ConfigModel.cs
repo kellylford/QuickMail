@@ -64,6 +64,11 @@ public class ConfigModel
     /// <summary>Announce spelling suggestions when a misspelling is announced.</summary>
     public bool AnnounceSpellingSuggestions { get; set; } = true;
 
+    // ── Compose ───────────────────────────────────────────────────────────────────
+
+    /// <summary>Editing mode new compose windows start in. Drafts and templates always reopen in plain text.</summary>
+    public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
+
     // ── Advanced ──────────────────────────────────────────────────────────────────
 
     /// <summary>

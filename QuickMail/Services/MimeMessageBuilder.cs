@@ -34,11 +34,29 @@ public static class MimeMessageBuilder
         if (!string.IsNullOrEmpty(compose.InReplyToMessageId))
             message.InReplyTo = compose.InReplyToMessageId;
 
+        // text/plain only (existing behavior), or multipart/alternative with a
+        // text/html part when the message was composed in Markdown or HTML mode.
+        MimeEntity bodyEntity;
+        if (!string.IsNullOrEmpty(compose.HtmlBody))
+        {
+            var alternative = new MultipartAlternative
+            {
+                // Least-faithful first per RFC 2046 — clients pick the last part they support.
+                new TextPart("plain") { Text = compose.Body },
+                new TextPart("html")  { Text = compose.HtmlBody },
+            };
+            bodyEntity = alternative;
+        }
+        else
+        {
+            bodyEntity = new TextPart("plain") { Text = compose.Body };
+        }
+
         var loadedAttachments = compose.Attachments.Where(a => a.IsLoaded).ToList();
         if (loadedAttachments.Count > 0)
         {
             var multipart = new Multipart("mixed");
-            multipart.Add(new TextPart("plain") { Text = compose.Body });
+            multipart.Add(bodyEntity);
             foreach (var att in loadedAttachments)
             {
                 var slash = att.ContentType.IndexOf('/');
@@ -57,7 +75,7 @@ public static class MimeMessageBuilder
         }
         else
         {
-            message.Body = new TextPart("plain") { Text = compose.Body };
+            message.Body = bodyEntity;
         }
 
         return message;
