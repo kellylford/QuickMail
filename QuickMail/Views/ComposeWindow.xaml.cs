@@ -919,11 +919,14 @@ public partial class ComposeWindow : Window
                 RichBodyBox.Selection.Select(wordRange.End, wordRange.End);
                 _suppressFormattingAnnouncement = false;
 
-                RichBodyBox.Focus();
                 AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
                     category: AnnouncementCategory.Result);
                 ClearSpellingContext();
                 e.Handled = true;
+                // Defer focus restoration so WPF's Alt-key menu activation logic,
+                // which runs after our handler returns, doesn't steal focus.
+                Dispatcher.BeginInvoke(() => { RichBodyBox.Focus(); Keyboard.Focus(RichBodyBox); },
+                    DispatcherPriority.Input);
                 return;
             }
         }
