@@ -220,11 +220,27 @@ public class ConfigService : IConfigService
                     case "announcespellingwhiletyping":      config.AnnounceSpellingWhileTyping      = ParseBool(value); break;
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
+                    case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
                     case "logformat":
                         config.LogFormat = value.ToLowerInvariant() == "timefirst" ? "timeFirst" : "actionFirst";
                         break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
+                    case "defaultcomposemode":
+                        config.DefaultComposeMode = value.ToLowerInvariant() switch
+                        {
+                            "markdown" => Models.ComposeMode.Markdown,
+                            "html"     => Models.ComposeMode.Html,
+                            _          => Models.ComposeMode.PlainText,
+                        };
+                        break;
+                    case "autosavedrafts":
+                        config.AutoSaveDrafts = ParseBool(value);
+                        break;
+                    case "autosaveintervalseconds":
+                        if (int.TryParse(value, out var asi))
+                            config.AutoSaveIntervalSeconds = Math.Clamp(asi, 30, 600);
+                        break;
                 }
             }
             else if (section == "windowing")
@@ -353,6 +369,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
+        sb.AppendLine($"AnnounceFormattingWhileNavigating = {(config.AnnounceFormattingWhileNavigating ? "on" : "off")}");
+        sb.AppendLine("# Announce block type (heading level, list item, normal text) when the caret");
+        sb.AppendLine("# moves to a different paragraph in HTML compose mode. Default on.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
         sb.AppendLine($"ConfirmEmptyTrash = {(config.ConfirmEmptyTrash ? "on" : "off")}");
         sb.AppendLine("# Show a confirmation dialog before permanently deleting all messages in trash.");
         sb.AppendLine("# Values: on, off.");
@@ -368,6 +390,27 @@ public class ConfigService : IConfigService
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");
         sb.AppendLine("# Whether the first-run keyboard tutorial has been completed.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"DefaultComposeMode = {config.DefaultComposeMode switch
+        {
+            Models.ComposeMode.Markdown => "markdown",
+            Models.ComposeMode.Html     => "html",
+            _                           => "plain",
+        }}");
+        sb.AppendLine("# Editing mode new compose windows start in.");
+        sb.AppendLine("# Drafts and templates always reopen in plain text.");
+        sb.AppendLine("# Values: plain, markdown, html.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AutoSaveDrafts = {(config.AutoSaveDrafts ? "on" : "off")}");
+        sb.AppendLine("# Automatically save the message as a draft while composing.");
+        sb.AppendLine("# Auto-save is quiet: success shows in the compose status row without an announcement;");
+        sb.AppendLine("# a failure is announced once. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AutoSaveIntervalSeconds = {Math.Clamp(config.AutoSaveIntervalSeconds, 30, 600)}");
+        sb.AppendLine("# Seconds between automatic draft saves. Values: 30-600.");
         sb.AppendLine();
 
         // ── [windowing] ──────────────────────────────────────────────────────────

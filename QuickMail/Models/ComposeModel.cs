@@ -26,6 +26,16 @@ public class ComposeModel
     public string Bcc { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
     public string Body { get; set; } = string.Empty;
+
+    /// <summary>The editing mode this message was composed in.</summary>
+    public ComposeMode Mode { get; set; } = ComposeMode.PlainText;
+
+    /// <summary>
+    /// Complete HTML document for the text/html part. When non-empty the message
+    /// is sent as multipart/alternative with <see cref="Body"/> as the text/plain part;
+    /// when empty the message is text/plain only (existing behavior).
+    /// </summary>
+    public string? HtmlBody { get; set; }
     /// <summary>RFC 2822 Message-ID of the message being replied to.</summary>
     public string? InReplyToMessageId { get; set; }
 

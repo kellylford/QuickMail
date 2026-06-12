@@ -18,6 +18,7 @@ public sealed partial class MessageWindowViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    [NotifyPropertyChangedFor(nameof(PositionText))]
     private MailMessageSummary? _selectedMessage;
 
     [ObservableProperty]
@@ -25,6 +26,15 @@ public sealed partial class MessageWindowViewModel : ObservableObject
 
     public ObservableCollection<MailMessageSummary> MessageList { get; } = [];
     public MailMessageSummary? OriginalSummary { get; init; }
+
+    // Action callbacks wired by the window opener (MainWindow) so mail operations
+    // execute against the correct MainViewModel state.
+    public Action? ReplyAction       { get; set; }
+    public Action? ReplyAllAction    { get; set; }
+    public Action? ForwardAction     { get; set; }
+    public Action? DeleteAction      { get; set; }
+    public Action? MarkReadAction    { get; set; }
+    public Action? GrabAddressesAction { get; set; }
 
     public string WindowTitle
     {
@@ -38,6 +48,17 @@ public sealed partial class MessageWindowViewModel : ObservableObject
         }
     }
 
+    public string PositionText
+    {
+        get
+        {
+            if (SelectedMessage == null || MessageList.Count == 0) return string.Empty;
+            var idx = MessageList.IndexOf(SelectedMessage);
+            if (idx < 0) return string.Empty;
+            return $"Message {idx + 1} of {MessageList.Count}";
+        }
+    }
+
     public event Action<MessageWindowViewModel>? RequestClose;
     public event Action<MessageWindowViewModel>? RequestMoveToMainWindow;
 
@@ -46,6 +67,24 @@ public sealed partial class MessageWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void MoveToMainWindow() => RequestMoveToMainWindow?.Invoke(this);
+
+    [RelayCommand]
+    private void Reply() => ReplyAction?.Invoke();
+
+    [RelayCommand]
+    private void ReplyAll() => ReplyAllAction?.Invoke();
+
+    [RelayCommand]
+    private void Forward() => ForwardAction?.Invoke();
+
+    [RelayCommand]
+    private void DeleteMessage() => DeleteAction?.Invoke();
+
+    [RelayCommand]
+    private void MarkRead() => MarkReadAction?.Invoke();
+
+    [RelayCommand]
+    private void GrabAddresses() => GrabAddressesAction?.Invoke();
 
     public bool CanNavigatePrevious =>
         SelectedMessage != null && MessageList.Count > 0

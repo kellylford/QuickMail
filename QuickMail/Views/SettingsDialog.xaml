@@ -132,6 +132,53 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Composing Group -->
+                        <GroupBox Header="Com_posing" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Composing settings">
+                            <StackPanel>
+                                <CheckBox Content="Automatically save _drafts while composing"
+                                          IsChecked="{Binding AutoSaveDrafts, Mode=TwoWay}"
+                                          AutomationProperties.Name="Automatically save the message as a draft while composing"/>
+                                <TextBlock Text="Auto-save is quiet: the time of the last save shows in the compose status row. A failed save is announced once."
+                                           Foreground="DimGray" FontSize="11" Margin="0,3,0,8" TextWrapping="Wrap"/>
+
+                                <StackPanel Margin="0,0,0,8">
+                                    <Label x:Name="AutoSaveIntervalLabel"
+                                           Content="Auto-save _interval:"
+                                           Target="{Binding ElementName=AutoSaveIntervalCombo}"
+                                           FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="AutoSaveIntervalCombo"
+                                              SelectedValue="{Binding AutoSaveIntervalSeconds, Mode=TwoWay}"
+                                              SelectedValuePath="Tag"
+                                              IsEnabled="{Binding AutoSaveDrafts}"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=AutoSaveIntervalLabel}">
+                                        <ComboBoxItem Tag="30" Content="30 seconds"/>
+                                        <ComboBoxItem Tag="60" Content="1 minute"/>
+                                        <ComboBoxItem Tag="120" Content="2 minutes"/>
+                                        <ComboBoxItem Tag="300" Content="5 minutes"/>
+                                        <ComboBoxItem Tag="600" Content="10 minutes"/>
+                                    </ComboBox>
+                                </StackPanel>
+
+                                <StackPanel>
+                                    <Label x:Name="DefaultComposeModeLabel"
+                                           Content="Default compose _mode:"
+                                           Target="{Binding ElementName=DefaultComposeModeCombo}"
+                                           FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="DefaultComposeModeCombo"
+                                              SelectedValue="{Binding DefaultComposeMode, Mode=TwoWay}"
+                                              SelectedValuePath="Tag"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=DefaultComposeModeLabel}">
+                                        <ComboBoxItem Tag="plain" Content="Plain Text"/>
+                                        <ComboBoxItem Tag="markdown" Content="Markdown"/>
+                                        <ComboBoxItem Tag="html" Content="HTML"/>
+                                    </ComboBox>
+                                    <TextBlock Text="Drafts and templates always reopen in plain text."
+                                               Foreground="DimGray" FontSize="11" Margin="0,3,0,0"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Screen Reader Announcements Group -->
                         <GroupBox Header="Screen Reader _Announcements" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Screen reader announcement settings">
@@ -173,6 +220,11 @@
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce spelling suggestions when a misspelling is announced"/>
+
+                                <CheckBox Content="Announce _formatting while navigating in HTML compose"
+                                          IsChecked="{Binding AnnounceFormattingWhileNavigating, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Announce block type such as heading level when the caret moves to a different paragraph in HTML compose mode"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

@@ -3371,6 +3371,55 @@ public partial class MainWindow : Window
         // WebView2 even after the user alt-tabs back to the main window. As an independent
         // window, the AT cleanly exits browse mode when focus leaves the message window.
         var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment);
+
+        // Wire mail action delegates so the window has full message operations.
+        // Each delegate syncs MainViewModel selection to the window's current message
+        // before invoking the command, so navigation (Prev/Next) in the window doesn't
+        // cause actions to operate on the wrong message.
+        winVm.ReplyAction = () =>
+        {
+            _vm.SelectedMessage = winVm.SelectedMessage;
+            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
+            _vm.ReplyCommand.Execute(null);
+        };
+        winVm.ReplyAllAction = () =>
+        {
+            _vm.SelectedMessage = winVm.SelectedMessage;
+            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
+            _vm.ReplyAllCommand.Execute(null);
+        };
+        winVm.ForwardAction = () =>
+        {
+            _vm.SelectedMessage = winVm.SelectedMessage;
+            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
+            _vm.ForwardCommand.Execute(null);
+        };
+        winVm.DeleteAction = () =>
+        {
+            _vm.SelectedMessage = winVm.SelectedMessage;
+            _ = _vm.DeleteMessageCommand.ExecuteAsync(null);
+            win.Close();
+        };
+        winVm.MarkReadAction = () =>
+        {
+            if (winVm.SelectedMessage != null)
+                _ = _vm.MarkMessagesReadAsync([winVm.SelectedMessage]);
+        };
+        winVm.GrabAddressesAction = () =>
+        {
+            if (winVm.MessageDetail is not { } detail) return;
+            var list = new InternetAddressList();
+            AddressParser.AddAddresses(list, detail.From);
+            AddressParser.AddAddresses(list, detail.To);
+            AddressParser.AddAddresses(list, detail.Cc);
+            var addresses = list.OfType<MailboxAddress>()
+                .Select(a => (Name: a.Name ?? string.Empty, a.Address))
+                .DistinctBy(x => x.Address, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (addresses.Count == 0) return;
+            new GrabAddressesDialog(addresses, _contactService) { Owner = win }.ShowDialog();
+        };
+
         win.MoveToMainWindowRequested += (_, vm) =>
         {
             if (vm.OriginalSummary != null)

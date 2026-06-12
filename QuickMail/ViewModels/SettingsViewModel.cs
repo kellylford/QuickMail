@@ -50,7 +50,23 @@ public partial class SettingsViewModel : ObservableObject
     private bool _announceSpellingSuggestions;
 
     [ObservableProperty]
+    private bool _announceFormattingWhileNavigating;
+
+    [ObservableProperty]
     private bool _confirmEmptyTrash;
+
+    // ── Composing ──────────────────────────────────────────────────────────────────
+
+    [ObservableProperty]
+    private bool _autoSaveDrafts;
+
+    /// <summary>Bound to a ComboBox of fixed choices; values are seconds.</summary>
+    [ObservableProperty]
+    private int _autoSaveIntervalSeconds;
+
+    /// <summary>Bound to the Settings ComboBox by tag: "plain", "markdown", or "html".</summary>
+    [ObservableProperty]
+    private string _defaultComposeMode = "plain";
 
     // ── Windowing ──────────────────────────────────────────────────────────────────
 
@@ -118,7 +134,16 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceSpellingWhileTyping      = cfg.AnnounceSpellingWhileTyping;
         AnnounceSpellingWhileNavigating  = cfg.AnnounceSpellingWhileNavigating;
         AnnounceSpellingSuggestions      = cfg.AnnounceSpellingSuggestions;
+        AnnounceFormattingWhileNavigating = cfg.AnnounceFormattingWhileNavigating;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
+        AutoSaveDrafts                   = cfg.AutoSaveDrafts;
+        AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
+        DefaultComposeMode = cfg.DefaultComposeMode switch
+        {
+            Models.ComposeMode.Markdown => "markdown",
+            Models.ComposeMode.Html     => "html",
+            _                           => "plain",
+        };
         LogFormat                        = cfg.LogFormat;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
@@ -158,7 +183,16 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceSpellingWhileTyping      = AnnounceSpellingWhileTyping;
         cfg.AnnounceSpellingWhileNavigating  = AnnounceSpellingWhileNavigating;
         cfg.AnnounceSpellingSuggestions      = AnnounceSpellingSuggestions;
+        cfg.AnnounceFormattingWhileNavigating = AnnounceFormattingWhileNavigating;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
+        cfg.AutoSaveDrafts                   = AutoSaveDrafts;
+        cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
+        cfg.DefaultComposeMode = DefaultComposeMode switch
+        {
+            "markdown" => Models.ComposeMode.Markdown,
+            "html"     => Models.ComposeMode.Html,
+            _          => Models.ComposeMode.PlainText,
+        };
         cfg.LogFormat                        = LogFormat;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {

@@ -20,4 +20,10 @@ public partial class MailMessageDetail : MailMessageSummary
 
     /// <summary>Parsed calendar invite, if this message contains a text/calendar MIME part.</summary>
     public IcsModel? CalendarInvite { get; set; }
+
+    /// <summary>
+    /// Compose mode stored in the X-QuickMail-Compose-Mode header when this message was saved as a
+    /// QuickMail draft. PlainText for messages not authored by QuickMail or authored before 0.7.2.
+    /// </summary>
+    public ComposeMode DraftComposeMode { get; set; } = ComposeMode.PlainText;
 }

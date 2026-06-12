@@ -64,6 +64,20 @@ public class ConfigModel
     /// <summary>Announce spelling suggestions when a misspelling is announced.</summary>
     public bool AnnounceSpellingSuggestions { get; set; } = true;
 
+    /// <summary>Announce the block type (heading level, list item, normal text) when the caret moves to a different paragraph in HTML compose mode.</summary>
+    public bool AnnounceFormattingWhileNavigating { get; set; } = true;
+
+    // ── Compose ───────────────────────────────────────────────────────────────────
+
+    /// <summary>Editing mode new compose windows start in. Drafts reopen in the mode they were saved in; templates always reopen in plain text.</summary>
+    public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
+
+    /// <summary>Automatically save composes as drafts while editing.</summary>
+    public bool AutoSaveDrafts { get; set; } = true;
+
+    /// <summary>Seconds between automatic draft saves. Clamped to 30–600.</summary>
+    public int AutoSaveIntervalSeconds { get; set; } = 120;
+
     // ── Advanced ──────────────────────────────────────────────────────────────────
 
     /// <summary>

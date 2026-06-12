@@ -260,6 +260,15 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void InsertLinkDialog_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var dialog = new InsertLinkDialog("display text");
+        Assert.NotNull(dialog);
+        dialog.Close();
+    }
+
+    [StaFact]
     public void AccountManagerDialog_XamlParsesWithoutException()
     {
         EnsureApplication();

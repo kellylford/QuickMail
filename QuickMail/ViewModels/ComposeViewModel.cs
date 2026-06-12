@@ -21,6 +21,7 @@ public partial class ComposeViewModel : ObservableObject
     private readonly ICredentialService _credentials;
     private readonly IMailService _imap;
     private readonly ITemplateService _templateService;
+    private readonly IMarkdownService _markdown;
 
     [ObservableProperty] private string _to = string.Empty;
     [ObservableProperty] private string _cc = string.Empty;
@@ -32,18 +33,63 @@ public partial class ComposeViewModel : ObservableObject
     /// <summary>What kind of composition this is; drives the window title prefix.</summary>
     public ComposeKind ComposeKind { get; private set; } = ComposeKind.NewMessage;
 
-    /// <summary>Dynamic window title: "{prefix} — {subject or Untitled}".</summary>
-    public string WindowTitle => ComposeKind switch
+    /// <summary>
+    /// Dynamic window title: "{subject or kind} - {mode} - QuickMail".
+    /// The subject leads so the taskbar and Alt+Tab identify the message; the
+    /// compose mode follows so the editing format is always visible.
+    /// </summary>
+    public string WindowTitle
     {
-        ComposeKind.Reply        => "Reply",
-        ComposeKind.ReplyAll     => "Reply All",
-        ComposeKind.Forward      => "Forward",
-        ComposeKind.EditDraft    => "Draft",
-        ComposeKind.NewDraft     => "Draft",
-        ComposeKind.EditTemplate => "Edit Template",
-        _                        => "Compose",
-    } + " — " + (string.IsNullOrWhiteSpace(Subject) ? "Untitled" : Subject.Trim());
+        get
+        {
+            var kindLabel = ComposeKind switch
+            {
+                ComposeKind.Reply        => "Reply",
+                ComposeKind.ReplyAll     => "Reply All",
+                ComposeKind.Forward      => "Forward",
+                ComposeKind.EditDraft    => "Draft",
+                ComposeKind.NewDraft     => "Draft",
+                ComposeKind.EditTemplate => "Edit Template",
+                _                        => "New Message",
+            };
+            var lead = string.IsNullOrWhiteSpace(Subject) ? kindLabel : Subject.Trim();
+            var mode = CurrentMode switch
+            {
+                ComposeMode.Markdown => "Markdown",
+                ComposeMode.Html     => "HTML",
+                _                    => "Plain Text",
+            };
+            return $"{lead} - {mode} - QuickMail";
+        }
+    }
     [ObservableProperty] private string _body = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ModeDisplay))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    [NotifyPropertyChangedFor(nameof(IsHtmlMode))]
+    [NotifyPropertyChangedFor(nameof(IsMarkdownMode))]
+    [NotifyPropertyChangedFor(nameof(IsPreviewAvailable))]
+    [NotifyPropertyChangedFor(nameof(IsFormattingAvailable))]
+    [NotifyPropertyChangedFor(nameof(IsSpellNavAvailable))]
+    private ComposeMode _currentMode = ComposeMode.PlainText;
+
+    /// <summary>True in HTML mode — some formatting (underline) is HTML-only.</summary>
+    public bool IsHtmlMode => CurrentMode == ComposeMode.Html;
+
+    /// <summary>True in Markdown mode — drives preview availability.</summary>
+    public bool IsMarkdownMode => CurrentMode == ComposeMode.Markdown;
+
+    /// <summary>True in Markdown or HTML mode — the preview window is available in both.</summary>
+    public bool IsPreviewAvailable => CurrentMode == ComposeMode.Markdown || CurrentMode == ComposeMode.Html;
+
+    /// <summary>
+    /// Formatting commands work in both rich modes: HTML applies real formatting,
+    /// Markdown inserts the equivalent syntax. Only Plain Text has none.
+    /// </summary>
+    public bool IsFormattingAvailable => CurrentMode != ComposeMode.PlainText;
+
+    /// <summary>Spelling navigation reads the plain TextBox, which is hidden in HTML mode.</summary>
+    public bool IsSpellNavAvailable => CurrentMode != ComposeMode.Html;
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private bool _isBusy = false;
     [ObservableProperty] private ObservableCollection<AccountModel> _senderAccounts = [];
@@ -55,9 +101,14 @@ public partial class ComposeViewModel : ObservableObject
     private string? _draftFolderName;
     private bool _isDirty;
     private bool _isSent;
+    private ComposeMode _seededMode = ComposeMode.PlainText;
+    private string? _seededHtmlBody;
 
     public bool IsDirty => _isDirty;
     public bool IsSent  => _isSent;
+
+    /// <summary>The compose mode stored in the draft when it was last saved; PlainText for new composes.</summary>
+    public ComposeMode SeededMode => _seededMode;
 
     public event Action? CloseRequested;
 
@@ -68,13 +119,14 @@ public partial class ComposeViewModel : ObservableObject
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
-    public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService)
+    public ComposeViewModel(ISmtpService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null)
     {
         _smtp = smtp;
         _accountService = accountService;
         _credentials = credentials;
         _imap = imap;
         _templateService = templateService;
+        _markdown = markdown ?? new MarkdownService();
         _attachments.CollectionChanged += (_, _) =>
         {
             _isDirty = true;
@@ -106,6 +158,10 @@ public partial class ComposeViewModel : ObservableObject
         Attachments.Clear();
         foreach (var att in model.Attachments)
             Attachments.Add(att);
+
+        // Remember the original mode so the View can restore it after wiring up event handlers.
+        _seededMode    = model.Mode;
+        _seededHtmlBody = model.Mode == ComposeMode.Html ? model.HtmlBody : null;
 
         // Loading existing data (reply, forward, or re-opened draft) is not itself a dirty edit
         _isDirty = false;
@@ -151,19 +207,12 @@ public partial class ComposeViewModel : ObservableObject
         StatusText = "Saving draft…";
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-
-            _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, cts.Token);
-            if (_draftFolderName == null)
-            {
-                StatusText = "No Drafts folder found on this account.";
-                return;
-            }
-
-            var compose = BuildComposeModel(account.Id);
-            _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, cts.Token);
-            _isDirty = false;
+            await SaveDraftCoreAsync(account);
             StatusText = "Draft saved.";
+        }
+        catch (DraftFolderMissingException)
+        {
+            StatusText = "No Drafts folder found on this account.";
         }
         catch (Exception ex)
         {
@@ -173,6 +222,91 @@ public partial class ComposeViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>Uploads the current compose state as a draft, replacing any previous draft.</summary>
+    private async Task SaveDraftCoreAsync(AccountModel account, CancellationToken externalCt = default)
+    {
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
+
+        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, combined.Token);
+        if (_draftFolderName == null)
+            throw new DraftFolderMissingException();
+
+        var compose = BuildComposeModel(account.Id);
+        _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, combined.Token);
+        _isDirty = false;
+    }
+
+    private sealed class DraftFolderMissingException : Exception { }
+
+    // ── Auto-save ──────────────────────────────────────────────────────────────
+
+    private readonly CancellationTokenSource _autoSaveCts = new();
+
+    /// <summary>Cancels any in-flight autosave. Called by the window on closing.</summary>
+    public void CancelAutoSave() => _autoSaveCts.Cancel();
+
+    /// <summary>Visual status-row text, e.g. "Auto-saved 3:42 PM". Never announced on success.</summary>
+    [ObservableProperty] private string _autoSaveText = string.Empty;
+
+    /// <summary>True once a failed auto-save has been announced; reset by the next success.</summary>
+    private bool _autoSaveFailureAnnounced;
+
+    /// <summary>
+    /// Raised when an auto-save fails for the first time since the last success,
+    /// so the View can announce it once instead of nagging every interval.
+    /// </summary>
+    public event Action<string>? AutoSaveFailed;
+
+    /// <summary>
+    /// Periodic background draft save. Quiet by design: success only updates
+    /// <see cref="AutoSaveText"/> (visual status), and failures are announced once.
+    /// Skips templates (saving a template edit as a mail draft would be wrong),
+    /// untouched composes, and composes with no content worth keeping.
+    /// </summary>
+    public async Task AutoSaveAsync()
+    {
+        if (!_isDirty || _isSent || IsBusy) return;
+        if (ComposeKind == ComposeKind.EditTemplate) return;
+        var account = SenderAccount;
+        if (account == null) return;
+        if (!HasAutoSavableContent()) return;
+
+        IsBusy = true;
+        try
+        {
+            await SaveDraftCoreAsync(account, _autoSaveCts.Token);
+            AutoSaveText = $"Auto-saved {DateTime.Now:t}";
+            _autoSaveFailureAnnounced = false;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("AutoSaveAsync: draft auto-save failed", ex);
+            AutoSaveText = "Auto-save failed";
+            if (!_autoSaveFailureAnnounced)
+            {
+                _autoSaveFailureAnnounced = true;
+                AutoSaveFailed?.Invoke("Auto-save failed. Your draft is not saved to the server.");
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    /// <summary>Something worth keeping: any recipient, subject, body text, or attachment.</summary>
+    private bool HasAutoSavableContent()
+    {
+        if (!string.IsNullOrWhiteSpace(To) || !string.IsNullOrWhiteSpace(Cc) || !string.IsNullOrWhiteSpace(Bcc))
+            return true;
+        if (!string.IsNullOrWhiteSpace(Subject)) return true;
+        if (Attachments.Count > 0) return true;
+        if (CurrentMode == ComposeMode.Html)
+            return !(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).IsEmpty;
+        return !string.IsNullOrWhiteSpace(Body);
     }
 
     [RelayCommand]
@@ -260,6 +394,113 @@ public partial class ComposeViewModel : ObservableObject
     [RelayCommand]
     private void Cancel() => CloseRequested?.Invoke();
 
+    // ── Compose modes ──────────────────────────────────────────────────────────
+
+    /// <summary>Status-bar label for the active mode, e.g. "Mode: Markdown".</summary>
+    public string ModeDisplay => "Mode: " + CurrentMode switch
+    {
+        ComposeMode.Markdown => "Markdown",
+        ComposeMode.Html     => "HTML",
+        _                    => "Plain Text",
+    };
+
+    /// <summary>
+    /// Set by the View. Returns the rich editor's current content serialized as
+    /// HTML, Markdown, and plain text. Null until the View wires it.
+    /// </summary>
+    public Func<RichBodySnapshot>? RichBodyProvider { get; set; }
+
+    /// <summary>
+    /// Raised when content must flow into the rich editor (entering HTML mode).
+    /// The View converts the HTML fragment into the editor document.
+    /// </summary>
+    public event Action<string>? LoadHtmlIntoEditorRequested;
+
+    /// <summary>
+    /// Raised to insert plain text (e.g. a template) at the rich editor's caret
+    /// while in HTML mode.
+    /// </summary>
+    public event Action<string>? InsertTextIntoEditorRequested;
+
+    /// <summary>
+    /// Switches the editing mode, converting the body content. Switching from a
+    /// rich mode to Plain Text asks for confirmation because formatting is lost.
+    /// Returns true when the switch happened.
+    /// </summary>
+    public bool SetMode(ComposeMode newMode)
+    {
+        if (newMode == CurrentMode) return false;
+
+        // Downgrading to plain text discards formatting — confirm first.
+        // An unwired ConfirmationRequested (tests) counts as confirmed so the
+        // switch is never silently impossible.
+        if (newMode == ComposeMode.PlainText && HasFormattingWorthConfirming())
+        {
+            var confirmed = ConfirmationRequested?.Invoke(
+                "Formatting will be lost when switching to Plain Text. Continue?",
+                "Switch to Plain Text") ?? true;
+            if (!confirmed) return false;
+        }
+
+        switch (CurrentMode, newMode)
+        {
+            case (ComposeMode.PlainText, ComposeMode.Markdown):
+                break; // plain text is valid Markdown source — pass through as-is
+
+            case (ComposeMode.PlainText, ComposeMode.Html):
+                var htmlToLoad = _seededHtmlBody ?? _markdown.PlainTextToHtml(Body);
+                _seededHtmlBody = null; // consume: only used for the initial draft restore
+                LoadHtmlIntoEditorRequested?.Invoke(htmlToLoad);
+                break;
+
+            case (ComposeMode.Markdown, ComposeMode.Html):
+                LoadHtmlIntoEditorRequested?.Invoke(_markdown.ToHtml(Body));
+                break;
+
+            case (ComposeMode.Markdown, ComposeMode.PlainText):
+                Body = _markdown.ToPlainText(Body);
+                break;
+
+            case (ComposeMode.Html, ComposeMode.Markdown):
+                var mdSnap = RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty;
+                if (mdSnap.IsEmpty && RichBodyProvider != null)
+                    LogService.Debug("SetMode Html→Markdown: provider returned empty snapshot");
+                Body = mdSnap.Markdown;
+                break;
+
+            case (ComposeMode.Html, ComposeMode.PlainText):
+                var ptSnap = RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty;
+                if (ptSnap.IsEmpty && RichBodyProvider != null)
+                    LogService.Debug("SetMode Html→PlainText: provider returned empty snapshot");
+                Body = ptSnap.PlainText;
+                break;
+        }
+
+        CurrentMode = newMode;
+        return true;
+    }
+
+    private bool HasFormattingWorthConfirming() => CurrentMode switch
+    {
+        ComposeMode.Markdown => !string.IsNullOrWhiteSpace(Body) && Body != _markdown.ToPlainText(Body),
+        ComposeMode.Html     => !(RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).IsEmpty,
+        _                    => false,
+    };
+
+    /// <summary>Renders the current Markdown body as a full HTML document for the preview pane.</summary>
+    public string RenderPreviewHtml() => _markdown.WrapDocument(_markdown.ToHtml(Body), Subject);
+
+    /// <summary>Returns the rendered HTML body fragment for the preview window, without any wrapper or styles.</summary>
+    public string GetBodyHtml() => CurrentMode switch
+    {
+        ComposeMode.Markdown => _markdown.ToHtml(Body),
+        ComposeMode.Html     => (RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).Html,
+        _                    => string.Empty,
+    };
+
+    /// <summary>Called by the View when the rich editor content changes (RichTextBox has no Body binding).</summary>
+    public void MarkBodyDirty() => _isDirty = true;
+
     /// <summary>
     /// Opens the template picker. The View subscribes to this event to show the dialog.
     /// </summary>
@@ -290,14 +531,21 @@ public partial class ComposeViewModel : ObservableObject
                 .Replace("{date}", now.ToString("d"), StringComparison.OrdinalIgnoreCase)
                 .Replace("{time}", now.ToString("t"), StringComparison.OrdinalIgnoreCase);
 
-        Body += body;
+        if (CurrentMode == ComposeMode.Html)
+            InsertTextIntoEditorRequested?.Invoke(body);
+        else
+            Body += body;
         StatusText = $"Template '{template.Title}' inserted.";
     }
 
     [RelayCommand]
     private async Task SaveAsTemplateAsync()
     {
-        if (string.IsNullOrWhiteSpace(Body))
+        // Templates are plain-text only — in HTML mode use the editor's text rendering.
+        var templateBody = CurrentMode == ComposeMode.Html
+            ? (RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).PlainText
+            : Body;
+        if (string.IsNullOrWhiteSpace(templateBody))
         {
             StatusText = "Nothing to save — body is empty.";
             return;
@@ -307,7 +555,7 @@ public partial class ComposeViewModel : ObservableObject
         {
             Title = Subject.Trim().Length > 0 ? Subject.Trim() : "Untitled",
             Subject = Subject,
-            Body = Body
+            Body = templateBody
         };
 
         await _templateService.AddAsync(template);
@@ -392,19 +640,48 @@ public partial class ComposeViewModel : ObservableObject
         Process.Start(new ProcessStartInfo(tempPath) { UseShellExecute = true });
     }
 
-    private ComposeModel BuildComposeModel(Guid accountId) => new()
+    internal ComposeModel BuildComposeModel(Guid accountId)
     {
-        AccountId           = accountId,
-        To                  = To,
-        Cc                  = Cc,
-        Bcc                 = Bcc,
-        Subject             = Subject,
-        Body                = Body,
-        InReplyToMessageId  = _inReplyToMessageId,
-        DraftMessageId      = _draftMessageId,
-        DraftFolderName     = _draftFolderName,
-        Attachments         = Attachments.ToList(),
-    };
+        // Resolve the body parts for the active mode. Markdown mode sends the
+        // markdown source as the text/plain part (it reads naturally as text);
+        // HTML mode sends the stripped plain text. An effectively empty rich body
+        // falls back to text/plain only.
+        var body = Body;
+        string? htmlBody = null;
+        switch (CurrentMode)
+        {
+            case ComposeMode.Markdown when !string.IsNullOrWhiteSpace(Body):
+                htmlBody = _markdown.WrapDocument(_markdown.ToHtml(Body), Subject);
+                break;
+
+            case ComposeMode.Html:
+                if (RichBodyProvider == null)
+                    throw new InvalidOperationException("RichBodyProvider must be set before sending in HTML mode.");
+                var snapshot = RichBodyProvider.Invoke();
+                if (!snapshot.IsEmpty)
+                {
+                    body     = snapshot.PlainText;
+                    htmlBody = _markdown.WrapDocument(snapshot.Html, Subject);
+                }
+                break;
+        }
+
+        return new ComposeModel
+        {
+            AccountId           = accountId,
+            To                  = To,
+            Cc                  = Cc,
+            Bcc                 = Bcc,
+            Subject             = Subject,
+            Body                = body,
+            Mode                = CurrentMode,
+            HtmlBody            = htmlBody,
+            InReplyToMessageId  = _inReplyToMessageId,
+            DraftMessageId      = _draftMessageId,
+            DraftFolderName     = _draftFolderName,
+            Attachments         = Attachments.ToList(),
+        };
+    }
 
     // ── Factory helpers ────────────────────────────────────────────────────────
 
