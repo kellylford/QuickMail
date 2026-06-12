@@ -172,9 +172,9 @@ public static class RichTextDocumentConverter
                     foreach (var b in FlushPending()) yield return b;
                     foreach (var inner in BuildBlocks(node.Children))
                     {
+                        inner.Tag = TagBlockquote;
                         if (inner is Paragraph qp)
                         {
-                            qp.Tag = TagBlockquote;
                             qp.Margin = new Thickness(20, qp.Margin.Top, 0, qp.Margin.Bottom);
                             qp.Foreground = Brushes.DarkSlateGray;
                         }
@@ -448,15 +448,21 @@ public static class RichTextDocumentConverter
         bool inQuote = false;
         foreach (var block in blocks)
         {
-            bool isQuote = block is Paragraph { Tag: TagBlockquote };
+            bool isQuote = block.Tag as string == TagBlockquote;
             if (inQuote && !isQuote) { sb.Append("</blockquote>\n"); inQuote = false; }
             if (isQuote)
             {
                 if (!inQuote) { sb.Append("<blockquote>\n"); inQuote = true; }
-                var qp = (Paragraph)block;
-                sb.Append("<p>");
-                EmitInlinesHtml(sb, qp.Inlines, BaselineOf(qp));
-                sb.Append("</p>\n");
+                if (block is Paragraph qp)
+                {
+                    sb.Append("<p>");
+                    EmitInlinesHtml(sb, qp.Inlines, BaselineOf(qp));
+                    sb.Append("</p>\n");
+                }
+                else
+                {
+                    EmitBlockHtml(sb, block);
+                }
                 continue;
             }
             EmitBlockHtml(sb, block);
@@ -806,7 +812,7 @@ public static class RichTextDocumentConverter
                 case Run mdImg when mdImg.Tag is string mdImgTag
                                     && mdImgTag.StartsWith(ImageTagPrefix, StringComparison.Ordinal):
                     var mdAlt = mdImg.Text == ImageAltPlaceholder ? string.Empty : mdImg.Text;
-                    sb.Append("![").Append(mdAlt).Append("](")
+                    sb.Append("![").Append(mdAlt.Replace("]", @"\]")).Append("](")
                       .Append(mdImgTag[ImageTagPrefix.Length..]).Append(')');
                     break;
 
@@ -849,7 +855,10 @@ public static class RichTextDocumentConverter
                     else if (string.Equals(inner.ToString(), url, StringComparison.Ordinal))
                         sb.Append(url); // bare autolink stays bare
                     else
-                        sb.Append('[').Append(inner).Append("](").Append(url).Append(')');
+                    {
+                        var escapedUrl = url.Replace(")", "%29");
+                        sb.Append('[').Append(inner).Append("](").Append(escapedUrl).Append(')');
+                    }
                     break;
 
                 case Span span:

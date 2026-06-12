@@ -19,6 +19,7 @@ public partial class MarkdownPreviewWindow : Window
 {
     private readonly string _html;
     private readonly CommandRegistry _registry = new();
+    private readonly CancellationTokenSource _cts = new();
 
     public MarkdownPreviewWindow(string? subject, string htmlFragment)
     {
@@ -52,7 +53,9 @@ public partial class MarkdownPreviewWindow : Window
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "QuickMail", "WebView2Preview");
             var env = await CoreWebView2Environment.CreateAsync(null, dataFolder);
+            if (_cts.IsCancellationRequested) return;
             await PreviewBody.EnsureCoreWebView2Async(env);
+            if (_cts.IsCancellationRequested) return;
 
             PreviewBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             PreviewBody.CoreWebView2.Settings.AreDevToolsEnabled             = false;
@@ -75,35 +78,39 @@ public partial class MarkdownPreviewWindow : Window
                 {
                     case "escape":
                     case "ctrl-w":   Dispatcher.InvokeAsync(Close,               DispatcherPriority.Input); break;
-                    case "shift-tab":
+                    case "shift-tab": Dispatcher.InvokeAsync(Close,              DispatcherPriority.Input); break;
                     case "f6":
                     case "shift-f6": Dispatcher.InvokeAsync(FocusBody,           DispatcherPriority.Input); break;
                     case "palette":  Dispatcher.InvokeAsync(OpenCommandPalette,  DispatcherPriority.Input); break;
                 }
             };
 
-            // Cancel external navigation — all links open in the default browser.
+            // Cancel external navigation — http/https/mailto open in the default browser;
+            // data: navigations are always blocked (they load without CSP).
             PreviewBody.CoreWebView2.NavigationStarting += (_, args) =>
             {
                 var uri = args.Uri;
                 if (string.IsNullOrEmpty(uri) ||
-                    uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase) ||
-                    uri.StartsWith("data:",  StringComparison.OrdinalIgnoreCase))
+                    uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
-                try
+                if (!uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
                 {
-                    System.Diagnostics.Process.Start(
-                        new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+                    try
+                    {
+                        System.Diagnostics.Process.Start(
+                            new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+                    }
+                    catch { /* best effort */ }
                 }
-                catch { /* best effort */ }
             };
 
             PreviewBody.CoreWebView2.NavigateToString(_html);
 
-            await Task.Delay(200); // let navigation settle before focusing
+            await Task.Delay(200, _cts.Token); // let navigation settle before focusing
             await FocusBodyAsync();
         }
+        catch (OperationCanceledException) { /* window closed during init — normal */ }
         catch (Exception ex)
         {
             LogService.Log("MarkdownPreviewWindow WebView2 init failed", ex);
@@ -184,7 +191,7 @@ public partial class MarkdownPreviewWindow : Window
         palette.ShowDialog();
     }
 
-    private void OnClosing(object sender, System.ComponentModel.CancelEventArgs e) { }
+    private void OnClosing(object sender, System.ComponentModel.CancelEventArgs e) => _cts.Cancel();
 
     // ── HTML builder ─────────────────────────────────────────────────────────
 

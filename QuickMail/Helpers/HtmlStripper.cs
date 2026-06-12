@@ -108,6 +108,7 @@ public static class HtmlStripper
                         var decodedHref = WebUtility.HtmlDecode(linkHref);
                         if (decodedHref.Length > 0
                             && !decodedHref.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase)
+                            && !decodedHref.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
                             && !string.Equals(text, decodedHref, StringComparison.OrdinalIgnoreCase)
                             && !string.Equals("mailto:" + text, decodedHref, StringComparison.OrdinalIgnoreCase))
                         {

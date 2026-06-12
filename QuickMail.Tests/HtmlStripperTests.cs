@@ -100,4 +100,11 @@ public class HtmlStripperTests
         var text = HtmlStripper.ToPlainText("<a href=\"javascript:alert(1)\">click</a>");
         Assert.Equal("click", text);
     }
+
+    [Fact]
+    public void Strip_DataHref_NotEmitted()
+    {
+        var text = HtmlStripper.ToPlainText("<a href=\"data:application/javascript,alert(1)\">click</a>");
+        Assert.Equal("click", text);
+    }
 }

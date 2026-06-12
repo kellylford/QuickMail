@@ -225,22 +225,28 @@ public partial class ComposeViewModel : ObservableObject
     }
 
     /// <summary>Uploads the current compose state as a draft, replacing any previous draft.</summary>
-    private async Task SaveDraftCoreAsync(AccountModel account)
+    private async Task SaveDraftCoreAsync(AccountModel account, CancellationToken externalCt = default)
     {
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeoutCts.Token, externalCt);
 
-        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, cts.Token);
+        _draftFolderName ??= await _imap.FindDraftsFolderNameAsync(account.Id, combined.Token);
         if (_draftFolderName == null)
             throw new DraftFolderMissingException();
 
         var compose = BuildComposeModel(account.Id);
-        _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, cts.Token);
+        _draftMessageId = await _imap.AppendDraftAsync(account.Id, compose, _draftMessageId, combined.Token);
         _isDirty = false;
     }
 
     private sealed class DraftFolderMissingException : Exception { }
 
     // ── Auto-save ──────────────────────────────────────────────────────────────
+
+    private readonly CancellationTokenSource _autoSaveCts = new();
+
+    /// <summary>Cancels any in-flight autosave. Called by the window on closing.</summary>
+    public void CancelAutoSave() => _autoSaveCts.Cancel();
 
     /// <summary>Visual status-row text, e.g. "Auto-saved 3:42 PM". Never announced on success.</summary>
     [ObservableProperty] private string _autoSaveText = string.Empty;
@@ -271,7 +277,7 @@ public partial class ComposeViewModel : ObservableObject
         IsBusy = true;
         try
         {
-            await SaveDraftCoreAsync(account);
+            await SaveDraftCoreAsync(account, _autoSaveCts.Token);
             AutoSaveText = $"Auto-saved {DateTime.Now:t}";
             _autoSaveFailureAnnounced = false;
         }
@@ -456,11 +462,17 @@ public partial class ComposeViewModel : ObservableObject
                 break;
 
             case (ComposeMode.Html, ComposeMode.Markdown):
-                Body = (RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).Markdown;
+                var mdSnap = RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty;
+                if (mdSnap.IsEmpty && RichBodyProvider != null)
+                    LogService.Debug("SetMode Html→Markdown: provider returned empty snapshot");
+                Body = mdSnap.Markdown;
                 break;
 
             case (ComposeMode.Html, ComposeMode.PlainText):
-                Body = (RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty).PlainText;
+                var ptSnap = RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty;
+                if (ptSnap.IsEmpty && RichBodyProvider != null)
+                    LogService.Debug("SetMode Html→PlainText: provider returned empty snapshot");
+                Body = ptSnap.PlainText;
                 break;
         }
 
@@ -643,7 +655,9 @@ public partial class ComposeViewModel : ObservableObject
                 break;
 
             case ComposeMode.Html:
-                var snapshot = RichBodyProvider?.Invoke() ?? RichBodySnapshot.Empty;
+                if (RichBodyProvider == null)
+                    throw new InvalidOperationException("RichBodyProvider must be set before sending in HTML mode.");
+                var snapshot = RichBodyProvider.Invoke();
                 if (!snapshot.IsEmpty)
                 {
                     body     = snapshot.PlainText;

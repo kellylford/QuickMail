@@ -154,6 +154,9 @@ public static class MarkdownEditing
 
     public static MarkdownEdit InsertLink(string text, int selStart, int selLen, string display, string url)
     {
+        if (url.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase) ||
+            url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            url = string.Empty;
         var link = $"[{display}]({url})";
         return new MarkdownEdit(selStart, selLen, link, selStart + link.Length, 0, TurnedOn: true);
     }

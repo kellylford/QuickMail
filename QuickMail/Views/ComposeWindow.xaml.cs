@@ -486,6 +486,7 @@ public partial class ComposeWindow : Window
 
     private async void OnWindowClosing(object? sender, CancelEventArgs e)
     {
+        _vm.CancelAutoSave();
         _previewWindow?.Close();
 
         // If the message was sent, or nothing was edited, let the window close freely.
@@ -590,8 +591,12 @@ public partial class ComposeWindow : Window
             if (Keyboard.FocusedElement is MenuItem
                 || FromCombo.IsDropDownOpen
                 || ModeSelector.IsDropDownOpen
-                || AutoCompletePopup.IsOpen)
+                || AutoCompletePopup.IsOpen
+                || _previewWindow != null)
+            {
+                _previewWindow?.Close();
                 return;
+            }
             _vm.CancelCommand.Execute(null);
             e.Handled = true;
             return;

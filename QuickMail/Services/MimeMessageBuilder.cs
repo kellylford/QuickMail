@@ -1,6 +1,7 @@
 using System.IO;
 using System.Linq;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -43,10 +44,13 @@ public static class MimeMessageBuilder
         MimeEntity bodyEntity;
         if (!string.IsNullOrEmpty(compose.HtmlBody))
         {
+            var plainText = string.IsNullOrWhiteSpace(compose.Body)
+                ? HtmlStripper.ToPlainText(compose.HtmlBody)
+                : compose.Body;
             var alternative = new MultipartAlternative
             {
                 // Least-faithful first per RFC 2046 — clients pick the last part they support.
-                new TextPart("plain") { Text = compose.Body },
+                new TextPart("plain") { Text = plainText },
                 new TextPart("html")  { Text = compose.HtmlBody },
             };
             bodyEntity = alternative;
