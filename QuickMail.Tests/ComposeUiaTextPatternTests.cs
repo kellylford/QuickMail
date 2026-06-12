@@ -70,6 +70,7 @@ public class ComposeUiaTextPatternTests
             WindowStyle = WindowStyle.None,
             ShowInTaskbar = false,
             ShowActivated = false,
+            ConfirmSaveOnClose = null, // headless — discard on close, no dialog
         };
         window.Show();
         try

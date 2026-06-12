@@ -167,6 +167,20 @@ public partial class ComposeWindow : Window
         RichBodyBox.SelectionChanged += RichBodyBox_SelectionChanged;
         RichBodyBox.PreviewKeyDown += RichBodyBox_PreviewKeyDown;
         Closing += OnWindowClosing;
+        ConfirmSaveOnClose = () =>
+        {
+            var r = MessageBox.Show(this,
+                "Do you want to save this message as a draft before closing?",
+                "Save Draft?",
+                MessageBoxButton.YesNoCancel,
+                MessageBoxImage.Question);
+            return Task.FromResult<bool?>(r switch
+            {
+                MessageBoxResult.Yes => true,
+                MessageBoxResult.No  => false,
+                _                    => null,
+            });
+        };
 
         // Auto-save: quiet periodic draft saves. Success shows in the status row
         // only; a failure is announced once (Status category) by the VM event.
@@ -187,6 +201,13 @@ public partial class ComposeWindow : Window
 
     private DispatcherTimer? _autoSaveTimer;
     private MarkdownPreviewWindow? _previewWindow;
+
+    /// <summary>
+    /// Invoked when a dirty window is closing to ask whether to save the draft.
+    /// Returns true = save, false = discard, null = cancel (keep open).
+    /// Set to null in headless/test contexts to skip the dialog and discard.
+    /// </summary>
+    internal Func<Task<bool?>>? ConfirmSaveOnClose { get; set; }
 
     // ── Autocomplete ─────────────────────────────────────────────────────────
 
@@ -496,25 +517,21 @@ public partial class ComposeWindow : Window
         // Prevent the window from closing until the user decides.
         e.Cancel = true;
 
-        var result = MessageBox.Show(
-            this,
-            "Do you want to save this message as a draft before closing?",
-            "Save Draft?",
-            MessageBoxButton.YesNoCancel,
-            MessageBoxImage.Question);
+        // ConfirmSaveOnClose is null in headless/test contexts — discard without asking.
+        var confirm = ConfirmSaveOnClose;
+        var decision = confirm != null ? await confirm() : false;
 
-        if (result == MessageBoxResult.Cancel)
-            return; // stay open
+        if (decision == null)
+            return; // cancelled — keep window open
 
-        if (result == MessageBoxResult.No)
+        if (decision == false)
         {
-            // Synchronous path — still inside the original Close() call stack.
             Closing -= OnWindowClosing;
             e.Cancel = false;
             return;
         }
 
-        // result == Yes: save the draft first
+        // decision == true: save the draft first
         await _vm.SaveDraftCommand.ExecuteAsync(null);
         if (_vm.StatusText.Contains("failed", StringComparison.OrdinalIgnoreCase))
             return;
