@@ -66,7 +66,8 @@ public partial class ComposeWindow : Window
     // doesn't re-announce addresses the user is actively editing.
     private bool _suppressNextFocusAnnouncement;
     private int _lastAnnouncedSpellingIndex = -1;
-    private TextPointer? _lastAnnouncedRichSpellingPos;
+    private TextPointer? _richSpellingWordStart;
+    private TextPointer? _richSpellingWordEnd;
 
     // Track the current spelling error so Alt+1/2/3 can replace it with a suggestion.
     private int _currentSpellingWordStart = -1;
@@ -689,7 +690,8 @@ public partial class ComposeWindow : Window
     private void ClearSpellingContext()
     {
         _lastAnnouncedSpellingIndex = -1;
-        _lastAnnouncedRichSpellingPos = null;
+        _richSpellingWordStart = null;
+        _richSpellingWordEnd = null;
         _currentSpellingWordStart = -1;
         _currentSpellingWordEnd = -1;
         _currentSpellingSuggestions = null;
@@ -748,17 +750,23 @@ public partial class ComposeWindow : Window
         var error = RichBodyBox.GetSpellingError(pos);
         if (error == null)
         {
-            ClearSpellingContext();
-            return;
+            // CaretPosition may be at the end of a selected word (one position past the
+            // error boundary), so check one insertion position back before giving up.
+            var prev = pos.GetNextInsertionPosition(LogicalDirection.Backward);
+            if (prev != null) error = RichBodyBox.GetSpellingError(prev);
+            if (error == null) { ClearSpellingContext(); return; }
+            pos = prev!;
         }
 
         var wordRange = RichBodyBox.GetSpellingErrorRange(pos);
         if (wordRange == null) { ClearSpellingContext(); return; }
 
-        if (_lastAnnouncedRichSpellingPos != null &&
-            _lastAnnouncedRichSpellingPos.CompareTo(wordRange.Start) == 0)
+        if (_richSpellingWordStart != null &&
+            _richSpellingWordStart.CompareTo(wordRange.Start) == 0)
             return;
-        _lastAnnouncedRichSpellingPos = wordRange.Start;
+
+        _richSpellingWordStart = wordRange.Start;
+        _richSpellingWordEnd   = wordRange.End;
 
         var suggestions = error.Suggestions.Take(3).ToList();
         _currentSpellingSuggestions = suggestions;
@@ -890,7 +898,7 @@ public partial class ComposeWindow : Window
         // Alt+1/2/3: replace the current misspelled word with the corresponding suggestion.
         if ((Keyboard.Modifiers & ModifierKeys.Alt) != 0
             && _currentSpellingSuggestions is { Count: > 0 }
-            && _lastAnnouncedRichSpellingPos != null)
+            && _richSpellingWordStart != null && _richSpellingWordEnd != null)
         {
             int suggestionIndex = e.SystemKey switch
             {
@@ -902,21 +910,21 @@ public partial class ComposeWindow : Window
             if (suggestionIndex >= 0 && suggestionIndex < _currentSpellingSuggestions.Count)
             {
                 var replacement = _currentSpellingSuggestions[suggestionIndex];
-                var wordRange = RichBodyBox.GetSpellingErrorRange(_lastAnnouncedRichSpellingPos);
-                if (wordRange != null)
-                {
-                    _suppressFormattingAnnouncement = true;
-                    wordRange.Text = replacement;
-                    RichBodyBox.Selection.Select(wordRange.End, wordRange.End);
-                    _suppressFormattingAnnouncement = false;
+                // Use the stored TextPointers directly — re-fetching via GetSpellingErrorRange
+                // can return null when the word is selected or the caret is past its boundary.
+                var wordRange = new TextRange(_richSpellingWordStart, _richSpellingWordEnd);
 
-                    RichBodyBox.Focus();
-                    AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
-                        category: AnnouncementCategory.Result);
-                    ClearSpellingContext();
-                    e.Handled = true;
-                    return;
-                }
+                _suppressFormattingAnnouncement = true;
+                wordRange.Text = replacement;
+                RichBodyBox.Selection.Select(wordRange.End, wordRange.End);
+                _suppressFormattingAnnouncement = false;
+
+                RichBodyBox.Focus();
+                AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
+                    category: AnnouncementCategory.Result);
+                ClearSpellingContext();
+                e.Handled = true;
+                return;
             }
         }
 
@@ -1178,7 +1186,8 @@ public partial class ComposeWindow : Window
             var error = RichBodyBox.GetSpellingError(errorPos);
             var suggestions = error?.Suggestions.Take(3).ToList() ?? new List<string>();
             _currentSpellingSuggestions = suggestions;
-            _lastAnnouncedRichSpellingPos = wordRange.Start;
+            _richSpellingWordStart = wordRange.Start;
+            _richSpellingWordEnd   = wordRange.End;
 
             AccessibilityHelper.Announce(this, BuildSpellingAnnouncement(wordRange.Text, suggestions),
                 category: AnnouncementCategory.Result);
