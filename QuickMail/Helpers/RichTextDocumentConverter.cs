@@ -212,6 +212,12 @@ public static class RichTextDocumentConverter
                     if (table != null) yield return table;
                     break;
 
+                case "html" or "body":
+                    foreach (var b in FlushPending()) yield return b;
+                    foreach (var inner in BuildBlocks(node.Children))
+                        yield return inner;
+                    break;
+
                 case "script" or "style" or "head":
                     break; // never render
 

@@ -69,7 +69,7 @@ public class ConfigModel
 
     // ── Compose ───────────────────────────────────────────────────────────────────
 
-    /// <summary>Editing mode new compose windows start in. Drafts and templates always reopen in plain text.</summary>
+    /// <summary>Editing mode new compose windows start in. Drafts reopen in the mode they were saved in; templates always reopen in plain text.</summary>
     public ComposeMode DefaultComposeMode { get; set; } = ComposeMode.PlainText;
 
     /// <summary>Automatically save composes as drafts while editing.</summary>

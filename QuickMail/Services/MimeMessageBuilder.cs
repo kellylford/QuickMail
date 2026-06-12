@@ -25,6 +25,10 @@ public static class MimeMessageBuilder
         if (userAgent != null)
             message.Headers.Add(HeaderId.UserAgent, userAgent);
 
+        // Tag non-plain-text drafts so they can be reopened in the original mode.
+        if (compose.Mode != ComposeMode.PlainText)
+            message.Headers.Add("X-QuickMail-Compose-Mode", compose.Mode.ToString().ToLowerInvariant());
+
         message.From.Add(new MailboxAddress(account.SenderDisplayName, account.Username));
         AddressParser.AddAddresses(message.To,  compose.To);
         AddressParser.AddAddresses(message.Cc,  compose.Cc);

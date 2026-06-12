@@ -3388,14 +3388,10 @@ public partial class MainViewModel : ObservableObject
         {
             ReplaceCts(ref _messageLoadCts, out var ct);
 
-            var detail = await _localStore.LoadDetailAsync(
-                summary.AccountId, summary.FolderName, summary.MessageId);
-
-            if (detail == null)
-            {
-                detail = await _imap.GetMessageDetailAsync(
-                    summary.AccountId, summary.FolderName, summary.MessageId, ct);
-            }
+            // Always fetch drafts from IMAP — skip the local cache so the compose-mode
+            // header and the latest autosaved body are read directly from the server.
+            var detail = await _imap.GetMessageDetailAsync(
+                summary.AccountId, summary.FolderName, summary.MessageId, ct);
 
             var model = new ComposeModel
             {
@@ -3405,6 +3401,8 @@ public partial class MainViewModel : ObservableObject
                 Cc              = detail.Cc,
                 Subject         = detail.Subject,
                 Body            = detail.PlainTextBody,
+                Mode            = detail.DraftComposeMode,
+                HtmlBody        = detail.DraftComposeMode == ComposeMode.Html ? detail.HtmlBody : null,
                 DraftMessageId  = summary.MessageId,
                 DraftFolderName = summary.FolderName,
             };

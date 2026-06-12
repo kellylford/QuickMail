@@ -319,6 +319,7 @@ public class ImapMailService : IMailService
                 | MessageSummaryItems.Envelope
                 | MessageSummaryItems.Flags
                 | MessageSummaryItems.BodyStructure,
+                new[] { "X-QuickMail-Compose-Mode" },
                 ct);
 
             var s = summaries.FirstOrDefault()
@@ -394,6 +395,7 @@ public class ImapMailService : IMailService
                 HtmlBody      = htmlText,
                 Attachments   = attachments,
                 CalendarInvite = calendarInvite,
+                DraftComposeMode = ParseComposeMode(s.Headers?["X-QuickMail-Compose-Mode"]),
             };
         }
         finally { await folder.CloseAsync(false, ct); }
@@ -1403,6 +1405,13 @@ public class ImapMailService : IMailService
     }
 
     private static readonly string[] _mailingListHeaders = { "List-Id" };
+
+    private static ComposeMode ParseComposeMode(string? header) => header?.ToLowerInvariant() switch
+    {
+        "markdown" => ComposeMode.Markdown,
+        "html"     => ComposeMode.Html,
+        _          => ComposeMode.PlainText,
+    };
 
     private static string FormatAddressList(InternetAddressList? list) =>
         list == null || list.Count == 0
