@@ -484,10 +484,6 @@
                           AutomationProperties.Name="Keyboard Tutorial"
                           Click="MenuKeyboardTutorial_Click"/>
                 <Separator/>
-                <MenuItem Header="_Email a Bug Report"
-                          AutomationProperties.Name="Email a Bug Report"
-                          Command="{Binding EmailBugReportCommand}"/>
-                <Separator/>
                 <MenuItem Header="_About QuickMail"
                           AutomationProperties.Name="About QuickMail"
                           Click="MenuAbout_Click"/>

@@ -86,7 +86,7 @@ The menu bar at the top of the window provides access to all major features, org
 | **File** | New Message, Manage Accounts, Address Book, Settings (`Ctrl+,`), Exit |
 | **Message** | Reply, Reply All, Forward, Delete, Empty Trash, Move/Copy to Folder, Grab Addresses |
 | **View** | Refresh, View Mode (Messages / Conversations / By Sender / By Recipient), Filter (All / Unread / Read / With Attachments / Replied / Forwarded / To Me), Sort (Newest First / Oldest First / A → Z / Z → A / Most Messages / Fewest Messages), Views (saved views list, Save View, Manage Views, Clear View), Sync Range (7 Days / 30 Days / 6 Months / 1 Year / All Mail), Go to Folder, Search Folders, Command Palette |
-| **Help** | User Guide, Keyboard Tutorial, Email a Bug Report, About QuickMail |
+| **Help** | User Guide |
 
 All menu items show their keyboard shortcuts for quick reference. You can also press **Alt** or **F10** to activate the menu bar if you prefer keyboard-only navigation.
 
@@ -1381,9 +1381,3 @@ QuickMail.exe --profileDir "C:\Users\YourName\AppData\Roaming\QuickMail-Work"
 ```
 
 Each profile is fully independent. Passwords are stored in Windows Credential Manager (system-wide) and are shared across profiles — you do not need to re-enter them when switching.
-
----
-
-## Reporting Bugs
-
-Select **Help → Email a Bug Report** to open a pre-addressed email in your default mail client. The message includes the version you are running and a template with fields for a summary, steps to reproduce, expected and actual results, and any additional context. Fill in the relevant sections and send. You do not need a GitHub account to report a bug this way.

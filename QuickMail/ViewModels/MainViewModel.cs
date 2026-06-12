@@ -1095,10 +1095,6 @@ public partial class MainViewModel : ObservableObject
             defaultKey: Key.F1, defaultModifiers: ModifierKeys.None));
 
         registry.Register(new CommandDefinition(
-            id: "help.emailBugReport", category: "Help", title: "Email a Bug Report",
-            execute: () => EmailBugReportCommand.Execute(null)));
-
-        registry.Register(new CommandDefinition(
             id: "view.search", category: "View", title: "Search Messages…",
             execute: () => { IsSearchActive = true; SearchRequested?.Invoke(this, EventArgs.Empty); },
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
@@ -4084,25 +4080,6 @@ public partial class MainViewModel : ObservableObject
         Process.Start(new ProcessStartInfo
         {
             FileName = "https://github.com/kellylford/QuickMail/blob/main/USERGUIDE.md",
-            UseShellExecute = true
-        });
-    }
-
-    [RelayCommand]
-    private void EmailBugReport()
-    {
-        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "unknown";
-        var subject = Uri.EscapeDataString($"QuickMail {version} Bug Report: ");
-        var body = Uri.EscapeDataString(
-            $"Summary:\r\n[Briefly describe the bug]\r\n\r\n" +
-            $"Steps to reproduce:\r\n1. \r\n2. \r\n3. \r\n\r\n" +
-            $"Expected result:\r\n[What should happen]\r\n\r\n" +
-            $"Actual result:\r\n[What actually happens]\r\n\r\n" +
-            $"Additional information:\r\n[Any other context]\r\n\r\n" +
-            $"QuickMail version: {version}");
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = $"mailto:QuickmailIssues@theideaplace.net?subject={subject}&body={body}",
             UseShellExecute = true
         });
     }

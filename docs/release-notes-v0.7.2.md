@@ -15,10 +15,6 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ## New Features
 
-### Email a Bug Report
-
-**Help → Email a Bug Report** opens a pre-addressed message in your default mail client, with the current version number in the subject line and a structured template in the body — summary, steps to reproduce, expected and actual result, and additional context. No GitHub account required.
-
 ### Rich Compose: Plain Text, Markdown, and HTML Modes
 
 Composing email gets its largest update yet. Every compose window now offers three editing modes:
