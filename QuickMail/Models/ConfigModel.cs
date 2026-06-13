@@ -67,6 +67,21 @@ public class ConfigModel
     /// <summary>Announce the block type (heading level, list item, normal text) when the caret moves to a different paragraph in HTML compose mode.</summary>
     public bool AnnounceFormattingWhileNavigating { get; set; } = true;
 
+    /// <summary>
+    /// Include the flag name before read status in each message row's accessible name.
+    /// Default on so screen reader users hear flag state immediately.
+    /// </summary>
+    public bool AnnounceFlagStatus { get; set; } = true;
+
+    // ── Flagging ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The Guid string of the named flag that the K key applies.
+    /// Defaults to the built-in "Flagged" flag (FlagDefinition.BuiltInFlagId).
+    /// If the stored Guid does not match any defined flag, FlagService falls back to the built-in.
+    /// </summary>
+    public string DefaultFlagId { get; set; } = "00000000-0000-0000-0000-000000000001";
+
     // ── Compose ───────────────────────────────────────────────────────────────────
 
     /// <summary>Editing mode new compose windows start in. Drafts reopen in the mode they were saved in; templates always reopen in plain text.</summary>

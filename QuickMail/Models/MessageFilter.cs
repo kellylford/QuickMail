@@ -23,4 +23,7 @@ public enum MessageFilter
 
     /// <summary>Only messages where the user's own address appears in the To field.</summary>
     ToMe,
+
+    /// <summary>Only messages that have any named flag applied.</summary>
+    Flagged,
 }

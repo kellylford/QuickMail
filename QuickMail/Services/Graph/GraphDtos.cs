@@ -73,4 +73,11 @@ internal sealed class GraphMessage
     [JsonPropertyName("isRead")] public bool IsRead { get; set; }
     [JsonPropertyName("hasAttachments")] public bool HasAttachments { get; set; }
     [JsonPropertyName("attachments")] public List<GraphAttachment>? Attachments { get; set; }
+    [JsonPropertyName("flag")] public GraphFollowUpFlag? Flag { get; set; }
+}
+
+public class GraphFollowUpFlag
+{
+    /// <summary>Values: "notFlagged" | "flagged" | "complete".</summary>
+    [JsonPropertyName("flagStatus")] public string FlagStatus { get; set; } = "notFlagged";
 }

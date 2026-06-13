@@ -103,6 +103,8 @@ public class PreviewSuppressionTests
         public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
         public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
         public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
+        public Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId) => Task.CompletedTask;
+        public Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
     }
 
     private static readonly MailMessageSummary[] MessagesWithPreviews =

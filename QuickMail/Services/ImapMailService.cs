@@ -1241,13 +1241,14 @@ public class ImapMailService : IMailService
             To          = FormatAddressList(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
-            IsRead      = (s.Flags & MessageFlags.Seen)     != 0,
-            IsReplied   = (s.Flags & MessageFlags.Answered) != 0,
-            IsForwarded = s.Keywords?.Any(k =>
-                              k.Equals("$Forwarded", StringComparison.OrdinalIgnoreCase) ||
-                              k.Equals("Forwarded",  StringComparison.OrdinalIgnoreCase)) == true,
-            Preview       = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
-            IsMailingList = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
+            IsRead         = (s.Flags & MessageFlags.Seen)     != 0,
+            IsReplied      = (s.Flags & MessageFlags.Answered) != 0,
+            IsForwarded    = s.Keywords?.Any(k =>
+                                 k.Equals("$Forwarded", StringComparison.OrdinalIgnoreCase) ||
+                                 k.Equals("Forwarded",  StringComparison.OrdinalIgnoreCase)) == true,
+            IsServerFlagged = (s.Flags & MessageFlags.Flagged) != 0,
+            Preview         = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
+            IsMailingList   = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
         };
 
     private static async Task<IMailFolder?> FindSpecialFolderAsync(

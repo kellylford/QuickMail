@@ -36,6 +36,15 @@ public sealed class ConversationGroup : INotifyPropertyChanged
     /// <summary>True when at least one message in the conversation is unread.</summary>
     public bool HasUnread => Messages.Any(m => !m.IsRead);
 
+    /// <summary>True when at least one message in the conversation is flagged.</summary>
+    public bool HasFlagged => Messages.Any(m => m.IsFlagged);
+
+    /// <summary>The flag name of the first flagged message in the group, or null if none are flagged.</summary>
+    public string? FlagLabel => Messages.FirstOrDefault(m => m.IsFlagged)?.FlagLabel;
+
+    /// <summary>The color of the first flagged message's flag, or null if none are flagged.</summary>
+    public string? FlagColorHex => Messages.FirstOrDefault(m => m.IsFlagged)?.FlagColorHex;
+
     /// <summary>
     /// Accessibility label read by screen readers when the tree node receives focus.
     /// Preview is omitted when empty (e.g. when preview is disabled in account settings).
@@ -47,9 +56,10 @@ public sealed class ConversationGroup : INotifyPropertyChanged
             var countWord = Count == 1 ? "message" : "messages";
             var sender    = string.IsNullOrWhiteSpace(LastSenderName) ? string.Empty : $" {LastSenderName}.";
             var unread    = HasUnread ? " Has unread." : string.Empty;
+            var flagged   = HasFlagged ? $" {FlagLabel}." : string.Empty;
             return string.IsNullOrWhiteSpace(Preview)
-                ? $"{Subject}. {Count} {countWord}.{sender}{unread} {DateDisplay}."
-                : $"{Subject}. {Count} {countWord}.{sender}{unread} {Preview}. {DateDisplay}.";
+                ? $"{Subject}. {Count} {countWord}.{sender}{flagged}{unread} {DateDisplay}."
+                : $"{Subject}. {Count} {countWord}.{sender}{flagged}{unread} {Preview}. {DateDisplay}.";
         }
     }
 
