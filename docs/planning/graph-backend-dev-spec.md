@@ -542,10 +542,12 @@ public static readonly string[] ImapSmtpScopes =
 // NEW:
 public static readonly string[] GraphMailScopes =
 [
-    "https://graph.microsoft.com/Mail.ReadWrite",
-    "https://graph.microsoft.com/Mail.Send",
-    "https://graph.microsoft.com/MailboxSettings.Read",
-    "offline_access",
+    "https://graph.microsoft.com/Mail.ReadWrite",       // read messages/folders + mutations (mark read, move, delete, drafts, folder CRUD)
+    "https://graph.microsoft.com/Mail.Send",            // send
+    "https://graph.microsoft.com/MailboxSettings.Read", // mailbox settings (timezone, etc.)
+    "https://graph.microsoft.com/User.Read",            // /me identity probe (ConnectAsync)
+    "https://graph.microsoft.com/User.ReadBasic.All",   // directory (GAL) lookup — search/read other users' basic profiles
+    "offline_access",                                   // refresh tokens
 ];
 
 // Existing methods become wrappers around new scope-aware overloads:
@@ -566,6 +568,8 @@ private static string[] DefaultScopesFor(AccountModel account)
 ```
 
 `ImapMailService.ConnectAsync` continues to call `_oauth.GetAccessTokenAsync(account, ct)` — the default-scope path picks `ImapSmtpScopes`. `GraphMailService.ConnectAsync` calls `_oauth.GetAccessTokenAsync(account, GraphMailScopes, ct)` explicitly. After all consumers are updated, the no-scopes-arg overload can stay as a convenience.
+
+**Directory (GAL) lookup.** `User.ReadBasic.All` lets the app search/read other users in the org directory — used to look up a user (e.g. recipient autocomplete against the Global Address List, or resolving/finding a mailbox by person). Query via `GET /users?$search="displayName:smith"` (needs the `ConsistencyLevel: eventual` header) or `GET /users?$filter=...`. An alternative with nicer autocomplete UX is **`People.Read`** (`GET /me/people?$search=...`), which returns relevance-ranked results spanning the directory *and* the user's personal contacts; pick one based on the desired behavior — both are delegated and user-consentable. `User.ReadBasic.All` is the minimal "search the directory" permission and is the one most likely to be gated behind admin consent in locked-down tenants (handled by the admin-consent flow — see PM spec §9.3 and shared-mailboxes spec §6.3). See the PM spec §9.3 for the full permission table.
 
 ### 6.9 `AddAccountViewModel.cs` & Dialog — Account Type Combo
 
