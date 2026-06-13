@@ -424,6 +424,23 @@ public class ImapMailService : IMailService
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    public async Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+        try
+        {
+            var uid = ToUid(messageId);
+            if (flagged)
+                await folder.AddFlagsAsync(uid, MessageFlags.Flagged, true, ct);
+            else
+                await folder.RemoveFlagsAsync(uid, MessageFlags.Flagged, true, ct);
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
     public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);

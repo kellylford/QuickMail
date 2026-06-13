@@ -189,6 +189,13 @@ public class GraphMailService : IMailService
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
         => _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}", new { isRead = true }, ct);
 
+    public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
+    {
+        var status = flagged ? "flagged" : "notFlagged";
+        return _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}",
+            new { flag = new { flagStatus = status } }, ct);
+    }
+
     // ── Status / reconciliation ──────────────────────────────────────────────────
     public async Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default)
     {

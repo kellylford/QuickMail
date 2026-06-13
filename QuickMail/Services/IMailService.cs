@@ -42,6 +42,9 @@ public interface IMailService : IDisposable
         Guid accountId, string folderName, string messageId, CancellationToken ct = default);
     Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default);
     Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default);
+
+    /// <summary>Sets or clears the server \Flagged flag on a single message.</summary>
+    Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default);
     Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default);
     Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default);
     /// <summary>Permanently deletes messages already in Trash by setting \Deleted and expunging.</summary>
