@@ -245,8 +245,8 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list)
-            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id)
+            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
                 to_addr         = excluded.to_addr,
@@ -256,10 +256,12 @@ public class LocalStoreService : ILocalStoreService
                 is_replied      = excluded.is_replied,
                 is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
-                preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END;
+                preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
+                flag_id         = CASE WHEN flag_id IS NULL THEN excluded.flag_id ELSE flag_id END;
             """;
-            // flag_id is intentionally NOT in the upsert DO UPDATE — sync never clears a local
-            // flag assignment. Flag reconciliation runs separately in SyncService.
+            // flag_id uses COALESCE semantics on DO UPDATE: a server-flagged message that
+            // has no local flag assignment gets the built-in flag id; an existing user
+            // assignment is never overwritten by sync.
         var pUid       = cmd.Parameters.Add("$uid",       SqliteType.Text);
         var pAid       = cmd.Parameters.Add("$aid",       SqliteType.Text);
         var pFn        = cmd.Parameters.Add("$fn",        SqliteType.Text);
@@ -272,6 +274,7 @@ public class LocalStoreService : ILocalStoreService
         var pReplied   = cmd.Parameters.Add("$replied",   SqliteType.Integer);
         var pForwarded = cmd.Parameters.Add("$forwarded", SqliteType.Integer);
         var pMl        = cmd.Parameters.Add("$ml",        SqliteType.Integer);
+        var pFlagId    = cmd.Parameters.Add("$flag_id",   SqliteType.Text);
 
         foreach (var s in summaries)
         {
@@ -287,6 +290,9 @@ public class LocalStoreService : ILocalStoreService
             pReplied.Value   = s.IsReplied        ? 1 : 0;
             pForwarded.Value = s.IsForwarded      ? 1 : 0;
             pMl.Value        = s.IsMailingList    ? 1 : 0;
+            pFlagId.Value    = s.IsServerFlagged
+                ? (object)FlagDefinition.BuiltInFlagId.ToString()
+                : DBNull.Value;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();

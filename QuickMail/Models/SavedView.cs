@@ -40,9 +40,10 @@ public class SavedView
     public string? VirtualFolderKey { get; set; }
 
     /// <summary>
-    /// When set, the view shows only messages flagged with this specific flag name.
+    /// When set, the view shows only messages flagged with this specific flag (stored as a Guid string).
     /// Null = no named-flag filter (MessageFilter.Flagged shows any flag).
-    /// If the named flag is deleted, MainViewModel treats this as no filter.
+    /// Using the Guid id rather than the name means a flag rename does not break existing views.
+    /// If the referenced flag is deleted, MainViewModel treats this as no filter.
     /// </summary>
-    public string? FlagFilter { get; set; }
+    public string? FlagFilterId { get; set; }
 }

@@ -224,3 +224,17 @@ sealed class StubFeatureGate : IFeatureGate
 
     public bool IsEnabled(FeatureFlag flag) => _flags.TryGetValue(flag, out var v) && v;
 }
+
+sealed class StubFlagService : IFlagService
+{
+#pragma warning disable CS0067
+    public event EventHandler? FlagDefinitionsChanged;
+#pragma warning restore CS0067
+    public FlagDefinition GetBuiltInFlag() => FlagDefinition.CreateBuiltIn();
+    public Task<List<FlagDefinition>> LoadFlagDefinitionsAsync() => Task.FromResult(new List<FlagDefinition> { FlagDefinition.CreateBuiltIn() });
+    public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags) => Task.CompletedTask;
+    public Task<FlagDefinition> GetKDefaultFlagAsync() => Task.FromResult(FlagDefinition.CreateBuiltIn());
+    public Task SetKDefaultFlagAsync(Guid flagId) => Task.CompletedTask;
+    public Task SetMessageFlagAsync(MailMessageSummary message, string? flagId, ILocalStoreService localStore, IMailService mailService, CancellationToken ct = default) => Task.CompletedTask;
+    public Task ToggleDefaultFlagAsync(MailMessageSummary message, ILocalStoreService localStore, IMailService mailService, CancellationToken ct = default) => Task.CompletedTask;
+}
