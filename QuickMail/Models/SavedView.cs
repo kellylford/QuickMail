@@ -38,4 +38,11 @@ public class SavedView
     /// Stores the key without the NUL sentinel prefix, e.g. "AllMail". Null for real-folder views.
     /// </summary>
     public string? VirtualFolderKey { get; set; }
+
+    /// <summary>
+    /// When set, the view shows only messages flagged with this specific flag name.
+    /// Null = no named-flag filter (MessageFilter.Flagged shows any flag).
+    /// If the named flag is deleted, MainViewModel treats this as no filter.
+    /// </summary>
+    public string? FlagFilter { get; set; }
 }

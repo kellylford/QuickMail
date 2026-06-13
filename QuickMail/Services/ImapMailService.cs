@@ -424,6 +424,23 @@ public class ImapMailService : IMailService
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    public async Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
+        try
+        {
+            var uid = ToUid(messageId);
+            if (flagged)
+                await folder.AddFlagsAsync(uid, MessageFlags.Flagged, true, ct);
+            else
+                await folder.RemoveFlagsAsync(uid, MessageFlags.Flagged, true, ct);
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
     public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
@@ -1241,13 +1258,14 @@ public class ImapMailService : IMailService
             To          = FormatAddressList(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
             Date        = s.Envelope?.Date ?? DateTimeOffset.MinValue,
-            IsRead      = (s.Flags & MessageFlags.Seen)     != 0,
-            IsReplied   = (s.Flags & MessageFlags.Answered) != 0,
-            IsForwarded = s.Keywords?.Any(k =>
-                              k.Equals("$Forwarded", StringComparison.OrdinalIgnoreCase) ||
-                              k.Equals("Forwarded",  StringComparison.OrdinalIgnoreCase)) == true,
-            Preview       = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
-            IsMailingList = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
+            IsRead         = (s.Flags & MessageFlags.Seen)     != 0,
+            IsReplied      = (s.Flags & MessageFlags.Answered) != 0,
+            IsForwarded    = s.Keywords?.Any(k =>
+                                 k.Equals("$Forwarded", StringComparison.OrdinalIgnoreCase) ||
+                                 k.Equals("Forwarded",  StringComparison.OrdinalIgnoreCase)) == true,
+            IsServerFlagged = (s.Flags & MessageFlags.Flagged) != 0,
+            Preview         = s.PreviewText ?? string.Empty,   // populated when server supports IMAP PREVIEW
+            IsMailingList   = !string.IsNullOrEmpty(s.Headers?["List-Id"]),
         };
 
     private static async Task<IMailFolder?> FindSpecialFolderAsync(

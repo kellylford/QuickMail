@@ -36,14 +36,52 @@ public partial class MailMessageSummary : ObservableObject
 
     public bool IsMailingList { get; set; }
 
+    // ── Flag state ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The Guid string of the named flag applied to this message.
+    /// Null when the message is not flagged.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsFlagged))]
+    [NotifyPropertyChangedFor(nameof(FlagLabel))]
+    [NotifyPropertyChangedFor(nameof(StatusDisplay))]
+    private string? _flagId;
+
+    /// <summary>Display name of the applied flag, denormalized for rendering. Null when unflagged.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FlagLabel))]
+    private string? _flagName;
+
+    /// <summary>Hex color of the applied flag, denormalized for rendering. Null when unflagged.</summary>
+    [ObservableProperty]
+    private string? _flagColorHex;
+
+    /// <summary>True when this message has a named flag applied.</summary>
+    public bool IsFlagged => FlagId is not null;
+
+    /// <summary>
+    /// Human-readable flag name for accessibility. Empty string when not flagged.
+    /// </summary>
+    public string FlagLabel => FlagName ?? string.Empty;
+
+    /// <summary>
+    /// Whether the IMAP server reported this message as \Flagged.
+    /// Transient — used during sync reconciliation; not persisted directly.
+    /// </summary>
+    public bool IsServerFlagged { get; set; }
+
+    // ── Computed display ──────────────────────────────────────────────────────
+
     /// <summary>
     /// Single-word status shown in the status column.
-    /// Priority: Replied > Fwd > New > (blank for read with no special flag).
+    /// Priority: Flag name > Replied > Fwd > New > (blank for read).
     /// </summary>
     public string StatusDisplay
     {
         get
         {
+            if (IsFlagged)   return FlagLabel;
             if (IsReplied)   return "Replied";
             if (IsForwarded) return "Fwd";
             if (!IsRead)     return "New";
@@ -54,6 +92,7 @@ public partial class MailMessageSummary : ObservableObject
     /// <summary>
     /// Human-readable read/status label for accessibility announcements.
     /// Returns "replied", "forwarded", "unread", or "read".
+    /// Flag status is announced separately via FlagLabel.
     /// </summary>
     public string ReadStatusLabel
     {

@@ -36,6 +36,15 @@ public sealed class SenderGroup : INotifyPropertyChanged
     /// <summary>True when at least one message in the group is unread.</summary>
     public bool HasUnread => Messages.Any(m => !m.IsRead);
 
+    /// <summary>True when at least one message in the group is flagged.</summary>
+    public bool HasFlagged => Messages.Any(m => m.IsFlagged);
+
+    /// <summary>The flag name of the first flagged message in the group, or null if none are flagged.</summary>
+    public string? FlagLabel => Messages.FirstOrDefault(m => m.IsFlagged)?.FlagLabel;
+
+    /// <summary>The color of the first flagged message's flag, or null if none are flagged.</summary>
+    public string? FlagColorHex => Messages.FirstOrDefault(m => m.IsFlagged)?.FlagColorHex;
+
     /// <summary>Accessibility label read by screen readers when the tree node receives focus.</summary>
     public string AutomationName
     {
@@ -43,9 +52,10 @@ public sealed class SenderGroup : INotifyPropertyChanged
         {
             var countWord = Count == 1 ? "message" : "messages";
             var unread    = HasUnread ? " Has unread." : string.Empty;
+            var flagged   = HasFlagged ? $" {FlagLabel}." : string.Empty;
             return string.IsNullOrWhiteSpace(Preview)
-                ? $"{SenderName}. {Count} {countWord}.{unread} {DateDisplay}."
-                : $"{SenderName}. {Count} {countWord}.{unread} {Preview}. {DateDisplay}.";
+                ? $"{SenderName}. {Count} {countWord}.{flagged}{unread} {DateDisplay}."
+                : $"{SenderName}. {Count} {countWord}.{flagged}{unread} {Preview}. {DateDisplay}.";
         }
     }
 

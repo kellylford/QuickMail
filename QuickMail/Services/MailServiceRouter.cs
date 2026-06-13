@@ -90,6 +90,9 @@ public class MailServiceRouter : IMailService
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         => For(accountId).MarkReadBatchAsync(accountId, folderName, messageIds, ct);
 
+    public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
+        => For(accountId).SetMessageFlaggedAsync(accountId, folderName, messageId, flagged, ct);
+
     public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
         => For(accountId).MoveToTrashAsync(accountId, folderName, messageId, ct);
 
