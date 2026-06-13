@@ -319,6 +319,7 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.Replied         => "Replied",
         MessageFilter.Forwarded       => "Forwarded",
         MessageFilter.ToMe            => "To Me",
+        MessageFilter.Flagged         => "Flagged",
         _                             => string.Empty,
     };
 
@@ -635,7 +636,8 @@ public partial class MainViewModel : ObservableObject
         IViewService viewService,
         IRuleService ruleService,
         ISmtpService smtpService,
-        bool onlineMode = false)
+        bool onlineMode = false,
+        IFlagService? flagService = null)
     {
         _imap            = imap;
         _accountService  = accountService;
@@ -648,6 +650,7 @@ public partial class MainViewModel : ObservableObject
         _viewService     = viewService;
         _ruleService     = ruleService;
         _smtp            = smtpService;
+        _flagService     = flagService;
         OnlineMode       = onlineMode;
 
         var cfg = _configService.Load();
@@ -812,6 +815,7 @@ public partial class MainViewModel : ObservableObject
             "replied"     => MessageFilter.Replied,
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
+            "flagged"     => MessageFilter.Flagged,
             _             => MessageFilter.All,
         };
         ActiveSort = ConfigModel.ParseSort(view.Sort);
@@ -899,6 +903,7 @@ public partial class MainViewModel : ObservableObject
                 }
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached.OrderByDescending(m => m.Date));
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} cached messages (checking for new…)"
@@ -1206,6 +1211,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
         var cached = await _localStore.LoadAllSummariesAsync();
+        await ResolveFlagNamesAsync(cached);
         SetMessages(cached);
         StatusText = cached.Count > 0
             ? $"{cached.Count} messages (cached — syncing…)"
@@ -1446,6 +1452,13 @@ public partial class MainViewModel : ObservableObject
         var toInsert = new List<MailMessageSummary>();
         foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
+            // Reconcile server-flagged state: a message with \Flagged set on the server
+            // but no local flag assignment gets the built-in flag id so it displays correctly.
+            // (FlagName/FlagColorHex stay null until the next ResolveFlagNamesAsync call, but
+            // FlagId being set ensures IsFlagged, StatusDisplay, and MatchesFilter work.)
+            if (msg.IsServerFlagged && msg.FlagId == null)
+                msg.FlagId = Models.FlagDefinition.BuiltInFlagId.ToString();
+
             if (!seen.Add((msg.MessageId, msg.AccountId, msg.FolderName)))
                 continue;
             _rawMessages.Add(msg);
@@ -1666,6 +1679,7 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.Replied         => msg.IsReplied,
         MessageFilter.Forwarded       => msg.IsForwarded,
         MessageFilter.ToMe            => !msg.IsMailingList && Accounts.Any(a => msg.To.Contains(a.Username, StringComparison.OrdinalIgnoreCase)),
+        MessageFilter.Flagged         => msg.IsFlagged,
         _                             => true,
     };
 
@@ -1673,6 +1687,27 @@ public partial class MainViewModel : ObservableObject
     // MatchesFilter without an explicit ActiveDayLimit.HasValue guard at every site.
     private bool MatchesDayLimit(MailMessageSummary msg)
         => !ActiveDayLimit.HasValue || msg.Date >= DateTimeOffset.Now.AddDays(-ActiveDayLimit.Value);
+
+    // Populates FlagName and FlagColorHex on messages that have a FlagId set but no
+    // display name — which is the case for every cache load, since ReadSummariesAsync
+    // only reads flag_id. Skips gracefully when _flagService is not wired up.
+    private async Task ResolveFlagNamesAsync(IList<MailMessageSummary> messages)
+    {
+        if (_flagService == null) return;
+        var flagged = messages.Where(m => m.FlagId != null).ToList();
+        if (flagged.Count == 0) return;
+        var defs = await _flagService.LoadFlagDefinitionsAsync();
+        var lookup = new Dictionary<Guid, FlagDefinition>(defs.Count);
+        foreach (var d in defs) lookup[d.Id] = d;
+        foreach (var m in flagged)
+        {
+            if (m.FlagId != null && Guid.TryParse(m.FlagId, out var fid) && lookup.TryGetValue(fid, out var def))
+            {
+                m.FlagName     = def.Name;
+                m.FlagColorHex = def.ColorHex;
+            }
+        }
+    }
 
     // Binary-insert into the descending-by-date Messages collection.
     private void InsertMessageSorted(MailMessageSummary msg)
@@ -2302,6 +2337,7 @@ public partial class MainViewModel : ObservableObject
                 if (!IsCurrentFolderLoad(loadVersion, folder))
                     return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
@@ -2573,6 +2609,7 @@ public partial class MainViewModel : ObservableObject
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                     return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} messages (checking for new…)"
@@ -2805,6 +2842,7 @@ public partial class MainViewModel : ObservableObject
                 var cached = await _localStore.LoadAllSummariesAsync(accountId);
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} messages (checking for new…)"
@@ -4062,6 +4100,7 @@ public partial class MainViewModel : ObservableObject
             "replied"     => MessageFilter.Replied,
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
+            "flagged"     => MessageFilter.Flagged,
             _             => MessageFilter.All,
         };
         return Task.CompletedTask;

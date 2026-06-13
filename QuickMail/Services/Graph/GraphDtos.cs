@@ -76,7 +76,7 @@ internal sealed class GraphMessage
     [JsonPropertyName("flag")] public GraphFollowUpFlag? Flag { get; set; }
 }
 
-public class GraphFollowUpFlag
+internal sealed class GraphFollowUpFlag
 {
     /// <summary>Values: "notFlagged" | "flagged" | "complete".</summary>
     [JsonPropertyName("flagStatus")] public string FlagStatus { get; set; } = "notFlagged";

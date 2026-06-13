@@ -674,6 +674,7 @@ public partial class ViewManagerViewModel : ObservableObject
         "attachments" => "With Attachments",
         "replied"     => "Replied",
         "forwarded"   => "Forwarded",
+        "flagged"     => "Flagged",
         _             => "All",
     };
 

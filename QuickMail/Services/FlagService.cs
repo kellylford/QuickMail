@@ -4,6 +4,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -11,7 +12,6 @@ namespace QuickMail.Services;
 public class FlagService : IFlagService
 {
     private readonly string _flagsFile;
-    private readonly string _configFile;
     private readonly IConfigService _configService;
 
     private static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
@@ -21,7 +21,6 @@ public class FlagService : IFlagService
     public FlagService(ProfileContext profile, IConfigService configService)
     {
         _flagsFile     = Path.Combine(profile.ProfileDir, "flags.json");
-        _configFile    = Path.Combine(profile.ProfileDir, "config.ini");
         _configService = configService;
     }
 
@@ -44,7 +43,7 @@ public class FlagService : IFlagService
             {
                 // Enforce built-in properties so they cannot be mutated on disk.
                 var bi = list.Find(f => f.Id == FlagDefinition.BuiltInFlagId)!;
-                bi.Name     = "Flagged";
+                bi.Name      = "Flagged";
                 bi.IsBuiltIn = true;
             }
 
@@ -74,7 +73,7 @@ public class FlagService : IFlagService
 
     public async Task<FlagDefinition> GetKDefaultFlagAsync()
     {
-        var cfg   = _configService.Load();
+        var cfg = _configService.Load();
         if (!Guid.TryParse(cfg.DefaultFlagId, out var id))
             return FlagDefinition.CreateBuiltIn();
 
@@ -82,20 +81,42 @@ public class FlagService : IFlagService
         return flags.Find(f => f.Id == id) ?? FlagDefinition.CreateBuiltIn();
     }
 
-    public async Task SetKDefaultFlagAsync(Guid flagId)
+    public Task SetKDefaultFlagAsync(Guid flagId)
     {
         var cfg = _configService.Load();
         cfg.DefaultFlagId = flagId.ToString();
         _configService.Save(cfg);
-        await Task.CompletedTask;
+        return Task.CompletedTask;
     }
 
-    public async Task SetMessageFlagAsync(
+    public Task SetMessageFlagAsync(
         MailMessageSummary message,
         string? flagId,
         ILocalStoreService localStore,
         IMailService mailService,
         CancellationToken ct = default)
+        => SetMessageFlagCoreAsync(message, flagId, null, localStore, mailService, ct);
+
+    public async Task ToggleDefaultFlagAsync(
+        MailMessageSummary message,
+        ILocalStoreService localStore,
+        IMailService mailService,
+        CancellationToken ct = default)
+    {
+        var kFlag = await GetKDefaultFlagAsync();
+        if (message.IsFlagged)
+            await SetMessageFlagCoreAsync(message, null, null, localStore, mailService, ct);
+        else
+            await SetMessageFlagCoreAsync(message, kFlag.Id.ToString(), kFlag, localStore, mailService, ct);
+    }
+
+    private async Task SetMessageFlagCoreAsync(
+        MailMessageSummary message,
+        string? flagId,
+        FlagDefinition? resolvedDef,
+        ILocalStoreService localStore,
+        IMailService mailService,
+        CancellationToken ct)
     {
         // Update local store.
         try
@@ -105,43 +126,27 @@ public class FlagService : IFlagService
         }
         catch { /* --online mode: local store unavailable */ }
 
-        // Update IMAP \Flagged flag if this is the built-in flag or a clear.
-        bool serverFlagged = flagId != null;
-        await mailService.SetMessageFlaggedAsync(
-            message.AccountId, message.FolderName, message.MessageId, serverFlagged, ct);
+        // Only mirror \Flagged to the server when toggling the built-in flag.
+        // Custom flags are local-only and must not pollute the server's \Flagged state.
+        bool isBuiltIn  = Guid.TryParse(flagId,         out var newFid) && newFid == FlagDefinition.BuiltInFlagId;
+        bool wasBuiltIn = Guid.TryParse(message.FlagId, out var oldFid) && oldFid == FlagDefinition.BuiltInFlagId;
+        if (isBuiltIn || wasBuiltIn)
+            await mailService.SetMessageFlaggedAsync(
+                message.AccountId, message.FolderName, message.MessageId, isBuiltIn, ct);
 
-        // Update in-memory model.
-        message.FlagId = flagId;
-
-        if (flagId == null)
-        {
-            message.FlagName     = null;
-            message.FlagColorHex = null;
-        }
-        else
+        // Resolve flag definition if not already supplied.
+        if (flagId != null && resolvedDef == null && Guid.TryParse(flagId, out var defId))
         {
             var flags = await LoadFlagDefinitionsAsync();
-            var def   = flags.Find(f => f.Id.ToString() == flagId);
-            if (def != null)
-            {
-                message.FlagName     = def.Name;
-                message.FlagColorHex = def.ColorHex;
-            }
+            resolvedDef = flags.Find(f => f.Id == defId);
         }
-    }
 
-    public async Task ToggleDefaultFlagAsync(
-        MailMessageSummary message,
-        ILocalStoreService localStore,
-        IMailService mailService,
-        CancellationToken ct = default)
-    {
-        var kFlag = await GetKDefaultFlagAsync();
-
-        // Clear if already flagged with anything; set K-default if unflagged.
-        if (message.IsFlagged)
-            await SetMessageFlagAsync(message, null, localStore, mailService, ct);
-        else
-            await SetMessageFlagAsync(message, kFlag.Id.ToString(), localStore, mailService, ct);
+        // Update in-memory model on the UI thread.
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            message.FlagId       = flagId;
+            message.FlagName     = resolvedDef?.Name;
+            message.FlagColorHex = resolvedDef?.ColorHex;
+        });
     }
 }
