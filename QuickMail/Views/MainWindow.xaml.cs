@@ -75,6 +75,57 @@ public class StringToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>
+/// Converts a hex color string (e.g. "#FF8C00") to a SolidColorBrush.
+/// Returns Transparent when the string is null or empty (message is unflagged).
+/// </summary>
+public class StringToBrushConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is string hex && !string.IsNullOrEmpty(hex))
+        {
+            try
+            {
+                var color = (System.Windows.Media.Color)
+                    System.Windows.Media.ColorConverter.ConvertFromString(hex);
+                return new System.Windows.Media.SolidColorBrush(color);
+            }
+            catch { }
+        }
+        return System.Windows.Media.Brushes.Transparent;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
+/// Builds the accessible name string for a message row, optionally prepending the flag label.
+/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus].
+/// </summary>
+public class MessageAccessibleNameConverter : IMultiValueConverter
+{
+    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (values.Length < 7) return string.Empty;
+        var flagLabel       = values[0] as string ?? string.Empty;
+        var readStatusLabel = values[1] as string ?? string.Empty;
+        var from            = values[2] as string ?? string.Empty;
+        var subject         = values[3] as string ?? string.Empty;
+        var preview         = values[4] as string ?? string.Empty;
+        var dateDisplay     = values[5] as string ?? string.Empty;
+        var announceFlag    = values[6] is bool b && b;
+        var flagPrefix      = announceFlag && !string.IsNullOrEmpty(flagLabel)
+                                ? flagLabel + ". "
+                                : string.Empty;
+        return $"{flagPrefix}{readStatusLabel}. {from}. {subject}. {preview}. {dateDisplay}.";
+    }
+
+    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 public partial class MainWindow : Window
 {
     private static readonly TimeSpan TypeAheadResetDelay = TimeSpan.FromSeconds(1);
@@ -2487,6 +2538,20 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
         }
+    }
+
+    // Click handler for the 16px transparent flag hit area in all message row DataTemplates.
+    // Tag is set to the MailMessageSummary, ConversationGroup, or SenderGroup in the template.
+    private async void FlagHitArea_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not FrameworkElement fe) return;
+        e.Handled = true;
+        if (fe.Tag is MailMessageSummary msg)
+            await _vm.ToggleSingleFlagAsync(msg);
+        else if (fe.Tag is ConversationGroup cg)
+            await _vm.ToggleGroupFlagAsync(cg.Messages);
+        else if (fe.Tag is SenderGroup sg)
+            await _vm.ToggleGroupFlagAsync(sg.Messages);
     }
 
     // Builds the screen-reader announcement string for a single message row.

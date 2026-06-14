@@ -17,6 +17,8 @@
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <local:BoolToColumnWidthConverter       x:Key="BoolToColumnWidthConverter"/>
         <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
+        <local:StringToBrushConverter           x:Key="StringToBrushConverter"/>
+        <local:MessageAccessibleNameConverter   x:Key="MessageAccessibleNameConverter"/>
 
         <!-- ── Shared context menus ── -->
 
@@ -1117,14 +1119,23 @@
                         </ListView.View>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                <Setter Property="BorderThickness" Value="4,0,0,0"/>
+                                <Setter Property="BorderBrush">
+                                    <Setter.Value>
+                                        <Binding Path="FlagColorHex" Converter="{StaticResource StringToBrushConverter}"/>
+                                    </Setter.Value>
+                                </Setter>
                                 <Setter Property="AutomationProperties.Name">
                                     <Setter.Value>
-                                        <MultiBinding StringFormat="{}{0}. {1}. {2}. {3}. {4}.">
+                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
+                                            <Binding Path="FlagLabel"/>
                                             <Binding Path="ReadStatusLabel"/>
                                             <Binding Path="From"/>
                                             <Binding Path="Subject"/>
                                             <Binding Path="Preview"/>
                                             <Binding Path="DateDisplay"/>
+                                            <Binding Path="DataContext.AnnounceFlagStatus"
+                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1156,12 +1167,15 @@
                                    BasedOn="{StaticResource {x:Type TreeViewItem}}">
                                 <Setter Property="AutomationProperties.Name">
                                     <Setter.Value>
-                                        <MultiBinding StringFormat="{}{0}. {1}. {2}. {3}. {4}.">
+                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
+                                            <Binding Path="FlagLabel"/>
                                             <Binding Path="ReadStatusLabel"/>
                                             <Binding Path="From"/>
                                             <Binding Path="Subject"/>
                                             <Binding Path="Preview"/>
                                             <Binding Path="DateDisplay"/>
+                                            <Binding Path="DataContext.AnnounceFlagStatus"
+                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1172,59 +1186,77 @@
                             <HierarchicalDataTemplate DataType="{x:Type models:ConversationGroup}"
                                                       ItemsSource="{Binding Messages}"
                                                       ItemContainerStyle="{StaticResource MessageTreeItemStyle}">
-                                <StackPanel>
-                                    <TextBlock TextTrimming="CharacterEllipsis"
-                                               FontWeight="{Binding HasUnread, Converter={StaticResource BoolToWeightConverter}}">
-                                        <Run Text="{Binding Subject, Mode=OneWay}"/>
-                                        <Run Text=" "/>
-                                        <Run Text="{Binding Count, StringFormat=({0}), Mode=OneWay}"/>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding LastSenderName}"
-                                               FontSize="11" Opacity="0.85"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding LastSenderName}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding Preview}"
-                                               FontSize="11" Opacity="0.7"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Preview}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
+                                <DockPanel LastChildFill="True">
+                                    <Grid DockPanel.Dock="Left" Width="16">
+                                        <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                                Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                                        <Border Background="Transparent"
+                                                Tag="{Binding}"
+                                                MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
+                                    </Grid>
+                                    <StackPanel>
+                                        <TextBlock TextTrimming="CharacterEllipsis"
+                                                   FontWeight="{Binding HasUnread, Converter={StaticResource BoolToWeightConverter}}">
+                                            <Run Text="{Binding Subject, Mode=OneWay}"/>
+                                            <Run Text=" "/>
+                                            <Run Text="{Binding Count, StringFormat=({0}), Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding LastSenderName}"
+                                                   FontSize="11" Opacity="0.85"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding LastSenderName}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Preview}"
+                                                   FontSize="11" Opacity="0.7"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Preview}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DockPanel>
                             </HierarchicalDataTemplate>
 
                             <!-- Level 2: individual message row matching the ListView column layout -->
                             <DataTemplate DataType="{x:Type models:MailMessageSummary}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="180"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="80"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding From}"
-                                               FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Subject}"
-                                               FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding DateDisplay}"
-                                               TextAlignment="Right"/>
-                                </Grid>
+                                <DockPanel LastChildFill="True">
+                                    <Grid DockPanel.Dock="Left" Width="16">
+                                        <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                                Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                                        <Border Background="Transparent"
+                                                Tag="{Binding}"
+                                                MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="180"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="80"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding From}"
+                                                   FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Subject}"
+                                                   FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding DateDisplay}"
+                                                   TextAlignment="Right"/>
+                                    </Grid>
+                                </DockPanel>
                             </DataTemplate>
                         </TreeView.Resources>
                         <TreeView.ItemContainerStyle>
@@ -1260,12 +1292,15 @@
                                    BasedOn="{StaticResource {x:Type TreeViewItem}}">
                                 <Setter Property="AutomationProperties.Name">
                                     <Setter.Value>
-                                        <MultiBinding StringFormat="{}{0}. {1}. {2}. {3}. {4}.">
+                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
+                                            <Binding Path="FlagLabel"/>
                                             <Binding Path="ReadStatusLabel"/>
                                             <Binding Path="From"/>
                                             <Binding Path="Subject"/>
                                             <Binding Path="Preview"/>
                                             <Binding Path="DateDisplay"/>
+                                            <Binding Path="DataContext.AnnounceFlagStatus"
+                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1278,59 +1313,77 @@
                             <HierarchicalDataTemplate DataType="{x:Type models:SenderGroup}"
                                                       ItemsSource="{Binding Messages}"
                                                       ItemContainerStyle="{StaticResource SenderMessageTreeItemStyle}">
-                                <StackPanel>
-                                    <TextBlock TextTrimming="CharacterEllipsis"
-                                               FontWeight="{Binding HasUnread, Converter={StaticResource BoolToWeightConverter}}">
-                                        <Run Text="{Binding SenderName, Mode=OneWay}"/>
-                                        <Run Text=" "/>
-                                        <Run Text="{Binding Count, StringFormat=({0}), Mode=OneWay}"/>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding NewestSubject}"
-                                               FontSize="11" Opacity="0.85"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding NewestSubject}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding Preview}"
-                                               FontSize="11" Opacity="0.7"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Preview}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
+                                <DockPanel LastChildFill="True">
+                                    <Grid DockPanel.Dock="Left" Width="16">
+                                        <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                                Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                                        <Border Background="Transparent"
+                                                Tag="{Binding}"
+                                                MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
+                                    </Grid>
+                                    <StackPanel>
+                                        <TextBlock TextTrimming="CharacterEllipsis"
+                                                   FontWeight="{Binding HasUnread, Converter={StaticResource BoolToWeightConverter}}">
+                                            <Run Text="{Binding SenderName, Mode=OneWay}"/>
+                                            <Run Text=" "/>
+                                            <Run Text="{Binding Count, StringFormat=({0}), Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding NewestSubject}"
+                                                   FontSize="11" Opacity="0.85"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding NewestSubject}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Preview}"
+                                                   FontSize="11" Opacity="0.7"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Preview}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DockPanel>
                             </HierarchicalDataTemplate>
 
                             <!-- Level 2: individual message row matching the ListView column layout -->
                             <DataTemplate DataType="{x:Type models:MailMessageSummary}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="180"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="80"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding From}"
-                                               FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Subject}"
-                                               FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding DateDisplay}"
-                                               TextAlignment="Right"/>
-                                </Grid>
+                                <DockPanel LastChildFill="True">
+                                    <Grid DockPanel.Dock="Left" Width="16">
+                                        <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                                Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                                        <Border Background="Transparent"
+                                                Tag="{Binding}"
+                                                MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="180"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="80"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding From}"
+                                                   FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Subject}"
+                                                   FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding DateDisplay}"
+                                                   TextAlignment="Right"/>
+                                    </Grid>
+                                </DockPanel>
                             </DataTemplate>
                         </TreeView.Resources>
                         <TreeView.ItemContainerStyle>
@@ -1366,12 +1419,15 @@
                                    BasedOn="{StaticResource {x:Type TreeViewItem}}">
                                 <Setter Property="AutomationProperties.Name">
                                     <Setter.Value>
-                                        <MultiBinding StringFormat="{}{0}. {1}. {2}. {3}. {4}.">
+                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
+                                            <Binding Path="FlagLabel"/>
                                             <Binding Path="ReadStatusLabel"/>
                                             <Binding Path="From"/>
                                             <Binding Path="Subject"/>
                                             <Binding Path="Preview"/>
                                             <Binding Path="DateDisplay"/>
+                                            <Binding Path="DataContext.AnnounceFlagStatus"
+                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1381,59 +1437,77 @@
                             <HierarchicalDataTemplate DataType="{x:Type models:SenderGroup}"
                                                       ItemsSource="{Binding Messages}"
                                                       ItemContainerStyle="{StaticResource ToMessageTreeItemStyle}">
-                                <StackPanel>
-                                    <TextBlock TextTrimming="CharacterEllipsis"
-                                               FontWeight="{Binding HasUnread, Converter={StaticResource BoolToWeightConverter}}">
-                                        <Run Text="{Binding SenderName, Mode=OneWay}"/>
-                                        <Run Text=" "/>
-                                        <Run Text="{Binding Count, StringFormat=({0}), Mode=OneWay}"/>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding NewestSubject}"
-                                               FontSize="11" Opacity="0.85"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding NewestSubject}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding Preview}"
-                                               FontSize="11" Opacity="0.7"
-                                               TextTrimming="CharacterEllipsis">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding Preview}" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
+                                <DockPanel LastChildFill="True">
+                                    <Grid DockPanel.Dock="Left" Width="16">
+                                        <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                                Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                                        <Border Background="Transparent"
+                                                Tag="{Binding}"
+                                                MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
+                                    </Grid>
+                                    <StackPanel>
+                                        <TextBlock TextTrimming="CharacterEllipsis"
+                                                   FontWeight="{Binding HasUnread, Converter={StaticResource BoolToWeightConverter}}">
+                                            <Run Text="{Binding SenderName, Mode=OneWay}"/>
+                                            <Run Text=" "/>
+                                            <Run Text="{Binding Count, StringFormat=({0}), Mode=OneWay}"/>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding NewestSubject}"
+                                                   FontSize="11" Opacity="0.85"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding NewestSubject}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Preview}"
+                                                   FontSize="11" Opacity="0.7"
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Preview}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </DockPanel>
                             </HierarchicalDataTemplate>
 
                             <!-- Level 2: individual message row matching the ListView column layout -->
                             <DataTemplate DataType="{x:Type models:MailMessageSummary}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="180"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="80"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="{Binding From}"
-                                               FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="1" Text="{Binding Subject}"
-                                               FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                               TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Grid.Column="2" Text="{Binding DateDisplay}"
-                                               TextAlignment="Right"/>
-                                </Grid>
+                                <DockPanel LastChildFill="True">
+                                    <Grid DockPanel.Dock="Left" Width="16">
+                                        <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
+                                                Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                                        <Border Background="Transparent"
+                                                Tag="{Binding}"
+                                                MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="180"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="80"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" Text="{Binding From}"
+                                                   FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Subject}"
+                                                   FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding DateDisplay}"
+                                                   TextAlignment="Right"/>
+                                    </Grid>
+                                </DockPanel>
                             </DataTemplate>
                         </TreeView.Resources>
                         <TreeView.ItemContainerStyle>
