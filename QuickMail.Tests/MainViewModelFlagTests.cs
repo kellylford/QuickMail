@@ -84,6 +84,123 @@ public class MainViewModelFlagTests
 
         Assert.False(vm.IsFilterFlagged);
     }
+
+    // ── Phase 5: in-memory flag reconciliation on FolderSynced ───────────────
+
+    private sealed class FireableSyncService : ISyncService
+    {
+        public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
+#pragma warning disable CS0067
+        public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+        public event Action<int>? RulesApplied;
+        public event Action<int, int>? SyncProgressChanged;
+#pragma warning restore CS0067
+        public void Fire(IReadOnlyList<MailMessageSummary> messages) => FolderSynced?.Invoke(messages);
+        public Task SyncAllAccountsAsync(IEnumerable<AccountModel> accounts, IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders, CancellationToken ct) => Task.CompletedTask;
+        public Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
+        public Task SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.CompletedTask;
+        public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
+    }
+
+    [Fact]
+    public async Task OnFolderSynced_ExternallyUnflaggedMessage_ClearsFlagInMemory()
+    {
+        // Arrange: load a flagged message into the VM via the initial FolderSynced fire.
+        var accountId  = Guid.NewGuid();
+        var syncService = new FireableSyncService();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), syncService,
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService(), flagService: new StubFlagService());
+
+        await vm.InitialLoadAsync();
+
+        // Point the selected folder at a real folder so FolderSynced processes messages.
+        vm.SelectedFolder = new MailFolderModel
+        {
+            FullName  = "INBOX",
+            AccountId = accountId,
+            IsHeader  = false,
+        };
+
+        // Fire 1: message arrives server-flagged → added to _rawMessages with FlagId set.
+        var flaggedIncoming = new MailMessageSummary
+        {
+            MessageId       = "msg1",
+            AccountId       = accountId,
+            FolderName      = "INBOX",
+            IsServerFlagged = true,
+        };
+        syncService.Fire([flaggedIncoming]);
+
+        var inMemory = vm.LoadedMessages.FirstOrDefault(m => m.MessageId == "msg1");
+        Assert.NotNull(inMemory);
+        Assert.NotNull(inMemory!.FlagId);
+
+        // Fire 2: same message, server now reports not-flagged (externally cleared).
+        var unflaggedSync = new MailMessageSummary
+        {
+            MessageId       = "msg1",
+            AccountId       = accountId,
+            FolderName      = "INBOX",
+            IsServerFlagged = false,
+        };
+        syncService.Fire([unflaggedSync]);
+
+        // The in-memory flag must have been cleared.
+        Assert.Null(inMemory.FlagId);
+    }
+
+    [Fact]
+    public async Task OnFolderSynced_LocalNamedFlag_PreservedWhenServerFlagged()
+    {
+        // Arrange: message in memory with a user-assigned named flag (not the built-in default).
+        var accountId   = Guid.NewGuid();
+        var customFlagId = Guid.NewGuid().ToString();
+        var syncService = new FireableSyncService();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), syncService,
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService(), flagService: new StubFlagService());
+
+        await vm.InitialLoadAsync();
+
+        vm.SelectedFolder = new MailFolderModel
+        {
+            FullName  = "INBOX",
+            AccountId = accountId,
+            IsHeader  = false,
+        };
+
+        // Fire 1: message arrives and we simulate a named flag being applied locally.
+        var incoming = new MailMessageSummary
+        {
+            MessageId       = "msg2",
+            AccountId       = accountId,
+            FolderName      = "INBOX",
+            IsServerFlagged = true,
+            FlagId          = customFlagId,
+        };
+        syncService.Fire([incoming]);
+
+        var inMemory = vm.LoadedMessages.FirstOrDefault(m => m.MessageId == "msg2");
+        Assert.NotNull(inMemory);
+        Assert.Equal(customFlagId, inMemory!.FlagId);
+
+        // Fire 2: server still flagged — named flag must NOT be overwritten with built-in default.
+        var syncAgain = new MailMessageSummary
+        {
+            MessageId       = "msg2",
+            AccountId       = accountId,
+            FolderName      = "INBOX",
+            IsServerFlagged = true,
+        };
+        syncService.Fire([syncAgain]);
+
+        Assert.Equal(customFlagId, inMemory.FlagId);
+    }
 }
 
 /// <summary>Local store stub that serves a fixed set of messages for flag filter tests.</summary>

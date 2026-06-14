@@ -210,4 +210,74 @@ public class LocalStoreServiceMigrationTests
         Assert.Equal("1001", loaded[0].MessageId);
         Assert.Equal("1001", await store.GetMaxMessageKeyAsync(accountId, "Inbox"));
     }
+
+    // ── Phase 5: IMAP ↔ local flag reconciliation (§9.3) ─────────────────────
+
+    private static QuickMail.Models.MailMessageSummary MakeSummary(Guid accountId, string id, bool serverFlagged = false, string? flagId = null) =>
+        new()
+        {
+            MessageId      = id,
+            AccountId      = accountId,
+            FolderName     = "Inbox",
+            Subject        = id,
+            Date           = DateTimeOffset.UtcNow,
+            IsServerFlagged = serverFlagged,
+            FlagId         = flagId,
+        };
+
+    [Fact]
+    public async Task ExternallyFlagged_NewMessage_GetsBuiltInFlagOnUpsert()
+    {
+        var dir       = NewTempDir();
+        var accountId = Guid.NewGuid();
+        var store     = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+
+        // Simulate a message that arrives from IMAP with \Flagged set (flagged in Outlook)
+        // and no local flag_id yet (new message, first sync).
+        var msg = MakeSummary(accountId, "1", serverFlagged: true);
+        await store.UpsertSummariesAsync([msg]);
+
+        var loaded = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        Assert.Equal(QuickMail.Models.FlagDefinition.BuiltInFlagId.ToString(), loaded[0].FlagId);
+    }
+
+    [Fact]
+    public async Task ExternallyUnflagged_ExistingMessage_ClearsFlagOnUpsert()
+    {
+        var dir       = NewTempDir();
+        var accountId = Guid.NewGuid();
+        var store     = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+
+        // First sync: message arrives server-flagged → gets built-in flag_id.
+        await store.UpsertSummariesAsync([MakeSummary(accountId, "1", serverFlagged: true)]);
+
+        // Second sync: server no longer reports \Flagged (externally unflagged).
+        await store.UpsertSummariesAsync([MakeSummary(accountId, "1", serverFlagged: false)]);
+
+        var loaded = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        Assert.Null(loaded[0].FlagId);
+    }
+
+    [Fact]
+    public async Task LocalNamedFlag_PreservedWhenServerFlaggedOnUpsert()
+    {
+        var dir       = NewTempDir();
+        var accountId = Guid.NewGuid();
+        var customId  = Guid.NewGuid().ToString();
+        var store     = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+
+        // User sets a named flag ("Urgent") locally — stored via UpdateFlagIdAsync.
+        await store.UpsertSummariesAsync([MakeSummary(accountId, "1", serverFlagged: true)]);
+        await store.UpdateFlagIdAsync(accountId, "Inbox", "1", customId);
+
+        // Next sync: server still reports \Flagged (which it would, since we set it).
+        await store.UpsertSummariesAsync([MakeSummary(accountId, "1", serverFlagged: true)]);
+
+        var loaded = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        // Local "Urgent" flag must be preserved — not overwritten with the built-in default.
+        Assert.Equal(customId, loaded[0].FlagId);
+    }
 }

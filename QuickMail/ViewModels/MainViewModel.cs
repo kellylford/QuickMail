@@ -1459,28 +1459,38 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        // Hash existing keys once so the dedupe check is O(1) per incoming item
-        // instead of an O(n) scan per item — that would dominate a multi-thousand-message
-        // All Mail view and freeze the UI thread. Use _rawMessages (not Messages) as the
-        // canonical set so filtered-out messages still prevent duplicates.
-        var seen = new HashSet<(string, Guid, string)>(_rawMessages.Count);
+        // Build a lookup map once so dedupe and flag-reconciliation are both O(1) per incoming
+        // item instead of O(n) scans — critical in All Mail views with thousands of messages.
+        var rawByKey = new Dictionary<(string, Guid, string), MailMessageSummary>(_rawMessages.Count);
         foreach (var e in _rawMessages)
-            seen.Add((e.MessageId, e.AccountId, e.FolderName));
+            rawByKey.TryAdd((e.MessageId, e.AccountId, e.FolderName), e);
+        var seen = new HashSet<(string, Guid, string)>(rawByKey.Keys);
 
         // Collect truly new messages; add them to _rawMessages immediately so the
         // search pool stays in sync with what the list will eventually show.
         var toInsert = new List<MailMessageSummary>();
         foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
-            // Reconcile server-flagged state: a message with \Flagged set on the server
-            // but no local flag assignment gets the built-in flag id so it displays correctly.
-            // (FlagName/FlagColorHex stay null until the next ResolveFlagNamesAsync call, but
-            // FlagId being set ensures IsFlagged, StatusDisplay, and MatchesFilter work.)
+            // Reconcile server-flagged state for new incoming messages: a message with
+            // \Flagged set on the server but no local flag assignment gets the built-in flag
+            // id so it displays correctly.  FlagName/FlagColorHex stay null until the next
+            // ResolveFlagNamesAsync call, but FlagId ensures IsFlagged and MatchesFilter work.
             if (msg.IsServerFlagged && msg.FlagId == null)
                 msg.FlagId = Models.FlagDefinition.BuiltInFlagId.ToString();
 
             if (!seen.Add((msg.MessageId, msg.AccountId, msg.FolderName)))
+            {
+                // Existing message: reconcile external flag change (§9.3).
+                // If the server now reports not-flagged but the in-memory message still has
+                // a flag set, another client cleared it — clear our local flag to match.
+                if (!msg.IsServerFlagged &&
+                    rawByKey.TryGetValue((msg.MessageId, msg.AccountId, msg.FolderName), out var existing) &&
+                    existing.FlagId != null)
+                {
+                    existing.FlagId = null;
+                }
                 continue;
+            }
             _rawMessages.Add(msg);
             if (!MatchesFilter(msg)) continue;
             if (!MatchesDayLimit(msg)) continue;

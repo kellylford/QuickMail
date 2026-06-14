@@ -257,11 +257,16 @@ public class LocalStoreService : ILocalStoreService
                 is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
                 preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
-                flag_id         = CASE WHEN flag_id IS NULL THEN excluded.flag_id ELSE flag_id END;
+                flag_id         = CASE
+                    WHEN excluded.flag_id IS NULL THEN NULL
+                    WHEN flag_id IS NULL           THEN excluded.flag_id
+                    ELSE                                flag_id
+                    END;
             """;
-            // flag_id uses COALESCE semantics on DO UPDATE: a server-flagged message that
-            // has no local flag assignment gets the built-in flag id; an existing user
-            // assignment is never overwritten by sync.
+            // flag_id reconciliation on DO UPDATE (§9.3):
+            //   server unflagged (excluded.flag_id NULL)  → clear any local flag (external unflag)
+            //   server flagged, no local flag             → apply built-in default flag id
+            //   server flagged, local named flag present  → preserve the user's named flag
         var pUid       = cmd.Parameters.Add("$uid",       SqliteType.Text);
         var pAid       = cmd.Parameters.Add("$aid",       SqliteType.Text);
         var pFn        = cmd.Parameters.Add("$fn",        SqliteType.Text);
