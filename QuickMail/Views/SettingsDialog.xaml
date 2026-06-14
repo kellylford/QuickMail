@@ -225,6 +225,11 @@
                                           IsChecked="{Binding AnnounceFormattingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce block type such as heading level when the caret moves to a different paragraph in HTML compose mode"/>
+
+                                <CheckBox Content="Announce fla_g status"
+                                          IsChecked="{Binding AnnounceFlagStatus, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Announce flag status when navigating to a flagged message"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

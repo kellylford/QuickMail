@@ -386,6 +386,12 @@
                               IsChecked="{Binding IsFilterToMe, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="tome"/>
+                    <Separator/>
+                    <MenuItem Header="Fla_gged"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterFlagged, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="flagged"/>
                 </MenuItem>
                 <MenuItem Header="S_ort">
                     <MenuItem Header="Newest _First"

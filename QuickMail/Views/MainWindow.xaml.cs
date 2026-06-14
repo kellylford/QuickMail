@@ -618,6 +618,22 @@ public partial class MainWindow : Window
             defaultKey: Key.A, defaultModifiers: ModifierKeys.Control,
             isAvailable: IsMessageListFocused));
 
+        _registry.Register(new CommandDefinition(
+            id: "mail.toggleFlag", category: "Mail", title: "Toggle Flag",
+            execute: async () => await ToggleFlagCommandAsync(),
+            defaultKey: Key.K, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.HasSelectedMessage || IsGroupRowSelected()));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.pickFlag", category: "Mail", title: "Pick Flag…",
+            execute: async () => await PickFlagCommandAsync(),
+            defaultKey: Key.K, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => _vm.HasSelectedMessage));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.openFlagManager", category: "Mail", title: "Manage Flags…",
+            execute: OpenFlagManager));
+
         // Override the VM's mail.delete with one that deletes ALL selected messages.
         // The VM registration uses DeleteMessageCommand, which deletes only SelectedMessage
         // (one item). When the message list has focus with multiple items selected, bypass
@@ -1534,6 +1550,37 @@ public partial class MainWindow : Window
         return false;
     }
 
+    private bool IsGroupRowSelected()
+    {
+        if (_vm.IsConversationsView) return ConversationTree.SelectedItem is ConversationGroup;
+        if (_vm.IsFromView)          return SenderGroupTree.SelectedItem is SenderGroup;
+        if (_vm.IsToView)            return ToGroupTree.SelectedItem is SenderGroup;
+        return false;
+    }
+
+    private async Task ToggleFlagCommandAsync()
+    {
+        if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg)
+            await _vm.ToggleGroupFlagAsync(cg.Messages);
+        else if (_vm.IsFromView && SenderGroupTree.SelectedItem is SenderGroup sg)
+            await _vm.ToggleGroupFlagAsync(sg.Messages);
+        else if (_vm.IsToView && ToGroupTree.SelectedItem is SenderGroup tg)
+            await _vm.ToggleGroupFlagAsync(tg.Messages);
+        else if (_vm.SelectedMessage != null)
+            await _vm.ToggleSingleFlagAsync(_vm.SelectedMessage);
+    }
+
+    private Task PickFlagCommandAsync()
+    {
+        // Phase 4: flag picker window not yet implemented.
+        return Task.CompletedTask;
+    }
+
+    private void OpenFlagManager()
+    {
+        // Phase 4: flag manager window not yet implemented.
+    }
+
     private void ExtendSelectionToTop()
     {
         if (MessageList.Items.Count == 0) return;
@@ -2443,8 +2490,13 @@ public partial class MainWindow : Window
     }
 
     // Builds the screen-reader announcement string for a single message row.
-    private static string MessageSummaryAnnouncement(MailMessageSummary msg) =>
-        $"{msg.ReadStatusLabel}. {msg.From}. {msg.Subject}. {msg.Preview}. {msg.DateDisplay}.";
+    private string MessageSummaryAnnouncement(MailMessageSummary msg)
+    {
+        var flag = _vm.AnnounceFlagStatus && !string.IsNullOrEmpty(msg.FlagLabel)
+            ? msg.FlagLabel + ". "
+            : string.Empty;
+        return $"{flag}{msg.ReadStatusLabel}. {msg.From}. {msg.Subject}. {msg.Preview}. {msg.DateDisplay}.";
+    }
 
     // After an async conversation rebuild, selects and focuses the conversation
     // at the given index (clamped to the new list size).

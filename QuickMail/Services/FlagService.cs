@@ -141,12 +141,16 @@ public class FlagService : IFlagService
             resolvedDef = flags.Find(f => f.Id == defId);
         }
 
-        // Update in-memory model on the UI thread.
-        Application.Current.Dispatcher.Invoke(() =>
+        // Update in-memory model on the UI thread (or directly when running outside a WPF app, e.g. in tests).
+        void Apply()
         {
             message.FlagId       = flagId;
             message.FlagName     = resolvedDef?.Name;
             message.FlagColorHex = resolvedDef?.ColorHex;
-        });
+        }
+        if (Application.Current?.Dispatcher is { } disp)
+            disp.Invoke(Apply);
+        else
+            Apply();
     }
 }

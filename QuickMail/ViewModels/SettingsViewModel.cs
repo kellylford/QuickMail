@@ -53,6 +53,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _announceFormattingWhileNavigating;
 
     [ObservableProperty]
+    private bool _announceFlagStatus;
+
+    [ObservableProperty]
     private bool _confirmEmptyTrash;
 
     // ── Composing ──────────────────────────────────────────────────────────────────
@@ -135,6 +138,7 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceSpellingWhileNavigating  = cfg.AnnounceSpellingWhileNavigating;
         AnnounceSpellingSuggestions      = cfg.AnnounceSpellingSuggestions;
         AnnounceFormattingWhileNavigating = cfg.AnnounceFormattingWhileNavigating;
+        AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
@@ -184,6 +188,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceSpellingWhileNavigating  = AnnounceSpellingWhileNavigating;
         cfg.AnnounceSpellingSuggestions      = AnnounceSpellingSuggestions;
         cfg.AnnounceFormattingWhileNavigating = AnnounceFormattingWhileNavigating;
+        cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;

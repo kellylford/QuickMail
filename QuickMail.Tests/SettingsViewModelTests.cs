@@ -128,4 +128,24 @@ public class SettingsViewModelTests
         Assert.True(row.HasCustomBinding);
         Assert.Equal("Ctrl+G", row.CustomGesture);
     }
+
+    [Fact]
+    public void AnnounceFlagStatus_DefaultsToTrue()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        Assert.True(vm.AnnounceFlagStatus);
+    }
+
+    [Fact]
+    public void AnnounceFlagStatus_LoadAndSave_RoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        vmSave.AnnounceFlagStatus = false;
+        vmSave.SaveCommand.Execute(null);
+
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.False(vmLoad.AnnounceFlagStatus);
+    }
 }

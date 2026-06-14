@@ -76,6 +76,9 @@ public partial class MainViewModel : ObservableObject
     // Version stamp for message body loads; latest selection wins.
     private int _messageLoadVersion;
 
+    private bool _announceFlagStatus;
+    private string? _activeFlagFilterId;
+
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
     public IReadOnlyDictionary<Guid, List<MailFolderModel>> CachedFolders => _cachedFolders;
@@ -112,6 +115,11 @@ public partial class MainViewModel : ObservableObject
     {
         FullName    = "\u0000AllTrash",
         DisplayName = "All Trash"
+    };
+    public static readonly MailFolderModel AllFlaggedFolder = new()
+    {
+        FullName    = "\u0000AllFlagged",
+        DisplayName = "All Flagged Mail"
     };
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
@@ -184,7 +192,8 @@ public partial class MainViewModel : ObservableObject
                string.Equals(folder.FullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
-               string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal);
+               string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal);
     }
 
     // ── Saved views ───────────────────────────────────────────────────────────────
@@ -310,7 +319,9 @@ public partial class MainViewModel : ObservableObject
     public bool IsFilterReplied         => ActiveFilter == MessageFilter.Replied;
     public bool IsFilterForwarded       => ActiveFilter == MessageFilter.Forwarded;
     public bool IsFilterToMe            => ActiveFilter == MessageFilter.ToMe;
+    public bool IsFilterFlagged         => ActiveFilter == MessageFilter.Flagged;
     public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
+    public bool AnnounceFlagStatus      => _announceFlagStatus;
     public string FilterLabel => ActiveFilter switch
     {
         MessageFilter.Unread          => "Unread",
@@ -662,11 +673,14 @@ public partial class MainViewModel : ObservableObject
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
+        _announceFlagStatus = cfg.AnnounceFlagStatus;
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.RulesApplied    += OnRulesApplied;
         _imap.InboxNewMailDetected += OnInboxNewMailDetected;
+        if (_flagService != null)
+            _flagService.FlagDefinitionsChanged += OnFlagDefinitionsChanged;
 
         // Load saved views and register their commands before the UI is shown.
         LoadSavedViews();
@@ -819,6 +833,7 @@ public partial class MainViewModel : ObservableObject
             _             => MessageFilter.All,
         };
         ActiveSort = ConfigModel.ParseSort(view.Sort);
+        _activeFlagFilterId = string.IsNullOrEmpty(view.FlagFilterId) ? null : view.FlagFilterId;
 
         ActiveDayLimit = view.DaysOfMail;
         SearchText     = string.Empty;
@@ -1408,6 +1423,11 @@ public partial class MainViewModel : ObservableObject
             // Per-account "All Mail" - only messages belonging to that account.
             relevant = incoming.Where(m => m.AccountId == watchedAccountId);
         }
+        else if (selected.FullName == AllFlaggedFolder.FullName)
+        {
+            // All Flagged Mail — only accept flagged incoming messages.
+            relevant = incoming.Where(m => m.IsFlagged);
+        }
         else if (selected.FullName == AllInboxesFolder.FullName ||
                  selected.FullName == AllDraftsFolder.FullName  ||
                  selected.FullName == AllSentFolder.FullName    ||
@@ -1634,6 +1654,8 @@ public partial class MainViewModel : ObservableObject
         IEnumerable<MailMessageSummary> result = _rawMessages;
         if (ActiveFilter != MessageFilter.All)
             result = result.Where(MatchesFilter);
+        if (ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId != null)
+            result = result.Where(m => m.FlagId == _activeFlagFilterId);
         if (ActiveDayLimit.HasValue)
             result = result.Where(MatchesDayLimit);
         if (!string.IsNullOrWhiteSpace(SearchText))
@@ -1979,6 +2001,7 @@ public partial class MainViewModel : ObservableObject
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllDraftsFolder,  Label = AllDraftsFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllSentFolder,    Label = AllSentFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllTrashFolder,   Label = AllTrashFolder.DisplayName });
+        allMailGroup.Children.Add(new FolderTreeNode { Folder = AllFlaggedFolder, Label = AllFlaggedFolder.DisplayName });
         roots.Add(allMailGroup);
 
         foreach (var account in Accounts)
@@ -2028,6 +2051,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsFilterForwarded));
         OnPropertyChanged(nameof(IsFilterToMe));
         OnPropertyChanged(nameof(IsFilterActive));
+        OnPropertyChanged(nameof(IsFilterFlagged));
         OnPropertyChanged(nameof(FilterLabel));
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -2276,14 +2300,15 @@ public partial class MainViewModel : ObservableObject
         }
 
         _suppressFilterRebuild = true;
-        ActiveFilter   = MessageFilter.All;
-        ActiveDayLimit = null;
-        SearchText     = string.Empty;
-        IsSearchActive = false;
-        ActiveView     = null;
-        SelectedFolder = folder;
-        MessageDetail  = null;
-        IsMessageOpen  = false;
+        ActiveFilter        = MessageFilter.All;
+        ActiveDayLimit      = null;
+        _activeFlagFilterId = null;
+        SearchText          = string.Empty;
+        IsSearchActive      = false;
+        ActiveView          = null;
+        SelectedFolder      = folder;
+        MessageDetail       = null;
+        IsMessageOpen       = false;
         _suppressFilterRebuild = false;
 
         if (IsVirtualFolder(folder))
@@ -2803,6 +2828,7 @@ public partial class MainViewModel : ObservableObject
         if (folder.FullName == AllDraftsFolder.FullName)  return FetchVirtualFolderAsync(SpecialFolderKind.Drafts, "All Drafts");
         if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   "All Sent");
         if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
+        if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
 
         // Saved-view sentinels — re-fetch without resetting mode/filter/sort
@@ -2813,6 +2839,104 @@ public partial class MainViewModel : ObservableObject
             if (view != null) return FetchViewFoldersAsync(view);
         }
         return Task.CompletedTask;
+    }
+
+    private async Task FetchAllFlaggedAsync()
+    {
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
+        var expectedFolder = SelectedFolder;
+        Messages.Clear();
+        StatusText = "Loading flagged messages…";
+        IsBusy = true;
+
+        try
+        {
+            List<MailMessageSummary> all;
+            if (OnlineMode)
+            {
+                all = new List<MailMessageSummary>();
+            }
+            else
+            {
+                all = await _localStore.LoadAllSummariesAsync();
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            await ResolveFlagNamesAsync(all);
+            var flagged = all.Where(m => m.IsFlagged).ToList();
+            SetMessages(flagged.OrderByDescending(m => m.Date).ToList());
+            var n = Messages.Count;
+            StatusText = n == 0 ? "No flagged messages." : $"{n} flagged {(n == 1 ? "message" : "messages")}.";
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("FetchAllFlagged failed", ex);
+            StatusText = "Could not load flagged messages.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ToggleSingleFlagAsync(MailMessageSummary message)
+    {
+        if (_flagService == null) return;
+        try
+        {
+            ReplaceCts(ref _messageActionCts, out var ct);
+            bool wasFlagged = message.IsFlagged;
+            await _flagService.ToggleDefaultFlagAsync(message, _localStore, _imap, ct);
+            if (_announceFlagStatus)
+            {
+                var text = wasFlagged ? "Unflagged" : $"{message.FlagName ?? "Flagged"}";
+                Announce(text, AnnouncementCategory.Result);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("ToggleSingleFlag failed", ex); }
+    }
+
+    public async Task ToggleGroupFlagAsync(IReadOnlyList<MailMessageSummary> messages)
+    {
+        if (_flagService == null || messages.Count == 0) return;
+        try
+        {
+            ReplaceCts(ref _messageActionCts, out var ct);
+            bool anyFlagged = messages.Any(m => m.IsFlagged);
+            var kFlag = await _flagService.GetKDefaultFlagAsync();
+            string? targetFlagId = anyFlagged ? null : kFlag.Id.ToString();
+            foreach (var msg in messages)
+                await _flagService.SetMessageFlagAsync(msg, targetFlagId, _localStore, _imap, ct);
+            if (_announceFlagStatus)
+            {
+                var text = anyFlagged
+                    ? $"Unflagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}"
+                    : $"Flagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}";
+                Announce(text, AnnouncementCategory.Result);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("ToggleGroupFlag failed", ex); }
+    }
+
+    private async void OnFlagDefinitionsChanged(object? sender, EventArgs e)
+    {
+        if (_flagService == null) return;
+        var defs = await _flagService.LoadFlagDefinitionsAsync();
+        var lookup = new Dictionary<Guid, FlagDefinition>(defs.Count);
+        foreach (var d in defs) lookup[d.Id] = d;
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            foreach (var msg in _rawMessages)
+            {
+                if (msg.FlagId != null && Guid.TryParse(msg.FlagId, out var fid) && lookup.TryGetValue(fid, out var def))
+                {
+                    msg.FlagName     = def.Name;
+                    msg.FlagColorHex = def.ColorHex;
+                }
+            }
+        });
     }
 
     /// <summary>

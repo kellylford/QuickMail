@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -175,5 +176,30 @@ public class MessageFilterTests
         var vm = await LoadedVm(SampleMessages);
         await vm.SetFilterCommand.ExecuteAsync("unread");
         Assert.True(vm.IsFilterActive);
+    }
+
+    [Fact]
+    public async Task FilterFlagged_ShowsOnlyFlaggedMessages()
+    {
+        var flaggedMsg = new MailMessageSummary
+        {
+            MessageId  = "99",
+            FlagId     = FlagDefinition.BuiltInFlagId.ToString(),
+        };
+        var msgs = SampleMessages.Concat(new[] { flaggedMsg }).ToList();
+        var vm = await LoadedVm(msgs);
+
+        await vm.SetFilterCommand.ExecuteAsync("flagged");
+
+        Assert.Single(vm.Messages);
+        Assert.Equal("99", vm.Messages[0].MessageId);
+    }
+
+    [Fact]
+    public async Task FilterFlagged_NoFlaggedMessages_Empty()
+    {
+        var vm = await LoadedVm(SampleMessages);
+        await vm.SetFilterCommand.ExecuteAsync("flagged");
+        Assert.Empty(vm.Messages);
     }
 }
