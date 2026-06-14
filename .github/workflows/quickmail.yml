@@ -54,7 +54,7 @@ jobs:
       # otherwise GitHub auto-generates notes from commits.
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: QuickMail ${{ github.ref_name }}
           files: |
