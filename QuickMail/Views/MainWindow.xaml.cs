@@ -307,6 +307,15 @@ public partial class MainWindow : Window
                 else
                 {
                     LogService.Debug("[FOCUS]   → FocusActiveMessagePanel (dispatched)");
+                    // Park focus on the ListView container before DataBind regenerates
+                    // item containers. Without this, the focused ListViewItem is removed
+                    // from the visual tree during the rebuild, which sets
+                    // Keyboard.FocusedElement to null. A null focus element causes WPF to
+                    // skip ContextMenuOpening entirely, so Shift+F10 falls through to
+                    // DefWindowProc and shows the Win32 system menu instead of the
+                    // message context menu.
+                    if (MessageList.IsKeyboardFocusWithin)
+                        MessageList.Focus();
                     Dispatcher.InvokeAsync(FocusActiveMessagePanel, DispatcherPriority.Input);
                 }
             }
@@ -396,6 +405,7 @@ public partial class MainWindow : Window
         };
 
         PreviewKeyDown += OnWindowKeyDown;
+        ContextMenuOpening += OnWindowContextMenuOpening;
         MainStatusBar.PreviewKeyDown += StatusBar_PreviewKeyDown;
         Loaded      += OnLoaded;
         Deactivated += OnDeactivated;
@@ -831,6 +841,26 @@ public partial class MainWindow : Window
 
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
+    }
+
+    // Fallback context-menu handler for the Window itself.
+    // Fires when Keyboard.FocusedElement is the Window (not a content control),
+    // which happens if a focused ListViewItem was removed from the visual tree
+    // during a sync/filter/sort rebuild and the primary fix in PropertyChanged:Messages
+    // did not apply (e.g. focus wasn't yet in the list at that moment).
+    // In that scenario WPF raises ContextMenuOpening on the Window; we catch it here
+    // and open the correct context menu so the Win32 system menu never appears.
+    private void OnWindowContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (e.Handled) return;
+        if (_vm.IsMessagesView && MessageList.Visibility == Visibility.Visible
+            && MessageList.Items.Count > 0)
+        {
+            var cm = (ContextMenu)FindResource("MessageContextMenu");
+            cm.PlacementTarget = MessageList;
+            cm.IsOpen = true;
+            e.Handled = true;
+        }
     }
 
     // Global key handler (PreviewKeyDown so it fires before any child can swallow the event).
