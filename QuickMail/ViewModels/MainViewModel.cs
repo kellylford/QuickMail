@@ -30,12 +30,14 @@ public partial class MainViewModel : ObservableObject
     private readonly ICommandRegistry _commandRegistry;
     private readonly IRuleService _ruleService;
     private readonly ISendMailService _smtp;
+    private readonly IFlagService? _flagService;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
     private CancellationTokenSource? _folderCts;
     private CancellationTokenSource? _messageLoadCts;
     private CancellationTokenSource? _messageActionCts;
+    private CancellationTokenSource? _flagActionCts;
     private CancellationTokenSource? _prefetchCts;
 
     private const int PrefetchRadiusAroundOpen = 5;
@@ -75,6 +77,10 @@ public partial class MainViewModel : ObservableObject
     // Version stamp for message body loads; latest selection wins.
     private int _messageLoadVersion;
 
+    private bool _announceFlagStatus;
+    private string? _activeFlagFilterId;
+    private EventHandler? _onFlagDefinitionsChanged;
+
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
     public IReadOnlyDictionary<Guid, List<MailFolderModel>> CachedFolders => _cachedFolders;
@@ -111,6 +117,11 @@ public partial class MainViewModel : ObservableObject
     {
         FullName    = "\u0000AllTrash",
         DisplayName = "All Trash"
+    };
+    public static readonly MailFolderModel AllFlaggedFolder = new()
+    {
+        FullName    = "\u0000AllFlagged",
+        DisplayName = "All Flagged Mail"
     };
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
@@ -183,7 +194,8 @@ public partial class MainViewModel : ObservableObject
                string.Equals(folder.FullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
-               string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal);
+               string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal);
     }
 
     // ── Saved views ───────────────────────────────────────────────────────────────
@@ -302,6 +314,8 @@ public partial class MainViewModel : ObservableObject
     public bool IsFromView          => ViewMode == ViewMode.From;
     public bool IsToView            => ViewMode == ViewMode.To;
 
+    public ObservableCollection<FlagDefinition> FlagDefinitions { get; } = [];
+
     public bool IsFilterAll             => ActiveFilter == MessageFilter.All;
     public bool IsFilterUnread          => ActiveFilter == MessageFilter.Unread;
     public bool IsFilterRead            => ActiveFilter == MessageFilter.Read;
@@ -309,7 +323,12 @@ public partial class MainViewModel : ObservableObject
     public bool IsFilterReplied         => ActiveFilter == MessageFilter.Replied;
     public bool IsFilterForwarded       => ActiveFilter == MessageFilter.Forwarded;
     public bool IsFilterToMe            => ActiveFilter == MessageFilter.ToMe;
+    public bool IsFilterFlagged         => ActiveFilter == MessageFilter.Flagged;
+    public bool IsFilterAllFlagged      => ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId == null;
     public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
+    public bool AnnounceFlagStatus      => _announceFlagStatus;
+    /// <summary>Named-flag sub-filter id, set by saved views. Null = show all flagged messages.</summary>
+    public string? ActiveFlagFilterId   => _activeFlagFilterId;
     public string FilterLabel => ActiveFilter switch
     {
         MessageFilter.Unread          => "Unread",
@@ -318,6 +337,7 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.Replied         => "Replied",
         MessageFilter.Forwarded       => "Forwarded",
         MessageFilter.ToMe            => "To Me",
+        MessageFilter.Flagged         => "Flagged",
         _                             => string.Empty,
     };
 
@@ -327,6 +347,7 @@ public partial class MainViewModel : ObservableObject
     public bool IsSortAlphaDesc   => ActiveSort == MessageSort.AlphaDescending;
     public bool IsSortCountDesc   => ActiveSort == MessageSort.CountDescending;
     public bool IsSortCountAsc    => ActiveSort == MessageSort.CountAscending;
+    public bool IsSortFlaggedFirst => ActiveSort == MessageSort.FlaggedFirst;
     public bool IsCountSortAvailable => ViewMode != ViewMode.Messages;
     public string SortLabel => ActiveSort switch
     {
@@ -335,6 +356,7 @@ public partial class MainViewModel : ObservableObject
         MessageSort.AlphaDescending => "Z → A",
         MessageSort.CountDescending => "Most Messages",
         MessageSort.CountAscending  => "Fewest Messages",
+        MessageSort.FlaggedFirst    => "Flagged First",
         _                           => string.Empty,
     };
 
@@ -634,7 +656,8 @@ public partial class MainViewModel : ObservableObject
         IViewService viewService,
         IRuleService ruleService,
         ISendMailService smtpService,
-        bool onlineMode = false)
+        bool onlineMode = false,
+        IFlagService? flagService = null)
     {
         _imap            = imap;
         _accountService  = accountService;
@@ -647,6 +670,7 @@ public partial class MainViewModel : ObservableObject
         _viewService     = viewService;
         _ruleService     = ruleService;
         _smtp            = smtpService;
+        _flagService     = flagService;
         OnlineMode       = onlineMode;
 
         var cfg = _configService.Load();
@@ -658,11 +682,17 @@ public partial class MainViewModel : ObservableObject
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
+        _announceFlagStatus = cfg.AnnounceFlagStatus;
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.RulesApplied    += OnRulesApplied;
         _imap.InboxNewMailDetected += OnInboxNewMailDetected;
+        if (_flagService != null)
+        {
+            _onFlagDefinitionsChanged = (_, _) => _ = OnFlagDefinitionsChangedAsync();
+            _flagService.FlagDefinitionsChanged += _onFlagDefinitionsChanged;
+        }
 
         // Load saved views and register their commands before the UI is shown.
         LoadSavedViews();
@@ -811,9 +841,22 @@ public partial class MainViewModel : ObservableObject
             "replied"     => MessageFilter.Replied,
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
+            "flagged"     => MessageFilter.Flagged,
             _             => MessageFilter.All,
         };
         ActiveSort = ConfigModel.ParseSort(view.Sort);
+        SetActiveFlagFilterId(string.IsNullOrEmpty(view.FlagFilterId) ? null : view.FlagFilterId);
+
+        // Validate the flag filter id against current flag definitions.
+        // If the referenced flag has been deleted, treat it as no filter
+        // rather than showing an empty list with no explanation.
+        if (_activeFlagFilterId != null && _flagService != null &&
+            Guid.TryParse(_activeFlagFilterId, out var flagGuid))
+        {
+            var defs = await _flagService.LoadFlagDefinitionsAsync();
+            if (!defs.Exists(d => d.Id == flagGuid))
+                SetActiveFlagFilterId(null);
+        }
 
         ActiveDayLimit = view.DaysOfMail;
         SearchText     = string.Empty;
@@ -898,6 +941,7 @@ public partial class MainViewModel : ObservableObject
                 }
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached.OrderByDescending(m => m.Date));
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} cached messages (checking for new…)"
@@ -993,6 +1037,8 @@ public partial class MainViewModel : ObservableObject
     internal void ApplySettings(ConfigModel cfg)
     {
         ShowMessageStatus = cfg.ShowMessageStatus;
+        _announceFlagStatus = cfg.AnnounceFlagStatus;
+        OnPropertyChanged(nameof(AnnounceFlagStatus));
 
         var newPreviewLines = cfg.PreviewLines;
         var newShowPreview  = newPreviewLines > 0;
@@ -1154,6 +1200,10 @@ public partial class MainViewModel : ObservableObject
             isAvailable: () => IsCountSortAvailable));
 
         registry.Register(new CommandDefinition(
+            id: "view.sortFlaggedFirst", category: "View", title: "Sort: Flagged First",
+            execute: () => SetSortCommand.Execute("flaggedFirst")));
+
+        registry.Register(new CommandDefinition(
             id: "mail.rules", category: "Mail", title: "Manage Rules",
             execute: () => OpenRulesManagerCommand.Execute(null),
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
@@ -1198,6 +1248,13 @@ public partial class MainViewModel : ObservableObject
     {
         SelectedFolder = AllMailFolder;
         LastSyncText = "Never synced";  // Ensure sync time is visible in status bar
+        if (_flagService != null)
+        {
+            var defs = await _flagService.LoadFlagDefinitionsAsync();
+            FlagDefinitions.Clear();
+            foreach (var d in defs.OrderBy(d => d.SortOrder))
+                FlagDefinitions.Add(d);
+        }
         if (OnlineMode)
         {
             StatusText = "Online mode — connecting…";
@@ -1205,6 +1262,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
         var cached = await _localStore.LoadAllSummariesAsync();
+        await ResolveFlagNamesAsync(cached);
         SetMessages(cached);
         StatusText = cached.Count > 0
             ? $"{cached.Count} messages (cached — syncing…)"
@@ -1401,6 +1459,11 @@ public partial class MainViewModel : ObservableObject
             // Per-account "All Mail" - only messages belonging to that account.
             relevant = incoming.Where(m => m.AccountId == watchedAccountId);
         }
+        else if (selected.FullName == AllFlaggedFolder.FullName)
+        {
+            // All Flagged Mail — only accept flagged incoming messages.
+            relevant = incoming.Where(m => m.IsFlagged);
+        }
         else if (selected.FullName == AllInboxesFolder.FullName ||
                  selected.FullName == AllDraftsFolder.FullName  ||
                  selected.FullName == AllSentFolder.FullName    ||
@@ -1432,21 +1495,38 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        // Hash existing keys once so the dedupe check is O(1) per incoming item
-        // instead of an O(n) scan per item — that would dominate a multi-thousand-message
-        // All Mail view and freeze the UI thread. Use _rawMessages (not Messages) as the
-        // canonical set so filtered-out messages still prevent duplicates.
-        var seen = new HashSet<(string, Guid, string)>(_rawMessages.Count);
+        // Build a lookup map once so dedupe and flag-reconciliation are both O(1) per incoming
+        // item instead of O(n) scans — critical in All Mail views with thousands of messages.
+        var rawByKey = new Dictionary<(string, Guid, string), MailMessageSummary>(_rawMessages.Count);
         foreach (var e in _rawMessages)
-            seen.Add((e.MessageId, e.AccountId, e.FolderName));
+            rawByKey.TryAdd((e.MessageId, e.AccountId, e.FolderName), e);
+        var seen = new HashSet<(string, Guid, string)>(rawByKey.Keys);
 
         // Collect truly new messages; add them to _rawMessages immediately so the
         // search pool stays in sync with what the list will eventually show.
         var toInsert = new List<MailMessageSummary>();
         foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
+            // Reconcile server-flagged state for new incoming messages: a message with
+            // \Flagged set on the server but no local flag assignment gets the built-in flag
+            // id so it displays correctly.  FlagName/FlagColorHex stay null until the next
+            // ResolveFlagNamesAsync call, but FlagId ensures IsFlagged and MatchesFilter work.
+            if (msg.IsServerFlagged && msg.FlagId == null)
+                msg.FlagId = Models.FlagDefinition.BuiltInFlagId.ToString();
+
             if (!seen.Add((msg.MessageId, msg.AccountId, msg.FolderName)))
+            {
+                // Existing message: reconcile external flag change (§9.3).
+                // If the server now reports not-flagged but the in-memory message still has
+                // a flag set, another client cleared it — clear our local flag to match.
+                if (!msg.IsServerFlagged &&
+                    rawByKey.TryGetValue((msg.MessageId, msg.AccountId, msg.FolderName), out var existing) &&
+                    existing.FlagId != null)
+                {
+                    existing.FlagId = null;
+                }
                 continue;
+            }
             _rawMessages.Add(msg);
             if (!MatchesFilter(msg)) continue;
             if (!MatchesDayLimit(msg)) continue;
@@ -1620,6 +1700,8 @@ public partial class MainViewModel : ObservableObject
         IEnumerable<MailMessageSummary> result = _rawMessages;
         if (ActiveFilter != MessageFilter.All)
             result = result.Where(MatchesFilter);
+        if (ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId != null)
+            result = result.Where(m => m.FlagId == _activeFlagFilterId);
         if (ActiveDayLimit.HasValue)
             result = result.Where(MatchesDayLimit);
         if (!string.IsNullOrWhiteSpace(SearchText))
@@ -1629,6 +1711,7 @@ public partial class MainViewModel : ObservableObject
             MessageSort.DateAscending   => result.OrderBy(m => m.Date),
             MessageSort.AlphaAscending  => result.OrderBy(m => m.Subject, StringComparer.OrdinalIgnoreCase),
             MessageSort.AlphaDescending => result.OrderByDescending(m => m.Subject, StringComparer.OrdinalIgnoreCase),
+            MessageSort.FlaggedFirst    => result.OrderBy(m => m.IsFlagged ? 0 : 1).ThenByDescending(m => m.Date),
             _                           => result.OrderByDescending(m => m.Date),
         };
         Messages = new BatchObservableCollection<MailMessageSummary>(result);
@@ -1665,6 +1748,7 @@ public partial class MainViewModel : ObservableObject
         MessageFilter.Replied         => msg.IsReplied,
         MessageFilter.Forwarded       => msg.IsForwarded,
         MessageFilter.ToMe            => !msg.IsMailingList && Accounts.Any(a => msg.To.Contains(a.Username, StringComparison.OrdinalIgnoreCase)),
+        MessageFilter.Flagged         => msg.IsFlagged,
         _                             => true,
     };
 
@@ -1672,6 +1756,27 @@ public partial class MainViewModel : ObservableObject
     // MatchesFilter without an explicit ActiveDayLimit.HasValue guard at every site.
     private bool MatchesDayLimit(MailMessageSummary msg)
         => !ActiveDayLimit.HasValue || msg.Date >= DateTimeOffset.Now.AddDays(-ActiveDayLimit.Value);
+
+    // Populates FlagName and FlagColorHex on messages that have a FlagId set but no
+    // display name — which is the case for every cache load, since ReadSummariesAsync
+    // only reads flag_id. Skips gracefully when _flagService is not wired up.
+    private async Task ResolveFlagNamesAsync(IList<MailMessageSummary> messages)
+    {
+        if (_flagService == null) return;
+        var flagged = messages.Where(m => m.FlagId != null).ToList();
+        if (flagged.Count == 0) return;
+        var defs = await _flagService.LoadFlagDefinitionsAsync();
+        var lookup = new Dictionary<Guid, FlagDefinition>(defs.Count);
+        foreach (var d in defs) lookup[d.Id] = d;
+        foreach (var m in flagged)
+        {
+            if (m.FlagId != null && Guid.TryParse(m.FlagId, out var fid) && lookup.TryGetValue(fid, out var def))
+            {
+                m.FlagName     = def.Name;
+                m.FlagColorHex = def.ColorHex;
+            }
+        }
+    }
 
     // Binary-insert into the descending-by-date Messages collection.
     private void InsertMessageSorted(MailMessageSummary msg)
@@ -1943,6 +2048,7 @@ public partial class MainViewModel : ObservableObject
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllDraftsFolder,  Label = AllDraftsFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllSentFolder,    Label = AllSentFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllTrashFolder,   Label = AllTrashFolder.DisplayName });
+        allMailGroup.Children.Add(new FolderTreeNode { Folder = AllFlaggedFolder, Label = AllFlaggedFolder.DisplayName });
         roots.Add(allMailGroup);
 
         foreach (var account in Accounts)
@@ -1992,6 +2098,8 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsFilterForwarded));
         OnPropertyChanged(nameof(IsFilterToMe));
         OnPropertyChanged(nameof(IsFilterActive));
+        OnPropertyChanged(nameof(IsFilterFlagged));
+        OnPropertyChanged(nameof(IsFilterAllFlagged));
         OnPropertyChanged(nameof(FilterLabel));
         OnPropertyChanged(nameof(WindowTitle));
 
@@ -2010,6 +2118,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSortAlphaDesc));
         OnPropertyChanged(nameof(IsSortCountDesc));
         OnPropertyChanged(nameof(IsSortCountAsc));
+        OnPropertyChanged(nameof(IsSortFlaggedFirst));
         OnPropertyChanged(nameof(SortLabel));
 
         var cfg = _configService.Load();
@@ -2097,6 +2206,7 @@ public partial class MainViewModel : ObservableObject
                 MessageSort.AlphaDescending => built.OrderByDescending(g => g.NormalizedSubject, StringComparer.OrdinalIgnoreCase),
                 MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
                 MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                MessageSort.FlaggedFirst    => built.OrderBy(g => g.HasFlagged ? 0 : 1).ThenByDescending(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
                 _                           => built.OrderByDescending(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
             };
             var groups = ordered.ToList();
@@ -2130,6 +2240,7 @@ public partial class MainViewModel : ObservableObject
                 MessageSort.AlphaDescending => built.OrderByDescending(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
                 MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                MessageSort.FlaggedFirst    => built.OrderBy(g => g.HasFlagged ? 0 : 1).ThenBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
             };
             var groups = ordered.ToList();
@@ -2163,6 +2274,7 @@ public partial class MainViewModel : ObservableObject
                 MessageSort.AlphaDescending => built.OrderByDescending(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
                 MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                MessageSort.FlaggedFirst    => built.OrderBy(g => g.HasFlagged ? 0 : 1).ThenBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
             };
             var groups = ordered.ToList();
@@ -2240,14 +2352,15 @@ public partial class MainViewModel : ObservableObject
         }
 
         _suppressFilterRebuild = true;
-        ActiveFilter   = MessageFilter.All;
-        ActiveDayLimit = null;
-        SearchText     = string.Empty;
-        IsSearchActive = false;
-        ActiveView     = null;
-        SelectedFolder = folder;
-        MessageDetail  = null;
-        IsMessageOpen  = false;
+        ActiveFilter        = MessageFilter.All;
+        ActiveDayLimit      = null;
+        SetActiveFlagFilterId(null);
+        SearchText          = string.Empty;
+        IsSearchActive      = false;
+        ActiveView          = null;
+        SelectedFolder      = folder;
+        MessageDetail       = null;
+        IsMessageOpen       = false;
         _suppressFilterRebuild = false;
 
         if (IsVirtualFolder(folder))
@@ -2301,6 +2414,7 @@ public partial class MainViewModel : ObservableObject
                 if (!IsCurrentFolderLoad(loadVersion, folder))
                     return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
@@ -2572,6 +2686,7 @@ public partial class MainViewModel : ObservableObject
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                     return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} messages (checking for new…)"
@@ -2765,6 +2880,7 @@ public partial class MainViewModel : ObservableObject
         if (folder.FullName == AllDraftsFolder.FullName)  return FetchVirtualFolderAsync(SpecialFolderKind.Drafts, "All Drafts");
         if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   "All Sent");
         if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
+        if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
 
         // Saved-view sentinels — re-fetch without resetting mode/filter/sort
@@ -2775,6 +2891,212 @@ public partial class MainViewModel : ObservableObject
             if (view != null) return FetchViewFoldersAsync(view);
         }
         return Task.CompletedTask;
+    }
+
+    private async Task FetchAllFlaggedAsync()
+    {
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
+        var expectedFolder = SelectedFolder;
+        Messages.Clear();
+        StatusText = "Loading flagged messages…";
+        IsBusy = true;
+
+        _folderCts?.Cancel();
+        ReplaceCts(ref _folderCts, out var ct);
+
+        try
+        {
+            List<MailMessageSummary> all;
+            if (OnlineMode)
+            {
+                // In --online mode, fetch from every non-excluded folder across all accounts
+                // and filter to flagged messages client-side.
+                all = new List<MailMessageSummary>();
+                foreach (var account in Accounts)
+                {
+                    if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+                    foreach (var folder in folders)
+                    {
+                        if (folder.ExcludeFromAllMail) continue;
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var msgs = _syncDays > 0
+                                ? await _imap.GetMessagesSinceDateAsync(
+                                    account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                                : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
+                            all.AddRange(msgs.Where(m => m.IsFlagged));
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            LogService.Log($"FetchAllFlagged online {account.DisplayName}/{folder.DisplayName}", ex);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                all = await _localStore.LoadAllSummariesAsync();
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            await ResolveFlagNamesAsync(all);
+            var flagged = all.Where(m => m.IsFlagged).ToList();
+            SetMessages(flagged.OrderByDescending(m => m.Date).ToList());
+            var n = Messages.Count;
+            StatusText = n == 0 ? "No flagged messages." : $"{n} flagged {(n == 1 ? "message" : "messages")}.";
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "Flagged messages load cancelled.";
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("FetchAllFlagged failed", ex);
+            StatusText = "Could not load flagged messages.";
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
+        }
+    }
+
+    public async Task ToggleSingleFlagAsync(MailMessageSummary message)
+    {
+        if (_flagService == null) return;
+        try
+        {
+            ReplaceCts(ref _flagActionCts, out var ct);
+            bool wasFlagged = message.IsFlagged;
+            var def = await _flagService.ToggleDefaultFlagAsync(message, ct);
+            // Update in-memory model (we're on the UI thread from the command handler).
+            message.FlagId       = wasFlagged ? null : def?.Id.ToString();
+            message.FlagName     = def?.Name;
+            message.FlagColorHex = def?.ColorHex;
+            if (_announceFlagStatus)
+            {
+                var text = wasFlagged ? "Unflagged" : $"{message.FlagName ?? "Flagged"}";
+                Announce(text, AnnouncementCategory.Result);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("ToggleSingleFlag failed", ex); }
+    }
+
+    public async Task ToggleGroupFlagAsync(IReadOnlyList<MailMessageSummary> messages)
+    {
+        if (_flagService == null || messages.Count == 0) return;
+        try
+        {
+            ReplaceCts(ref _flagActionCts, out var ct);
+            bool anyFlagged = messages.Any(m => m.IsFlagged);
+            var kFlag = await _flagService.GetKDefaultFlagAsync();
+            string? targetFlagId = anyFlagged ? null : kFlag.Id.ToString();
+            foreach (var msg in messages)
+            {
+                var def = await _flagService.SetMessageFlagAsync(msg, targetFlagId, ct);
+                msg.FlagId       = targetFlagId;
+                msg.FlagName     = def?.Name;
+                msg.FlagColorHex = def?.ColorHex;
+            }
+            if (_announceFlagStatus)
+            {
+                var text = anyFlagged
+                    ? $"Unflagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}"
+                    : $"Flagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}";
+                Announce(text, AnnouncementCategory.Result);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("ToggleGroupFlag failed", ex); }
+    }
+
+    public async Task SetMessageFlagAsync(MailMessageSummary message, string? flagId)
+    {
+        if (_flagService == null) return;
+        try
+        {
+            ReplaceCts(ref _flagActionCts, out var ct);
+            var def = await _flagService.SetMessageFlagAsync(message, flagId, ct);
+            message.FlagId       = flagId;
+            message.FlagName     = def?.Name;
+            message.FlagColorHex = def?.ColorHex;
+            if (_announceFlagStatus)
+            {
+                var text = flagId == null ? "Unflagged" : (message.FlagName ?? "Flagged");
+                Announce(text, AnnouncementCategory.Result);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("SetMessageFlag failed", ex); }
+    }
+
+    public async Task SetGroupFlagAsync(IReadOnlyList<MailMessageSummary> messages, string? flagId)
+    {
+        if (_flagService == null || messages.Count == 0) return;
+        try
+        {
+            ReplaceCts(ref _flagActionCts, out var ct);
+            FlagDefinition? def = null;
+            foreach (var msg in messages)
+            {
+                def = await _flagService.SetMessageFlagAsync(msg, flagId, ct);
+                msg.FlagId       = flagId;
+                msg.FlagName     = def?.Name;
+                msg.FlagColorHex = def?.ColorHex;
+            }
+            if (_announceFlagStatus)
+            {
+                var text = flagId == null
+                    ? $"Unflagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}"
+                    : $"Flagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}: {def?.Name ?? "Flagged"}";
+                Announce(text, AnnouncementCategory.Result);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("SetGroupFlag failed", ex); }
+    }
+
+    private async Task OnFlagDefinitionsChangedAsync()
+    {
+        try
+        {
+            if (_flagService == null) return;
+            var defs = await _flagService.LoadFlagDefinitionsAsync();
+
+            FlagDefinitions.Clear();
+            foreach (var d in defs.OrderBy(d => d.SortOrder))
+                FlagDefinitions.Add(d);
+
+            var lookup = new Dictionary<Guid, FlagDefinition>(defs.Count);
+            foreach (var d in defs) lookup[d.Id] = d;
+            foreach (var msg in _rawMessages)
+            {
+                if (msg.FlagId != null && Guid.TryParse(msg.FlagId, out var fid))
+                {
+                    if (lookup.TryGetValue(fid, out var def))
+                    {
+                        msg.FlagName     = def.Name;
+                        msg.FlagColorHex = def.ColorHex;
+                    }
+                    else
+                    {
+                        // Flag was deleted — clear all flag state so the message
+                        // no longer appears flagged or stuck in the Flagged filter.
+                        msg.FlagId       = null;
+                        msg.FlagName     = null;
+                        msg.FlagColorHex = null;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("OnFlagDefinitionsChanged", ex);
+        }
     }
 
     /// <summary>
@@ -2804,6 +3126,7 @@ public partial class MainViewModel : ObservableObject
                 var cached = await _localStore.LoadAllSummariesAsync(accountId);
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+                await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
                     ? $"{cached.Count} messages (checking for new…)"
@@ -2905,6 +3228,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder))
                 return;
 
+            await ResolveFlagNamesAsync(all);
             var sorted = all.OrderByDescending(m => m.Date).ToList();
             SetMessages(sorted);
             StatusText = sorted.Count == 0
@@ -4050,6 +4374,13 @@ public partial class MainViewModel : ObservableObject
 
     // ── Filter command ────────────────────────────────────────────────────────
 
+    private void SetActiveFlagFilterId(string? id)
+    {
+        _activeFlagFilterId = id;
+        OnPropertyChanged(nameof(ActiveFlagFilterId));
+        OnPropertyChanged(nameof(IsFilterAllFlagged));
+    }
+
     [RelayCommand]
     private Task SetFilterAsync(string? filter)
     {
@@ -4061,8 +4392,21 @@ public partial class MainViewModel : ObservableObject
             "replied"     => MessageFilter.Replied,
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
+            "flagged"     => MessageFilter.Flagged,
             _             => MessageFilter.All,
         };
+        // Clear any named-flag sub-filter from a previously applied saved view
+        // so the user sees all flagged messages, not just one specific flag.
+        SetActiveFlagFilterId(null);
+        return Task.CompletedTask;
+    }
+
+    [RelayCommand]
+    private Task SetFlagFilterAsync(string flagId)
+    {
+        ActiveFilter = MessageFilter.Flagged;
+        SetActiveFlagFilterId(flagId);
+        ApplyFiltersAndSearch();
         return Task.CompletedTask;
     }
 

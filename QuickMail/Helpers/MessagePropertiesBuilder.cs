@@ -1,6 +1,5 @@
-// Deviation from spec: MailMessageSummary does not carry Cc, ReplyTo, MessageId, Size,
-// IsFlagged, or IsAnswered. Those fields are on MailMessageDetail only. When detail is
-// null the rows show "(not loaded)". IsReplied/IsForwarded replace IsFlagged/IsAnswered.
+// Deviation from spec: MailMessageSummary does not carry Cc, ReplyTo, MessageId, or Size.
+// Those fields are on MailMessageDetail only. When detail is null the rows show "(not loaded)".
 // RawHeaders does not exist on MailMessageDetail so the raw-headers expander is never shown.
 
 using System.Collections.Generic;
@@ -29,6 +28,7 @@ public static class MessagePropertiesBuilder
             new("Account",  accountName),
             new("Folder",   summary.FolderName),
             new("IMAP UID", summary.MessageId),
+            new("Flag",     summary.IsFlagged ? summary.FlagLabel : "None"),
             new("Status",   FormatStatus(summary)),
         };
 

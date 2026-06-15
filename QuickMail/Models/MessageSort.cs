@@ -8,4 +8,5 @@ public enum MessageSort
     AlphaDescending,
     CountDescending,
     CountAscending,
+    FlaggedFirst,
 }

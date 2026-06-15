@@ -13,8 +13,35 @@ public sealed class SenderGroup : INotifyPropertyChanged
     /// <summary>The trimmed From string used as the grouping key (case-insensitive).</summary>
     public string SenderKey { get; init; } = string.Empty;
 
+    private IReadOnlyList<MailMessageSummary> _messages = [];
+
     /// <summary>Messages from this sender, newest first.</summary>
-    public IReadOnlyList<MailMessageSummary> Messages { get; init; } = [];
+    public IReadOnlyList<MailMessageSummary> Messages
+    {
+        get => _messages;
+        init
+        {
+            _messages = value;
+            foreach (var m in _messages)
+            {
+                if (m is INotifyPropertyChanged npc)
+                    npc.PropertyChanged += OnMessagePropertyChanged;
+            }
+        }
+    }
+
+    private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MailMessageSummary.IsFlagged)
+            or nameof(MailMessageSummary.FlagLabel)
+            or nameof(MailMessageSummary.FlagColorHex)
+            or nameof(MailMessageSummary.FlagId))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasFlagged)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagColorHex)));
+        }
+    }
 
     // ── Computed from the group / newest message ──────────────────────────────
 
@@ -36,6 +63,15 @@ public sealed class SenderGroup : INotifyPropertyChanged
     /// <summary>True when at least one message in the group is unread.</summary>
     public bool HasUnread => Messages.Any(m => !m.IsRead);
 
+    /// <summary>True when at least one message in the group is flagged.</summary>
+    public bool HasFlagged => Messages.Any(m => m.IsFlagged);
+
+    /// <summary>The flag name of the first flagged message in the group, or null if none are flagged.</summary>
+    public string? FlagLabel => Messages.FirstOrDefault(m => m.IsFlagged)?.FlagLabel;
+
+    /// <summary>The color of the first flagged message's flag, or null if none are flagged.</summary>
+    public string? FlagColorHex => Messages.FirstOrDefault(m => m.IsFlagged)?.FlagColorHex;
+
     /// <summary>Accessibility label read by screen readers when the tree node receives focus.</summary>
     public string AutomationName
     {
@@ -43,9 +79,10 @@ public sealed class SenderGroup : INotifyPropertyChanged
         {
             var countWord = Count == 1 ? "message" : "messages";
             var unread    = HasUnread ? " Has unread." : string.Empty;
+            var flagged   = HasFlagged ? $" {FlagLabel}." : string.Empty;
             return string.IsNullOrWhiteSpace(Preview)
-                ? $"{SenderName}. {Count} {countWord}.{unread} {DateDisplay}."
-                : $"{SenderName}. {Count} {countWord}.{unread} {Preview}. {DateDisplay}.";
+                ? $"{SenderName}. {Count} {countWord}.{flagged}{unread} {DateDisplay}."
+                : $"{SenderName}. {Count} {countWord}.{flagged}{unread} {Preview}. {DateDisplay}.";
         }
     }
 

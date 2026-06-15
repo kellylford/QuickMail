@@ -32,6 +32,9 @@
 | F1 | `help.userGuide` | Open User Guide |
 | *(unassigned)* | `settings.toggleCustomAnnouncements` | Toggle Custom Announcements |
 | Ctrl+A | `mail.selectAll` | Select All Messages (message list focus only) |
+| K | `mail.toggleFlag` | Toggle Flag |
+| Ctrl+Shift+K | `mail.pickFlag` | Pick Flag… |
+| *(unassigned)* | `mail.openFlagManager` | Manage Flags… |
 | Shift+, | `mail.jumpToFirstInGroup` | First Message in Group |
 | Shift+. | `mail.jumpToLastInGroup` | Last Message in Group |
 | *(unassigned)* | `mail.acceptInvite` | Accept Invitation |

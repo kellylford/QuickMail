@@ -50,4 +50,18 @@ public interface ILocalStoreService
     /// Used to display the cache window in Account Properties.
     /// </summary>
     Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId);
+
+    /// <summary>
+    /// Sets or clears the named-flag assignment on a single message.
+    /// Pass null for flagId to clear the flag.
+    /// </summary>
+    Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId);
+
+    /// <summary>
+    /// Batch-sets or clears the named-flag assignment on multiple messages in a single transaction.
+    /// Pass null for flagId to clear all flags in the batch.
+    /// </summary>
+    Task UpdateFlagIdBatchAsync(
+        IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items,
+        string? flagId);
 }

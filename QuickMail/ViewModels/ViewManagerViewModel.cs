@@ -253,6 +253,9 @@ public partial class ViewManagerViewModel : ObservableObject
 
     public int? CurrentDayLimit { get; }
 
+    /// <summary>Named-flag sub-filter id from the main VM, captured into saved views.</summary>
+    private readonly string? _activeFlagFilterId;
+
     public ViewManagerViewModel(
         IViewService     viewService,
         IConfigService   configService,
@@ -264,7 +267,8 @@ public partial class ViewManagerViewModel : ObservableObject
         MessageFilter    currentFilter,
         MessageSort      currentSort,
         int?             currentDayLimit = null,
-        bool             isCreateMode    = false)
+        bool             isCreateMode    = false,
+        string?          activeFlagFilterId = null)
     {
         _viewService   = viewService;
         _configService = configService;
@@ -277,6 +281,7 @@ public partial class ViewManagerViewModel : ObservableObject
         CurrentFilter    = currentFilter;
         CurrentSort      = currentSort;
         CurrentDayLimit  = currentDayLimit;
+        _activeFlagFilterId = activeFlagFilterId;
 
         SavedViews = new ObservableCollection<SavedView>(savedViews);
     }
@@ -298,11 +303,12 @@ public partial class ViewManagerViewModel : ObservableObject
     {
         var view = new SavedView
         {
-            Name       = GenerateName(),
-            ViewMode   = CurrentViewMode.ToString().ToLowerInvariant(),
-            Filter     = FilterKey(CurrentFilter),
-            Sort       = SortKey(CurrentSort),
-            DaysOfMail = CurrentDayLimit,
+            Name         = GenerateName(),
+            ViewMode     = CurrentViewMode.ToString().ToLowerInvariant(),
+            Filter       = FilterKey(CurrentFilter),
+            Sort         = SortKey(CurrentSort),
+            DaysOfMail   = CurrentDayLimit,
+            FlagFilterId = _activeFlagFilterId,
         };
 
         if (IsRealImapFolder(CurrentFolder) && CurrentAccount != null)
@@ -674,6 +680,7 @@ public partial class ViewManagerViewModel : ObservableObject
         "attachments" => "With Attachments",
         "replied"     => "Replied",
         "forwarded"   => "Forwarded",
+        "flagged"     => "Flagged",
         _             => "All",
     };
 
@@ -695,6 +702,7 @@ public partial class ViewManagerViewModel : ObservableObject
         MessageFilter.Replied         => "replied",
         MessageFilter.Forwarded       => "forwarded",
         MessageFilter.ToMe            => "tome",
+        MessageFilter.Flagged         => "flagged",
         _                             => "all",
     };
 

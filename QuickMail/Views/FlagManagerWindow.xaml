@@ -1,0 +1,282 @@
+<Window x:Class="QuickMail.Views.FlagManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:QuickMail.Views"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        mc:Ignorable="d"
+        Title="Flag Manager"
+        Width="520" Height="440"
+        MinWidth="420" MinHeight="340"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <Window.Resources>
+        <views:StringToBrushConverter x:Key="StringToBrushConverter"/>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- Toolbar -->
+        <ToolBar x:Name="FlagToolbar"
+                 DockPanel.Dock="Top"
+                 KeyboardNavigation.TabNavigation="Continue"
+                 AutomationProperties.Name="Flag manager">
+            <Button x:Name="AddButton"
+                    Content="Add Flag"
+                    Command="{Binding AddFlagCommand}"
+                    AutomationProperties.Name="Add Flag"/>
+            <Button x:Name="DeleteButton"
+                    Content="Delete"
+                    Command="{Binding DeleteFlagCommand}"
+                    AutomationProperties.Name="Delete"/>
+            <Separator/>
+            <Button x:Name="MoveUpButton"
+                    Content="Move Up"
+                    Command="{Binding MoveUpCommand}"
+                    AutomationProperties.Name="Move up"/>
+            <Button x:Name="MoveDownButton"
+                    Content="Move Down"
+                    Command="{Binding MoveDownCommand}"
+                    AutomationProperties.Name="Move down"/>
+            <Separator/>
+            <Button x:Name="SetDefaultButton"
+                    Content="Set K Default"
+                    Command="{Binding SetAsKDefaultCommand}"
+                    AutomationProperties.Name="Set K default"/>
+        </ToolBar>
+
+        <!-- Close button row -->
+        <Border DockPanel.Dock="Bottom" Padding="8,4">
+            <Button x:Name="CloseButton"
+                    Content="Close"
+                    IsCancel="True"
+                    HorizontalAlignment="Right"
+                    Width="72"/>
+        </Border>
+
+        <!-- Main content: flag list + edit panel -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="180" MinWidth="120"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Flag list -->
+            <ListBox x:Name="FlagList"
+                     Grid.Column="0"
+                     ItemsSource="{Binding Flags}"
+                     SelectedItem="{Binding SelectedFlag}"
+                     Margin="8,4,0,4"
+                     AutomationProperties.Name="Flags">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <DockPanel>
+                            <Border Width="12" Height="12"
+                                    CornerRadius="2"
+                                    Margin="0,0,6,0"
+                                    VerticalAlignment="Center"
+                                    Background="{Binding ColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                            <TextBlock Text="{Binding Name}"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" IsTabStop="False"/>
+
+            <!-- Edit panel -->
+            <ScrollViewer x:Name="EditPanel"
+                          Grid.Column="2"
+                          Margin="8,4,8,4"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="No flag selected."
+                               Margin="0,8,0,0"
+                               Foreground="Gray">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasSelection}" Value="False">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+
+                    <StackPanel>
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasSelection}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+
+                        <!-- Name section -->
+                        <TextBlock Text="Name" FontWeight="SemiBold" Margin="0,8,0,2"/>
+
+                        <!-- Read-only name + Rename button (shown when not renaming) -->
+                        <DockPanel>
+                            <DockPanel.Style>
+                                <Style TargetType="DockPanel">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </DockPanel.Style>
+                            <Button DockPanel.Dock="Right"
+                                    Content="Rename"
+                                    Command="{Binding BeginRenameCommand}"
+                                    Width="68" Margin="4,0,0,0"
+                                    AutomationProperties.Name="Rename"/>
+                            <TextBlock Text="{Binding SelectedFlag.Name}"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </DockPanel>
+
+                        <!-- Edit name TextBox (shown when renaming) -->
+                        <StackPanel>
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsRenaming}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
+                            <TextBox x:Name="EditNameBox"
+                                     Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxLength="32"
+                                     AutomationProperties.Name="Flag name"
+                                     Margin="0,0,0,2"/>
+                            <TextBlock Text="{Binding RenameError}"
+                                       Foreground="Red"
+                                       FontSize="11"
+                                       Margin="0,0,0,4">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RenameError}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="Save"
+                                        Command="{Binding SaveRenameCommand}"
+                                        Width="60" Margin="0,0,4,0"
+                                        IsDefault="True"/>
+                                <Button Content="Cancel"
+                                        Command="{Binding CancelRenameCommand}"
+                                        Width="60"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Color section -->
+                        <TextBlock Text="Color" FontWeight="SemiBold" Margin="0,12,0,4"/>
+
+                        <!-- Color swatch for selected flag -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Border Width="24" Height="24"
+                                    CornerRadius="3"
+                                    Margin="0,0,8,0"
+                                    Background="{Binding SelectedFlag.ColorHex, Converter={StaticResource StringToBrushConverter}}"/>
+                            <TextBlock Text="{Binding SelectedFlag.ColorHex}"
+                                       VerticalAlignment="Center"
+                                       Foreground="Gray"
+                                       FontSize="11"/>
+                        </StackPanel>
+
+                        <!-- 12 preset color buttons (radio group) -->
+                        <WrapPanel x:Name="ColorPanel"
+                                   AutomationProperties.Name="Preset colors"
+                                   KeyboardNavigation.TabNavigation="Once"
+                                   KeyboardNavigation.DirectionalNavigation="Cycle">
+                            <WrapPanel.Resources>
+                                <Style TargetType="RadioButton">
+                                    <Setter Property="Width" Value="28"/>
+                                    <Setter Property="Height" Value="28"/>
+                                    <Setter Property="Margin" Value="2"/>
+                                    <Setter Property="GroupName" Value="ColorGroup"/>
+                                    <Setter Property="FocusVisualStyle">
+                                        <Setter.Value>
+                                            <Style TargetType="Control">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate>
+                                                            <Rectangle Stroke="White" StrokeThickness="2"
+                                                                       StrokeDashArray="2,1"
+                                                                       RadiusX="3" RadiusY="3"
+                                                                       Margin="-2"/>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="RadioButton">
+                                                <Border Background="{TemplateBinding Tag, Converter={StaticResource StringToBrushConverter}}"
+                                                        CornerRadius="3"
+                                                        BorderThickness="2">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="BorderBrush" Value="Transparent"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsChecked, RelativeSource={RelativeSource TemplatedParent}}" Value="True">
+                                                                    <Setter Property="BorderBrush" Value="White"/>
+                                                                </DataTrigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="BorderBrush" Value="#80FFFFFF"/>
+                                                                </Trigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </WrapPanel.Resources>
+                            <RadioButton Tag="#E53E3E" AutomationProperties.Name="Red"     Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#E53E3E"/>
+                            <RadioButton Tag="#DD6B20" AutomationProperties.Name="Orange"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#DD6B20"/>
+                            <RadioButton Tag="#C05621" AutomationProperties.Name="Amber"   Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#C05621"/>
+                            <RadioButton Tag="#B7791F" AutomationProperties.Name="Yellow"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#B7791F"/>
+                            <RadioButton Tag="#38A169" AutomationProperties.Name="Green"   Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#38A169"/>
+                            <RadioButton Tag="#276749" AutomationProperties.Name="Lime"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#276749"/>
+                            <RadioButton Tag="#319795" AutomationProperties.Name="Teal"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#319795"/>
+                            <RadioButton Tag="#0987A0" AutomationProperties.Name="Cyan"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#0987A0"/>
+                            <RadioButton Tag="#3182CE" AutomationProperties.Name="Blue"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#3182CE"/>
+                            <RadioButton Tag="#5A67D8" AutomationProperties.Name="Indigo"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#5A67D8"/>
+                            <RadioButton Tag="#6B46C1" AutomationProperties.Name="Violet"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#6B46C1"/>
+                            <RadioButton Tag="#D53F8C" AutomationProperties.Name="Pink"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#D53F8C"/>
+                        </WrapPanel>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </DockPanel>
+</Window>

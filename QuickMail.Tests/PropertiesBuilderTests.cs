@@ -129,6 +129,28 @@ public class MessagePropertiesBuilderTests
         var storage = sections.First(x => x.Header == "Storage");
         Assert.Contains(storage.Items, i => i.Label == "Status" && i.Value == "Read");
     }
+
+    [Fact]
+    public void Build_FlaggedMessage_IncludesFlagRow()
+    {
+        var s = MakeSummary();
+        s.FlagId   = "00000000-0000-0000-0000-000000000001";
+        s.FlagName = "Urgent";
+        var (_, sections) = MessagePropertiesBuilder.Build(s, null, "Work");
+
+        var storage = sections.First(x => x.Header == "Storage");
+        Assert.Contains(storage.Items, i => i.Label == "Flag" && i.Value == "Urgent");
+    }
+
+    [Fact]
+    public void Build_UnflaggedMessage_ShowsNoneForFlag()
+    {
+        var s = MakeSummary();
+        var (_, sections) = MessagePropertiesBuilder.Build(s, null, "Work");
+
+        var storage = sections.First(x => x.Header == "Storage");
+        Assert.Contains(storage.Items, i => i.Label == "Flag" && i.Value == "None");
+    }
 }
 
 // ── FolderPropertiesBuilder ─────────────────────────────────────────────────

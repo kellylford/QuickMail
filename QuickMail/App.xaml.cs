@@ -113,14 +113,15 @@ public partial class App : Application
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
 
             var viewService = new ViewService(profile);
+            var flagService = new FlagService(profile, configService, localStore, mailRouter);
 
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode);
+                onlineMode: onlineMode, flagService: flagService);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService);
             mainWindow.Show();
         }
         catch (Exception ex)

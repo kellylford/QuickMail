@@ -241,6 +241,10 @@ public class ConfigService : IConfigService
                         if (int.TryParse(value, out var asi))
                             config.AutoSaveIntervalSeconds = Math.Clamp(asi, 30, 600);
                         break;
+                    case "announceflagstatus": config.AnnounceFlagStatus = ParseBool(value); break;
+                    case "defaultflagid":
+                        if (Guid.TryParse(value, out _)) config.DefaultFlagId = value;
+                        break;
                 }
             }
             else if (section == "windowing")
@@ -411,6 +415,15 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"AutoSaveIntervalSeconds = {Math.Clamp(config.AutoSaveIntervalSeconds, 30, 600)}");
         sb.AppendLine("# Seconds between automatic draft saves. Values: 30-600.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AnnounceFlagStatus = {(config.AnnounceFlagStatus ? "on" : "off")}");
+        sb.AppendLine("# Include flag name when announcing a flagged message during navigation. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"DefaultFlagId = {config.DefaultFlagId}");
+        sb.AppendLine("# The flag applied by K (toggle default flag).");
+        sb.AppendLine("# Default is the built-in flag (00000000-0000-0000-0000-000000000001).");
         sb.AppendLine();
 
         // ── [windowing] ──────────────────────────────────────────────────────────

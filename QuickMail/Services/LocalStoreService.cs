@@ -82,6 +82,7 @@ public class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN has_attachments INTEGER NOT NULL DEFAULT 0;");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN is_mailing_list INTEGER NOT NULL DEFAULT 0;");
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN attachments_json TEXT DEFAULT NULL;");
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN flag_id TEXT DEFAULT NULL;");
 
         RunDataMigrations(conn);
     }
@@ -94,6 +95,7 @@ public class LocalStoreService : ILocalStoreService
     //   0 → 1   to_addr backfill from MessageDetail
     //   1 → 2   unique_id INTEGER → TEXT (string MessageId); add DeltaToken table
     //   2 → 3   is_mailing_list backfill from to_addr patterns
+    //   (no 3 → 4 data migration needed — flag_id column added via RunMigration; default NULL is correct)
     // Add new migrations as: if (version < 4) { ...; }
     private const int CurrentSchemaVersion = 3;
 
@@ -143,12 +145,13 @@ public class LocalStoreService : ILocalStoreService
                     is_forwarded INTEGER NOT NULL DEFAULT 0,
                     has_attachments INTEGER NOT NULL DEFAULT 0,
                     is_mailing_list INTEGER NOT NULL DEFAULT 0,
+                    flag_id      TEXT    DEFAULT NULL,
                     PRIMARY KEY (unique_id, account_id, folder_name)
                 );
                 INSERT INTO MessageSummary_v2
                 SELECT CAST(unique_id AS TEXT), account_id, folder_name, from_disp, to_addr,
                        subject, date_ticks, is_read, preview_text, is_replied, is_forwarded,
-                       has_attachments, is_mailing_list
+                       has_attachments, is_mailing_list, flag_id
                 FROM MessageSummary;
                 DROP TABLE MessageSummary;
                 ALTER TABLE MessageSummary_v2 RENAME TO MessageSummary;
@@ -242,19 +245,28 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list)
-            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id)
+            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
-                from_disp      = excluded.from_disp,
-                to_addr        = excluded.to_addr,
-                subject        = excluded.subject,
-                date_ticks     = excluded.date_ticks,
-                is_read        = excluded.is_read,
-                is_replied     = excluded.is_replied,
-                is_forwarded   = excluded.is_forwarded,
+                from_disp       = excluded.from_disp,
+                to_addr         = excluded.to_addr,
+                subject         = excluded.subject,
+                date_ticks      = excluded.date_ticks,
+                is_read         = excluded.is_read,
+                is_replied      = excluded.is_replied,
+                is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
-                preview_text   = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END;
+                preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
+                flag_id         = CASE
+                    WHEN excluded.flag_id IS NULL THEN NULL
+                    WHEN flag_id IS NULL           THEN excluded.flag_id
+                    ELSE                                flag_id
+                    END;
             """;
+            // flag_id reconciliation on DO UPDATE (§9.3):
+            //   server unflagged (excluded.flag_id NULL)  → clear any local flag (external unflag)
+            //   server flagged, no local flag             → apply built-in default flag id
+            //   server flagged, local named flag present  → preserve the user's named flag
         var pUid       = cmd.Parameters.Add("$uid",       SqliteType.Text);
         var pAid       = cmd.Parameters.Add("$aid",       SqliteType.Text);
         var pFn        = cmd.Parameters.Add("$fn",        SqliteType.Text);
@@ -267,6 +279,7 @@ public class LocalStoreService : ILocalStoreService
         var pReplied   = cmd.Parameters.Add("$replied",   SqliteType.Integer);
         var pForwarded = cmd.Parameters.Add("$forwarded", SqliteType.Integer);
         var pMl        = cmd.Parameters.Add("$ml",        SqliteType.Integer);
+        var pFlagId    = cmd.Parameters.Add("$flag_id",   SqliteType.Text);
 
         foreach (var s in summaries)
         {
@@ -282,6 +295,9 @@ public class LocalStoreService : ILocalStoreService
             pReplied.Value   = s.IsReplied        ? 1 : 0;
             pForwarded.Value = s.IsForwarded      ? 1 : 0;
             pMl.Value        = s.IsMailingList    ? 1 : 0;
+            pFlagId.Value    = s.IsServerFlagged
+                ? (object)FlagDefinition.BuiltInFlagId.ToString()
+                : DBNull.Value;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
@@ -292,7 +308,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id " +
             "FROM MessageSummary ORDER BY date_ticks DESC;";
         return await ReadSummariesAsync(cmd);
     }
@@ -302,7 +318,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id " +
             "FROM MessageSummary WHERE account_id=$aid ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         return await ReadSummariesAsync(cmd);
@@ -313,7 +329,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC" +
             (limit.HasValue ? " LIMIT $limit;" : ";");
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
@@ -403,6 +419,46 @@ public class LocalStoreService : ILocalStoreService
         var pAid  = cmd.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
         var pFn   = cmd.Parameters.Add("$fn",   Microsoft.Data.Sqlite.SqliteType.Text);
         pRead.Value = isRead ? 1 : 0;
+        foreach (var (accountId, folderName, messageId) in items)
+        {
+            pUid.Value = messageId;
+            pAid.Value = accountId.ToString();
+            pFn.Value  = folderName;
+            await cmd.ExecuteNonQueryAsync();
+        }
+        await tx.CommitAsync();
+    }
+
+    public async Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "UPDATE MessageSummary SET flag_id=$fid " +
+            "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$fid", (object?)flagId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$uid", messageId);
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task UpdateFlagIdBatchAsync(
+        IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items,
+        string? flagId)
+    {
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.Transaction = (Microsoft.Data.Sqlite.SqliteTransaction)tx;
+        cmd.CommandText =
+            "UPDATE MessageSummary SET flag_id=$fid " +
+            "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
+        var pFid = cmd.Parameters.Add("$fid", SqliteType.Text);
+        var pUid = cmd.Parameters.Add("$uid", SqliteType.Text);
+        var pAid = cmd.Parameters.Add("$aid", SqliteType.Text);
+        var pFn  = cmd.Parameters.Add("$fn",  SqliteType.Text);
+        pFid.Value = (object?)flagId ?? DBNull.Value;
         foreach (var (accountId, folderName, messageId) in items)
         {
             pUid.Value = messageId;
@@ -609,6 +665,7 @@ public class LocalStoreService : ILocalStoreService
                 IsForwarded    = r.GetInt64(10) != 0,
                 HasAttachments = r.GetInt64(11) != 0,
                 IsMailingList  = r.GetInt64(12) != 0,
+                FlagId         = r.IsDBNull(13) ? null : r.GetString(13),
             });
         }
         return list;

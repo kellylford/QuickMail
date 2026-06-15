@@ -159,7 +159,7 @@ public class GraphMailService : IMailService
     {
         var top = limit > 0 ? Math.Min(limit, 999) : 500;
         var path = $"/me/mailFolders/{folderName}/messages?$top={top}&$orderby=receivedDateTime desc" +
-                   "&$select=id,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments";
+                   "&$select=id,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag";
         if (since.HasValue)
             path += $"&$filter=receivedDateTime ge {since.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}";
 
@@ -188,6 +188,13 @@ public class GraphMailService : IMailService
 
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
         => _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}", new { isRead = true }, ct);
+
+    public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
+    {
+        var status = flagged ? "flagged" : "notFlagged";
+        return _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}",
+            new { flag = new { flagStatus = status } }, ct);
+    }
 
     // ── Status / reconciliation ──────────────────────────────────────────────────
     public async Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default)
@@ -266,9 +273,10 @@ public class GraphMailService : IMailService
         To = JoinRecipients(m.ToRecipients),
         Subject = m.Subject ?? "(no subject)",
         Date = m.ReceivedDateTime,
-        IsRead = m.IsRead,
-        Preview = m.BodyPreview ?? string.Empty,
-        HasAttachments = m.HasAttachments,
+        IsRead          = m.IsRead,
+        Preview         = m.BodyPreview ?? string.Empty,
+        HasAttachments  = m.HasAttachments,
+        IsServerFlagged = m.Flag?.FlagStatus == "flagged",
     };
 
     private static MailMessageDetail MapToDetail(GraphMessage m, Guid accountId, string folderName)

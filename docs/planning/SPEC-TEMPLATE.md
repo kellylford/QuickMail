@@ -156,6 +156,21 @@ Call out code you might duplicate and plan extractions:
 
 This is where you catch the "bugs that hide in duplication" ahead of time.
 
+### 5.4 Shared component audit (mandatory)
+
+**List every existing class, UserControl, ViewModel, or service the feature will modify or call, together with its other consumers.**
+
+This is the single most common source of regressions in AI-assisted development. An AI given a spec that says "add a retry button to the review dialog" will add it — without knowing the same dialog is also used for a different flow where the retry button makes no sense. The audit forces that question before code is written.
+
+| Component | File | Other consumers | Change needed | Risk |
+|---|---|---|---|---|
+| `ExistingDialog.xaml` | `Views/ExistingDialog.xaml` | Called from FlowA, FlowB | Add `AllowRetry` property | Verify FlowB still works with `AllowRetry=false` |
+| `MessageBodyHelper` | `Helpers/MessageBodyHelper.cs` | ComposeWindow, MessageWindow | Add overload | Existing callers use default overload — no change |
+
+**Expected output:** "This feature modifies [X, Y, Z]. Their other consumers are [A, B, C]. Changes to X are backward-compatible because [reason]. Changes to Y require [FlowB to be verified in the acceptance walkthrough]."
+
+If a component has no other consumers, say so explicitly — it confirms you checked.
+
 ---
 
 ## Section 6: Keyboard Walkthrough (Mandatory)
@@ -207,7 +222,52 @@ Before implementation, answer these explicitly:
 
 ---
 
-## Section 8: Success Metrics
+## Section 8: Acceptance Walkthrough (Mandatory)
+
+**This is different from the keyboard walkthrough.** The keyboard walkthrough (§6) is a design document — it proves the feature is fully *specified*. The acceptance walkthrough is a runtime testing script — it proves the feature actually *works* after implementation. You run this yourself in the app at Session 3, before handing to code review.
+
+Each step is a concrete action you physically perform and a concrete thing you physically observe. No vague outcomes ("it works correctly") — every verify clause must be something you can see, hear from a screen reader, or confirm is absent.
+
+**Format:**
+
+### Scenario: [Name]
+
+**Setup:** [App state before starting — e.g., "app running, message list open, no compose window"]
+
+1. Do [action]. **Verify:** [Exact observable outcome — text displayed, focus landed, announcement heard, element absent.]
+2. Do [action]. **Verify:** …
+3. **Edge case:** Do [unusual action]. **Verify:** [No crash / correct degradation.]
+
+**Mark each step pass/fail as you test. Any fail = document before handing to Session 4.**
+
+**Scenarios to always include:**
+- **Primary happy path** — the main use case end-to-end
+- **Primary error case** — what happens when the operation fails (network error, validation failure, empty state)
+- **One scenario per shared component caller** — for every consumer listed in §5.4, verify it still works correctly after your changes
+- **Every new setting** — toggle on, verify UI response; toggle off, verify UI response; no app restart required
+- **`--online` mode** — if the feature calls `LocalStore`, run with `--online` flag and confirm graceful fallback
+- **Screen reader** — tab through every new control, confirm `AutomationProperties.Name` is read correctly, confirm announcements fire at the right moments
+- **Focus restoration** — if any dialog opens, confirm focus returns to the correct element when it closes
+
+**Example — adding a "Retry" option to an existing review dialog:**
+
+### Scenario: Retry from review dialog
+
+**Setup:** App running, a message is open. Trigger the feature that opens the review dialog.
+
+1. Perform the primary action. **Verify:** Review dialog opens, focus lands on the result text, screen reader announces the dialog title.
+2. Activate the Retry button. **Verify:** Dialog closes, operation re-runs, review dialog reopens with new result.
+3. Press Escape. **Verify:** Dialog closes without saving. Focus returns to the message body.
+
+### Scenario: Original flow — verify no regression
+
+**Setup:** Trigger the *other* flow that uses the same dialog (the one that should NOT have a retry button).
+
+1. Perform the original action. **Verify:** Review dialog opens. **No Retry button is present.** Result text control is named correctly for this context (not the name from the new flow).
+
+---
+
+## Section 9: Success Metrics
 
 How will you measure that this feature works, post-implementation and post-review?
 
@@ -219,7 +279,7 @@ How will you measure that this feature works, post-implementation and post-revie
 
 ---
 
-## Section 9: Implementation Phases
+## Section 10: Implementation Phases
 
 Break the work into **3–5 testable phases**, each of which can be code-reviewed and committed independently. Each phase should have:
 
@@ -287,7 +347,7 @@ Break the work into **3–5 testable phases**, each of which can be code-reviewe
 
 ---
 
-## Section 10: Files to Create / Modify
+## Section 11: Files to Create / Modify
 
 Explicit list. This is your implementation checklist and the code reviewer's map.
 
@@ -309,7 +369,7 @@ Explicit list. This is your implementation checklist and the code reviewer's map
 
 ---
 
-## Section 11: Tests to Add
+## Section 12: Tests to Add
 
 For each new class, list the tests you'll need:
 
@@ -323,9 +383,9 @@ For each new class, list the tests you'll need:
 
 ---
 
-## Section 12: Known Risks & Open Questions
+## Section 13: Known Risks & Open Questions
 
-### 12.1 Risks identified in the spec
+### 13.1 Risks identified in the spec
 
 For each risk, state:
 - **Risk:** What could go wrong?
@@ -341,7 +401,7 @@ For each risk, state:
 | Modal dialog fires ViewsChanged while tab dialog is open → crash | Medium | Blocker | Rule enforcement: tab dialog must not subscribe to ViewsChanged before ShowDialog(). Code review gate. |
 | Screen reader user can't tell which tab is active | Medium | Major | Accessibility test in keyboard walkthrough; automated test in v2. |
 
-### 12.2 Open questions
+### 13.2 Open questions
 
 Issues that need resolution before implementation starts:
 
@@ -352,7 +412,7 @@ Every open question gets a decision before the spec is approved. Document the de
 
 ---
 
-## Section 13: Appendix — Keyboard Reference
+## Section 14: Appendix — Keyboard Reference
 
 If the feature adds multiple shortcuts, a cheat sheet is helpful:
 
@@ -366,11 +426,11 @@ If the feature adds multiple shortcuts, a cheat sheet is helpful:
 
 ---
 
-## Section 14: Implementation Guidance for AI
+## Section 15: Implementation Guidance for AI
 
 This section is **written to the AI assistant** who will read the spec during Session 2. It's in the approved spec, not a separate memo.
 
-### 14.1 Adjustments you're expected to make
+### 15.1 Adjustments you're expected to make
 
 State what you've intentionally left vague, expecting the AI to figure out:
 
@@ -378,14 +438,21 @@ State what you've intentionally left vague, expecting the AI to figure out:
 - "The keyboard walkthrough assumes focus restoration works the same as the existing reading pane. If you find that's not true, adjust the implementation and document the deviation."
 - "The accessibility checklist says tabs will announce their title and position. You'll decide whether 'Tab 2 of 5: subject' or 'Second tab: subject' is better, and make that announcement consistent throughout."
 
-### 14.2 When to ask for clarification
+### 15.2 When to ask for clarification
 
 Signal what's unclear or what needs a design decision before you start:
 
 - "If [architectural risk] becomes a problem during implementation, the approved mitigation is [X]. If that doesn't work, ping the user before proceeding further."
 - "The keyboard walkthrough is normative — if you find a shortcut conflicts with an existing one, stop and ask before working around it."
 
-### 14.3 After implementation: what will be tested
+### 15.3 After implementation: acceptance walkthrough preview
+
+"After you build this, the user will run the Acceptance Walkthrough in §8. Reference that section for the full script. The steps most likely to catch bugs in this feature are:
+- [List the 2–3 steps from §8 that are highest risk for this specific implementation]
+
+If any of these fail, document the failure and it will be addressed in Session 4 (code review)."
+
+### 15.4 After implementation: what will be tested (legacy)
 
 "After you build this, the user will test in the app by:
 1. Opening 5 messages in tabs.
@@ -397,7 +464,7 @@ If any of these fail, you'll address them in Session 4 (code review)."
 
 ---
 
-## Section 15: Session Boundaries (Template Guidance)
+## Section 16: Session Boundaries (Template Guidance)
 
 Insert this section **after the spec is approved**, to guide the AI on when to start each session.
 
@@ -429,7 +496,9 @@ Before you approve a spec and move to Session 2 (implementation), verify:
 
 - [ ] **Scope is bounded.** The feature doesn't try to do too much in one session.
 - [ ] **Architecture is decided.** No major "we'll figure this out during coding" decisions.
+- [ ] **Shared component audit complete (§5.4).** Every existing class/dialog/service modified is named, with all its other consumers listed.
 - [ ] **Keyboard walkthrough is complete.** No "TBD" paths.
+- [ ] **Acceptance walkthrough written (§8).** Covers happy path, primary error case, one scenario per shared component caller, every new setting.
 - [ ] **Accessibility is explicit.** Not "we'll make it accessible during review."
 - [ ] **Implementation phases are testable.** Each phase is code-reviewable on its own.
 - [ ] **Risk assessment is documented.** Known risks have mitigations.
@@ -443,8 +512,8 @@ Before you approve a spec and move to Session 2 (implementation), verify:
 
 Some features don't need all sections:
 
-- **Bug fix or small enhancement** — Use sections 1, 2, 3, 4, 8, 11 only. (1 page, not 20.)
-- **Refactoring with no user-facing change** — Use section 5 (architecture), skip UI/keyboard/accessibility.
+- **Bug fix or small enhancement** — Use sections 1, 2, 3, 4, 9, 12 only. Add a short §8 acceptance walkthrough. (1 page, not 20.)
+- **Refactoring with no user-facing change** — Use section 5 (architecture, including §5.4 shared component audit), skip UI/keyboard/accessibility.
 - **Configuration tweak** — Use sections 1, 4, and a simple table of settings.
 
 Adjust the depth to the scope. The template is a maximum, not a minimum.
@@ -454,8 +523,10 @@ Adjust the depth to the scope. The template is a maximum, not a minimum.
 ## Why This Template Works with AI
 
 1. **Explicit decision points** — AI knows what's decided and what needs judgment. It won't second-guess architecture decisions during implementation.
-2. **Keyboard walkthrough** — AI reads the walkthrough and builds UX that matches. No surprises at test time.
-3. **Accessibility is upfront** — Not bolted on post-hoc. AI implements with access in mind.
-4. **Phases are independent** — AI can tackle each phase in a session, commit it, and you can review.
-5. **Risk mitigation is named** — When AI encounters the risk during coding, it knows the mitigation to apply.
-6. **Session boundaries are clear** — AI knows when to say "this is working, time for human review" vs. "I found a bug, let me fix it."
+2. **Shared component audit** — AI is told explicitly which existing code it's modifying and who else uses it. Regressions in other call sites are caught in the spec, not post-merge.
+3. **Keyboard walkthrough** — AI reads the walkthrough and builds UX that matches. No surprises at test time.
+4. **Acceptance walkthrough** — You run a concrete test script after implementation. Bugs that survive code review (especially shared-component regressions) surface here, before merge.
+5. **Accessibility is upfront** — Not bolted on post-hoc. AI implements with access in mind.
+6. **Phases are independent** — AI can tackle each phase in a session, commit it, and you can review.
+7. **Risk mitigation is named** — When AI encounters the risk during coding, it knows the mitigation to apply.
+8. **Session boundaries are clear** — AI knows when to say "this is working, time for human review" vs. "I found a bug, let me fix it."

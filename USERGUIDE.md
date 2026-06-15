@@ -20,6 +20,7 @@ QuickMail is a desktop email client for Windows. It supports multiple IMAP/SMTP 
 - [From view (by sender)](#from-view-by-sender)
 - [To view (by recipient)](#to-view-by-recipient)
 - [Filtering messages](#filtering-messages)
+- [Flagging messages](#flagging-messages)
 - [Sorting messages](#sorting-messages)
 - [Mail rules](#mail-rules)
 - [Saved views](#saved-views)
@@ -397,6 +398,7 @@ The top of the folder list contains a group of **virtual folders** that aggregat
 | **All Drafts** | Draft messages from every account |
 | **All Sent** | Sent messages from every account |
 | **All Trash** | Deleted messages from every account |
+| **All Flagged Mail** | All flagged messages across every account, sorted newest-first — see [Flagging messages](#flagging-messages) |
 
 Each account also has its own **All Mail — {Account Name}** entry directly under that account in the folder tree. Selecting it shows all mail for that account only, without mixing in messages from other accounts. These per-account folders also appear in the **Go to Folder** picker.
 
@@ -452,6 +454,7 @@ The **View → Filter** submenu (and the command palette) let you narrow the mes
 | **Show All** | All messages (no filter active) |
 | **Unread** | Messages that have not been read, replied to, or forwarded |
 | **Read** | Messages that have been marked as read |
+| **Flagged** | Messages that have any flag set — see [Flagging messages](#flagging-messages) |
 | **With Attachments** | Messages that have at least one attachment |
 | **Replied** | Messages you have replied to |
 | **Forwarded** | Messages you have forwarded |
@@ -467,6 +470,91 @@ The **View → Filter** submenu (and the command palette) let you narrow the mes
 The active filter is shown in the window title bar. Navigating to a different folder automatically clears the filter.
 
 Filter commands can be assigned custom keyboard shortcuts in **File → Settings → Keyboard Shortcuts**.
+
+---
+
+## Flagging messages
+
+A **flag** marks a message as requiring action or follow-up. One press of `K` flags a message; another press unflags it. Flags you set in QuickMail are synced to your mail server, so they appear in other mail apps (Outlook, Thunderbird, mobile apps) that share the same account.
+
+### The built-in flag
+
+QuickMail includes one built-in flag named **Flagged**, shown in amber. This is the flag the `K` key applies by default, and it maps directly to the standard IMAP `\Flagged` flag — called "starred" in some apps. Any messages you have already flagged in another mail app appear as flagged in QuickMail after the next sync.
+
+### Toggling a flag
+
+With a message selected in the message list:
+
+- Press `K` to flag the message. The flag indicator appears on the row and the screen reader announces `"Flagged: Flagged."`
+- Press `K` again to unflag. The indicator disappears and the screen reader announces `"Unflagged."`
+
+If the message already has a named flag applied, pressing `K` removes that flag (it does not replace it with the default flag).
+
+### Picking a specific named flag
+
+If you have created named flags (see [Named flags and the Flag Manager](#named-flags-and-the-flag-manager) below), press `Ctrl+Shift+K` to open the flag picker. The picker lists all your defined flags plus a **Clear flag** option. Use **Up/Down** arrows to choose, then press **Enter** to apply and close. Press **Escape** to close without making a change.
+
+Only one flag can be set on a message at a time. Applying a different flag replaces the current one.
+
+### Flagging a conversation or group
+
+In Conversations, From, or To view, you can flag all messages in a group at once. Select the group row (not an individual message inside it) and press `K`. The screen reader announces how many messages were flagged — for example, `"Flagged 4 messages: Flagged."`
+
+### Named flags and the Flag Manager
+
+Beyond the built-in flag, you can create up to 20 **named flags** with custom colors — for example, "Urgent" (red), "Waiting" (yellow), or "Done" (green).
+
+**Opening the Flag Manager:**
+
+Open the command palette (`Ctrl+Shift+P`) and type "Manage Flags," then press **Enter**.
+
+The Flag Manager shows your flag list on the left and an edit panel on the right. From here you can:
+
+| Action | How |
+|--------|-----|
+| Add a new flag | Activate **Add Flag** |
+| Rename a flag | Select a flag, edit the **Flag Name** field |
+| Change the color | Select a flag, then choose from the color buttons in the edit panel |
+| Reorder flags | Activate **Move Up** or **Move Down** |
+| Delete a flag | Select a flag, then activate **Delete Flag** — the built-in flag cannot be deleted |
+| Set the K default | Select a flag and activate **Set as K default** to make `K` apply that flag |
+
+Press **Escape** or use the command palette (`Ctrl+Shift+P` → "Close") to close the Flag Manager.
+
+Named flag definitions are stored in `flags.json` in your data folder and are local to your QuickMail profile.
+
+**Changing which flag K applies:**
+
+By default `K` applies the built-in "Flagged" flag. To change this, open the Flag Manager, select a named flag, and activate **Set as K default**. `K` now applies that flag. This setting persists across restarts.
+
+### Filtering to flagged messages
+
+Open **View → Filter → Flagged** (or use the command palette and search for "flagged") to show only messages that have any flag set. The active filter is shown in the window title bar.
+
+To return to the full message list, open **View → Filter → Show All** or run **Show All Messages** from the command palette.
+
+Pressing `K` to unflag a message while the Flagged filter is active removes the message from the list immediately, since it no longer matches the filter.
+
+### All Flagged Mail
+
+The folder tree includes an **All Flagged Mail** virtual folder that shows every flagged message from all your accounts in one place, sorted newest-first. This is useful for a daily review of everything you have marked for follow-up.
+
+Select **All Flagged Mail** in the folder tree to open it. Like other virtual folders it is a read-only view — no messages are moved or copied.
+
+### Saved views with the Flagged filter
+
+When you save a view with the **Flagged** filter active, that filter is captured as part of the view. Applying the view later restores the Flagged filter automatically. Assign a keyboard shortcut to the view in the View Manager to jump to your flagged messages instantly.
+
+### Server sync
+
+- **IMAP accounts:** Flagging a message sets the standard `\Flagged` flag on the server immediately. Other mail apps using the same account see the flag on their next sync. Flags set by those other apps appear in QuickMail on your next refresh (`F5`).
+- **Microsoft 365 (Graph) accounts:** Flagging sets the `followUpFlag` on the message via the Graph API — the same flag Outlook shows as "Flag for follow-up."
+
+### Screen reader experience
+
+When you navigate to a flagged message, the screen reader announces the flag name before the read status — for example: *"Urgent. Unread. Kelly Ford. Budget review. …"*
+
+To turn off this announcement, open **File → Settings → General** and uncheck **Announce flag status** in the Screen Reader Announcements section. The visual flag indicator remains; only the spoken announcement is suppressed.
 
 ---
 
@@ -1227,6 +1315,8 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Ctrl+F | Forward |
 | Ctrl+Enter | Open selected message in a new window |
 | Delete | Delete selected message(s) |
+| K | Toggle flag on selected message or group |
+| Ctrl+Shift+K | Open flag picker |
 | Ctrl+Shift+L | Manage Rules |
 | Ctrl+Shift+T | Create Rule from Message |
 | Ctrl+Shift+V | Cycle view mode (Messages / From / To / Conversations) |
@@ -1311,6 +1401,7 @@ QuickMail keeps all its files under `%AppData%\QuickMail\` (typically `C:\Users\
 |---------------|----------|
 | `accounts.json` | Account configuration — server addresses, ports, display names. No passwords. |
 | `contacts.json` | Address book contacts — display names and email addresses (human-readable JSON) |
+| `flags.json` | Named flag definitions — colors and names (human-readable JSON) |
 | `rules.json` | Mail rules — conditions and actions for automatic message processing |
 | `config.ini` | Optional settings file — see [Configuration file](#configuration-file) below. |
 | `mail.db` | Local message cache (SQLite database) |
@@ -1338,6 +1429,7 @@ Lines starting with `#` are comments and are ignored. The file uses a simple `ke
 | `DefaultComposeMode` | `plain` / `markdown` / `html` | `plain` | The editing mode new compose windows start in. Drafts and templates always reopen in plain text. Also available in Settings → General → Composing. |
 | `AutoSaveDrafts` | `on` / `off` | `on` | Automatically save the message as a server draft while composing. Also available in Settings → General → Composing. |
 | `AutoSaveIntervalSeconds` | `30`–`600` | `120` | Seconds between automatic draft saves. Also available in Settings → General → Composing. |
+| `AnnounceFlagStatus` | `true` / `false` | `true` | When on, the flag name is announced before the read status when navigating flagged messages. Also available in Settings → General → Screen Reader Announcements. |
 
 ### `[account:<guid>]` overrides
 

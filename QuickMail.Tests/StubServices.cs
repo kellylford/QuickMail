@@ -24,6 +24,7 @@ sealed class StubImapMailService : IMailService
     public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.CompletedTask;
     public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default) => Task.CompletedTask;
     public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => Task.CompletedTask;
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
     public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) => Task.CompletedTask;
@@ -102,6 +103,8 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
     public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
+    public Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId) => Task.CompletedTask;
+    public Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
 }
 
 sealed class StubContactService : IContactService
@@ -220,4 +223,20 @@ sealed class StubFeatureGate : IFeatureGate
     public bool this[FeatureFlag flag] { set => _flags[flag] = value; }
 
     public bool IsEnabled(FeatureFlag flag) => _flags.TryGetValue(flag, out var v) && v;
+}
+
+sealed class StubFlagService : IFlagService
+{
+#pragma warning disable CS0067
+    public event EventHandler? FlagDefinitionsChanged;
+#pragma warning restore CS0067
+    public FlagDefinition GetBuiltInFlag() => FlagDefinition.CreateBuiltIn();
+    public Task<List<FlagDefinition>> LoadFlagDefinitionsAsync() => Task.FromResult(new List<FlagDefinition> { FlagDefinition.CreateBuiltIn() });
+    public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags) => Task.CompletedTask;
+    public Task<FlagDefinition> GetKDefaultFlagAsync() => Task.FromResult(FlagDefinition.CreateBuiltIn());
+    public Task SetKDefaultFlagAsync(Guid flagId) => Task.CompletedTask;
+    public Task<FlagDefinition?> SetMessageFlagAsync(MailMessageSummary message, string? flagId, CancellationToken ct = default, FlagDefinition? resolvedDef = null)
+        => Task.FromResult<FlagDefinition?>(resolvedDef ?? (flagId != null ? FlagDefinition.CreateBuiltIn() : null));
+    public Task<FlagDefinition?> ToggleDefaultFlagAsync(MailMessageSummary message, CancellationToken ct = default)
+        => Task.FromResult<FlagDefinition?>(message.IsFlagged ? null : FlagDefinition.CreateBuiltIn());
 }

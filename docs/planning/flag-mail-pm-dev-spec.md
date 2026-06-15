@@ -1,11 +1,27 @@
 # Flag Mail — PM & Dev Specification
 
-**Status:** Approved
+**Status:** Approved — v1 complete; post-ship additions documented below
 **Date:** June 13, 2026
 **Target:** Phase 6 (Workflow & Productivity)
 **Crew:** Delta (PM → Dev Lead → Test Enforcer)
 
 > Combined PM + Dev spec. **Sections 1–6 are the PM portion** (problem, users, scope, UX, accessibility). **Sections 7–12 are the Dev portion** (architecture, data model, service layer, view models, views, implementation phases). **Sections 13+** are shared (command registry, accessibility, success metrics, open questions, file/test tables, appendices).
+
+## Post-Ship Additions (v0.7.3, June 15, 2026)
+
+Two gaps identified after shipping (issue #85) were closed without a separate spec:
+
+### Context-menu flag actions (issue #85 gap 1)
+
+All four context menus — **MessageContextMenu**, **ConversationGroupContextMenu**, **SenderGroupContextMenu**, **ToGroupContextMenu** — now include a **Flags** submenu. For individual messages the submenu lists all defined flags with a checkmark on the currently applied flag; selecting a checked flag clears it, selecting an unchecked flag applies it. For group menus (conversation, from, to) the submenu lists flags without checkmarks and applies the selected flag to every message in the group. Both variants include **Clear Flag** (disabled when nothing is flagged) and **Manage Flags…** at the bottom. The submenu is rebuilt on each `ContextMenu.Opened` event so flag definitions and current state are always current. `MainViewModel.SetGroupFlagAsync` was added to support batch flagging from the context menu (with the same optimistic update and announcement pattern used by `SetMessageFlagAsync`).
+
+### Sort: Flagged First (issue #85 gap 4)
+
+`MessageSort.FlaggedFirst` added. In flat message view, flagged messages appear first sorted by date descending, followed by unflagged messages sorted by date descending. In group views (Conversations, From, To), groups that contain at least one flagged message sort before unflagged groups, then by date/sender within each tier. Accessible from **View → Sort → Flagged First** and from the command palette (`view.sortFlaggedFirst`). Persisted to `config.ini` as `flaggedFirst`.
+
+### Out of scope (deferred to a separate spec)
+
+**Issue #85 gap 2 — per-flag hotkeys in Flag Manager** — requires design decisions around hotkey storage, CommandRegistry dynamic entries, and UI that are not resolved in this spec. A full spec is required before implementation.
 
 ---
 
