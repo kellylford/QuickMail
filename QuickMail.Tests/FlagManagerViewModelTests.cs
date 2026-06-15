@@ -31,8 +31,10 @@ public class FlagManagerViewModelTests
         public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags) { Saved = new List<FlagDefinition>(flags); return Task.CompletedTask; }
         public Task<FlagDefinition> GetKDefaultFlagAsync() => Task.FromResult(_flags.Find(f => f.Id == KDefaultId) ?? FlagDefinition.CreateBuiltIn());
         public Task SetKDefaultFlagAsync(Guid flagId) { KDefaultId = flagId; return Task.CompletedTask; }
-        public Task SetMessageFlagAsync(MailMessageSummary message, string? flagId, ILocalStoreService localStore, IMailService mailService, CancellationToken ct = default) => Task.CompletedTask;
-        public Task ToggleDefaultFlagAsync(MailMessageSummary message, ILocalStoreService localStore, IMailService mailService, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<FlagDefinition?> SetMessageFlagAsync(MailMessageSummary message, string? flagId, CancellationToken ct = default)
+            => Task.FromResult<FlagDefinition?>(flagId != null ? _flags.Find(f => f.Id.ToString() == flagId) : null);
+        public Task<FlagDefinition?> ToggleDefaultFlagAsync(MailMessageSummary message, CancellationToken ct = default)
+            => Task.FromResult<FlagDefinition?>(message.IsFlagged ? null : _flags.Find(f => f.Id == KDefaultId));
     }
 
     private static async Task<(FlagManagerViewModel vm, RecordingFlagService svc)> MakeVmAsync(
@@ -158,28 +160,46 @@ public class FlagManagerViewModelTests
     [Fact]
     public async Task BeginRename_SetsIsRenamingAndEditName()
     {
-        var (vm, _) = await MakeVmAsync();
+        var flags = new List<FlagDefinition>
+        {
+            FlagDefinition.CreateBuiltIn(),
+            new() { Name = "Urgent", SortOrder = 1 },
+        };
+        var (vm, _) = await MakeVmAsync(flags);
+        vm.SelectedFlag = vm.Flags[1]; // select non-built-in flag
         vm.BeginRenameCommand.Execute(null);
         Assert.True(vm.IsRenaming);
-        Assert.Equal("Flagged", vm.EditName);
+        Assert.Equal("Urgent", vm.EditName);
     }
 
     [Fact]
     public async Task SaveRename_UpdatesFlagNameAndSaves()
     {
-        var (vm, svc) = await MakeVmAsync();
+        var flags = new List<FlagDefinition>
+        {
+            FlagDefinition.CreateBuiltIn(),
+            new() { Name = "Urgent", SortOrder = 1 },
+        };
+        var (vm, svc) = await MakeVmAsync(flags);
+        vm.SelectedFlag = vm.Flags[1];
         vm.BeginRenameCommand.Execute(null);
         vm.EditName = "Important";
         await vm.SaveRenameCommand.ExecuteAsync(null);
         Assert.False(vm.IsRenaming);
         Assert.Equal("Important", vm.SelectedFlag!.Name);
-        Assert.Equal("Important", svc.Saved[0].Name);
+        Assert.Equal("Important", svc.Saved[1].Name);
     }
 
     [Fact]
     public async Task SaveRename_EmptyName_SetsError()
     {
-        var (vm, _) = await MakeVmAsync();
+        var flags = new List<FlagDefinition>
+        {
+            FlagDefinition.CreateBuiltIn(),
+            new() { Name = "Urgent", SortOrder = 1 },
+        };
+        var (vm, _) = await MakeVmAsync(flags);
+        vm.SelectedFlag = vm.Flags[1];
         vm.BeginRenameCommand.Execute(null);
         vm.EditName = "   ";
         await vm.SaveRenameCommand.ExecuteAsync(null);
@@ -190,7 +210,13 @@ public class FlagManagerViewModelTests
     [Fact]
     public async Task SaveRename_TooLongName_SetsError()
     {
-        var (vm, _) = await MakeVmAsync();
+        var flags = new List<FlagDefinition>
+        {
+            FlagDefinition.CreateBuiltIn(),
+            new() { Name = "Urgent", SortOrder = 1 },
+        };
+        var (vm, _) = await MakeVmAsync(flags);
+        vm.SelectedFlag = vm.Flags[1];
         vm.BeginRenameCommand.Execute(null);
         vm.EditName = new string('A', 33);
         await vm.SaveRenameCommand.ExecuteAsync(null);
@@ -277,10 +303,16 @@ public class FlagManagerViewModelTests
     [Fact]
     public async Task ChangeColor_UpdatesSelectedFlagAndSaves()
     {
-        var (vm, svc) = await MakeVmAsync();
+        var flags = new List<FlagDefinition>
+        {
+            FlagDefinition.CreateBuiltIn(),
+            new() { Name = "Urgent", SortOrder = 1, ColorHex = "#3182CE" },
+        };
+        var (vm, svc) = await MakeVmAsync(flags);
+        vm.SelectedFlag = vm.Flags[1]; // select non-built-in flag
         await vm.ChangeColorCommand.ExecuteAsync("#E53E3E");
         Assert.Equal("#E53E3E", vm.SelectedFlag!.ColorHex);
-        Assert.Equal("#E53E3E", svc.Saved[0].ColorHex);
+        Assert.Equal("#E53E3E", svc.Saved[1].ColorHex);
     }
 
     // ── HasSelection / CanDelete ───────────────────────────────────────────────

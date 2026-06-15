@@ -26,21 +26,21 @@ public interface IFlagService
     /// Sets or clears a named flag on a message in the local store and on the server.
     /// Pass null <paramref name="flagId"/> to clear. If <paramref name="flagId"/> is the
     /// built-in flag id the IMAP \Flagged flag is also toggled on the server.
+    /// Returns the resolved <see cref="FlagDefinition"/> (or null when clearing) so the
+    /// caller can update the in-memory model on the UI thread.
     /// </summary>
-    Task SetMessageFlagAsync(
+    Task<FlagDefinition?> SetMessageFlagAsync(
         MailMessageSummary message,
         string? flagId,
-        ILocalStoreService localStore,
-        IMailService mailService,
         CancellationToken ct = default);
 
     /// <summary>
     /// Toggles the K-default flag on a message (sets if unflagged, clears if already flagged
     /// with the K-default flag or any flag).
+    /// Returns the resolved <see cref="FlagDefinition"/> (or null when clearing) so the
+    /// caller can update the in-memory model on the UI thread.
     /// </summary>
-    Task ToggleDefaultFlagAsync(
+    Task<FlagDefinition?> ToggleDefaultFlagAsync(
         MailMessageSummary message,
-        ILocalStoreService localStore,
-        IMailService mailService,
         CancellationToken ct = default);
 }

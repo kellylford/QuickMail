@@ -13,8 +13,37 @@ public sealed class ConversationGroup : INotifyPropertyChanged
     /// <summary>The normalised subject used as the grouping key.</summary>
     public string NormalizedSubject { get; init; } = string.Empty;
 
+    private IReadOnlyList<MailMessageSummary> _messages = [];
+
     /// <summary>Messages in this conversation, newest first.</summary>
-    public IReadOnlyList<MailMessageSummary> Messages { get; init; } = [];
+    public IReadOnlyList<MailMessageSummary> Messages
+    {
+        get => _messages;
+        init
+        {
+            _messages = value;
+            // Subscribe to each message's PropertyChanged so flag-related
+            // computed properties stay in sync when a flag is toggled.
+            foreach (var m in _messages)
+            {
+                if (m is INotifyPropertyChanged npc)
+                    npc.PropertyChanged += OnMessagePropertyChanged;
+            }
+        }
+    }
+
+    private void OnMessagePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MailMessageSummary.IsFlagged)
+            or nameof(MailMessageSummary.FlagLabel)
+            or nameof(MailMessageSummary.FlagColorHex)
+            or nameof(MailMessageSummary.FlagId))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasFlagged)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagLabel)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagColorHex)));
+        }
+    }
 
     // ── Computed from the newest message ─────────────────────────────────────
 

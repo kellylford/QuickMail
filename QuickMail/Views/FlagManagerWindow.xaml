@@ -19,7 +19,7 @@
         <!-- Toolbar -->
         <ToolBar x:Name="FlagToolbar"
                  DockPanel.Dock="Top"
-                 AutomationProperties.Name="Flag manager toolbar">
+                 AutomationProperties.Name="Flag manager">
             <Button x:Name="AddButton"
                     Content="Add Flag"
                     Command="{Binding AddFlagCommand}"
@@ -27,21 +27,21 @@
             <Button x:Name="DeleteButton"
                     Content="Delete"
                     Command="{Binding DeleteFlagCommand}"
-                    AutomationProperties.Name="Delete selected flag"/>
+                    AutomationProperties.Name="Delete"/>
             <Separator/>
             <Button x:Name="MoveUpButton"
                     Content="Move Up"
                     Command="{Binding MoveUpCommand}"
-                    AutomationProperties.Name="Move flag up"/>
+                    AutomationProperties.Name="Move up"/>
             <Button x:Name="MoveDownButton"
                     Content="Move Down"
                     Command="{Binding MoveDownCommand}"
-                    AutomationProperties.Name="Move flag down"/>
+                    AutomationProperties.Name="Move down"/>
             <Separator/>
             <Button x:Name="SetDefaultButton"
                     Content="Set K Default"
                     Command="{Binding SetAsKDefaultCommand}"
-                    AutomationProperties.Name="Set as K key default flag"/>
+                    AutomationProperties.Name="Set K default"/>
         </ToolBar>
 
         <!-- Close button row -->
@@ -144,7 +144,7 @@
                                     Content="Rename"
                                     Command="{Binding BeginRenameCommand}"
                                     Width="68" Margin="4,0,0,0"
-                                    AutomationProperties.Name="Rename selected flag"/>
+                                    AutomationProperties.Name="Rename"/>
                             <TextBlock Text="{Binding SelectedFlag.Name}"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis"/>
@@ -219,6 +219,22 @@
                                     <Setter Property="Height" Value="28"/>
                                     <Setter Property="Margin" Value="2"/>
                                     <Setter Property="GroupName" Value="ColorGroup"/>
+                                    <Setter Property="FocusVisualStyle">
+                                        <Setter.Value>
+                                            <Style TargetType="Control">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate>
+                                                            <Rectangle Stroke="White" StrokeThickness="2"
+                                                                       StrokeDashArray="2,1"
+                                                                       RadiusX="3" RadiusY="3"
+                                                                       Margin="-2"/>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Setter.Value>
+                                    </Setter>
                                     <Setter Property="Template">
                                         <Setter.Value>
                                             <ControlTemplate TargetType="RadioButton">

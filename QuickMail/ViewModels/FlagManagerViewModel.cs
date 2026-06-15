@@ -42,10 +42,13 @@ public partial class FlagManagerViewModel : ObservableObject
     [ObservableProperty]
     private Guid _kDefaultId;
 
-    public bool HasSelection => SelectedFlag != null;
-    public bool CanDelete    => SelectedFlag?.IsBuiltIn == false;
-    public bool CanMoveUp    => SelectedFlag != null && Flags.IndexOf(SelectedFlag) > 0;
-    public bool CanMoveDown  => SelectedFlag != null && Flags.IndexOf(SelectedFlag) < Flags.Count - 1;
+    public bool HasSelection => HasSelectionNow();
+    public bool CanDelete    => CanDeleteFlagNow();
+    public bool CanMoveUp    => CanMoveUpNow();
+    public bool CanMoveDown  => CanMoveDownNow();
+
+    // Track user-flag count so CanAddFlagNow doesn't need a LINQ scan on every check.
+    private int _userFlagCount;
 
     public static string[] PresetColors { get; } =
     [
@@ -61,6 +64,7 @@ public partial class FlagManagerViewModel : ObservableObject
     public FlagManagerViewModel(IFlagService flagService)
     {
         _flagService = flagService;
+        Flags.CollectionChanged += (_, _) => RecomputeUserFlagCount();
     }
 
     public async Task LoadAsync()
@@ -69,16 +73,24 @@ public partial class FlagManagerViewModel : ObservableObject
         Flags.Clear();
         foreach (var f in flags.OrderBy(f => f.SortOrder))
             Flags.Add(f);
+        RecomputeUserFlagCount();
         var kFlag = await _flagService.GetKDefaultFlagAsync();
         KDefaultId = kFlag.Id;
         SelectedFlag = Flags.Count > 0 ? Flags[0] : null;
     }
 
-    private bool CanAddFlagNow() => Flags.Count(f => !f.IsBuiltIn) < MaxUserFlags;
+    private bool CanAddFlagNow() => _userFlagCount < MaxUserFlags;
     private bool CanDeleteFlagNow() => SelectedFlag?.IsBuiltIn == false;
     private bool HasSelectionNow() => SelectedFlag != null;
+    private bool CanRenameNow() => SelectedFlag?.IsBuiltIn == false;
     private bool CanMoveUpNow()   => SelectedFlag != null && Flags.IndexOf(SelectedFlag) > 0;
     private bool CanMoveDownNow() => SelectedFlag != null && Flags.IndexOf(SelectedFlag) < Flags.Count - 1;
+
+    private void RecomputeUserFlagCount()
+    {
+        _userFlagCount = Flags.Count(f => !f.IsBuiltIn);
+        AddFlagCommand.NotifyCanExecuteChanged();
+    }
 
     [RelayCommand(CanExecute = nameof(CanAddFlagNow))]
     private async Task AddFlag()
@@ -94,7 +106,6 @@ public partial class FlagManagerViewModel : ObservableObject
         Flags.Add(newFlag);
         SelectedFlag = newFlag;
         await SaveAsync();
-        AddFlagCommand.NotifyCanExecuteChanged();
         BeginRename();
     }
 
@@ -111,14 +122,13 @@ public partial class FlagManagerViewModel : ObservableObject
         Flags.Remove(SelectedFlag);
         SelectedFlag = Flags.Count > 0 ? Flags[Math.Min(idx, Flags.Count - 1)] : null;
         await SaveAsync();
-        AddFlagCommand.NotifyCanExecuteChanged();
         AnnouncementRequested?.Invoke($"Deleted flag {name}", AnnouncementCategory.Result);
     }
 
-    [RelayCommand(CanExecute = nameof(HasSelectionNow))]
+    [RelayCommand(CanExecute = nameof(CanRenameNow))]
     private void BeginRename()
     {
-        if (SelectedFlag == null) return;
+        if (SelectedFlag == null || SelectedFlag.IsBuiltIn) return;
         EditName = SelectedFlag.Name;
         RenameError = string.Empty;
         IsRenaming = true;
@@ -158,6 +168,7 @@ public partial class FlagManagerViewModel : ObservableObject
     private async Task ChangeColor(string hex)
     {
         if (SelectedFlag == null || string.IsNullOrEmpty(hex)) return;
+        if (SelectedFlag.IsBuiltIn) return;
         SelectedFlag.ColorHex = hex;
         await SaveAsync();
     }

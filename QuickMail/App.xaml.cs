@@ -113,7 +113,7 @@ public partial class App : Application
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
 
             var viewService = new ViewService(profile);
-            var flagService = new FlagService(profile, configService);
+            var flagService = new FlagService(profile, configService, localStore, mailRouter);
 
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,

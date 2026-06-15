@@ -16,7 +16,7 @@ public class FlagServiceTests
         var dir = Path.Combine(Path.GetTempPath(), "FlagServiceTests_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         var profile = new ProfileContext(dir);
-        var svc = new FlagService(profile, new StubConfigService());
+        var svc = new FlagService(profile, new StubConfigService(), new StubLocalStoreService(), new StubImapMailService());
         return (svc, dir);
     }
 
@@ -40,15 +40,13 @@ public class FlagServiceTests
         var (svc, dir) = MakeService();
         try
         {
-            var store = new RecordingFlagStore();
-            var mail  = new StubImapMailService();
-            var msg   = new MailMessageSummary { MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX" };
+            var msg = new MailMessageSummary { MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX" };
 
-            await svc.ToggleDefaultFlagAsync(msg, store, mail);
+            var def = await svc.ToggleDefaultFlagAsync(msg);
 
-            // Local store should have received the built-in flag id.
-            Assert.Equal(1, store.UpdateFlagCalls);
-            Assert.Equal(FlagDefinition.BuiltInFlagId.ToString(), store.LastFlagId);
+            // Should return the built-in flag definition when setting.
+            Assert.NotNull(def);
+            Assert.Equal(FlagDefinition.BuiltInFlagId, def!.Id);
         }
         finally { Directory.Delete(dir, true); }
     }
@@ -59,9 +57,7 @@ public class FlagServiceTests
         var (svc, dir) = MakeService();
         try
         {
-            var store = new RecordingFlagStore();
-            var mail  = new StubImapMailService();
-            var msg   = new MailMessageSummary
+            var msg = new MailMessageSummary
             {
                 MessageId  = "1",
                 AccountId  = Guid.NewGuid(),
@@ -69,11 +65,10 @@ public class FlagServiceTests
                 FlagId     = FlagDefinition.BuiltInFlagId.ToString(),
             };
 
-            await svc.ToggleDefaultFlagAsync(msg, store, mail);
+            var def = await svc.ToggleDefaultFlagAsync(msg);
 
-            // Clear is a null flag id.
-            Assert.Equal(1, store.UpdateFlagCalls);
-            Assert.Null(store.LastFlagId);
+            // Should return null when clearing.
+            Assert.Null(def);
         }
         finally { Directory.Delete(dir, true); }
     }

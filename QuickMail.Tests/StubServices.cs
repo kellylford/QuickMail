@@ -235,6 +235,8 @@ sealed class StubFlagService : IFlagService
     public Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags) => Task.CompletedTask;
     public Task<FlagDefinition> GetKDefaultFlagAsync() => Task.FromResult(FlagDefinition.CreateBuiltIn());
     public Task SetKDefaultFlagAsync(Guid flagId) => Task.CompletedTask;
-    public Task SetMessageFlagAsync(MailMessageSummary message, string? flagId, ILocalStoreService localStore, IMailService mailService, CancellationToken ct = default) => Task.CompletedTask;
-    public Task ToggleDefaultFlagAsync(MailMessageSummary message, ILocalStoreService localStore, IMailService mailService, CancellationToken ct = default) => Task.CompletedTask;
+    public Task<FlagDefinition?> SetMessageFlagAsync(MailMessageSummary message, string? flagId, CancellationToken ct = default)
+        => Task.FromResult<FlagDefinition?>(flagId != null ? FlagDefinition.CreateBuiltIn() : null);
+    public Task<FlagDefinition?> ToggleDefaultFlagAsync(MailMessageSummary message, CancellationToken ct = default)
+        => Task.FromResult<FlagDefinition?>(message.IsFlagged ? null : FlagDefinition.CreateBuiltIn());
 }

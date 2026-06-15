@@ -37,6 +37,7 @@ public partial class MainViewModel : ObservableObject
     private CancellationTokenSource? _folderCts;
     private CancellationTokenSource? _messageLoadCts;
     private CancellationTokenSource? _messageActionCts;
+    private CancellationTokenSource? _flagActionCts;
     private CancellationTokenSource? _prefetchCts;
 
     private const int PrefetchRadiusAroundOpen = 5;
@@ -322,6 +323,8 @@ public partial class MainViewModel : ObservableObject
     public bool IsFilterFlagged         => ActiveFilter == MessageFilter.Flagged;
     public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
     public bool AnnounceFlagStatus      => _announceFlagStatus;
+    /// <summary>Named-flag sub-filter id, set by saved views. Null = show all flagged messages.</summary>
+    public string? ActiveFlagFilterId   => _activeFlagFilterId;
     public string FilterLabel => ActiveFilter switch
     {
         MessageFilter.Unread          => "Unread",
@@ -680,7 +683,7 @@ public partial class MainViewModel : ObservableObject
         _syncService.RulesApplied    += OnRulesApplied;
         _imap.InboxNewMailDetected += OnInboxNewMailDetected;
         if (_flagService != null)
-            _flagService.FlagDefinitionsChanged += OnFlagDefinitionsChanged;
+            _flagService.FlagDefinitionsChanged += async (_, _) => await OnFlagDefinitionsChangedAsync();
 
         // Load saved views and register their commands before the UI is shown.
         LoadSavedViews();
@@ -834,6 +837,17 @@ public partial class MainViewModel : ObservableObject
         };
         ActiveSort = ConfigModel.ParseSort(view.Sort);
         _activeFlagFilterId = string.IsNullOrEmpty(view.FlagFilterId) ? null : view.FlagFilterId;
+
+        // Validate the flag filter id against current flag definitions.
+        // If the referenced flag has been deleted, treat it as no filter
+        // rather than showing an empty list with no explanation.
+        if (_activeFlagFilterId != null && _flagService != null &&
+            Guid.TryParse(_activeFlagFilterId, out var flagGuid))
+        {
+            var defs = await _flagService.LoadFlagDefinitionsAsync();
+            if (!defs.Exists(d => d.Id == flagGuid))
+                _activeFlagFilterId = null;
+        }
 
         ActiveDayLimit = view.DaysOfMail;
         SearchText     = string.Empty;
@@ -1014,6 +1028,8 @@ public partial class MainViewModel : ObservableObject
     internal void ApplySettings(ConfigModel cfg)
     {
         ShowMessageStatus = cfg.ShowMessageStatus;
+        _announceFlagStatus = cfg.AnnounceFlagStatus;
+        OnPropertyChanged(nameof(AnnounceFlagStatus));
 
         var newPreviewLines = cfg.PreviewLines;
         var newShowPreview  = newPreviewLines > 0;
@@ -2859,12 +2875,39 @@ public partial class MainViewModel : ObservableObject
         StatusText = "Loading flagged messages…";
         IsBusy = true;
 
+        _folderCts?.Cancel();
+        ReplaceCts(ref _folderCts, out var ct);
+
         try
         {
             List<MailMessageSummary> all;
             if (OnlineMode)
             {
+                // In --online mode, fetch from every non-excluded folder across all accounts
+                // and filter to flagged messages client-side.
                 all = new List<MailMessageSummary>();
+                foreach (var account in Accounts)
+                {
+                    if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+                    foreach (var folder in folders)
+                    {
+                        if (folder.ExcludeFromAllMail) continue;
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var msgs = _syncDays > 0
+                                ? await _imap.GetMessagesSinceDateAsync(
+                                    account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                                : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
+                            all.AddRange(msgs.Where(m => m.IsFlagged));
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            LogService.Log($"FetchAllFlagged online {account.DisplayName}/{folder.DisplayName}", ex);
+                        }
+                    }
+                }
             }
             else
             {
@@ -2878,6 +2921,11 @@ public partial class MainViewModel : ObservableObject
             var n = Messages.Count;
             StatusText = n == 0 ? "No flagged messages." : $"{n} flagged {(n == 1 ? "message" : "messages")}.";
         }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "Flagged messages load cancelled.";
+        }
         catch (Exception ex)
         {
             LogService.Log("FetchAllFlagged failed", ex);
@@ -2885,7 +2933,8 @@ public partial class MainViewModel : ObservableObject
         }
         finally
         {
-            IsBusy = false;
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
         }
     }
 
@@ -2894,9 +2943,13 @@ public partial class MainViewModel : ObservableObject
         if (_flagService == null) return;
         try
         {
-            ReplaceCts(ref _messageActionCts, out var ct);
+            ReplaceCts(ref _flagActionCts, out var ct);
             bool wasFlagged = message.IsFlagged;
-            await _flagService.ToggleDefaultFlagAsync(message, _localStore, _imap, ct);
+            var def = await _flagService.ToggleDefaultFlagAsync(message, ct);
+            // Update in-memory model (we're on the UI thread from the command handler).
+            message.FlagId       = wasFlagged ? null : def?.Id.ToString();
+            message.FlagName     = def?.Name;
+            message.FlagColorHex = def?.ColorHex;
             if (_announceFlagStatus)
             {
                 var text = wasFlagged ? "Unflagged" : $"{message.FlagName ?? "Flagged"}";
@@ -2912,12 +2965,17 @@ public partial class MainViewModel : ObservableObject
         if (_flagService == null || messages.Count == 0) return;
         try
         {
-            ReplaceCts(ref _messageActionCts, out var ct);
+            ReplaceCts(ref _flagActionCts, out var ct);
             bool anyFlagged = messages.Any(m => m.IsFlagged);
             var kFlag = await _flagService.GetKDefaultFlagAsync();
             string? targetFlagId = anyFlagged ? null : kFlag.Id.ToString();
             foreach (var msg in messages)
-                await _flagService.SetMessageFlagAsync(msg, targetFlagId, _localStore, _imap, ct);
+            {
+                var def = await _flagService.SetMessageFlagAsync(msg, targetFlagId, ct);
+                msg.FlagId       = targetFlagId;
+                msg.FlagName     = def?.Name;
+                msg.FlagColorHex = def?.ColorHex;
+            }
             if (_announceFlagStatus)
             {
                 var text = anyFlagged
@@ -2935,8 +2993,11 @@ public partial class MainViewModel : ObservableObject
         if (_flagService == null) return;
         try
         {
-            ReplaceCts(ref _messageActionCts, out var ct);
-            await _flagService.SetMessageFlagAsync(message, flagId, _localStore, _imap, ct);
+            ReplaceCts(ref _flagActionCts, out var ct);
+            var def = await _flagService.SetMessageFlagAsync(message, flagId, ct);
+            message.FlagId       = flagId;
+            message.FlagName     = def?.Name;
+            message.FlagColorHex = def?.ColorHex;
             if (_announceFlagStatus)
             {
                 var text = flagId == null ? "Unflagged" : (message.FlagName ?? "Flagged");
@@ -2947,23 +3008,33 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex) { LogService.Log("SetMessageFlag failed", ex); }
     }
 
-    private async void OnFlagDefinitionsChanged(object? sender, EventArgs e)
+    private async Task OnFlagDefinitionsChangedAsync()
     {
         if (_flagService == null) return;
         var defs = await _flagService.LoadFlagDefinitionsAsync();
         var lookup = new Dictionary<Guid, FlagDefinition>(defs.Count);
         foreach (var d in defs) lookup[d.Id] = d;
-        Application.Current.Dispatcher.Invoke(() =>
+        // Event is now marshalled to the UI thread by FlagService, so no
+        // Dispatcher.Invoke needed here.
+        foreach (var msg in _rawMessages)
         {
-            foreach (var msg in _rawMessages)
+            if (msg.FlagId != null && Guid.TryParse(msg.FlagId, out var fid))
             {
-                if (msg.FlagId != null && Guid.TryParse(msg.FlagId, out var fid) && lookup.TryGetValue(fid, out var def))
+                if (lookup.TryGetValue(fid, out var def))
                 {
                     msg.FlagName     = def.Name;
                     msg.FlagColorHex = def.ColorHex;
                 }
+                else
+                {
+                    // Flag was deleted — clear all flag state so the message
+                    // no longer appears flagged or stuck in the Flagged filter.
+                    msg.FlagId       = null;
+                    msg.FlagName     = null;
+                    msg.FlagColorHex = null;
+                }
             }
-        });
+        }
     }
 
     /// <summary>
@@ -3095,6 +3166,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder))
                 return;
 
+            await ResolveFlagNamesAsync(all);
             var sorted = all.OrderByDescending(m => m.Date).ToList();
             SetMessages(sorted);
             StatusText = sorted.Count == 0
@@ -4254,6 +4326,9 @@ public partial class MainViewModel : ObservableObject
             "flagged"     => MessageFilter.Flagged,
             _             => MessageFilter.All,
         };
+        // Clear any named-flag sub-filter from a previously applied saved view
+        // so the user sees all flagged messages, not just one specific flag.
+        _activeFlagFilterId = null;
         return Task.CompletedTask;
     }
 

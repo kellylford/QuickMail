@@ -1191,6 +1191,7 @@
                                         <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
                                                 Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
                                         <Border Background="Transparent"
+                                                Focusable="False"
                                                 Tag="{Binding}"
                                                 MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
                                     </Grid>
@@ -1238,6 +1239,7 @@
                                         <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
                                                 Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
                                         <Border Background="Transparent"
+                                                Focusable="False"
                                                 Tag="{Binding}"
                                                 MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
                                     </Grid>
@@ -1318,6 +1320,7 @@
                                         <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
                                                 Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
                                         <Border Background="Transparent"
+                                                Focusable="False"
                                                 Tag="{Binding}"
                                                 MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
                                     </Grid>
@@ -1365,6 +1368,7 @@
                                         <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
                                                 Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
                                         <Border Background="Transparent"
+                                                Focusable="False"
                                                 Tag="{Binding}"
                                                 MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
                                     </Grid>
@@ -1442,6 +1446,7 @@
                                         <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
                                                 Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
                                         <Border Background="Transparent"
+                                                Focusable="False"
                                                 Tag="{Binding}"
                                                 MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
                                     </Grid>
@@ -1489,6 +1494,7 @@
                                         <Border Width="4" HorizontalAlignment="Left" IsHitTestVisible="False"
                                                 Background="{Binding FlagColorHex, Converter={StaticResource StringToBrushConverter}}"/>
                                         <Border Background="Transparent"
+                                                Focusable="False"
                                                 Tag="{Binding}"
                                                 MouseLeftButtonUp="FlagHitArea_MouseLeftButtonUp"/>
                                     </Grid>

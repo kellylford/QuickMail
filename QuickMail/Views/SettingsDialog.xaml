@@ -229,7 +229,7 @@
                                 <CheckBox Content="Announce fla_g status"
                                           IsChecked="{Binding AnnounceFlagStatus, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce flag status when navigating to a flagged message"/>
+                                          AutomationProperties.Name="Announce flag status"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>
