@@ -347,6 +347,7 @@ public partial class MainViewModel : ObservableObject
     public bool IsSortAlphaDesc   => ActiveSort == MessageSort.AlphaDescending;
     public bool IsSortCountDesc   => ActiveSort == MessageSort.CountDescending;
     public bool IsSortCountAsc    => ActiveSort == MessageSort.CountAscending;
+    public bool IsSortFlaggedFirst => ActiveSort == MessageSort.FlaggedFirst;
     public bool IsCountSortAvailable => ViewMode != ViewMode.Messages;
     public string SortLabel => ActiveSort switch
     {
@@ -355,6 +356,7 @@ public partial class MainViewModel : ObservableObject
         MessageSort.AlphaDescending => "Z → A",
         MessageSort.CountDescending => "Most Messages",
         MessageSort.CountAscending  => "Fewest Messages",
+        MessageSort.FlaggedFirst    => "Flagged First",
         _                           => string.Empty,
     };
 
@@ -1198,6 +1200,10 @@ public partial class MainViewModel : ObservableObject
             isAvailable: () => IsCountSortAvailable));
 
         registry.Register(new CommandDefinition(
+            id: "view.sortFlaggedFirst", category: "View", title: "Sort: Flagged First",
+            execute: () => SetSortCommand.Execute("flaggedFirst")));
+
+        registry.Register(new CommandDefinition(
             id: "mail.rules", category: "Mail", title: "Manage Rules",
             execute: () => OpenRulesManagerCommand.Execute(null),
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
@@ -1705,6 +1711,7 @@ public partial class MainViewModel : ObservableObject
             MessageSort.DateAscending   => result.OrderBy(m => m.Date),
             MessageSort.AlphaAscending  => result.OrderBy(m => m.Subject, StringComparer.OrdinalIgnoreCase),
             MessageSort.AlphaDescending => result.OrderByDescending(m => m.Subject, StringComparer.OrdinalIgnoreCase),
+            MessageSort.FlaggedFirst    => result.OrderBy(m => m.IsFlagged ? 0 : 1).ThenByDescending(m => m.Date),
             _                           => result.OrderByDescending(m => m.Date),
         };
         Messages = new BatchObservableCollection<MailMessageSummary>(result);
@@ -2111,6 +2118,7 @@ public partial class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(IsSortAlphaDesc));
         OnPropertyChanged(nameof(IsSortCountDesc));
         OnPropertyChanged(nameof(IsSortCountAsc));
+        OnPropertyChanged(nameof(IsSortFlaggedFirst));
         OnPropertyChanged(nameof(SortLabel));
 
         var cfg = _configService.Load();
@@ -2198,6 +2206,7 @@ public partial class MainViewModel : ObservableObject
                 MessageSort.AlphaDescending => built.OrderByDescending(g => g.NormalizedSubject, StringComparer.OrdinalIgnoreCase),
                 MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
                 MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                MessageSort.FlaggedFirst    => built.OrderBy(g => g.HasFlagged ? 0 : 1).ThenByDescending(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
                 _                           => built.OrderByDescending(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
             };
             var groups = ordered.ToList();
@@ -2231,6 +2240,7 @@ public partial class MainViewModel : ObservableObject
                 MessageSort.AlphaDescending => built.OrderByDescending(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
                 MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                MessageSort.FlaggedFirst    => built.OrderBy(g => g.HasFlagged ? 0 : 1).ThenBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
             };
             var groups = ordered.ToList();
@@ -2264,6 +2274,7 @@ public partial class MainViewModel : ObservableObject
                 MessageSort.AlphaDescending => built.OrderByDescending(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 MessageSort.CountDescending => built.OrderByDescending(g => g.Count),
                 MessageSort.CountAscending  => built.OrderBy(g => g.Count),
+                MessageSort.FlaggedFirst    => built.OrderBy(g => g.HasFlagged ? 0 : 1).ThenBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
                 _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
             };
             var groups = ordered.ToList();
@@ -3021,6 +3032,32 @@ public partial class MainViewModel : ObservableObject
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { LogService.Log("SetMessageFlag failed", ex); }
+    }
+
+    public async Task SetGroupFlagAsync(IReadOnlyList<MailMessageSummary> messages, string? flagId)
+    {
+        if (_flagService == null || messages.Count == 0) return;
+        try
+        {
+            ReplaceCts(ref _flagActionCts, out var ct);
+            FlagDefinition? def = null;
+            foreach (var msg in messages)
+            {
+                def = await _flagService.SetMessageFlagAsync(msg, flagId, ct);
+                msg.FlagId       = flagId;
+                msg.FlagName     = def?.Name;
+                msg.FlagColorHex = def?.ColorHex;
+            }
+            if (_announceFlagStatus)
+            {
+                var text = flagId == null
+                    ? $"Unflagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}"
+                    : $"Flagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}: {def?.Name ?? "Flagged"}";
+                Announce(text, AnnouncementCategory.Result);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { LogService.Log("SetGroupFlag failed", ex); }
     }
 
     private async Task OnFlagDefinitionsChangedAsync()

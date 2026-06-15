@@ -51,6 +51,10 @@
                       Command="{Binding DeleteSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
+            <MenuItem Header="Flag_s"
+                      Tag="FlagsSubmenu"
+                      AutomationProperties.Name="Flags"/>
+            <Separator/>
             <MenuItem Header="E_xpand Group"
                       AutomationProperties.Name="Expand Group"
                       Command="{Binding ExpandSenderGroupCommand}"
@@ -95,6 +99,10 @@
                       AutomationProperties.Name="Delete All to Recipient"
                       Command="{Binding DeleteToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <Separator/>
+            <MenuItem Header="Flag_s"
+                      Tag="FlagsSubmenu"
+                      AutomationProperties.Name="Flags"/>
             <Separator/>
             <MenuItem Header="E_xpand Group"
                       AutomationProperties.Name="Expand Group"
@@ -142,6 +150,10 @@
                       Command="{Binding DeleteConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
+            <MenuItem Header="Flag_s"
+                      Tag="FlagsSubmenu"
+                      AutomationProperties.Name="Flags"/>
+            <Separator/>
             <MenuItem Header="E_xpand Conversation"
                       AutomationProperties.Name="Expand Conversation"
                       Command="{Binding ExpandConversationCommand}"
@@ -183,6 +195,10 @@
             <MenuItem Header="_Delete"
                       AutomationProperties.Name="Delete"
                       Command="{Binding DeleteMessageCommand}"/>
+            <Separator/>
+            <MenuItem Header="Flag_s"
+                      Tag="FlagsSubmenu"
+                      AutomationProperties.Name="Flags"/>
             <Separator/>
             <MenuItem Header="Create _Rule from Message…"
                       InputGestureText="Ctrl+Shift+T"
@@ -422,6 +438,12 @@
                               IsChecked="{Binding IsSortAlphaDesc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="alphaDesc"/>
+                    <Separator/>
+                    <MenuItem Header="Fla_gged First"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsSortFlaggedFirst, Mode=OneWay}"
+                              Command="{Binding SetSortCommand}"
+                              CommandParameter="flaggedFirst"/>
                     <Separator/>
                     <MenuItem Header="_Most Messages"
                               IsCheckable="True"

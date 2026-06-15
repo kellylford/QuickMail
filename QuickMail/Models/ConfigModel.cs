@@ -168,12 +168,13 @@ public class ConfigModel
     /// <summary>Converts a config-string Sort to the enum (case-insensitive).</summary>
     public static MessageSort ParseSort(string? s) => (s?.ToLowerInvariant()) switch
     {
-        "dateasc"   => MessageSort.DateAscending,
-        "alphaasc"  => MessageSort.AlphaAscending,
-        "alphadesc" => MessageSort.AlphaDescending,
-        "countdesc" => MessageSort.CountDescending,
-        "countasc"  => MessageSort.CountAscending,
-        _           => MessageSort.DateDescending,
+        "dateasc"      => MessageSort.DateAscending,
+        "alphaasc"     => MessageSort.AlphaAscending,
+        "alphadesc"    => MessageSort.AlphaDescending,
+        "countdesc"    => MessageSort.CountDescending,
+        "countasc"     => MessageSort.CountAscending,
+        "flaggedfirst" => MessageSort.FlaggedFirst,
+        _              => MessageSort.DateDescending,
     };
 
     /// <summary>Converts a MessageSort enum to its config-string representation.</summary>
@@ -184,6 +185,7 @@ public class ConfigModel
         MessageSort.AlphaDescending => "alphaDesc",
         MessageSort.CountDescending => "countDesc",
         MessageSort.CountAscending  => "countAsc",
+        MessageSort.FlaggedFirst    => "flaggedFirst",
         _                           => "dateDesc",
     };
 }

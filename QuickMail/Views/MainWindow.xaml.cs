@@ -230,6 +230,11 @@ public partial class MainWindow : Window
         };
         vm.FlagDefinitions.CollectionChanged += (_, _) => RebuildFlagSubmenuItems();
         FilterFlaggedItem.SubmenuOpened += (_, _) => UpdateFlagSubmenuChecks();
+
+        ((ContextMenu)FindResource("MessageContextMenu")).Opened          += (_, _) => RebuildMessageContextFlagsSubmenu();
+        ((ContextMenu)FindResource("ConversationGroupContextMenu")).Opened += (_, _) => RebuildConversationContextFlagsSubmenu();
+        ((ContextMenu)FindResource("SenderGroupContextMenu")).Opened       += (_, _) => RebuildSenderContextFlagsSubmenu();
+        ((ContextMenu)FindResource("ToGroupContextMenu")).Opened           += (_, _) => RebuildToContextFlagsSubmenu();
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
@@ -4147,6 +4152,104 @@ public partial class MainWindow : Window
             if (obj is MenuItem { Tag: Guid id } item)
                 item.IsChecked = id == _vm.ActiveView?.Id;
         }
+    }
+
+    // ── Context-menu Flags submenus ──────────────────────────────────────────
+
+    private static MenuItem? FindFlagsSubmenu(ContextMenu menu)
+    {
+        foreach (var item in menu.Items)
+            if (item is MenuItem { Tag: "FlagsSubmenu" } m) return m;
+        return null;
+    }
+
+    private void PopulateFlagSubmenuForMessage(MenuItem flagsMenu, MailMessageSummary? msg)
+    {
+        flagsMenu.Items.Clear();
+        foreach (var flag in _vm.FlagDefinitions)
+        {
+            var flagId   = flag.Id.ToString();
+            var flagName = flag.Name;
+            var item     = new MenuItem
+            {
+                Header      = flagName,
+                IsCheckable = true,
+                IsChecked   = msg?.FlagId == flagId,
+            };
+            item.Click += (_, _) =>
+            {
+                if (msg == null) return;
+                var newId = msg.FlagId == flagId ? null : flagId;
+                _ = _vm.SetMessageFlagAsync(msg, newId);
+            };
+            flagsMenu.Items.Add(item);
+        }
+        flagsMenu.Items.Add(new Separator());
+        var clearItem = new MenuItem { Header = "C_lear Flag", IsEnabled = msg?.IsFlagged == true };
+        clearItem.Click += (_, _) => { if (msg != null) _ = _vm.SetMessageFlagAsync(msg, null); };
+        flagsMenu.Items.Add(clearItem);
+        flagsMenu.Items.Add(new Separator());
+        var manageItem = new MenuItem { Header = "_Manage Flags…" };
+        manageItem.Click += (_, _) => OpenFlagManager();
+        flagsMenu.Items.Add(manageItem);
+    }
+
+    private void PopulateFlagSubmenuForGroup(MenuItem flagsMenu, IReadOnlyList<MailMessageSummary> messages)
+    {
+        flagsMenu.Items.Clear();
+        foreach (var flag in _vm.FlagDefinitions)
+        {
+            var flagId   = flag.Id.ToString();
+            var flagName = flag.Name;
+            var item     = new MenuItem { Header = flagName };
+            item.Click += (_, _) => _ = _vm.SetGroupFlagAsync(messages, flagId);
+            flagsMenu.Items.Add(item);
+        }
+        flagsMenu.Items.Add(new Separator());
+        var clearItem = new MenuItem { Header = "C_lear Flag", IsEnabled = messages.Any(m => m.IsFlagged) };
+        clearItem.Click += (_, _) => _ = _vm.SetGroupFlagAsync(messages, null);
+        flagsMenu.Items.Add(clearItem);
+        flagsMenu.Items.Add(new Separator());
+        var manageItem = new MenuItem { Header = "_Manage Flags…" };
+        manageItem.Click += (_, _) => OpenFlagManager();
+        flagsMenu.Items.Add(manageItem);
+    }
+
+    private void RebuildMessageContextFlagsSubmenu()
+    {
+        var menu = (ContextMenu)FindResource("MessageContextMenu");
+        if (FindFlagsSubmenu(menu) is not { } sub) return;
+        PopulateFlagSubmenuForMessage(sub, _vm.SelectedMessage);
+    }
+
+    private void RebuildConversationContextFlagsSubmenu()
+    {
+        var menu = (ContextMenu)FindResource("ConversationGroupContextMenu");
+        if (FindFlagsSubmenu(menu) is not { } sub) return;
+        if (ConversationTree.SelectedItem is ConversationGroup group)
+            PopulateFlagSubmenuForGroup(sub, group.Messages);
+        else
+            sub.Items.Clear();
+    }
+
+    private void RebuildSenderContextFlagsSubmenu()
+    {
+        var menu = (ContextMenu)FindResource("SenderGroupContextMenu");
+        if (FindFlagsSubmenu(menu) is not { } sub) return;
+        if (SenderGroupTree.SelectedItem is SenderGroup group)
+            PopulateFlagSubmenuForGroup(sub, group.Messages);
+        else
+            sub.Items.Clear();
+    }
+
+    private void RebuildToContextFlagsSubmenu()
+    {
+        var menu = (ContextMenu)FindResource("ToGroupContextMenu");
+        if (FindFlagsSubmenu(menu) is not { } sub) return;
+        if (ToGroupTree.SelectedItem is SenderGroup group)
+            PopulateFlagSubmenuForGroup(sub, group.Messages);
+        else
+            sub.Items.Clear();
     }
 
     private void RebuildFlagSubmenuItems()
