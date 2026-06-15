@@ -26,7 +26,7 @@
     <PackageReference Include="MailKit" Version="4.17.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.84.2" />
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.84.2" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3967.48" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
   </ItemGroup>
 
 </Project>
