@@ -556,6 +556,8 @@ When you navigate to a flagged message, the screen reader announces the flag nam
 
 To turn off this announcement, open **File → Settings → General** and uncheck **Announce flag status** in the Screen Reader Announcements section. The visual flag indicator remains; only the spoken announcement is suppressed.
 
+When a message has attachments, the screen reader announces "attachments" right after the read status and before the sender name — for example: *"Unread. Attachments. Kelly Ford. Budget review. …"* This lets you identify messages with attachments without having to navigate past the sender and subject first.
+
 ---
 
 ## Sorting messages
@@ -1199,7 +1201,23 @@ Attachments are saved with drafts and restored when you re-open a draft.
 
 ### Forwarded messages
 
-When you forward a message that has attachments, QuickMail automatically downloads and includes them in the compose window. The status bar shows **"Preparing forward…"** while this happens.
+When you forward a message, QuickMail handles the quoted body and any attachments:
+
+**Body:** In HTML mode the original message appears as an indented block quote with a header showing the original sender, date, subject, and recipient. The cursor starts at the top of the compose area so you can type before the quoted text. In plain text mode the header and body appear as plain text after the cursor.
+
+**Attachments:** If the message has attachments, an **Include Attachments** dialog opens before anything is downloaded. All attachments are checked by default.
+
+| Action | How |
+|--------|-----|
+| Move between attachments | **Up/Down** arrow keys |
+| Toggle an attachment on or off | **Space** |
+| View file name, size, and type | **Alt+Enter** |
+| Forward with checked attachments | **Forward** button or **Enter** |
+| Cancel the forward entirely | **Cancel** or **Escape** |
+
+Press **Tab** to move from the attachment list to the **Forward** button, then **Tab** again for **Cancel**. Forwarding with no attachments checked sends the message without any attached files.
+
+The status bar announces progress as each file downloads — "Downloading 1 of 3 attachments…". If a file cannot be downloaded, the compose window opens with the files that succeeded, and a notice names the ones that were skipped.
 
 ### Reading attachments in received messages
 
@@ -1232,6 +1250,7 @@ A security warning is shown before opening executable file types.
 | A contact in the address book | Display name, email address, group memberships, and last-used date |
 | A group in the address book | Group name, member count, and a list of members |
 | An attachment in the reading pane | File name, MIME type, and size |
+| An attachment in the Include Attachments dialog (forward) | File name, size, and type |
 
 In grouped views (Conversations, From, To), Alt+Enter on a group header row shows group-level properties. To see properties for an individual message inside a group, expand the group, navigate to the message, and press Alt+Enter.
 

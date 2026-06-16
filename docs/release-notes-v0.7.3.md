@@ -43,6 +43,23 @@ You can now flag messages for follow-up — and QuickMail stays in sync with fla
 
 **Color is never the only indicator:** Every flagged message row shows the flag name in the status column text in addition to the colored indicator. The flag name is always in the accessible name of the row regardless of color settings.
 
+### Forward Mail
+
+**No more blank forwarded messages:** Forwarding an HTML-only message — one sent without a plain-text part — no longer produces an empty compose window. QuickMail now converts the HTML to readable plain text when no plain-text version was included in the original.
+
+**Quoted HTML in HTML mode:** When composing in HTML mode, the forwarded message body appears as a block-quoted section below the cursor, with a header showing the original sender, date, subject, and recipient. The cursor starts at the top of the compose area so you can type your message immediately.
+
+**Choose which attachments to include:** When you forward a message that has attachments, QuickMail now opens an **Include Attachments** dialog before downloading anything. All attachments are checked by default.
+
+- Use **Up/Down** arrows to move between attachments; **Space** to toggle individual files.
+- Press **Alt+Enter** on any attachment to see its file name, size, and type.
+- Press **Tab** to reach the **Forward** button, then **Tab** again for **Cancel**.
+- Activate **Forward** (or press **Enter**) to include the checked files. Activate **Cancel** to abandon the forward entirely. If you forward with no attachments checked, the message goes out without attached files.
+
+**Per-file download progress:** The status bar announces each file as it downloads — "Downloading 1 of 3 attachments…", "Downloading 2 of 3 attachments…". If a file cannot be downloaded, QuickMail still opens the compose window with whatever did succeed and reports which files were skipped.
+
+**Attachments announced early in the message list:** The message list now includes "attachments" right after the read status in the screen reader accessible name — for example, "Unread. Attachments. Kelly Ford. Budget review. …" — so you can identify messages with attachments without navigating past the sender and subject first.
+
 ---
 
 ## Thank You to Contributors
@@ -52,6 +69,19 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 ---
 
 ## Internal
+
+### Forwarding
+
+- `ComposeViewModel.CreateForward`: if `PlainTextBody` is empty and `HtmlBody` is non-empty, falls back to `HtmlStripper.ToPlainText(detail.HtmlBody)` instead of an empty body. When `HtmlBody` is present, sets `model.Mode = ComposeMode.Html` and `model.HtmlBody` to the output of `BuildForwardedHtmlBlock`.
+- `BuildForwardedHtmlBlock`: produces `<p>&#160;</p>` (empty paragraph for cursor placement) + forward header `<div>` + `<blockquote style="border-left:2px solid #ccc; ...">` wrapping `StripHtmlWrappers(detail.HtmlBody)`.
+- `StripHtmlWrappers`: strips `<!DOCTYPE>` and extracts `<body>` content to avoid double nesting inside the blockquote.
+- `ComposeWindow` `Loaded` handler: when the compose kind is `Forward` and the mode is not HTML, `BodyBox.CaretIndex = 0` places the cursor before the quoted text. HTML mode is handled by the existing `LoadHtmlIntoEditorRequested` handler (`RichBodyBox.CaretPosition = RichBodyBox.Document.ContentStart`).
+- `ForwardAttachmentDialogViewModel` (`ViewModels/ForwardAttachmentDialogViewModel.cs`, new): `ForwardAttachmentSelectionItem` wraps `AttachmentModel` + `IsIncluded` bool. Commands: `IncludeSelectedCommand` (sets `Result` to checked subset), `IncludeNoneCommand` (sets `Result` to empty list), `CancelCommand` (sets `Result` to null). All three fire `CloseRequested`.
+- `ForwardAttachmentDialogWindow` (`Views/ForwardAttachmentDialogWindow.xaml`, new): Grid layout with `ItemsControl` (list, Tab-first) above a button `StackPanel` (Forward + Cancel). `ItemsPanel` `StackPanel` has `TabNavigation="Once"` + `DirectionalNavigation="Contained"` for single-Tab-stop arrow navigation within the list. `Loaded` calls `MoveFocus(First)` at `DispatcherPriority.Input` to focus the first checkbox. `PreviewKeyDown` handles `F6`/`Shift+F6` pane cycling and `Alt+Enter` for attachment properties (`MessageBox` showing file name, size, and type).
+- `MainViewModel.SelectAttachmentsForForwardRequested`: `Func<IReadOnlyList<AttachmentModel>, Task<IReadOnlyList<AttachmentModel>?>>?` event fired before any download begins. Null return = user cancelled. Empty list = forward with no attachments. No subscriber = include all (backward-compat). `Forward()` announces "Downloading N of M attachments…" (`AnnouncementCategory.Status`) per file; on partial failure, names each skipped file and still opens compose with what succeeded.
+- `MainWindow.ShowForwardAttachmentDialogAsync`: subscribes `CloseRequested` before `ShowDialog()`, unsubscribes after — follows the modal dialog rules enforced in CLAUDE.md.
+- `MessageAccessibleNameConverter` in `MainWindow.xaml.cs`: accepts an 8th binding (`HasAttachments` bool); inserts `"attachments. "` immediately after the read-status label and before the sender name. All four `MultiBinding` blocks (ListView, ConversationTree, SenderGroupTree, ToGroupTree) updated.
+- New test files: `QuickMail.Tests/ForwardAttachmentDialogViewModelTests.cs`, `QuickMail.Tests/MainViewModelForwardTests.cs`. Extended `ComposeViewModelReplyTests.cs` with four `CreateForward_*` tests covering the HTML-only fallback, blockquote generation, mode selection, and header content.
 
 ### Flagging
 
