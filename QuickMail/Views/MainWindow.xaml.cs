@@ -102,13 +102,13 @@ public class StringToBrushConverter : IValueConverter
 
 /// <summary>
 /// Builds the accessible name string for a message row, optionally prepending the flag label.
-/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus].
+/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus, HasAttachments].
 /// </summary>
 public class MessageAccessibleNameConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length < 7) return string.Empty;
+        if (values.Length < 8) return string.Empty;
         var flagLabel       = values[0] as string ?? string.Empty;
         var readStatusLabel = values[1] as string ?? string.Empty;
         var from            = values[2] as string ?? string.Empty;
@@ -116,10 +116,12 @@ public class MessageAccessibleNameConverter : IMultiValueConverter
         var preview         = values[4] as string ?? string.Empty;
         var dateDisplay     = values[5] as string ?? string.Empty;
         var announceFlag    = values[6] is bool b && b;
+        var hasAttachments  = values.Length >= 8 && values[7] is bool ba && ba;
         var flagPrefix      = announceFlag && !string.IsNullOrEmpty(flagLabel)
                                 ? flagLabel + ". "
                                 : string.Empty;
-        return $"{flagPrefix}{readStatusLabel}. {from}. {subject}. {preview}. {dateDisplay}.";
+        var attachmentPart = hasAttachments ? "attachments. " : string.Empty;
+        return $"{flagPrefix}{readStatusLabel}. {attachmentPart}{from}. {subject}. {preview}. {dateDisplay}.";
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
@@ -214,6 +216,7 @@ public partial class MainWindow : Window
         DataContext = vm;
 
         vm.ComposeRequested += OpenComposeWindow;
+        vm.SelectAttachmentsForForwardRequested += ShowForwardAttachmentDialogAsync;
         vm.ManageAccountsRequested += OpenAccountManager;
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
@@ -3358,6 +3361,17 @@ public partial class MainWindow : Window
         window.Show();
     }
 
+    private Task<IReadOnlyList<AttachmentModel>?> ShowForwardAttachmentDialogAsync(IReadOnlyList<AttachmentModel> attachments)
+    {
+        var vm = new ForwardAttachmentDialogViewModel(attachments);
+        var dialog = new ForwardAttachmentDialogWindow(vm) { Owner = this };
+        void OnClose() => dialog.Close();
+        vm.CloseRequested += OnClose;
+        dialog.ShowDialog();
+        vm.CloseRequested -= OnClose;
+        return Task.FromResult(vm.Result);
+    }
+
     private void OpenAccountManager()
     {
         var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate);
@@ -3547,11 +3561,11 @@ public partial class MainWindow : Window
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             _vm.ReplyAllCommand.Execute(null);
         };
-        winVm.ForwardAction = () =>
+        winVm.ForwardAction = async () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            _vm.ForwardCommand.Execute(null);
+            await _vm.ForwardCommand.ExecuteAsync(null);
         };
         winVm.DeleteAction = () =>
         {

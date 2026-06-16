@@ -157,7 +157,14 @@ public partial class ComposeWindow : Window
         {
             ApplyDefaultComposeMode();
             if (string.IsNullOrWhiteSpace(_vm.To))
+            {
+                // Forward: body caret goes to 0 so tabbing to body lands at the top,
+                // not the end of the seeded content. HTML caret is already at ContentStart
+                // after LoadHtmlIntoEditorRequested fires during ApplyDefaultComposeMode.
+                if (_vm.ComposeKind == ComposeKind.Forward && _vm.CurrentMode != ComposeMode.Html)
+                    BodyBox.CaretIndex = 0;
                 ToBox.FocusInput();
+            }
             else
             {
                 FocusActiveEditor();
@@ -564,8 +571,20 @@ public partial class ComposeWindow : Window
     private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
-            foreach (var f in files)
-                await _vm.AddAttachmentFromPathAsync(f);
+        {
+            var validFiles = files.Where(f => f != null).ToList();
+            if (validFiles.Count > 0)
+            {
+                int before = _vm.Attachments.Count;
+                foreach (var f in validFiles)
+                    await _vm.AddAttachmentFromPathAsync(f);
+                int added = _vm.Attachments.Count - before;
+                if (added > 0)
+                    AccessibilityHelper.Announce(this,
+                        added == 1 ? "1 file attached" : $"{added} files attached",
+                        category: AnnouncementCategory.Result);
+            }
+        }
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
@@ -593,9 +612,17 @@ public partial class ComposeWindow : Window
         // Ctrl+V: if the clipboard contains files, paste them as attachments
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
         {
-            foreach (string? f in Clipboard.GetFileDropList())
+            var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
+            if (files.Count > 0)
             {
-                if (f != null) await _vm.AddAttachmentFromPathAsync(f);
+                int before = _vm.Attachments.Count;
+                foreach (string f in files)
+                    await _vm.AddAttachmentFromPathAsync(f);
+                int added = _vm.Attachments.Count - before;
+                if (added > 0)
+                    AccessibilityHelper.Announce(this,
+                        added == 1 ? "1 file attached" : $"{added} files attached",
+                        category: AnnouncementCategory.Result);
             }
             e.Handled = true;
             return;
@@ -1255,8 +1282,9 @@ public partial class ComposeWindow : Window
     private void ApplyDefaultComposeMode()
     {
         ComposeMode targetMode;
-        if (_vm.ComposeKind is ComposeKind.EditDraft or ComposeKind.NewDraft)
-            targetMode = _vm.SeededMode;       // restore whatever mode the draft was saved in
+        if (_vm.ComposeKind is ComposeKind.EditDraft or ComposeKind.NewDraft
+            || (_vm.ComposeKind == ComposeKind.Forward && _vm.SeededMode == ComposeMode.Html))
+            targetMode = _vm.SeededMode;       // restore saved mode (drafts) or honour HTML forward body
         else if (_vm.ComposeKind is ComposeKind.EditTemplate)
             targetMode = ComposeMode.PlainText; // templates are plain-text only
         else

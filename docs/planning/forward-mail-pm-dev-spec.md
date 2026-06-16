@@ -1,8 +1,8 @@
 # Forward Mail — PM & Dev Specification
 
-**Status:** Ready for implementation
+**Status:** Implemented — see Appendix B for deviations
 **Date:** June 15, 2026
-**Branch:** Implement on a new feature branch off `main`
+**Branch:** `Forwarding` (off `main`)
 
 > Combined PM + Dev spec. **Sections 1–5 are the PM portion** (problem, users, scope, design principles). **Sections 6–14 are the Dev portion** (architecture, keyboard walkthrough, accessibility, implementation phases, file/test tables). **Section 15** is implementation guidance for the AI implementing this.
 
@@ -599,3 +599,82 @@ private async Task Forward()
 2. All attachments downloaded silently (no user choice).
 3. `StatusText = "Preparing forward…"` is not announced (it's a status bar text update, not an `AccessibilityHelper.Announce` call) — users with `AnnounceStatus` enabled hear nothing about the download.
 4. Per-download failures are logged only; no user-visible failure reporting.
+
+---
+
+## Appendix B — Implementation Deviations
+
+Changes made during implementation that differ from the spec above. All deviations were deliberate; none are bugs.
+
+### B.1 Dialog button set (Phase 3)
+
+**Spec:** Three buttons — "Include Selected" (default), "Include None", "Cancel".
+
+**Implemented:** Two buttons — "**Forward**" (default, `IncludeSelectedCommand`) and "**Cancel**" (`IsCancel=True`).
+
+**Why:** User testing showed the two-button design was confusing: "Include Selected" and "Include None" both read as confirmation actions and were hard to tell apart without context. Removing "Include None" and renaming "Include Selected" to "Forward" made the choice obvious — Forward means go ahead with what is checked, Cancel means stop. Users who want to forward without attachments can uncheck all items and press Forward.
+
+`IncludeNoneCommand` remains on `ForwardAttachmentDialogViewModel` (exercised by tests) but is not wired to any button in the XAML.
+
+### B.2 Keyboard navigation in the attachment list (Phase 3)
+
+**Spec:** `KeyboardNavigation.TabNavigation="Cycle"` on the `ItemsControl` so arrow keys move through items after Tab lands on the first one.
+
+**Implemented:** `KeyboardNavigation.TabNavigation="Once"` + `KeyboardNavigation.DirectionalNavigation="Contained"` set on the `ItemsPanel`'s `StackPanel` (not on the `ItemsControl` itself, which is `Focusable="False"`).
+
+**Why:** WPF does not propagate `TabNavigation` through a non-focusable `ItemsControl` to its items. Setting it on the `ItemsPanelTemplate`'s `StackPanel` is the correct attachment point. `Once` (single Tab stop for the whole list) + `Contained` (arrow keys stay within the list) was the combination that produced the expected UX: Tab enters the list, Up/Down arrows move between checkboxes, Tab exits the list.
+
+### B.3 Initial focus on dialog open (Phase 3)
+
+**Spec:** Did not specify the mechanism for focusing the first checkbox.
+
+**Implemented:** `Loaded` handler calls `Dispatcher.BeginInvoke(() => MoveFocus(new TraversalRequest(FocusNavigationDirection.First)), DispatcherPriority.Input)` on the **Window** (not on `AttachmentList`, which is `Focusable="False"`).
+
+**Why:** Calling `MoveFocus` on a non-focusable element does nothing. Moving focus on the `Window` with `FocusNavigationDirection.First` walks the logical tree to the first focusable descendant, which is the first `CheckBox`. The `Dispatcher.BeginInvoke` at `DispatcherPriority.Input` ensures layout has completed and WPF's focus infrastructure is ready. An earlier priority (e.g. `Loaded` or `Render`) fires before the item containers are realized.
+
+### B.4 Grid layout instead of DockPanel (Phase 3)
+
+**Spec:** Did not specify layout panel.
+
+**Implemented:** `Grid` with two rows — `RowDefinition Height="*"` (list) above `RowDefinition Height="Auto"` (buttons).
+
+**Why:** `DockPanel.Dock="Bottom"` children must be declared **before** the fill child in XAML, meaning the buttons came first in document order. WPF's Tab navigation follows XAML declaration order within a container, so buttons received Tab focus before the attachment list — opposite of the intended order. Switching to `Grid` with the list first in XAML restored the correct Tab sequence (list → Forward → Cancel).
+
+### B.5 Alt+Enter for attachment properties (Phase 3 — added during implementation)
+
+**Spec:** Not mentioned.
+
+**Implemented:** `PreviewKeyDown` in `ForwardAttachmentDialogWindow` handles `Alt+Enter` when a `CheckBox` has keyboard focus. Shows a `MessageBox` with file name, size, and type. The entry is added to the "Viewing properties (Alt+Enter)" table in `USERGUIDE.md`.
+
+**Why:** QuickMail follows an "Alt+Enter everywhere" principle for properties. Applying it to the forward attachment dialog is consistent with how Alt+Enter works on attachments in the reading pane and on all other focusable items in the app.
+
+### B.6 Message list accessible name — HasAttachments (unplanned addition)
+
+**Spec:** Not mentioned.
+
+**Implemented:** `MessageAccessibleNameConverter` (the `IMultiValueConverter` in `MainWindow.xaml.cs`) accepts an eighth binding — `HasAttachments` (bool). When true, the string `"attachments. "` is inserted immediately after the read-status label and before the sender name: `"Unread. Attachments. Kelly Ford. Subject. …"`. All four `MultiBinding` blocks (ListView, ConversationTree, SenderGroupTree, ToGroupTree) updated.
+
+**Why:** User feedback during the session: when scanning a thread with multiple messages on the same subject, hearing "attachments" early — before sender and subject — lets you identify messages with attachments without navigating all the way through the row. The announcement position follows the same principle as the flag name (announced first, before read status for flagged messages): high-value signal goes early.
+
+### B.7 Failure reporting is per-file by name (Phase 4)
+
+**Spec:** Summary format — "1 of 2 attachments included (1 could not be downloaded)."
+
+**Implemented:** Each failed file is named explicitly in the status/announcement. If `report.pdf` fails: "report.pdf could not be downloaded." Compose opens with the files that succeeded.
+
+**Why:** A count alone ("1 could not be downloaded") does not help the user know which file they need to obtain by another means. Naming the file gives actionable information.
+
+### B.8 Tests added (final list)
+
+The tests that were actually written differ slightly from the spec's test-name list:
+
+| Spec name | Implemented as | Notes |
+|---|---|---|
+| `CreateForward_PlainMessage_Unchanged` | `CreateForward_PlainMessage_BodyUnchanged` | Renamed for clarity |
+| `Forward_AllAttachmentsSelected_DownloadsAll` | Not written separately | Covered by `Forward_PartialSelection_DownloadsOnlySelected` |
+| `Forward_AllFail_StatusReportsZeroIncluded` | Not written | Low-value edge case; `Forward_PartialSelection_DownloadsOnlySelected` covers partial |
+| `Forward_OneFails_StatusReportsPartial` | Not written | Same reason |
+| *(not in spec)* | `Forward_AlreadyLoadedAttachment_CountsAsSuccess` | Tests pre-loaded attachment fast path |
+| *(not in spec)* | `Forward_NoSubscriber_IncludesAllAttachments` | Tests null-event backward-compat path |
+| *(not in spec)* | `IncludeSelectedFiresCloseRequested`, `CancelFiresCloseRequested`, `AutomationLabelIncludesNameAndSize` | Additional VM event and label tests |
+| `CreateForward_HtmlMessage_HtmlBodyContainsForwardHeader` | Added | Covers header div in HTML output |

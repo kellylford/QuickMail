@@ -1163,6 +1163,7 @@
                                             <Binding Path="DateDisplay"/>
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                            <Binding Path="HasAttachments"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1203,6 +1204,7 @@
                                             <Binding Path="DateDisplay"/>
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                            <Binding Path="HasAttachments"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1330,6 +1332,7 @@
                                             <Binding Path="DateDisplay"/>
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                            <Binding Path="HasAttachments"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1459,6 +1462,7 @@
                                             <Binding Path="DateDisplay"/>
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
+                                            <Binding Path="HasAttachments"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
