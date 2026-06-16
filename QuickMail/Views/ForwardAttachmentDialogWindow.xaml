@@ -15,17 +15,12 @@
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,10,0,0"
                     x:Name="ButtonPanel">
-            <Button x:Name="IncludeSelectedButton"
-                    Content="_Include Selected"
+            <Button x:Name="ForwardButton"
+                    Content="_Forward"
                     IsDefault="True"
-                    MinWidth="120"
+                    MinWidth="80"
                     Margin="0,0,6,0"
                     Command="{Binding IncludeSelectedCommand}"/>
-            <Button x:Name="IncludeNoneButton"
-                    Content="Include _None"
-                    MinWidth="100"
-                    Margin="0,0,6,0"
-                    Command="{Binding IncludeNoneCommand}"/>
             <Button x:Name="CancelButton"
                     Content="_Cancel"
                     IsCancel="True"
@@ -33,21 +28,26 @@
                     Command="{Binding CancelCommand}"/>
         </StackPanel>
 
-        <ItemsControl x:Name="AttachmentList"
-                      ItemsSource="{Binding Items}"
-                      Margin="0,0,0,0"
-                      KeyboardNavigation.TabNavigation="Cycle"
-                      Focusable="False">
-            <ItemsControl.ItemTemplate>
-                <DataTemplate>
-                    <CheckBox IsChecked="{Binding IsIncluded, Mode=TwoWay}"
-                              Content="{Binding DisplayLabel}"
-                              AutomationProperties.Name="{Binding AutomationLabel}"
-                              Margin="2,3,2,3"
-                              Focusable="True"/>
-                </DataTemplate>
-            </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="AttachmentList"
+                          ItemsSource="{Binding Items}"
+                          Focusable="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel KeyboardNavigation.TabNavigation="Once"
+                                    KeyboardNavigation.DirectionalNavigation="Contained"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <CheckBox IsChecked="{Binding IsIncluded, Mode=TwoWay}"
+                                  Content="{Binding DisplayLabel}"
+                                  AutomationProperties.Name="{Binding AutomationLabel}"
+                                  Margin="2,4,2,4"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
 
     </DockPanel>
 </Window>
