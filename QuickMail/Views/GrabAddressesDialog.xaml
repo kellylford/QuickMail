@@ -5,16 +5,70 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Add to Address Book"
-        Height="340" Width="420"
-        MinHeight="240" MinWidth="320"
+        Height="420" Width="420"
+        MinHeight="300" MinWidth="320"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="False">
 
-    <DockPanel Margin="12">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                   Text="Select addresses to add to your address book:"
+                   Margin="0,0,0,8"/>
+
+        <!-- Address checklist -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      IsTabStop="False"
+                      AutomationProperties.Name="Addresses from message">
+            <ItemsControl x:Name="AddressList"
+                          KeyboardNavigation.TabNavigation="Once"
+                          KeyboardNavigation.DirectionalNavigation="Contained"
+                          IsTabStop="False"
+                          Focusable="False">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <CheckBox IsChecked="{Binding IsChecked}"
+                                  Content="{Binding Display}"
+                                  AutomationProperties.Name="{Binding Display}"
+                                  Margin="0,4"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Group section -->
+        <StackPanel Grid.Row="2" Margin="0,10,0,4">
+            <CheckBox x:Name="AddToGroupCheckBox"
+                      Content="Add to group"
+                      Margin="0,0,0,6"
+                      Checked="AddToGroupCheckBox_Changed"
+                      Unchecked="AddToGroupCheckBox_Changed"/>
+            <ComboBox x:Name="GroupComboBox"
+                      AutomationProperties.Name="Group"
+                      IsEnabled="False"
+                      SelectionChanged="GroupComboBox_SelectionChanged"
+                      Margin="0,0,0,4"/>
+            <TextBlock x:Name="NewGroupNameLabel"
+                       Text="New group name:"
+                       Visibility="Collapsed"
+                       Margin="0,2,0,2"/>
+            <TextBox x:Name="NewGroupNameBox"
+                     AutomationProperties.Name="New group name"
+                     MaxLength="100"
+                     Visibility="Collapsed"/>
+        </StackPanel>
 
         <!-- Buttons -->
-        <StackPanel DockPanel.Dock="Bottom"
+        <StackPanel Grid.Row="3"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right"
                     Margin="0,10,0,0">
@@ -28,32 +82,5 @@
                     MinWidth="80"
                     Margin="8,0,0,0"/>
         </StackPanel>
-
-        <!-- Header -->
-        <TextBlock DockPanel.Dock="Top"
-                   Text="Select addresses to add to your address book:"
-                   Margin="0,0,0,8"/>
-
-        <!-- Address checklist -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      IsTabStop="False"
-                      AutomationProperties.Name="Addresses from message">
-            <ItemsControl x:Name="AddressList"
-                          KeyboardNavigation.TabNavigation="Contained"
-                          KeyboardNavigation.DirectionalNavigation="Contained"
-                          IsTabStop="False"
-                          AutomationProperties.AccessKey=""
-                          Focusable="False">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <CheckBox IsChecked="{Binding IsChecked}"
-                                  Content="{Binding Display}"
-                                  AutomationProperties.Name="{Binding Display}"
-                                  Margin="0,4"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
-
-    </DockPanel>
+    </Grid>
 </Window>

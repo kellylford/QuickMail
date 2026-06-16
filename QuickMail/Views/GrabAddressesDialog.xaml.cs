@@ -20,7 +20,11 @@ public partial class GrabAddressesDialog : Window
         _entries = addresses.Select(a => new AddressEntry(a.Name, a.Address)).ToList();
         InitializeComponent();
         AddressList.ItemsSource = _entries;
-        Loaded += (_, _) => FocusFirstAddress();
+        Loaded += async (_, _) =>
+        {
+            await LoadGroupsAsync();
+            FocusFirstAddress();
+        };
     }
 
     private void FocusFirstAddress()
@@ -45,18 +49,98 @@ public partial class GrabAddressesDialog : Window
         return null;
     }
 
+    private async System.Threading.Tasks.Task LoadGroupsAsync()
+    {
+        var groups = await _contactService.LoadAllGroupsAsync();
+        GroupComboBox.Items.Clear();
+        foreach (var g in groups)
+            GroupComboBox.Items.Add(new GroupPickerItem(g.Id, g.Name));
+        GroupComboBox.Items.Add(GroupPickerItem.CreateNew);
+        if (GroupComboBox.Items.Count > 0)
+            GroupComboBox.SelectedIndex = 0;
+    }
+
+    private void AddToGroupCheckBox_Changed(object sender, RoutedEventArgs e)
+    {
+        bool isChecked = AddToGroupCheckBox.IsChecked == true;
+        GroupComboBox.IsEnabled = isChecked;
+        if (!isChecked)
+        {
+            SetNewGroupNameVisible(false);
+        }
+        else
+        {
+            SetNewGroupNameVisible(GroupComboBox.SelectedItem is GroupPickerItem { IsCreateNew: true });
+        }
+    }
+
+    private void GroupComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        SetNewGroupNameVisible(
+            AddToGroupCheckBox.IsChecked == true &&
+            GroupComboBox.SelectedItem is GroupPickerItem { IsCreateNew: true });
+    }
+
+    private void SetNewGroupNameVisible(bool visible)
+    {
+        var vis = visible ? Visibility.Visible : Visibility.Collapsed;
+        NewGroupNameLabel.Visibility = vis;
+        NewGroupNameBox.Visibility = vis;
+        if (visible)
+            NewGroupNameBox.Focus();
+    }
+
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
+        bool addToGroup = AddToGroupCheckBox.IsChecked == true;
+        var pickedGroup = addToGroup ? GroupComboBox.SelectedItem as GroupPickerItem : null;
+
+        if (pickedGroup?.IsCreateNew == true && string.IsNullOrWhiteSpace(NewGroupNameBox.Text))
+        {
+            AccessibilityHelper.Announce(this, "Enter a name for the new group.", category: AnnouncementCategory.Result);
+            NewGroupNameBox.Focus();
+            return;
+        }
+
+        int? groupId = null;
+        if (pickedGroup != null)
+        {
+            groupId = pickedGroup.IsCreateNew
+                ? await _contactService.CreateGroupAsync(NewGroupNameBox.Text.Trim())
+                : pickedGroup.Id;
+        }
+
         foreach (var entry in _entries.Where(a => a.IsChecked))
         {
-            await _contactService.UpsertContactAsync(new ContactModel
+            var model = new ContactModel
             {
                 DisplayName   = entry.DisplayName,
                 EmailAddress  = entry.EmailAddress,
                 LastUsedTicks = DateTimeOffset.UtcNow.UtcTicks,
-            });
+            };
+            await _contactService.UpsertContactAsync(model);
+            if (groupId.HasValue)
+                await _contactService.AddMemberAsync(groupId.Value, model.Id);
         }
+
         Close();
+    }
+
+    private sealed class GroupPickerItem
+    {
+        public static readonly GroupPickerItem CreateNew = new(-1, "Create new group");
+
+        public int Id { get; }
+        public string Name { get; }
+        public bool IsCreateNew => Id < 0;
+
+        public GroupPickerItem(int id, string name)
+        {
+            Id   = id;
+            Name = name;
+        }
+
+        public override string ToString() => Name;
     }
 
     private sealed class AddressEntry : INotifyPropertyChanged

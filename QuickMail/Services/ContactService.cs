@@ -40,6 +40,7 @@ public class ContactService : IContactService, IDisposable
                 if (!string.IsNullOrWhiteSpace(contact.DisplayName))
                     existing.DisplayName = contact.DisplayName;
                 existing.LastUsedTicks = contact.LastUsedTicks;
+                contact.Id = existing.Id;
             }
             else
             {
