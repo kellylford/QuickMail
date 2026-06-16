@@ -6,13 +6,12 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Tests for ComposeViewModel.CreateReplyAll. Regression for §2.9: the original sender
-/// could appear on both the To and Cc lines of a reply-all when they were Cc'd on their
-/// own message (common with mailing lists).
+/// Tests for ComposeViewModel.CreateReplyAll and CreateForward.
 /// </summary>
 public class ComposeViewModelReplyTests
 {
-    private static MailMessageDetail MakeDetail(string from, string to, string cc, string? replyTo = null)
+    private static MailMessageDetail MakeDetail(string from, string to, string cc, string? replyTo = null,
+        string plainBody = "hi", string htmlBody = "")
         => new()
         {
             MessageId     = "1",
@@ -23,9 +22,77 @@ public class ComposeViewModelReplyTests
             Cc            = cc,
             ReplyTo       = replyTo ?? string.Empty,
             Subject       = "test",
-            PlainTextBody = "hi",
+            PlainTextBody = plainBody,
+            HtmlBody      = htmlBody,
             Date          = DateTimeOffset.UtcNow,
         };
+
+    // ── CreateForward tests ─────────────────────────────────────────────────────
+
+    [Fact]
+    public void CreateForward_HtmlOnlyMessage_BodyIsNotEmpty()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "", htmlBody: "<p>Hello from HTML</p>");
+
+        var model = ComposeViewModel.CreateForward(detail, Guid.NewGuid());
+
+        Assert.False(string.IsNullOrWhiteSpace(model.Body), "Body must not be blank for HTML-only messages");
+        Assert.Contains("Hello from HTML", model.Body);
+    }
+
+    [Fact]
+    public void CreateForward_HtmlMessage_HtmlBodyContainsBlockquote()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "plain text", htmlBody: "<p>Hello from HTML</p>");
+
+        var model = ComposeViewModel.CreateForward(detail, Guid.NewGuid());
+
+        Assert.NotNull(model.HtmlBody);
+        Assert.Contains("<blockquote", model.HtmlBody);
+        Assert.Contains("Hello from HTML", model.HtmlBody);
+    }
+
+    [Fact]
+    public void CreateForward_HtmlMessage_ModeIsHtml()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "plain text", htmlBody: "<p>Hello</p>");
+
+        var model = ComposeViewModel.CreateForward(detail, Guid.NewGuid());
+
+        Assert.Equal(ComposeMode.Html, model.Mode);
+    }
+
+    [Fact]
+    public void CreateForward_PlainMessage_BodyUnchanged()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "Plain text body", htmlBody: "");
+
+        var model = ComposeViewModel.CreateForward(detail, Guid.NewGuid());
+
+        Assert.Contains("Plain text body", model.Body);
+        Assert.Null(model.HtmlBody);
+        Assert.Equal(ComposeMode.PlainText, model.Mode);
+    }
+
+    [Fact]
+    public void CreateForward_HtmlMessage_HtmlBodyContainsForwardHeader()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "", htmlBody: "<p>content</p>");
+        detail.Subject = "Meeting notes";
+
+        var model = ComposeViewModel.CreateForward(detail, Guid.NewGuid());
+
+        Assert.NotNull(model.HtmlBody);
+        Assert.Contains("Forwarded message", model.HtmlBody);
+        Assert.Contains("Meeting notes", model.HtmlBody);
+    }
+
+    // ── CreateReplyAll tests ────────────────────────────────────────────────────
 
     [Fact]
     public void CreateReplyAll_ExcludesOriginalSenderFromCc()

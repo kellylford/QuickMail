@@ -3458,6 +3458,13 @@ public partial class MainViewModel : ObservableObject
     // ── Compose / accounts ───────────────────────────────────────────────────────
 
     public event Action<ComposeModel>? ComposeRequested;
+
+    /// <summary>
+    /// Raised before the compose window opens when forwarding a message that has attachments.
+    /// The subscriber shows a selection dialog and returns the chosen subset, or null to cancel.
+    /// When null (no subscriber), all attachments are included.
+    /// </summary>
+    public event Func<IReadOnlyList<AttachmentModel>, Task<IReadOnlyList<AttachmentModel>?>>? SelectAttachmentsForForwardRequested;
     public event Action? ManageAccountsRequested;
     public event Action? MessageListFocusRequested;
     public event EventHandler<(string Text, AnnouncementCategory Category)>? AnnouncementRequested;
@@ -3580,37 +3587,75 @@ public partial class MainViewModel : ObservableObject
 
         var model = ComposeViewModel.CreateForward(detail, detail.AccountId);
 
-        // Hydrate attachment bytes so the forwarded message can include them.
         if (detail.Attachments.Count > 0)
         {
-            IsBusy = true;
-            StatusText = "Preparing forward…";
-            try
+            // Ask the user which attachments to include (if anyone is listening).
+            IReadOnlyList<AttachmentModel> selected;
+            if (SelectAttachmentsForForwardRequested != null)
             {
-                var summary = SelectedMessage!;
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-                foreach (var att in detail.Attachments)
+                var result = await SelectAttachmentsForForwardRequested(detail.Attachments);
+                if (result == null) return; // user cancelled
+                selected = result;
+            }
+            else
+            {
+                // No subscriber (e.g. in tests): include all, matching the old behaviour.
+                selected = detail.Attachments;
+            }
+
+            if (selected.Count > 0)
+            {
+                IsBusy = true;
+                try
                 {
-                    if (!att.IsLoaded && att.PartSpecifier != null)
+                    var summary = SelectedMessage!;
+                    int total = selected.Count;
+                    int downloaded = 0;
+                    int failed = 0;
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+                    for (int i = 0; i < selected.Count; i++)
                     {
-                        try
+                        var att = selected[i];
+                        StatusText = $"Downloading {i + 1} of {total} attachment{(total == 1 ? "" : "s")}…";
+                        Announce(StatusText, AnnouncementCategory.Status);
+                        if (!att.IsLoaded && att.PartSpecifier != null)
                         {
-                            att.Content = await _imap.DownloadAttachmentAsync(
-                                summary.AccountId, summary.FolderName, summary.MessageId,
-                                att.PartSpecifier, cts.Token);
+                            try
+                            {
+                                att.Content = await _imap.DownloadAttachmentAsync(
+                                    summary.AccountId, summary.FolderName, summary.MessageId,
+                                    att.PartSpecifier, cts.Token);
+                                downloaded++;
+                            }
+                            catch (Exception ex)
+                            {
+                                LogService.Log($"Forward: failed to download '{att.FileName}'", ex);
+                                failed++;
+                            }
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            LogService.Log($"Forward: failed to download '{att.FileName}'", ex);
+                            downloaded++;
                         }
                     }
+
+                    if (failed > 0)
+                    {
+                        StatusText = $"{downloaded} of {total} attachment{(total == 1 ? "" : "s")} included ({failed} could not be downloaded).";
+                        Announce(StatusText, AnnouncementCategory.Status);
+                    }
+                    else
+                    {
+                        StatusText = $"{downloaded} attachment{(downloaded == 1 ? "" : "s")} ready.";
+                        Announce(StatusText, AnnouncementCategory.Status);
+                    }
+
+                    model.Attachments = selected.ToList();
                 }
-                model.Attachments = detail.Attachments;
-            }
-            finally
-            {
-                IsBusy = false;
-                StatusText = string.Empty;
+                finally
+                {
+                    IsBusy = false;
+                }
             }
         }
 

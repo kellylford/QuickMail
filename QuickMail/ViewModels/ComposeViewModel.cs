@@ -3,12 +3,14 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -753,12 +755,76 @@ public partial class ComposeViewModel : ObservableObject
                    + $"Subject: {detail.Subject}\n"
                    + $"To: {detail.To}\n\n";
 
-        return new ComposeModel
+        // Fall back to HTML→text conversion when the message has no plain-text part.
+        var plainBody = string.IsNullOrEmpty(detail.PlainTextBody) && !string.IsNullOrEmpty(detail.HtmlBody)
+            ? HtmlStripper.ToPlainText(detail.HtmlBody)
+            : detail.PlainTextBody;
+
+        var model = new ComposeModel
         {
             Kind      = ComposeKind.Forward,
             AccountId = accountId,
             Subject   = subject,
-            Body      = header + detail.PlainTextBody
+            Body      = header + plainBody,
         };
+
+        if (!string.IsNullOrEmpty(detail.HtmlBody))
+        {
+            model.HtmlBody = BuildForwardedHtmlBlock(detail);
+            model.Mode     = ComposeMode.Html;
+        }
+
+        return model;
+    }
+
+    private static string BuildForwardedHtmlBlock(MailMessageDetail detail)
+    {
+        // Strip outer html/head/body wrappers so we don't nest them inside the blockquote.
+        var body = StripHtmlWrappers(detail.HtmlBody);
+        var date = detail.Date.ToLocalTime().ToString("f");
+        return $"""
+            <p>&#160;</p>
+            <div>
+              <p>---------- Forwarded message ----------<br />
+              From: {WebUtility.HtmlEncode(detail.From)}<br />
+              Date: {WebUtility.HtmlEncode(date)}<br />
+              Subject: {WebUtility.HtmlEncode(detail.Subject)}<br />
+              To: {WebUtility.HtmlEncode(detail.To)}</p>
+            </div>
+            <blockquote style="border-left: 2px solid #ccc; padding-left: 8px; margin-left: 4px;">
+            {body}
+            </blockquote>
+            """;
+    }
+
+    private static string StripHtmlWrappers(string html)
+    {
+        // Remove leading <!DOCTYPE...> and <html...>...</html> wrapper if present so the
+        // fragment can be embedded safely inside a blockquote without double html/body nesting.
+        var s = html.Trim();
+
+        // Strip <!DOCTYPE ...>
+        if (s.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
+            s.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase))
+        {
+            var end = s.IndexOf('>');
+            if (end >= 0) s = s[(end + 1)..].TrimStart();
+        }
+
+        // Extract content of <body>…</body> if present.
+        var bodyStart = s.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
+        if (bodyStart >= 0)
+        {
+            var bodyTagEnd = s.IndexOf('>', bodyStart);
+            if (bodyTagEnd >= 0)
+            {
+                var bodyClose = s.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
+                s = bodyClose > bodyTagEnd
+                    ? s[(bodyTagEnd + 1)..bodyClose]
+                    : s[(bodyTagEnd + 1)..];
+            }
+        }
+
+        return s.Trim();
     }
 }

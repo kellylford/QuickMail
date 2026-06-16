@@ -157,7 +157,14 @@ public partial class ComposeWindow : Window
         {
             ApplyDefaultComposeMode();
             if (string.IsNullOrWhiteSpace(_vm.To))
+            {
+                // Forward: body caret goes to 0 so tabbing to body lands at the top,
+                // not the end of the seeded content. HTML caret is already at ContentStart
+                // after LoadHtmlIntoEditorRequested fires during ApplyDefaultComposeMode.
+                if (_vm.ComposeKind == ComposeKind.Forward && _vm.CurrentMode != ComposeMode.Html)
+                    BodyBox.CaretIndex = 0;
                 ToBox.FocusInput();
+            }
             else
             {
                 FocusActiveEditor();

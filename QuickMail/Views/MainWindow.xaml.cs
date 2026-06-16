@@ -214,6 +214,7 @@ public partial class MainWindow : Window
         DataContext = vm;
 
         vm.ComposeRequested += OpenComposeWindow;
+        vm.SelectAttachmentsForForwardRequested += ShowForwardAttachmentDialogAsync;
         vm.ManageAccountsRequested += OpenAccountManager;
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
@@ -3356,6 +3357,17 @@ public partial class MainWindow : Window
         var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService) { Owner = this };
         composeVm.CloseRequested += window.Close;
         window.Show();
+    }
+
+    private Task<IReadOnlyList<AttachmentModel>?> ShowForwardAttachmentDialogAsync(IReadOnlyList<AttachmentModel> attachments)
+    {
+        var vm = new ForwardAttachmentDialogViewModel(attachments);
+        var dialog = new ForwardAttachmentDialogWindow(vm) { Owner = this };
+        void OnClose() => dialog.Close();
+        vm.CloseRequested += OnClose;
+        dialog.ShowDialog();
+        vm.CloseRequested -= OnClose;
+        return Task.FromResult(vm.Result);
     }
 
     private void OpenAccountManager()
