@@ -102,7 +102,7 @@ public class StringToBrushConverter : IValueConverter
 
 /// <summary>
 /// Builds the accessible name string for a message row, optionally prepending the flag label.
-/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus].
+/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus, HasAttachments].
 /// </summary>
 public class MessageAccessibleNameConverter : IMultiValueConverter
 {
@@ -116,10 +116,12 @@ public class MessageAccessibleNameConverter : IMultiValueConverter
         var preview         = values[4] as string ?? string.Empty;
         var dateDisplay     = values[5] as string ?? string.Empty;
         var announceFlag    = values[6] is bool b && b;
+        var hasAttachments  = values.Length >= 8 && values[7] is bool ba && ba;
         var flagPrefix      = announceFlag && !string.IsNullOrEmpty(flagLabel)
                                 ? flagLabel + ". "
                                 : string.Empty;
-        return $"{flagPrefix}{readStatusLabel}. {from}. {subject}. {preview}. {dateDisplay}.";
+        var attachmentSuffix = hasAttachments ? " attachments." : string.Empty;
+        return $"{flagPrefix}{readStatusLabel}. {from}. {subject}. {preview}. {dateDisplay}.{attachmentSuffix}";
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
