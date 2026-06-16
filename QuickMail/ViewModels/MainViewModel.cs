@@ -3608,7 +3608,6 @@ public partial class MainViewModel : ObservableObject
                 IsBusy = true;
                 try
                 {
-                    var summary = SelectedMessage!;
                     int total = selected.Count;
                     int downloaded = 0;
                     int failed = 0;
@@ -3623,9 +3622,14 @@ public partial class MainViewModel : ObservableObject
                             try
                             {
                                 att.Content = await _imap.DownloadAttachmentAsync(
-                                    summary.AccountId, summary.FolderName, summary.MessageId,
+                                    detail.AccountId, detail.FolderName, detail.MessageId,
                                     att.PartSpecifier, cts.Token);
                                 downloaded++;
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                failed += selected.Count - (i + 1);
+                                break;
                             }
                             catch (Exception ex)
                             {
@@ -3633,9 +3637,14 @@ public partial class MainViewModel : ObservableObject
                                 failed++;
                             }
                         }
-                        else
+                        else if (att.IsLoaded)
                         {
                             downloaded++;
+                        }
+                        else
+                        {
+                            LogService.Log($"Forward: '{att.FileName}' has no PartSpecifier and no content.");
+                            failed++;
                         }
                     }
 
@@ -3650,11 +3659,12 @@ public partial class MainViewModel : ObservableObject
                         Announce(StatusText, AnnouncementCategory.Status);
                     }
 
-                    model.Attachments = selected.ToList();
+                    model.Attachments = selected.Where(a => a.IsLoaded).ToList();
                 }
                 finally
                 {
                     IsBusy = false;
+                    StatusText = string.Empty;
                 }
             }
         }
@@ -4243,8 +4253,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ReplyConversationAsync(ConversationGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0]; // newest first
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0]; // newest first
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
@@ -4253,8 +4263,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ReplyAllConversationAsync(ConversationGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
@@ -4264,8 +4274,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ForwardConversationAsync(ConversationGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         await Forward();
     }
 
@@ -4312,8 +4322,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ReplyToGroupAsync(SenderGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
@@ -4322,8 +4332,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ReplyAllToGroupAsync(SenderGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
@@ -4333,8 +4343,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ForwardToGroupAsync(SenderGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         await Forward();
     }
 
@@ -4367,8 +4377,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ReplySenderGroupAsync(SenderGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
@@ -4377,8 +4387,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ReplyAllSenderGroupAsync(SenderGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         var detail = await EnsureDetailAsync();
         if (detail == null) return;
         var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
@@ -4388,8 +4398,8 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task ForwardSenderGroupAsync(SenderGroup? group)
     {
-        if (group?.Messages.Count == 0) return;
-        SelectedMessage = group!.Messages[0];
+        if (group == null || group.Messages.Count == 0) return;
+        SelectedMessage = group.Messages[0];
         await Forward();
     }
 

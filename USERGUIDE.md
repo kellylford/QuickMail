@@ -1217,7 +1217,7 @@ When you forward a message, QuickMail handles the quoted body and any attachment
 
 Press **Tab** to move from the attachment list to the **Forward** button, then **Tab** again for **Cancel**. Forwarding with no attachments checked sends the message without any attached files.
 
-The status bar announces progress as each file downloads — "Downloading 1 of 3 attachments…". If a file cannot be downloaded, the compose window opens with the files that succeeded, and a notice names the ones that were skipped.
+The status bar announces progress as each file downloads — "Downloading 1 of 3 attachments…". If a file cannot be downloaded, the compose window opens with the files that succeeded, and a notice shows how many could not be downloaded.
 
 ### Reading attachments in received messages
 

@@ -108,7 +108,7 @@ public class MessageAccessibleNameConverter : IMultiValueConverter
 {
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length < 7) return string.Empty;
+        if (values.Length < 8) return string.Empty;
         var flagLabel       = values[0] as string ?? string.Empty;
         var readStatusLabel = values[1] as string ?? string.Empty;
         var from            = values[2] as string ?? string.Empty;
@@ -3561,11 +3561,11 @@ public partial class MainWindow : Window
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
             _vm.ReplyAllCommand.Execute(null);
         };
-        winVm.ForwardAction = () =>
+        winVm.ForwardAction = async () =>
         {
             _vm.SelectedMessage = winVm.SelectedMessage;
             if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
-            _vm.ForwardCommand.Execute(null);
+            await _vm.ForwardCommand.ExecuteAsync(null);
         };
         winVm.DeleteAction = () =>
         {

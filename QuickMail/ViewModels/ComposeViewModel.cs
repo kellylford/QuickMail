@@ -746,6 +746,7 @@ public partial class ComposeViewModel : ObservableObject
     public static ComposeModel CreateForward(MailMessageDetail detail, Guid accountId)
     {
         var subject = detail.Subject.StartsWith("Fwd:", StringComparison.OrdinalIgnoreCase)
+                   || detail.Subject.StartsWith("FW:", StringComparison.OrdinalIgnoreCase)
             ? detail.Subject
             : $"Fwd: {detail.Subject}";
 
@@ -804,8 +805,7 @@ public partial class ComposeViewModel : ObservableObject
         var s = html.Trim();
 
         // Strip <!DOCTYPE ...>
-        if (s.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase) ||
-            s.StartsWith("<!doctype", StringComparison.OrdinalIgnoreCase))
+        if (s.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase))
         {
             var end = s.IndexOf('>');
             if (end >= 0) s = s[(end + 1)..].TrimStart();
@@ -815,7 +815,8 @@ public partial class ComposeViewModel : ObservableObject
         var bodyStart = s.IndexOf("<body", StringComparison.OrdinalIgnoreCase);
         if (bodyStart >= 0)
         {
-            var bodyTagEnd = s.IndexOf('>', bodyStart);
+            // Scan past quoted attribute values to find the true end of the opening tag.
+            var bodyTagEnd = IndexOfTagClose(s, bodyStart);
             if (bodyTagEnd >= 0)
             {
                 var bodyClose = s.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
@@ -824,7 +825,44 @@ public partial class ComposeViewModel : ObservableObject
                     : s[(bodyTagEnd + 1)..];
             }
         }
+        else
+        {
+            // No <body> — try stripping the outer <html>…</html> wrapper.
+            var htmlStart  = s.IndexOf("<html", StringComparison.OrdinalIgnoreCase);
+            var htmlTagEnd = htmlStart >= 0 ? IndexOfTagClose(s, htmlStart) : -1;
+            var htmlClose  = s.LastIndexOf("</html>", StringComparison.OrdinalIgnoreCase);
+            if (htmlTagEnd >= 0 && htmlClose > htmlTagEnd)
+                s = s[(htmlTagEnd + 1)..htmlClose];
+            else if (htmlTagEnd >= 0)
+                s = s[(htmlTagEnd + 1)..];
+        }
 
         return s.Trim();
+    }
+
+    // Scans forward from the start of a tag and returns the index of the closing '>'
+    // of that tag's opening sequence, skipping any '>' characters inside quoted attribute values.
+    private static int IndexOfTagClose(string s, int tagStart)
+    {
+        bool inQuote = false;
+        char quoteChar = '\0';
+        for (int i = tagStart; i < s.Length; i++)
+        {
+            char c = s[i];
+            if (inQuote)
+            {
+                if (c == quoteChar) inQuote = false;
+            }
+            else if (c == '"' || c == '\'')
+            {
+                inQuote = true;
+                quoteChar = c;
+            }
+            else if (c == '>')
+            {
+                return i;
+            }
+        }
+        return -1;
     }
 }

@@ -398,6 +398,16 @@ public class XamlParseTests
         window.Close();
     }
 
+    [StaFact]
+    public void ForwardAttachmentDialogWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new ForwardAttachmentDialogViewModel([]);
+        var window = new ForwardAttachmentDialogWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
     private static (StubImapMailService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
         StubCommandRegistry registry, StubContactService contacts, StubTemplateService templates)

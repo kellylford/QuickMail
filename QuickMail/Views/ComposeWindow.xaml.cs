@@ -1262,8 +1262,9 @@ public partial class ComposeWindow : Window
     private void ApplyDefaultComposeMode()
     {
         ComposeMode targetMode;
-        if (_vm.ComposeKind is ComposeKind.EditDraft or ComposeKind.NewDraft)
-            targetMode = _vm.SeededMode;       // restore whatever mode the draft was saved in
+        if (_vm.ComposeKind is ComposeKind.EditDraft or ComposeKind.NewDraft
+            || (_vm.ComposeKind == ComposeKind.Forward && _vm.SeededMode == ComposeMode.Html))
+            targetMode = _vm.SeededMode;       // restore saved mode (drafts) or honour HTML forward body
         else if (_vm.ComposeKind is ComposeKind.EditTemplate)
             targetMode = ComposeMode.PlainText; // templates are plain-text only
         else

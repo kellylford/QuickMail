@@ -31,7 +31,7 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     // execute against the correct MainViewModel state.
     public Action? ReplyAction       { get; set; }
     public Action? ReplyAllAction    { get; set; }
-    public Action? ForwardAction     { get; set; }
+    public Func<Task>? ForwardAction  { get; set; }
     public Action? DeleteAction      { get; set; }
     public Action? MarkReadAction    { get; set; }
     public Action? GrabAddressesAction { get; set; }
@@ -75,7 +75,7 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     private void ReplyAll() => ReplyAllAction?.Invoke();
 
     [RelayCommand]
-    private void Forward() => ForwardAction?.Invoke();
+    private Task Forward() => ForwardAction?.Invoke() ?? Task.CompletedTask;
 
     [RelayCommand]
     private void DeleteMessage() => DeleteAction?.Invoke();
