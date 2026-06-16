@@ -572,15 +572,17 @@ public partial class ComposeWindow : Window
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
         {
-            int count = files.Length;
-            if (count > 0)
+            var validFiles = files.Where(f => f != null).ToList();
+            if (validFiles.Count > 0)
             {
-                foreach (var f in files)
+                int before = _vm.Attachments.Count;
+                foreach (var f in validFiles)
                     await _vm.AddAttachmentFromPathAsync(f);
-                
-                AccessibilityHelper.Announce(this,
-                    count == 1 ? "1 file attached" : $"{count} files attached",
-                    category: AnnouncementCategory.Result);
+                int added = _vm.Attachments.Count - before;
+                if (added > 0)
+                    AccessibilityHelper.Announce(this,
+                        added == 1 ? "1 file attached" : $"{added} files attached",
+                        category: AnnouncementCategory.Result);
             }
         }
     }
@@ -611,15 +613,16 @@ public partial class ComposeWindow : Window
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
         {
             var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
-            int count = files.Count;
-            if (count > 0)
+            if (files.Count > 0)
             {
+                int before = _vm.Attachments.Count;
                 foreach (string f in files)
                     await _vm.AddAttachmentFromPathAsync(f);
-                
-                AccessibilityHelper.Announce(this,
-                    count == 1 ? "1 file attached" : $"{count} files attached",
-                    category: AnnouncementCategory.Result);
+                int added = _vm.Attachments.Count - before;
+                if (added > 0)
+                    AccessibilityHelper.Announce(this,
+                        added == 1 ? "1 file attached" : $"{added} files attached",
+                        category: AnnouncementCategory.Result);
             }
             e.Handled = true;
             return;

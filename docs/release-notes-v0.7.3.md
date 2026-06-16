@@ -60,6 +60,10 @@ You can now flag messages for follow-up — and QuickMail stays in sync with fla
 
 **Attachments announced early in the message list:** The message list now includes "attachments" right after the read status in the screen reader accessible name — for example, "Unread. Attachments. Kelly Ford. Budget review. …" — so you can identify messages with attachments without navigating past the sender and subject first.
 
+### Attachment Paste and Drop Confirmation
+
+When you paste files from the clipboard (`Ctrl+V`) or drag and drop them into a compose window, a screen reader now announces how many files were successfully attached — for example, "1 file attached" or "3 files attached". These announcements respect the "Announce results" preference.
+
 ---
 
 ## Thank You to Contributors
@@ -104,5 +108,9 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 - `mail.toggleFlag` (K), `mail.pickFlag` (Ctrl+Shift+K), `mail.openFlagManager` (unassigned) registered in `CommandRegistry`.
 - `MessagePropertiesBuilder`: "Flag" row added to Storage section.
 - `BuildMessageAccessibleName` helper in `MainWindow.xaml.cs` centralizes the accessible name string so it is not duplicated across view modes.
+
+### Compose
+
+- `ComposeWindow.Window_Drop` / `Window_PreviewKeyDown`: after processing a clipboard paste (`Ctrl+V`) or drag-drop, announces the actual number of files added via `AnnouncementCategory.Result`. Uses an `Attachments.Count` delta rather than the input path count so silently-skipped nonexistent files are excluded from the announced number. Both paths now null-filter the file list before iterating.
 
 ---
