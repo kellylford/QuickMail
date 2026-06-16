@@ -571,8 +571,18 @@ public partial class ComposeWindow : Window
     private async void Window_Drop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files)
-            foreach (var f in files)
-                await _vm.AddAttachmentFromPathAsync(f);
+        {
+            int count = files.Length;
+            if (count > 0)
+            {
+                foreach (var f in files)
+                    await _vm.AddAttachmentFromPathAsync(f);
+                
+                AccessibilityHelper.Announce(this,
+                    count == 1 ? "1 file attached" : $"{count} files attached",
+                    category: AnnouncementCategory.Result);
+            }
+        }
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
@@ -600,9 +610,16 @@ public partial class ComposeWindow : Window
         // Ctrl+V: if the clipboard contains files, paste them as attachments
         if (e.Key == Key.V && Keyboard.Modifiers == ModifierKeys.Control && Clipboard.ContainsFileDropList())
         {
-            foreach (string? f in Clipboard.GetFileDropList())
+            var files = Clipboard.GetFileDropList().Cast<string>().Where(f => f != null).ToList();
+            int count = files.Count;
+            if (count > 0)
             {
-                if (f != null) await _vm.AddAttachmentFromPathAsync(f);
+                foreach (string f in files)
+                    await _vm.AddAttachmentFromPathAsync(f);
+                
+                AccessibilityHelper.Announce(this,
+                    count == 1 ? "1 file attached" : $"{count} files attached",
+                    category: AnnouncementCategory.Result);
             }
             e.Handled = true;
             return;
