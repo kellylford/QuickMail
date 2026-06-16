@@ -1,5 +1,8 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
+using QuickMail.Models;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -10,27 +13,56 @@ public partial class ForwardAttachmentDialogWindow : Window
     {
         DataContext = vm;
         InitializeComponent();
+
+        // Focus the first CheckBox after layout completes.
+        Loaded += (_, _) =>
+            Dispatcher.BeginInvoke(
+                () => MoveFocus(new TraversalRequest(FocusNavigationDirection.First)),
+                DispatcherPriority.Input);
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key != Key.F6) return;
-
         var shift = (e.KeyboardDevice.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
-        if (shift)
+
+        if (e.Key == Key.F6)
         {
-            if (ButtonPanel.IsKeyboardFocusWithin)
-                AttachmentList.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+            if (shift)
+            {
+                // Shift+F6: buttons → list
+                if (ButtonPanel.IsKeyboardFocusWithin)
+                    MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+                else
+                    ForwardButton.Focus();
+            }
             else
-                ForwardButton.Focus();
+            {
+                // F6: list → Forward button
+                if (AttachmentList.IsKeyboardFocusWithin)
+                    ForwardButton.Focus();
+                else
+                    MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+            }
+            e.Handled = true;
         }
-        else
+        else if (e.Key == Key.Return && (e.KeyboardDevice.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt)
         {
-            if (AttachmentList.IsKeyboardFocusWithin)
-                ForwardButton.Focus();
-            else
-                AttachmentList.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+            // Alt+Enter: show properties for the focused attachment.
+            if (Keyboard.FocusedElement is CheckBox cb &&
+                cb.DataContext is ForwardAttachmentSelectionItem item)
+            {
+                ShowAttachmentProperties(item.Attachment);
+                e.Handled = true;
+            }
         }
-        e.Handled = true;
+    }
+
+    private void ShowAttachmentProperties(AttachmentModel attachment)
+    {
+        MessageBox.Show(
+            this,
+            $"File name: {attachment.FileName}\nSize: {attachment.FileSizeDisplay}\nType: {attachment.ContentType}",
+            "Attachment Properties",
+            MessageBoxButton.OK);
     }
 }

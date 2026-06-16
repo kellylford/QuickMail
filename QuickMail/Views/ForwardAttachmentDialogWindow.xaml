@@ -10,25 +10,15 @@
         ShowInTaskbar="False"
         PreviewKeyDown="Window_PreviewKeyDown">
 
-    <DockPanel Margin="12">
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
 
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,10,0,0"
-                    x:Name="ButtonPanel">
-            <Button x:Name="ForwardButton"
-                    Content="_Forward"
-                    IsDefault="True"
-                    MinWidth="80"
-                    Margin="0,0,6,0"
-                    Command="{Binding IncludeSelectedCommand}"/>
-            <Button x:Name="CancelButton"
-                    Content="_Cancel"
-                    IsCancel="True"
-                    MinWidth="75"
-                    Command="{Binding CancelCommand}"/>
-        </StackPanel>
-
-        <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <!-- List is first in XAML → first Tab stop. Arrow keys navigate within. -->
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto"
+                      Focusable="False" Margin="0,0,0,10">
             <ItemsControl x:Name="AttachmentList"
                           ItemsSource="{Binding Items}"
                           Focusable="False">
@@ -49,5 +39,21 @@
             </ItemsControl>
         </ScrollViewer>
 
-    </DockPanel>
+        <!-- Buttons second in XAML → Tab from list lands here, then Cancel. -->
+        <StackPanel Grid.Row="1" x:Name="ButtonPanel"
+                    Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="ForwardButton"
+                    Content="_Forward"
+                    IsDefault="True"
+                    MinWidth="80"
+                    Margin="0,0,6,0"
+                    Command="{Binding IncludeSelectedCommand}"/>
+            <Button x:Name="CancelButton"
+                    Content="_Cancel"
+                    IsCancel="True"
+                    MinWidth="75"
+                    Command="{Binding CancelCommand}"/>
+        </StackPanel>
+
+    </Grid>
 </Window>
