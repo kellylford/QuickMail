@@ -25,6 +25,10 @@ Your sign-in credential is stored in Windows Credential Manager, the same secure
 
 **Removing a Gmail account:** Open **Settings → Accounts**, select the account, and press **Delete**. This removes the account from QuickMail and clears the stored credential from Windows Credential Manager.
 
+**Important: Google's "unverified app" warning.** When you sign in with your Google account, Google displays a warning that QuickMail is an unverified application and asks you to confirm you want to proceed. This is normal and expected — QuickMail has not undergone Google's App Verification process, which can take several weeks and potentially require expensive third-party security assessment. You can safely ignore this warning and click **Advanced** → **Go to QuickMail (unsafe)** to continue signing in.
+
+If you prefer to avoid this warning, Gmail accounts also support app-specific passwords: generate one from your Google Account security settings and use it with QuickMail's standard **Password** authentication method instead of **Google OAuth**.
+
 ### Grab Addresses: Add to Group
 
 When grabbing addresses from an open message (`Ctrl+Shift+G`), you can now add the selected contacts directly to an address book group in the same step.
