@@ -61,14 +61,6 @@ public partial class GrabAddressesDialog : Window
             GroupComboBox.SelectedIndex = 0;
     }
 
-    private void GroupComboBox_DropDownClosed(object sender, EventArgs e)
-    {
-        // The combo popup's HwndSource holds Win32 keyboard focus while open.
-        // When it closes that focus evaporates; restore it to the ComboBox.
-        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
-            new Action(() => Keyboard.Focus(GroupComboBox)));
-    }
-
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
         bool addToGroup = AddToGroupCheckBox.IsChecked == true;

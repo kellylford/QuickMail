@@ -52,7 +52,6 @@
                       Margin="0,0,0,6"/>
             <ComboBox x:Name="GroupComboBox"
                       AutomationProperties.Name="Group"
-                      DropDownClosed="GroupComboBox_DropDownClosed"
                       Margin="0,0,0,4"/>
             <TextBlock x:Name="NewGroupNameLabel"
                        Text="New group name:"
