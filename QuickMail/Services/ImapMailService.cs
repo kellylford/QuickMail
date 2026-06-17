@@ -19,6 +19,8 @@ namespace QuickMail.Services;
 
 public class ImapMailService : IMailService
 {
+    private static readonly string[] ComposeModeHeaders = ["X-QuickMail-Compose-Mode"];
+
     private const int DefaultMaxConnectionsPerAccount = 6;
     private const int AbsoluteMaxConnectionsPerAccount = 15;
     private const int ForegroundReservedConnectionCount = 2;
@@ -112,7 +114,7 @@ public class ImapMailService : IMailService
 
     public async Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var result = new List<MailFolderModel>();
 
@@ -182,7 +184,7 @@ public class ImapMailService : IMailService
 
     public async Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var inbox = lease.Client.Inbox!;
         await inbox.StatusAsync(StatusItems.Count | StatusItems.Unread, ct);
         LogService.Debug($"GetInboxStatus: account={accountId} Total={inbox.Count} Unread={inbox.Unread}");
@@ -195,7 +197,7 @@ public class ImapMailService : IMailService
         Guid accountId, string folderName, int maxMessages, CancellationToken ct = default)
     {
         LogService.Log($"GetMessageSummaries: folder={folderName} maxMessages={maxMessages}");
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -229,7 +231,7 @@ public class ImapMailService : IMailService
         Guid accountId, string folderName, DateTime since, CancellationToken ct = default)
     {
         LogService.Log($"GetMessagesSinceDate: folder={folderName} since={since:yyyy-MM-dd}");
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -259,7 +261,7 @@ public class ImapMailService : IMailService
     public async Task<List<MailMessageSummary>> GetMessagesSinceAsync(
         Guid accountId, string folderName, string sinceMessageId, int initialCount, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -304,7 +306,7 @@ public class ImapMailService : IMailService
         Guid accountId, string folderName, string messageId,
         bool markRead, ImapLeasePriority priority, CancellationToken ct)
     {
-        using var lease = await RentClientAsync(accountId, ct, priority);
+        using var lease = await RentClientAsync(accountId, priority, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         var access = markRead ? FolderAccess.ReadWrite : FolderAccess.ReadOnly;
@@ -319,7 +321,7 @@ public class ImapMailService : IMailService
                 | MessageSummaryItems.Envelope
                 | MessageSummaryItems.Flags
                 | MessageSummaryItems.BodyStructure,
-                new[] { "X-QuickMail-Compose-Mode" },
+                ComposeModeHeaders,
                 ct);
 
             var s = summaries.FirstOrDefault()
@@ -405,7 +407,7 @@ public class ImapMailService : IMailService
 
     public async Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -416,7 +418,7 @@ public class ImapMailService : IMailService
     public async Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         if (messageIds.Count == 0) return;
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -426,7 +428,7 @@ public class ImapMailService : IMailService
 
     public async Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -443,7 +445,7 @@ public class ImapMailService : IMailService
 
     public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -459,7 +461,7 @@ public class ImapMailService : IMailService
 
     public async Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -477,7 +479,7 @@ public class ImapMailService : IMailService
 
     public async Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var drafts = await FindSpecialFolderAsync(client, ct, SpecialFolder.Drafts);
         return drafts?.FullName;
@@ -486,7 +488,7 @@ public class ImapMailService : IMailService
     public async Task<string> AppendDraftAsync(
         Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client  = lease.Client;
         var account = _accounts[accountId];
 
@@ -521,7 +523,7 @@ public class ImapMailService : IMailService
     public async Task AppendToSentAsync(
         Guid accountId, ComposeModel sent, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client  = lease.Client;
         var account = _accounts[accountId];
 
@@ -547,7 +549,7 @@ public class ImapMailService : IMailService
 
     public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         var dest   = await client.GetFolderAsync(destinationFolder, ct);
@@ -558,7 +560,7 @@ public class ImapMailService : IMailService
 
     public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         var dest   = await client.GetFolderAsync(destinationFolder, ct);
@@ -571,7 +573,7 @@ public class ImapMailService : IMailService
 
     public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         IMailFolder parent = string.IsNullOrEmpty(parentFolderName)
             ? client.GetFolder(client.PersonalNamespaces[0])
@@ -581,7 +583,7 @@ public class ImapMailService : IMailService
 
     public async Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
 
@@ -604,7 +606,7 @@ public class ImapMailService : IMailService
 
     public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         IMailFolder parent = string.IsNullOrEmpty(newParentFolderName)
@@ -615,7 +617,7 @@ public class ImapMailService : IMailService
 
     public async Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         await CopyFolderCoreAsync(lease.Client, folderName, destinationParentName, ct);
     }
 
@@ -649,7 +651,7 @@ public class ImapMailService : IMailService
 
     public async Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var trash  = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
 
@@ -676,7 +678,7 @@ public class ImapMailService : IMailService
 
     public async Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -698,7 +700,7 @@ public class ImapMailService : IMailService
         if (messageIds.Count == 0 || maxLines <= 0)
             return new Dictionary<string, string>();
 
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -869,7 +871,7 @@ public class ImapMailService : IMailService
 
     public async Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -882,7 +884,7 @@ public class ImapMailService : IMailService
     public async Task<byte[]> DownloadAttachmentAsync(
         Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadOnly, ct);
@@ -902,7 +904,7 @@ public class ImapMailService : IMailService
             var decoded = await folder.GetBodyPartAsync(mailKitUid, bodyPart, ct);
             using var stream = new MemoryStream();
             if (decoded is MimePart mp)
-                mp.Content!.DecodeTo(stream);
+                mp.Content!.DecodeTo(stream, CancellationToken.None);
             else if (decoded is MessagePart msgPart)
                 await msgPart.Message!.WriteToAsync(stream, ct);
             return stream.ToArray();
@@ -917,7 +919,7 @@ public class ImapMailService : IMailService
     /// are single-command objects, so every concurrent operation gets its own client.
     /// </summary>
     private async Task<ImapClientLease> RentClientAsync(
-        Guid accountId, CancellationToken ct, ImapLeasePriority priority)
+        Guid accountId, ImapLeasePriority priority, CancellationToken ct)
     {
         ThrowIfDisposed();
 
@@ -956,7 +958,7 @@ public class ImapMailService : IMailService
             LogService.Debug($"  user={account.Username}");
             await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
 
-            if (account.AuthType == AuthType.OAuth2Microsoft)
+            if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
             {
                 var token = await _oauth.GetAccessTokenAsync(account, ct);
                 await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Username, token), ct);
@@ -1450,7 +1452,7 @@ public class ImapMailService : IMailService
 
     public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
-        using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Foreground);
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
         var client = lease.Client;
         var folder = await client.GetFolderAsync(folderName, ct);
         await folder.OpenAsync(FolderAccess.ReadWrite, ct);
@@ -1468,7 +1470,7 @@ public class ImapMailService : IMailService
         if (!_pools.ContainsKey(accountId)) return;
         try
         {
-            using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+            using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
             await lease.Client.NoOpAsync(ct);
         }
         catch (OperationCanceledException) { throw; }
@@ -1484,7 +1486,7 @@ public class ImapMailService : IMailService
         if (!_pools.ContainsKey(accountId)) return 0;
         try
         {
-            using var lease = await RentClientAsync(accountId, ct, ImapLeasePriority.Background);
+            using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
             var client = lease.Client;
             var trashFolder = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash, SpecialFolder.Junk);
             if (trashFolder == null) return 0;

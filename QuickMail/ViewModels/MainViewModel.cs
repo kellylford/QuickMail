@@ -4000,10 +4000,10 @@ public partial class MainViewModel : ObservableObject
         try   { await _localStore.DeleteAccountDataAsync(account.Id); }
         catch (Exception ex) { LogService.Log($"DeleteAccount: failed to purge mail.db — {ex.Message}"); }
 
-        if (account.AuthType == AuthType.OAuth2Microsoft)
+        if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
         {
             try   { await _oauthService.SignOutAsync(account); }
-            catch (Exception ex) { LogService.Log($"DeleteAccount: failed MSAL sign-out — {ex.Message}"); }
+            catch (Exception ex) { LogService.Log($"DeleteAccount: failed OAuth sign-out — {ex.Message}"); }
         }
 
         StatusText = $"Account '{account.AccountLabel}' removed.";

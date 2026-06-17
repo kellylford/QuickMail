@@ -46,7 +46,7 @@ public class SmtpService : ISendMailService
             await client.ConnectAsync(account.SmtpHost, account.SmtpPort, ssl, ct);
             LogService.Log($"SmtpService: connected to {account.SmtpHost}:{account.SmtpPort}");
 
-            if (account.AuthType == AuthType.OAuth2Microsoft)
+            if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
             {
                 LogService.Debug($"SmtpService: authenticating via XOAUTH2");
                 var token = await _oauth.GetAccessTokenAsync(account, ct);
@@ -97,7 +97,7 @@ public class SmtpService : ISendMailService
             LogService.Log($"SmtpService: sending ICS reply to {account.SmtpHost}:{account.SmtpPort}");
             await client.ConnectAsync(account.SmtpHost, account.SmtpPort, ssl, ct);
 
-            if (account.AuthType == AuthType.OAuth2Microsoft)
+            if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
             {
                 var token = await _oauth.GetAccessTokenAsync(account, ct);
                 await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Username, token), ct);

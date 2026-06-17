@@ -78,11 +78,13 @@ public partial class App : Application
         {
             var accountService    = new AccountService(profile);
             var credentialService = new CredentialService();
-            var oauthService      = new OAuthService(profile);
             var configService     = new ConfigService(profile);
+            var msOAuthService    = new OAuthService(profile);
+            var googleOAuth       = new GoogleOAuthService(credentialService);
+            var oauthService      = new OAuthRouter(msOAuthService, googleOAuth);
             var imapBackend       = new ImapMailService(oauthService, configService);
-            var graphBackend      = new GraphMailService(oauthService, configService);
-            _graphSendMail        = new GraphSendMailService(oauthService);
+            var graphBackend      = new GraphMailService(msOAuthService, configService);
+            _graphSendMail        = new GraphSendMailService(msOAuthService);
             var smtpService       = new SmtpService(oauthService, _graphSendMail);
 
             // Per-account mail backend router. Each account is registered to the backend its

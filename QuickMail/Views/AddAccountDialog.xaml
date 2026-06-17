@@ -65,6 +65,7 @@
                               TabIndex="3">
                         <ComboBoxItem>Password</ComboBoxItem>
                         <ComboBoxItem>Microsoft OAuth2 (Outlook.com)</ComboBoxItem>
+                        <ComboBoxItem Visibility="{Binding ShowGoogleAuthOption, Converter={StaticResource BoolToVisibility}}">Google OAuth (Gmail)</ComboBoxItem>
                     </ComboBox>
                 </StackPanel>
 
@@ -78,12 +79,21 @@
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
                 </StackPanel>
 
-                <!-- OAuth2 sign-in panel (hidden for password auth) -->
+                <!-- Microsoft OAuth2 sign-in panel -->
                 <StackPanel Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
                             Margin="0,4,0,0">
                     <Button Content="Sign in with _Microsoft…"
                             Command="{Binding SignInMicrosoftCommand}"
                             AutomationProperties.Name="Sign in with Microsoft account in browser"
+                            HorizontalAlignment="Left" MinWidth="200" TabIndex="5"/>
+                </StackPanel>
+
+                <!-- Google OAuth sign-in panel -->
+                <StackPanel Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
+                            Margin="0,4,0,0">
+                    <Button Content="Sign in with _Google…"
+                            Command="{Binding SignInGoogleCommand}"
+                            AutomationProperties.Name="Sign in with Google account in browser"
                             HorizontalAlignment="Left" MinWidth="200" TabIndex="5"/>
                 </StackPanel>
 

@@ -169,6 +169,11 @@ public class ConfigService : IConfigService
                     section  = "features";
                     acctGuid = Guid.Empty;
                 }
+                else if (header == "google")
+                {
+                    section  = "google";
+                    acctGuid = Guid.Empty;
+                }
                 else
                 {
                     section = null;
@@ -281,6 +286,14 @@ public class ConfigService : IConfigService
             {
                 // Preserve the original key case so IFeatureGate matches FeatureFlag.ToString().
                 config.Features[rawKey] = value;
+            }
+            else if (section == "google")
+            {
+                switch (key)
+                {
+                    case "googleclientid":     config.GoogleClientId     = value; break;
+                    case "googleclientsecret": config.GoogleClientSecret = value; break;
+                }
             }
         }
 
@@ -461,6 +474,22 @@ public class ConfigService : IConfigService
                 sb.AppendLine("# Override preview lines for this account. Remove to use global setting.");
                 sb.AppendLine();
             }
+        }
+
+        // ── [google] ───────────────────────────────────────────────────────────────
+        // Only written when credentials are present, so the default config stays clean.
+        if (!string.IsNullOrEmpty(config.GoogleClientId) || !string.IsNullOrEmpty(config.GoogleClientSecret))
+        {
+            sb.AppendLine("[google]");
+            sb.AppendLine("# Google OAuth credentials from Google Cloud Console.");
+            sb.AppendLine("# Required to use Google OAuth (Gmail) accounts.");
+            sb.AppendLine("# Never commit this file to source control.");
+            sb.AppendLine();
+            if (!string.IsNullOrEmpty(config.GoogleClientId))
+                sb.AppendLine($"GoogleClientId = {config.GoogleClientId}");
+            if (!string.IsNullOrEmpty(config.GoogleClientSecret))
+                sb.AppendLine($"GoogleClientSecret = {config.GoogleClientSecret}");
+            sb.AppendLine();
         }
 
         // ── [features] ─────────────────────────────────────────────────────────────

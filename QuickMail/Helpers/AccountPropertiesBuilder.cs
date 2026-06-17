@@ -38,9 +38,12 @@ public static class AccountPropertiesBuilder
         var auth = new List<PropertyItem>
         {
             new("Authentication",
-                account.AuthType == AuthType.OAuth2Microsoft
-                    ? "OAuth2 (Microsoft 365)"
-                    : "Password (Windows Credential Manager)"),
+                account.AuthType switch
+                {
+                    AuthType.OAuth2Microsoft => "OAuth2 (Microsoft 365)",
+                    AuthType.OAuth2Google    => "OAuth2 (Google / Gmail)",
+                    _                        => "Password (Windows Credential Manager)",
+                }),
             new("Last synced",
                 lastSyncedUtc.HasValue
                     ? lastSyncedUtc.Value.ToLocalTime().ToString("f")

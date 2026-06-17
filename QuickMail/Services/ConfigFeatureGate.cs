@@ -13,9 +13,10 @@ namespace QuickMail.Services;
 public class ConfigFeatureGate : IFeatureGate
 {
     /// <summary>Built-in defaults. Every flag MUST appear here.</summary>
-    private static readonly IReadOnlyDictionary<FeatureFlag, bool> Defaults = new Dictionary<FeatureFlag, bool>
+    private static readonly Dictionary<FeatureFlag, bool> Defaults = new Dictionary<FeatureFlag, bool>
     {
         [FeatureFlag.GraphBackend] = false,
+        [FeatureFlag.GoogleAuth]   = true,
     };
 
     private readonly Dictionary<string, string> _configFlags;

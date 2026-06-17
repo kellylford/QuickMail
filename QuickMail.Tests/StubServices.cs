@@ -73,6 +73,16 @@ sealed class StubCredentialService : ICredentialService
     public void SavePassword(Guid accountId, string password) { }
     public string? GetPassword(Guid accountId) => null;
     public void DeletePassword(Guid accountId) { }
+    public void SaveSecret(string key, string value) { }
+    public string? GetSecret(string key) => null;
+    public void DeleteSecret(string key) { }
+}
+
+sealed class StubGoogleOAuthService : IGoogleOAuthService
+{
+    public Task<string> GetAccessTokenAsync(string username, CancellationToken ct = default) => Task.FromResult(string.Empty);
+    public Task<OAuthResult> SignInInteractiveAsync(string loginHint, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, loginHint));
+    public Task SignOutAsync(string username) => Task.CompletedTask;
 }
 
 sealed class StubOAuthService : IOAuthService

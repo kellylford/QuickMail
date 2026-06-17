@@ -7,9 +7,13 @@ namespace QuickMail.ViewModels;
 
 public partial class AddAccountViewModel : AccountEditorViewModel
 {
+    private readonly IFeatureGate _gate;
+
     public AddAccountViewModel(IFeatureGate gate, IMailService mailService, IOAuthService oauth)
         : base(mailService, oauth)
     {
+        _gate = gate;
+
         var backends = new List<BackendKindOption>
         {
             new(BackendKind.ImapSmtp, "Standard IMAP/SMTP"),
@@ -19,6 +23,16 @@ public partial class AddAccountViewModel : AccountEditorViewModel
 
         AvailableBackends = backends;
         _selectedBackend = backends[0];
+
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(Username)) return;
+            if (!ShowGoogleAuthOption) return;
+            if (AuthType == AuthType.OAuth2Google) return;
+            var lower = Username.ToLowerInvariant();
+            if (lower.EndsWith("@gmail.com") || lower.EndsWith("@googlemail.com"))
+                AuthType = AuthType.OAuth2Google;
+        };
     }
 
     /// <summary>Backend options offered in the dialog, derived from the feature gate.</summary>
@@ -29,6 +43,8 @@ public partial class AddAccountViewModel : AccountEditorViewModel
     /// one option exists (the default), it renders a static label to reduce clutter.
     /// </summary>
     public bool ShowBackendPicker => AvailableBackends.Count > 1;
+
+    public override bool ShowGoogleAuthOption => _gate.IsEnabled(FeatureFlag.GoogleAuth);
 
     [ObservableProperty]
     private BackendKindOption _selectedBackend;
@@ -52,8 +68,7 @@ public partial class AddAccountViewModel : AccountEditorViewModel
 
     protected override void OnAuthTypeChangedInternal(AuthType value)
     {
-        // Auto-fill personal Outlook.com IMAP/SMTP settings only for the IMAP backend — a Graph
-        // account also uses OAuth but must NOT get IMAP host defaults.
+        // Auto-fill server settings for OAuth providers.
         if (value == AuthType.OAuth2Microsoft && BackendKind == BackendKind.ImapSmtp)
         {
             ImapHost              = "outlook.office365.com";
@@ -61,6 +76,18 @@ public partial class AddAccountViewModel : AccountEditorViewModel
             ImapUseSsl            = true;
             ImapAcceptInvalidCert = false;
             SmtpHost              = "smtp-mail.outlook.com";
+            SmtpPort              = 587;
+            SmtpUseSsl            = false;
+            SmtpAcceptInvalidCert = false;
+            Password              = string.Empty;
+        }
+        else if (value == AuthType.OAuth2Google)
+        {
+            ImapHost              = "imap.gmail.com";
+            ImapPort              = 993;
+            ImapUseSsl            = true;
+            ImapAcceptInvalidCert = false;
+            SmtpHost              = "smtp.gmail.com";
             SmtpPort              = 587;
             SmtpUseSsl            = false;
             SmtpAcceptInvalidCert = false;

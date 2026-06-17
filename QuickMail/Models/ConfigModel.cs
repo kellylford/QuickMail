@@ -120,6 +120,20 @@ public class ConfigModel
     /// <summary>User-defined keyboard shortcut overrides, stored in hotkeys.json.</summary>
     public List<HotkeyBinding> CustomHotkeys { get; set; } = [];
 
+    // ── Google OAuth client credentials ──────────────────────────────────────────
+
+    /// <summary>
+    /// Google OAuth client ID from the Google Cloud Console app registration.
+    /// Set in the [google] section of config.ini. Never committed to source control.
+    /// </summary>
+    public string GoogleClientId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Google OAuth client secret from the Google Cloud Console app registration.
+    /// Set in the [google] section of config.ini. Never committed to source control.
+    /// </summary>
+    public string GoogleClientSecret { get; set; } = string.Empty;
+
     // ── Feature flags ─────────────────────────────────────────────────────────────
 
     /// <summary>

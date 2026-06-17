@@ -21,6 +21,9 @@ Thumbs.db
 # MailGenerator credentials (contains passwords)
 MailGenerator/credentials.ini
 
+# Google OAuth client credentials (real values — copy from docs/GoogleOAuthService.Credentials.example)
+**/GoogleOAuthService.Credentials.cs
+
 # Claude Code worktrees and local session data
 .claude/worktrees/
 .claude/settings.local.json

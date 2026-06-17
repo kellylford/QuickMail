@@ -27,6 +27,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
 
     public bool IsEditing => SelectedAccount != null;
 
+    public override bool ShowGoogleAuthOption => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
+
     public AccountManagerViewModel(
         IAccountService accountService,
         ICredentialService credentials,
@@ -136,10 +138,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         try   { await _localStore.DeleteAccountDataAsync(account.Id); }
         catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to purge mail.db — {ex.Message}"); }
 
-        if (account.AuthType == AuthType.OAuth2Microsoft)
+        if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
         {
             try   { await _oauth.SignOutAsync(account); }
-            catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed MSAL sign-out — {ex.Message}"); }
+            catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed OAuth sign-out — {ex.Message}"); }
         }
 
         StatusText = "Account deleted.";

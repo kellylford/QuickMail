@@ -34,6 +34,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsPasswordAuth))]
     [NotifyPropertyChangedFor(nameof(IsOAuth2))]
+    [NotifyPropertyChangedFor(nameof(IsGoogleOAuth))]
     [NotifyPropertyChangedFor(nameof(AuthTypeIndex))]
     private AuthType _authType = AuthType.Password;
 
@@ -53,11 +54,28 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     public bool IsPasswordAuth => AuthType == AuthType.Password;
     public bool IsOAuth2       => AuthType == AuthType.OAuth2Microsoft;
+    public bool IsGoogleOAuth  => AuthType == AuthType.OAuth2Google;
+
+    /// <summary>
+    /// Whether the Google OAuth option is available in this editor context.
+    /// Derived classes override to reflect their feature-gate state.
+    /// </summary>
+    public virtual bool ShowGoogleAuthOption => false;
 
     public int AuthTypeIndex
     {
-        get => AuthType == AuthType.Password ? 0 : 1;
-        set => AuthType = value == 0 ? AuthType.Password : AuthType.OAuth2Microsoft;
+        get => AuthType switch
+        {
+            AuthType.OAuth2Microsoft => 1,
+            AuthType.OAuth2Google    => 2,
+            _                        => 0,
+        };
+        set => AuthType = value switch
+        {
+            1 => AuthType.OAuth2Microsoft,
+            2 => AuthType.OAuth2Google,
+            _ => AuthType.Password,
+        };
     }
 
     protected AccountEditorViewModel(IMailService mailService, IOAuthService oauth)
@@ -98,6 +116,29 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task SignInGoogleAsync()
+    {
+        IsBusy = true;
+        StatusText = "Opening browser for Google sign-in…";
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Google, BackendKind = BackendKind.ImapSmtp };
+            var result = await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
+            Username = result.Username;
+            StatusText = $"Signed in as {result.Username}";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Sign-in failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand]
     private async Task TestConnectionAsync()
     {
         // Branch on backend before the IMAP-specific validation. Graph accounts have no IMAP
@@ -107,6 +148,12 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             // A Graph account is verified by the OAuth sign-in itself (it acquires a Graph token and
             // populates the username from /me). There is no separate host/port to probe.
             StatusText = "For Microsoft 365, use Sign in with Microsoft to verify access.";
+            return;
+        }
+
+        if (IsGoogleOAuth)
+        {
+            StatusText = "For Gmail, use Sign in with Google to verify access.";
             return;
         }
 
