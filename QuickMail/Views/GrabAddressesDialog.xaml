@@ -56,6 +56,7 @@
                       AutomationProperties.Name="Group"
                       IsEnabled="False"
                       SelectionChanged="GroupComboBox_SelectionChanged"
+                      DropDownClosed="GroupComboBox_DropDownClosed"
                       Margin="0,0,0,4"/>
             <TextBlock x:Name="NewGroupNameLabel"
                        Text="New group name:"
