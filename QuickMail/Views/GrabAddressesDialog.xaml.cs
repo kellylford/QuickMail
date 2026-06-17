@@ -2,11 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Interop;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -14,9 +12,6 @@ namespace QuickMail.Views;
 
 public partial class GrabAddressesDialog : Window
 {
-    [DllImport("user32.dll")] static extern IntPtr GetFocus();
-    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
-
     private readonly IContactService _contactService;
     private readonly List<AddressEntry> _entries;
 
@@ -31,11 +26,6 @@ public partial class GrabAddressesDialog : Window
             FocusFirstAddress();
             await LoadGroupsAsync();
         };
-        PreviewKeyDown += (_, e) => LogService.Debug($"GrabAddresses: PreviewKeyDown Key={e.Key} Focus={Keyboard.FocusedElement?.GetType().Name ?? "null"}");
-        NewGroupNameBox.LostKeyboardFocus += (_, e) =>
-            LogService.Debug($"GrabAddresses: NewGroupNameBox LostKeyboardFocus newFocus={e.NewFocus?.GetType().Name ?? "null"}");
-        NewGroupNameBox.GotKeyboardFocus += (_, _) =>
-            LogService.Debug($"GrabAddresses: NewGroupNameBox GotKeyboardFocus");
     }
 
     private void FocusFirstAddress()
@@ -71,75 +61,12 @@ public partial class GrabAddressesDialog : Window
             GroupComboBox.SelectedIndex = 0;
     }
 
-    private void AddToGroupCheckBox_Changed(object sender, RoutedEventArgs e)
-    {
-        bool isChecked = AddToGroupCheckBox.IsChecked == true;
-        GroupComboBox.IsEnabled = isChecked;
-        if (!isChecked)
-        {
-            SetNewGroupNameVisible(false);
-        }
-        else
-        {
-            SetNewGroupNameVisible(GroupComboBox.SelectedItem is GroupPickerItem { IsCreateNew: true });
-        }
-    }
-
-    private void GroupComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        SetNewGroupNameVisible(
-            AddToGroupCheckBox.IsChecked == true &&
-            GroupComboBox.SelectedItem is GroupPickerItem { IsCreateNew: true });
-    }
-
-    private void SetNewGroupNameVisible(bool visible)
-    {
-        LogService.Debug($"GrabAddresses: SetNewGroupNameVisible({visible}) dropDownOpen={GroupComboBox.IsDropDownOpen}");
-        var vis = visible ? Visibility.Visible : Visibility.Collapsed;
-        NewGroupNameLabel.Visibility = vis;
-        NewGroupNameBox.Visibility = vis;
-        if (visible)
-            Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
-                new Action(() =>
-                {
-                    LogService.Debug($"GrabAddresses: BeginInvoke fired dropDownOpen={GroupComboBox.IsDropDownOpen} IsVisible={NewGroupNameBox.IsVisible}");
-                    if (!GroupComboBox.IsDropDownOpen)
-                    {
-                        var dialogHwnd = new WindowInteropHelper(this).Handle;
-                        bool focused = NewGroupNameBox.Focus();
-                        var win32Focus = GetFocus();
-                        var foreground = GetForegroundWindow();
-                        LogService.Debug($"GrabAddresses: NewGroupNameBox.Focus()={focused} IsKeyboardFocused={NewGroupNameBox.IsKeyboardFocused} WpfFocus={Keyboard.FocusedElement?.GetType().Name ?? "null"} Win32Focus={win32Focus:X} DialogHwnd={dialogHwnd:X} Foreground={foreground:X} FocusMatchesDialog={win32Focus == dialogHwnd}");
-
-                        // Snapshot focus state after a short delay to catch anything that steals it
-                        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, new Action(() =>
-                        {
-                            var win32FocusLate = GetFocus();
-                            LogService.Debug($"GrabAddresses: [delayed] Win32Focus={win32FocusLate:X} DialogHwnd={dialogHwnd:X} IsKeyboardFocused={NewGroupNameBox.IsKeyboardFocused} WpfFocus={Keyboard.FocusedElement?.GetType().Name ?? "null"} FocusMatchesDialog={win32FocusLate == dialogHwnd}");
-                        }));
-                    }
-                }));
-    }
-
     private void GroupComboBox_DropDownClosed(object sender, EventArgs e)
     {
-        // After Alt+Down, the combo popup's HwndSource holds Win32 keyboard
-        // focus. When the popup closes that focus evaporates — it is NOT
-        // automatically returned to this dialog's HWND.
-        //
-        // Activate() / SetForegroundWindow() is the wrong tool: the dialog is
-        // already the foreground window so the call is a no-op.
-        //
-        // Keyboard.Focus() on an element inside this dialog goes through WPF's
-        // HwndSource and calls Win32 SetFocus() on our HWND, which works
-        // regardless of foreground status because everything is on the same thread.
+        // The combo popup's HwndSource holds Win32 keyboard focus while open.
+        // When it closes that focus evaporates; restore it to the ComboBox.
         Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
-            new Action(() =>
-            {
-                Keyboard.Focus(GroupComboBox);
-                if (NewGroupNameBox.Visibility == Visibility.Visible)
-                    NewGroupNameBox.Focus();
-            }));
+            new Action(() => Keyboard.Focus(GroupComboBox)));
     }
 
     private async void Save_Click(object sender, RoutedEventArgs e)
@@ -150,7 +77,6 @@ public partial class GrabAddressesDialog : Window
         if (pickedGroup?.IsCreateNew == true && string.IsNullOrWhiteSpace(NewGroupNameBox.Text))
         {
             AccessibilityHelper.Announce(this, "Enter a name for the new group.", category: AnnouncementCategory.Result);
-            NewGroupNameBox.Focus();
             return;
         }
 
