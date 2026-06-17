@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QuickMail Privacy Policy</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+      color: #24292e;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem 4rem;
+    }
+    h1 { font-size: 2rem; border-bottom: 1px solid #e1e4e8; padding-bottom: 0.5rem; }
+    h2 { font-size: 1.25rem; margin-top: 2rem; }
+    p, li { margin-top: 0.5rem; }
+    ul { padding-left: 1.5rem; }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.9em;
+      background: #f6f8fa;
+      padding: 0.1em 0.4em;
+      border-radius: 3px;
+    }
+    .effective { color: #586069; font-size: 0.9rem; margin-top: -0.5rem; }
+    .callout {
+      border-left: 4px solid #0366d6;
+      background: #f1f8ff;
+      padding: 0.75rem 1rem;
+      margin: 1.5rem 0;
+      border-radius: 0 4px 4px 0;
+    }
+  </style>
+</head>
+<body>
+
+<h1>QuickMail Privacy Policy</h1>
+<p class="effective">Effective date: June 17, 2026</p>
+
+<div class="callout">
+  <strong>Short version:</strong> QuickMail is a local desktop application with no servers. Your email stays on your device. Nothing you read, write, or receive through QuickMail is transmitted to the developer or any third party by the application.
+</div>
+
+<h2>What QuickMail is</h2>
+<p>
+  QuickMail is a free, open-source Windows desktop email client. It runs entirely on your computer.
+  There are no QuickMail servers, no accounts to create with the developer, and no cloud sync.
+</p>
+
+<h2>Information QuickMail accesses</h2>
+
+<h3>Email account credentials</h3>
+<p>
+  QuickMail connects to your email provider on your behalf. For standard IMAP/SMTP accounts,
+  your password is stored in <strong>Windows Credential Manager</strong> — a secure, encrypted
+  store built into Windows — and is never written to disk in plain text.
+</p>
+<p>
+  For Gmail accounts, QuickMail uses Google OAuth 2.0. You sign in through Google's own
+  sign-in page; QuickMail never sees your Google password. Google issues QuickMail a refresh
+  token, which is stored in Windows Credential Manager on your device. QuickMail uses this
+  token to request short-lived access tokens from Google in order to read and send your email.
+</p>
+
+<h3>Email content</h3>
+<p>
+  QuickMail reads your email so you can read it. Message content is processed locally and
+  cached in a SQLite database on your device at
+  <code>%APPDATA%\QuickMail</code>. This content is never transmitted to the developer
+  or any third party.
+</p>
+
+<h3>Log file</h3>
+<p>
+  When the <code>/debug</code> startup flag is used, QuickMail writes a log file
+  (<code>quickmail.log</code>) to your profile directory to help with troubleshooting.
+  This file records connection events and errors. It does not record email content,
+  passwords, or OAuth tokens.
+</p>
+
+<h2>Google user data — specific disclosures</h2>
+<p>QuickMail requests the following Google OAuth scope when you add a Gmail account:</p>
+<ul>
+  <li>
+    <code>https://mail.google.com/</code> — full Gmail access (read, compose, send, delete),
+    required to function as an email client
+  </li>
+</ul>
+<p>QuickMail uses this access <strong>only</strong> to:</p>
+<ul>
+  <li>Display your email messages</li>
+  <li>Send messages on your behalf when you choose to send them</li>
+  <li>Manage message state (read/unread, move, delete) as you direct</li>
+</ul>
+<p>QuickMail does <strong>not</strong>:</p>
+<ul>
+  <li>Share your Gmail data with any person or service</li>
+  <li>Use your Gmail data for advertising, profiling, or any purpose other than operating the email client</li>
+  <li>Allow any human to read your email content</li>
+  <li>Store your Gmail data anywhere other than your local device</li>
+  <li>Transfer your Gmail data to AI tools or train machine learning models with it</li>
+</ul>
+<p>
+  QuickMail's use and transfer of information received from Google APIs adheres to the
+  <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+  including the Limited Use requirements.
+</p>
+
+<h3>Revoking access</h3>
+<p>
+  To revoke QuickMail's access to your Gmail account at any time, visit
+  <a href="https://myaccount.google.com/permissions">Google Account Permissions</a>
+  and remove QuickMail. You can also sign out from within the application, which
+  immediately deletes the stored refresh token from Windows Credential Manager.
+</p>
+
+<h2>Analytics and telemetry</h2>
+<p>QuickMail collects no analytics, usage statistics, or telemetry of any kind.</p>
+
+<h2>Data retention and deletion</h2>
+<p>
+  All data QuickMail stores — the local email cache, settings, and credential tokens —
+  is stored on your device under <code>%APPDATA%\QuickMail</code>. You can delete this
+  folder at any time to remove all locally stored data. Uninstalling QuickMail does not
+  automatically delete this folder.
+</p>
+
+<h2>Children's privacy</h2>
+<p>
+  QuickMail is not directed at children under 13 and does not knowingly collect
+  information from children.
+</p>
+
+<h2>Changes to this policy</h2>
+<p>
+  If this policy changes materially, the updated policy will be published at this URL
+  with a new effective date. The history of changes is visible in the
+  <a href="https://github.com/kellylford/QuickMail">QuickMail GitHub repository</a>.
+</p>
+
+<h2>Contact</h2>
+<p>
+  For privacy questions or concerns, contact:
+  <a href="mailto:kelly@theideaplace.net">kelly@theideaplace.net</a>
+</p>
+
+</body>
+</html>
