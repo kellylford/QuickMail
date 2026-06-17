@@ -61,6 +61,19 @@ public partial class GrabAddressesDialog : Window
             GroupComboBox.SelectedIndex = 0;
     }
 
+    private void Cancel_Click(object sender, RoutedEventArgs e) => Close();
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Let Escape close the combo's dropdown first; only close the window
+        // when no inner control is consuming Escape itself.
+        if (e.Key == Key.Escape && !GroupComboBox.IsDropDownOpen)
+        {
+            e.Handled = true;
+            Close();
+        }
+    }
+
     private async void Save_Click(object sender, RoutedEventArgs e)
     {
         bool addToGroup = AddToGroupCheckBox.IsChecked == true;
@@ -72,25 +85,35 @@ public partial class GrabAddressesDialog : Window
             return;
         }
 
-        int? groupId = null;
-        if (pickedGroup != null)
+        try
         {
-            groupId = pickedGroup.IsCreateNew
-                ? await _contactService.CreateGroupAsync(NewGroupNameBox.Text.Trim())
-                : pickedGroup.Id;
-        }
-
-        foreach (var entry in _entries.Where(a => a.IsChecked))
-        {
-            var model = new ContactModel
+            int? groupId = null;
+            if (pickedGroup != null)
             {
-                DisplayName   = entry.DisplayName,
-                EmailAddress  = entry.EmailAddress,
-                LastUsedTicks = DateTimeOffset.UtcNow.UtcTicks,
-            };
-            await _contactService.UpsertContactAsync(model);
-            if (groupId.HasValue)
-                await _contactService.AddMemberAsync(groupId.Value, model.Id);
+                groupId = pickedGroup.IsCreateNew
+                    ? await _contactService.CreateGroupAsync(NewGroupNameBox.Text.Trim())
+                    : pickedGroup.Id;
+            }
+
+            foreach (var entry in _entries.Where(a => a.IsChecked))
+            {
+                var model = new ContactModel
+                {
+                    DisplayName   = entry.DisplayName,
+                    EmailAddress  = entry.EmailAddress,
+                    LastUsedTicks = DateTimeOffset.UtcNow.UtcTicks,
+                };
+                await _contactService.UpsertContactAsync(model);
+                if (groupId.HasValue)
+                    await _contactService.AddMemberAsync(groupId.Value, model.Id);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("GrabAddresses Save", ex);
+            AccessibilityHelper.Announce(this, "Could not save addresses. See the log for details.",
+                category: AnnouncementCategory.Result);
+            return; // keep the dialog open so the user can retry
         }
 
         Close();

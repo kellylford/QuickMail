@@ -1,28 +1,25 @@
-// Regression and behaviour tests for GrabAddressesDialog.
+// Behaviour tests for GrabAddressesDialog.
 //
-// Three bugs these tests guard against:
+// The dialog is shown modeless (Show(), not ShowDialog()). Showing it modally
+// ran a nested message loop that hard-deadlocked the UI thread the moment an
+// editable text field received focus with a screen reader active. Because it
+// is modeless, Escape and Cancel no longer auto-close (that is ShowDialog-only
+// behaviour) and are wired to Close() explicitly — Escape_ClosesDialog guards
+// that.
 //
-//   1. Focus ordering: FocusFirstAddress() was called *after* awaiting
-//      LoadGroupsAsync() in the Loaded handler, so the dialog appeared
-//      with no focused control. ShowDialog() blocking the owner made the
-//      whole app look frozen. The fix moves FocusFirstAddress() before
-//      the await; this test fails if that order is reversed.
-//
-//   2. Tab cycling: TabNavigation was "Contained", so Tab was permanently
-//      trapped cycling through every address checkbox. The fix changes it
-//      to "Once". This test fails if the mode reverts to Contained.
-//
-//   3. Focus after visibility change: calling UIElement.Focus() immediately
-//      after setting Visibility=Visible in an event handler silently fails
-//      because the element hasn't been measured/arranged yet. The ComboBox
-//      then retained keyboard focus and consumed Enter key presses (to open
-//      its dropdown), preventing the Save button from firing and leaving the
-//      dialog stuck open. The fix defers Focus() via Dispatcher.BeginInvoke
-//      at DispatcherPriority.Loaded, which runs after layout (Render priority).
+// The group section uses a static layout: the "Add to group" checkbox, the
+// group combo, and the "New group name" box are always present, enabled, and
+// visible. The group is simply ignored at Save time when "Add to group" is
+// unchecked. These tests assert that static behaviour and exercise the Save
+// logic (create-new vs existing group, gating on the checkbox, empty-name
+// validation).
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Windows;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Input;
 using QuickMail.Models;
@@ -51,10 +48,9 @@ public class GrabAddressesDialogTests
     [StaFact]
     public void OpenDialog_FocusesFirstAddressCheckbox()
     {
-        // Regression for the async ordering bug: FocusFirstAddress() must
-        // run before the LoadGroupsAsync() await, not after. When it ran
-        // after, the dialog appeared with no focused control and the app
-        // looked frozen because ShowDialog() disabled the owner.
+        // Regression for the async ordering bug: FocusFirstAddress() must run
+        // before the LoadGroupsAsync() await, not after — otherwise the dialog
+        // appears with no focused control.
         EnsureApplication();
         var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
         try
@@ -75,13 +71,9 @@ public class GrabAddressesDialogTests
     [StaFact]
     public void Tab_FromAddressList_MovesToAddToGroupCheckbox()
     {
-        // Regression for TabNavigation="Contained": Tab was permanently
-        // trapped cycling through every address checkbox. With "Once", Tab
-        // exits the list on the next press and lands on "Add to group".
-        //
-        // MoveFocus(Next) is what WPF's input manager calls for Tab and is
-        // the correct way to exercise TabNavigation in tests — RaiseEvent
-        // with KeyDownEvent does not go through the full navigation pipeline.
+        // Regression for TabNavigation="Contained": Tab was permanently trapped
+        // cycling through every address checkbox. With "Once", Tab exits the
+        // list on the next press and lands on "Add to group".
         EnsureApplication();
         var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
         try
@@ -90,7 +82,6 @@ public class GrabAddressesDialogTests
             dialog.UpdateLayout();
             DoEvents();
 
-            // Confirm we start on the first address checkbox.
             Assert.IsType<CheckBox>(Keyboard.FocusedElement);
 
             var moved = (Keyboard.FocusedElement as UIElement)
@@ -105,209 +96,177 @@ public class GrabAddressesDialogTests
         finally { dialog.Close(); }
     }
 
-    // ── Group combo state ─────────────────────────────────────────────────────
+    // ── Static group section ────────────────────────────────────────────────────
 
     [StaFact]
-    public void GroupCombo_IsDisabled_Initially()
+    public void GroupControls_AreEnabledAndVisible_OnOpen()
     {
-        // "Add to group" starts unchecked so the group picker must not be
-        // reachable by Tab until the user opts in.
+        // Static design: every group control is always present, enabled, and
+        // visible — no dynamic IsEnabled/Visibility toggling. "Add to group"
+        // starts unchecked (issue #100); the group is ignored at Save time
+        // when it is unchecked.
         EnsureApplication();
         var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
         try
         {
             dialog.Show();
             dialog.UpdateLayout();
+            DoEvents();
+
+            var checkBox = dialog.FindName("AddToGroupCheckBox") as CheckBox;
+            var combo    = dialog.FindName("GroupComboBox") as ComboBox;
+            var label    = dialog.FindName("NewGroupNameLabel") as TextBlock;
+            var textBox  = dialog.FindName("NewGroupNameBox") as TextBox;
+            Assert.NotNull(checkBox);
+            Assert.NotNull(combo);
+            Assert.NotNull(label);
+            Assert.NotNull(textBox);
+
+            Assert.NotEqual(true, checkBox!.IsChecked);   // unchecked by default
+            Assert.True(combo!.IsEnabled);
+            Assert.True(textBox!.IsEnabled);
+            Assert.Equal(Visibility.Visible, combo.Visibility);
+            Assert.Equal(Visibility.Visible, label!.Visibility);
+            Assert.Equal(Visibility.Visible, textBox.Visibility);
+        }
+        finally { dialog.Close(); }
+    }
+
+    [StaFact]
+    public void GroupCombo_OffersCreateNewGroup()
+    {
+        EnsureApplication();
+        var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
+        try
+        {
+            dialog.Show();
+            dialog.UpdateLayout();
+            DoEvents();
 
             var combo = dialog.FindName("GroupComboBox") as ComboBox;
             Assert.NotNull(combo);
-            Assert.False(combo!.IsEnabled);
+            Assert.NotEmpty(combo!.Items);
+            Assert.Contains("Create new group", combo.Items[^1]?.ToString() ?? "");
         }
         finally { dialog.Close(); }
     }
 
+    // ── Modeless close ──────────────────────────────────────────────────────────
+
     [StaFact]
-    public void CheckingAddToGroup_EnablesGroupCombo()
+    public void Escape_ClosesDialog()
     {
+        // Modeless windows do not auto-close on Escape (that is ShowDialog-only);
+        // the dialog wires Escape to Close() itself.
         EnsureApplication();
         var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
-        try
+        var closed = false;
+        dialog.Closed += (_, _) => closed = true;
+        dialog.Show();
+        dialog.UpdateLayout();
+        DoEvents();
+
+        var source = PresentationSource.FromVisual(dialog);
+        Assert.NotNull(source);
+        dialog.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source!, 0, Key.Escape)
         {
-            dialog.Show();
-            dialog.UpdateLayout();
+            RoutedEvent = Keyboard.PreviewKeyDownEvent
+        });
+        DoEvents();
 
-            var checkBox = dialog.FindName("AddToGroupCheckBox") as CheckBox;
-            var combo    = dialog.FindName("GroupComboBox") as ComboBox;
-            Assert.NotNull(checkBox);
-            Assert.NotNull(combo);
-
-            checkBox!.IsChecked = true;
-            dialog.UpdateLayout();
-
-            Assert.True(combo!.IsEnabled);
-        }
-        finally { dialog.Close(); }
+        Assert.True(closed, "Escape should close the modeless dialog.");
     }
 
-    [StaFact]
-    public void UncheckingAddToGroup_DisablesGroupCombo()
-    {
-        EnsureApplication();
-        var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
-        try
-        {
-            dialog.Show();
-            dialog.UpdateLayout();
-
-            var checkBox = dialog.FindName("AddToGroupCheckBox") as CheckBox;
-            var combo    = dialog.FindName("GroupComboBox") as ComboBox;
-            Assert.NotNull(checkBox);
-            Assert.NotNull(combo);
-
-            checkBox!.IsChecked = true;
-            dialog.UpdateLayout();
-            checkBox.IsChecked = false;
-            dialog.UpdateLayout();
-
-            Assert.False(combo!.IsEnabled);
-        }
-        finally { dialog.Close(); }
-    }
-
-    // ── New group name row visibility ─────────────────────────────────────────
+    // ── Save logic ──────────────────────────────────────────────────────────────
 
     [StaFact]
-    public void CheckingAddToGroup_FocusesNewGroupNameBox()
+    public void Save_WithCreateNewGroup_CreatesGroupAndAddsCheckedContacts()
     {
-        // Regression for the deferred-focus bug: Focus() called synchronously
-        // after setting Visibility=Visible silently failed (element not yet
-        // arranged). Focus stayed on the ComboBox, which consumed Enter to
-        // open its dropdown, so Save never fired and the dialog appeared stuck.
-        // The fix defers Focus() via BeginInvoke(DispatcherPriority.Loaded).
-        // DoEvents() drains down to Background priority (5), so it processes the
-        // Loaded-priority (7) focus call first.
-        EnsureApplication();
-        var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
-        try
-        {
-            dialog.Show();
-            dialog.UpdateLayout();
-            DoEvents(); // let async group load settle — combo now has "Create new group"
-
-            var checkBox = dialog.FindName("AddToGroupCheckBox") as CheckBox;
-            var textBox  = dialog.FindName("NewGroupNameBox") as TextBox;
-            Assert.NotNull(checkBox);
-            Assert.NotNull(textBox);
-
-            checkBox!.IsChecked = true;
-            dialog.UpdateLayout();
-            DoEvents(); // let deferred Loaded-priority Focus() fire
-
-            Assert.Same(textBox, Keyboard.FocusedElement);
-        }
-        finally { dialog.Close(); }
-    }
-
-    [StaFact]
-    public void NewGroupNameRow_IsHidden_Initially()
-    {
-        EnsureApplication();
-        var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
-        try
-        {
-            dialog.Show();
-            dialog.UpdateLayout();
-            DoEvents();
-
-            var label  = dialog.FindName("NewGroupNameLabel") as TextBlock;
-            var textBox = dialog.FindName("NewGroupNameBox") as TextBox;
-            Assert.NotNull(label);
-            Assert.NotNull(textBox);
-            Assert.Equal(Visibility.Collapsed, label!.Visibility);
-            Assert.Equal(Visibility.Collapsed, textBox!.Visibility);
-        }
-        finally { dialog.Close(); }
-    }
-
-    [StaFact]
-    public void NewGroupNameRow_BecomesVisible_WhenCreateNewGroupSelected()
-    {
-        // With no existing groups the only combo item is "Create new group".
-        // Checking "Add to group" should make the name row appear.
-        EnsureApplication();
-        var dialog = new GrabAddressesDialog(TwoAddresses, new StubContactService());
-        try
-        {
-            dialog.Show();
-            dialog.UpdateLayout();
-            DoEvents(); // let async group load settle — combo now has "Create new group"
-
-            var checkBox = dialog.FindName("AddToGroupCheckBox") as CheckBox;
-            var label    = dialog.FindName("NewGroupNameLabel") as TextBlock;
-            var textBox  = dialog.FindName("NewGroupNameBox") as TextBox;
-            Assert.NotNull(checkBox);
-            Assert.NotNull(label);
-            Assert.NotNull(textBox);
-
-            checkBox!.IsChecked = true;
-            dialog.UpdateLayout();
-
-            Assert.Equal(Visibility.Visible, label!.Visibility);
-            Assert.Equal(Visibility.Visible, textBox!.Visibility);
-        }
-        finally { dialog.Close(); }
-    }
-
-    [StaFact]
-    public void NewGroupNameRow_IsHidden_WhenExistingGroupSelected()
-    {
-        // With an existing group present, that group is selected by default
-        // in the combo (it comes before "Create new group"). Checking "Add
-        // to group" should leave the name row hidden.
         EnsureApplication();
         var dir = TempDir();
-        var profile = new ProfileContext(dir);
-        var svc = new ContactService(profile);
-        svc.CreateGroupAsync("Test Group").GetAwaiter().GetResult();
+        var svc = new ContactService(new ProfileContext(dir));
         var dialog = new GrabAddressesDialog(TwoAddresses, svc);
+        var closed = false;
+        dialog.Closed += (_, _) => closed = true;
         try
         {
             dialog.Show();
             dialog.UpdateLayout();
-            DoEvents();
+            DoEvents(); // group load settles — "Create new group" is the only item
 
             var checkBox = dialog.FindName("AddToGroupCheckBox") as CheckBox;
-            var label    = dialog.FindName("NewGroupNameLabel") as TextBlock;
+            var combo    = dialog.FindName("GroupComboBox") as ComboBox;
             var textBox  = dialog.FindName("NewGroupNameBox") as TextBox;
+            var save     = dialog.FindName("SaveButton") as Button;
             Assert.NotNull(checkBox);
-            Assert.NotNull(label);
+            Assert.NotNull(combo);
             Assert.NotNull(textBox);
+            Assert.NotNull(save);
 
-            // Check "Add to group" — existing group "Test Group" is selected
             checkBox!.IsChecked = true;
-            dialog.UpdateLayout();
+            combo!.SelectedIndex = combo.Items.Count - 1; // "Create new group"
+            textBox!.Text = "Grabbed Group";
 
-            Assert.Equal(Visibility.Collapsed, label!.Visibility);
-            Assert.Equal(Visibility.Collapsed, textBox!.Visibility);
+            InvokeButton(save!);
+            PumpUntil(() => closed);
+            Assert.True(closed, "Save should close the dialog when it completes.");
+
+            var grp = svc.LoadAllGroupsAsync().GetAwaiter().GetResult()
+                         .FirstOrDefault(g => g.Name == "Grabbed Group");
+            Assert.NotNull(grp);
+            Assert.Equal(2, grp!.ResolvedMemberCount);
         }
         finally
         {
-            dialog.Close();
+            if (!closed) dialog.Close();
             DeleteDir(dir);
         }
     }
 
     [StaFact]
-    public void NewGroupNameRow_Hides_WhenSwitchingFromCreateNewToExistingGroup()
+    public void Save_WithoutAddToGroup_SavesContactsAndIgnoresGroupSelection()
     {
-        // If the user selects "Create new group" (name row appears) then
-        // switches to an existing group, the name row must disappear again.
         EnsureApplication();
         var dir = TempDir();
-        var profile = new ProfileContext(dir);
-        var svc = new ContactService(profile);
-        svc.CreateGroupAsync("Test Group").GetAwaiter().GetResult();
+        var svc = new ContactService(new ProfileContext(dir));
         var dialog = new GrabAddressesDialog(TwoAddresses, svc);
+        var closed = false;
+        dialog.Closed += (_, _) => closed = true;
+        try
+        {
+            dialog.Show();
+            dialog.UpdateLayout();
+            DoEvents();
+
+            var save = dialog.FindName("SaveButton") as Button;
+            Assert.NotNull(save);
+
+            // "Add to group" left unchecked — the combo still has a selection,
+            // but it must be ignored.
+            InvokeButton(save!);
+            PumpUntil(() => closed);
+            Assert.True(closed);
+
+            var contacts = svc.SearchContactsAsync("").GetAwaiter().GetResult();
+            Assert.Equal(2, contacts.Count);
+            Assert.Empty(svc.LoadAllGroupsAsync().GetAwaiter().GetResult());
+        }
+        finally
+        {
+            if (!closed) dialog.Close();
+            DeleteDir(dir);
+        }
+    }
+
+    [StaFact]
+    public void Save_CreateNewGroupWithEmptyName_DoesNotCloseOrCreateGroup()
+    {
+        EnsureApplication();
+        var dir = TempDir();
+        var svc = new ContactService(new ProfileContext(dir));
+        var dialog = new GrabAddressesDialog(TwoAddresses, svc);
+        var closed = false;
+        dialog.Closed += (_, _) => closed = true;
         try
         {
             dialog.Show();
@@ -316,26 +275,19 @@ public class GrabAddressesDialogTests
 
             var checkBox = dialog.FindName("AddToGroupCheckBox") as CheckBox;
             var combo    = dialog.FindName("GroupComboBox") as ComboBox;
-            var label    = dialog.FindName("NewGroupNameLabel") as TextBlock;
-            var textBox  = dialog.FindName("NewGroupNameBox") as TextBox;
+            var save     = dialog.FindName("SaveButton") as Button;
             Assert.NotNull(checkBox);
             Assert.NotNull(combo);
-            Assert.NotNull(label);
-            Assert.NotNull(textBox);
+            Assert.NotNull(save);
 
             checkBox!.IsChecked = true;
-            dialog.UpdateLayout();
+            combo!.SelectedIndex = combo.Items.Count - 1; // "Create new group", name left blank
 
-            // Last item is "Create new group" — select it
-            combo!.SelectedIndex = combo.Items.Count - 1;
-            dialog.UpdateLayout();
-            Assert.Equal(Visibility.Visible, label!.Visibility);
+            InvokeButton(save!);
+            for (int i = 0; i < 10; i++) DoEvents();
 
-            // Switch back to the existing group (index 0)
-            combo.SelectedIndex = 0;
-            dialog.UpdateLayout();
-            Assert.Equal(Visibility.Collapsed, label!.Visibility);
-            Assert.Equal(Visibility.Collapsed, textBox!.Visibility);
+            Assert.False(closed, "Empty new-group name should keep the dialog open.");
+            Assert.Empty(svc.LoadAllGroupsAsync().GetAwaiter().GetResult());
         }
         finally
         {
@@ -345,6 +297,18 @@ public class GrabAddressesDialogTests
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────
+
+    private static void InvokeButton(Button button)
+    {
+        var peer = new ButtonAutomationPeer(button);
+        ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+    }
+
+    private static void PumpUntil(Func<bool> condition, int maxIterations = 50)
+    {
+        for (int i = 0; i < maxIterations && !condition(); i++)
+            DoEvents();
+    }
 
     private static void EnsureApplication()
     {

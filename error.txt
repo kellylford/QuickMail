@@ -1,7 +1,0 @@
-Publishing QuickMail — single-file self-contained win-x64...
-  Determining projects to restore...
-  All projects are up-to-date for restore.
-  QuickMail -> C:\Users\kelly\GitHub\QuickMail\QuickMail\bin\Release\net8.0-windows\win-x64\QuickMail.dll
-  QuickMail -> C:\Users\kelly\GitHub\QuickMail\publish\
-
-Output: publish\QuickMail.exe

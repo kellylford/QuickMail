@@ -3590,7 +3590,7 @@ public partial class MainWindow : Window
                 .DistinctBy(x => x.Address, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             if (addresses.Count == 0) return;
-            new GrabAddressesDialog(addresses, _contactService) { Owner = win }.ShowDialog();
+            new GrabAddressesDialog(addresses, _contactService) { Owner = win }.Show();
         };
 
         win.MoveToMainWindowRequested += (_, vm) =>
@@ -3920,7 +3920,7 @@ public partial class MainWindow : Window
 
         if (addresses.Count == 0) return;
 
-        new GrabAddressesDialog(addresses, _contactService) { Owner = this }.ShowDialog();
+        new GrabAddressesDialog(addresses, _contactService) { Owner = this }.Show();
     }
 
     private void MenuCommandPalette_Click(object sender, RoutedEventArgs e)

@@ -109,6 +109,34 @@ When accessibility issues arise, the investigation should be user-centric:
 These rules prevent a class of crashes (`STATUS_CALLBACK_RETURNED_THREAD_APT_CHANGED`) that
 occur when parent-window UI is mutated while a modal dialog's message loop is still running.
 
+### Prefer modeless `Show()` for dialogs launched over a window with a live WebView2 — especially if they contain an editable text field
+
+`ShowDialog()` runs a **nested message loop** on the UI thread. When such a dialog is opened
+on top of a window that hosts a live WebView2 (e.g. the reading pane or a `MessageWindow`),
+and the dialog contains an editable `TextBox`, focusing that text field with a screen reader
+active can **hard-deadlock the UI thread** — the dispatcher freezes and *all* keyboard input
+to the app stops. The screen reader's synchronous UIA query, the editable control's text/COM
+activation, the out-of-process WebView2 UIA provider, and the nested modal loop combine into
+a cross-apartment STA wait that never resolves.
+
+This is the root cause of the GrabAddresses keyboard lockup. The fix was to launch the dialog
+with `.Show()` (modeless) instead of `.ShowDialog()`. The compose window — modeless, editable,
+and used constantly without issue — is the proof that modeless is the safe pattern.
+
+- ✅ `new GrabAddressesDialog(...) { Owner = this }.Show();` when the dialog has editable text
+  and is opened over an open message.
+- ❌ `…ShowDialog();` for the same dialog — modal nesting + editable text + WebView2 + screen
+  reader = frozen dispatcher.
+- A vanilla `TextBox` is **not** the problem (editable boxes work everywhere else in the app,
+  all modeless). Do **not** chase exotic "the screen reader redirects focus" theories, disable
+  the input-method/TSF context, or remove `Focus()` calls — those are red herrings. The
+  differentiator is the **modal nested message loop**, so look there first.
+
+**Modeless trade-off to handle:** a modeless window has no `DialogResult`, so `IsCancel="True"`
+and Escape no longer auto-close it. Wire Cancel and Escape to `Close()` explicitly (a
+`PreviewKeyDown` Escape handler — guarded so it does not steal Escape from an open ComboBox
+dropdown — plus a Cancel `Click` handler). Save handlers should call `Close()` directly.
+
 ### Never fire ViewsChanged (or any event that triggers UpdateSavedViews / RebuildViewsMenu) while a modal dialog is open
 
 `ShowDialog()` blocks the caller but runs a nested message loop.  If code inside the dialog
