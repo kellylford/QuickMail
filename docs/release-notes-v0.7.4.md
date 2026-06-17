@@ -39,6 +39,12 @@ When grabbing addresses from an open message (`Ctrl+Shift+G`), you can now add t
 
 If you type a new group name and leave it blank when Save is pressed, QuickMail announces "Enter a name for the new group" and keeps the window open. No contacts are saved until a valid group name is provided or you remove the name and save without the group option checked.
 
+If you type a new group name that already exists, QuickMail does not create a second group with that name. Instead it tells you the group already exists and keeps the window open so you can enter a different name, or pick the existing group from the list. This prevents two groups with the same name — which could otherwise lead to sending to the wrong people.
+
+### Unique Group Names
+
+Address book group names are now required to be unique, regardless of letter case ("Team" and "team" are treated as the same name). This applies everywhere groups are created or renamed — the Grab Addresses window, the Group Manager, and the Address Book. If a name is already in use, QuickMail tells you and leaves your text in place so you can choose a different name. Existing groups are never merged.
+
 ### Grab Addresses: Tab Navigation Fix
 
 Previously, Tab cycled through every address checkbox in the list, requiring many Tab presses to reach the Save or Cancel button. Tab now stops on the address list once — pressing Tab again exits the list and moves to the **Add to group** checkbox, then to the group controls, then to Save and Cancel. Arrow keys still move between individual address checkboxes within the list.
@@ -78,7 +84,12 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 - `GrabAddressesDialog` shown modelessly (`.Show()`) instead of via `.ShowDialog()`. Modal nesting over a WebView2 host + editable text field + screen reader caused a hard UI-thread deadlock on focus. Modeless windows have no `DialogResult`, so Escape and Cancel are wired to `Close()` explicitly; Escape is guarded against the group combo's open dropdown.
 - `Save_Click` service calls wrapped in try/catch: failures are logged and announced (`Result` category); the dialog stays open for retry rather than crashing on an unhandled `async void` exception.
 - `UpsertContactAsync`: set `contact.Id` for existing contacts so `AddMemberAsync` receives a valid ID.
-- `GrabAddressesDialogTests` rewritten: 8 tests covering focus on open, Tab exit from address list, static group controls, modeless Escape-close, Save with new group, Save without group, and empty-name validation.
+- `GrabAddressesDialogTests` rewritten: 9 tests covering focus on open, Tab exit from address list, static group controls, modeless Escape-close, Save with new group, Save without group, empty-name validation, and duplicate-name rejection (case-insensitive).
+
+### Group Name Uniqueness
+
+- `ContactService.CreateGroupAsync` and `RenameGroupAsync` reject a name that already exists (case-insensitive, `OrdinalIgnoreCase`) by throwing the new public `DuplicateGroupNameException`. The check runs inside the load lock so there is no check-then-create race. No merging is performed.
+- All three group entry points catch it and announce a `Result`-category message, leaving the input in place: `GrabAddressesDialog.Save_Click`, `GroupManagerViewModel` (create + rename), and `AddressBookViewModel` (create + rename).
 
 ### IDisposable
 

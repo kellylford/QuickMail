@@ -275,6 +275,8 @@ Groups let you write to multiple people with a single address. Select a group in
 
 Open the address book and use the **Groups** pane to create, rename, and delete groups, and to add or remove members.
 
+Group names must be unique, regardless of letter case ("Team" and "team" count as the same name). If you try to create or rename a group to a name that already exists, QuickMail tells you the name is already in use and leaves your text in place so you can choose a different one. Groups are never merged.
+
 ---
 
 ## Grab Addresses from a Message
@@ -289,6 +291,8 @@ When reading a message with many recipients, you can save all of them to your ad
    - Choose **Create new group** and type a name in the **New group name** field.
    - Press **Save**.
 5. Press **Cancel** or **Escape** to close without saving.
+
+If you choose **Create new group** and type a name that already exists, QuickMail will not create a second group with that name. It tells you the group already exists and keeps the window open so you can enter a different name, or pick the existing group from the list instead.
 
 Tab moves through the address list (one Tab stop for the whole list — arrow keys move between individual checkboxes), then to **Add to group**, then to the group combo, then to the name field, then to Save and Cancel.
 
