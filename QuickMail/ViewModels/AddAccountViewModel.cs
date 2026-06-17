@@ -29,8 +29,8 @@ public partial class AddAccountViewModel : AccountEditorViewModel
             if (e.PropertyName != nameof(Username)) return;
             if (!ShowGoogleAuthOption) return;
             if (AuthType == AuthType.OAuth2Google) return;
-            var lower = Username.ToLowerInvariant();
-            if (lower.EndsWith("@gmail.com") || lower.EndsWith("@googlemail.com"))
+            if (Username.EndsWith("@gmail.com", StringComparison.OrdinalIgnoreCase) ||
+                Username.EndsWith("@googlemail.com", StringComparison.OrdinalIgnoreCase))
                 AuthType = AuthType.OAuth2Google;
         };
     }

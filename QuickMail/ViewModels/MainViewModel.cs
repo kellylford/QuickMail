@@ -3955,8 +3955,10 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ManageAccounts() => ManageAccountsRequested?.Invoke();
 
+#pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
     [RelayCommand]
     private void Exit() => Application.Current.Shutdown();
+#pragma warning restore CA1822
 
     // ── Account context menu commands ─────────────────────────────────────────
 
@@ -4226,6 +4228,7 @@ public partial class MainViewModel : ObservableObject
 
     // ── Conversation context menu commands ────────────────────────────────────
 
+#pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
     [RelayCommand]
     private void ExpandConversation(ConversationGroup? group)
     {
@@ -4237,6 +4240,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (group != null) group.IsExpanded = false;
     }
+#pragma warning restore CA1822
 
     [RelayCommand]
     private void ExpandAllConversations()
@@ -4295,6 +4299,7 @@ public partial class MainViewModel : ObservableObject
         await DeleteMessagesAsync(group.Messages);
     }
 
+#pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
     [RelayCommand]
     private void ExpandToGroup(SenderGroup? group)
     {
@@ -4306,6 +4311,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (group != null) group.IsExpanded = false;
     }
+#pragma warning restore CA1822
 
     [RelayCommand]
     private void ExpandAllToGroups()
@@ -4350,6 +4356,7 @@ public partial class MainViewModel : ObservableObject
 
     // ── SenderGroup context menu commands ─────────────────────────────────────
 
+#pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
     [RelayCommand]
     private void ExpandSenderGroup(SenderGroup? group)
     {
@@ -4361,6 +4368,7 @@ public partial class MainViewModel : ObservableObject
     {
         if (group != null) group.IsExpanded = false;
     }
+#pragma warning restore CA1822
 
     [RelayCommand]
     private void ExpandAllSenderGroups()
@@ -4473,6 +4481,7 @@ public partial class MainViewModel : ObservableObject
         ActiveSort = ConfigModel.ParseSort(sort);
     }
 
+#pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
     [RelayCommand]
     private void ViewUserGuide()
     {
@@ -4482,6 +4491,7 @@ public partial class MainViewModel : ObservableObject
             UseShellExecute = true
         });
     }
+#pragma warning restore CA1822
 
     // ── Attachment commands ─────────────────────────────────────────────────────
 

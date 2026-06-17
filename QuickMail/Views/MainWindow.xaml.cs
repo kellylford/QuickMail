@@ -1230,7 +1230,7 @@ public partial class MainWindow : Window
     }
 
 
-    private bool TryHandleFolderTreeTypeAhead(TreeView tree, System.Collections.Generic.IEnumerable<FolderTreeNode> roots, string? text)
+    private static bool TryHandleFolderTreeTypeAhead(TreeView tree, System.Collections.Generic.IEnumerable<FolderTreeNode> roots, string? text)
     {
         if (string.IsNullOrEmpty(text) || char.IsControl(text[0]))
             return false;
@@ -1341,7 +1341,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private void FocusTreeItem(TreeView tree, object item)
+    private static void FocusTreeItem(TreeView tree, object item)
     {
         tree.Dispatcher.InvokeAsync(() =>
         {
@@ -1374,7 +1374,7 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private void HandleMessageTreeTypeAhead(
+    private static void HandleMessageTreeTypeAhead(
         TreeView tree,
         object? currentSelection,
         System.Collections.Generic.List<object> visibleItems,
@@ -3774,7 +3774,7 @@ public partial class MainWindow : Window
 
     // ── Folder context menu handlers ─────────────────────────────────────────
 
-    private FolderTreeNode? GetContextMenuFolderNode(object sender)
+    private static FolderTreeNode? GetContextMenuFolderNode(object sender)
     {
         var item = sender as MenuItem;
         var menu = item?.Parent as ContextMenu;
@@ -3836,7 +3836,7 @@ public partial class MainWindow : Window
 
     // ── Message context menu handlers ────────────────────────────────────────
 
-    private IReadOnlyList<MailMessageSummary> GetSelectedMessages()
+    private List<MailMessageSummary> GetSelectedMessages()
     {
         // MessageList (standard view)
         if (MessageList.IsVisible && MessageList.SelectedItems.Count > 0)

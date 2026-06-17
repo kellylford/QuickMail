@@ -621,7 +621,7 @@ public class ImapMailService : IMailService
         await CopyFolderCoreAsync(lease.Client, folderName, destinationParentName, ct);
     }
 
-    private async Task CopyFolderCoreAsync(ImapClient client, string folderName, string? destinationParentName, CancellationToken ct)
+    private static async Task CopyFolderCoreAsync(ImapClient client, string folderName, string? destinationParentName, CancellationToken ct)
     {
         var srcFolder = await client.GetFolderAsync(folderName, ct);
 
@@ -989,8 +989,7 @@ public class ImapMailService : IMailService
 
     private void ThrowIfDisposed()
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(ImapMailService));
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 
     private static bool SameConnectionSettings(AccountModel left, AccountModel right) =>
@@ -1139,8 +1138,7 @@ public class ImapMailService : IMailService
 
                     lock (_gate)
                     {
-                        if (_disposed)
-                            throw new ObjectDisposedException(nameof(AccountConnectionPool));
+                        ObjectDisposedException.ThrowIf(_disposed, this);
 
                         while (_idle.Count > 0)
                         {
@@ -1166,8 +1164,7 @@ public class ImapMailService : IMailService
 
                     lock (_gate)
                     {
-                        if (_disposed)
-                            throw new ObjectDisposedException(nameof(AccountConnectionPool));
+                        ObjectDisposedException.ThrowIf(_disposed, this);
                         _all.Add(client);
                     }
                 }
