@@ -28,3 +28,5 @@ MailGenerator/credentials.ini
 /artifacts
 startmail.bat
 startoffline.bat
+Tools/MailGenerator/credentials.ini
+/logs
