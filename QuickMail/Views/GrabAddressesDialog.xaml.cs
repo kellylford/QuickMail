@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -88,7 +89,36 @@ public partial class GrabAddressesDialog : Window
         NewGroupNameBox.Visibility = vis;
         if (visible)
             Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Loaded,
-                new Action(() => NewGroupNameBox.Focus()));
+                new Action(() =>
+                {
+                    // Don't steal focus while the combo dropdown popup is open —
+                    // the popup's HwndSource holds Win32 keyboard focus and will
+                    // absorb or discard the call. DropDownClosed handles focus
+                    // restoration in that path instead.
+                    if (!GroupComboBox.IsDropDownOpen)
+                        NewGroupNameBox.Focus();
+                }));
+    }
+
+    private void GroupComboBox_DropDownClosed(object sender, EventArgs e)
+    {
+        // After Alt+Down, the combo popup's HwndSource holds Win32 keyboard
+        // focus. When the popup closes that focus evaporates — it is NOT
+        // automatically returned to this dialog's HWND.
+        //
+        // Activate() / SetForegroundWindow() is the wrong tool: the dialog is
+        // already the foreground window so the call is a no-op.
+        //
+        // Keyboard.Focus() on an element inside this dialog goes through WPF's
+        // HwndSource and calls Win32 SetFocus() on our HWND, which works
+        // regardless of foreground status because everything is on the same thread.
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Input,
+            new Action(() =>
+            {
+                Keyboard.Focus(GroupComboBox);
+                if (NewGroupNameBox.Visibility == Visibility.Visible)
+                    NewGroupNameBox.Focus();
+            }));
     }
 
     private async void Save_Click(object sender, RoutedEventArgs e)
