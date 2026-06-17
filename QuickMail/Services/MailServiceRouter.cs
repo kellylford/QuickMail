@@ -19,7 +19,7 @@ namespace QuickMail.Services;
 public class MailServiceRouter : IMailService
 {
     private readonly ConcurrentDictionary<Guid, IMailService> _byAccount = new();
-    private readonly IReadOnlyList<IMailService> _allBackends; // ordered, for event aggregation + fan-out
+    private readonly List<IMailService> _allBackends; // ordered, for event aggregation + fan-out
     private readonly IMailService _defaultBackend;             // fallback for unregistered accounts
 
     public MailServiceRouter(IEnumerable<IMailService> backends)

@@ -56,6 +56,16 @@ public partial class AddAccountViewModel : AccountEditorViewModel
         }
     }
 
+    partial void OnUsernameChanged(string value)
+    {
+        if (!ShowGoogleAuthOption) return;
+        if (AuthType == AuthType.OAuth2Google) return;
+
+        var lower = value.ToLowerInvariant();
+        if (lower.EndsWith("@gmail.com") || lower.EndsWith("@googlemail.com"))
+            AuthType = AuthType.OAuth2Google;
+    }
+
     protected override void OnAuthTypeChangedInternal(AuthType value)
     {
         // Auto-fill server settings for OAuth providers.
