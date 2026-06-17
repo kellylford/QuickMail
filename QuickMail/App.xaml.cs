@@ -80,7 +80,7 @@ public partial class App : Application
             var credentialService = new CredentialService();
             var configService     = new ConfigService(profile);
             var msOAuthService    = new OAuthService(profile);
-            var googleOAuth       = new GoogleOAuthService(configService, credentialService);
+            var googleOAuth       = new GoogleOAuthService(credentialService);
             var oauthService      = new OAuthRouter(msOAuthService, googleOAuth);
             var imapBackend       = new ImapMailService(oauthService, configService);
             var graphBackend      = new GraphMailService(msOAuthService, configService);

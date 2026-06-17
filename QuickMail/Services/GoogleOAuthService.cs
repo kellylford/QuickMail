@@ -8,11 +8,13 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Flows;
 using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.Util.Store;
-using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class GoogleOAuthService : IGoogleOAuthService
+// ClientId and ClientSecret are defined in GoogleOAuthService.Credentials.cs (gitignored).
+// Copy docs/GoogleOAuthService.Credentials.example to
+// QuickMail/Services/GoogleOAuthService.Credentials.cs and fill in your values.
+public partial class GoogleOAuthService : IGoogleOAuthService
 {
     // Gmail IMAP/SMTP access + openid/email so we can confirm the signed-in address from the id_token.
     private static readonly string[] Scopes = ["https://mail.google.com/", "openid", "email"];
@@ -20,27 +22,24 @@ public class GoogleOAuthService : IGoogleOAuthService
     private static string TokenKey(string username)
         => $"QuickMail:GoogleToken:{username.ToLowerInvariant()}";
 
-    private readonly IConfigService _configService;
     private readonly ICredentialService _credentialService;
 
     // In-memory cache: lowercase username → live UserCredential (holds access token + auto-refresh)
     private readonly Dictionary<string, UserCredential> _cache = [];
 
-    public GoogleOAuthService(IConfigService configService, ICredentialService credentialService)
+    public GoogleOAuthService(ICredentialService credentialService)
     {
-        _configService     = configService;
         _credentialService = credentialService;
     }
 
     private GoogleAuthorizationCodeFlow CreateFlow(IDataStore? dataStore = null)
     {
-        var cfg = _configService.Load();
         return new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
         {
             ClientSecrets = new ClientSecrets
             {
-                ClientId     = cfg.GoogleClientId,
-                ClientSecret = cfg.GoogleClientSecret,
+                ClientId     = ClientId,
+                ClientSecret = ClientSecret,
             },
             Scopes    = Scopes,
             DataStore = dataStore ?? new NoOpDataStore(),
