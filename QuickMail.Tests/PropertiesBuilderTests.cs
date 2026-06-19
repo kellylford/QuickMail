@@ -264,6 +264,18 @@ public class AccountPropertiesBuilderTests
     }
 
     [Fact]
+    public void Build_ICloudAccount_ShowsAppSpecificPassword()
+    {
+        var acct = MakeAccount(AuthType.Password);
+        acct.ImapHost = "imap.mail.me.com";
+        var (_, sections) = AccountPropertiesBuilder.Build(acct, null);
+
+        var auth = sections.First(s => s.Header == "Authentication");
+        Assert.Contains(auth.Items, i =>
+            i.Label == "Authentication" && i.Value.Contains("iCloud"));
+    }
+
+    [Fact]
     public void Build_NeverExposeCredential()
     {
         var acct = MakeAccount();

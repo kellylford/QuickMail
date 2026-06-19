@@ -21,7 +21,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _username = string.Empty;
     [ObservableProperty] private string _password = string.Empty;
-    [ObservableProperty] private string _imapHost = string.Empty;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsICloudAccount))]
+    private string _imapHost = string.Empty;
     [ObservableProperty] private int    _imapPort = 993;
     [ObservableProperty] private bool   _imapUseSsl = true;
     [ObservableProperty] private bool   _imapAcceptInvalidCert = false;
@@ -37,6 +39,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsGoogleOAuth))]
     [NotifyPropertyChangedFor(nameof(AuthTypeIndex))]
     private AuthType _authType = AuthType.Password;
+
+    /// <summary>True when the IMAP host matches iCloud — drives the app-specific password hint.</summary>
+    public bool IsICloudAccount => ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGraphBackend))]

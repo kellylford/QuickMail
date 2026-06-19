@@ -42,6 +42,8 @@ public static class AccountPropertiesBuilder
                 {
                     AuthType.OAuth2Microsoft => "OAuth2 (Microsoft 365)",
                     AuthType.OAuth2Google    => "OAuth2 (Google / Gmail)",
+                    _ when account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase)
+                                             => "App-Specific Password (iCloud)",
                     _                        => "Password (Windows Credential Manager)",
                 }),
             new("Last synced",

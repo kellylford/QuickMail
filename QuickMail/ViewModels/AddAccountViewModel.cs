@@ -27,11 +27,29 @@ public partial class AddAccountViewModel : AccountEditorViewModel
         PropertyChanged += (_, e) =>
         {
             if (e.PropertyName != nameof(Username)) return;
-            if (!ShowGoogleAuthOption) return;
-            if (AuthType == AuthType.OAuth2Google) return;
-            if (Username.EndsWith("@gmail.com", StringComparison.OrdinalIgnoreCase) ||
-                Username.EndsWith("@googlemail.com", StringComparison.OrdinalIgnoreCase))
+
+            if (ShowGoogleAuthOption && AuthType != AuthType.OAuth2Google &&
+                (Username.EndsWith("@gmail.com", StringComparison.OrdinalIgnoreCase) ||
+                 Username.EndsWith("@googlemail.com", StringComparison.OrdinalIgnoreCase)))
+            {
                 AuthType = AuthType.OAuth2Google;
+                return;
+            }
+
+            if (ImapHost != "imap.mail.me.com" &&
+                (Username.EndsWith("@icloud.com", StringComparison.OrdinalIgnoreCase) ||
+                 Username.EndsWith("@me.com", StringComparison.OrdinalIgnoreCase) ||
+                 Username.EndsWith("@mac.com", StringComparison.OrdinalIgnoreCase)))
+            {
+                ImapHost              = "imap.mail.me.com";
+                ImapPort              = 993;
+                ImapUseSsl            = true;
+                ImapAcceptInvalidCert = false;
+                SmtpHost              = "smtp.mail.me.com";
+                SmtpPort              = 587;
+                SmtpUseSsl            = false;
+                SmtpAcceptInvalidCert = false;
+            }
         };
     }
 

@@ -112,6 +112,21 @@
                                  AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
                                  TabIndex="5"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
+                    <!-- iCloud app-specific password hint -->
+                    <Border Visibility="{Binding IsICloudAccount, Converter={StaticResource BoolToVisibility}}"
+                            Background="#FFF3E3"
+                            BorderBrush="#E08000"
+                            BorderThickness="1"
+                            Padding="8,6"
+                            Margin="0,6,0,0">
+                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                                   AutomationProperties.Name="iCloud requires an app-specific password, not your Apple ID password. Generate one at appleid.apple.com under Sign-In and Security, App-Specific Passwords.">
+                            <Run FontWeight="SemiBold">iCloud requires an app-specific password.</Run>
+                            <Run>Do not enter your Apple ID password. Generate one at</Run>
+                            <Run FontWeight="SemiBold">appleid.apple.com</Run>
+                            <Run>under Sign-In &amp; Security &#x2192; App-Specific Passwords.</Run>
+                        </TextBlock>
+                    </Border>
                 </StackPanel>
 
                 <!-- Microsoft OAuth2 sign-in panel -->
