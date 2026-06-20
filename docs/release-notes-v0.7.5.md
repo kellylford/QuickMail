@@ -29,6 +29,10 @@ Once added, iCloud accounts sync and send mail the same way as any other IMAP/SM
 
 ## Bug Fixes
 
+- **Shift+Tab navigation now wraps from the account list back to the message panel.** Pressing Shift+Tab moved focus backward through the message panel, folder tree, and account list, but pressing Shift+Tab again from the account list produced no response — focus was stuck. The backward cycle now completes correctly: Shift+Tab from the account list moves focus to the active message panel, consistent with how the forward Tab cycle works. (#106)
+
+- **Keyboard shortcuts list now announces correctly with screen readers.** When arrowing through the keyboard shortcuts list in Settings, NVDA and Narrator were reading the internal class name (`SettingsViewModel+HotkeyRowViewModel`) instead of the command name. Each row now has a proper accessible label — command name, category, and current shortcut — that screen readers announce when focus moves to a row. This bug did not affect JAWS, which has a long-standing workaround for this specific WPF pattern. (#107)
+
 - **Deleted iCloud messages going to Junk instead of Trash.** When deleting a message from an iCloud account, QuickMail was moving it to the Junk folder rather than Trash. The delete logic was falling back to Junk when it could not identify the Trash folder by name — iCloud names its trash folder "Deleted Messages" rather than "Trash". The name-based fallback now recognises "Deleted Messages", and the fallback to Junk has been removed from the delete path entirely (Junk is never an acceptable destination for deleted messages).
 
 ---
