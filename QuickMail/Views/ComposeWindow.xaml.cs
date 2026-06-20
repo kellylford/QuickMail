@@ -79,6 +79,11 @@ public partial class ComposeWindow : Window
     // Suppress spelling announcements during programmatic text changes (e.g. Alt+1 replacement).
     private bool _suppressSpellingAnnouncement;
 
+    // Set when we handle an Alt+key shortcut in PreviewKeyDown. Cleared by the WndProc hook
+    // after suppressing the SC_KEYMENU message that WPF's AccessKeyManager would otherwise
+    // use to steal focus to the menu bar after our handler returns.
+    private bool _suppressNextMenuActivation;
+
     // Last block type announced while navigating in HTML mode (e.g. "Heading 2", "Normal text").
     // Used to suppress repeat announcements when the caret stays on the same paragraph type.
     private string? _lastAnnouncedBlockType;
@@ -260,6 +265,25 @@ public partial class ComposeWindow : Window
         {
             // Superseded by a newer keystroke
         }
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        if (PresentationSource.FromVisual(this) is System.Windows.Interop.HwndSource src)
+            src.AddHook(SuppressMenuActivationHook);
+    }
+
+    private IntPtr SuppressMenuActivationHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_SYSCOMMAND = 0x0112;
+        const int SC_KEYMENU    = 0xF100;
+        if (msg == WM_SYSCOMMAND && (wParam.ToInt32() & 0xFFF0) == SC_KEYMENU && _suppressNextMenuActivation)
+        {
+            _suppressNextMenuActivation = false;
+            handled = true;
+        }
+        return IntPtr.Zero;
     }
 
     private void AddressBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -660,17 +684,20 @@ public partial class ComposeWindow : Window
             SubjectBox.Focus();
             SubjectBox.SelectAll();
             e.Handled = true;
+            _suppressNextMenuActivation = true;
         }
         else if (e.SystemKey == Key.M && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
         {
             FromCombo.Focus();
             FromCombo.IsDropDownOpen = true;
             e.Handled = true;
+            _suppressNextMenuActivation = true;
         }
         else if (e.SystemKey == Key.Y && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
         {
             FocusActiveEditor();
             e.Handled = true;
+            _suppressNextMenuActivation = true;
         }
 
         // ── Registry-based compose commands ──────────────────────────────────
@@ -684,6 +711,8 @@ public partial class ComposeWindow : Window
         {
             cmd.Execute();
             e.Handled = true;
+            if ((modifiers & ModifierKeys.Alt) != 0)
+                _suppressNextMenuActivation = true;
         }
     }
 
