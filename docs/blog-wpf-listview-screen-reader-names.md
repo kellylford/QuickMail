@@ -1,0 +1,138 @@
+# The WPF DataTemplate Accessible Name Trap — and Why AI Gets It Wrong
+
+*Posted June 2026*
+
+---
+
+## The Bug
+
+A user filed [issue #107](https://github.com/kellylford/QuickMail/issues/107) against QuickMail's keyboard shortcuts settings screen. When navigating the shortcuts list by arrowing up and down, NVDA reported something like:
+
+> QuickMail.ViewModels.SettingsViewModel+HotkeyRowViewModel  objekt with data  selected  2 of 62
+
+Instead of, say: *"Reply, Mail, Ctrl+R"*.
+
+The user confirmed the same behaviour with Narrator. Interestingly, JAWS did not reproduce the issue at all — it read the command names correctly without any changes on our side.
+
+---
+
+## Why It Happens
+
+When you bind a `ListBox` or `ListView` to a collection of .NET objects using a `DataTemplate`, WPF creates a `ListBoxItem` or `ListViewItem` container for each row. That container is what the UI Automation (UIA) tree exposes to screen readers. The problem is that WPF sets the accessible name of the container by calling `ToString()` on the bound data object.
+
+If your ViewModel doesn't override `ToString()`, you get the default .NET implementation: the fully-qualified class name. For a nested partial class like `HotkeyRowViewModel`, that becomes `QuickMail.ViewModels.SettingsViewModel+HotkeyRowViewModel` — exactly what the user was hearing.
+
+This is not a NVDA bug or a Narrator bug. It is a documented WPF behaviour that Microsoft's own accessibility engineering team wrote about in a blog post titled *"How To: Get automation working properly on data bound WPF list or combo box"* (Gautam G, MSDN). The post dates from the early WPF era, which means this trap has been catching developers for close to twenty years.
+
+---
+
+## Why JAWS Doesn't Repro
+
+JAWS doesn't read the type name because Freedom Scientific built a workaround directly into JAWS for exactly this situation. When JAWS encounters a WPF list item whose UIA accessible name is unhelpful (empty, or a string that looks like a CLR type name), it walks the item's visual subtree and concatenates the readable text it finds — in effect synthesising a name from the cell content.
+
+This workaround exists because the pattern was so pervasive across real-world WPF applications that JAWS users were constantly hitting it. Glen Gordon, the original architect of JAWS and a Software Fellow at Freedom Scientific, has been deeply involved in these kinds of platform-level compensations throughout his career. Whether he personally filed or fixed this specific workaround I cannot confirm with certainty — our recollection is that there were conversations about this exact WPF pattern with folks at Freedom Scientific — but the workaround's existence is real and has been in JAWS for many years.
+
+NVDA and Narrator take a more literal approach: they read what the UIA tree reports. They don't synthesise names from subtree text. That is arguably the more *correct* behaviour — the platform should be labelled properly and the screen reader should trust the tree — but it means NVDA and Narrator expose the bug that JAWS silently conceals.
+
+The practical consequence for developers is dangerous: if you test only with JAWS, this class of bug is invisible. You ship. NVDA and Narrator users hit a wall.
+
+---
+
+## The Two Tempting Wrong Fixes
+
+### 1. Override `ToString()`
+
+The most commonly suggested fix — and the one Microsoft's own old blog post leads with — is to override `ToString()` on the ViewModel:
+
+```csharp
+public override string ToString() => $"{Title}, {Category}, {ActiveGesture}";
+```
+
+This works. Screen readers start announcing something useful. But it is the wrong tool for the job.
+
+`ToString()` is a general-purpose serialisation method. Its contract is to return a developer-facing string representation of the object — useful in a debugger, in log output, in a `string.Format` call. Bending it to serve as the UIA accessible name conflates two completely separate concerns. It also means that if someone later adds logging that prints `HotkeyRowViewModel` instances, they get screen-reader copy in their log files instead of something debuggable.
+
+### 2. Set `AutomationProperties.Name` on the DataTemplate root
+
+A slightly better approach that also appears in AI-generated code and blog posts: set `AutomationProperties.Name` on the root element inside the `DataTemplate`:
+
+```xml
+<DataTemplate>
+    <Grid AutomationProperties.Name="{Binding AccessibleName}">
+        <!-- ... -->
+    </Grid>
+</DataTemplate>
+```
+
+This is closer to correct, but it has a side effect: the `Grid` becomes visible in the UIA Control view as a distinct element, creating an extra layer in the accessibility tree that screen readers may announce separately. You then need to suppress it with `AutomationProperties.AccessibilityView="Raw"` on the same `Grid` — and now you have a two-property workaround on an inner element when the real fix belongs on the container.
+
+---
+
+## The Correct Fix
+
+Set `AutomationProperties.Name` on the **item container** — `ListBoxItem` or `ListViewItem` — using `ItemContainerStyle`:
+
+```xml
+<ListView ItemsSource="{Binding HotkeyRows}" ...>
+    <ListView.ItemContainerStyle>
+        <Style TargetType="ListViewItem">
+            <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+        </Style>
+    </ListView.ItemContainerStyle>
+    ...
+</ListView>
+```
+
+And on the ViewModel, add a dedicated property for the accessible label:
+
+```csharp
+public string AccessibleName
+{
+    get
+    {
+        var gesture = string.IsNullOrEmpty(ActiveGesture) ? "no shortcut" : ActiveGesture;
+        return $"{Title}, {Category}, {gesture}";
+    }
+}
+```
+
+The name lives exactly where the UIA tree expects it — on the container element — and it updates when the shortcut changes (via `[NotifyPropertyChangedFor(nameof(AccessibleName))]` on the underlying gesture property). The `DataTemplate` internals don't need to know about accessibility at all. The ViewModel surface is clean. `ToString()` remains available for debugging.
+
+This is also exactly the pattern WPF itself uses for controls that work correctly: `AutomationProperties.Name` on the outermost focusable element.
+
+---
+
+## The AI Training Problem
+
+The user who filed this bug made an astute observation: "This bug shows the problem with AI training."
+
+They are right. AI code assistants — including the one that helped fix this issue — almost universally suggest `ToString()` overrides or `DataTemplate`-root approaches when asked how to fix WPF screen reader labelling. The reason is straightforward: the training corpus is full of those solutions. They are in old MSDN blog posts, Stack Overflow answers, GitHub issues, and published books from 2008–2015. They are common. They work *enough* that developers ship them and close the issue.
+
+The correct pattern — `ItemContainerStyle` with `AutomationProperties.Name` on the container — appears far less often, because:
+
+1. Developers who get the `ToString()` fix to work stop looking.
+2. They test with JAWS (the most widely used screen reader among enterprise customers), which silently covers for the mistake.
+3. The `ItemContainerStyle` approach requires knowing WPF's UIA layering well enough to understand *why* the container is the right target.
+
+What the AI assistant produced in an earlier draft of this fix was the `ToString()` override. It was confident. It cited plausible reasons. And it was the wrong tool, precisely because those reasons appear so frequently in the training data.
+
+The broader lesson is not that AI assistants are useless for accessibility work. It is that for any pattern where a popular-but-wrong solution exists alongside a correct-but-obscure one, and where a major screen reader masks the problem so testing doesn't catch it, the AI is likely to suggest the wrong solution with high confidence. Knowing *why* something is wrong requires understanding that screen readers behave differently, that JAWS has compensations NVDA does not, and that `ToString()` and `AutomationProperties.Name` serve different masters.
+
+That kind of contextual reasoning — "this solution is common, but it's common because a major tool hides the bug" — is exactly what is absent from training signal derived from shipped code.
+
+---
+
+## Summary
+
+| Approach | Works in JAWS? | Works in NVDA/Narrator? | Correct? |
+|---|---|---|---|
+| No label (default) | ✅ (JAWS workaround) | ❌ reads class name | ❌ |
+| Override `ToString()` | ✅ | ✅ | ❌ wrong tool |
+| `AutomationProperties.Name` on DataTemplate root | ✅ | ✅ | ⚠️ extra UIA node |
+| `AutomationProperties.Name` via `ItemContainerStyle` | ✅ | ✅ | ✅ |
+
+The fix landed in [PR #108](https://github.com/kellylford/QuickMail/pull/108) and is included in the v0.7.5 release notes.
+
+---
+
+*QuickMail is a keyboard-centric WPF email client. Accessibility is a first-class concern.*
