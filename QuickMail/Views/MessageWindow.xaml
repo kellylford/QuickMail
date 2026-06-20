@@ -7,6 +7,7 @@
         xmlns:vm="clr-namespace:QuickMail.ViewModels"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
+        AutomationProperties.Name="{Binding WindowTitle}"
         Height="560" Width="720"
         MinHeight="300" MinWidth="480"
         WindowStartupLocation="Manual"
