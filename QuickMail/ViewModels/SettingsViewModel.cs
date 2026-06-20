@@ -243,10 +243,21 @@ public partial class SettingsViewModel : ObservableObject
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(ActiveGesture))]
+        [NotifyPropertyChangedFor(nameof(AccessibleName))]
         private string _customGesture = string.Empty;
 
         /// <summary>The binding currently in effect — custom if set, otherwise the default.</summary>
         public string ActiveGesture => HasCustomBinding ? CustomGesture : DefaultGesture;
+
+        /// <summary>Screen-reader label: "Title, Category, shortcut" (or "no shortcut").</summary>
+        public string AccessibleName
+        {
+            get
+            {
+                var gesture = string.IsNullOrEmpty(ActiveGesture) ? "no shortcut" : ActiveGesture;
+                return $"{Title}, {Category}, {gesture}";
+            }
+        }
 
         public bool HasCustomBinding => _customKey != Key.None;
 

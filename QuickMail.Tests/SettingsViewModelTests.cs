@@ -108,6 +108,36 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void HotkeyRow_AccessibleName_ReflectsCurrentGesture()
+    {
+        var registry = new StubCommandRegistry();
+        registry.Register(new CommandDefinition("mail.reply", "Mail", "Reply", () => { }, Key.R, ModifierKeys.Control));
+
+        var vm = new SettingsViewModel(new StubConfigService(), registry);
+        var row = vm.HotkeyRows[0];
+
+        Assert.Equal("Reply, Mail, Ctrl+R", row.AccessibleName);
+
+        row.SetCustomBinding(Key.K, ModifierKeys.Control);
+        Assert.Equal("Reply, Mail, Ctrl+K", row.AccessibleName);
+
+        row.ClearCustomBinding();
+        Assert.Equal("Reply, Mail, Ctrl+R", row.AccessibleName);
+    }
+
+    [Fact]
+    public void HotkeyRow_AccessibleName_NoShortcut_WhenNoneAssigned()
+    {
+        var registry = new StubCommandRegistry();
+        registry.RegisterTestCommand("test.cmd", "Test", "Command");
+
+        var vm = new SettingsViewModel(new StubConfigService(), registry);
+        var row = vm.HotkeyRows[0];
+
+        Assert.Equal("Command, Test, no shortcut", row.AccessibleName);
+    }
+
+    [Fact]
     public void LoadExistingHotkeys_PopulatesCustomBindings()
     {
         var configService = new StubConfigService();

@@ -296,6 +296,11 @@
                               KeyDown="HotkeyListView_KeyDown"
                               SelectionChanged="HotkeyListView_SelectionChanged"
                               AutomationProperties.Name="Keyboard shortcuts list">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                            </Style>
+                        </ListView.ItemContainerStyle>
                         <ListView.View>
                             <GridView>
                                 <GridViewColumn Header="Category" DisplayMemberBinding="{Binding Category}" Width="90"/>
