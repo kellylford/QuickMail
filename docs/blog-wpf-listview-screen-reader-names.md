@@ -121,9 +121,25 @@ This isn't a niche edge case. A quick search of large Microsoft GitHub repositor
 </ListView>
 ```
 
-The `Person` type is a C# `record`, which auto-generates a `ToString()` like `Person { FirstName = John, LastName = Doe, Name = John Doe, Company = Contoso }`. So with NVDA, a user arrowing through this list would hear that verbose dump for each row rather than a clean "John Doe". It is readable — records save you from the outright type-name failure — but it is verbose, unintentional, and entirely dependent on an implementation detail of the data type. The GridView example (which mirrors the pattern in QuickMail's bug) would produce the same output for every column of every row.
+The `Person` type is a C# `record`. Records auto-generate a `ToString()` that produces something like:
 
-Developers copying this sample are learning the wrong pattern from a source that is supposed to be authoritative.
+> `Person { FirstName = Lucas, LastName = Hudson, Name = Lucas Hudson, Company = CrestWave Dynamics }, 5 of 50, selected`
+
+That is what Narrator actually announces when arrowing through the list. It is readable — C# records accidentally save you from the worst-case failure (a bare class name) — but it is verbose, it exposes internal field structure the user never asked for, and it is entirely dependent on an implementation detail of the data type rather than a deliberate accessibility decision. JAWS announces the same thing; its visual-subtree heuristic does not kick in when the `ToString()` output is already textual rather than a type name.
+
+The GridView example on the same page compounds the problem — each column of each row reads out the full record dump rather than just the cell value.
+
+Developers copying this sample are learning the wrong pattern from a source that is supposed to be authoritative, and it is broken enough to pass casual testing — the output is readable, so most developers won't notice anything is wrong.
+
+### microsoft/WPF-Samples — the DataGrid sample (a worse case)
+
+The WPFGallery also ships a DataGrid sample bound to a `Product` collection. Unlike `Person`, `Product` is a plain class with no meaningful `ToString()`. Arrowing across cells in the QuantityPerUnit column, Narrator announces:
+
+> `Item: WPFGallery.Models.Product, Column Display Index: 3, data grid cell, Column Header QuantityPerUnit, Column 4 of 6`
+
+The cell value is completely absent. The user hears the class name instead of the data.
+
+This case is more severe than the ListView case for two reasons. First, the fallback is the bare class name rather than a readable record dump — there is no accidental mitigation. Second, **JAWS's visual-subtree heuristic does not protect DataGrid cells** the way it protects ListView items. The UIA structure of a DataGrid cell is different enough that JAWS cannot synthesize a name from the subtree, so all three screen readers hit the same broken announcement. There is no safety net here at all.
 
 ### microsoft/PowerToys — the PowerLauncher (Run) result list
 
@@ -149,7 +165,7 @@ Developers copying this sample are learning the wrong pattern from a source that
 </Style>
 ```
 
-What screen readers announce when arrowing through PowerToys Run results depends entirely on what the `Result` data class's `ToString()` returns and how NVDA constructs a name from the UIA subtree. JAWS users have likely never noticed a problem.
+What screen readers announce when arrowing through PowerToys Run results depends entirely on what the `Result` data class's `ToString()` returns. Whether JAWS's subtree heuristic compensates here depends on the UIA structure of the result items — untested, but the labelling is unintentional regardless.
 
 ---
 
