@@ -1109,6 +1109,13 @@ public partial class MainWindow : Window
     // Enter on an account: connect and load folders; focus stays here
     private async void AccountList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            e.Handled = true;
+            FocusActiveMessagePanel();
+            return;
+        }
+
         if (e.Key == Key.Enter && AccountList.SelectedItem is AccountModel account)
         {
             e.Handled = true;
