@@ -178,7 +178,7 @@ They are right. AI code assistants — including the one that helped fix this is
 The correct pattern — `ItemContainerStyle` with `AutomationProperties.Name` on the container — appears far less often, because:
 
 1. Developers who get the `ToString()` fix to work stop looking.
-2. They test with JAWS, which protects its users from this exact developer mistake — so the symptom never appears, and there is no signal that anything is wrong.
+2. They test with JAWS, which protects its users from this mistake in ListView controls — so the symptom never appears there, and there is no signal that anything is wrong. (DataGrid is a different story; JAWS's heuristic does not reach DataGrid cells, so that failure is visible in all screen readers — but developers who are not testing data grids with a screen reader at all will still miss it.)
 3. The `ItemContainerStyle` approach requires knowing WPF's UIA layering well enough to understand *why* the container is the right target.
 
 What the AI assistant produced in an earlier draft of this fix was the `ToString()` override. It was confident. It cited plausible reasons. And it was the wrong tool, precisely because those reasons appear so frequently in the training data.
@@ -193,7 +193,7 @@ That kind of contextual reasoning — "this solution is common, but it's common 
 
 | Approach | Works in JAWS? | Works in NVDA/Narrator? | Correct? |
 |---|---|---|---|
-| No label (default) | ✅ (JAWS protects users) | ❌ reads class name | ❌ developer error |
+| No label (default) | ✅ ListView only (JAWS protects users); ❌ DataGrid (JAWS cannot compensate) | ❌ reads class name | ❌ developer error |
 | Override `ToString()` | ✅ | ✅ | ❌ wrong tool |
 | `AutomationProperties.Name` on DataTemplate root | ✅ | ✅ | ⚠️ extra UIA node |
 | `AutomationProperties.Name` via `ItemContainerStyle` | ✅ | ✅ | ✅ |
