@@ -35,6 +35,10 @@ Once added, iCloud accounts sync and send mail the same way as any other IMAP/SM
 
 - **Deleted iCloud messages going to Junk instead of Trash.** When deleting a message from an iCloud account, QuickMail was moving it to the Junk folder rather than Trash. The delete logic was falling back to Junk when it could not identify the Trash folder by name — iCloud names its trash folder "Deleted Messages" rather than "Trash". The name-based fallback now recognises "Deleted Messages", and the fallback to Junk has been removed from the delete path entirely (Junk is never an acceptable destination for deleted messages).
 
+- **Screen readers now announce the correct title for compose and message windows.** When a compose or message window was open and you used a screen reader's "report window title" command, it announced the main application title ("QuickMail — All Mail") instead of the title of the open window ("Reply to Kelly — HTML — QuickMail", for example). All screen readers now correctly identify compose and message windows by their own titles.
+
+- **Alt shortcuts in the compose window no longer also activate the menu bar.** Pressing Alt+U (Subject field), Alt+M (From account), or Alt+Y (message body) moved focus to the right place but also sometimes activated the menu bar, pulling focus away from where you had just navigated. This no longer happens.
+
 ---
 
 ## Thank You to Contributors
@@ -58,5 +62,11 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 - `ImapMailService.MoveToTrashAsync` / `MoveToTrashBatchAsync`: removed `SpecialFolder.Junk` from the `FindSpecialFolderAsync` candidate list. The existing `else` branch (set `\Deleted` flag) is the correct fallback when no Trash folder can be found; routing deleted mail to Junk was wrong.
 - `FindSpecialFolderAsync` name-based fallback: added `"Deleted Messages"` as an alias for `SpecialFolder.Trash` to cover servers (including iCloud) that use that name rather than `"Trash"`. The attribute-based lookup (`client.GetFolder(SpecialFolder.Trash)`) remains the primary path and handles RFC 6154-compliant servers without the name fallback.
 - `EmptyTrashAsync` and `CountTrashMessagesAsync` retain `SpecialFolder.Junk` as a secondary candidate — those operations intentionally treat Junk as part of the trash concept.
+
+### Screen Reader / Compose Window Fixes
+
+- `ComposeWindow.xaml` / `MessageWindow.xaml`: added `AutomationProperties.Name="{Binding WindowTitle}"` so the UIA `Name` property on the window element tracks the window-specific title. WPF's `WindowAutomationPeer.GetNameCore()` does not reliably propagate `Window.Title` to UIA in .NET 8, so screen readers that read the UIA tree (rather than the HWND title) were falling back to the application name.
+- `MainWindow.xaml.cs`: removed `Owner = this` from both `ComposeWindow` creation sites. WPF places owned windows as descendants of the owner in the UIA element tree; screen readers that walk the tree to the topmost `Window` ancestor reported the main window title rather than the compose window title. Without an owner, the compose window is a peer window in the UIA tree and its own title is reported correctly. `ComposeWindow.xaml` startup location changed from `CenterOwner` to `CenterScreen`. A `_openComposeWindows` tracking list and `OnClosed` override were added to explicitly close any open compose windows on main window exit — WPF auto-closes owned windows but not independent ones.
+- `ComposeWindow.xaml.cs`: added a Win32 `WM_SYSCOMMAND SC_KEYMENU` hook (registered in `OnSourceInitialized` via `HwndSource.AddHook`). WPF's `AccessKeyManager` posts `SC_KEYMENU` after every Alt key press regardless of `e.Handled = true` in `PreviewKeyDown`. The hook intercepts the message and discards it when `_suppressNextMenuActivation` is set; that flag is set by the Alt+U, Alt+M, and Alt+Y handlers and by the registry command dispatcher when an Alt-modified command fires.
 
 ---

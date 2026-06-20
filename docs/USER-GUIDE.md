@@ -58,6 +58,12 @@ You may see a message that no password was saved for the account. This is expect
 
 When you sign in, Google shows a warning that QuickMail is an unverified app. This is expected — choose **Advanced** and continue to **Go to QuickMail (unsafe)**. Google's app-verification process can take several weeks and may require an expensive third-party security assessment. If you would rather avoid the warning, generate a Gmail app-specific password from your Google Account security settings and use it with the standard **Password** authentication method instead.
 
+### iCloud
+
+Enter your iCloud address (`@icloud.com`, `@me.com`, or `@mac.com`) in the **Email / Username** field — QuickMail recognises it and fills in Apple's server settings automatically.
+
+**App-specific password required.** Apple does not allow third-party apps to use your Apple ID password directly. Generate an app-specific password at **appleid.apple.com** (Sign-In & Security → App-Specific Passwords) and enter it in the Password field. QuickMail shows a reminder in the password area when it detects an iCloud address.
+
 ### Managing Accounts
 
 Open **Settings → Accounts** to rename, edit, or remove an account. Removing an account does not delete mail from the server. For OAuth accounts (Microsoft or Google), removing the account also clears the stored credential from Windows Credential Manager.
@@ -185,7 +191,13 @@ QuickMail can open messages in tabs, keeping multiple messages visible at once.
 
 ### Compose Panes
 
-Press **F6** to cycle between the address fields (To, Cc, Bcc), the subject, and the message body.
+Press **F6** to cycle between the address fields (To, Cc, Bcc), the subject, and the message body. You can also jump directly to a field:
+
+| Shortcut | Destination |
+|----------|-------------|
+| `Alt+U` | Subject field |
+| `Alt+M` | From account |
+| `Alt+Y` | Message body |
 
 ### Address Autocomplete
 
@@ -450,6 +462,9 @@ Every announcement is optional and controlled by the settings above. No custom s
 | Shortcut | Action |
 |----------|--------|
 | `F6` / `Shift+F6` | Cycle between address fields, subject, and body |
+| `Alt+U` | Focus Subject field |
+| `Alt+M` | Focus From account |
+| `Alt+Y` | Focus message body |
 | `Alt+S` or `Ctrl+Enter` | Send |
 | `Ctrl+Shift+1/2/3` | Switch to Plain Text / Markdown / HTML mode |
 | `F7` / `Shift+F7` | Next / previous misspelling |
