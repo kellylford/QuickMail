@@ -990,17 +990,21 @@ public partial class MainViewModel : ObservableObject
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-            var existingKeys = Messages
-                .Select(m => (m.MessageId, m.AccountId, m.FolderName))
-                .ToHashSet();
+            var existingById = Messages
+                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
                 var key = (msg.MessageId, msg.AccountId, msg.FolderName);
-                if (!existingKeys.Add(key)) continue;
+                if (existingById.TryGetValue(key, out var prior))
+                {
+                    ReconcileMessageState(prior, msg);
+                    continue;
+                }
                 if (!MatchesFilter(msg) || !MatchesDayLimit(msg)) continue;
                 InsertMessageSorted(msg);
+                existingById[key] = msg;
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
@@ -1791,6 +1795,21 @@ public partial class MainViewModel : ObservableObject
             else hi = mid;
         }
         Messages.Insert(lo, msg);
+    }
+
+    // Copies server-fresh mutable state onto an existing message already in the list.
+    // Observable properties fire PropertyChanged automatically so the UI updates in place
+    // without removing and re-inserting the row (which would lose selection/focus).
+    private static void ReconcileMessageState(MailMessageSummary existing, MailMessageSummary fresh)
+    {
+        existing.IsRead         = fresh.IsRead;
+        existing.IsReplied      = fresh.IsReplied;
+        existing.IsForwarded    = fresh.IsForwarded;
+        existing.HasAttachments = fresh.HasAttachments;
+        existing.FlagId         = fresh.FlagId;
+        existing.FlagName       = fresh.FlagName;
+        existing.FlagColorHex   = fresh.FlagColorHex;
+        existing.IsServerFlagged = fresh.IsServerFlagged;
     }
 
     // ── Account / folder selection ───────────────────────────────────────────────
@@ -2753,9 +2772,8 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
-            var existingKeys = Messages
-                .Select(m => (m.MessageId, m.AccountId, m.FolderName))
-                .ToHashSet();
+            var existingById = Messages
+                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
@@ -2763,13 +2781,17 @@ public partial class MainViewModel : ObservableObject
                     return;
 
                 var key = (msg.MessageId, msg.AccountId, msg.FolderName);
-                if (!existingKeys.Add(key))
+                if (existingById.TryGetValue(key, out var prior))
+                {
+                    ReconcileMessageState(prior, msg);
                     continue;
+                }
 
                 if (!MatchesFilter(msg) || !MatchesDayLimit(msg))
                     continue;
 
                 InsertMessageSorted(msg);
+                existingById[key] = msg;
             }
 
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
@@ -3154,22 +3176,25 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
-            var existingKeys = Messages
-                .Select(m => (m.MessageId, m.AccountId, m.FolderName))
-                .ToHashSet();
+            var existingById = Messages
+                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
                 var key = (msg.MessageId, msg.AccountId, msg.FolderName);
-                if (!existingKeys.Add(key))
+                if (existingById.TryGetValue(key, out var prior))
+                {
+                    ReconcileMessageState(prior, msg);
                     continue;
+                }
 
                 if (!MatchesFilter(msg) || !MatchesDayLimit(msg))
                     continue;
 
                 InsertMessageSorted(msg);
+                existingById[key] = msg;
             }
 
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
