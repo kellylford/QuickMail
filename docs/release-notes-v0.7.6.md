@@ -1,0 +1,50 @@
+# QuickMail v0.7.6 Release Notes
+
+## Download
+
+Two options are available for v0.7.6:
+
+| Download | When to use |
+|----------|-------------|
+| **`quickmail-v0.7.6-setup.exe`** — Windows installer | Recommended for most users. Installs per-user with no elevation required, checks for the WebView2 Runtime, and registers an uninstaller. |
+| **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run. |
+
+Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
+
+---
+
+## Bug Fixes
+
+### Virtual folder refresh now reconciles read and flag state
+
+Pressing **F5** in **All Mail**, **All Inboxes**, **Drafts**, **Sent**, **Trash**, or a per-account All Mail view now correctly updates messages that were already in the list. Previously, if you marked a message read or flagged it in another mail client and then pressed F5, the existing row kept its stale state — only newly arrived messages were added. The refresh now updates `IsRead`, reply/forward state, attachments, and flag information on any message that has changed on the server, without disturbing selection or screen reader focus. (#111)
+
+### Microsoft 365 / Exchange: nested folders now appear in the folder tree
+
+When using a Microsoft 365 or Exchange account, folders nested inside other folders (for example, a **Projects** folder inside **Inbox**) now appear correctly in the folder tree. Previously, only top-level folders were fetched — any subfolder was invisible. (#109)
+
+### Microsoft 365 / Exchange: folder picker shows readable paths instead of internal IDs
+
+When moving or copying a message on a Microsoft 365 or Exchange account, the folder picker now shows readable folder paths (for example, **Inbox/Projects/2026**) instead of the opaque internal identifier that Graph uses for folder names. Screen readers were announcing strings like `QM Test — AAMkADRmODc0…`; they now announce the folder name as expected. (#109)
+
+---
+
+## Thank You to Contributors
+
+Thank you to everyone who has contributed to QuickMail through code, bug reports, feature suggestions, and other feedback. Your contributions make the project better for everyone.
+
+---
+
+## Internal
+
+### Virtual folder refresh reconciliation
+
+- `MainViewModel`: replaced the add-only `existingKeys` `HashSet` in all virtual-folder merge paths (All Mail, per-account All Mail, All Inboxes, Drafts, Sent, Trash) with a `Dictionary` keyed on `(MessageId, AccountId, FolderName)`. On collision, a new `ReconcileMessageState` helper copies server-fresh mutable fields (`IsRead`, `IsReplied`, `IsForwarded`, `HasAttachments`, `FlagId`, `FlagName`, `FlagColorHex`, `IsServerFlagged`) onto the existing `ObservableObject` in place, triggering `PropertyChanged` so rows update without disturbing selection or screen reader focus. Genuinely new messages continue to be inserted sorted. The local-store upsert at the end of each path already covered all fetched messages, so cache correctness was unaffected.
+
+### Microsoft Graph: nested folder fetch and readable picker paths
+
+- `GraphMailService.GetFoldersAsync`: now does a breadth-first descent into `/me/mailFolders/{id}/childFolders` for any folder reporting `childFolderCount > 0`. `/me/mailFolders` alone returns only top-level folders. `childFolderCount` added to the folder DTO (`GraphFolderDto`).
+- `MailFolderModel`: new nullable `ParentId` property (null for IMAP accounts, populated for Graph accounts).
+- `FolderTreeBuilder`: builds the hierarchy from `ParentId` when any folder in the set carries one (Graph); falls back to the existing separator-path logic for all-IMAP accounts. Well-known folders (Inbox, Drafts, Sent, Deleted, Junk) sort conventionally in both builders via a shared `WellKnownRank`; remaining folders sort alphabetically.
+- `FolderPickerWindow`: reconstructs a `DisplayName` path by walking the `ParentId` chain (for example, `Inbox/Projects/2026`) so Graph's opaque `FullName` id is never shown. For all-IMAP accounts the `byId` map is skipped entirely.
+- New tests: `GraphMailServiceTests.GetFoldersAsync_DescendsIntoChildFolders_AndSetsParentId`, `FolderTreeBuilderTests` (IMAP separator nesting, Graph parent-id nesting 3 deep, conventional well-known ordering), `FolderPickerPathTests` (IMAP keeps `FullName`; Graph builds display-name path without surfacing the id).
