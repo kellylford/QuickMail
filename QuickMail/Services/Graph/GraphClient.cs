@@ -83,6 +83,47 @@ public sealed class GraphClient : IDisposable
         await EnsureSuccessAsync(resp, ct);
     }
 
+    /// <summary>POSTs a JSON body and ignores the response payload (move/copy/folder operations).</summary>
+    public async Task PostAsync(AccountModel account, string path, object body, CancellationToken ct = default)
+    {
+        var json = JsonSerializer.Serialize(body, JsonOpts);
+        using var resp = await SendAsync(account, HttpMethod.Post, path,
+            () => new StringContent(json, Encoding.UTF8, "application/json"), ct);
+        await EnsureSuccessAsync(resp, ct);
+    }
+
+    /// <summary>
+    /// POSTs an already-encoded raw body and deserializes the JSON response. Used to create a draft
+    /// from MIME (<c>POST /me/messages</c>), where the created message's id is needed back.
+    /// </summary>
+    public async Task<T?> PostRawReadAsync<T>(
+        AccountModel account, string path, byte[] body, string contentType, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Post, path, () =>
+        {
+            var content = new ByteArrayContent(body);
+            content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
+            return content;
+        }, ct);
+        await EnsureSuccessAsync(resp, ct);
+        return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
+    }
+
+    /// <summary>DELETEs a resource (permanent message delete, folder delete).</summary>
+    public async Task DeleteAsync(AccountModel account, string path, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Delete, path, null, ct);
+        await EnsureSuccessAsync(resp, ct);
+    }
+
+    /// <summary>GETs a raw byte payload (attachment <c>$value</c> download).</summary>
+    public async Task<byte[]> GetBytesAsync(AccountModel account, string path, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, ct);
+        await EnsureSuccessAsync(resp, ct);
+        return await resp.Content.ReadAsByteArrayAsync(ct);
+    }
+
     private async Task<HttpResponseMessage> SendAsync(
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, CancellationToken ct)
     {
