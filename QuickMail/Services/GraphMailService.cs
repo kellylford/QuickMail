@@ -115,13 +115,32 @@ public class GraphMailService : IMailService
     // ── Folders ──────────────────────────────────────────────────────────────────
     public async Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
     {
-        var folders = await _client.GetAllPagesAsync<GraphMailFolder>(
-            Account(accountId),
-            "/me/mailFolders?$top=100&$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount", ct);
+        var account = Account(accountId);
+
+        // Graph's /me/mailFolders returns ONLY top-level folders. Nested folders live under each
+        // folder's /childFolders endpoint, so walk down into any folder that reports children —
+        // otherwise sub-folders (e.g. Inbox/Projects/2026) never appear in the tree at all.
+        const string select =
+            "$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount";
+
+        var all = await _client.GetAllPagesAsync<GraphMailFolder>(
+            account, $"/me/mailFolders?$top=100&{select}", ct);
+
+        // Breadth-first descent: each iteration fetches the children of folders known to have them.
+        var pending = new Queue<GraphMailFolder>(all.Where(f => f.ChildFolderCount > 0));
+        while (pending.Count > 0)
+        {
+            var parent = pending.Dequeue();
+            var children = await _client.GetAllPagesAsync<GraphMailFolder>(
+                account, $"/me/mailFolders/{parent.Id}/childFolders?$top=100&{select}", ct);
+            all.AddRange(children);
+            foreach (var c in children.Where(c => c.ChildFolderCount > 0))
+                pending.Enqueue(c);
+        }
 
         var wellKnown = _wellKnownFolders.TryGetValue(accountId, out var map) ? map : EmptyWellKnown;
 
-        return folders.Select(f =>
+        return all.Select(f =>
         {
             // Prefer the well-known folder ID resolved at connect (locale- and rename-proof);
             // fall back to display-name matching for anything not resolved.
@@ -130,6 +149,7 @@ public class GraphMailService : IMailService
             {
                 AccountId = accountId,
                 FullName = f.Id,             // Graph uses opaque folder IDs as the "folder name"
+                ParentId = f.ParentFolderId, // hierarchy is by parent reference, not a path separator
                 DisplayName = f.DisplayName,
                 UnreadCount = f.UnreadItemCount,
                 MessageCount = f.TotalItemCount,

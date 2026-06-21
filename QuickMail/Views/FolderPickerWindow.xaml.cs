@@ -58,14 +58,16 @@ public partial class FolderPickerWindow : Window
                     $"{account.AccountLabel} - {accountMailFolder.DisplayName}"));
             }
 
-            foreach (var folder in folders
+            // Graph references parents by id, so a folder's FullName is an opaque id — build a
+            // readable path from DisplayNames. IMAP already carries a separator path in FullName.
+            var byId = folders.ToDictionary(f => f.FullName, StringComparer.Ordinal);
+
+            foreach (var (folder, folderPath) in folders
                          .Where(f => !f.IsHeader)
-                         .OrderBy(f => IsInbox(f) ? 0 : 1)
-                         .ThenBy(f => f.FullName, StringComparer.OrdinalIgnoreCase))
+                         .Select(f => (Folder: f, Path: BuildFolderPath(f, byId)))
+                         .OrderBy(x => IsInbox(x.Folder) ? 0 : 1)
+                         .ThenBy(x => x.Path, StringComparer.OrdinalIgnoreCase))
             {
-                var folderPath = string.IsNullOrWhiteSpace(folder.FullName)
-                    ? folder.DisplayName
-                    : folder.FullName;
                 _items.Add(new FolderPickerItem(
                     folder,
                     account,
@@ -101,7 +103,32 @@ public partial class FolderPickerWindow : Window
     }
 
     private static bool IsInbox(MailFolderModel folder) =>
+        folder.Kind == SpecialFolderKind.Inbox ||
         folder.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Human-readable folder path for display. IMAP keeps its separator-delimited FullName; Graph
+    /// (whose FullName is an opaque id) is reconstructed from DisplayNames up the ParentId chain,
+    /// e.g. "Inbox/Projects/2026", so the picker never shows a raw folder id.
+    /// </summary>
+    internal static string BuildFolderPath(
+        MailFolderModel folder, IReadOnlyDictionary<string, MailFolderModel> byId)
+    {
+        if (folder.ParentId == null)
+            return string.IsNullOrWhiteSpace(folder.FullName) ? folder.DisplayName : folder.FullName;
+
+        var segments = new List<string> { folder.DisplayName };
+        var current = folder;
+        for (int guard = 0;
+             current.ParentId != null && byId.TryGetValue(current.ParentId, out var parent) && guard < 64;
+             guard++)
+        {
+            segments.Add(parent.DisplayName);
+            current = parent;
+        }
+        segments.Reverse();
+        return string.Join('/', segments);
+    }
 
     private bool FilterItem(object item)
     {
