@@ -1006,6 +1006,9 @@ public partial class MainViewModel : ObservableObject
                 InsertMessageSorted(msg);
                 existingById[key] = msg;
             }
+
+            RemoveVanishedMessages(newMessages);
+
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             if (!OnlineMode && newMessages.Count > 0)
@@ -1812,6 +1815,31 @@ public partial class MainViewModel : ObservableObject
         existing.IsServerFlagged = fresh.IsServerFlagged;
     }
 
+    /// <summary>
+    /// Removes messages that vanished from the server within the fetched range (deleted in another
+    /// client). Scoped per folder to the returned date range so messages older than the fetch window
+    /// — simply not returned — are not wrongly dropped. Call after an aggregate/virtual merge.
+    /// </summary>
+    private void RemoveVanishedMessages(IReadOnlyList<MailMessageSummary> newMessages)
+    {
+        var fetchedKeys = new HashSet<(string, Guid, string)>();
+        var minDateByFolder = new Dictionary<(Guid, string), DateTimeOffset>();
+        foreach (var m in newMessages)
+        {
+            fetchedKeys.Add((m.MessageId, m.AccountId, m.FolderName));
+            var fk = (m.AccountId, m.FolderName);
+            if (!minDateByFolder.TryGetValue(fk, out var min) || m.Date < min)
+                minDateByFolder[fk] = m.Date;
+        }
+
+        var vanished = Messages.Where(m =>
+            minDateByFolder.TryGetValue((m.AccountId, m.FolderName), out var min) &&
+            m.Date >= min &&
+            !fetchedKeys.Contains((m.MessageId, m.AccountId, m.FolderName))).ToList();
+        foreach (var m in vanished)
+            Messages.Remove(m);
+    }
+
     // ── Account / folder selection ───────────────────────────────────────────────
 
     /// <summary>
@@ -2007,6 +2035,13 @@ public partial class MainViewModel : ObservableObject
 
     private void BuildFolderTree()
     {
+        // Capture which folders the user has expanded so the rebuild (which creates fresh, collapsed
+        // node objects) doesn't collapse the whole tree on a refresh.
+        var expandedKeys = new HashSet<string>(StringComparer.Ordinal);
+        if (FolderTree != null)
+            foreach (var n in FlattenAllNodes(FolderTree))
+                if (n.IsExpanded) expandedKeys.Add(NodeKey(n));
+
         var roots = new List<FolderTreeNode>();
 
         // "Views" group — shown only when the user has saved at least one view.
@@ -2102,7 +2137,26 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
+        // Restore expansion captured above (additive: header groups keep their built-in expanded
+        // default; previously-expanded folders are re-expanded).
+        foreach (var n in FlattenAllNodes(roots))
+            if (expandedKeys.Contains(NodeKey(n)))
+                n.IsExpanded = true;
+
         FolderTree = new ObservableCollection<FolderTreeNode>(roots);
+    }
+
+    private static string NodeKey(FolderTreeNode n) =>
+        n.Folder != null ? $"F:{n.Folder.AccountId}:{n.Folder.FullName}" : $"H:{n.Label}";
+
+    private static IEnumerable<FolderTreeNode> FlattenAllNodes(IEnumerable<FolderTreeNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            yield return n;
+            foreach (var c in FlattenAllNodes(n.Children))
+                yield return c;
+        }
     }
 
     // ── View-mode grouping ────────────────────────────────────────────────────────
@@ -2661,6 +2715,10 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshAsync()
     {
+        // Pick up folders created/removed on the server since the last full sync. Only rebuilds the
+        // tree when the folder set actually changed, so an ordinary refresh doesn't disturb focus.
+        await RefreshAllFolderListsAsync();
+
         if (ActiveView != null)
         {
             await ApplyViewAsync(ActiveView);
@@ -2670,6 +2728,39 @@ public partial class MainViewModel : ObservableObject
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
             await FetchFolderAsync();
+    }
+
+    /// <summary>
+    /// Re-fetches every connected account's folder list and rebuilds the tree only if a folder was
+    /// added or removed on the server, so a manual refresh surfaces server-side folder changes.
+    /// </summary>
+    private async Task RefreshAllFolderListsAsync()
+    {
+        var changed = false;
+        foreach (var account in Accounts.ToList())
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var folderList = await _imap.GetFoldersAsync(account.Id, cts.Token);
+                if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folderList))
+                {
+                    _cachedFolders[account.Id] = folderList;
+                    ApplyAccountStatus(account, folderList);
+                    changed = true;
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { LogService.Log($"RefreshFolderList {account.AccountLabel}", ex); }
+        }
+        if (changed) RebuildFolderListFromCache();
+    }
+
+    private static bool FolderSetChanged(List<MailFolderModel> previous, List<MailFolderModel> current)
+    {
+        if (previous.Count != current.Count) return true;
+        var prevNames = previous.Select(f => f.FullName).ToHashSet(StringComparer.Ordinal);
+        return current.Any(f => !prevNames.Contains(f.FullName));
     }
 
     [RelayCommand]
@@ -2793,6 +2884,8 @@ public partial class MainViewModel : ObservableObject
                 InsertMessageSorted(msg);
                 existingById[key] = msg;
             }
+
+            RemoveVanishedMessages(newMessages);
 
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                 return;
@@ -3196,6 +3289,8 @@ public partial class MainViewModel : ObservableObject
                 InsertMessageSorted(msg);
                 existingById[key] = msg;
             }
+
+            RemoveVanishedMessages(newMessages);
 
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
