@@ -4068,6 +4068,49 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Removes a folder and its descendants from the cached folder list so the tree reflects a
+    /// delete immediately, without waiting on an eventually-consistent server re-fetch. Graph models
+    /// children by <see cref="MailFolderModel.ParentId"/>; IMAP encodes them in the separator path.
+    /// </summary>
+    private void RemoveFolderFromCacheOptimistically(Guid accountId, MailFolderModel deleted)
+    {
+        if (!_cachedFolders.TryGetValue(accountId, out var folders)) return;
+
+        // Graph: collect the whole subtree transitively by ParentId.
+        var removeIds = new HashSet<string>(StringComparer.Ordinal) { deleted.FullName };
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            foreach (var f in folders)
+                if (f.ParentId != null && removeIds.Contains(f.ParentId) && removeIds.Add(f.FullName))
+                    grew = true;
+        }
+
+        // IMAP: children live under "Parent/Child" or "Parent.Child", so also drop by path prefix.
+        _cachedFolders[accountId] = folders.Where(f =>
+            !removeIds.Contains(f.FullName) &&
+            !f.FullName.StartsWith(deleted.FullName + "/", StringComparison.OrdinalIgnoreCase) &&
+            !f.FullName.StartsWith(deleted.FullName + ".", StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    /// <summary>
+    /// Removes a node from the live <see cref="FolderTree"/> in place (without a full rebuild), so the
+    /// rest of the tree keeps its expansion state. Returns true if the node was found and removed.
+    /// </summary>
+    private bool RemoveNodeFromTree(FolderTreeNode target) => RemoveNodeFromChildren(FolderTree, target);
+
+    private static bool RemoveNodeFromChildren(ObservableCollection<FolderTreeNode> siblings, FolderTreeNode target)
+    {
+        for (int i = 0; i < siblings.Count; i++)
+        {
+            if (ReferenceEquals(siblings[i], target)) { siblings.RemoveAt(i); return true; }
+            if (RemoveNodeFromChildren(siblings[i].Children, target)) return true;
+        }
+        return false;
+    }
+
     /// <summary>Creates a new folder under the given parent and refreshes the tree.</summary>
     public async Task CreateFolderAndRefreshAsync(Guid accountId, string? parentFolderName, string name)
     {
@@ -4165,7 +4208,13 @@ public partial class MainViewModel : ObservableObject
                 await FetchAllMailAsync();
             }
 
-            await RefreshFolderListAsync(node.Folder.AccountId);
+            // Remove the folder immediately rather than via a server re-fetch — Graph is eventually
+            // consistent and can still return the just-deleted folder for a brief window. Drop it
+            // from the flat cache (so a later full rebuild stays correct) and splice the node out of
+            // the live tree in place, which preserves every other folder's expansion state and lets
+            // the View land focus on the neighbour (a full rebuild would collapse and reset focus).
+            RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
+            RemoveNodeFromTree(node);
             StatusText = $"Folder '{node.Label}' deleted.";
         }
         catch (Exception ex)
