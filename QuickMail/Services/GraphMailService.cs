@@ -129,19 +129,23 @@ public class GraphMailService : IMailService
         var all = await _client.GetAllPagesAsync<GraphMailFolder>(
             account, $"/me/mailFolders?$top=100&{select}", ct);
 
+        var wellKnown = _wellKnownFolders.TryGetValue(accountId, out var map) ? map : EmptyWellKnown;
+        // A folder deleted via Graph is moved under Deleted Items (a soft delete), so don't descend
+        // into the Trash folder — surfacing those recoverable folders back in the tree makes a delete
+        // look like it didn't take. We still show Deleted Items itself, just not its sub-folders.
+        var trashId = wellKnown.FirstOrDefault(kv => kv.Value == SpecialFolderKind.Trash).Key;
+
         // Breadth-first descent: each iteration fetches the children of folders known to have them.
-        var pending = new Queue<GraphMailFolder>(all.Where(f => f.ChildFolderCount > 0));
+        var pending = new Queue<GraphMailFolder>(all.Where(f => f.ChildFolderCount > 0 && f.Id != trashId));
         while (pending.Count > 0)
         {
             var parent = pending.Dequeue();
             var children = await _client.GetAllPagesAsync<GraphMailFolder>(
                 account, $"/me/mailFolders/{parent.Id}/childFolders?$top=100&{select}", ct);
             all.AddRange(children);
-            foreach (var c in children.Where(c => c.ChildFolderCount > 0))
+            foreach (var c in children.Where(c => c.ChildFolderCount > 0 && c.Id != trashId))
                 pending.Enqueue(c);
         }
-
-        var wellKnown = _wellKnownFolders.TryGetValue(accountId, out var map) ? map : EmptyWellKnown;
 
         return all.Select(f =>
         {
