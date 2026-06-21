@@ -47,13 +47,13 @@ public static class FolderTreeBuilder
         // MailKit uses '.' or '/' depending on the server's namespace separator.
         char sep = DetectSeparator(list);
 
-        // Sort: INBOX first, then alphabetically
+        // Order well-known folders conventionally (Inbox, Drafts, Sent, Deleted, Junk), then the
+        // rest alphabetically. `list` is the local copy from Build()'s flat.ToList(), so sorting it
+        // in place is safe.
         list.Sort((a, b) =>
         {
-            bool aInbox = a.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
-            bool bInbox = b.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase);
-            if (aInbox && !bInbox) return -1;
-            if (!aInbox && bInbox) return 1;
+            int ra = WellKnownRank(a), rb = WellKnownRank(b);
+            if (ra != rb) return ra.CompareTo(rb);
             return string.Compare(a.FullName, b.FullName, StringComparison.OrdinalIgnoreCase);
         });
 
@@ -74,13 +74,12 @@ public static class FolderTreeBuilder
     private static List<FolderTreeNode> BuildByParentId(List<MailFolderModel> list)
     {
         // Sort up front so both the roots and each parent's children come out in display order
-        // (Inbox first, then alphabetical); the insertion order below is preserved into the tree.
+        // (well-known folders first in conventional order, then alphabetical); the insertion order
+        // below is preserved into the tree. `list` is Build()'s flat.ToList() copy — safe to sort.
         list.Sort((a, b) =>
         {
-            bool aInbox = a.Kind == SpecialFolderKind.Inbox;
-            bool bInbox = b.Kind == SpecialFolderKind.Inbox;
-            if (aInbox && !bInbox) return -1;
-            if (!aInbox && bInbox) return 1;
+            int ra = WellKnownRank(a), rb = WellKnownRank(b);
+            if (ra != rb) return ra.CompareTo(rb);
             return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
         });
 
@@ -142,6 +141,24 @@ public static class FolderTreeBuilder
 
     private static string BuildLabel(MailFolderModel f) =>
         f.UnreadCount > 0 ? $"{f.DisplayName} ({f.UnreadCount} unread)" : f.DisplayName;
+
+    // Conventional mailbox order: Inbox, Drafts, Sent, Deleted, Junk, then everything else
+    // alphabetically. INBOX is matched by name too — the IMAP inbox is the canonical "INBOX" and a
+    // server might not flag its Kind.
+    private static int WellKnownRank(MailFolderModel f)
+    {
+        if (f.Kind == SpecialFolderKind.Inbox ||
+            f.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return f.Kind switch
+        {
+            SpecialFolderKind.Drafts => 1,
+            SpecialFolderKind.Sent   => 2,
+            SpecialFolderKind.Trash  => 3,
+            SpecialFolderKind.Junk   => 4,
+            _ => 5,
+        };
+    }
 
     private static char DetectSeparator(List<MailFolderModel> folders)
     {

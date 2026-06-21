@@ -62,6 +62,28 @@ public class FolderTreeBuilderTests
     }
 
     [Fact]
+    public void Build_OrdersWellKnownFoldersConventionally()
+    {
+        // Deliberately scrambled input; expect Inbox, Drafts, Sent, Deleted, Junk, then custom A→Z.
+        var flat = new List<MailFolderModel>
+        {
+            F("zzz", "Zeta",    parentId: "root"),
+            F("j",   "Junk",    parentId: "root", kind: SpecialFolderKind.Junk),
+            F("d",   "Drafts",  parentId: "root", kind: SpecialFolderKind.Drafts),
+            F("aaa", "Alpha",   parentId: "root"),
+            F("t",   "Deleted", parentId: "root", kind: SpecialFolderKind.Trash),
+            F("i",   "Inbox",   parentId: "root", kind: SpecialFolderKind.Inbox),
+            F("s",   "Sent",    parentId: "root", kind: SpecialFolderKind.Sent),
+        };
+
+        var roots = FolderTreeBuilder.Build(flat);
+
+        Assert.Equal(
+            new[] { "Inbox", "Drafts", "Sent", "Deleted", "Junk", "Alpha", "Zeta" },
+            roots.Select(r => r.Folder!.DisplayName).ToArray());
+    }
+
+    [Fact]
     public void Build_Graph_WrapsRootsUnderAccountHeader_WithoutFlattening()
     {
         var account = new AccountModel { AccountName = "Work", Username = "w@x.com" };

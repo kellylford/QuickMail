@@ -19,7 +19,8 @@ public class FolderPickerPathTests
     public void BuildFolderPath_Imap_UsesSeparatorFullName()
     {
         var folder = F("INBOX/Projects/2026", "2026"); // ParentId null → IMAP
-        var byId = new Dictionary<string, MailFolderModel> { [folder.FullName] = folder };
+        // IMAP exits before consulting byId, so an empty map makes that independence explicit.
+        var byId = new Dictionary<string, MailFolderModel>();
 
         Assert.Equal("INBOX/Projects/2026", FolderPickerWindow.BuildFolderPath(folder, byId));
     }

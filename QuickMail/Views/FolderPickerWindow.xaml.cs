@@ -9,6 +9,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Models;
+using QuickMail.Services;
 
 namespace QuickMail.Views;
 
@@ -17,6 +18,9 @@ namespace QuickMail.Views;
 /// </summary>
 public partial class FolderPickerWindow : Window
 {
+    // Shared empty map for IMAP accounts, whose folders never consult byId in BuildFolderPath.
+    private static readonly Dictionary<string, MailFolderModel> EmptyFolderById = new();
+
     private readonly ObservableCollection<FolderPickerItem> _items = [];
     private readonly ICollectionView _view;
     private readonly MailFolderModel? _initialFolder;
@@ -59,8 +63,11 @@ public partial class FolderPickerWindow : Window
             }
 
             // Graph references parents by id, so a folder's FullName is an opaque id — build a
-            // readable path from DisplayNames. IMAP already carries a separator path in FullName.
-            var byId = folders.ToDictionary(f => f.FullName, StringComparer.Ordinal);
+            // readable path from DisplayNames. IMAP carries a separator path in FullName already and
+            // never consults byId, so don't build it for an all-IMAP account.
+            var byId = folders.Any(f => f.ParentId != null)
+                ? folders.ToDictionary(f => f.FullName, StringComparer.Ordinal)
+                : EmptyFolderById;
 
             foreach (var (folder, folderPath) in folders
                          .Where(f => !f.IsHeader)
@@ -119,13 +126,17 @@ public partial class FolderPickerWindow : Window
 
         var segments = new List<string> { folder.DisplayName };
         var current = folder;
-        for (int guard = 0;
-             current.ParentId != null && byId.TryGetValue(current.ParentId, out var parent) && guard < 64;
-             guard++)
+        int guard = 0;
+        while (current.ParentId != null && byId.TryGetValue(current.ParentId, out var parent) && guard < 64)
         {
             segments.Add(parent.DisplayName);
             current = parent;
+            guard++;
         }
+        // The guard only trips on a ParentId cycle (which Graph shouldn't produce). Surface it in
+        // /debug so a subtly-truncated path is discoverable rather than silent.
+        if (guard >= 64)
+            LogService.Debug($"FolderPickerWindow: path for '{folder.DisplayName}' hit the 64-deep guard — possible ParentId cycle.");
         segments.Reverse();
         return string.Join('/', segments);
     }
