@@ -354,7 +354,14 @@ public class GrabAddressesDialogTests
     private static void PumpUntil(Func<bool> condition, int maxIterations = 50)
     {
         for (int i = 0; i < maxIterations && !condition(); i++)
+        {
             DoEvents();
+            // If I/O is still in flight, the async continuation hasn't been posted to the
+            // dispatcher yet — DoEvents() returns without processing it. A short sleep gives
+            // the thread pool time to complete the write and post the continuation.
+            if (!condition())
+                System.Threading.Thread.Sleep(10);
+        }
     }
 
     private static void EnsureApplication()

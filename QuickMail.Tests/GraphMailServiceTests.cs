@@ -139,6 +139,43 @@ public class GraphMailServiceTests
     }
 
     [Fact]
+    public async Task GetFoldersAsync_DescendsIntoChildFolders_AndSetsParentId()
+    {
+        // /me/mailFolders returns only top-level folders; nested folders must be fetched by
+        // walking each folder's /childFolders endpoint for as long as childFolderCount > 0.
+        const string top = """
+            {"value":[
+              {"id":"f1","displayName":"Inbox","parentFolderId":"root","childFolderCount":1,"totalItemCount":10,"unreadItemCount":0},
+              {"id":"f2","displayName":"Archive","parentFolderId":"root","childFolderCount":0,"totalItemCount":0,"unreadItemCount":0}
+            ]}
+            """;
+        const string f1Children = """
+            {"value":[{"id":"c1","displayName":"Projects","parentFolderId":"f1","childFolderCount":1,"totalItemCount":4,"unreadItemCount":1}]}
+            """;
+        const string c1Children = """
+            {"value":[{"id":"g1","displayName":"2026","parentFolderId":"c1","childFolderCount":0,"totalItemCount":2,"unreadItemCount":0}]}
+            """;
+
+        var (svc, handler) = Make(url =>
+              url.Contains("/me?")                         ? (HttpStatusCode.OK, MeJson)
+            : url.Contains("/mailFolders/f1/childFolders") ? (HttpStatusCode.OK, f1Children)
+            : url.Contains("/mailFolders/c1/childFolders") ? (HttpStatusCode.OK, c1Children)
+            : url.Contains("/me/mailFolders?")             ? (HttpStatusCode.OK, top)
+            : (HttpStatusCode.OK, """{"value":[]}"""));    // well-known lookups resolve to nothing
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account);
+        var folders = await svc.GetFoldersAsync(account.Id);
+
+        // Top-level f1, f2 plus nested c1 (under f1) and g1 (under c1).
+        Assert.Equal(4, folders.Count);
+        Assert.Equal("f1", folders.Single(f => f.FullName == "c1").ParentId);
+        Assert.Equal("c1", folders.Single(f => f.FullName == "g1").ParentId);
+        // f2 had no children, so no descent request was made for it.
+        Assert.DoesNotContain(handler.Requests, r => r.Contains("/mailFolders/f2/childFolders"));
+    }
+
+    [Fact]
     public async Task GetMessageSummariesAsync_MapsFields()
     {
         const string msgs = """

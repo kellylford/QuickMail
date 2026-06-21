@@ -22,6 +22,7 @@ internal sealed class GraphMailFolder
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("displayName")] public string DisplayName { get; set; } = string.Empty;
     [JsonPropertyName("parentFolderId")] public string? ParentFolderId { get; set; }
+    [JsonPropertyName("childFolderCount")] public int ChildFolderCount { get; set; }
     [JsonPropertyName("totalItemCount")] public int TotalItemCount { get; set; }
     [JsonPropertyName("unreadItemCount")] public int UnreadItemCount { get; set; }
 }
