@@ -4089,10 +4089,22 @@ public partial class MainViewModel : ObservableObject
         }
 
         // IMAP: children live under "Parent/Child" or "Parent.Child", so also drop by path prefix.
-        _cachedFolders[accountId] = folders.Where(f =>
-            !removeIds.Contains(f.FullName) &&
-            !f.FullName.StartsWith(deleted.FullName + "/", StringComparison.OrdinalIgnoreCase) &&
-            !f.FullName.StartsWith(deleted.FullName + ".", StringComparison.OrdinalIgnoreCase)).ToList();
+        bool ShouldRemove(MailFolderModel f) =>
+            removeIds.Contains(f.FullName) ||
+            f.FullName.StartsWith(deleted.FullName + "/", StringComparison.OrdinalIgnoreCase) ||
+            f.FullName.StartsWith(deleted.FullName + ".", StringComparison.OrdinalIgnoreCase);
+
+        _cachedFolders[accountId] = folders.Where(f => !ShouldRemove(f)).ToList();
+
+        // Keep the flat Folders collection in sync — it backs saved-view resolution, the folder
+        // picker, and the next tree rebuild, so a stale entry there would resolve a deleted folder.
+        for (int i = Folders.Count - 1; i >= 0; i--)
+            if (Folders[i].AccountId == accountId && !Folders[i].IsHeader && ShouldRemove(Folders[i]))
+                Folders.RemoveAt(i);
+
+        // Re-sum the account's unread badge from the pruned folder list.
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account != null) ApplyAccountStatus(account, _cachedFolders[accountId]);
     }
 
     /// <summary>
@@ -4186,13 +4198,15 @@ public partial class MainViewModel : ObservableObject
     /// Moves all messages in the folder to Trash, deletes the folder, and refreshes the tree.
     /// Shows a confirmation dialog first.
     /// </summary>
-    public async Task DeleteFolderAsync(FolderTreeNode node)
+    /// <summary>Deletes the folder. Returns true if the deletion happened, false if it was
+    /// cancelled at the confirmation prompt, pre-condition-failed, or errored.</summary>
+    public async Task<bool> DeleteFolderAsync(FolderTreeNode node)
     {
-        if (node.Folder == null || node.IsHeader) return;
+        if (node.Folder == null || node.IsHeader) return false;
 
         if (ConfirmationRequested?.Invoke(
             $"Delete the folder '{node.Label}' and move all its messages to Trash?",
-            "Delete Folder") != true) return;
+            "Delete Folder") != true) return false;
 
         StatusText = $"Deleting folder '{node.Label}'…";
         IsBusy     = true;
@@ -4216,11 +4230,13 @@ public partial class MainViewModel : ObservableObject
             RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
             RemoveNodeFromTree(node);
             StatusText = $"Folder '{node.Label}' deleted.";
+            return true;
         }
         catch (Exception ex)
         {
             StatusText = $"Failed to delete folder: {ex.Message}";
             LogService.Log("DeleteFolder", ex);
+            return false;
         }
         finally { IsBusy = false; }
     }

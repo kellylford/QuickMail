@@ -53,14 +53,22 @@ public sealed class CommandRegistry : ICommandRegistry
         if (overrideHit != null) return overrideHit;
 
         // Fall back to default gestures (skipping any command that has a live override).
+        // When several commands share a default gesture (e.g. Delete → mail.delete and
+        // folder.delete), prefer whichever is currently available for the focus; fall back to the
+        // first match so the dispatcher's own availability check still applies.
+        CommandDefinition? firstMatch = null;
         foreach (var cmd in _byId.Values)
         {
             if (suppressed.Contains(cmd.Id)) continue;
             if (cmd.DefaultKey == key && cmd.DefaultModifiers == modifiers)
-                return cmd;
+            {
+                firstMatch ??= cmd;
+                if (cmd.IsAvailable?.Invoke() ?? true)
+                    return cmd;
+            }
         }
 
-        return null;
+        return firstMatch;
     }
 
     /// <summary>

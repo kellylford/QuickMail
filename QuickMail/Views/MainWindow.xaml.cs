@@ -726,7 +726,17 @@ public partial class MainWindow : Window
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.HasSelectedMessage
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
-                && !IsGroupTreeFocused()));
+                && !IsGroupTreeFocused()
+                && !FolderList.IsKeyboardFocusWithin)); // folder.delete owns Delete in the folder tree
+
+        // Delete on a real folder in the folder tree deletes that folder (shares the Delete gesture
+        // with mail.delete; the registry prefers whichever command is available for the focus).
+        _registry.Register(new CommandDefinition(
+            id: "folder.delete", category: "Mail", title: "Delete Folder",
+            execute: () => _ = DeleteSelectedFolderAsync(),
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => FolderList.IsKeyboardFocusWithin
+                && FolderList.SelectedItem is FolderTreeNode n && IsDeletableFolderNode(n)));
 
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
@@ -859,7 +869,7 @@ public partial class MainWindow : Window
         // Only act as the message-list fallback. The folder tree owns its own FolderContextMenu;
         // if the request came from there, bail so that menu opens instead of stealing it with the
         // message menu (which would wrongly show Reply/Reply All on a folder).
-        if (e.OriginalSource is DependencyObject src && IsWithin(src, FolderList))
+        if (e.OriginalSource is DependencyObject src && IsDescendantOf(FolderList, src))
             return;
 
         if (_vm.IsMessagesView && MessageList.Visibility == Visibility.Visible
@@ -872,19 +882,6 @@ public partial class MainWindow : Window
         }
     }
 
-    // Walks visual then logical ancestors to test whether <paramref name="node"/> sits inside
-    // <paramref name="container"/>. Used to route a bubbled ContextMenuOpening to the right pane.
-    private static bool IsWithin(DependencyObject? node, DependencyObject container)
-    {
-        while (node != null)
-        {
-            if (ReferenceEquals(node, container)) return true;
-            node = node is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
-                ? System.Windows.Media.VisualTreeHelper.GetParent(node)
-                : LogicalTreeHelper.GetParent(node);
-        }
-        return false;
-    }
 
     // Global key handler (PreviewKeyDown so it fires before any child can swallow the event).
     private async void OnWindowKeyDown(object sender, KeyEventArgs e)
@@ -915,18 +912,6 @@ public partial class MainWindow : Window
                     interrupt: true, category: AnnouncementCategory.Result);
             }
             e.Handled = true;
-            return;
-        }
-
-        // Delete on a real folder in the folder tree deletes that folder. The global mail.delete
-        // (also bound to Delete) would otherwise grab the key and act on the message list.
-        if (key == Key.Delete && modifiers == ModifierKeys.None &&
-            FolderList.IsKeyboardFocusWithin &&
-            FolderList.SelectedItem is FolderTreeNode folderNode &&
-            IsDeletableFolderNode(folderNode))
-        {
-            e.Handled = true;
-            await DeleteFolderWithFocusAsync(folderNode);
             return;
         }
 
@@ -3892,9 +3877,17 @@ public partial class MainWindow : Window
     private async Task DeleteFolderWithFocusAsync(FolderTreeNode node)
     {
         var above = FindVisibleFolderNodeAbove(node);
-        await _vm.DeleteFolderAsync(node);
-        if (above != null)
+        // Only move focus if the delete actually happened — a cancelled confirmation must leave the
+        // user where they were.
+        if (await _vm.DeleteFolderAsync(node) && above != null)
             FocusTreeItem(FolderList, above);
+    }
+
+    // Invoked by the folder.delete command (Delete key on the folder tree).
+    private async Task DeleteSelectedFolderAsync()
+    {
+        if (FolderList.SelectedItem is FolderTreeNode node && IsDeletableFolderNode(node))
+            await DeleteFolderWithFocusAsync(node);
     }
 
     // A real, deletable account folder (not a header, a virtual/aggregate folder, or a sentinel node).
