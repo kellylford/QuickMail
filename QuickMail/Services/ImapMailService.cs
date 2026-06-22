@@ -363,6 +363,7 @@ public class ImapMailService : IMailService
 
             // Detect and parse text/calendar MIME parts (ICS calendar invites).
             IcsModel? calendarInvite = null;
+            var calendarIcsText = string.Empty;
             var calendarPart = FindCalendarPart(s.Body);
             if (calendarPart != null)
             {
@@ -371,6 +372,7 @@ public class ImapMailService : IMailService
                     var decoded = await folder.GetBodyPartAsync(mailKitUid, calendarPart, ct);
                     if (decoded is TextPart tp && !string.IsNullOrWhiteSpace(tp.Text))
                     {
+                        calendarIcsText = tp.Text;
                         calendarInvite = IcsModel.Parse(tp.Text);
                     }
                 }

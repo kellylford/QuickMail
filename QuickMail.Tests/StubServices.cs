@@ -115,6 +115,12 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
     public Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId) => Task.CompletedTask;
     public Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
+    public Task UpsertCalendarEventAsync(CalendarEvent evt) => Task.CompletedTask;
+    public Task<List<CalendarEvent>> LoadCalendarEventsAsync() => Task.FromResult(new List<CalendarEvent>());
+    public Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status) => Task.CompletedTask;
+    public Task DeleteCalendarEventAsync(string uid, Guid accountId) => Task.CompletedTask;
+    public Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
+        => Task.FromResult(new List<(Guid, string, string, string)>());
 }
 
 sealed class StubContactService : IContactService
@@ -249,4 +255,25 @@ sealed class StubFlagService : IFlagService
         => Task.FromResult<FlagDefinition?>(resolvedDef ?? (flagId != null ? FlagDefinition.CreateBuiltIn() : null));
     public Task<FlagDefinition?> ToggleDefaultFlagAsync(MailMessageSummary message, CancellationToken ct = default)
         => Task.FromResult<FlagDefinition?>(message.IsFlagged ? null : FlagDefinition.CreateBuiltIn());
+}
+
+sealed class StubCalendarService : ICalendarService
+{
+    public List<CalendarEvent> StoredEvents { get; set; } = [];
+    public int RefreshCallCount { get; private set; }
+
+    public IReadOnlyList<CalendarEvent> Events => StoredEvents;
+
+    public Task RefreshAsync(CancellationToken ct = default)
+    {
+        RefreshCallCount++;
+        return Task.CompletedTask;
+    }
+
+    public Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default)
+    {
+        var idx = StoredEvents.FindIndex(e => e.Uid == uid && e.AccountId == accountId);
+        if (idx >= 0) StoredEvents[idx].ResponseStatus = status;
+        return Task.CompletedTask;
+    }
 }

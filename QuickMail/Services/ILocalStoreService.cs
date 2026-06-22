@@ -64,4 +64,24 @@ public interface ILocalStoreService
     Task UpdateFlagIdBatchAsync(
         IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items,
         string? flagId);
+
+    // ── Calendar events ──────────────────────────────────────────────────────────
+
+    /// <summary>Upserts a calendar event by (Uid, AccountId).</summary>
+    Task UpsertCalendarEventAsync(CalendarEvent evt);
+
+    /// <summary>Loads all calendar events, ordered by start time ascending (nulls last).</summary>
+    Task<List<CalendarEvent>> LoadCalendarEventsAsync();
+
+    /// <summary>Updates only the response status for an event.</summary>
+    Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status);
+
+    /// <summary>Deletes a calendar event by Uid + AccountId.</summary>
+    Task DeleteCalendarEventAsync(string uid, Guid accountId);
+
+    /// <summary>
+    /// Returns all non-empty calendar_ics rows from MessageDetail, for harvesting.
+    /// Each item is (AccountId, FolderName, MessageId, IcsText).
+    /// </summary>
+    Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync();
 }
