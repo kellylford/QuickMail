@@ -45,6 +45,10 @@ public partial class MainViewModel : ObservableObject
     private const int PrefetchTopOnFolderLoad  = 10;
     private CancellationTokenSource? _bgSyncCts;
 
+    // Debounced calendar harvest: re-harvests events 2s after the last FolderSynced
+    // event so we don't harvest on every folder during a multi-folder sync.
+    private System.Threading.Timer? _calendarHarvestTimer;
+
     /// <summary>
     /// Cancels and disposes the old CTS, creates a new one, and outputs its token.
     /// Thread-safe: the slot is atomically replaced via Interlocked.Exchange.
@@ -1593,6 +1597,10 @@ public partial class MainViewModel : ObservableObject
             var n = Messages.Count;
             StatusText = n == 0 ? "No messages" : $"{n} {(n == 1 ? "message" : "messages")}";
         }
+
+        // Debounced calendar harvest: re-harvest events 2s after the last sync event
+        // so we don't harvest on every folder during a multi-folder sync.
+        ScheduleCalendarHarvest();
 
         RebuildActiveGroupView();
     }
@@ -4895,5 +4903,29 @@ public partial class MainViewModel : ObservableObject
         {
             Announce("Calendar closed.", AnnouncementCategory.Result);
         }
+    }
+
+    /// <summary>
+    /// Schedules a debounced calendar harvest 2 seconds after the last FolderSynced event.
+    /// Runs on the UI thread via Dispatcher so the CalendarService refresh is safe.
+    /// </summary>
+    private void ScheduleCalendarHarvest()
+    {
+        if (_calendarService == null || CalendarVm == null || OnlineMode) return;
+
+        // Reset the timer — if a previous harvest was pending, it gets pushed back 2s.
+        _calendarHarvestTimer ??= new System.Threading.Timer(_ =>
+        {
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
+            {
+                if (_calendarService == null || CalendarVm == null) return;
+                await _calendarService.RefreshAsync();
+                // Only re-apply filters if the pane is open (no UI churn if it's closed).
+                if (IsCalendarPaneOpen)
+                    CalendarVm.ApplyFiltersFromExternalUpdate();
+            });
+        }, null, Timeout.Infinite, Timeout.Infinite);
+
+        _calendarHarvestTimer.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
     }
 }
