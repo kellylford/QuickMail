@@ -31,6 +31,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IRuleService _ruleService;
     private readonly ISendMailService _smtp;
     private readonly IFlagService? _flagService;
+    private readonly ICalendarService? _calendarService;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -474,6 +475,15 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Current message open mode, read from config on startup.</summary>
     public MessageOpenMode MessageOpenMode { get; private set; } = MessageOpenMode.ReadingPane;
 
+    // ── Calendar pane ─────────────────────────────────────────────────────────────
+
+    /// <summary>ViewModel for the calendar pane. Null when no calendar service is wired (e.g. tests).</summary>
+    public CalendarViewModel? CalendarVm { get; private set; }
+
+    /// <summary>True when the calendar pane is visible. Toggled by the view.calendar command.</summary>
+    [ObservableProperty]
+    private bool _isCalendarPaneOpen;
+
     // ── Tab commands ──────────────────────────────────────────────────────────────
 
     public void OpenMessageTab(MailMessageSummary summary)
@@ -657,7 +667,8 @@ public partial class MainViewModel : ObservableObject
         IRuleService ruleService,
         ISendMailService smtpService,
         bool onlineMode = false,
-        IFlagService? flagService = null)
+        IFlagService? flagService = null,
+        ICalendarService? calendarService = null)
     {
         _imap            = imap;
         _accountService  = accountService;
@@ -671,6 +682,7 @@ public partial class MainViewModel : ObservableObject
         _ruleService     = ruleService;
         _smtp            = smtpService;
         _flagService     = flagService;
+        _calendarService = calendarService;
         OnlineMode       = onlineMode;
 
         var cfg = _configService.Load();
@@ -683,6 +695,13 @@ public partial class MainViewModel : ObservableObject
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
+
+        // Calendar pane — only when a calendar service is wired (skipped in tests).
+        if (_calendarService != null)
+        {
+            CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents);
+            _isCalendarPaneOpen = cfg.CalendarPaneOpen;
+        }
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
@@ -1211,6 +1230,12 @@ public partial class MainViewModel : ObservableObject
             id: "mail.rules", category: "Mail", title: "Manage Rules",
             execute: () => OpenRulesManagerCommand.Execute(null),
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        registry.Register(new CommandDefinition(
+            id: "view.calendar", category: "View", title: "Calendar",
+            execute: () => ToggleCalendarPaneCommand.Execute(null),
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => CalendarVm != null));
 
         registry.Register(new CommandDefinition(
             id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
@@ -4819,11 +4844,56 @@ public partial class MainViewModel : ObservableObject
 
             var eventTitle = invite.Summary ?? "calendar event";
             Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
+
+            // Update the calendar event's response status so the calendar pane reflects the reply.
+            if (_calendarService != null && !string.IsNullOrEmpty(invite.Uid))
+            {
+                var status = partStat switch
+                {
+                    "ACCEPTED"  => CalendarResponseStatus.Accepted,
+                    "DECLINED"  => CalendarResponseStatus.Declined,
+                    "TENTATIVE" => CalendarResponseStatus.Tentative,
+                    _           => CalendarResponseStatus.Pending,
+                };
+                await _calendarService.SetResponseStatusAsync(invite.Uid, account.Id, status);
+                CalendarVm?.ApplyFiltersFromExternalUpdate();
+            }
         }
         catch (Exception ex)
         {
             LogService.Log($"SendIcsReply ({partStat})", ex);
             Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
+        }
+    }
+
+    // ── Calendar pane toggle ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the calendar pane should receive focus (View concern).
+    /// The View subscribes and moves focus to the calendar list.
+    /// </summary>
+    public event Action? CalendarPaneFocusRequested;
+
+    [RelayCommand]
+    private void ToggleCalendarPane()
+    {
+        if (CalendarVm == null) return;
+        IsCalendarPaneOpen = !IsCalendarPaneOpen;
+
+        // Persist the open/closed state.
+        var cfg = _configService.Load();
+        cfg.CalendarPaneOpen = IsCalendarPaneOpen;
+        _configService.Save(cfg);
+
+        if (IsCalendarPaneOpen)
+        {
+            // Load events and request focus to the pane.
+            _ = CalendarVm.LoadAsync();
+            CalendarPaneFocusRequested?.Invoke();
+        }
+        else
+        {
+            Announce("Calendar closed.", AnnouncementCategory.Result);
         }
     }
 }

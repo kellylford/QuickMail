@@ -115,6 +115,14 @@ public class ConfigModel
     /// <summary>Tab and window management preferences.</summary>
     public WindowingPreferences Windowing { get; set; } = new();
 
+    // ── Calendar ─────────────────────────────────────────────────────────────────
+
+    /// <summary>Whether declined calendar events appear in the calendar list. Default off.</summary>
+    public bool ShowDeclinedEvents { get; set; } = false;
+
+    /// <summary>Whether the calendar pane was open when the app last closed. Restored on startup.</summary>
+    public bool CalendarPaneOpen { get; set; } = false;
+
     // ── Custom hotkey overrides ──────────────────────────────────────────────────
 
     /// <summary>User-defined keyboard shortcut overrides, stored in hotkeys.json.</summary>
