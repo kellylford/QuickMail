@@ -56,7 +56,7 @@ public class GraphMailServiceTests
         var (svc, _) = Make(url => (HttpStatusCode.OK, MeJson));
         var account = GraphAccount();
 
-        await svc.ConnectAsync(account);
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
 
         Assert.Equal("user@contoso.com", account.Username);
     }
@@ -85,8 +85,8 @@ public class GraphMailServiceTests
             : (HttpStatusCode.OK, page1));
 
         var account = GraphAccount();
-        await svc.ConnectAsync(account);
-        var folders = await svc.GetFoldersAsync(account.Id);
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var folders = await svc.GetFoldersAsync(account.Id, TestContext.Current.CancellationToken);
 
         Assert.Equal(3, folders.Count); // nextLink page followed
         var inbox = folders.Single(f => f.FullName == "f1");
@@ -124,8 +124,8 @@ public class GraphMailServiceTests
             : (HttpStatusCode.OK, MeJson));
 
         var account = GraphAccount();
-        await svc.ConnectAsync(account);
-        var folders = await svc.GetFoldersAsync(account.Id);
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var folders = await svc.GetFoldersAsync(account.Id, TestContext.Current.CancellationToken);
 
         var inbox = folders.Single(f => f.FullName == "F-INBOX");
         Assert.Equal(SpecialFolderKind.Inbox, inbox.Kind);  // by ID, despite "Posteingang"
@@ -164,8 +164,8 @@ public class GraphMailServiceTests
             : (HttpStatusCode.OK, """{"value":[]}"""));    // well-known lookups resolve to nothing
 
         var account = GraphAccount();
-        await svc.ConnectAsync(account);
-        var folders = await svc.GetFoldersAsync(account.Id);
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var folders = await svc.GetFoldersAsync(account.Id, TestContext.Current.CancellationToken);
 
         // Top-level f1, f2 plus nested c1 (under f1) and g1 (under c1).
         Assert.Equal(4, folders.Count);
@@ -190,8 +190,8 @@ public class GraphMailServiceTests
         var (svc, _) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, msgs));
 
         var account = GraphAccount();
-        await svc.ConnectAsync(account);
-        var list = await svc.GetMessageSummariesAsync(account.Id, "inbox", 50);
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var list = await svc.GetMessageSummariesAsync(account.Id, "inbox", 50, TestContext.Current.CancellationToken);
 
         var m = Assert.Single(list);
         Assert.Equal("m1", m.MessageId);
@@ -221,8 +221,8 @@ public class GraphMailServiceTests
         var (svc, _) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, detail));
 
         var account = GraphAccount();
-        await svc.ConnectAsync(account);
-        var d = await svc.GetMessageDetailAsync(account.Id, "inbox", "m1");
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var d = await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
 
         Assert.Equal("m1", d.MessageId);
         Assert.Equal("<p>Hi</p>", d.HtmlBody);
@@ -240,8 +240,8 @@ public class GraphMailServiceTests
         var (svc, handler) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, """{"value":[]}"""));
 
         var account = GraphAccount();
-        await svc.ConnectAsync(account);
-        await svc.GetMessagesSinceDateAsync(account.Id, "inbox", DateTime.UtcNow.AddDays(-7));
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        await svc.GetMessagesSinceDateAsync(account.Id, "inbox", DateTime.UtcNow.AddDays(-7), TestContext.Current.CancellationToken);
 
         Assert.Contains(handler.Requests, u => Uri.UnescapeDataString(u).Contains("filter=receivedDateTime ge"));
     }
@@ -252,8 +252,8 @@ public class GraphMailServiceTests
         var (svc, _) = Make(url => (HttpStatusCode.OK, "{}"));
         // These throw synchronously (expression-bodied `=> throw ...`), so the discard keeps the
         // lambda an Action rather than a Func<Task>.
-        Assert.Throws<NotImplementedException>(() => { _ = svc.MoveToTrashAsync(Guid.NewGuid(), "inbox", "m1"); });
-        Assert.Throws<NotImplementedException>(() => { _ = svc.CreateFolderAsync(Guid.NewGuid(), null, "New"); });
+        Assert.Throws<NotImplementedException>(() => { _ = svc.MoveToTrashAsync(Guid.NewGuid(), "inbox", "m1", TestContext.Current.CancellationToken); });
+        Assert.Throws<NotImplementedException>(() => { _ = svc.CreateFolderAsync(Guid.NewGuid(), null, "New", TestContext.Current.CancellationToken); });
     }
 
     [Fact]
@@ -261,7 +261,7 @@ public class GraphMailServiceTests
     {
         // Graph /sendMail auto-saves to Sent, so the post-send append is a no-op (not a throw).
         var (svc, _) = Make(url => (HttpStatusCode.OK, "{}"));
-        Assert.True(svc.AppendToSentAsync(Guid.NewGuid(), new ComposeModel()).IsCompletedSuccessfully);
+        Assert.True(svc.AppendToSentAsync(Guid.NewGuid(), new ComposeModel(), TestContext.Current.CancellationToken).IsCompletedSuccessfully);
     }
 
     [Fact]
@@ -281,6 +281,6 @@ public class GraphMailServiceTests
         var (svc, _) = Make(url => (HttpStatusCode.OK, "{}"));
         // No ConnectAsync first → the account isn't registered, so token resolution can't proceed.
         await Assert.ThrowsAsync<InvalidOperationException>(
-            () => svc.GetFoldersAsync(Guid.NewGuid()));
+            () => svc.GetFoldersAsync(Guid.NewGuid(), TestContext.Current.CancellationToken));
     }
 }

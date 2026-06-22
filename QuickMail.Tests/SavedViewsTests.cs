@@ -900,7 +900,7 @@ public class SavedViewsMainViewModelTests
         AddVirtualFolders(vm);
 
         await SelectView(vm, view);
-        await Task.Delay(50);  // let Phase 2 (no-op for AllMail with empty Accounts) complete
+        await Task.Delay(50, TestContext.Current.CancellationToken);  // let Phase 2 (no-op for AllMail with empty Accounts) complete
 
         Assert.Equal(7, vm.ActiveDayLimit);
         // With no accounts in vm.Accounts, FetchAllMailAsync's Phase 2 won't fetch.
@@ -932,7 +932,7 @@ public class SavedViewsMainViewModelTests
 
         await SelectView(vm, view);
         // Give the fire-and-forget RefreshFolderFromServerAsync a chance to complete.
-        await Task.Delay(50);
+        await Task.Delay(50, TestContext.Current.CancellationToken);
 
         Assert.Equal(7, vm.ActiveDayLimit);
         Assert.Single(vm.Messages);
