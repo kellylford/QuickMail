@@ -1836,8 +1836,28 @@ public partial class MainViewModel : ObservableObject
             minDateByFolder.TryGetValue((m.AccountId, m.FolderName), out var min) &&
             m.Date >= min &&
             !fetchedKeys.Contains((m.MessageId, m.AccountId, m.FolderName))).ToList();
+        if (vanished.Count == 0) return;
+
+        // Mirror RemoveFromActiveViewAsync: remove from the backing _rawMessages too (else they
+        // reappear when ApplyFiltersAndSearch rebuilds Messages), decrement account unread counts,
+        // and clear the reading pane if the open message was one of the removed ones. Messages in the
+        // visible list are always present in _rawMessages, so they are safe to count for removal.
+        var vanishedKeys = new HashSet<(string, Guid, string)>(
+            vanished.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
+        _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
+
+        bool removedOpen = vanished.Any(m => m == SelectedMessage);
         foreach (var m in vanished)
             Messages.Remove(m);
+
+        UpdateAccountCountsAfterRemoval(vanished);
+
+        if (removedOpen)
+        {
+            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
+            MessageDetail   = null;
+            IsMessageOpen   = false;
+        }
     }
 
     // ── Account / folder selection ───────────────────────────────────────────────
@@ -2736,22 +2756,32 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     private async Task RefreshAllFolderListsAsync()
     {
-        var changed = false;
-        foreach (var account in Accounts.ToList())
+        // Fetch every account's folder list concurrently — they're independent, and a single slow or
+        // timed-out account shouldn't serialise the whole refresh (mirrors FetchAllMailAsync).
+        var fetches = Accounts.ToList().Select(async account =>
         {
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var folderList = await _imap.GetFoldersAsync(account.Id, cts.Token);
-                if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folderList))
-                {
-                    _cachedFolders[account.Id] = folderList;
-                    ApplyAccountStatus(account, folderList);
-                    changed = true;
-                }
+                return (account, folders: (List<MailFolderModel>?)await _imap.GetFoldersAsync(account.Id, cts.Token));
             }
-            catch (OperationCanceledException) { }
-            catch (Exception ex) { LogService.Log($"RefreshFolderList {account.AccountLabel}", ex); }
+            catch (OperationCanceledException) { return (account, folders: (List<MailFolderModel>?)null); }
+            catch (Exception ex) { LogService.Log($"RefreshFolderList {account.AccountLabel}", ex); return (account, folders: (List<MailFolderModel>?)null); }
+        });
+        var results = await Task.WhenAll(fetches);
+
+        // Apply results on the continuation (UI thread): mutate the cache and rebuild only if a
+        // folder was actually added or removed, so an ordinary refresh doesn't disturb focus.
+        var changed = false;
+        foreach (var (account, folders) in results)
+        {
+            if (folders == null) continue;
+            if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folders))
+            {
+                _cachedFolders[account.Id] = folders;
+                ApplyAccountStatus(account, folders);
+                changed = true;
+            }
         }
         if (changed) RebuildFolderListFromCache();
     }
