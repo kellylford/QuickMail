@@ -817,7 +817,8 @@
                           AutomationProperties.Name="Resize left and right panes"/>
 
             <!-- Right pane: messages + body (body docked to bottom, hidden until Enter on a message) -->
-            <DockPanel Grid.Column="2">
+            <Grid Grid.Column="2">
+            <DockPanel>
 
                 <!-- Tab strip — visible only when message tabs are open -->
                 <Border DockPanel.Dock="Top"
@@ -1560,6 +1561,12 @@
                 </DockPanel>
 
             </DockPanel>
+
+            <!-- Calendar pane — overlays the entire right column when open -->
+            <local:CalendarPane x:Name="CalendarPaneControl"
+                                Visibility="{Binding IsCalendarPaneOpen, Converter={StaticResource BoolToVisibilityConverter}}"
+                                DataContext="{Binding CalendarVm}"/>
+            </Grid>
         </Grid>
 
         <!-- ── Status bar ── -->

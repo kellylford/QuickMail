@@ -1,0 +1,47 @@
+<UserControl x:Class="QuickMail.Views.CalendarPane"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="400" d:DesignWidth="400"
+             Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+             PreviewKeyDown="CalendarPane_PreviewKeyDown">
+    <DockPanel>
+        <!-- Header -->
+        <TextBlock DockPanel.Dock="Top"
+                   Text="Calendar"
+                   FontWeight="SemiBold"
+                   Padding="8,6"
+                   Focusable="False"
+                   Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+
+        <!-- Event list -->
+        <ListBox x:Name="EventList"
+                 ItemsSource="{Binding Events}"
+                 SelectedItem="{Binding SelectedEvent, Mode=TwoWay}"
+                 BorderThickness="0"
+                 KeyboardNavigation.TabNavigation="Once"
+                 AutomationProperties.Name="Calendar events"
+                 VirtualizingPanel.IsVirtualizing="True"
+                 VirtualizingPanel.VirtualizationMode="Recycling"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                 GotKeyboardFocus="EventList_GotKeyboardFocus">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="AutomationProperties.Name" Value="{Binding DisplayLine}"/>
+                    <Setter Property="Padding" Value="8,4"/>
+                </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Text="{Binding DisplayLine}" FontSize="11" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>

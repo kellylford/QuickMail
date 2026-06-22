@@ -257,6 +257,17 @@ public partial class MainWindow : Window
 
         vm.TabPromoteToWindowRequested += PromoteTabToWindow;
 
+        // Calendar pane subscriptions
+        vm.CalendarPaneFocusRequested += () => Dispatcher.InvokeAsync(
+            () => CalendarPaneControl.FocusEventList(), System.Windows.Threading.DispatcherPriority.Input);
+        if (vm.CalendarVm != null)
+        {
+            vm.CalendarVm.AnnouncementRequested += (text, category) =>
+                AccessibilityHelper.Announce(this, text, interrupt: true, category: category);
+            vm.CalendarVm.OpenSourceMessageRequested += (accountId, folder, messageId) =>
+                OpenSourceMessageFromCalendar(accountId, folder, messageId);
+        }
+
         vm.PropertyChanged += async (_, e) =>
         {
             if (e.PropertyName == nameof(MainViewModel.ActiveTab) && !_tabStripArrowNavInProgress)
@@ -957,6 +968,10 @@ public partial class MainWindow : Window
                 case Key.F6:
                     e.Handled = true;
                     await CycleFocusAsync(true);
+                    return;
+                case Key.Escape when _vm.IsCalendarPaneOpen && CalendarPaneControl.IsKeyboardFocusWithin:
+                    _vm.ToggleCalendarPaneCommand.Execute(null);
+                    e.Handled = true;
                     return;
                 case Key.Escape when _vm.IsMessageOpen:
                     CloseReadingPane();
@@ -2101,6 +2116,28 @@ public partial class MainWindow : Window
         ReturnFocusToMessageList();
     }
 
+    /// <summary>
+    /// Opens the source invite message from a calendar event.
+    /// Constructs a minimal MailMessageSummary and routes through SelectMessageCommand
+    /// so the user's MessageOpenMode (ReadingPane/Tab/Window) is honored.
+    /// </summary>
+    private void OpenSourceMessageFromCalendar(Guid accountId, string folder, string messageId)
+    {
+        // Find the account and select it so SelectMessageAsync has the right context.
+        var account = _vm.Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account != null)
+            _vm.SelectedAccount = account;
+
+        // Construct a summary stub; SelectMessageAsync will fetch the full detail.
+        var summary = new MailMessageSummary
+        {
+            MessageId   = messageId,
+            AccountId   = accountId,
+            FolderName  = folder,
+        };
+        _vm.SelectMessageCommand.Execute(summary);
+    }
+
     // Return keyboard focus to the active message panel after reading a message.
     private void ReturnFocusToMessageList()
     {
@@ -2384,6 +2421,7 @@ public partial class MainWindow : Window
         if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin) return 3;
         if (TabStrip.IsKeyboardFocusWithin)     return 7; // between message list and reading pane
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
+        if (CalendarPaneControl.IsKeyboardFocusWithin) return 8; // calendar pane
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;
         return 0;
     }
@@ -2399,6 +2437,7 @@ public partial class MainWindow : Window
             case 6: SearchBox.Focus(); break;
             case 3: FocusActiveMessagePanel(); break;
             case 7: TabStrip.Focus(); break;
+            case 8: CalendarPaneControl.FocusEventList(); break;
             case 4:
                 if (_vm.IsMessageOpen && _webViewReady)
                 {
@@ -2425,6 +2464,7 @@ public partial class MainWindow : Window
         panes.Add(3);
         if (_vm.ShowTabStrip) panes.Add(7);   // tab strip between message list and reading pane
         if (_vm.IsMessageOpen && _webViewReady) panes.Add(4);
+        if (_vm.IsCalendarPaneOpen) panes.Add(8); // calendar pane before status bar
         panes.Add(5); // StatusBar always included
 
         int current    = GetFocusedPaneIndex();
