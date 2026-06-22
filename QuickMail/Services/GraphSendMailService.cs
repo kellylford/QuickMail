@@ -1,6 +1,4 @@
 using System;
-using System.Buffers.Text;
-using System.IO;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,16 +29,9 @@ public class GraphSendMailService : ISendMailService, IDisposable
 
     private async Task SendMimeAsync(AccountModel account, MimeMessage message, CancellationToken ct)
     {
-        using var ms = new MemoryStream();
-        await message.WriteToAsync(ms, ct);
-        int mimeLength = (int)ms.Length;
-
-        // Graph /sendMail takes the MIME message base64-encoded as a text/plain body. Encode the
-        // MIME bytes straight to base64 ASCII bytes — no intermediate base64 string allocation.
-        var body = new byte[Base64.GetMaxEncodedToUtf8Length(mimeLength)];
-        Base64.EncodeToUtf8(ms.GetBuffer().AsSpan(0, mimeLength), body, out _, out _);
-
-        LogService.Log($"GraphSendMailService: sending {mimeLength} MIME bytes via /me/sendMail");
+        // Graph /sendMail takes the MIME message base64-encoded as a text/plain body.
+        var body = await MimeMessageBuilder.ToBase64BytesAsync(message, ct);
+        LogService.Log($"GraphSendMailService: sending {body.Length} base64 bytes via /me/sendMail");
         await _client.PostRawAsync(account, "/me/sendMail", body, "text/plain", ct);
         LogService.Log("GraphSendMailService: send complete");
     }

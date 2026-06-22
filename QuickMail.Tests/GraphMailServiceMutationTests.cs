@@ -16,8 +16,17 @@ namespace QuickMail.Tests;
 /// PR 6 — exercises the Graph mutation surface (move/copy/delete/trash, mark-read, drafts,
 /// attachment download, folder CRUD) against a stub handler that records method, URL, and body.
 /// </summary>
-public class GraphMailServiceMutationTests
+public class GraphMailServiceMutationTests : IDisposable
 {
+    // GraphMailService wraps a GraphClient/HttpClient; dispose every one created during a test
+    // (CLAUDE.md IDisposable rule). xUnit disposes the test-class instance after each test.
+    private readonly List<GraphMailService> _created = new();
+
+    public void Dispose()
+    {
+        foreach (var svc in _created) svc.Dispose();
+    }
+
     private sealed class RecordingHandler : HttpMessageHandler
     {
         private readonly Func<string, (HttpStatusCode Status, string Json)> _respond;
@@ -39,16 +48,17 @@ public class GraphMailServiceMutationTests
 
     // ConnectAsync probes /me and the five well-known folders; anything not explicitly stubbed
     // returns "{}" (a folder with a null id → skipped), which is harmless for mutation tests.
-    private static (GraphMailService Svc, RecordingHandler Handler) Make(Func<string, (HttpStatusCode, string)> respond)
+    private (GraphMailService Svc, RecordingHandler Handler) Make(Func<string, (HttpStatusCode, string)> respond)
     {
         var handler = new RecordingHandler(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : respond(url));
         var svc = new GraphMailService(new StubOAuthService(), null, new HttpClient(handler));
+        _created.Add(svc);
         return (svc, handler);
     }
 
     private static (HttpStatusCode, string) Ok(string json = "{}") => (HttpStatusCode.OK, json);
 
-    private static async Task<(GraphMailService Svc, RecordingHandler Handler, AccountModel Account)> ConnectedAsync(
+    private async Task<(GraphMailService Svc, RecordingHandler Handler, AccountModel Account)> ConnectedAsync(
         Func<string, (HttpStatusCode, string)>? respond = null)
     {
         var (svc, handler) = Make(respond ?? (_ => Ok()));
@@ -184,6 +194,17 @@ public class GraphMailServiceMutationTests
         Assert.Contains("Renamed", patch.Body);
         var move = Assert.Single(h.Calls, c => c.Method == "POST" && c.Url.Contains("/me/mailFolders/f1/move"));
         Assert.Contains("parent2", move.Body);
+    }
+
+    [Fact]
+    public async Task RenameFolderAsync_RenameOnly_PatchesNameWithoutMoving()
+    {
+        var (svc, h, acct) = await ConnectedAsync();
+
+        await svc.RenameFolderAsync(acct.Id, "f1", "Renamed", newParentFolderName: null);
+
+        Assert.Single(h.Calls, c => c.Method == "PATCH" && c.Url.EndsWith("/me/mailFolders/f1"));
+        Assert.DoesNotContain(h.Calls, c => c.Url.Contains("/move"));
     }
 
     [Fact]

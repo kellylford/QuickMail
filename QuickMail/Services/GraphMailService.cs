@@ -134,16 +134,19 @@ public class GraphMailService : IMailService
         // into the Trash folder — surfacing those recoverable folders back in the tree makes a delete
         // look like it didn't take. We still show Deleted Items itself, just not its sub-folders.
         var trashId = wellKnown.FirstOrDefault(kv => kv.Value == SpecialFolderKind.Trash).Key;
+        if (trashId == null)
+            LogService.Log($"GraphMailService: Trash folder id unresolved for account {accountId}; " +
+                           "cannot filter recoverable sub-folders out of the tree.");
 
         // Breadth-first descent: each iteration fetches the children of folders known to have them.
-        var pending = new Queue<GraphMailFolder>(all.Where(f => f.ChildFolderCount > 0 && f.Id != trashId));
+        var pending = new Queue<GraphMailFolder>(all.Where(f => f.ChildFolderCount > 0 && (trashId == null || f.Id != trashId)));
         while (pending.Count > 0)
         {
             var parent = pending.Dequeue();
             var children = await _client.GetAllPagesAsync<GraphMailFolder>(
                 account, $"/me/mailFolders/{parent.Id}/childFolders?$top=100&{select}", ct);
             all.AddRange(children);
-            foreach (var c in children.Where(c => c.ChildFolderCount > 0 && c.Id != trashId))
+            foreach (var c in children.Where(c => c.ChildFolderCount > 0 && (trashId == null || c.Id != trashId)))
                 pending.Enqueue(c);
         }
 
@@ -297,16 +300,20 @@ public class GraphMailService : IMailService
     public async Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
     {
         var account = Account(accountId);
-        // Editing an existing draft: remove the old copy first (mirrors the IMAP delete-then-append).
-        if (!string.IsNullOrEmpty(replaceMessageId))
+
+        // POST the new draft to /me/messages (base64, text/plain) FIRST — Graph files it under Drafts
+        // and returns the created message. Only then delete the old copy: Graph's DELETE is an
+        // immediate, unrecoverable hard delete (unlike IMAP's deferred expunge), so a failure between
+        // the two must leave the content recoverable (at worst a duplicate draft) rather than gone.
+        var mime = MimeMessageBuilder.Build(draft, account, MimeMessageBuilder.AppUserAgent);
+        var body = await MimeMessageBuilder.ToBase64BytesAsync(mime, ct);
+        var created = await _client.PostRawReadAsync<GraphMessage>(account, "/me/messages", body, "text/plain", ct);
+        var newId = created?.Id ?? string.Empty;
+
+        if (!string.IsNullOrEmpty(replaceMessageId) && !string.IsNullOrEmpty(newId))
             await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", ct);
 
-        // POST the MIME draft to /me/messages (base64, text/plain); Graph files it under Drafts and
-        // returns the created message, whose id becomes the new draft key.
-        var mime = MimeMessageBuilder.Build(draft, account, MimeMessageBuilder.AppUserAgent);
-        var body = await ToBase64MimeAsync(mime, ct);
-        var created = await _client.PostRawReadAsync<GraphMessage>(account, "/me/messages", body, "text/plain", ct);
-        return created?.Id ?? string.Empty;
+        return newId;
     }
 
     // Graph's /sendMail auto-saves the sent message to the Sent folder, so there is nothing to append.
@@ -348,10 +355,11 @@ public class GraphMailService : IMailService
     public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
     {
         var account = Account(accountId);
-        // Mirror IMAP's RenameAsync(parent, name): set the display name and reparent in one operation.
+        // Rename: set the display name. Only move when a new parent is actually requested — a
+        // rename-only call (null newParentFolderName) must not POST a redundant move-to-root.
         await _client.PatchAsync(account, $"/me/mailFolders/{folderName}", new { displayName = newName }, ct);
-        var destination = string.IsNullOrEmpty(newParentFolderName) ? RootFolderId : newParentFolderName;
-        await _client.PostAsync(account, $"/me/mailFolders/{folderName}/move", new { destinationId = destination }, ct);
+        if (!string.IsNullOrEmpty(newParentFolderName))
+            await _client.PostAsync(account, $"/me/mailFolders/{folderName}/move", new { destinationId = newParentFolderName }, ct);
     }
 
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
@@ -359,13 +367,6 @@ public class GraphMailService : IMailService
         // Graph copies the folder and all of its messages (and sub-folders) server-side in one call.
         var destination = string.IsNullOrEmpty(destinationParentName) ? RootFolderId : destinationParentName;
         return _client.PostAsync(Account(accountId), $"/me/mailFolders/{folderName}/copy", new { destinationId = destination }, ct);
-    }
-
-    private static async Task<byte[]> ToBase64MimeAsync(MimeMessage message, CancellationToken ct)
-    {
-        using var ms = new MemoryStream();
-        await message.WriteToAsync(ms, ct);
-        return Encoding.ASCII.GetBytes(Convert.ToBase64String(ms.ToArray()));
     }
 
     public void Dispose()
