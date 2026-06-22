@@ -60,7 +60,7 @@ public class GraphClientTests
         var handler = new SequenceHandler(Resp((HttpStatusCode)429), Resp(HttpStatusCode.OK));
         var client = Client(handler);
 
-        var result = await client.GetAsync<JsonElement>(Account(), "/me");
+        var result = await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(2, handler.Calls); // one 429 retry, then success
     }
@@ -71,7 +71,7 @@ public class GraphClientTests
         var handler = new SequenceHandler(Resp((HttpStatusCode)429, retryAfter: TimeSpan.Zero), Resp(HttpStatusCode.OK));
         var client = Client(handler);
 
-        await client.GetAsync<JsonElement>(Account(), "/me");
+        await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(2, handler.Calls);
     }
@@ -83,7 +83,7 @@ public class GraphClientTests
         var handler = new SequenceHandler(Resp((HttpStatusCode)429), Resp(HttpStatusCode.OK));
         var client = Client(handler);
 
-        await client.GetAsync<JsonElement>(Account(), "/me");
+        await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(2, handler.Calls);
     }
@@ -95,7 +95,7 @@ public class GraphClientTests
         var handler = new SequenceHandler(Resp((HttpStatusCode)429), Resp((HttpStatusCode)429), Resp((HttpStatusCode)429));
         var client = Client(handler);
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync<JsonElement>(Account(), "/me"));
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken));
         Assert.Equal(3, handler.Calls); // attempts 0, 1, 2 — no fourth
     }
 
@@ -106,7 +106,7 @@ public class GraphClientTests
         var handler = new SequenceHandler(throttled, Resp(HttpStatusCode.OK));
         var client = Client(handler);
 
-        await client.GetAsync<JsonElement>(Account(), "/me");
+        await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken);
 
         Assert.True(throttled.Disposed, "the retried 429 response should be disposed before the next attempt");
     }

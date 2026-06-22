@@ -70,7 +70,7 @@ public class ContactServiceGroupTestsV2
         {
             var a = await service.CreateGroupAsync("Zebra");
             var b = await service.CreateGroupAsync("Alpha");
-            await Task.Delay(20);
+            await Task.Delay(20, TestContext.Current.CancellationToken);
             await service.TouchGroupAsync(b);
             var groups = await service.LoadAllGroupsAsync();
             Assert.Equal(2, groups.Count);
@@ -328,7 +328,7 @@ public class ContactServiceGroupTestsV2
         try
         {
             await service.CreateGroupAsync("Atomic");
-            var json = await File.ReadAllTextAsync(Path.Combine(dir, "groups.json"));
+            var json = await File.ReadAllTextAsync(Path.Combine(dir, "groups.json"), TestContext.Current.CancellationToken);
             using var doc = JsonDocument.Parse(json);
             Assert.Equal(1, doc.RootElement.GetArrayLength());
             Assert.Empty(Directory.GetFiles(dir, "groups.json.tmp"));
@@ -352,7 +352,7 @@ public class ContactServiceGroupTestsV2
                 tasks.Add(service.UpsertContactAsync(MakeContact($"User{i}")));
             }
             var all = Task.WhenAll(tasks);
-            var completed = await Task.WhenAny(all, Task.Delay(TimeSpan.FromSeconds(10)));
+            var completed = await Task.WhenAny(all, Task.Delay(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
             Assert.Same(all, completed);
         }
         finally { Cleanup(dir); }
