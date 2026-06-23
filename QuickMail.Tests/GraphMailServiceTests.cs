@@ -247,16 +247,6 @@ public class GraphMailServiceTests
     }
 
     [Fact]
-    public void Mutation_Throws_NotImplemented_InPR4()
-    {
-        var (svc, _) = Make(url => (HttpStatusCode.OK, "{}"));
-        // These throw synchronously (expression-bodied `=> throw ...`), so the discard keeps the
-        // lambda an Action rather than a Func<Task>.
-        Assert.Throws<NotImplementedException>(() => { _ = svc.MoveToTrashAsync(Guid.NewGuid(), "inbox", "m1", TestContext.Current.CancellationToken); });
-        Assert.Throws<NotImplementedException>(() => { _ = svc.CreateFolderAsync(Guid.NewGuid(), null, "New", TestContext.Current.CancellationToken); });
-    }
-
-    [Fact]
     public void AppendToSentAsync_IsNoOp_ForGraph()
     {
         // Graph /sendMail auto-saves to Sent, so the post-send append is a no-op (not a throw).

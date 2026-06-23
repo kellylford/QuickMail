@@ -1,8 +1,11 @@
 using System;
+using System.Buffers.Text;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using MimeKit;
 using QuickMail.Helpers;
 using QuickMail.Models;
@@ -19,6 +22,22 @@ public static class MimeMessageBuilder
     /// <summary>The User-Agent string for outgoing mail — one source of truth for every sender.</summary>
     internal static readonly string AppUserAgent =
         "QuickMail/" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0");
+
+    /// <summary>
+    /// Serializes a <see cref="MimeMessage"/> to base64-encoded ASCII bytes — the form Graph's
+    /// <c>/me/sendMail</c> and <c>/me/messages</c> endpoints accept as a <c>text/plain</c> body.
+    /// Encodes straight to base64 (no intermediate string, and <c>GetBuffer()</c> avoids a copy) to
+    /// keep peak memory low for large/attachment-bearing messages.
+    /// </summary>
+    internal static async Task<byte[]> ToBase64BytesAsync(MimeMessage message, CancellationToken ct = default)
+    {
+        using var ms = new MemoryStream();
+        await message.WriteToAsync(ms, ct);
+        int mimeLength = (int)ms.Length;
+        var body = new byte[Base64.GetMaxEncodedToUtf8Length(mimeLength)];
+        Base64.EncodeToUtf8(ms.GetBuffer().AsSpan(0, mimeLength), body, out _, out _);
+        return body;
+    }
 
     /// <summary>
     /// Builds a complete MIME message from compose fields, including attachments.

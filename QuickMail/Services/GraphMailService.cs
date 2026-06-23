@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using MimeKit;
 using QuickMail.Models;
 using QuickMail.Services.Graph;
 
@@ -126,19 +129,26 @@ public class GraphMailService : IMailService
         var all = await _client.GetAllPagesAsync<GraphMailFolder>(
             account, $"/me/mailFolders?$top=100&{select}", ct);
 
+        var wellKnown = _wellKnownFolders.TryGetValue(accountId, out var map) ? map : EmptyWellKnown;
+        // A folder deleted via Graph is moved under Deleted Items (a soft delete), so don't descend
+        // into the Trash folder — surfacing those recoverable folders back in the tree makes a delete
+        // look like it didn't take. We still show Deleted Items itself, just not its sub-folders.
+        var trashId = wellKnown.FirstOrDefault(kv => kv.Value == SpecialFolderKind.Trash).Key;
+        if (trashId == null)
+            LogService.Log($"GraphMailService: Trash folder id unresolved for account {accountId}; " +
+                           "cannot filter recoverable sub-folders out of the tree.");
+
         // Breadth-first descent: each iteration fetches the children of folders known to have them.
-        var pending = new Queue<GraphMailFolder>(all.Where(f => f.ChildFolderCount > 0));
+        var pending = new Queue<GraphMailFolder>(all.Where(f => f.ChildFolderCount > 0 && (trashId == null || f.Id != trashId)));
         while (pending.Count > 0)
         {
             var parent = pending.Dequeue();
             var children = await _client.GetAllPagesAsync<GraphMailFolder>(
                 account, $"/me/mailFolders/{parent.Id}/childFolders?$top=100&{select}", ct);
             all.AddRange(children);
-            foreach (var c in children.Where(c => c.ChildFolderCount > 0))
+            foreach (var c in children.Where(c => c.ChildFolderCount > 0 && (trashId == null || c.Id != trashId)))
                 pending.Enqueue(c);
         }
-
-        var wellKnown = _wellKnownFolders.TryGetValue(accountId, out var map) ? map : EmptyWellKnown;
 
         return all.Select(f =>
         {
@@ -237,7 +247,12 @@ public class GraphMailService : IMailService
     // ── Safe no-ops (Graph has no persistent connection / IDLE; previews are native) ──
     public Task NoOpAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
     public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult(0);
-    public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0); // real count in PR 5/6
+    public async Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default)
+    {
+        var f = await _client.GetAsync<GraphMailFolder>(
+            Account(accountId), $"/me/mailFolders/{DeletedItemsFolderId}?$select=totalItemCount", ct);
+        return f?.TotalItemCount ?? 0;
+    }
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
         Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()); // bodyPreview is fetched inline
@@ -247,39 +262,112 @@ public class GraphMailService : IMailService
     public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
     public void StopIdleWatchers() { }
 
-    // ── Mutations / attachments / folder CRUD — PR 5/6 ───────────────────────────
-    private static NotImplementedException NotYet(string member)
-        => new($"GraphMailService.{member} lands in PR 5/6.");
+    // ── Mutations / attachments / folder CRUD ────────────────────────────────────
+    // Graph well-known folder names double as folder ids in URLs.
+    private const string DeletedItemsFolderId = "deleteditems";
+    private const string RootFolderId         = "msgfolderroot";
 
-    public Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
-        => throw NotYet(nameof(MarkReadBatchAsync));
+    public async Task MarkReadBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+        foreach (var id in messageIds)
+            await _client.PatchAsync(account, $"/me/messages/{id}", new { isRead = true }, ct);
+    }
+
     public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
-        => throw NotYet(nameof(MoveToTrashAsync));
+        => MoveMessagesAsync(accountId, folderName, new[] { messageId }, DeletedItemsFolderId, ct);
+
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
-        => throw NotYet(nameof(MoveToTrashBatchAsync));
-    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
-        => throw NotYet(nameof(PermanentlyDeleteBatchAsync));
-    public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
-        => throw NotYet(nameof(EmptyTrashAsync));
-    public Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
-        => throw NotYet(nameof(AppendDraftAsync));
+        => MoveMessagesAsync(accountId, folderName, messageIds, DeletedItemsFolderId, ct);
+
+    public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+        foreach (var id in messageIds)
+            await _client.DeleteAsync(account, $"/me/messages/{id}", ct);
+    }
+
+    public async Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+        var msgs = await _client.GetAllPagesAsync<GraphMessage>(
+            account, $"/me/mailFolders/{DeletedItemsFolderId}/messages?$select=id&$top=999", ct);
+        foreach (var m in msgs)
+            await _client.DeleteAsync(account, $"/me/messages/{m.Id}", ct);
+        return msgs.Count;
+    }
+
+    public async Task<string> AppendDraftAsync(Guid accountId, ComposeModel draft, string? replaceMessageId, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+
+        // POST the new draft to /me/messages (base64, text/plain) FIRST — Graph files it under Drafts
+        // and returns the created message. Only then delete the old copy: Graph's DELETE is an
+        // immediate, unrecoverable hard delete (unlike IMAP's deferred expunge), so a failure between
+        // the two must leave the content recoverable (at worst a duplicate draft) rather than gone.
+        var mime = MimeMessageBuilder.Build(draft, account, MimeMessageBuilder.AppUserAgent);
+        var body = await MimeMessageBuilder.ToBase64BytesAsync(mime, ct);
+        var created = await _client.PostRawReadAsync<GraphMessage>(account, "/me/messages", body, "text/plain", ct);
+        var newId = created?.Id ?? string.Empty;
+
+        if (!string.IsNullOrEmpty(replaceMessageId) && !string.IsNullOrEmpty(newId))
+            await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", ct);
+
+        return newId;
+    }
+
     // Graph's /sendMail auto-saves the sent message to the Sent folder, so there is nothing to append.
     public Task AppendToSentAsync(Guid accountId, ComposeModel sent, CancellationToken ct = default)
         => Task.CompletedTask;
+
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
-        => throw NotYet(nameof(DownloadAttachmentAsync));
-    public Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
-        => throw NotYet(nameof(CopyMessagesAsync));
-    public Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
-        => throw NotYet(nameof(MoveMessagesAsync));
-    public Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
-        => throw NotYet(nameof(CreateFolderAsync));
+        // partSpecifier carries the Graph attachment id (set by MapToDetail).
+        => _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/attachments/{partSpecifier}/$value", ct);
+
+    public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+        foreach (var id in messageIds)
+            await _client.PostAsync(account, $"/me/messages/{id}/copy", new { destinationId = destinationFolder }, ct);
+    }
+
+    public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+        foreach (var id in messageIds)
+            await _client.PostAsync(account, $"/me/messages/{id}/move", new { destinationId = destinationFolder }, ct);
+    }
+
+    public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+        // null parent = account root; otherwise create under the parent's childFolders collection.
+        var path = string.IsNullOrEmpty(parentFolderName)
+            ? "/me/mailFolders"
+            : $"/me/mailFolders/{parentFolderName}/childFolders";
+        await _client.PostAsync(account, path, new { displayName = name }, ct);
+    }
+
     public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default)
-        => throw NotYet(nameof(DeleteFolderAsync));
-    public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
-        => throw NotYet(nameof(RenameFolderAsync));
+        // Graph moves a deleted folder to Deleted Items (recoverable), matching the IMAP safety behaviour.
+        => _client.DeleteAsync(Account(accountId), $"/me/mailFolders/{folderName}", ct);
+
+    public async Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default)
+    {
+        var account = Account(accountId);
+        // Rename: set the display name. Only move when a new parent is actually requested — a
+        // rename-only call (null newParentFolderName) must not POST a redundant move-to-root.
+        await _client.PatchAsync(account, $"/me/mailFolders/{folderName}", new { displayName = newName }, ct);
+        if (!string.IsNullOrEmpty(newParentFolderName))
+            await _client.PostAsync(account, $"/me/mailFolders/{folderName}/move", new { destinationId = newParentFolderName }, ct);
+    }
+
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
-        => throw NotYet(nameof(CopyFolderAsync));
+    {
+        // Graph copies the folder and all of its messages (and sub-folders) server-side in one call.
+        var destination = string.IsNullOrEmpty(destinationParentName) ? RootFolderId : destinationParentName;
+        return _client.PostAsync(Account(accountId), $"/me/mailFolders/{folderName}/copy", new { destinationId = destination }, ct);
+    }
 
     public void Dispose()
     {
