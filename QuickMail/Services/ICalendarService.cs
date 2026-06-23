@@ -18,6 +18,13 @@ public interface ICalendarService
     /// <summary>All events, sorted by start time ascending (nulls last).</summary>
     IReadOnlyList<CalendarEvent> Events { get; }
 
+    /// <summary>
+    /// Inserts or updates a single event (upsert by Uid + AccountId) and refreshes
+    /// the in-memory list. Used when an invite reply creates or updates an event
+    /// immediately, without waiting for the next harvest.
+    /// </summary>
+    Task UpsertEventAsync(CalendarEvent evt, CancellationToken ct = default);
+
     /// <summary>Updates the response status for an event and persists it.</summary>
     Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default);
 }

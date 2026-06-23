@@ -4921,6 +4921,32 @@ public partial class MainViewModel : ObservableObject
                     "TENTATIVE" => CalendarResponseStatus.Tentative,
                     _           => CalendarResponseStatus.Pending,
                 };
+
+                // Upsert the event directly from the invite data so it appears in the
+                // calendar immediately, even if the harvest hasn't run yet. The upsert
+                // preserves any existing response_status (ON CONFLICT does not touch it),
+                // so we set the status explicitly afterwards.
+                var evt = new CalendarEvent
+                {
+                    Uid              = invite.Uid,
+                    AccountId        = account.Id,
+                    Summary          = invite.Summary ?? string.Empty,
+                    Description      = invite.Description ?? string.Empty,
+                    Location         = invite.Location ?? string.Empty,
+                    Organizer        = invite.Organizer ?? string.Empty,
+                    OrganizerName    = invite.OrganizerName ?? string.Empty,
+                    StartTimeTicks   = invite.StartTime?.ToUniversalTime().Ticks,
+                    EndTimeTicks     = invite.EndTime?.ToUniversalTime().Ticks,
+                    Sequence         = invite.Sequence,
+                    Method           = invite.Method,
+                    SourceMessageId  = MessageDetail!.MessageId,
+                    SourceFolder     = MessageDetail!.FolderName,
+                    ResponseStatus   = status,
+                };
+                await _calendarService.UpsertEventAsync(evt);
+                // SetResponseStatusAsync updates the persisted row + in-memory list.
+                // Needed because the upsert's ON CONFLICT clause does not overwrite
+                // response_status (by design — harvest must not clobber user replies).
                 await _calendarService.SetResponseStatusAsync(invite.Uid, account.Id, status);
                 CalendarVm?.ApplyFiltersFromExternalUpdate();
             }

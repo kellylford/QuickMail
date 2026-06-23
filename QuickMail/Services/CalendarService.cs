@@ -44,6 +44,16 @@ public sealed class CalendarService : ICalendarService
         }
     }
 
+    public async Task UpsertEventAsync(CalendarEvent evt, CancellationToken ct = default)
+    {
+        await _provider.UpsertEventAsync(evt, ct);
+        var loaded = await _provider.LoadEventsAsync(ct);
+        lock (_lock)
+        {
+            _events = loaded;
+        }
+    }
+
     public async Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default)
     {
         await _provider.UpdateResponseStatusAsync(uid, accountId, status, ct);

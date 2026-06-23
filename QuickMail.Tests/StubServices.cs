@@ -270,6 +270,16 @@ sealed class StubCalendarService : ICalendarService
         return Task.CompletedTask;
     }
 
+    public Task UpsertEventAsync(CalendarEvent evt, CancellationToken ct = default)
+    {
+        var idx = StoredEvents.FindIndex(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
+        if (idx >= 0)
+            StoredEvents[idx] = evt;
+        else
+            StoredEvents.Add(evt);
+        return Task.CompletedTask;
+    }
+
     public Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default)
     {
         var idx = StoredEvents.FindIndex(e => e.Uid == uid && e.AccountId == accountId);
