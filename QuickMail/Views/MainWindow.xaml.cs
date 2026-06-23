@@ -726,7 +726,17 @@ public partial class MainWindow : Window
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.HasSelectedMessage
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
-                && !IsGroupTreeFocused()));
+                && !IsGroupTreeFocused()
+                && !FolderList.IsKeyboardFocusWithin)); // folder.delete owns Delete in the folder tree
+
+        // Delete on a real folder in the folder tree deletes that folder (shares the Delete gesture
+        // with mail.delete; the registry prefers whichever command is available for the focus).
+        _registry.Register(new CommandDefinition(
+            id: "folder.delete", category: "Mail", title: "Delete Folder",
+            execute: () => _ = DeleteSelectedFolderAsync(),
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => FolderList.IsKeyboardFocusWithin
+                && FolderList.SelectedItem is FolderTreeNode n && IsDeletableFolderNode(n)));
 
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
@@ -855,6 +865,13 @@ public partial class MainWindow : Window
     private void OnWindowContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         if (e.Handled) return;
+
+        // Only act as the message-list fallback. The folder tree owns its own FolderContextMenu;
+        // if the request came from there, bail so that menu opens instead of stealing it with the
+        // message menu (which would wrongly show Reply/Reply All on a folder).
+        if (e.OriginalSource is DependencyObject src && IsDescendantOf(FolderList, src))
+            return;
+
         if (_vm.IsMessagesView && MessageList.Visibility == Visibility.Visible
             && MessageList.Items.Count > 0)
         {
@@ -864,6 +881,7 @@ public partial class MainWindow : Window
             e.Handled = true;
         }
     }
+
 
     // Global key handler (PreviewKeyDown so it fires before any child can swallow the event).
     private async void OnWindowKeyDown(object sender, KeyEventArgs e)
@@ -3850,8 +3868,57 @@ public partial class MainWindow : Window
     private async void FolderContextMenu_DeleteFolder_Click(object sender, RoutedEventArgs e)
     {
         var node = GetContextMenuFolderNode(sender);
-        if (node == null) return;
-        await _vm.DeleteFolderAsync(node);
+        if (node != null)
+            await DeleteFolderWithFocusAsync(node);
+    }
+
+    // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
+    // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.
+    private async Task DeleteFolderWithFocusAsync(FolderTreeNode node)
+    {
+        var above = FindVisibleFolderNodeAbove(node);
+        // Only move focus if the delete actually happened — a cancelled confirmation must leave the
+        // user where they were.
+        if (await _vm.DeleteFolderAsync(node) && above != null)
+            FocusTreeItem(FolderList, above);
+    }
+
+    // Invoked by the folder.delete command (Delete key on the folder tree).
+    private async Task DeleteSelectedFolderAsync()
+    {
+        if (FolderList.SelectedItem is FolderTreeNode node && IsDeletableFolderNode(node))
+            await DeleteFolderWithFocusAsync(node);
+    }
+
+    // A real, deletable account folder (not a header, a virtual/aggregate folder, or a sentinel node).
+    private static bool IsDeletableFolderNode(FolderTreeNode node) =>
+        node.Folder is { } f && !node.IsHeader &&
+        f.AccountId != Guid.Empty &&
+        f.FullName.Length > 0 && f.FullName[0] != '\0';
+
+    // The folder node visually above the given one, honoring expansion: its previous sibling, or its
+    // parent when it is the first child. Null when it is the first node in the tree.
+    private FolderTreeNode? FindVisibleFolderNodeAbove(FolderTreeNode node)
+    {
+        FolderTreeNode? prev = null;
+        foreach (var n in FlattenVisibleFolderNodes(_vm.FolderTree))
+        {
+            if (ReferenceEquals(n, node)) return prev;
+            prev = n;
+        }
+        return null;
+    }
+
+    private static System.Collections.Generic.IEnumerable<FolderTreeNode> FlattenVisibleFolderNodes(
+        System.Collections.Generic.IEnumerable<FolderTreeNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            yield return n;
+            if (n.IsExpanded)
+                foreach (var c in FlattenVisibleFolderNodes(n.Children))
+                    yield return c;
+        }
     }
 
     // ── Message context menu handlers ────────────────────────────────────────
