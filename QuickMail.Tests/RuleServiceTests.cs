@@ -287,7 +287,7 @@ public class RuleServiceTests
             var accountId = Guid.NewGuid();
             var msgs = new List<MailMessageSummary> { MakeMsg(from: "alice@example.com", accountId: accountId) };
 
-            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, CancellationToken.None);
+            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, TestContext.Current.CancellationToken);
             Assert.Equal(0, count);
             Assert.False(msgs[0].IsRead); // not changed
         }
@@ -310,7 +310,7 @@ public class RuleServiceTests
             var otherAccountId = Guid.NewGuid();
             var msgs = new List<MailMessageSummary> { MakeMsg(from: "alice@example.com", accountId: otherAccountId) };
 
-            var (count, _) = await svc.ApplyRulesAsync(msgs, otherAccountId, CancellationToken.None);
+            var (count, _) = await svc.ApplyRulesAsync(msgs, otherAccountId, TestContext.Current.CancellationToken);
             Assert.Equal(0, count);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
@@ -331,7 +331,7 @@ public class RuleServiceTests
             var accountId = Guid.NewGuid();
             var msgs = new List<MailMessageSummary> { MakeMsg(from: "alice@example.com", accountId: accountId, isRead: false) };
 
-            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, CancellationToken.None);
+            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, TestContext.Current.CancellationToken);
             Assert.Equal(1, count);
             Assert.True(msgs[0].IsRead);
         }
@@ -353,7 +353,7 @@ public class RuleServiceTests
             var accountId = Guid.NewGuid();
             var msgs = new List<MailMessageSummary> { MakeMsg(from: "alice@example.com", accountId: accountId, isRead: true) };
 
-            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, CancellationToken.None);
+            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, TestContext.Current.CancellationToken);
             Assert.Equal(1, count);
             Assert.False(msgs[0].IsRead);
         }
@@ -381,7 +381,7 @@ public class RuleServiceTests
                 MakeMsg(from: "charlie@example.com", uid: 3, accountId: accountId),
             };
 
-            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, CancellationToken.None);
+            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, TestContext.Current.CancellationToken);
             Assert.Equal(2, count); // msg 1 matches rule 1, msg 2 matches rule 2
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
@@ -399,7 +399,7 @@ public class RuleServiceTests
             var accountId = Guid.NewGuid();
             var msgs = new List<MailMessageSummary> { MakeMsg(accountId: accountId) };
 
-            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, CancellationToken.None);
+            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, TestContext.Current.CancellationToken);
             Assert.Equal(0, count);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
@@ -444,7 +444,7 @@ public class RuleServiceTests
             var accountId = Guid.NewGuid();
             var msgs = new List<MailMessageSummary> { MakeMsg(from: "alice@example.com", accountId: accountId) };
 
-            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, CancellationToken.None);
+            var (count, _) = await svc.ApplyRulesAsync(msgs, accountId, TestContext.Current.CancellationToken);
             Assert.Equal(1, count);
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
