@@ -2232,6 +2232,7 @@ public partial class MainWindow : Window
             MessageId   = messageId,
             AccountId   = accountId,
             FolderName  = folder,
+            Subject     = "Calendar invitation",  // fallback; replaced when detail loads
         };
         _vm.SelectMessageCommand.Execute(summary);
     }

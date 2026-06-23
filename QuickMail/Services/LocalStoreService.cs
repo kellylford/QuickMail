@@ -589,11 +589,16 @@ public class LocalStoreService : ILocalStoreService
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
+        // LEFT JOIN so the detail can be loaded even when the MessageSummary row is
+        // missing (e.g. the message was purged from the sync range or deleted from the
+        // server, but the cached body + calendar ICS remain). Without this, opening a
+        // calendar event's source invite fails with "message not found" because the
+        // INNER JOIN returns nothing.
         cmd.CommandText = """
             SELECT d.to_addr, d.cc, d.reply_to, d.plain_body, d.html_body,
                    s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json, d.calendar_ics
             FROM MessageDetail d
-            JOIN MessageSummary s USING (unique_id, account_id, folder_name)
+            LEFT JOIN MessageSummary s USING (unique_id, account_id, folder_name)
             WHERE d.unique_id=$uid AND d.account_id=$aid AND d.folder_name=$fn;
             """;
         cmd.Parameters.AddWithValue("$uid", messageId);
@@ -634,10 +639,10 @@ public class LocalStoreService : ILocalStoreService
             ReplyTo       = r.GetString(2),
             PlainTextBody = r.GetString(3),
             HtmlBody      = r.GetString(4),
-            From          = r.GetString(5),
-            Subject       = r.GetString(6),
-            Date          = new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
-            IsRead        = r.GetInt64(8) != 0,
+            From          = r.IsDBNull(5) ? string.Empty : r.GetString(5),
+            Subject       = r.IsDBNull(6) ? "(no subject)" : r.GetString(6),
+            Date          = r.IsDBNull(7) ? DateTimeOffset.MinValue : new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
+            IsRead        = !r.IsDBNull(8) && r.GetInt64(8) != 0,
             Attachments   = attachments,
             CalendarIcs   = calendarIcs,
             CalendarInvite = string.IsNullOrWhiteSpace(calendarIcs) ? null : IcsModel.Parse(calendarIcs),
