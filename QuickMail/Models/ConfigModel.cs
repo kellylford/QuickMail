@@ -120,7 +120,10 @@ public class ConfigModel
     /// <summary>Whether declined calendar events appear in the calendar list. Default off.</summary>
     public bool ShowDeclinedEvents { get; set; } = false;
 
-    /// <summary>Whether the calendar pane was open when the app last closed. Restored on startup.</summary>
+    /// <summary>
+    /// Obsolete: the calendar is now a folder in the folder tree, not a toggle pane.
+    /// Retained only so older config.ini files do not break on parse.
+    /// </summary>
     public bool CalendarPaneOpen { get; set; } = false;
 
     // ── Custom hotkey overrides ──────────────────────────────────────────────────

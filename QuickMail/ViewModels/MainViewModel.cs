@@ -129,6 +129,13 @@ public partial class MainViewModel : ObservableObject
         DisplayName = "All Flagged Mail"
     };
 
+    /// <summary>Virtual folder sentinel that opens the calendar event list.</summary>
+    public static readonly MailFolderModel CalendarFolder = new()
+    {
+        FullName    = "\u0000Calendar",
+        DisplayName = "Calendar"
+    };
+
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
 
@@ -200,7 +207,8 @@ public partial class MainViewModel : ObservableObject
                string.Equals(folder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
-               string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal);
+               string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
     }
 
     // ── Saved views ───────────────────────────────────────────────────────────────
@@ -249,6 +257,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedFolder))]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarView))]
     private MailFolderModel? _selectedFolder;
 
     [ObservableProperty]
@@ -318,6 +327,13 @@ public partial class MainViewModel : ObservableObject
     public bool IsConversationsView => ViewMode == ViewMode.Conversations;
     public bool IsFromView          => ViewMode == ViewMode.From;
     public bool IsToView            => ViewMode == ViewMode.To;
+
+    /// <summary>
+    /// True when the calendar virtual folder is the active selection and the
+    /// calendar event list is shown in place of the message list.
+    /// </summary>
+    public bool IsCalendarView => SelectedFolder != null &&
+        string.Equals(SelectedFolder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
 
     public ObservableCollection<FlagDefinition> FlagDefinitions { get; } = [];
 
@@ -479,14 +495,10 @@ public partial class MainViewModel : ObservableObject
     /// <summary>Current message open mode, read from config on startup.</summary>
     public MessageOpenMode MessageOpenMode { get; private set; } = MessageOpenMode.ReadingPane;
 
-    // ── Calendar pane ─────────────────────────────────────────────────────────────
+    // ── Calendar ──────────────────────────────────────────────────────────────────
 
-    /// <summary>ViewModel for the calendar pane. Null when no calendar service is wired (e.g. tests).</summary>
+    /// <summary>ViewModel for the calendar event list. Null when no calendar service is wired (e.g. tests).</summary>
     public CalendarViewModel? CalendarVm { get; private set; }
-
-    /// <summary>True when the calendar pane is visible. Toggled by the view.calendar command.</summary>
-    [ObservableProperty]
-    private bool _isCalendarPaneOpen;
 
     // ── Tab commands ──────────────────────────────────────────────────────────────
 
@@ -700,11 +712,10 @@ public partial class MainViewModel : ObservableObject
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
 
-        // Calendar pane — only when a calendar service is wired (skipped in tests).
+        // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
         {
             CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents);
-            _isCalendarPaneOpen = cfg.CalendarPaneOpen;
         }
 
         _syncService.FolderSynced    += OnFolderSynced;
@@ -1237,7 +1248,7 @@ public partial class MainViewModel : ObservableObject
 
         registry.Register(new CommandDefinition(
             id: "view.calendar", category: "View", title: "Calendar",
-            execute: () => ToggleCalendarPaneCommand.Execute(null),
+            execute: () => OpenCalendarCommand.Execute(null),
             defaultKey: Key.C, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => CalendarVm != null));
 
@@ -2042,6 +2053,17 @@ public partial class MainViewModel : ObservableObject
     {
         var roots = new List<FolderTreeNode>();
 
+        // "Calendar" — top-level virtual folder that opens the event list.
+        // Shown only when a calendar service is wired (skipped in tests / online-only builds).
+        if (CalendarVm != null)
+        {
+            roots.Add(new FolderTreeNode
+            {
+                Folder = CalendarFolder,
+                Label  = CalendarFolder.DisplayName,
+            });
+        }
+
         // "Views" group — shown only when the user has saved at least one view.
         if (SavedViews.Count > 0)
         {
@@ -2403,6 +2425,13 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        // Intercept the calendar virtual folder — it shows the event list, not messages.
+        if (string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal))
+        {
+            await SelectCalendarAsync();
+            return;
+        }
+
         _suppressFilterRebuild = true;
         ActiveFilter        = MessageFilter.All;
         ActiveDayLimit      = null;
@@ -2423,6 +2452,35 @@ public partial class MainViewModel : ObservableObject
                 SelectedAccount = Accounts.FirstOrDefault(a => a.Id == folder.AccountId) ?? SelectedAccount;
             await FetchFolderAsync();
         }
+    }
+
+    /// <summary>
+    /// Activates the calendar view: clears message-list state, loads calendar events,
+    /// and requests focus to the event list. Called when the user selects the
+    /// Calendar virtual folder from the folder tree.
+    /// </summary>
+    private async Task SelectCalendarAsync()
+    {
+        if (CalendarVm == null) return;
+
+        _suppressFilterRebuild = true;
+        ActiveFilter        = MessageFilter.All;
+        ActiveDayLimit      = null;
+        SetActiveFlagFilterId(null);
+        SearchText          = string.Empty;
+        IsSearchActive      = false;
+        ActiveView          = null;
+        SelectedFolder      = CalendarFolder;
+        MessageDetail       = null;
+        IsMessageOpen       = false;
+        _suppressFilterRebuild = false;
+
+        // Clear the message list so stale messages are not announced while the
+        // calendar list is visible.
+        SetMessages([]);
+
+        await CalendarVm.LoadAsync();
+        CalendarPaneFocusRequested?.Invoke();
     }
 
     [RelayCommand]
@@ -4874,35 +4932,23 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
-    // ── Calendar pane toggle ─────────────────────────────────────────────────────
+    // ── Calendar folder activation ───────────────────────────────────────────────
 
     /// <summary>
-    /// Raised when the calendar pane should receive focus (View concern).
-    /// The View subscribes and moves focus to the calendar list.
+    /// Raised when the calendar list should receive focus (View concern).
+    /// The View subscribes and moves focus to the calendar event list.
     /// </summary>
     public event Action? CalendarPaneFocusRequested;
 
+    /// <summary>
+    /// Opens the calendar by selecting the Calendar virtual folder, exactly as if
+    /// the user had pressed Enter on it in the folder tree. Bound to Ctrl+Shift+C.
+    /// </summary>
     [RelayCommand]
-    private void ToggleCalendarPane()
+    private async Task OpenCalendarAsync()
     {
         if (CalendarVm == null) return;
-        IsCalendarPaneOpen = !IsCalendarPaneOpen;
-
-        // Persist the open/closed state.
-        var cfg = _configService.Load();
-        cfg.CalendarPaneOpen = IsCalendarPaneOpen;
-        _configService.Save(cfg);
-
-        if (IsCalendarPaneOpen)
-        {
-            // Load events and request focus to the pane.
-            _ = CalendarVm.LoadAsync();
-            CalendarPaneFocusRequested?.Invoke();
-        }
-        else
-        {
-            Announce("Calendar closed.", AnnouncementCategory.Result);
-        }
+        await SelectFolderCommand.ExecuteAsync(CalendarFolder);
     }
 
     /// <summary>
@@ -4920,8 +4966,8 @@ public partial class MainViewModel : ObservableObject
             {
                 if (_calendarService == null || CalendarVm == null) return;
                 await _calendarService.RefreshAsync();
-                // Only re-apply filters if the pane is open (no UI churn if it's closed).
-                if (IsCalendarPaneOpen)
+                // Only re-apply filters if the calendar view is active (no UI churn otherwise).
+                if (IsCalendarView)
                     CalendarVm.ApplyFiltersFromExternalUpdate();
             });
         }, null, Timeout.Infinite, Timeout.Infinite);

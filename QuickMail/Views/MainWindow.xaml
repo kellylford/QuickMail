@@ -1040,10 +1040,44 @@
                     <!-- Standard list view and conversation tree occupy the same space;
                          only one is visible at a time based on ViewMode. -->
                     <Grid>
+                    <!-- Calendar event list — shown in place of the message list when the
+                         Calendar virtual folder is selected. Behaves like the flat message
+                         list: Up/Down to browse, Enter to open the source invite, T to
+                         filter to today, F5 to refresh, Escape to return to the folder tree. -->
+                    <ListBox x:Name="CalendarList"
+                             AutomationProperties.Name="Calendar events"
+                             Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                             ItemsSource="{Binding CalendarVm.Events}"
+                             SelectedItem="{Binding CalendarVm.SelectedEvent, Mode=TwoWay}"
+                             BorderThickness="0"
+                             TabIndex="3"
+                             KeyboardNavigation.TabNavigation="Once"
+                             KeyboardNavigation.DirectionalNavigation="Contained"
+                             VirtualizingPanel.IsVirtualizing="True"
+                             VirtualizingPanel.VirtualizationMode="Recycling"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             GotKeyboardFocus="CalendarList_GotKeyboardFocus"
+                             PreviewKeyDown="CalendarList_PreviewKeyDown">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                <Setter Property="AutomationProperties.Name" Value="{Binding DisplayLine}"/>
+                                <Setter Property="Padding" Value="8,4"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding DisplayLine}" FontSize="11" Foreground="DimGray" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
                     <ListView x:Name="MessageList"
                               AutomationProperties.Name="Messages"
                               ContextMenu="{StaticResource MessageContextMenu}"
-                              Visibility="{Binding IsMessagesView, Converter={StaticResource BoolToVisibilityConverter}}"
                               ItemsSource="{Binding Messages}"
                               SelectedItem="{Binding SelectedMessage, Mode=TwoWay}"
                               SelectionMode="Extended"
@@ -1055,6 +1089,16 @@
                               PreviewTextInput="MessageList_PreviewTextInput"
                               PreviewKeyDown="MessageList_PreviewKeyDown"
                               MouseLeftButtonUp="MessageList_MouseLeftButtonUp">
+                        <ListView.Style>
+                            <Style TargetType="ListView">
+                                <Setter Property="Visibility" Value="{Binding IsMessagesView, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCalendarView}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ListView.Style>
                         <ListView.Resources>
                             <!-- Column headers are mouse-clickable but not keyboard tab stops -->
                             <Style TargetType="GridViewColumnHeader">
@@ -1175,7 +1219,6 @@
                     <!-- Conversation tree view: one root node per subject group, children are individual messages. -->
                     <TreeView x:Name="ConversationTree"
                               AutomationProperties.Name="Messages"
-                              Visibility="{Binding IsConversationsView, Converter={StaticResource BoolToVisibilityConverter}}"
                               ItemsSource="{Binding Conversations}"
                               BorderThickness="0"
                               TabIndex="3"
@@ -1190,6 +1233,16 @@
                               PreviewKeyDown="ConversationTree_PreviewKeyDown"
                               PreviewMouseRightButtonDown="ConversationTree_PreviewMouseRightButtonDown"
                               ContextMenuOpening="ConversationTree_ContextMenuOpening">
+                        <TreeView.Style>
+                            <Style TargetType="TreeView">
+                                <Setter Property="Visibility" Value="{Binding IsConversationsView, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCalendarView}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.Style>
                         <TreeView.Resources>
                             <!-- Style for level-2 message rows (children of a conversation node) -->
                             <Style x:Key="MessageTreeItemStyle" TargetType="TreeViewItem"
@@ -1303,7 +1356,6 @@
                     <!-- From view: one root node per sender, children are individual messages. -->
                     <TreeView x:Name="SenderGroupTree"
                               AutomationProperties.Name="Messages"
-                              Visibility="{Binding IsFromView, Converter={StaticResource BoolToVisibilityConverter}}"
                               ItemsSource="{Binding SenderGroups}"
                               BorderThickness="0"
                               TabIndex="3"
@@ -1318,6 +1370,16 @@
                               PreviewKeyDown="SenderGroupTree_PreviewKeyDown"
                               PreviewMouseRightButtonDown="SenderGroupTree_PreviewMouseRightButtonDown"
                               ContextMenuOpening="SenderGroupTree_ContextMenuOpening">
+                        <TreeView.Style>
+                            <Style TargetType="TreeView">
+                                <Setter Property="Visibility" Value="{Binding IsFromView, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCalendarView}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.Style>
                         <TreeView.Resources>
                             <!-- Style for level-2 message rows (children of a sender group node) -->
                             <Style x:Key="SenderMessageTreeItemStyle" TargetType="TreeViewItem"
@@ -1433,7 +1495,6 @@
                     <!-- To view: one root node per recipient, children are individual messages. -->
                     <TreeView x:Name="ToGroupTree"
                               AutomationProperties.Name="Messages"
-                              Visibility="{Binding IsToView, Converter={StaticResource BoolToVisibilityConverter}}"
                               ItemsSource="{Binding ToGroups}"
                               BorderThickness="0"
                               TabIndex="3"
@@ -1448,6 +1509,16 @@
                               PreviewKeyDown="ToGroupTree_PreviewKeyDown"
                               PreviewMouseRightButtonDown="ToGroupTree_PreviewMouseRightButtonDown"
                               ContextMenuOpening="ToGroupTree_ContextMenuOpening">
+                        <TreeView.Style>
+                            <Style TargetType="TreeView">
+                                <Setter Property="Visibility" Value="{Binding IsToView, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsCalendarView}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TreeView.Style>
                         <TreeView.Resources>
                             <!-- Style for level-2 message rows (children of a recipient group node) -->
                             <Style x:Key="ToMessageTreeItemStyle" TargetType="TreeViewItem"
@@ -1562,10 +1633,6 @@
 
             </DockPanel>
 
-            <!-- Calendar pane — overlays the entire right column when open -->
-            <local:CalendarPane x:Name="CalendarPaneControl"
-                                Visibility="{Binding IsCalendarPaneOpen, Converter={StaticResource BoolToVisibilityConverter}}"
-                                DataContext="{Binding CalendarVm}"/>
             </Grid>
         </Grid>
 

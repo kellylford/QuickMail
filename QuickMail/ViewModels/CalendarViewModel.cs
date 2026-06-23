@@ -156,13 +156,13 @@ public partial class CalendarViewModel : ObservableObject
         var count = VisibleEvents.Count;
         if (count == 0)
         {
-            Announce("Calendar. No events. Press Escape to close.", AnnouncementCategory.Status);
+            Announce("Calendar. No events.", AnnouncementCategory.Status);
         }
         else
         {
             Announce($"Calendar. {count} upcoming event{(count == 1 ? "" : "s")}. " +
                      "Use Up and Down arrows to browse. Press Enter to open the invitation. " +
-                     "Press T to filter to today. Press Escape to close.",
+                     "Press T to filter to today. Press Escape to return to the folder list.",
                      AnnouncementCategory.Hint);
         }
     }

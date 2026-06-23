@@ -68,6 +68,7 @@ public class CalendarViewModelTests
         Assert.Empty(vm.VisibleEvents);
         Assert.Equal(AnnouncementCategory.Status, cat);
         Assert.Contains("No events", announced);
+        Assert.DoesNotContain("Escape", announced);
     }
 
     [Fact]

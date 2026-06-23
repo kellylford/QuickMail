@@ -257,9 +257,9 @@ public partial class MainWindow : Window
 
         vm.TabPromoteToWindowRequested += PromoteTabToWindow;
 
-        // Calendar pane subscriptions
+        // Calendar list subscriptions
         vm.CalendarPaneFocusRequested += () => Dispatcher.InvokeAsync(
-            () => CalendarPaneControl.FocusEventList(), System.Windows.Threading.DispatcherPriority.Input);
+            () => FocusCalendarList(), System.Windows.Threading.DispatcherPriority.Input);
         if (vm.CalendarVm != null)
         {
             vm.CalendarVm.AnnouncementRequested += (text, category) =>
@@ -969,8 +969,10 @@ public partial class MainWindow : Window
                     e.Handled = true;
                     await CycleFocusAsync(true);
                     return;
-                case Key.Escape when _vm.IsCalendarPaneOpen && CalendarPaneControl.IsKeyboardFocusWithin:
-                    _vm.ToggleCalendarPaneCommand.Execute(null);
+                case Key.Escape when _vm.IsCalendarView && CalendarList.IsKeyboardFocusWithin:
+                    // Escape from the calendar list returns focus to the folder tree,
+                    // matching the behaviour of Escape from the message list.
+                    FocusFolderTree();
                     e.Handled = true;
                     return;
                 case Key.Escape when _vm.IsMessageOpen:
@@ -1475,6 +1477,83 @@ public partial class MainWindow : Window
         MessageList.ScrollIntoView(MessageList.Items[idx]);
 
         Dispatcher.InvokeAsync(() => FocusItemAt(idx), DispatcherPriority.Input);
+    }
+
+    // Focuses the calendar event list, selecting the first event if none is selected.
+    // Called by FocusActiveMessagePanel when the calendar virtual folder is active,
+    // and by the CalendarPaneFocusRequested event after SelectCalendarAsync loads events.
+    private void FocusCalendarList()
+    {
+        if (CalendarList.Items.Count == 0) { CalendarList.Focus(); return; }
+        if (CalendarList.SelectedIndex < 0) CalendarList.SelectedIndex = 0;
+
+        var idx = CalendarList.SelectedIndex;
+        CalendarList.ScrollIntoView(CalendarList.Items[idx]);
+
+        Dispatcher.InvokeAsync(() => FocusCalendarItemAt(idx), DispatcherPriority.Input);
+    }
+
+    private void FocusCalendarItemAt(int idx)
+    {
+        if (idx >= CalendarList.Items.Count) { CalendarList.Focus(); return; }
+
+        if (CalendarList.ItemContainerGenerator.ContainerFromIndex(idx) is ListBoxItem row)
+        {
+            row.Focus();
+            return;
+        }
+
+        // VirtualizingStackPanel hasn't realized the container yet.
+        void OnStatusChanged(object? s, EventArgs e)
+        {
+            if (CalendarList.ItemContainerGenerator.Status != GeneratorStatus.ContainersGenerated)
+                return;
+            CalendarList.ItemContainerGenerator.StatusChanged -= OnStatusChanged;
+            Dispatcher.InvokeAsync(() =>
+            {
+                if (CalendarList.ItemContainerGenerator.ContainerFromIndex(idx) is ListBoxItem r)
+                    r.Focus();
+                else
+                    CalendarList.Focus();
+            }, DispatcherPriority.Input);
+        }
+        CalendarList.ItemContainerGenerator.StatusChanged += OnStatusChanged;
+    }
+
+    // Ensures the first event is selected when focus arrives and nothing is selected.
+    private void CalendarList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (CalendarList.Items.Count > 0 && CalendarList.SelectedIndex < 0)
+            CalendarList.SelectedIndex = 0;
+    }
+
+    // Enter: open the source invite; T: toggle today filter; F5: refresh.
+    // Escape is handled at the window level (returns focus to the folder tree).
+    private void CalendarList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var vm = _vm.CalendarVm;
+        if (vm == null) return;
+
+        switch (e.Key)
+        {
+            case Key.Enter:
+                if (vm.SelectedEvent != null)
+                {
+                    vm.OpenSourceMessageCommand.Execute(vm.SelectedEvent);
+                    e.Handled = true;
+                }
+                break;
+
+            case Key.T:
+                vm.ToggleTodayFilterCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Key.F5:
+                vm.RefreshCommand.Execute(null);
+                e.Handled = true;
+                break;
+        }
     }
 
     private void FocusItemAt(int idx)
@@ -2200,7 +2279,9 @@ public partial class MainWindow : Window
     private void FocusActiveMessagePanel()
     {
         LogService.Debug($"[FOCUS] FocusActiveMessagePanel viewMode={_vm.ViewMode} {FocusInfo()}");
-        if (_vm.IsConversationsView)
+        if (_vm.IsCalendarView)
+            FocusCalendarList();
+        else if (_vm.IsConversationsView)
             FocusConversationTreeFirstItem();
         else if (_vm.IsFromView)
             FocusSenderGroupTreeFirstItem();
@@ -2418,10 +2499,9 @@ public partial class MainWindow : Window
         if (AccountList.IsKeyboardFocusWithin)  return 1;
         if (FolderList.IsKeyboardFocusWithin)   return 2;
         if (SearchBox.IsKeyboardFocusWithin)    return 6;
-        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin) return 3;
+        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin) return 3;
         if (TabStrip.IsKeyboardFocusWithin)     return 7; // between message list and reading pane
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
-        if (CalendarPaneControl.IsKeyboardFocusWithin) return 8; // calendar pane
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;
         return 0;
     }
@@ -2437,7 +2517,6 @@ public partial class MainWindow : Window
             case 6: SearchBox.Focus(); break;
             case 3: FocusActiveMessagePanel(); break;
             case 7: TabStrip.Focus(); break;
-            case 8: CalendarPaneControl.FocusEventList(); break;
             case 4:
                 if (_vm.IsMessageOpen && _webViewReady)
                 {
@@ -2464,7 +2543,6 @@ public partial class MainWindow : Window
         panes.Add(3);
         if (_vm.ShowTabStrip) panes.Add(7);   // tab strip between message list and reading pane
         if (_vm.IsMessageOpen && _webViewReady) panes.Add(4);
-        if (_vm.IsCalendarPaneOpen) panes.Add(8); // calendar pane before status bar
         panes.Add(5); // StatusBar always included
 
         int current    = GetFocusedPaneIndex();
