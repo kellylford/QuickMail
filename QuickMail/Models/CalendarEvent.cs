@@ -44,6 +44,9 @@ public partial class CalendarEvent : ObservableObject
     [ObservableProperty]
     private CalendarResponseStatus _responseStatus = CalendarResponseStatus.Pending;
 
+    /// <summary>True when the organizer cancelled the event (ICS METHOD:CANCEL).</summary>
+    public bool IsCancelled => ResponseStatus == CalendarResponseStatus.Cancelled;
+
     /// <summary>Start time as a nullable DateTime (local), for display and sorting.</summary>
     public DateTime? StartTime => StartTimeTicks.HasValue
         ? new DateTime(StartTimeTicks.Value, DateTimeKind.Utc).ToLocalTime()

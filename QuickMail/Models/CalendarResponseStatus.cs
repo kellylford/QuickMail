@@ -17,4 +17,7 @@ public enum CalendarResponseStatus
 
     /// <summary>User declined the invite.</summary>
     Declined = 3,
+
+    /// <summary>Event was cancelled by the organizer (METHOD:CANCEL).</summary>
+    Cancelled = 4,
 }

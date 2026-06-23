@@ -160,6 +160,21 @@ public class CalendarViewModelTests
     }
 
     [Fact]
+    public async Task LoadAsync_HidesCancelledEvents()
+    {
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("accepted", DateTime.Today.AddHours(10), CalendarResponseStatus.Accepted),
+            MakeEvent("cancelled", DateTime.Today.AddHours(14), CalendarResponseStatus.Cancelled),
+        });
+
+        await vm.LoadAsync();
+
+        Assert.Single(vm.VisibleEvents);
+        Assert.Equal("accepted", vm.VisibleEvents[0].Uid);
+    }
+
+    [Fact]
     public async Task OpenSourceMessage_RaisesEventWithCorrectArgs()
     {
         var evt = MakeEvent("e1", DateTime.Today.AddHours(10));

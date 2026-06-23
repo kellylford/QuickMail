@@ -57,6 +57,10 @@ public sealed class LocalCacheCalendarProvider : ICalendarProvider
             }
             if (model == null || string.IsNullOrEmpty(model.Uid)) continue;
 
+            // METHOD:CANCEL means the organizer cancelled the event. Mark it as
+            // Cancelled so the calendar list can filter it out and announce it.
+            var isCancel = string.Equals(model.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
+
             var evt = new CalendarEvent
             {
                 Uid              = model.Uid,
@@ -72,8 +76,15 @@ public sealed class LocalCacheCalendarProvider : ICalendarProvider
                 Method           = model.Method,
                 SourceMessageId  = messageId,
                 SourceFolder     = folder,
+                ResponseStatus   = isCancel ? CalendarResponseStatus.Cancelled : CalendarResponseStatus.Pending,
             };
             await _store.UpsertCalendarEventAsync(evt);
+
+            // The upsert's ON CONFLICT clause does not overwrite response_status
+            // (by design, so re-harvesting doesn't clobber the user's reply). But a
+            // cancellation must override any prior status, so update it explicitly.
+            if (isCancel)
+                await _store.UpdateCalendarResponseStatusAsync(model.Uid, accountId, CalendarResponseStatus.Cancelled);
         }
     }
 }

@@ -218,4 +218,51 @@ public class CalendarStoreTests : IDisposable
         Assert.Equal("msg-ics", rows[0].MessageId);
         Assert.Contains("ics-test", rows[0].IcsText);
     }
+
+    [Fact]
+    public async Task Harvest_CancelMethod_SetsResponseStatusToCancelled()
+    {
+        var accountId = Guid.NewGuid();
+
+        // First: store a REQUEST invite and accept it.
+        var requestDetail = new MailMessageDetail
+        {
+            MessageId = "msg-request",
+            AccountId = accountId,
+            FolderName = "INBOX",
+            From = "org@example.com",
+            Subject = "Invite",
+            Date = DateTimeOffset.UtcNow,
+            CalendarIcs = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:cancel-test\r\nSUMMARY:Team standup\r\nDTSTART:20260701T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR",
+        };
+        await _store.UpsertDetailAsync(requestDetail);
+
+        var provider = new LocalCacheCalendarProvider(_store);
+        await provider.HarvestAsync();
+        await _store.UpdateCalendarResponseStatusAsync("cancel-test", accountId, CalendarResponseStatus.Accepted);
+
+        var events = await _store.LoadCalendarEventsAsync();
+        Assert.Single(events);
+        Assert.Equal(CalendarResponseStatus.Accepted, events[0].ResponseStatus);
+
+        // Now: the organizer sends a CANCEL with the same UID.
+        var cancelDetail = new MailMessageDetail
+        {
+            MessageId = "msg-cancel",
+            AccountId = accountId,
+            FolderName = "INBOX",
+            From = "org@example.com",
+            Subject = "Cancelled: Team standup",
+            Date = DateTimeOffset.UtcNow,
+            CalendarIcs = "BEGIN:VCALENDAR\r\nMETHOD:CANCEL\r\nBEGIN:VEVENT\r\nUID:cancel-test\r\nSUMMARY:Team standup\r\nDTSTART:20260701T100000Z\r\nEND:VEVENT\r\nEND:VCALENDAR",
+        };
+        await _store.UpsertDetailAsync(cancelDetail);
+
+        // Re-harvest: the CANCEL should override the Accepted status.
+        await provider.HarvestAsync();
+
+        events = await _store.LoadCalendarEventsAsync();
+        Assert.Single(events);
+        Assert.Equal(CalendarResponseStatus.Cancelled, events[0].ResponseStatus);
+    }
 }

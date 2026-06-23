@@ -4788,8 +4788,10 @@ public partial class MainViewModel : ObservableObject
 
     // ── Calendar invite commands ─────────────────────────────────────────────────
 
-    /// <summary>True when the open message contains a calendar invite.</summary>
-    public bool HasCalendarInvite => IsMessageOpen && MessageDetail?.CalendarInvite != null;
+    /// <summary>True when the open message contains a calendar invite that can be responded to.</summary>
+    public bool HasCalendarInvite => IsMessageOpen
+        && MessageDetail?.CalendarInvite != null
+        && !string.Equals(MessageDetail.CalendarInvite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Builds an accessible HTML event card for display in the WebView2 reading pane.
@@ -4805,6 +4807,14 @@ public partial class MainViewModel : ObservableObject
         sb.Append(System.Net.WebUtility.HtmlEncode(invite.DisplaySummary));
         sb.Append("\">");
         sb.Append("<div style=\"font-weight:bold;font-size:15px;margin-bottom:8px;\">Event Invitation</div>");
+
+        // Cancellation notice — shown instead of the accept/decline buttons when
+        // the organizer sent METHOD:CANCEL.
+        var isCancel = string.Equals(invite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
+        if (isCancel)
+        {
+            sb.Append("<div style=\"font-weight:bold;color:#d13438;margin-bottom:8px;\">This event has been cancelled by the organizer.</div>");
+        }
 
         if (!string.IsNullOrWhiteSpace(invite.Summary))
         {
@@ -4852,18 +4862,21 @@ public partial class MainViewModel : ObservableObject
             sb.Append("</div>");
         }
 
-        // Buttons: Accept, Tentative, Decline
-        sb.Append("<div style=\"margin-top:8px;\">");
-        sb.Append("<a href=\"quickmail:ics-accept\" role=\"button\" aria-label=\"Accept invitation\" ");
-        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
-        sb.Append("background:#107c10;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Accept</a>");
-        sb.Append("<a href=\"quickmail:ics-tentative\" role=\"button\" aria-label=\"Tentatively accept invitation\" ");
-        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
-        sb.Append("background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Tentative</a>");
-        sb.Append("<a href=\"quickmail:ics-decline\" role=\"button\" aria-label=\"Decline invitation\" ");
-        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-bottom:4px;");
-        sb.Append("background:#d13438;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Decline</a>");
-        sb.Append("</div>");
+        // Buttons: Accept, Tentative, Decline — hidden for cancellations.
+        if (!isCancel)
+        {
+            sb.Append("<div style=\"margin-top:8px;\">");
+            sb.Append("<a href=\"quickmail:ics-accept\" role=\"button\" aria-label=\"Accept invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+            sb.Append("background:#107c10;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Accept</a>");
+            sb.Append("<a href=\"quickmail:ics-tentative\" role=\"button\" aria-label=\"Tentatively accept invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+            sb.Append("background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Tentative</a>");
+            sb.Append("<a href=\"quickmail:ics-decline\" role=\"button\" aria-label=\"Decline invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-bottom:4px;");
+            sb.Append("background:#d13438;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Decline</a>");
+            sb.Append("</div>");
+        }
 
         sb.Append("</div>");
         return sb.ToString();

@@ -134,6 +134,10 @@ public partial class CalendarViewModel : ObservableObject
         if (!_showDeclinedEvents)
             filtered = filtered.Where(e => e.ResponseStatus != CalendarResponseStatus.Declined);
 
+        // Always hide cancelled events — the organizer cancelled the meeting,
+        // so it should not clutter the calendar list.
+        filtered = filtered.Where(e => e.ResponseStatus != CalendarResponseStatus.Cancelled);
+
         // Today filter: events starting today (local date).
         if (IsTodayFilter)
         {
