@@ -42,7 +42,7 @@ public class FlagServiceTests
         {
             var msg = new MailMessageSummary { MessageId = "1", AccountId = Guid.NewGuid(), FolderName = "INBOX" };
 
-            var def = await svc.ToggleDefaultFlagAsync(msg);
+            var def = await svc.ToggleDefaultFlagAsync(msg, TestContext.Current.CancellationToken);
 
             // Should return the built-in flag definition when setting.
             Assert.NotNull(def);
@@ -65,7 +65,7 @@ public class FlagServiceTests
                 FlagId     = FlagDefinition.BuiltInFlagId.ToString(),
             };
 
-            var def = await svc.ToggleDefaultFlagAsync(msg);
+            var def = await svc.ToggleDefaultFlagAsync(msg, TestContext.Current.CancellationToken);
 
             // Should return null when clearing.
             Assert.Null(def);
@@ -81,7 +81,7 @@ public class FlagServiceTests
         {
             // Write corrupt JSON
             var flagsFile = Path.Combine(dir, "flags.json");
-            await File.WriteAllTextAsync(flagsFile, "{{NOT_VALID_JSON");
+            await File.WriteAllTextAsync(flagsFile, "{{NOT_VALID_JSON", TestContext.Current.CancellationToken);
 
             var defs = await svc.LoadFlagDefinitionsAsync();
 

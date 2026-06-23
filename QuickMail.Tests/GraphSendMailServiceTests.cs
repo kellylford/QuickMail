@@ -59,7 +59,7 @@ public class GraphSendMailServiceTests
         var (svc, handler) = Make();
         var compose = new ComposeModel { To = "alice@x.com", Subject = "Hi there", Body = "Hello" };
 
-        await svc.SendAsync(compose, GraphAccount(), null);
+        await svc.SendAsync(compose, GraphAccount(), null, TestContext.Current.CancellationToken);
 
         Assert.Equal("https://graph.microsoft.com/v1.0/me/sendMail", handler.Url);
         Assert.Equal("text/plain", handler.ContentType);
@@ -73,7 +73,7 @@ public class GraphSendMailServiceTests
     {
         var (svc, handler) = Make();
 
-        await svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", GraphAccount(), null, "organizer@x.com");
+        await svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", GraphAccount(), null, "organizer@x.com", TestContext.Current.CancellationToken);
 
         Assert.Equal("https://graph.microsoft.com/v1.0/me/sendMail", handler.Url);
         var mime = DecodeMime(handler.Body!);
@@ -88,7 +88,7 @@ public class GraphSendMailServiceTests
         // A descriptive ArgumentException at the call site beats an NRE from inside MimeKit.
         var (svc, handler) = Make();
         await Assert.ThrowsAsync<ArgumentException>(
-            () => svc.SendIcsReplyAsync(null!, GraphAccount(), null, "organizer@x.com"));
+            () => svc.SendIcsReplyAsync(null!, GraphAccount(), null, "organizer@x.com", TestContext.Current.CancellationToken));
         Assert.Null(handler.Url); // never reached the network
     }
 
@@ -97,7 +97,7 @@ public class GraphSendMailServiceTests
     {
         var (svc, handler) = Make();
         await Assert.ThrowsAsync<ArgumentException>(
-            () => svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", GraphAccount(), null, ""));
+            () => svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", GraphAccount(), null, "", TestContext.Current.CancellationToken));
         Assert.Null(handler.Url);
     }
 
@@ -109,6 +109,6 @@ public class GraphSendMailServiceTests
         var (svc, _) = Make(HttpStatusCode.InternalServerError);
         var compose = new ComposeModel { To = "alice@x.com", Subject = "Hi", Body = "Hello" };
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => svc.SendAsync(compose, GraphAccount(), null));
+        await Assert.ThrowsAsync<HttpRequestException>(() => svc.SendAsync(compose, GraphAccount(), null, TestContext.Current.CancellationToken));
     }
 }

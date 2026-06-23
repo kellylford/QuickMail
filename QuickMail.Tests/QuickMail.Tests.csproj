@@ -9,8 +9,11 @@
     <IsTestProject>true</IsTestProject>
     <!-- STA is required for WPF object instantiation -->
     <ApartmentState>STA</ApartmentState>
-    <!-- Match the main project's RID so the ProjectReference output path resolves correctly -->
+    <!-- Match the main project's RID and self-contained mode so the ProjectReference output
+         path resolves correctly and NETSDK1151 is satisfied (xunit.v3 sets UseAppHost=true
+         via its build targets, which triggers the self-contained compatibility check) -->
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
     <!-- Treat the most dangerous nullable warnings as errors so the CI catches
          null-dereference risks before they become runtime crashes. -->
     <WarningsAsErrors>CS8602;CS8604;CS8618</WarningsAsErrors>
@@ -20,10 +23,10 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="10.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.6.0" />
-    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
     <!-- STA-thread fact attribute for WPF tests -->
-    <PackageReference Include="Xunit.StaFact" Version="1.1.11" />
+    <PackageReference Include="Xunit.StaFact" Version="3.0.13" />
   </ItemGroup>
 
   <ItemGroup>

@@ -75,7 +75,7 @@ public class TemplateServiceTests
         {
             // Write garbage to the templates file
             var filePath = Path.Combine(dir, "templates.json");
-            await File.WriteAllTextAsync(filePath, "this is not valid json {{{");
+            await File.WriteAllTextAsync(filePath, "this is not valid json {{{", TestContext.Current.CancellationToken);
 
             var templates = await service.LoadAllAsync();
 
@@ -93,7 +93,7 @@ public class TemplateServiceTests
         try
         {
             var filePath = Path.Combine(dir, "templates.json");
-            await File.WriteAllTextAsync(filePath, "");
+            await File.WriteAllTextAsync(filePath, "", TestContext.Current.CancellationToken);
 
             var templates = await service.LoadAllAsync();
 
