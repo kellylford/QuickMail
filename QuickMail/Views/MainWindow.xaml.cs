@@ -1520,11 +1520,21 @@ public partial class MainWindow : Window
         CalendarList.ItemContainerGenerator.StatusChanged += OnStatusChanged;
     }
 
-    // Ensures the first event is selected when focus arrives and nothing is selected.
+    // Ensures the first event is selected and focus lands on the actual row
+    // (not the ListBox shell) so built-in arrow-key navigation engages.
+    // Mirrors List_GotKeyboardFocus used by the message list.
     private void CalendarList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        if (CalendarList.Items.Count > 0 && CalendarList.SelectedIndex < 0)
+        if (CalendarList.SelectedIndex < 0 && CalendarList.Items.Count > 0)
             CalendarList.SelectedIndex = 0;
+
+        // If focus landed on the ListBox container itself rather than on a row
+        // (e.g. via F6 or Ctrl+3), redirect into the selected row so arrow keys work.
+        if (ReferenceEquals(e.NewFocus, CalendarList))
+        {
+            var idx = CalendarList.SelectedIndex >= 0 ? CalendarList.SelectedIndex : 0;
+            Dispatcher.InvokeAsync(() => FocusCalendarItemAt(idx), DispatcherPriority.Input);
+        }
     }
 
     // Enter: open the source invite; T: toggle today filter; F5: refresh.
@@ -1533,6 +1543,15 @@ public partial class MainWindow : Window
     {
         var vm = _vm.CalendarVm;
         if (vm == null) return;
+
+        // Prevent arrow keys from escaping an empty ListBox to the toolbar/status bar.
+        if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
+            && Keyboard.Modifiers == ModifierKeys.None
+            && CalendarList.Items.Count == 0)
+        {
+            e.Handled = true;
+            return;
+        }
 
         switch (e.Key)
         {
