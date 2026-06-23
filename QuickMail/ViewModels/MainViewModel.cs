@@ -20,6 +20,7 @@ namespace QuickMail.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly IMailService _imap;
+    private readonly IChangeNotifier? _changeNotifier;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
@@ -657,9 +658,11 @@ public partial class MainViewModel : ObservableObject
         IRuleService ruleService,
         ISendMailService smtpService,
         bool onlineMode = false,
-        IFlagService? flagService = null)
+        IFlagService? flagService = null,
+        IChangeNotifier? changeNotifier = null)
     {
         _imap            = imap;
+        _changeNotifier  = changeNotifier;
         _accountService  = accountService;
         _credentials     = credentials;
         _localStore      = localStore;
@@ -687,7 +690,8 @@ public partial class MainViewModel : ObservableObject
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.RulesApplied    += OnRulesApplied;
-        _imap.InboxNewMailDetected += OnInboxNewMailDetected;
+        if (_changeNotifier != null)
+            _changeNotifier.InboxNewMailDetected += OnInboxNewMailDetected;
         if (_flagService != null)
         {
             _onFlagDefinitionsChanged = (_, _) => _ = OnFlagDefinitionsChangedAsync();
@@ -1293,19 +1297,20 @@ public partial class MainViewModel : ObservableObject
         if (_cachedFolders.Count == 0) return;
 
         var accountList = Accounts.ToList();
-        _imap.StartIdleWatchers(accountList, ct);
+        _changeNotifier?.StartWatchers(accountList, ct);
 
-        // Subscribe to account reachability changes (IDLE watcher connection lost/restored).
+        // Subscribe to account reachability changes (watcher connection lost/restored).
         // No announcement — this is internal bookkeeping.
-        _imap.AccountReachabilityChanged += (accountId, isReachable) =>
-        {
-            var account = accountList.FirstOrDefault(a => a.Id == accountId);
-            if (account != null)
+        if (_changeNotifier != null)
+            _changeNotifier.AccountReachabilityChanged += (accountId, isReachable) =>
             {
-                var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                ApplyAccountStatus(account, folders);
-            }
-        };
+                var account = accountList.FirstOrDefault(a => a.Id == accountId);
+                if (account != null)
+                {
+                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                    ApplyAccountStatus(account, folders);
+                }
+            };
 
         // Subscribe to sync progress updates.
         // Announce every 10 folders to avoid excessive screen reader chatter.

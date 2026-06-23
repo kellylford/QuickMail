@@ -15,6 +15,7 @@ public partial class App : Application
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
     private TemplateService? _templateService;
+    private ChangeNotifierRouter? _changeNotifier;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -93,6 +94,11 @@ public partial class App : Application
             IMailService BackendFor(AccountModel a)
                 => a.BackendKind == BackendKind.MicrosoftGraph ? graphBackend : imapBackend;
 
+            // Change-notification router (new-mail + reachability). IMAP's strategy is a held IDLE
+            // connection, implemented by ImapMailService itself because it is bound to the IMAP
+            // connection lifecycle. Graph delta-poll notification arrives in PR 7b.
+            _changeNotifier = new ChangeNotifierRouter(imapBackend);
+
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
                 localStore.Initialize();
@@ -125,7 +131,7 @@ public partial class App : Application
 
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService);
+                onlineMode: onlineMode, flagService: flagService, changeNotifier: _changeNotifier);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
@@ -144,6 +150,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _changeNotifier?.Dispose();
         _graphSendMail?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();

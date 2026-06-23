@@ -48,11 +48,6 @@ public class GraphMailService : IMailService
         _config = config;
     }
 
-#pragma warning disable CS0067 // events are part of IMailService; Graph raises them in PR 7
-    public event Action<Guid, bool>? AccountReachabilityChanged;
-    public event Action<Guid>? InboxNewMailDetected;
-#pragma warning restore CS0067
-
     // ── Connect ────────────────────────────────────────────────────────────────────
     public async Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
     {
@@ -256,11 +251,6 @@ public class GraphMailService : IMailService
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
         Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>()); // bodyPreview is fetched inline
-
-    // Graph delivers new-mail notifications via delta polling (PR 7), not IMAP IDLE. No-op here so a
-    // mixed account list doesn't throw at startup.
-    public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
-    public void StopIdleWatchers() { }
 
     // ── Mutations / attachments / folder CRUD ────────────────────────────────────
     // Graph well-known folder names double as folder ids in URLs.
