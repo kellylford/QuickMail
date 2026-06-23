@@ -2627,7 +2627,12 @@ public partial class MainViewModel : ObservableObject
                     summary.AccountId, summary.FolderName, summary.MessageId)
                     ?? await _imap.GetMessageDetailAsync(
                         summary.AccountId, summary.FolderName, summary.MessageId, token);
-                _ = _localStore.UpsertDetailAsync(detail);
+                // Await (not fire-and-forget) so the detail is definitely in the cache
+                // before the user acts on the message (e.g. accepts a calendar invite).
+                // The calendar harvest reads calendar_ics from this row; if the store
+                // hasn't completed, the event won't be harvestable and opening it from
+                // the calendar list will fail with "message not found".
+                await _localStore.UpsertDetailAsync(detail);
             }
 
             if (loadVersion != _messageLoadVersion || SelectedMessage != summary)

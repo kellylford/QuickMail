@@ -2221,6 +2221,8 @@ public partial class MainWindow : Window
     /// </summary>
     private void OpenSourceMessageFromCalendar(Guid accountId, string folder, string messageId)
     {
+        LogService.Debug($"[CALENDAR] OpenSourceMessageFromCalendar accountId={accountId} folder={folder} messageId={messageId}");
+
         // Find the account and select it so SelectMessageAsync has the right context.
         var account = _vm.Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account != null)
@@ -2241,6 +2243,15 @@ public partial class MainWindow : Window
     private void ReturnFocusToMessageList()
     {
         LogService.Debug($"[FOCUS] ReturnFocusToMessageList viewMode={_vm.ViewMode} {FocusInfo()}");
+
+        // When the calendar view is active, return focus to the calendar list,
+        // not the (collapsed) message list.
+        if (_vm.IsCalendarView)
+        {
+            FocusCalendarList();
+            return;
+        }
+
         if (_vm.IsConversationsView)
         {
             FocusTreeSelectedOrFirst(ConversationTree);
