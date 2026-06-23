@@ -1006,6 +1006,9 @@ public partial class MainViewModel : ObservableObject
                 InsertMessageSorted(msg);
                 existingById[key] = msg;
             }
+
+            RemoveVanishedMessages(newMessages);
+
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             if (!OnlineMode && newMessages.Count > 0)
@@ -1812,6 +1815,51 @@ public partial class MainViewModel : ObservableObject
         existing.IsServerFlagged = fresh.IsServerFlagged;
     }
 
+    /// <summary>
+    /// Removes messages that vanished from the server within the fetched range (deleted in another
+    /// client). Scoped per folder to the returned date range so messages older than the fetch window
+    /// — simply not returned — are not wrongly dropped. Call after an aggregate/virtual merge.
+    /// </summary>
+    private void RemoveVanishedMessages(IReadOnlyList<MailMessageSummary> newMessages)
+    {
+        var fetchedKeys = new HashSet<(string, Guid, string)>();
+        var minDateByFolder = new Dictionary<(Guid, string), DateTimeOffset>();
+        foreach (var m in newMessages)
+        {
+            fetchedKeys.Add((m.MessageId, m.AccountId, m.FolderName));
+            var fk = (m.AccountId, m.FolderName);
+            if (!minDateByFolder.TryGetValue(fk, out var min) || m.Date < min)
+                minDateByFolder[fk] = m.Date;
+        }
+
+        var vanished = Messages.Where(m =>
+            minDateByFolder.TryGetValue((m.AccountId, m.FolderName), out var min) &&
+            m.Date >= min &&
+            !fetchedKeys.Contains((m.MessageId, m.AccountId, m.FolderName))).ToList();
+        if (vanished.Count == 0) return;
+
+        // Mirror RemoveFromActiveViewAsync: remove from the backing _rawMessages too (else they
+        // reappear when ApplyFiltersAndSearch rebuilds Messages), decrement account unread counts,
+        // and clear the reading pane if the open message was one of the removed ones. Messages in the
+        // visible list are always present in _rawMessages, so they are safe to count for removal.
+        var vanishedKeys = new HashSet<(string, Guid, string)>(
+            vanished.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
+        _rawMessages.RemoveAll(m => vanishedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
+
+        bool removedOpen = vanished.Any(m => m == SelectedMessage);
+        foreach (var m in vanished)
+            Messages.Remove(m);
+
+        UpdateAccountCountsAfterRemoval(vanished);
+
+        if (removedOpen)
+        {
+            SelectedMessage = Messages.Count > 0 ? Messages[0] : null;
+            MessageDetail   = null;
+            IsMessageOpen   = false;
+        }
+    }
+
     // ── Account / folder selection ───────────────────────────────────────────────
 
     /// <summary>
@@ -2007,6 +2055,13 @@ public partial class MainViewModel : ObservableObject
 
     private void BuildFolderTree()
     {
+        // Capture which folders the user has expanded so the rebuild (which creates fresh, collapsed
+        // node objects) doesn't collapse the whole tree on a refresh.
+        var expandedKeys = new HashSet<string>(StringComparer.Ordinal);
+        if (FolderTree != null)
+            foreach (var n in FlattenAllNodes(FolderTree))
+                if (n.IsExpanded) expandedKeys.Add(NodeKey(n));
+
         var roots = new List<FolderTreeNode>();
 
         // "Views" group — shown only when the user has saved at least one view.
@@ -2102,7 +2157,26 @@ public partial class MainViewModel : ObservableObject
             }
         }
 
+        // Restore expansion captured above (additive: header groups keep their built-in expanded
+        // default; previously-expanded folders are re-expanded).
+        foreach (var n in FlattenAllNodes(roots))
+            if (expandedKeys.Contains(NodeKey(n)))
+                n.IsExpanded = true;
+
         FolderTree = new ObservableCollection<FolderTreeNode>(roots);
+    }
+
+    private static string NodeKey(FolderTreeNode n) =>
+        n.Folder != null ? $"F:{n.Folder.AccountId}:{n.Folder.FullName}" : $"H:{n.Label}";
+
+    private static IEnumerable<FolderTreeNode> FlattenAllNodes(IEnumerable<FolderTreeNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            yield return n;
+            foreach (var c in FlattenAllNodes(n.Children))
+                yield return c;
+        }
     }
 
     // ── View-mode grouping ────────────────────────────────────────────────────────
@@ -2661,6 +2735,10 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task RefreshAsync()
     {
+        // Pick up folders created/removed on the server since the last full sync. Only rebuilds the
+        // tree when the folder set actually changed, so an ordinary refresh doesn't disturb focus.
+        await RefreshAllFolderListsAsync();
+
         if (ActiveView != null)
         {
             await ApplyViewAsync(ActiveView);
@@ -2670,6 +2748,49 @@ public partial class MainViewModel : ObservableObject
             await FetchVirtualAsync(SelectedFolder!);
         else if (SelectedFolder != null && SelectedFolder.AccountId != Guid.Empty)
             await FetchFolderAsync();
+    }
+
+    /// <summary>
+    /// Re-fetches every connected account's folder list and rebuilds the tree only if a folder was
+    /// added or removed on the server, so a manual refresh surfaces server-side folder changes.
+    /// </summary>
+    private async Task RefreshAllFolderListsAsync()
+    {
+        // Fetch every account's folder list concurrently — they're independent, and a single slow or
+        // timed-out account shouldn't serialise the whole refresh (mirrors FetchAllMailAsync).
+        var fetches = Accounts.ToList().Select(async account =>
+        {
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                return (account, folders: (List<MailFolderModel>?)await _imap.GetFoldersAsync(account.Id, cts.Token));
+            }
+            catch (OperationCanceledException) { return (account, folders: (List<MailFolderModel>?)null); }
+            catch (Exception ex) { LogService.Log($"RefreshFolderList {account.AccountLabel}", ex); return (account, folders: (List<MailFolderModel>?)null); }
+        });
+        var results = await Task.WhenAll(fetches);
+
+        // Apply results on the continuation (UI thread): mutate the cache and rebuild only if a
+        // folder was actually added or removed, so an ordinary refresh doesn't disturb focus.
+        var changed = false;
+        foreach (var (account, folders) in results)
+        {
+            if (folders == null) continue;
+            if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folders))
+            {
+                _cachedFolders[account.Id] = folders;
+                ApplyAccountStatus(account, folders);
+                changed = true;
+            }
+        }
+        if (changed) RebuildFolderListFromCache();
+    }
+
+    private static bool FolderSetChanged(List<MailFolderModel> previous, List<MailFolderModel> current)
+    {
+        if (previous.Count != current.Count) return true;
+        var prevNames = previous.Select(f => f.FullName).ToHashSet(StringComparer.Ordinal);
+        return current.Any(f => !prevNames.Contains(f.FullName));
     }
 
     [RelayCommand]
@@ -2793,6 +2914,8 @@ public partial class MainViewModel : ObservableObject
                 InsertMessageSorted(msg);
                 existingById[key] = msg;
             }
+
+            RemoveVanishedMessages(newMessages);
 
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                 return;
@@ -3196,6 +3319,8 @@ public partial class MainViewModel : ObservableObject
                 InsertMessageSorted(msg);
                 existingById[key] = msg;
             }
+
+            RemoveVanishedMessages(newMessages);
 
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
@@ -4068,6 +4193,61 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Removes a folder and its descendants from the cached folder list so the tree reflects a
+    /// delete immediately, without waiting on an eventually-consistent server re-fetch. Graph models
+    /// children by <see cref="MailFolderModel.ParentId"/>; IMAP encodes them in the separator path.
+    /// </summary>
+    private void RemoveFolderFromCacheOptimistically(Guid accountId, MailFolderModel deleted)
+    {
+        if (!_cachedFolders.TryGetValue(accountId, out var folders)) return;
+
+        // Graph: collect the whole subtree transitively by ParentId.
+        var removeIds = new HashSet<string>(StringComparer.Ordinal) { deleted.FullName };
+        bool grew = true;
+        while (grew)
+        {
+            grew = false;
+            foreach (var f in folders)
+                if (f.ParentId != null && removeIds.Contains(f.ParentId) && removeIds.Add(f.FullName))
+                    grew = true;
+        }
+
+        // IMAP: children live under "Parent/Child" or "Parent.Child", so also drop by path prefix.
+        bool ShouldRemove(MailFolderModel f) =>
+            removeIds.Contains(f.FullName) ||
+            f.FullName.StartsWith(deleted.FullName + "/", StringComparison.OrdinalIgnoreCase) ||
+            f.FullName.StartsWith(deleted.FullName + ".", StringComparison.OrdinalIgnoreCase);
+
+        _cachedFolders[accountId] = folders.Where(f => !ShouldRemove(f)).ToList();
+
+        // Keep the flat Folders collection in sync — it backs saved-view resolution, the folder
+        // picker, and the next tree rebuild, so a stale entry there would resolve a deleted folder.
+        for (int i = Folders.Count - 1; i >= 0; i--)
+            if (Folders[i].AccountId == accountId && !Folders[i].IsHeader && ShouldRemove(Folders[i]))
+                Folders.RemoveAt(i);
+
+        // Re-sum the account's unread badge from the pruned folder list.
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account != null) ApplyAccountStatus(account, _cachedFolders[accountId]);
+    }
+
+    /// <summary>
+    /// Removes a node from the live <see cref="FolderTree"/> in place (without a full rebuild), so the
+    /// rest of the tree keeps its expansion state. Returns true if the node was found and removed.
+    /// </summary>
+    private bool RemoveNodeFromTree(FolderTreeNode target) => RemoveNodeFromChildren(FolderTree, target);
+
+    private static bool RemoveNodeFromChildren(ObservableCollection<FolderTreeNode> siblings, FolderTreeNode target)
+    {
+        for (int i = 0; i < siblings.Count; i++)
+        {
+            if (ReferenceEquals(siblings[i], target)) { siblings.RemoveAt(i); return true; }
+            if (RemoveNodeFromChildren(siblings[i].Children, target)) return true;
+        }
+        return false;
+    }
+
     /// <summary>Creates a new folder under the given parent and refreshes the tree.</summary>
     public async Task CreateFolderAndRefreshAsync(Guid accountId, string? parentFolderName, string name)
     {
@@ -4143,13 +4323,15 @@ public partial class MainViewModel : ObservableObject
     /// Moves all messages in the folder to Trash, deletes the folder, and refreshes the tree.
     /// Shows a confirmation dialog first.
     /// </summary>
-    public async Task DeleteFolderAsync(FolderTreeNode node)
+    /// <summary>Deletes the folder. Returns true if the deletion happened, false if it was
+    /// cancelled at the confirmation prompt, pre-condition-failed, or errored.</summary>
+    public async Task<bool> DeleteFolderAsync(FolderTreeNode node)
     {
-        if (node.Folder == null || node.IsHeader) return;
+        if (node.Folder == null || node.IsHeader) return false;
 
         if (ConfirmationRequested?.Invoke(
             $"Delete the folder '{node.Label}' and move all its messages to Trash?",
-            "Delete Folder") != true) return;
+            "Delete Folder") != true) return false;
 
         StatusText = $"Deleting folder '{node.Label}'…";
         IsBusy     = true;
@@ -4165,13 +4347,21 @@ public partial class MainViewModel : ObservableObject
                 await FetchAllMailAsync();
             }
 
-            await RefreshFolderListAsync(node.Folder.AccountId);
+            // Remove the folder immediately rather than via a server re-fetch — Graph is eventually
+            // consistent and can still return the just-deleted folder for a brief window. Drop it
+            // from the flat cache (so a later full rebuild stays correct) and splice the node out of
+            // the live tree in place, which preserves every other folder's expansion state and lets
+            // the View land focus on the neighbour (a full rebuild would collapse and reset focus).
+            RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
+            RemoveNodeFromTree(node);
             StatusText = $"Folder '{node.Label}' deleted.";
+            return true;
         }
         catch (Exception ex)
         {
             StatusText = $"Failed to delete folder: {ex.Message}";
             LogService.Log("DeleteFolder", ex);
+            return false;
         }
         finally { IsBusy = false; }
     }

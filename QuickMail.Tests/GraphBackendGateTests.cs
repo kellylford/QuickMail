@@ -135,7 +135,7 @@ public class MailServiceRouterTests
         var graphAcct = Guid.NewGuid();
         router.RegisterAccount(graphAcct, graph);
 
-        await router.GetFoldersAsync(graphAcct);
+        await router.GetFoldersAsync(graphAcct, TestContext.Current.CancellationToken);
 
         Assert.Equal(graphAcct, graph.LastAccountId);
         Assert.Null(imap.LastAccountId);
@@ -149,7 +149,7 @@ public class MailServiceRouterTests
         var router = new MailServiceRouter(new IMailService[] { imap, graph }); // imap is the default
 
         var unknown = Guid.NewGuid();
-        await router.GetFoldersAsync(unknown);
+        await router.GetFoldersAsync(unknown, TestContext.Current.CancellationToken);
 
         Assert.Equal(unknown, imap.LastAccountId);
         Assert.Null(graph.LastAccountId);
@@ -189,7 +189,7 @@ public class MailServiceRouterTests
         router.RegisterAccount(imapAcct.Id, imap);
         router.RegisterAccount(graphAcct.Id, graph);
 
-        router.StartIdleWatchers(new[] { imapAcct, graphAcct });
+        router.StartIdleWatchers(new[] { imapAcct, graphAcct }, TestContext.Current.CancellationToken);
 
         Assert.NotNull(imap.LastIdleAccounts);
         Assert.NotNull(graph.LastIdleAccounts);

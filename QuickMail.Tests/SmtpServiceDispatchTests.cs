@@ -36,7 +36,7 @@ public class SmtpServiceDispatchTests
         var svc = new SmtpService(new StubOAuthService(), graph);
         var account = new AccountModel { Id = Guid.NewGuid(), Username = "me@contoso.com", BackendKind = BackendKind.MicrosoftGraph };
 
-        await svc.SendAsync(new ComposeModel(), account, null);
+        await svc.SendAsync(new ComposeModel(), account, null, TestContext.Current.CancellationToken);
 
         Assert.True(graph.SendCalled); // dispatched, never reached the MailKit SmtpClient
     }
@@ -48,7 +48,7 @@ public class SmtpServiceDispatchTests
         var svc = new SmtpService(new StubOAuthService(), graph);
         var account = new AccountModel { Id = Guid.NewGuid(), Username = "me@contoso.com", BackendKind = BackendKind.MicrosoftGraph };
 
-        await svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", account, null, "organizer@x.com");
+        await svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", account, null, "organizer@x.com", TestContext.Current.CancellationToken);
 
         Assert.True(graph.IcsCalled);
     }
@@ -62,7 +62,7 @@ public class SmtpServiceDispatchTests
         // connect. The point is the dispatch must NOT hand an IMAP account to the Graph sender.
         var account = new AccountModel { Id = Guid.NewGuid(), Username = "me@example.com", BackendKind = BackendKind.ImapSmtp, SmtpHost = "" };
 
-        await Assert.ThrowsAnyAsync<Exception>(() => svc.SendAsync(new ComposeModel(), account, "pw"));
+        await Assert.ThrowsAnyAsync<Exception>(() => svc.SendAsync(new ComposeModel(), account, "pw", TestContext.Current.CancellationToken));
 
         Assert.False(graph.SendCalled); // took the MailKit path, not the Graph dispatch
     }
@@ -75,7 +75,7 @@ public class SmtpServiceDispatchTests
         var account = new AccountModel { Id = Guid.NewGuid(), Username = "me@example.com", BackendKind = BackendKind.ImapSmtp, SmtpHost = "" };
 
         await Assert.ThrowsAnyAsync<Exception>(
-            () => svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", account, "pw", "organizer@x.com"));
+            () => svc.SendIcsReplyAsync("BEGIN:VCALENDAR\nEND:VCALENDAR", account, "pw", "organizer@x.com", TestContext.Current.CancellationToken));
 
         Assert.False(graph.IcsCalled); // took the MailKit path, not the Graph dispatch
     }
