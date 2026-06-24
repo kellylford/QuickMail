@@ -22,6 +22,13 @@ public partial class MailMessageDetail : MailMessageSummary
     public IcsModel? CalendarInvite { get; set; }
 
     /// <summary>
+    /// Raw ICS text from the text/calendar MIME part, persisted in the MessageDetail table
+    /// so <c>LocalCacheCalendarProvider</c> can harvest events without re-fetching from IMAP.
+    /// Empty string when the message has no calendar part.
+    /// </summary>
+    public string CalendarIcs { get; set; } = string.Empty;
+
+    /// <summary>
     /// Compose mode stored in the X-QuickMail-Compose-Mode header when this message was saved as a
     /// QuickMail draft. PlainText for messages not authored by QuickMail or authored before 0.7.2.
     /// </summary>

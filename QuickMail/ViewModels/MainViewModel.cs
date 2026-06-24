@@ -31,6 +31,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IRuleService _ruleService;
     private readonly ISendMailService _smtp;
     private readonly IFlagService? _flagService;
+    private readonly ICalendarService? _calendarService;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -43,6 +44,10 @@ public partial class MainViewModel : ObservableObject
     private const int PrefetchRadiusAroundOpen = 5;
     private const int PrefetchTopOnFolderLoad  = 10;
     private CancellationTokenSource? _bgSyncCts;
+
+    // Debounced calendar harvest: re-harvests events 2s after the last FolderSynced
+    // event so we don't harvest on every folder during a multi-folder sync.
+    private System.Threading.Timer? _calendarHarvestTimer;
 
     /// <summary>
     /// Cancels and disposes the old CTS, creates a new one, and outputs its token.
@@ -124,6 +129,13 @@ public partial class MainViewModel : ObservableObject
         DisplayName = "All Flagged Mail"
     };
 
+    /// <summary>Virtual folder sentinel that opens the calendar event list.</summary>
+    public static readonly MailFolderModel CalendarFolder = new()
+    {
+        FullName    = "\u0000Calendar",
+        DisplayName = "Calendar"
+    };
+
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
 
@@ -195,7 +207,8 @@ public partial class MainViewModel : ObservableObject
                string.Equals(folder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
-               string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal);
+               string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
     }
 
     // ── Saved views ───────────────────────────────────────────────────────────────
@@ -244,6 +257,7 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedFolder))]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    [NotifyPropertyChangedFor(nameof(IsCalendarView))]
     private MailFolderModel? _selectedFolder;
 
     [ObservableProperty]
@@ -313,6 +327,13 @@ public partial class MainViewModel : ObservableObject
     public bool IsConversationsView => ViewMode == ViewMode.Conversations;
     public bool IsFromView          => ViewMode == ViewMode.From;
     public bool IsToView            => ViewMode == ViewMode.To;
+
+    /// <summary>
+    /// True when the calendar virtual folder is the active selection and the
+    /// calendar event list is shown in place of the message list.
+    /// </summary>
+    public bool IsCalendarView => SelectedFolder != null &&
+        string.Equals(SelectedFolder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
 
     public ObservableCollection<FlagDefinition> FlagDefinitions { get; } = [];
 
@@ -473,6 +494,11 @@ public partial class MainViewModel : ObservableObject
 
     /// <summary>Current message open mode, read from config on startup.</summary>
     public MessageOpenMode MessageOpenMode { get; private set; } = MessageOpenMode.ReadingPane;
+
+    // ── Calendar ──────────────────────────────────────────────────────────────────
+
+    /// <summary>ViewModel for the calendar event list. Null when no calendar service is wired (e.g. tests).</summary>
+    public CalendarViewModel? CalendarVm { get; private set; }
 
     // ── Tab commands ──────────────────────────────────────────────────────────────
 
@@ -657,7 +683,8 @@ public partial class MainViewModel : ObservableObject
         IRuleService ruleService,
         ISendMailService smtpService,
         bool onlineMode = false,
-        IFlagService? flagService = null)
+        IFlagService? flagService = null,
+        ICalendarService? calendarService = null)
     {
         _imap            = imap;
         _accountService  = accountService;
@@ -671,6 +698,7 @@ public partial class MainViewModel : ObservableObject
         _ruleService     = ruleService;
         _smtp            = smtpService;
         _flagService     = flagService;
+        _calendarService = calendarService;
         OnlineMode       = onlineMode;
 
         var cfg = _configService.Load();
@@ -683,6 +711,12 @@ public partial class MainViewModel : ObservableObject
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
+
+        // Calendar — only when a calendar service is wired (skipped in tests).
+        if (_calendarService != null)
+        {
+            CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents);
+        }
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
@@ -1216,6 +1250,12 @@ public partial class MainViewModel : ObservableObject
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         registry.Register(new CommandDefinition(
+            id: "view.calendar", category: "View", title: "Calendar",
+            execute: () => OpenCalendarCommand.Execute(null),
+            defaultKey: Key.C, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => CalendarVm != null));
+
+        registry.Register(new CommandDefinition(
             id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
             execute: () => CreateRuleFromMessageCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
@@ -1571,6 +1611,10 @@ public partial class MainViewModel : ObservableObject
             var n = Messages.Count;
             StatusText = n == 0 ? "No messages" : $"{n} {(n == 1 ? "message" : "messages")}";
         }
+
+        // Debounced calendar harvest: re-harvest events 2s after the last sync event
+        // so we don't harvest on every folder during a multi-folder sync.
+        ScheduleCalendarHarvest();
 
         RebuildActiveGroupView();
     }
@@ -2064,6 +2108,17 @@ public partial class MainViewModel : ObservableObject
 
         var roots = new List<FolderTreeNode>();
 
+        // "Calendar" — top-level virtual folder that opens the event list.
+        // Shown only when a calendar service is wired (skipped in tests / online-only builds).
+        if (CalendarVm != null)
+        {
+            roots.Add(new FolderTreeNode
+            {
+                Folder = CalendarFolder,
+                Label  = CalendarFolder.DisplayName,
+            });
+        }
+
         // "Views" group — shown only when the user has saved at least one view.
         if (SavedViews.Count > 0)
         {
@@ -2444,6 +2499,13 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
+        // Intercept the calendar virtual folder — it shows the event list, not messages.
+        if (string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal))
+        {
+            await SelectCalendarAsync();
+            return;
+        }
+
         _suppressFilterRebuild = true;
         ActiveFilter        = MessageFilter.All;
         ActiveDayLimit      = null;
@@ -2464,6 +2526,35 @@ public partial class MainViewModel : ObservableObject
                 SelectedAccount = Accounts.FirstOrDefault(a => a.Id == folder.AccountId) ?? SelectedAccount;
             await FetchFolderAsync();
         }
+    }
+
+    /// <summary>
+    /// Activates the calendar view: clears message-list state, loads calendar events,
+    /// and requests focus to the event list. Called when the user selects the
+    /// Calendar virtual folder from the folder tree.
+    /// </summary>
+    private async Task SelectCalendarAsync()
+    {
+        if (CalendarVm == null) return;
+
+        _suppressFilterRebuild = true;
+        ActiveFilter        = MessageFilter.All;
+        ActiveDayLimit      = null;
+        SetActiveFlagFilterId(null);
+        SearchText          = string.Empty;
+        IsSearchActive      = false;
+        ActiveView          = null;
+        SelectedFolder      = CalendarFolder;
+        MessageDetail       = null;
+        IsMessageOpen       = false;
+        _suppressFilterRebuild = false;
+
+        // Clear the message list so stale messages are not announced while the
+        // calendar list is visible.
+        SetMessages([]);
+
+        await CalendarVm.LoadAsync();
+        CalendarPaneFocusRequested?.Invoke();
     }
 
     [RelayCommand]
@@ -2610,7 +2701,12 @@ public partial class MainViewModel : ObservableObject
                     summary.AccountId, summary.FolderName, summary.MessageId)
                     ?? await _imap.GetMessageDetailAsync(
                         summary.AccountId, summary.FolderName, summary.MessageId, token);
-                _ = _localStore.UpsertDetailAsync(detail);
+                // Await (not fire-and-forget) so the detail is definitely in the cache
+                // before the user acts on the message (e.g. accepts a calendar invite).
+                // The calendar harvest reads calendar_ics from this row; if the store
+                // hasn't completed, the event won't be harvestable and opening it from
+                // the calendar list will fail with "message not found".
+                await _localStore.UpsertDetailAsync(detail);
             }
 
             if (loadVersion != _messageLoadVersion || SelectedMessage != summary)
@@ -4887,8 +4983,10 @@ public partial class MainViewModel : ObservableObject
 
     // ── Calendar invite commands ─────────────────────────────────────────────────
 
-    /// <summary>True when the open message contains a calendar invite.</summary>
-    public bool HasCalendarInvite => IsMessageOpen && MessageDetail?.CalendarInvite != null;
+    /// <summary>True when the open message contains a calendar invite that can be responded to.</summary>
+    public bool HasCalendarInvite => IsMessageOpen
+        && MessageDetail?.CalendarInvite != null
+        && !string.Equals(MessageDetail.CalendarInvite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Builds an accessible HTML event card for display in the WebView2 reading pane.
@@ -4904,6 +5002,14 @@ public partial class MainViewModel : ObservableObject
         sb.Append(System.Net.WebUtility.HtmlEncode(invite.DisplaySummary));
         sb.Append("\">");
         sb.Append("<div style=\"font-weight:bold;font-size:15px;margin-bottom:8px;\">Event Invitation</div>");
+
+        // Cancellation notice — shown instead of the accept/decline buttons when
+        // the organizer sent METHOD:CANCEL.
+        var isCancel = string.Equals(invite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
+        if (isCancel)
+        {
+            sb.Append("<div style=\"font-weight:bold;color:#d13438;margin-bottom:8px;\">This event has been cancelled by the organizer.</div>");
+        }
 
         if (!string.IsNullOrWhiteSpace(invite.Summary))
         {
@@ -4951,18 +5057,21 @@ public partial class MainViewModel : ObservableObject
             sb.Append("</div>");
         }
 
-        // Buttons: Accept, Tentative, Decline
-        sb.Append("<div style=\"margin-top:8px;\">");
-        sb.Append("<a href=\"quickmail:ics-accept\" role=\"button\" aria-label=\"Accept invitation\" ");
-        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
-        sb.Append("background:#107c10;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Accept</a>");
-        sb.Append("<a href=\"quickmail:ics-tentative\" role=\"button\" aria-label=\"Tentatively accept invitation\" ");
-        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
-        sb.Append("background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Tentative</a>");
-        sb.Append("<a href=\"quickmail:ics-decline\" role=\"button\" aria-label=\"Decline invitation\" ");
-        sb.Append("style=\"display:inline-block;padding:6px 14px;margin-bottom:4px;");
-        sb.Append("background:#d13438;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Decline</a>");
-        sb.Append("</div>");
+        // Buttons: Accept, Tentative, Decline — hidden for cancellations.
+        if (!isCancel)
+        {
+            sb.Append("<div style=\"margin-top:8px;\">");
+            sb.Append("<a href=\"quickmail:ics-accept\" role=\"button\" aria-label=\"Accept invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+            sb.Append("background:#107c10;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Accept</a>");
+            sb.Append("<a href=\"quickmail:ics-tentative\" role=\"button\" aria-label=\"Tentatively accept invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+            sb.Append("background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Tentative</a>");
+            sb.Append("<a href=\"quickmail:ics-decline\" role=\"button\" aria-label=\"Decline invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-bottom:4px;");
+            sb.Append("background:#d13438;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Decline</a>");
+            sb.Append("</div>");
+        }
 
         sb.Append("</div>");
         return sb.ToString();
@@ -5009,11 +5118,94 @@ public partial class MainViewModel : ObservableObject
 
             var eventTitle = invite.Summary ?? "calendar event";
             Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
+
+            // Update the calendar event's response status so the calendar pane reflects the reply.
+            if (_calendarService != null && !string.IsNullOrEmpty(invite.Uid))
+            {
+                var status = partStat switch
+                {
+                    "ACCEPTED"  => CalendarResponseStatus.Accepted,
+                    "DECLINED"  => CalendarResponseStatus.Declined,
+                    "TENTATIVE" => CalendarResponseStatus.Tentative,
+                    _           => CalendarResponseStatus.Pending,
+                };
+
+                // Upsert the event directly from the invite data so it appears in the
+                // calendar immediately, even if the harvest hasn't run yet. The upsert
+                // preserves any existing response_status (ON CONFLICT does not touch it),
+                // so we set the status explicitly afterwards.
+                var evt = new CalendarEvent
+                {
+                    Uid              = invite.Uid,
+                    AccountId        = account.Id,
+                    Summary          = invite.Summary ?? string.Empty,
+                    Description      = invite.Description ?? string.Empty,
+                    Location         = invite.Location ?? string.Empty,
+                    Organizer        = invite.Organizer ?? string.Empty,
+                    OrganizerName    = invite.OrganizerName ?? string.Empty,
+                    StartTimeTicks   = invite.StartTime?.ToUniversalTime().Ticks,
+                    EndTimeTicks     = invite.EndTime?.ToUniversalTime().Ticks,
+                    Sequence         = invite.Sequence,
+                    Method           = invite.Method,
+                    SourceMessageId  = MessageDetail!.MessageId,
+                    SourceFolder     = MessageDetail!.FolderName,
+                    ResponseStatus   = status,
+                };
+                await _calendarService.UpsertEventAsync(evt);
+                // SetResponseStatusAsync updates the persisted row + in-memory list.
+                // Needed because the upsert's ON CONFLICT clause does not overwrite
+                // response_status (by design — harvest must not clobber user replies).
+                await _calendarService.SetResponseStatusAsync(invite.Uid, account.Id, status);
+                CalendarVm?.ApplyFiltersFromExternalUpdate();
+            }
         }
         catch (Exception ex)
         {
             LogService.Log($"SendIcsReply ({partStat})", ex);
             Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
         }
+    }
+
+    // ── Calendar folder activation ───────────────────────────────────────────────
+
+    /// <summary>
+    /// Raised when the calendar list should receive focus (View concern).
+    /// The View subscribes and moves focus to the calendar event list.
+    /// </summary>
+    public event Action? CalendarPaneFocusRequested;
+
+    /// <summary>
+    /// Opens the calendar by selecting the Calendar virtual folder, exactly as if
+    /// the user had pressed Enter on it in the folder tree. Bound to Ctrl+Shift+C.
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenCalendarAsync()
+    {
+        if (CalendarVm == null) return;
+        await SelectFolderCommand.ExecuteAsync(CalendarFolder);
+    }
+
+    /// <summary>
+    /// Schedules a debounced calendar harvest 2 seconds after the last FolderSynced event.
+    /// Runs on the UI thread via Dispatcher so the CalendarService refresh is safe.
+    /// </summary>
+    private void ScheduleCalendarHarvest()
+    {
+        if (_calendarService == null || CalendarVm == null || OnlineMode) return;
+
+        // Reset the timer — if a previous harvest was pending, it gets pushed back 2s.
+        _calendarHarvestTimer ??= new System.Threading.Timer(_ =>
+        {
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
+            {
+                if (_calendarService == null || CalendarVm == null) return;
+                await _calendarService.RefreshAsync();
+                // Only re-apply filters if the calendar view is active (no UI churn otherwise).
+                if (IsCalendarView)
+                    CalendarVm.ApplyFiltersFromExternalUpdate();
+            });
+        }, null, Timeout.Infinite, Timeout.Infinite);
+
+        _calendarHarvestTimer.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
     }
 }

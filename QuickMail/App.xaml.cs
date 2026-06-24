@@ -123,9 +123,13 @@ public partial class App : Application
             var viewService = new ViewService(profile);
             var flagService = new FlagService(profile, configService, localStore, mailRouter);
 
+            // Calendar service: harvests events from the local message cache.
+            var calendarProvider = new LocalCacheCalendarProvider(localStore);
+            var calendarService = new CalendarService(calendarProvider);
+
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService);
+                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 

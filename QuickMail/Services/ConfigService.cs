@@ -250,6 +250,8 @@ public class ConfigService : IConfigService
                     case "defaultflagid":
                         if (Guid.TryParse(value, out _)) config.DefaultFlagId = value;
                         break;
+                    case "showdeclinedevents": config.ShowDeclinedEvents = ParseBool(value); break;
+                    case "calendarpaneopen":   config.CalendarPaneOpen   = ParseBool(value); break;
                 }
             }
             else if (section == "windowing")
@@ -458,6 +460,14 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ConfirmCloseTabWithUnsaved = {(config.Windowing.ConfirmCloseTabWithUnsaved ? "on" : "off")}");
         sb.AppendLine("# Confirm before closing a tab with unsaved changes.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        // ── Calendar ──────────────────────────────────────────────────────────────
+
+        sb.AppendLine($"ShowDeclinedEvents = {(config.ShowDeclinedEvents ? "on" : "off")}");
+        sb.AppendLine("# Whether declined calendar events appear in the calendar list.");
+        sb.AppendLine($"CalendarPaneOpen = {(config.CalendarPaneOpen ? "on" : "off")}");
+        sb.AppendLine("# Whether the calendar pane was open when the app last closed.");
         sb.AppendLine();
 
         // ── [account:guid] overrides ─────────────────────────────────────────────

@@ -83,6 +83,31 @@ public class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN is_mailing_list INTEGER NOT NULL DEFAULT 0;");
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN attachments_json TEXT DEFAULT NULL;");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN flag_id TEXT DEFAULT NULL;");
+        RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN calendar_ics TEXT DEFAULT NULL;");
+
+        // CalendarEvent table (schema v4). Additive — no existing table touched.
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS CalendarEvent (
+                uid              TEXT    NOT NULL,
+                account_id       TEXT    NOT NULL,
+                summary          TEXT    NOT NULL DEFAULT '',
+                description      TEXT    NOT NULL DEFAULT '',
+                location         TEXT    NOT NULL DEFAULT '',
+                organizer        TEXT    NOT NULL DEFAULT '',
+                organizer_name   TEXT    NOT NULL DEFAULT '',
+                start_time_ticks INTEGER DEFAULT NULL,
+                end_time_ticks   INTEGER DEFAULT NULL,
+                sequence         TEXT    DEFAULT NULL,
+                method           TEXT    DEFAULT NULL,
+                source_message_id TEXT   NOT NULL DEFAULT '',
+                source_folder    TEXT    NOT NULL DEFAULT '',
+                response_status  INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (uid, account_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_calendar_start
+                ON CalendarEvent(start_time_ticks);
+            """;
+        cmd.ExecuteNonQuery();
 
         RunDataMigrations(conn);
     }
@@ -95,9 +120,11 @@ public class LocalStoreService : ILocalStoreService
     //   0 → 1   to_addr backfill from MessageDetail
     //   1 → 2   unique_id INTEGER → TEXT (string MessageId); add DeltaToken table
     //   2 → 3   is_mailing_list backfill from to_addr patterns
-    //   (no 3 → 4 data migration needed — flag_id column added via RunMigration; default NULL is correct)
+    //   (no 3 → 4 data migration needed — CalendarEvent table + calendar_ics column
+    //    added via CREATE TABLE IF NOT EXISTS / RunMigration; defaults are correct.
+    //    Harvesting from existing calendar_ics rows happens on demand via CalendarService.RefreshAsync.)
     // Add new migrations as: if (version < 4) { ...; }
-    private const int CurrentSchemaVersion = 3;
+    private const int CurrentSchemaVersion = 4;
 
     private static void RunDataMigrations(SqliteConnection conn)
     {
@@ -167,11 +194,12 @@ public class LocalStoreService : ILocalStoreService
                     plain_body  TEXT NOT NULL DEFAULT '',
                     html_body   TEXT NOT NULL DEFAULT '',
                     attachments_json TEXT DEFAULT NULL,
+                    calendar_ics TEXT DEFAULT NULL,
                     PRIMARY KEY (unique_id, account_id, folder_name)
                 );
                 INSERT INTO MessageDetail_v2
                 SELECT CAST(unique_id AS TEXT), account_id, folder_name, to_addr, cc,
-                       reply_to, plain_body, html_body, attachments_json
+                       reply_to, plain_body, html_body, attachments_json, calendar_ics
                 FROM MessageDetail;
                 DROP TABLE MessageDetail;
                 ALTER TABLE MessageDetail_v2 RENAME TO MessageDetail;
@@ -520,15 +548,16 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageDetail(unique_id, account_id, folder_name, to_addr, cc, reply_to, plain_body, html_body, attachments_json)
-            VALUES($uid, $aid, $fn, $to, $cc, $rt, $plain, $html, $attjson)
+            INSERT INTO MessageDetail(unique_id, account_id, folder_name, to_addr, cc, reply_to, plain_body, html_body, attachments_json, calendar_ics)
+            VALUES($uid, $aid, $fn, $to, $cc, $rt, $plain, $html, $attjson, $ics)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 to_addr          = excluded.to_addr,
                 cc               = excluded.cc,
                 reply_to         = excluded.reply_to,
                 plain_body       = excluded.plain_body,
                 html_body        = excluded.html_body,
-                attachments_json = excluded.attachments_json;
+                attachments_json = excluded.attachments_json,
+                calendar_ics     = excluded.calendar_ics;
             """;
         cmd.Parameters.AddWithValue("$uid",    detail.MessageId);
         cmd.Parameters.AddWithValue("$aid",    detail.AccountId.ToString());
@@ -539,6 +568,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$plain",  detail.PlainTextBody);
         cmd.Parameters.AddWithValue("$html",   detail.HtmlBody);
         cmd.Parameters.AddWithValue("$attjson", (object?)attJson ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$ics",    (object?)detail.CalendarIcs ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync();
 
         // Update the summary's has_attachments flag
@@ -559,11 +589,16 @@ public class LocalStoreService : ILocalStoreService
     {
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
+        // LEFT JOIN so the detail can be loaded even when the MessageSummary row is
+        // missing (e.g. the message was purged from the sync range or deleted from the
+        // server, but the cached body + calendar ICS remain). Without this, opening a
+        // calendar event's source invite fails with "message not found" because the
+        // INNER JOIN returns nothing.
         cmd.CommandText = """
             SELECT d.to_addr, d.cc, d.reply_to, d.plain_body, d.html_body,
-                   s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json
+                   s.from_disp, s.subject, s.date_ticks, s.is_read, d.attachments_json, d.calendar_ics
             FROM MessageDetail d
-            JOIN MessageSummary s USING (unique_id, account_id, folder_name)
+            LEFT JOIN MessageSummary s USING (unique_id, account_id, folder_name)
             WHERE d.unique_id=$uid AND d.account_id=$aid AND d.folder_name=$fn;
             """;
         cmd.Parameters.AddWithValue("$uid", messageId);
@@ -592,6 +627,8 @@ public class LocalStoreService : ILocalStoreService
             catch { /* corrupt json — ignore */ }
         }
 
+        var calendarIcs = r.IsDBNull(10) ? string.Empty : r.GetString(10);
+
         return new MailMessageDetail
         {
             MessageId     = messageId,
@@ -602,11 +639,13 @@ public class LocalStoreService : ILocalStoreService
             ReplyTo       = r.GetString(2),
             PlainTextBody = r.GetString(3),
             HtmlBody      = r.GetString(4),
-            From          = r.GetString(5),
-            Subject       = r.GetString(6),
-            Date          = new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
-            IsRead        = r.GetInt64(8) != 0,
+            From          = r.IsDBNull(5) ? string.Empty : r.GetString(5),
+            Subject       = r.IsDBNull(6) ? "(no subject)" : r.GetString(6),
+            Date          = r.IsDBNull(7) ? DateTimeOffset.MinValue : new DateTimeOffset(r.GetInt64(7), TimeSpan.Zero),
+            IsRead        = !r.IsDBNull(8) && r.GetInt64(8) != 0,
             Attachments   = attachments,
+            CalendarIcs   = calendarIcs,
+            CalendarInvite = string.IsNullOrWhiteSpace(calendarIcs) ? null : IcsModel.Parse(calendarIcs),
         };
     }
 
@@ -713,4 +752,128 @@ public class LocalStoreService : ILocalStoreService
         string  ContentType,
         long    FileSize,
         string? PartSpecifier);
+
+    // ── Calendar events ──────────────────────────────────────────────────────────
+
+    public async Task UpsertCalendarEventAsync(CalendarEvent evt)
+    {
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO CalendarEvent(uid, account_id, summary, description, location,
+                                      organizer, organizer_name, start_time_ticks, end_time_ticks,
+                                      sequence, method, source_message_id, source_folder, response_status)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs)
+            ON CONFLICT(uid, account_id) DO UPDATE SET
+                summary           = excluded.summary,
+                description       = excluded.description,
+                location          = excluded.location,
+                organizer         = excluded.organizer,
+                organizer_name    = excluded.organizer_name,
+                start_time_ticks  = excluded.start_time_ticks,
+                end_time_ticks    = excluded.end_time_ticks,
+                sequence          = excluded.sequence,
+                method            = excluded.method,
+                source_message_id = excluded.source_message_id,
+                source_folder     = excluded.source_folder;
+            """;
+        cmd.Parameters.AddWithValue("$uid",  evt.Uid);
+        cmd.Parameters.AddWithValue("$aid",  evt.AccountId.ToString());
+        cmd.Parameters.AddWithValue("$sum",  evt.Summary);
+        cmd.Parameters.AddWithValue("$desc", evt.Description);
+        cmd.Parameters.AddWithValue("$loc",  evt.Location);
+        cmd.Parameters.AddWithValue("$org",  evt.Organizer);
+        cmd.Parameters.AddWithValue("$orgn", evt.OrganizerName);
+        cmd.Parameters.AddWithValue("$st",   (object?)evt.StartTimeTicks ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$et",   (object?)evt.EndTimeTicks ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$seq",  (object?)evt.Sequence ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$meth", (object?)evt.Method ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$smid", evt.SourceMessageId);
+        cmd.Parameters.AddWithValue("$sf",   evt.SourceFolder);
+        cmd.Parameters.AddWithValue("$rs",   (int)evt.ResponseStatus);
+        await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task<List<CalendarEvent>> LoadCalendarEventsAsync()
+    {
+        var list = new List<CalendarEvent>();
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT uid, account_id, summary, description, location, organizer, organizer_name,
+                   start_time_ticks, end_time_ticks, sequence, method, source_message_id,
+                   source_folder, response_status
+            FROM CalendarEvent
+            ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
+            """;
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            list.Add(new CalendarEvent
+            {
+                Uid              = r.GetString(0),
+                AccountId        = Guid.Parse(r.GetString(1)),
+                Summary          = r.GetString(2),
+                Description      = r.GetString(3),
+                Location         = r.GetString(4),
+                Organizer        = r.GetString(5),
+                OrganizerName    = r.GetString(6),
+                StartTimeTicks   = r.IsDBNull(7) ? null : r.GetInt64(7),
+                EndTimeTicks     = r.IsDBNull(8) ? null : r.GetInt64(8),
+                Sequence         = r.IsDBNull(9) ? null : r.GetString(9),
+                Method           = r.IsDBNull(10) ? null : r.GetString(10),
+                SourceMessageId  = r.GetString(11),
+                SourceFolder     = r.GetString(12),
+                ResponseStatus   = (CalendarResponseStatus)r.GetInt32(13),
+            });
+        }
+        return list;
+    }
+
+    public async Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "UPDATE CalendarEvent SET response_status=$rs WHERE uid=$uid AND account_id=$aid;";
+        cmd.Parameters.AddWithValue("$rs",  (int)status);
+        cmd.Parameters.AddWithValue("$uid", uid);
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task DeleteCalendarEventAsync(string uid, Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "DELETE FROM CalendarEvent WHERE uid=$uid AND account_id=$aid;";
+        cmd.Parameters.AddWithValue("$uid", uid);
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
+    {
+        var list = new List<(Guid, string, string, string)>();
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT account_id, folder_name, unique_id, calendar_ics
+            FROM MessageDetail
+            WHERE calendar_ics IS NOT NULL AND calendar_ics != '';
+            """;
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            list.Add((
+                Guid.Parse(r.GetString(0)),
+                r.GetString(1),
+                r.GetString(2),
+                r.GetString(3)));
+        }
+        return list;
+    }
 }
