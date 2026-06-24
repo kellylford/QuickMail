@@ -86,6 +86,10 @@ public partial class MainViewModel : ObservableObject
     private string? _activeFlagFilterId;
     private EventHandler? _onFlagDefinitionsChanged;
 
+    // Stores the AccountReachabilityChanged event handler so it can be properly unsubscribed
+    // when RefreshAccountList creates a new Accounts collection. Fixes issue #126.
+    private Action<Guid, bool>? _onAccountReachabilityChanged;
+
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
     public IReadOnlyDictionary<Guid, List<MailFolderModel>> CachedFolders => _cachedFolders;
@@ -1335,9 +1339,14 @@ public partial class MainViewModel : ObservableObject
         var accountList = Accounts.ToList();
         _imap.StartIdleWatchers(accountList, ct);
 
+        // Unsubscribe any previous handler to avoid updating stale account objects after RefreshAccountList
+        // creates a new Accounts collection. Fixes issue #126 where new accounts remained disconnected.
+        if (_onAccountReachabilityChanged != null)
+            _imap.AccountReachabilityChanged -= _onAccountReachabilityChanged;
+
         // Subscribe to account reachability changes (IDLE watcher connection lost/restored).
         // No announcement — this is internal bookkeeping.
-        _imap.AccountReachabilityChanged += (accountId, isReachable) =>
+        _onAccountReachabilityChanged = (accountId, isReachable) =>
         {
             var account = accountList.FirstOrDefault(a => a.Id == accountId);
             if (account != null)
@@ -1346,6 +1355,7 @@ public partial class MainViewModel : ObservableObject
                 ApplyAccountStatus(account, folders);
             }
         };
+        _imap.AccountReachabilityChanged += _onAccountReachabilityChanged;
 
         // Subscribe to sync progress updates.
         // Announce every 10 folders to avoid excessive screen reader chatter.
@@ -4936,6 +4946,25 @@ public partial class MainViewModel : ObservableObject
     public void RefreshAccountList()
     {
         LoadAccountList();
+
+        // After LoadAccountList creates a new Accounts collection, we need to update the
+        // AccountReachabilityChanged event handler to use the new account objects instead of the stale ones.
+        // Unsubscribe the old handler (which was bound to the old account list) and resubscribe with the new list.
+        if (_onAccountReachabilityChanged != null)
+            _imap.AccountReachabilityChanged -= _onAccountReachabilityChanged;
+
+        var accountList = Accounts.ToList();
+        _onAccountReachabilityChanged = (accountId, isReachable) =>
+        {
+            var account = accountList.FirstOrDefault(a => a.Id == accountId);
+            if (account != null)
+            {
+                var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                ApplyAccountStatus(account, folders);
+            }
+        };
+        _imap.AccountReachabilityChanged += _onAccountReachabilityChanged;
+
         // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts)
         _ = Task.Run(async () =>
         {

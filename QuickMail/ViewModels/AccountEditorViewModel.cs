@@ -170,22 +170,31 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
         IsBusy = true;
         StatusText = "Testing connection…";
+        var testAccountId = Guid.NewGuid();
         try
         {
             var testAccount = new AccountModel
             {
-                Id = Guid.NewGuid(),
+                Id = testAccountId,
+                AccountName = $"Test ({Username})",
+                DisplayName = Username,
                 Username = Username,
                 AuthType = AuthType,
+                BackendKind = BackendKind,
                 ImapHost = ImapHost,
                 ImapPort = ImapPort,
                 ImapUseSsl = ImapUseSsl,
-                ImapAcceptInvalidCert = ImapAcceptInvalidCert
+                ImapAcceptInvalidCert = ImapAcceptInvalidCert,
+                SmtpHost = SmtpHost,
+                SmtpPort = SmtpPort,
+                SmtpUseSsl = SmtpUseSsl,
+                SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
+                Signature = Signature
             };
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var pwd = IsPasswordAuth ? Password : null;
             await MailService.ConnectAsync(testAccount, pwd, cts.Token);
-            await MailService.DisconnectAsync(testAccount.Id, cts.Token);
+            await MailService.DisconnectAsync(testAccountId, cts.Token);
             StatusText = "Connection successful!";
         }
         catch (Exception ex)
