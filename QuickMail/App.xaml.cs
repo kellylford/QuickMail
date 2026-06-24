@@ -16,6 +16,7 @@ public partial class App : Application
     private ContactService? _contactService;
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
+    private ImapMailService? _imapBackend;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -83,7 +84,8 @@ public partial class App : Application
             var msOAuthService    = new OAuthService(profile);
             var googleOAuth       = new GoogleOAuthService(credentialService);
             var oauthService      = new OAuthRouter(msOAuthService, googleOAuth);
-            var imapBackend       = new ImapMailService(oauthService, configService);
+            _imapBackend          = new ImapMailService(oauthService, configService);
+            var imapBackend       = _imapBackend;
             var graphBackend      = new GraphMailService(msOAuthService, configService);
             _graphSendMail        = new GraphSendMailService(msOAuthService);
             var smtpService       = new SmtpService(oauthService, _graphSendMail);
@@ -150,7 +152,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _changeNotifier?.Dispose();
+        _changeNotifier?.Dispose(); // stops IDLE watchers + severs the event chain
+        _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
         _graphSendMail?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();

@@ -158,8 +158,9 @@ public class ChangeNotifierRouterTests
     private sealed class RecordingChangeNotifier : IChangeNotifier
     {
         public IReadOnlyList<AccountModel>? LastWatchedAccounts { get; private set; }
+        public bool StopWatchersCalled { get; private set; }
         public void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) => LastWatchedAccounts = accounts;
-        public void StopWatchers() { }
+        public void StopWatchers() => StopWatchersCalled = true;
 
         public event Action<Guid>? InboxNewMailDetected;
         public event Action<Guid, bool>? AccountReachabilityChanged;
@@ -181,6 +182,7 @@ public class ChangeNotifierRouterTests
         // Graph accounts have no notifier until PR 7b, so only the IMAP account is watched.
         Assert.NotNull(imap.LastWatchedAccounts);
         Assert.Equal(new[] { imapAcct.Id }, imap.LastWatchedAccounts!.Select(a => a.Id));
+        Assert.DoesNotContain(graphAcct.Id, imap.LastWatchedAccounts!.Select(a => a.Id));
     }
 
     [Fact]
@@ -226,6 +228,18 @@ public class ChangeNotifierRouterTests
         imap.RaiseNewMail(Guid.NewGuid());
 
         Assert.Empty(seen);
+    }
+
+    [Fact]
+    public void Dispose_CallsStopWatchersOnInnerNotifier()
+    {
+        var imap = new RecordingChangeNotifier();
+        var router = new ChangeNotifierRouter(imap);
+
+        router.Dispose();
+
+        // Disposing the router must tear down the watcher tasks, not just unsubscribe events.
+        Assert.True(imap.StopWatchersCalled);
     }
 }
 

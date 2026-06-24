@@ -81,6 +81,7 @@ public partial class MainViewModel : ObservableObject
     private bool _announceFlagStatus;
     private string? _activeFlagFilterId;
     private EventHandler? _onFlagDefinitionsChanged;
+    private Action<Guid, bool>? _onReachabilityChanged;
 
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
@@ -1300,9 +1301,15 @@ public partial class MainViewModel : ObservableObject
         _changeNotifier?.StartWatchers(accountList, ct);
 
         // Subscribe to account reachability changes (watcher connection lost/restored).
-        // No announcement — this is internal bookkeeping.
+        // No announcement — this is internal bookkeeping. Stored in a field and unsubscribed first so
+        // repeated StartBackgroundSyncAsync calls don't stack handlers (each capturing a stale list).
+        // The event fires on the ThreadPool, so marshal the UI-touching work onto the UI thread.
         if (_changeNotifier != null)
-            _changeNotifier.AccountReachabilityChanged += (accountId, isReachable) =>
+        {
+            if (_onReachabilityChanged != null)
+                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
+
+            _onReachabilityChanged = (accountId, isReachable) => InvokeOnUi(() =>
             {
                 var account = accountList.FirstOrDefault(a => a.Id == accountId);
                 if (account != null)
@@ -1310,7 +1317,9 @@ public partial class MainViewModel : ObservableObject
                     var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
                     ApplyAccountStatus(account, folders);
                 }
-            };
+            });
+            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+        }
 
         // Subscribe to sync progress updates.
         // Announce every 10 folders to avoid excessive screen reader chatter.
@@ -1579,9 +1588,10 @@ public partial class MainViewModel : ObservableObject
 
         RebuildActiveGroupView();
     }
-    // Called on a ThreadPool thread by the IDLE watcher when new mail lands in an inbox.
-    // Runs a targeted sync for that account's INBOX so the message appears in the list.
-    private void OnInboxNewMailDetected(Guid accountId)
+    // Called on a ThreadPool thread by the change notifier when new mail lands in an inbox.
+    // Runs a targeted sync for that account's INBOX so the message appears in the list. Accounts and
+    // _cachedFolders are UI-thread-owned, so resolve them on the UI thread before the background sync.
+    private void OnInboxNewMailDetected(Guid accountId) => InvokeOnUi(() =>
     {
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account is null) return;
@@ -1608,6 +1618,17 @@ public partial class MainViewModel : ObservableObject
                 LogService.Log("IDLE targeted sync", ex);
             }
         });
+    });
+
+    // Marshals a ThreadPool callback onto the UI thread. Runs inline when already on the UI thread or
+    // when there is no Application (unit tests), keeping ThreadPool-fired handlers testable.
+    private static void InvokeOnUi(Action action)
+    {
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            action();
+        else
+            dispatcher.InvokeAsync(action);
     }
 
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)

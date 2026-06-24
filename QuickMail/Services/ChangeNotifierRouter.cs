@@ -46,6 +46,7 @@ public sealed class ChangeNotifierRouter : IChangeNotifier, IDisposable
 
     public void Dispose()
     {
+        _imap.StopWatchers(); // tear down watcher tasks before severing the event chain
         _imap.InboxNewMailDetected -= OnInboxNewMail;
         _imap.AccountReachabilityChanged -= OnReachabilityChanged;
     }
