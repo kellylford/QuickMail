@@ -20,6 +20,7 @@ namespace QuickMail.ViewModels;
 public partial class MainViewModel : ObservableObject
 {
     private readonly IMailService _imap;
+    private readonly IChangeNotifier? _changeNotifier;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
@@ -85,10 +86,7 @@ public partial class MainViewModel : ObservableObject
     private bool _announceFlagStatus;
     private string? _activeFlagFilterId;
     private EventHandler? _onFlagDefinitionsChanged;
-
-    // Stores the AccountReachabilityChanged event handler so it can be properly unsubscribed
-    // when RefreshAccountList creates a new Accounts collection. Fixes issue #126.
-    private Action<Guid, bool>? _onAccountReachabilityChanged;
+    private Action<Guid, bool>? _onReachabilityChanged;
 
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
@@ -688,9 +686,11 @@ public partial class MainViewModel : ObservableObject
         ISendMailService smtpService,
         bool onlineMode = false,
         IFlagService? flagService = null,
-        ICalendarService? calendarService = null)
+        ICalendarService? calendarService = null,
+        IChangeNotifier? changeNotifier = null)
     {
         _imap            = imap;
+        _changeNotifier  = changeNotifier;
         _accountService  = accountService;
         _credentials     = credentials;
         _localStore      = localStore;
@@ -725,7 +725,8 @@ public partial class MainViewModel : ObservableObject
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.RulesApplied    += OnRulesApplied;
-        _imap.InboxNewMailDetected += OnInboxNewMailDetected;
+        if (_changeNotifier != null)
+            _changeNotifier.InboxNewMailDetected += OnInboxNewMailDetected;
         if (_flagService != null)
         {
             _onFlagDefinitionsChanged = (_, _) => _ = OnFlagDefinitionsChangedAsync();
@@ -1337,25 +1338,28 @@ public partial class MainViewModel : ObservableObject
         if (_cachedFolders.Count == 0) return;
 
         var accountList = Accounts.ToList();
-        _imap.StartIdleWatchers(accountList, ct);
+        _changeNotifier?.StartWatchers(accountList, ct);
 
-        // Unsubscribe any previous handler to avoid updating stale account objects after RefreshAccountList
-        // creates a new Accounts collection. Fixes issue #126 where new accounts remained disconnected.
-        if (_onAccountReachabilityChanged != null)
-            _imap.AccountReachabilityChanged -= _onAccountReachabilityChanged;
-
-        // Subscribe to account reachability changes (IDLE watcher connection lost/restored).
-        // No announcement — this is internal bookkeeping.
-        _onAccountReachabilityChanged = (accountId, isReachable) =>
+        // Subscribe to account reachability changes (watcher connection lost/restored).
+        // No announcement — this is internal bookkeeping. Stored in a field and unsubscribed first so
+        // repeated StartBackgroundSyncAsync calls don't stack handlers (each capturing a stale list).
+        // The event fires on the ThreadPool, so marshal the UI-touching work onto the UI thread.
+        if (_changeNotifier != null)
         {
-            var account = accountList.FirstOrDefault(a => a.Id == accountId);
-            if (account != null)
+            if (_onReachabilityChanged != null)
+                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
+
+            _onReachabilityChanged = (accountId, isReachable) => InvokeOnUi(() =>
             {
-                var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                ApplyAccountStatus(account, folders);
-            }
-        };
-        _imap.AccountReachabilityChanged += _onAccountReachabilityChanged;
+                var account = accountList.FirstOrDefault(a => a.Id == accountId);
+                if (account != null)
+                {
+                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                    ApplyAccountStatus(account, folders);
+                }
+            });
+            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+        }
 
         // Subscribe to sync progress updates.
         // Announce every 10 folders to avoid excessive screen reader chatter.
@@ -1628,9 +1632,10 @@ public partial class MainViewModel : ObservableObject
 
         RebuildActiveGroupView();
     }
-    // Called on a ThreadPool thread by the IDLE watcher when new mail lands in an inbox.
-    // Runs a targeted sync for that account's INBOX so the message appears in the list.
-    private void OnInboxNewMailDetected(Guid accountId)
+    // Called on a ThreadPool thread by the change notifier when new mail lands in an inbox.
+    // Runs a targeted sync for that account's INBOX so the message appears in the list. Accounts and
+    // _cachedFolders are UI-thread-owned, so resolve them on the UI thread before the background sync.
+    private void OnInboxNewMailDetected(Guid accountId) => InvokeOnUi(() =>
     {
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account is null) return;
@@ -1657,6 +1662,17 @@ public partial class MainViewModel : ObservableObject
                 LogService.Log("IDLE targeted sync", ex);
             }
         });
+    });
+
+    // Marshals a ThreadPool callback onto the UI thread. Runs inline when already on the UI thread or
+    // when there is no Application (unit tests), keeping ThreadPool-fired handlers testable.
+    private static void InvokeOnUi(Action action)
+    {
+        var dispatcher = App.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess())
+            action();
+        else
+            dispatcher.InvokeAsync(action);
     }
 
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
@@ -4947,23 +4963,25 @@ public partial class MainViewModel : ObservableObject
     {
         LoadAccountList();
 
-        // After LoadAccountList creates a new Accounts collection, we need to update the
-        // AccountReachabilityChanged event handler to use the new account objects instead of the stale ones.
-        // Unsubscribe the old handler (which was bound to the old account list) and resubscribe with the new list.
-        if (_onAccountReachabilityChanged != null)
-            _imap.AccountReachabilityChanged -= _onAccountReachabilityChanged;
-
-        var accountList = Accounts.ToList();
-        _onAccountReachabilityChanged = (accountId, isReachable) =>
+        // After LoadAccountList creates a new Accounts collection, update the reachability handler so
+        // it resolves accounts from the fresh list rather than the stale one (fixes issue #126).
+        if (_changeNotifier != null)
         {
-            var account = accountList.FirstOrDefault(a => a.Id == accountId);
-            if (account != null)
+            if (_onReachabilityChanged != null)
+                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
+
+            var accountList = Accounts.ToList();
+            _onReachabilityChanged = (accountId, isReachable) => InvokeOnUi(() =>
             {
-                var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                ApplyAccountStatus(account, folders);
-            }
-        };
-        _imap.AccountReachabilityChanged += _onAccountReachabilityChanged;
+                var account = accountList.FirstOrDefault(a => a.Id == accountId);
+                if (account != null)
+                {
+                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                    ApplyAccountStatus(account, folders);
+                }
+            });
+            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+        }
 
         // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts)
         _ = Task.Run(async () =>

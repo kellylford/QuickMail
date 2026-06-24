@@ -17,7 +17,7 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class ImapMailService : IMailService
+public class ImapMailService : IMailService, IChangeNotifier
 {
     private static readonly string[] ComposeModeHeaders = ["X-QuickMail-Compose-Mode"];
 
@@ -743,9 +743,12 @@ public class ImapMailService : IMailService
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    // ── IDLE watchers ────────────────────────────────────────────────────────────
+    // ── IDLE watchers (IChangeNotifier) ──────────────────────────────────────────
+    // IMAP's change-notification strategy is a held IDLE connection per account. It lives here
+    // rather than in a separate notifier class because it is bound to the IMAP connection lifecycle:
+    // DisconnectAsync cancels an account's watcher and Dispose stops them all. See IChangeNotifier.
 
-    public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
+    public void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
     {
         foreach (var account in accounts)
         {
@@ -764,7 +767,7 @@ public class ImapMailService : IMailService
         }
     }
 
-    public void StopIdleWatchers()
+    public void StopWatchers()
     {
         foreach (var kvp in _idleCts)
         {
@@ -1513,7 +1516,7 @@ public class ImapMailService : IMailService
     {
         if (_disposed) return;
         _disposed = true;
-        StopIdleWatchers();
+        StopWatchers();
         foreach (var pool in _pools.Values)
             pool.Dispose();
         _pools.Clear();

@@ -28,11 +28,6 @@ public class MailServiceRouter : IMailService
         if (_allBackends.Count == 0)
             throw new ArgumentException("MailServiceRouter requires at least one backend.", nameof(backends));
         _defaultBackend = _allBackends[0];
-        foreach (var b in _allBackends)
-        {
-            b.InboxNewMailDetected += OnInnerInboxNewMail;
-            b.AccountReachabilityChanged += OnInnerAccountReachabilityChanged;
-        }
     }
 
     /// <summary>Bind an account to a specific backend. Called once at account-load time and once per Add Account. Idempotent.</summary>
@@ -51,13 +46,6 @@ public class MailServiceRouter : IMailService
         => _byAccount.TryGetValue(accountId, out var b) ? b : _defaultBackend;
 
     private IMailService For(AccountModel account) => For(account.Id);
-
-    // ── Event aggregation ────────────────────────────────────────────────────────
-    public event Action<Guid>? InboxNewMailDetected;
-    public event Action<Guid, bool>? AccountReachabilityChanged;
-
-    private void OnInnerInboxNewMail(Guid accountId) => InboxNewMailDetected?.Invoke(accountId);
-    private void OnInnerAccountReachabilityChanged(Guid accountId, bool isReachable) => AccountReachabilityChanged?.Invoke(accountId, isReachable);
 
     // ── Per-account delegation ─────────────────────────────────────────────────────
     public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
@@ -153,40 +141,10 @@ public class MailServiceRouter : IMailService
     public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default)
         => For(accountId).CopyFolderAsync(accountId, folderName, destinationParentName, ct);
 
-    // ── Account-list-level operations: fan out to every backend ────────────────────
-    // Each backend starts watchers only for the accounts it can actually connect; passing the full
-    // list to all backends is correct because an account is only ever registered to one backend.
-    public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
-    {
-        // Give each backend only the accounts registered to it (unregistered accounts fall back to
-        // the default backend), so a backend never spins up watcher tasks for accounts it doesn't own.
-        var byBackend = new Dictionary<IMailService, List<AccountModel>>();
-        foreach (var account in accounts)
-        {
-            var backend = _byAccount.TryGetValue(account.Id, out var b) ? b : _defaultBackend;
-            if (!byBackend.TryGetValue(backend, out var list))
-                byBackend[backend] = list = new List<AccountModel>();
-            list.Add(account);
-        }
-
-        foreach (var b in _allBackends)
-            b.StartIdleWatchers(byBackend.TryGetValue(b, out var list) ? list : new List<AccountModel>(), ct);
-    }
-
-    public void StopIdleWatchers()
-    {
-        foreach (var b in _allBackends)
-            b.StopIdleWatchers();
-    }
-
     public void Dispose()
     {
         foreach (var b in _allBackends)
-        {
-            b.InboxNewMailDetected -= OnInnerInboxNewMail;
-            b.AccountReachabilityChanged -= OnInnerAccountReachabilityChanged;
             b.Dispose();
-        }
         GC.SuppressFinalize(this);
     }
 }

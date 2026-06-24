@@ -15,6 +15,8 @@ public partial class App : Application
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
     private TemplateService? _templateService;
+    private ChangeNotifierRouter? _changeNotifier;
+    private ImapMailService? _imapBackend;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -82,7 +84,8 @@ public partial class App : Application
             var msOAuthService    = new OAuthService(profile);
             var googleOAuth       = new GoogleOAuthService(credentialService);
             var oauthService      = new OAuthRouter(msOAuthService, googleOAuth);
-            var imapBackend       = new ImapMailService(oauthService, configService);
+            _imapBackend          = new ImapMailService(oauthService, configService);
+            var imapBackend       = _imapBackend;
             var graphBackend      = new GraphMailService(msOAuthService, configService);
             _graphSendMail        = new GraphSendMailService(msOAuthService);
             var smtpService       = new SmtpService(oauthService, _graphSendMail);
@@ -92,6 +95,11 @@ public partial class App : Application
             var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend });
             IMailService BackendFor(AccountModel a)
                 => a.BackendKind == BackendKind.MicrosoftGraph ? graphBackend : imapBackend;
+
+            // Change-notification router (new-mail + reachability). IMAP's strategy is a held IDLE
+            // connection, implemented by ImapMailService itself because it is bound to the IMAP
+            // connection lifecycle. Graph delta-poll notification arrives in PR 7b.
+            _changeNotifier = new ChangeNotifierRouter(imapBackend);
 
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
@@ -129,7 +137,7 @@ public partial class App : Application
 
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService);
+                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
@@ -148,6 +156,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _changeNotifier?.Dispose(); // stops IDLE watchers + severs the event chain
+        _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
         _graphSendMail?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();

@@ -191,7 +191,7 @@ public class OnlineModeTests
 
 public class IdleNewMailTests
 {
-    sealed class FireableMailService : IMailService
+    sealed class FireableMailService : IMailService, IChangeNotifier
     {
         private readonly Guid _accountId;
         public FireableMailService(Guid accountId) => _accountId = accountId;
@@ -239,8 +239,8 @@ public class IdleNewMailTests
         public Task DeleteFolderAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.CompletedTask;
         public Task RenameFolderAsync(Guid accountId, string folderName, string newName, string? newParentFolderName, CancellationToken ct = default) => Task.CompletedTask;
         public Task CopyFolderAsync(Guid accountId, string folderName, string? destinationParentName, CancellationToken ct = default) => Task.CompletedTask;
-        public void StartIdleWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
-        public void StopIdleWatchers() { }
+        public void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default) { }
+        public void StopWatchers() { }
         public void Dispose() { }
     }
 
@@ -294,7 +294,7 @@ public class IdleNewMailTests
             imap, new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), sync,
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
-            new StubRuleService(), new StubSmtpService());
+            new StubRuleService(), new StubSmtpService(), changeNotifier: imap);
 
         // Seed the account and connect so _cachedFolders gets the INBOX entry.
         vm.Accounts.Add(account);
@@ -325,7 +325,7 @@ public class IdleNewMailTests
             imap, new StubAccountService(), new StubCredentialService(),
             new StubLocalStoreService(), new StubOAuthService(), sync,
             new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
-            new StubRuleService(), new StubSmtpService(), onlineMode: true);
+            new StubRuleService(), new StubSmtpService(), onlineMode: true, changeNotifier: imap);
 
         vm.Accounts.Add(account);
         await vm.ConnectAllAccountsAsync();
