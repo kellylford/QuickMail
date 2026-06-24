@@ -15,6 +15,10 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ## Bug Fixes
 
+### Adding a new account no longer disconnects existing accounts
+
+Opening the Account Manager and adding a new account no longer causes all existing accounts to appear disconnected. The bug was a race condition in the `AccountReachabilityChanged` event handler: when the Account Manager refreshed the accounts collection, the event handler remained bound to the old account objects. New accounts would never receive their connection status updates and would show as disconnected indefinitely. The handler is now properly unsubscribed and re-subscribed when the accounts collection is refreshed. (#126)
+
 ### Virtual folder refresh now reconciles read and flag state
 
 Pressing **F5** in **All Mail**, **All Inboxes**, **Drafts**, **Sent**, **Trash**, or a per-account All Mail view now correctly updates messages that were already in the list. Previously, if you marked a message read or flagged it in another mail client and then pressed F5, the existing row kept its stale state — only newly arrived messages were added. The refresh now updates `IsRead`, reply/forward state, attachments, and flag information on any message that has changed on the server, without disturbing selection or screen reader focus. (#111)

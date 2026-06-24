@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.7.6
+
+### Bug Fixes
+
+- **Adding a new account no longer disconnects existing accounts** — Fixed a race condition where opening the Account Manager and adding a new account caused all existing accounts to appear disconnected. The event handler for account reachability changes was bound to stale account objects after the collection was refreshed. (#126)
+
+---
+
 ## v0.7.0
 
 ### New Features
