@@ -234,6 +234,7 @@ public class ConfigService : IConfigService
                     case "logformat":
                         config.LogFormat = string.Equals(value, "timefirst", StringComparison.OrdinalIgnoreCase) ? "timeFirst" : "actionFirst";
                         break;
+                    case "enablelogging": config.EnableLogging = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
                     case "defaultcomposemode":
                         config.DefaultComposeMode = value.ToLowerInvariant() switch
@@ -413,6 +414,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# actionFirst: message then timestamp — easier to scan with a screen reader.");
         sb.AppendLine("# timeFirst: timestamp then message (historical format).");
         sb.AppendLine("# Values: actionFirst, timeFirst.");
+        sb.AppendLine();
+
+        sb.AppendLine($"EnableLogging = {(config.EnableLogging ? "on" : "off")}");
+        sb.AppendLine("# Write log entries to quickmail.log. When off, no log file is written.");
+        sb.AppendLine("# If QuickMail was launched with /debug, this setting is ignored and logging always runs.");
+        sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");

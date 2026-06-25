@@ -35,6 +35,15 @@ When moving or copying a message on a Microsoft 365 or Exchange account, the fol
 
 ## Improvements
 
+### Logging control in Advanced settings
+
+**Settings → Advanced** now has a **QuickMail Logging** section with two options:
+
+- **Enable logging** checkbox — turn logging on or off. Logging is **off by default**. When enabled, QuickMail writes activity to `quickmail.log` in your profile directory (usually `%APPDATA%\QuickMail`, or the path supplied via `--profileDir`). Changes take effect as soon as you select **Save** — no restart required.
+- **Delete QuickMail log** button — deletes the current log file after a Yes/No confirmation. If logging is still enabled, a fresh log file is created the next time an activity is logged.
+
+> **Note:** If QuickMail is launched with the `/debug` flag, logging always runs regardless of the **Enable logging** setting. The `/debug` flag is intended for diagnosing problems and overrides this preference so that no diagnostic detail is lost.
+
 ### Spelling suggestions are now numbered
 
 When a misspelling is announced, each suggestion is now preceded by its number — for example: "Misspelling: teh. 1: the, 2: then, 3: them." This makes the `Alt+1` / `Alt+2` / `Alt+3` correction shortcuts immediately obvious without having to count suggestions mentally.

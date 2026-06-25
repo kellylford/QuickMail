@@ -119,7 +119,8 @@ public partial class App : Application
 
             var startupCfg = configService.Load();
             Views.AccessibilityHelper.Configure(startupCfg);
-            LogService.Format = startupCfg.LogFormat;
+            LogService.Format  = startupCfg.LogFormat;
+            LogService.Enabled = startupCfg.EnableLogging;
 
             // Feature gate: CLI --feature/--no-feature > config.ini [features] section > built-in defaults.
             var (enableFlags, disableFlags) = ParseFeatureFlags(e.Args);

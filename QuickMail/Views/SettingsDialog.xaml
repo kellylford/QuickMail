@@ -259,6 +259,22 @@
             <TabItem Header="_Advanced" AutomationProperties.Name="Advanced settings">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
+                        <!-- QuickMail Logging Group -->
+                        <GroupBox Header="QuickMail _Logging" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="QuickMail logging settings">
+                            <StackPanel>
+                                <CheckBox Content="Enable _logging"
+                                          IsChecked="{Binding EnableLogging, Mode=TwoWay}"
+                                          AutomationProperties.Name="Enable logging"/>
+                                <Button x:Name="DeleteLogButton"
+                                        Content="_Delete QuickMail log"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,10,0,0"
+                                        Click="DeleteLogButton_Click"
+                                        AutomationProperties.Name="Delete QuickMail log"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Log Format Group -->
                         <GroupBox Header="_Log Format" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Log format settings">

@@ -119,6 +119,9 @@ public partial class SettingsViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsLogFormatTimeFirst))]
     private string _logFormat = "actionFirst";
 
+    [ObservableProperty]
+    private bool _enableLogging;
+
     public bool IsLogFormatActionFirst
     {
         get => LogFormat == "actionFirst";
@@ -166,6 +169,7 @@ public partial class SettingsViewModel : ObservableObject
             _                           => "plain",
         };
         LogFormat                        = cfg.LogFormat;
+        EnableLogging                    = cfg.EnableLogging;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
             Models.MessageOpenMode.Tab    => "tab",
@@ -217,6 +221,7 @@ public partial class SettingsViewModel : ObservableObject
             _          => Models.ComposeMode.PlainText,
         };
         cfg.LogFormat                        = LogFormat;
+        cfg.EnableLogging                    = EnableLogging;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {
             "tab"    => Models.MessageOpenMode.Tab,

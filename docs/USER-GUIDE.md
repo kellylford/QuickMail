@@ -391,6 +391,19 @@ Press **Ctrl+,** to open Settings.
 
 Add, edit, or remove accounts. Sign out of OAuth accounts.
 
+### Advanced
+
+**QuickMail Logging**
+
+- **Enable logging** — when checked, QuickMail writes activity to `quickmail.log` in your profile directory (usually `%APPDATA%\QuickMail`). Uncheck to stop writing the log file. Changes take effect when you select **Save**.
+- **Delete QuickMail log** — deletes the log file immediately after confirmation. If logging is still on, a new log file is created the next time an activity is logged.
+
+> **Note:** If QuickMail was launched with the `/debug` flag, logging always runs regardless of the Enable logging setting. The `/debug` flag is intended for diagnosing problems and overrides this preference so that nothing is missed.
+
+**Log Format**
+
+Controls the order of timestamp and message text in each log line. **Action first** (default) places the message before the timestamp, which is easier to scan since the log is already in chronological order. **Time first** uses the original format with the timestamp at the start of each line.
+
 ### Keyboard
 
 Reassign shortcuts for any registered command.

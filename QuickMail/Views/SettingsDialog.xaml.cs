@@ -31,9 +31,25 @@ public partial class SettingsDialog : Window
     private void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         _vm.SaveCommand.Execute(null);
-        LogService.Format = _vm.LogFormat;
+        LogService.Format  = _vm.LogFormat;
+        LogService.Enabled = _vm.EnableLogging;
         DialogResult = true;
         Close();
+    }
+
+    private void DeleteLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Delete the QuickMail log file? This cannot be undone.",
+            "Delete Log",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+
+        if (result == MessageBoxResult.Yes)
+            LogService.DeleteLog();
+
+        DeleteLogButton.Focus();
     }
 
     private void HotkeyListView_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

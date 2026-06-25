@@ -29,6 +29,12 @@ public static class LogService
     public static bool DebugMode { get; set; }
 
     /// <summary>
+    /// Whether logging is enabled. Defaults to true. Set from config at startup and when
+    /// settings are saved. When false, Log() is a no-op unless DebugMode is also true.
+    /// </summary>
+    public static bool Enabled { get; set; } = true;
+
+    /// <summary>
     /// Controls log line layout. "actionFirst" (default) puts the message before the timestamp,
     /// which is easier to scan with a screen reader since logs are already chronological.
     /// "timeFirst" puts the timestamp first (the original format).
@@ -38,6 +44,7 @@ public static class LogService
 
     public static void Log(string message)
     {
+        if (!Enabled && !DebugMode) return;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_logFile)!);
@@ -51,6 +58,23 @@ public static class LogService
             }
         }
         catch { /* never crash on logging */ }
+    }
+
+    /// <summary>
+    /// Deletes the log file. Safe to call during a running session — subsequent Log() calls
+    /// recreate the file. No-op if the file does not exist.
+    /// </summary>
+    public static void DeleteLog()
+    {
+        try
+        {
+            lock (_writeGate)
+            {
+                if (File.Exists(_logFile))
+                    File.Delete(_logFile);
+            }
+        }
+        catch { /* never crash on log management */ }
     }
 
     public static void Log(string context, Exception ex) =>

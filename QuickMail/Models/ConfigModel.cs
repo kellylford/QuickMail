@@ -105,6 +105,13 @@ public class ConfigModel
     /// </summary>
     public string LogFormat { get; set; } = "actionFirst";
 
+    /// <summary>
+    /// Whether to write log entries to quickmail.log. Default off.
+    /// When off and /debug is not active, Log() is a no-op.
+    /// /debug always overrides this setting and forces logging on.
+    /// </summary>
+    public bool EnableLogging { get; set; } = false;
+
     // ── Tutorial ──────────────────────────────────────────────────────────────────
 
     /// <summary>Show a confirmation dialog before emptying trash. Default on.</summary>
