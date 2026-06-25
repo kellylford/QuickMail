@@ -165,6 +165,152 @@ public class CalendarStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task DeleteSummaries_ClearsCalendarEventSourceLink()
+    {
+        var accountId = Guid.NewGuid();
+
+        // Store a message detail with calendar ICS.
+        var detail = new MailMessageDetail
+        {
+            MessageId = "msg-purge",
+            AccountId = accountId,
+            FolderName = "INBOX",
+            From = "org@example.com",
+            Subject = "Invite",
+            Date = DateTimeOffset.UtcNow,
+            CalendarIcs = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:purge-test\r\nSUMMARY:Purge meeting\r\nEND:VEVENT\r\nEND:VCALENDAR",
+        };
+        // UpsertDetailAsync requires a summary row first (LEFT JOIN is fine for loading,
+        // but the summary row is needed so the delete has something to cascade from).
+        await _store.UpsertSummariesAsync(new[] { new MailMessageSummary
+        {
+            MessageId = "msg-purge", AccountId = accountId, FolderName = "INBOX",
+            From = "org@example.com", Subject = "Invite", Date = DateTimeOffset.UtcNow,
+        }});
+        await _store.UpsertDetailAsync(detail);
+
+        // Harvest to create the CalendarEvent row.
+        var provider = new LocalCacheCalendarProvider(_store);
+        await provider.HarvestAsync();
+
+        var before = await _store.LoadCalendarEventsAsync();
+        Assert.Single(before);
+        Assert.Equal("msg-purge", before[0].SourceMessageId);
+
+        // Simulate the sync deleting the message from the local cache.
+        await _store.DeleteSummariesAsync(accountId, "INBOX", new[] { "msg-purge" });
+
+        // The CalendarEvent should still exist but with its source link cleared.
+        var after = await _store.LoadCalendarEventsAsync();
+        Assert.Single(after);
+        Assert.Empty(after[0].SourceMessageId);
+        Assert.Empty(after[0].SourceFolder);
+    }
+
+    [Fact]
+    public async Task ClearOrphanedSourceLinks_ClearsLinkWhenDetailMissing()
+    {
+        var accountId = Guid.NewGuid();
+
+        // Insert a CalendarEvent that references a message not in MessageDetail.
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "orphan-uid",
+            AccountId = accountId,
+            Summary = "Orphaned event",
+            SourceMessageId = "msg-orphan",
+            SourceFolder = "INBOX",
+        });
+
+        var before = await _store.LoadCalendarEventsAsync();
+        Assert.Equal("msg-orphan", before[0].SourceMessageId);
+
+        // The cleanup should detect no matching MessageDetail and clear the link.
+        await _store.ClearOrphanedCalendarSourceLinksAsync();
+
+        var after = await _store.LoadCalendarEventsAsync();
+        Assert.Single(after);
+        Assert.Empty(after[0].SourceMessageId);
+        Assert.Empty(after[0].SourceFolder);
+    }
+
+    [Fact]
+    public async Task ClearOrphanedSourceLinks_KeepsLinkWhenDetailPresent()
+    {
+        var accountId = Guid.NewGuid();
+
+        var detail = new MailMessageDetail
+        {
+            MessageId = "msg-present",
+            AccountId = accountId,
+            FolderName = "INBOX",
+            From = "org@example.com",
+            Subject = "Invite",
+            Date = DateTimeOffset.UtcNow,
+            CalendarIcs = "BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:present-uid\r\nSUMMARY:Present\r\nEND:VEVENT\r\nEND:VCALENDAR",
+        };
+        await _store.UpsertDetailAsync(detail);
+
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "present-uid",
+            AccountId = accountId,
+            Summary = "Present event",
+            SourceMessageId = "msg-present",
+            SourceFolder = "INBOX",
+        });
+
+        await _store.ClearOrphanedCalendarSourceLinksAsync();
+
+        var after = await _store.LoadCalendarEventsAsync();
+        Assert.Single(after);
+        // Source link must NOT be cleared — the detail row still exists.
+        Assert.Equal("msg-present", after[0].SourceMessageId);
+        Assert.Equal("INBOX", after[0].SourceFolder);
+    }
+
+    [Fact]
+    public async Task HarvestAsync_ClearsOrphanedSourceLinks()
+    {
+        var accountId = Guid.NewGuid();
+
+        // Insert a CalendarEvent whose source message was never stored in MessageDetail.
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "harvest-orphan",
+            AccountId = accountId,
+            Summary = "Orphan",
+            SourceMessageId = "msg-gone",
+            SourceFolder = "INBOX",
+        });
+
+        // Run a harvest with no ICS rows in the cache.
+        var provider = new LocalCacheCalendarProvider(_store);
+        await provider.HarvestAsync();
+
+        var after = await _store.LoadCalendarEventsAsync();
+        Assert.Single(after);
+        Assert.Empty(after[0].SourceMessageId);
+    }
+
+    [Fact]
+    public async Task DeleteAccountData_RemovesCalendarEvents()
+    {
+        var accountId = Guid.NewGuid();
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "del-account-uid",
+            AccountId = accountId,
+            Summary = "Meeting",
+        });
+
+        await _store.DeleteAccountDataAsync(accountId);
+
+        var after = await _store.LoadCalendarEventsAsync();
+        Assert.Empty(after);
+    }
+
+    [Fact]
     public async Task Migration_v3ToV4_PreservesExistingTables()
     {
         // The store was initialized fresh (v4). Verify message tables still work.

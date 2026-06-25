@@ -86,5 +86,11 @@ public sealed class LocalCacheCalendarProvider : ICalendarProvider
             if (isCancel)
                 await _store.UpdateCalendarResponseStatusAsync(model.Uid, accountId, CalendarResponseStatus.Cancelled);
         }
+
+        // Clear source links for any CalendarEvent whose invite email has since been
+        // purged from the local message cache (sync window rolled forward, message moved
+        // or deleted).  Without this, opening such an event from the calendar pane
+        // falls through to an IMAP fetch that fails with "Message UID N not found".
+        await _store.ClearOrphanedCalendarSourceLinksAsync();
     }
 }

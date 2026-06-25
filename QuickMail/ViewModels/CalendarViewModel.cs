@@ -108,7 +108,13 @@ public partial class CalendarViewModel : ObservableObject
     [RelayCommand]
     private void OpenSourceMessage(CalendarEvent? evt)
     {
-        if (evt == null || string.IsNullOrEmpty(evt.SourceMessageId)) return;
+        if (evt == null) return;
+        if (string.IsNullOrEmpty(evt.SourceMessageId))
+        {
+            Announce("The original invitation email is no longer in your local message cache.",
+                     AnnouncementCategory.Result);
+            return;
+        }
         Announce($"Opening message. {evt.Summary}.", AnnouncementCategory.Status);
         OpenSourceMessageRequested?.Invoke(evt.AccountId, evt.SourceFolder, evt.SourceMessageId);
     }

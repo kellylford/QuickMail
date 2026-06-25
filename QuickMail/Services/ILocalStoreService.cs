@@ -84,4 +84,12 @@ public interface ILocalStoreService
     /// Each item is (AccountId, FolderName, MessageId, IcsText).
     /// </summary>
     Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync();
+
+    /// <summary>
+    /// Clears source_message_id and source_folder on any CalendarEvent whose source
+    /// message no longer exists in MessageDetail. Called after each harvest so that
+    /// events whose invite emails were purged from the local cache don't produce
+    /// "message not found" errors when the user tries to open the invitation.
+    /// </summary>
+    Task ClearOrphanedCalendarSourceLinksAsync();
 }

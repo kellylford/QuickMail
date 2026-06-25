@@ -843,6 +843,7 @@ public class SavedViewsMainViewModelTests
         public Task DeleteCalendarEventAsync(string uid, Guid accountId) => Task.CompletedTask;
         public Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
             => Task.FromResult(new List<(Guid, string, string, string)>());
+        public Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
     }
 
     private static MainViewModel MakeVmWithStore(IEnumerable<SavedView> views, ILocalStoreService store, IMailService? imap = null)

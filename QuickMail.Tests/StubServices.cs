@@ -115,6 +115,7 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task DeleteCalendarEventAsync(string uid, Guid accountId) => Task.CompletedTask;
     public Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
         => Task.FromResult(new List<(Guid, string, string, string)>());
+    public Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
 }
 
 sealed class StubContactService : IContactService

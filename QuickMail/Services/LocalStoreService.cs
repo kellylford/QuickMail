@@ -393,9 +393,14 @@ public class LocalStoreService : ILocalStoreService
             // Build "$u0,$u1,..." once for this chunk.
             var placeholders = string.Join(',', Enumerable.Range(0, count).Select(i => $"$u{i}"));
             await using var cmd = conn.CreateCommand();
+            // Also clear source links in CalendarEvent for any deleted message that was
+            // an invite source.  Cleared rather than deleted because the event itself
+            // (the user's acceptance, the meeting time) should stay visible in the
+            // calendar even after the original invite email is purged from the cache.
             cmd.CommandText =
                 $"DELETE FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});" +
-                $"DELETE FROM MessageDetail  WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});";
+                $"DELETE FROM MessageDetail  WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});" +
+                $"UPDATE CalendarEvent SET source_message_id='', source_folder='' WHERE account_id=$aid AND source_folder=$fn AND source_message_id IN ({placeholders});";
             cmd.Parameters.AddWithValue("$aid", accountId.ToString());
             cmd.Parameters.AddWithValue("$fn",  folderName);
             for (int i = 0; i < count; i++)
@@ -413,7 +418,8 @@ public class LocalStoreService : ILocalStoreService
         await using var cmd  = conn.CreateCommand();
         cmd.CommandText =
             "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
-            "DELETE FROM MessageSummary WHERE account_id = $aid;";
+            "DELETE FROM MessageSummary WHERE account_id = $aid;" +
+            "DELETE FROM CalendarEvent  WHERE account_id = $aid;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
@@ -875,5 +881,29 @@ public class LocalStoreService : ILocalStoreService
                 r.GetString(3)));
         }
         return list;
+    }
+
+    public async Task ClearOrphanedCalendarSourceLinksAsync()
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        // Clear source_message_id and source_folder on any CalendarEvent whose
+        // source MessageDetail row no longer exists.  This happens when the local
+        // message cache purges old messages (sync window rolls forward or the user
+        // deletes a message) but the CalendarEvent outlives it.  After clearing,
+        // OpenSourceMessage silently no-ops for these events instead of failing with
+        // "Message UID N not found".
+        cmd.CommandText = """
+            UPDATE CalendarEvent
+            SET source_message_id = '', source_folder = ''
+            WHERE source_message_id != ''
+              AND NOT EXISTS (
+                  SELECT 1 FROM MessageDetail md
+                  WHERE md.unique_id   = CalendarEvent.source_message_id
+                    AND md.account_id  = CalendarEvent.account_id
+                    AND md.folder_name = CalendarEvent.source_folder
+              );
+            """;
+        await cmd.ExecuteNonQueryAsync();
     }
 }

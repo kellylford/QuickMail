@@ -212,6 +212,38 @@ public class CalendarViewModelTests
     }
 
     [Fact]
+    public async Task OpenSourceMessage_WithEmptySourceMessageId_AnnouncesUnavailable()
+    {
+        // Simulates an event whose source was purged from the local cache and had
+        // its SourceMessageId cleared by ClearOrphanedCalendarSourceLinksAsync.
+        var evt = new CalendarEvent
+        {
+            Uid = "orphan",
+            AccountId = Guid.NewGuid(),
+            Summary = "Orphaned meeting",
+            SourceMessageId = string.Empty,
+            SourceFolder = string.Empty,
+            StartTimeTicks = DateTime.Today.AddHours(10).ToUniversalTime().Ticks,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        var vm = MakeVm(new List<CalendarEvent> { evt });
+        await vm.LoadAsync();
+
+        bool raised = false;
+        string? announced = null;
+        AnnouncementCategory? cat = null;
+        vm.OpenSourceMessageRequested += (_, _, _) => raised = true;
+        vm.AnnouncementRequested += (text, c) => { announced = text; cat = c; };
+
+        vm.OpenSourceMessageCommand.Execute(evt);
+
+        Assert.False(raised);
+        Assert.NotNull(announced);
+        Assert.Contains("no longer in your local message cache", announced);
+        Assert.Equal(AnnouncementCategory.Result, cat);
+    }
+
+    [Fact]
     public async Task RefreshCommand_AnnouncesStatusThenResult()
     {
         var vm = MakeVm(new List<CalendarEvent> { MakeEvent("e1", DateTime.Today.AddHours(10)) });
