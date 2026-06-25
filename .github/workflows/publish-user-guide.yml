@@ -60,6 +60,7 @@ jobs:
             --standalone \
             --include-in-header=/tmp/guide-style.html \
             --metadata title="QuickMail User Guide" \
+            --metadata lang=en \
             --variable "version=$VERSION" \
             --output build/docs/full.html
           # Inject version line after the h1
