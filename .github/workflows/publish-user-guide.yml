@@ -140,7 +140,7 @@ jobs:
           toc_html += """
               </ul>
               <hr>
-              <p><strong>View as:</strong> <a href="index.html">Single Page</a></p>
+              <p><strong>View as:</strong> <a href="full.html">Single Page</a></p>
           </body>
           </html>
           """
