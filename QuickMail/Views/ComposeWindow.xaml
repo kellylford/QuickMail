@@ -11,7 +11,8 @@
         Height="540" Width="680"
         MinHeight="360" MinWidth="480"
         WindowStartupLocation="CenterScreen"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        PreviewKeyUp="Window_PreviewKeyUp">
 
     <Window.InputBindings>
         <KeyBinding Key="S" Modifiers="Alt"  Command="{Binding SendCommand}"/>

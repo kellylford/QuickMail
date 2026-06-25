@@ -5,6 +5,8 @@
 ### Bug Fixes
 
 - **Adding a new account no longer disconnects existing accounts** — Fixed a race condition where opening the Account Manager and adding a new account caused all existing accounts to appear disconnected. The event handler for account reachability changes was bound to stale account objects after the collection was refreshed. (#126)
+- **Shift+Tab from the message body returns focus to the header fields** — In both plain-text and HTML compose modes, pressing Shift+Tab from the message body now moves focus back to the Subject field (and from there through the other header fields). Previously, `AcceptsTab` on the editor blocked WPF's normal reverse-tab navigation and left focus stranded in the body. List-item indentation (Tab to indent, Shift+Tab to dedent) continues to work correctly in Markdown and HTML modes. (#131)
+- **Alt+key shortcuts in compose no longer activate the menu bar** — Pressing Alt+S to send (or Alt+U, Alt+M, Alt+Y) no longer causes the menu bar to receive focus after the shortcut executes. The previous fix intercepted the Win32 SC\_KEYMENU system command but missed two additional paths: DefWindowProc generating SC\_KEYMENU from the Alt key-release, and WPF's own AccessKeyManager responding to the Alt key-up event independently of Win32. The fix now intercepts WM\_KEYUP(VK\_MENU) in the WndProc hook before either path fires. (#130)
 
 ---
 
