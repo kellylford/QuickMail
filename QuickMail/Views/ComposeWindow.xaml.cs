@@ -946,6 +946,16 @@ public partial class ComposeWindow : Window
             }
         }
 
+        // Shift+Tab when not consumed by list dedent above: move focus back to the
+        // previous header field. AcceptsTab=True blocks WPF's natural tab-navigation
+        // for Shift+Tab just as it does for forward Tab.
+        if (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.Shift)
+        {
+            ((UIElement)sender).MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous));
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.F7)
         {
             var forward = (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
@@ -1002,7 +1012,18 @@ public partial class ComposeWindow : Window
         if (Keyboard.Modifiers != ModifierKeys.None && Keyboard.Modifiers != ModifierKeys.Shift) return;
 
         var para = RichBodyBox.CaretPosition.Paragraph;
-        if (para?.Parent is not ListItem) return;
+        if (para?.Parent is not ListItem)
+        {
+            // Shift+Tab from a non-list paragraph: move focus back to the previous
+            // header field. AcceptsTab=True blocks the natural WPF focus navigation
+            // for both Tab and Shift+Tab, so we have to do it explicitly.
+            if (Keyboard.Modifiers == ModifierKeys.Shift)
+            {
+                ((UIElement)sender).MoveFocus(new TraversalRequest(FocusNavigationDirection.Previous));
+                e.Handled = true;
+            }
+            return;
+        }
 
         _suppressFormattingAnnouncement = true;
         if (Keyboard.Modifiers == ModifierKeys.Shift)
