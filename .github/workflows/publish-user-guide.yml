@@ -103,10 +103,10 @@ jobs:
               nav = '<div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a>'
               if current_idx > 0:
                   prev_fn, prev_title, _ = section_files[current_idx - 1]
-                  nav += f' | ← <a href="{prev_fn}.html">{prev_title}</a>'
+                  nav += f' | <a href="{prev_fn}.html">Previous: {prev_title}</a>'
               if current_idx < len(section_files) - 1:
                   next_fn, next_title, _ = section_files[current_idx + 1]
-                  nav += f' | <a href="{next_fn}.html">{next_title}</a> →'
+                  nav += f' | <a href="{next_fn}.html">Next: {next_title}</a>'
               nav += '</div>'
               return nav
 
