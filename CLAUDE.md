@@ -66,12 +66,12 @@ The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and pub
 
 ### GitHub Pages Setup (One-time)
 
-GitHub Pages is already configured to serve from the `gh-pages` branch. If you need to verify or change it:
-1. Go to **Settings** → **Pages**
-2. Set **Source** to `gh-pages` branch
-3. Enforce HTTPS (recommended)
+Run the setup script once:
+```bat
+.\scripts\setup-gh-pages.ps1
+```
 
-The published guide appears at `https://kellylford.github.io/QuickMail/`.
+This enables GitHub Pages to serve from the `gh-pages` branch. The published guide appears at `https://kellylford.github.io/QuickMail/`.
 
 ### Help Menu Link
 
