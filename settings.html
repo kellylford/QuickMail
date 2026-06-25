@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - QuickMail User Guide</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
+        .nav { margin-bottom: 2em; padding-bottom: 1em; border-bottom: 1px solid #ccc; }
+        .nav a { margin-right: 1em; }
+        .nav-title { font-weight: bold; margin-bottom: 0.5em; }
+        .section-nav { display: flex; justify-content: space-between; margin-top: 2em; padding-top: 1em; border-top: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-title"><a href="index.html">QuickMail User Guide</a></div>
+    </div>
+    <main>
+<h1 id="settings">Settings</h1>
+<p>Press <strong>Ctrl+,</strong> to open Settings.</p>
+<h3 id="general">General</h3>
+<ul>
+<li><strong>Reading Mode</strong> — Reading Pane, Tab, or Window</li>
+<li><strong>Mark messages read</strong> — automatically on open, or
+manually only</li>
+<li><strong>Default compose mode</strong> — Plain Text, Markdown, or
+HTML</li>
+<li><strong>Auto-save drafts</strong> — on/off and interval</li>
+</ul>
+<h3 id="accounts">Accounts</h3>
+<p>Add, edit, or remove accounts. Sign out of OAuth accounts.</p>
+<h3 id="advanced">Advanced</h3>
+<p><strong>QuickMail Logging</strong></p>
+<ul>
+<li><strong>Enable logging</strong> — when checked, QuickMail writes
+activity to <code>quickmail.log</code> in your profile directory
+(usually <code>%APPDATA%\QuickMail</code>). Uncheck to stop writing the
+log file. Changes take effect when you select
+<strong>Save</strong>.</li>
+<li><strong>Delete QuickMail log</strong> — deletes the log file
+immediately after confirmation. If logging is still on, a new log file
+is created the next time an activity is logged.</li>
+</ul>
+<blockquote>
+<p><strong>Note:</strong> If QuickMail was launched with the
+<code>/debug</code> flag, logging always runs regardless of the Enable
+logging setting. The <code>/debug</code> flag is intended for diagnosing
+problems and overrides this preference so that nothing is missed.</p>
+</blockquote>
+<p><strong>Log Format</strong></p>
+<p>Controls the order of timestamp and message text in each log line.
+<strong>Action first</strong> (default) places the message before the
+timestamp, which is easier to scan since the log is already in
+chronological order. <strong>Time first</strong> uses the original
+format with the timestamp at the start of each line.</p>
+<h3 id="keyboard">Keyboard</h3>
+<p>Reassign shortcuts for any registered command.</p>
+<h3 id="screen-reader-announcements">Screen Reader Announcements</h3>
+<p>Control which categories of announcements QuickMail makes:</p>
+<table>
+<colgroup>
+<col style="width: 34%" />
+<col style="width: 65%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Setting</th>
+<th>What it controls</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Custom Announcements</td>
+<td>Master on/off for all programmatic announcements</td>
+</tr>
+<tr class="even">
+<td>Announce hints</td>
+<td>Instructional tips (“Press Escape to return”)</td>
+</tr>
+<tr class="odd">
+<td>Announce status</td>
+<td>Background progress (sync, loading, connection state)</td>
+</tr>
+<tr class="even">
+<td>Announce results</td>
+<td>Action outcomes (messages moved, addresses saved, flag changes)</td>
+</tr>
+<tr class="odd">
+<td>Announce formatting while navigating</td>
+<td>Block type announced when caret enters a new paragraph type in HTML
+compose</td>
+</tr>
+<tr class="even">
+<td>Announce flag status</td>
+<td>Flag name prepended to message row when navigating the list</td>
+</tr>
+<tr class="odd">
+<td>Announce spelling suggestions</td>
+<td>Suggestions included when a misspelling is announced</td>
+</tr>
+<tr class="even">
+<td>Spelling Suggestions Verbosity</td>
+<td>Numbers with suggestions (default) or just suggestions</td>
+</tr>
+</tbody>
+</table>
+<p>All settings default to on except <strong>Announce flag
+status</strong> and <strong>Announce spelling while typing</strong> (off
+by default). <strong>Spelling Suggestions Verbosity</strong> defaults to
+<strong>Numbers with suggestions</strong>. Turn off <strong>Custom
+Announcements</strong> to silence everything at once; turn it back on to
+restore your individual preferences.</p>
+<hr />
+
+    </main>
+</body>
+</html>

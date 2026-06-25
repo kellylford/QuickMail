@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Composing Mail - QuickMail User Guide</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }
+        .nav { margin-bottom: 2em; padding-bottom: 1em; border-bottom: 1px solid #ccc; }
+        .nav a { margin-right: 1em; }
+        .nav-title { font-weight: bold; margin-bottom: 0.5em; }
+        .section-nav { display: flex; justify-content: space-between; margin-top: 2em; padding-top: 1em; border-top: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+    <div class="nav">
+        <div class="nav-title"><a href="index.html">QuickMail User Guide</a></div>
+    </div>
+    <main>
+<h1 id="composing-mail">Composing Mail</h1>
+<h3 id="opening-a-compose-window">Opening a Compose Window</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Ctrl+N</code></td>
+<td>New message</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+R</code></td>
+<td>Reply</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+Shift+R</code></td>
+<td>Reply All</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+F</code></td>
+<td>Forward</td>
+</tr>
+</tbody>
+</table>
+<h3 id="compose-panes">Compose Panes</h3>
+<p>Press <strong>F6</strong> to cycle between the address fields (To,
+Cc, Bcc), the subject, and the message body. You can also jump directly
+to a field:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Destination</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Alt+U</code></td>
+<td>Subject field</td>
+</tr>
+<tr class="even">
+<td><code>Alt+M</code></td>
+<td>From account</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+Y</code></td>
+<td>Message body</td>
+</tr>
+</tbody>
+</table>
+<h3 id="address-autocomplete">Address Autocomplete</h3>
+<p>Start typing a name or address in To, Cc, or Bcc. QuickMail searches
+your address book and recent contacts. Arrow down to choose a
+suggestion; press Enter or Tab to accept. Press Escape to dismiss
+without accepting.</p>
+<h3 id="editing-modes">Editing Modes</h3>
+<p>Every compose window offers three modes, switchable at any time with
+<code>Ctrl+Shift+1/2/3</code> or the <strong>View</strong> menu:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Mode</th>
+<th>Shortcut</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Plain Text</td>
+<td><code>Ctrl+Shift+1</code></td>
+<td>Unformatted text</td>
+</tr>
+<tr class="even">
+<td>Markdown</td>
+<td><code>Ctrl+Shift+2</code></td>
+<td>Write Markdown; sent as formatted HTML</td>
+</tr>
+<tr class="odd">
+<td>HTML</td>
+<td><code>Ctrl+Shift+3</code></td>
+<td>Rich text editor with real formatting</td>
+</tr>
+</tbody>
+</table>
+<p>Switching from a rich mode to Plain Text asks for confirmation
+because formatting would be lost.</p>
+<p>Messages composed in Markdown or HTML are sent with both an HTML part
+and a plain text part.</p>
+<h3 id="formatting-markdown-and-html-modes">Formatting (Markdown and
+HTML Modes)</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Shortcut</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Bold</td>
+<td><code>Ctrl+B</code></td>
+</tr>
+<tr class="even">
+<td>Italic</td>
+<td><code>Ctrl+I</code></td>
+</tr>
+<tr class="odd">
+<td>Underline (HTML only)</td>
+<td><code>Ctrl+U</code></td>
+</tr>
+<tr class="even">
+<td>Strikethrough</td>
+<td><code>Ctrl+Shift+X</code></td>
+</tr>
+<tr class="odd">
+<td>Heading 1 / 2 / 3</td>
+<td><code>Ctrl+Alt+1</code> / <code>Ctrl+Alt+2</code> /
+<code>Ctrl+Alt+3</code></td>
+</tr>
+<tr class="even">
+<td>Bullet list</td>
+<td><code>Ctrl+Shift+L</code></td>
+</tr>
+<tr class="odd">
+<td>Numbered list</td>
+<td><code>Ctrl+Shift+N</code></td>
+</tr>
+<tr class="even">
+<td>Insert link</td>
+<td><code>Ctrl+L</code></td>
+</tr>
+<tr class="odd">
+<td>Clear formatting</td>
+<td><code>Ctrl+Space</code></td>
+</tr>
+<tr class="even">
+<td>Announce formatting at cursor</td>
+<td><code>Ctrl+T</code></td>
+</tr>
+<tr class="odd">
+<td>Show formatting in browsable list</td>
+<td><code>Ctrl+Shift+T</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nested lists:</strong> In a list, press <strong>Tab</strong>
+to indent an item (creating a sub-list); press
+<strong>Shift+Tab</strong> to dedent.</p>
+<h3 id="checking-formatting-html-mode">Checking Formatting (HTML
+Mode)</h3>
+<ul>
+<li><strong><code>Ctrl+T</code></strong> — announces a one-line summary:
+“Heading 2. Bold on, Italic off, Underline off.”</li>
+<li><strong><code>Ctrl+Shift+T</code></strong> — opens a small window
+listing the same details one per row. Arrow through them; press Escape
+or Enter to close.</li>
+</ul>
+<h3 id="preview-markdown-and-html-modes">Preview (Markdown and HTML
+Modes)</h3>
+<p>Press <strong>F8</strong> to open a rendered preview in a separate
+window. The preview is fully focusable, so you can browse the formatted
+output exactly as a recipient would. Links open in your default browser.
+Press <strong>Escape</strong> or <strong>Ctrl+W</strong> to close the
+preview.</p>
+<h3 id="spell-check">Spell Check</h3>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 44%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>F7</code></td>
+<td>Jump to next misspelling</td>
+</tr>
+<tr class="even">
+<td><code>Shift+F7</code></td>
+<td>Jump to previous misspelling</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+1</code> / <code>Alt+2</code> / <code>Alt+3</code></td>
+<td>Accept first / second / third spelling suggestion</td>
+</tr>
+</tbody>
+</table>
+<p>Spell check wraps from end to beginning (and beginning to end for
+Shift+F7) so it always finds misspellings wherever the cursor
+starts.</p>
+<p>When a screen reader is active, QuickMail announces each misspelling
+along with up to three suggestions. By default, each suggestion is
+numbered — for example: “Misspelling: teh. 1: the, 2: then, 3: them.”
+Press <code>Alt+1</code>, <code>Alt+2</code>, or <code>Alt+3</code> to
+replace the misspelled word with that numbered suggestion without
+leaving the compose area.</p>
+<p>Control announcement behavior in <strong>Settings → Screen Reader
+Announcements</strong>:</p>
+<ul>
+<li><strong>Announce spelling suggestions</strong> — turn off to hear
+only the misspelled word without suggestions.</li>
+<li><strong>Spelling Suggestions Verbosity</strong> — choose
+<strong>Numbers with suggestions</strong> (default) to hear “1: the, 2:
+then” so <code>Alt+1/2/3</code> maps directly to what is spoken, or
+<strong>Just suggestions</strong> to hear “the, then, them” without
+numbers.</li>
+</ul>
+<h3 id="attachments">Attachments</h3>
+<p>Attach files with <code>Ctrl+Shift+A</code> in the compose window, by
+pasting files from the clipboard (<code>Ctrl+V</code>), or by dragging
+and dropping them onto the window. A screen reader announces how many
+files were attached.</p>
+<h3 id="sending">Sending</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Alt+S</code> or <code>Ctrl+Enter</code></td>
+<td>Send</td>
+</tr>
+</tbody>
+</table>
+<h3 id="auto-save-drafts">Auto-Save Drafts</h3>
+<p>QuickMail saves your compose as a draft automatically every 2 minutes
+(on by default). A quiet status line in the compose window shows
+“Auto-saved 3:42 PM” after each save — no announcement interrupts your
+writing. If a save fails, it is announced once. You can check the last
+auto-save time from the command palette: <strong>Ctrl+Shift+P → Announce
+Last Auto-Save</strong>.</p>
+<p>Control auto-save in <strong>Settings → General → Composing</strong>:
+turn it off, change the interval (30 seconds to 10 minutes), and set the
+default compose mode for new messages.</p>
+<h3 id="forwarding-with-attachments">Forwarding with Attachments</h3>
+<p>When forwarding a message that has attachments, QuickMail opens an
+<strong>Include Attachments</strong> dialog before downloading. All
+attachments are checked by default. Arrow between files and press Space
+to toggle individual ones. Press Tab to reach Forward (include checked
+files) or Cancel.</p>
+<hr />
+
+    </main>
+</body>
+</html>
