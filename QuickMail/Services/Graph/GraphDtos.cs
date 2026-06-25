@@ -11,6 +11,18 @@ internal sealed class GraphCollection<T>
     [JsonPropertyName("@odata.nextLink")] public string? NextLink { get; set; }
 }
 
+/// <summary>
+/// Response shape for a <c>/messages/delta</c> query. Exposes both cursors so the poll loop can
+/// tell them apart: <see cref="NextLink"/> pages WITHIN a tick (transient, never persisted), while
+/// <see cref="DeltaLink"/> is the cursor for the NEXT tick (persisted). See dev spec §6.12.
+/// </summary>
+internal sealed class GraphDeltaResponse
+{
+    [JsonPropertyName("value")]            public GraphMessage[]? Value { get; set; }
+    [JsonPropertyName("@odata.nextLink")]  public string? NextLink { get; set; }
+    [JsonPropertyName("@odata.deltaLink")] public string? DeltaLink { get; set; }
+}
+
 internal sealed class GraphMe
 {
     [JsonPropertyName("id")] public string? Id { get; set; }

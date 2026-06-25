@@ -750,7 +750,9 @@ public class ImapMailService : IMailService, IChangeNotifier
 
     public void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
     {
-        foreach (var account in accounts)
+        // The change-notifier router fans the full account list out to every notifier; IMAP IDLE only
+        // handles IMAP accounts (a Graph account here would spin up a doomed IMAP connection).
+        foreach (var account in accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp))
         {
             // Cancel any existing watcher for this account.
             if (_idleCts.TryRemove(account.Id, out var old))

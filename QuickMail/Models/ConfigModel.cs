@@ -41,6 +41,12 @@ public class ConfigModel
     /// </summary>
     public int InitialSyncCount { get; set; } = 500;
 
+    /// <summary>
+    /// Poll interval (seconds) for the Microsoft Graph new-mail delta watcher. Default 60, clamped
+    /// to 30–600. IMAP accounts use a held IDLE connection instead and ignore this setting.
+    /// </summary>
+    public int GraphPollSeconds { get; set; } = 60;
+
     // ── Screen reader announcement settings ──────────────────────────────────────
 
     /// <summary>Master switch for all custom screen reader announcements from QuickMail code.</summary>

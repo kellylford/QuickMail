@@ -218,6 +218,9 @@ public class ConfigService : IConfigService
                     case "initialsynccount":
                         if (int.TryParse(value, out var isc)) config.InitialSyncCount = Math.Max(0, isc);
                         break;
+                    case "graphpollseconds":
+                        if (int.TryParse(value, out var gps)) config.GraphPollSeconds = Math.Clamp(gps, 30, 600);
+                        break;
                     case "customannouncements":  config.CustomAnnouncements = ParseBool(value); break;
                     case "announcehints":        config.AnnounceHints        = ParseBool(value); break;
                     case "announcestatus":       config.AnnounceStatus       = ParseBool(value); break;
@@ -354,6 +357,11 @@ public class ConfigService : IConfigService
         sb.AppendLine($"InitialSyncCount = {config.InitialSyncCount}");
         sb.AppendLine("# Number of messages to fetch on the initial sync of a folder.");
         sb.AppendLine("# Default is 500. Set to 0 to fetch all messages in the folder.");
+        sb.AppendLine();
+
+        sb.AppendLine($"GraphPollSeconds = {Math.Clamp(config.GraphPollSeconds, 30, 600)}");
+        sb.AppendLine("# Poll interval (seconds) for the Microsoft Graph new-mail watcher.");
+        sb.AppendLine("# Default is 60. Values: 30-600. IMAP accounts use IDLE and ignore this.");
         sb.AppendLine();
 
         sb.AppendLine($"CustomAnnouncements = {(config.CustomAnnouncements ? "on" : "off")}");
