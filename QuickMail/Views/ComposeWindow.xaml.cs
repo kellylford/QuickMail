@@ -716,6 +716,20 @@ public partial class ComposeWindow : Window
         }
     }
 
+    // After handling an Alt+key shortcut, suppress the Alt release so DefWindowProc
+    // doesn't generate WM_SYSCOMMAND/SC_KEYMENU and activate the menu bar. Handling
+    // it here (PreviewKeyUp) is more reliable than the WndProc hook alone because it
+    // fires before SC_KEYMENU is generated, even if the compose window is closing.
+    private void Window_PreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        if (!_suppressNextMenuActivation) return;
+        if (e.Key == Key.System && (e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt))
+        {
+            _suppressNextMenuActivation = false;
+            e.Handled = true;
+        }
+    }
+
     /// <summary>
     /// When the caret moves into a misspelled word during normal cursor navigation,
     /// announce it to screen readers so users hear about spelling errors without
