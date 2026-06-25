@@ -276,12 +276,37 @@ public partial class ComposeWindow : Window
 
     private IntPtr SuppressMenuActivationHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        const int WM_KEYUP      = 0x0101;
+        const int WM_SYSKEYUP   = 0x0105;
         const int WM_SYSCOMMAND = 0x0112;
+        const int VK_MENU       = 0x12;   // Alt key
         const int SC_KEYMENU    = 0xF100;
-        if (msg == WM_SYSCOMMAND && (wParam.ToInt32() & 0xFFF0) == SC_KEYMENU && _suppressNextMenuActivation)
+
+        // WM_KEYUP(VK_MENU): Alt released. Eat it before DefWindowProc generates
+        // WM_SYSCOMMAND/SC_KEYMENU AND before WPF's AccessKeyManager/Menu can respond
+        // to the key-up event. Without this interception, both paths can activate the
+        // menu bar regardless of WPF-level e.Handled flags.
+        if ((msg == WM_KEYUP || msg == WM_SYSKEYUP) && wParam.ToInt32() == VK_MENU)
         {
-            _suppressNextMenuActivation = false;
-            handled = true;
+            LogService.Debug($"[AltMenu] hook saw {(msg == WM_KEYUP ? "WM_KEYUP" : "WM_SYSKEYUP")}(VK_MENU), suppress={_suppressNextMenuActivation}");
+            if (_suppressNextMenuActivation)
+            {
+                _suppressNextMenuActivation = false;
+                handled = true;
+                return IntPtr.Zero;
+            }
+        }
+
+        // Belt-and-suspenders: catch SC_KEYMENU in case DefWindowProc generated it
+        // via a path the above didn't intercept (e.g. WM_SYSKEYUP from Alt itself).
+        if (msg == WM_SYSCOMMAND && (wParam.ToInt32() & 0xFFF0) == SC_KEYMENU)
+        {
+            LogService.Debug($"[AltMenu] hook saw WM_SYSCOMMAND/SC_KEYMENU wParam=0x{wParam.ToInt32():X}, suppress={_suppressNextMenuActivation}");
+            if (_suppressNextMenuActivation)
+            {
+                _suppressNextMenuActivation = false;
+                handled = true;
+            }
         }
         return IntPtr.Zero;
     }
@@ -685,6 +710,7 @@ public partial class ComposeWindow : Window
             SubjectBox.SelectAll();
             e.Handled = true;
             _suppressNextMenuActivation = true;
+            LogService.Debug("[AltMenu] Alt+U handled; arming suppress");
         }
         else if (e.SystemKey == Key.M && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
         {
@@ -692,12 +718,14 @@ public partial class ComposeWindow : Window
             FromCombo.IsDropDownOpen = true;
             e.Handled = true;
             _suppressNextMenuActivation = true;
+            LogService.Debug("[AltMenu] Alt+M handled; arming suppress");
         }
         else if (e.SystemKey == Key.Y && (Keyboard.Modifiers & ModifierKeys.Alt) != 0)
         {
             FocusActiveEditor();
             e.Handled = true;
             _suppressNextMenuActivation = true;
+            LogService.Debug("[AltMenu] Alt+Y handled; arming suppress");
         }
 
         // ── Registry-based compose commands ──────────────────────────────────
@@ -709,6 +737,7 @@ public partial class ComposeWindow : Window
         var cmd = _registry.FindByGesture(key, modifiers);
         if (cmd != null && (cmd.IsAvailable?.Invoke() ?? true))
         {
+            LogService.Debug($"[AltMenu] registry cmd '{cmd.Id}' (modifiers={modifiers}) handled; arming suppress={((modifiers & ModifierKeys.Alt) != 0)}");
             cmd.Execute();
             e.Handled = true;
             if ((modifiers & ModifierKeys.Alt) != 0)
@@ -716,15 +745,16 @@ public partial class ComposeWindow : Window
         }
     }
 
-    // After handling an Alt+key shortcut, suppress the Alt release so DefWindowProc
-    // doesn't generate WM_SYSCOMMAND/SC_KEYMENU and activate the menu bar. Handling
-    // it here (PreviewKeyUp) is more reliable than the WndProc hook alone because it
-    // fires before SC_KEYMENU is generated, even if the compose window is closing.
+    // Belt-and-suspenders: if the WndProc hook above didn't eat the Alt key release
+    // (e.g. the window is closing so the hook is gone), handle the WPF-level event
+    // here. Note: Alt release arrives as e.Key=Key.LeftAlt (WM_KEYUP, not WM_SYSKEYUP),
+    // so do NOT check Key.System — that condition never fires for the Alt key UP.
     private void Window_PreviewKeyUp(object sender, KeyEventArgs e)
     {
         if (!_suppressNextMenuActivation) return;
-        if (e.Key == Key.System && (e.SystemKey == Key.LeftAlt || e.SystemKey == Key.RightAlt))
+        if (e.Key == Key.LeftAlt || e.Key == Key.RightAlt)
         {
+            LogService.Debug($"[AltMenu] Window_PreviewKeyUp suppressing Key={e.Key}");
             _suppressNextMenuActivation = false;
             e.Handled = true;
         }
