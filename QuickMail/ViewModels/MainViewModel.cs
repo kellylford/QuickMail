@@ -128,7 +128,7 @@ public partial class MainViewModel : ObservableObject
     public static readonly MailFolderModel AllFlaggedFolder = new()
     {
         FullName    = "\u0000AllFlagged",
-        DisplayName = "All Flagged Mail"
+        DisplayName = "All Flagged"
     };
 
     /// <summary>Virtual folder sentinel that opens the calendar event list.</summary>
