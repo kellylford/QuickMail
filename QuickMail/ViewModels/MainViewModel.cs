@@ -1664,12 +1664,14 @@ public partial class MainViewModel : ObservableObject
         });
     });
 
-    // Marshals a ThreadPool callback onto the UI thread. Runs inline when already on the UI thread or
-    // when there is no Application (unit tests), keeping ThreadPool-fired handlers testable.
+    // Marshals a ThreadPool callback onto the UI thread. Runs inline when already on the UI thread,
+    // when there is no Application, or when the dispatcher's STA thread has exited (unit-test
+    // teardown: App.Current persists process-wide but the thread that owns the dispatcher is gone,
+    // so InvokeAsync would silently drop the work).
     private static void InvokeOnUi(Action action)
     {
         var dispatcher = App.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess())
+        if (dispatcher is null || dispatcher.CheckAccess() || !dispatcher.Thread.IsAlive)
             action();
         else
             dispatcher.InvokeAsync(action);

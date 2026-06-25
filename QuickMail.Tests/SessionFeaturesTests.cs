@@ -303,8 +303,7 @@ public class IdleNewMailTests
         // Fire the IDLE event — OnInboxNewMailDetected runs SyncOneFolderAsync via Task.Run.
         imap.FireNewMail();
 
-        // 30s: Task.Run scheduling on a loaded CI runner can be slow; 5s was too tight.
-        var result = await sync.SyncOneFolderCalled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        var result = await sync.SyncOneFolderCalled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Equal(accountId, result.Account.Id);
         Assert.Equal(SpecialFolderKind.Inbox, result.Folder.Kind);
     }
@@ -334,8 +333,7 @@ public class IdleNewMailTests
         imap.FireNewMail();
 
         // In online mode the handler must call SyncOneFolderOnlineAsync (not SyncOneFolderAsync).
-        // 30s: Task.Run scheduling on a loaded CI runner can be slow; 5s was too tight.
-        var result = await sync.SyncOneFolderOnlineCalled.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        var result = await sync.SyncOneFolderOnlineCalled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         Assert.Equal(accountId, result.Account.Id);
         Assert.Equal(SpecialFolderKind.Inbox, result.Folder.Kind);
         Assert.False(sync.SyncOneFolderCalled.Task.IsCompleted);
