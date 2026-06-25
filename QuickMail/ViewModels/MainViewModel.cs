@@ -1665,13 +1665,15 @@ public partial class MainViewModel : ObservableObject
     });
 
     // Marshals a ThreadPool callback onto the UI thread. Runs inline when already on the UI thread,
-    // when there is no Application, or when the dispatcher's STA thread has exited (unit-test
-    // teardown: App.Current persists process-wide but the thread that owns the dispatcher is gone,
-    // so InvokeAsync would silently drop the work).
+    // when there is no Application, when the dispatcher's STA thread has exited (unit-test
+    // teardown), or when the dispatcher thread is a background thread (xUnit STA test-helper
+    // threads are background threads and don't run a WPF message pump — InvokeAsync would queue
+    // work that never executes, causing test timeouts).  The production WPF main thread is always
+    // a foreground thread, so the IsBackground guard never triggers in production.
     private static void InvokeOnUi(Action action)
     {
         var dispatcher = App.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess() || !dispatcher.Thread.IsAlive)
+        if (dispatcher is null || dispatcher.CheckAccess() || !dispatcher.Thread.IsAlive || dispatcher.Thread.IsBackground)
             action();
         else
             dispatcher.InvokeAsync(action);
