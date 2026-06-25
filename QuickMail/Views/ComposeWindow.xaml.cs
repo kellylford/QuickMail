@@ -856,10 +856,13 @@ public partial class ComposeWindow : Window
 
     private string BuildSpellingAnnouncement(string word, List<string> suggestions)
     {
-        var announceSuggestions = _configService.Load().AnnounceSpellingSuggestions;
-        if (!announceSuggestions || suggestions.Count == 0)
+        var cfg = _configService.Load();
+        if (!cfg.AnnounceSpellingSuggestions || suggestions.Count == 0)
             return $"Misspelling: {word}.";
-        return $"Misspelling: {word}. {string.Join(", ", suggestions)}.";
+        if (cfg.SpellingSuggestionsVerbosity == "justSuggestions")
+            return $"Misspelling: {word}. {string.Join(", ", suggestions)}.";
+        var numbered = string.Join(", ", suggestions.Select((s, i) => $"{i + 1}: {s}"));
+        return $"Misspelling: {word}. {numbered}.";
     }
 
     private static bool IsTypingKey(Key key, ModifierKeys modifiers)

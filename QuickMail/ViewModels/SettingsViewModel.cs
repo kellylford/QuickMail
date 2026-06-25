@@ -50,6 +50,22 @@ public partial class SettingsViewModel : ObservableObject
     private bool _announceSpellingSuggestions;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsVerbosityJustSuggestions))]
+    [NotifyPropertyChangedFor(nameof(IsVerbosityNumbersWithSuggestions))]
+    private string _spellingSuggestionsVerbosity = "numbersWithSuggestions";
+
+    public bool IsVerbosityJustSuggestions
+    {
+        get => SpellingSuggestionsVerbosity == "justSuggestions";
+        set { if (value) SpellingSuggestionsVerbosity = "justSuggestions"; }
+    }
+    public bool IsVerbosityNumbersWithSuggestions
+    {
+        get => SpellingSuggestionsVerbosity == "numbersWithSuggestions";
+        set { if (value) SpellingSuggestionsVerbosity = "numbersWithSuggestions"; }
+    }
+
+    [ObservableProperty]
     private bool _announceFormattingWhileNavigating;
 
     [ObservableProperty]
@@ -137,6 +153,7 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceSpellingWhileTyping      = cfg.AnnounceSpellingWhileTyping;
         AnnounceSpellingWhileNavigating  = cfg.AnnounceSpellingWhileNavigating;
         AnnounceSpellingSuggestions      = cfg.AnnounceSpellingSuggestions;
+        SpellingSuggestionsVerbosity     = cfg.SpellingSuggestionsVerbosity;
         AnnounceFormattingWhileNavigating = cfg.AnnounceFormattingWhileNavigating;
         AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
@@ -187,6 +204,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceSpellingWhileTyping      = AnnounceSpellingWhileTyping;
         cfg.AnnounceSpellingWhileNavigating  = AnnounceSpellingWhileNavigating;
         cfg.AnnounceSpellingSuggestions      = AnnounceSpellingSuggestions;
+        cfg.SpellingSuggestionsVerbosity     = SpellingSuggestionsVerbosity;
         cfg.AnnounceFormattingWhileNavigating = AnnounceFormattingWhileNavigating;
         cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;

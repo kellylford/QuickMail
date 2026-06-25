@@ -33,6 +33,16 @@ When moving or copying a message on a Microsoft 365 or Exchange account, the fol
 
 ---
 
+## Improvements
+
+### Spelling suggestions are now numbered
+
+When a misspelling is announced, each suggestion is now preceded by its number — for example: "Misspelling: teh. 1: the, 2: then, 3: them." This makes the `Alt+1` / `Alt+2` / `Alt+3` correction shortcuts immediately obvious without having to count suggestions mentally.
+
+A new **Spelling Suggestions Verbosity** setting in **Settings → Screen Reader Announcements** lets you choose between **Numbers with suggestions** (the new default) and **Just suggestions** if you prefer the previous style.
+
+---
+
 ## Thank You to Contributors
 
 Thank you to everyone who has contributed to QuickMail through code, bug reports, feature suggestions, and other feedback. Your contributions make the project better for everyone.
@@ -44,6 +54,15 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 ### Virtual folder refresh reconciliation
 
 - `MainViewModel`: replaced the add-only `existingKeys` `HashSet` in all virtual-folder merge paths (All Mail, per-account All Mail, All Inboxes, Drafts, Sent, Trash) with a `Dictionary` keyed on `(MessageId, AccountId, FolderName)`. On collision, a new `ReconcileMessageState` helper copies server-fresh mutable fields (`IsRead`, `IsReplied`, `IsForwarded`, `HasAttachments`, `FlagId`, `FlagName`, `FlagColorHex`, `IsServerFlagged`) onto the existing `ObservableObject` in place, triggering `PropertyChanged` so rows update without disturbing selection or screen reader focus. Genuinely new messages continue to be inserted sorted. The local-store upsert at the end of each path already covered all fetched messages, so cache correctness was unaffected.
+
+### Change-notification extraction (`IChangeNotifier`)
+
+- New `IChangeNotifier` interface (`InboxNewMailDetected`, `AccountReachabilityChanged`, `StartWatchers`, `StopWatchers`) extracted from `IMailService`, so each backend can supply its own notification strategy without the interface coupling.
+- `ImapMailService` implements `IChangeNotifier` directly — the IMAP IDLE watcher is bound to the IMAP connection lifecycle (`DisconnectAsync` cancels an account's watcher; `Dispose` stops them all), so extracting it to a standalone class would require two-way event plumbing with more risk. `StartIdleWatchers`/`StopIdleWatchers` renamed to `StartWatchers`/`StopWatchers`.
+- New `ChangeNotifierRouter` aggregates per-backend notifiers behind one surface (mirrors `MailServiceRouter` for `IMailService`). `StartWatchers` partitions accounts by `BackendKind` so each notifier only watches accounts it owns; events from all backends are forwarded to a single subscriber set. Microsoft Graph accounts receive no watcher here — Graph delta-poll notification lands in PR 7b.
+- `MainViewModel` takes an optional `IChangeNotifier` (production wires the router; tests pass `null`) and subscribes to it instead of to `IMailService`. The `AccountReachabilityChanged` subscription is stored in `_onReachabilityChanged` and explicitly unsubscribed before re-subscribing, preventing handler stacking on repeated `StartBackgroundSyncAsync` calls; `RefreshAccountList` follows the same pattern so account-list refreshes always bind to the current account objects.
+- New `InvokeOnUi` helper in `MainViewModel` marshals ThreadPool-fired change-notifier events onto the UI thread before accessing `Accounts` or `_cachedFolders`.
+- New `ChangeNotifierRouterTests`: account partitioning, event forwarding, and dispose behaviour (6 tests). Existing `IdleNewMailTests` migrated to drive `IChangeNotifier` directly.
 
 ### Microsoft Graph: nested folder fetch and readable picker paths
 

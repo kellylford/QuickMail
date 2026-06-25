@@ -225,6 +225,10 @@ public class ConfigService : IConfigService
                     case "announcespellingwhiletyping":      config.AnnounceSpellingWhileTyping      = ParseBool(value); break;
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
+                    case "spellingsuggestionsverbosity":
+                        config.SpellingSuggestionsVerbosity = string.Equals(value, "justSuggestions", StringComparison.OrdinalIgnoreCase)
+                            ? "justSuggestions" : "numbersWithSuggestions";
+                        break;
                     case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
                     case "logformat":
@@ -386,6 +390,11 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Announce spelling suggestions when a misspelling is announced.");
         sb.AppendLine("# When off, only the misspelled word is spoken without suggestions.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"SpellingSuggestionsVerbosity = {config.SpellingSuggestionsVerbosity}");
+        sb.AppendLine("# How suggestions are announced: numbersWithSuggestions (e.g. \"1: the, 2: then\") or justSuggestions (e.g. \"the, then\").");
+        sb.AppendLine("# Values: numbersWithSuggestions, justSuggestions.");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceFormattingWhileNavigating = {(config.AnnounceFormattingWhileNavigating ? "on" : "off")}");

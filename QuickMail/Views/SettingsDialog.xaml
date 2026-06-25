@@ -221,6 +221,25 @@
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce spelling suggestions when a misspelling is announced"/>
 
+                                <TextBlock Text="Spelling Suggestions Verbosity"
+                                           Margin="32,6,0,2"/>
+                                <StackPanel KeyboardNavigation.TabNavigation="Once"
+                                            KeyboardNavigation.DirectionalNavigation="Cycle"
+                                            Margin="32,0,0,4">
+                                    <RadioButton Content="_Numbers with suggestions"
+                                                 IsChecked="{Binding IsVerbosityNumbersWithSuggestions, Mode=TwoWay}"
+                                                 GroupName="SpellingSuggestionsVerbosity"
+                                                 Checked="RadioButton_Checked"
+                                                 AutomationProperties.Name="Numbers with suggestions"
+                                                 AutomationProperties.HelpText="Each suggestion is preceded by its number, for example: 1: the, 2: then, 3: them"/>
+                                    <RadioButton Content="_Just suggestions"
+                                                 IsChecked="{Binding IsVerbosityJustSuggestions, Mode=TwoWay}"
+                                                 GroupName="SpellingSuggestionsVerbosity"
+                                                 Checked="RadioButton_Checked"
+                                                 AutomationProperties.Name="Just suggestions"
+                                                 AutomationProperties.HelpText="Suggestions are read without numbers, for example: the, then, them"/>
+                                </StackPanel>
+
                                 <CheckBox Content="Announce _formatting while navigating in HTML compose"
                                           IsChecked="{Binding AnnounceFormattingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"

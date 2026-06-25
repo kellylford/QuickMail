@@ -64,6 +64,9 @@ public class ConfigModel
     /// <summary>Announce spelling suggestions when a misspelling is announced.</summary>
     public bool AnnounceSpellingSuggestions { get; set; } = true;
 
+    /// <summary>Controls how suggestions are worded: "justSuggestions" or "numbersWithSuggestions".</summary>
+    public string SpellingSuggestionsVerbosity { get; set; } = "numbersWithSuggestions";
+
     /// <summary>Announce the block type (heading level, list item, normal text) when the caret moves to a different paragraph in HTML compose mode.</summary>
     public bool AnnounceFormattingWhileNavigating { get; set; } = true;
 

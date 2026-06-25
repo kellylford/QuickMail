@@ -250,8 +250,16 @@ Press **F8** to open a rendered preview in a separate window. The preview is ful
 |----------|--------|
 | `F7` | Jump to next misspelling |
 | `Shift+F7` | Jump to previous misspelling |
+| `Alt+1` / `Alt+2` / `Alt+3` | Accept first / second / third spelling suggestion |
 
 Spell check wraps from end to beginning (and beginning to end for Shift+F7) so it always finds misspellings wherever the cursor starts.
+
+When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area.
+
+Control announcement behavior in **Settings → Screen Reader Announcements**:
+
+- **Announce spelling suggestions** — turn off to hear only the misspelled word without suggestions.
+- **Spelling Suggestions Verbosity** — choose **Numbers with suggestions** (default) to hear "1: the, 2: then" so `Alt+1/2/3` maps directly to what is spoken, or **Just suggestions** to hear "the, then, them" without numbers.
 
 ### Attachments
 
@@ -399,8 +407,10 @@ Control which categories of announcements QuickMail makes:
 | Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
 | Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
 | Announce flag status | Flag name prepended to message row when navigating the list |
+| Announce spelling suggestions | Suggestions included when a misspelling is announced |
+| Spelling Suggestions Verbosity | Numbers with suggestions (default) or just suggestions |
 
-All settings default to on except **Announce flag status** and **Announce spelling while typing** (off by default). Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
+All settings default to on except **Announce flag status** and **Announce spelling while typing** (off by default). **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
 
 ---
 
@@ -468,6 +478,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Alt+S` or `Ctrl+Enter` | Send |
 | `Ctrl+Shift+1/2/3` | Switch to Plain Text / Markdown / HTML mode |
 | `F7` / `Shift+F7` | Next / previous misspelling |
+| `Alt+1` / `Alt+2` / `Alt+3` | Accept first / second / third spelling suggestion |
 | `F8` | Open preview (Markdown and HTML) |
 | `Ctrl+B` | Bold |
 | `Ctrl+I` | Italic |
