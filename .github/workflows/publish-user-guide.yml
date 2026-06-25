@@ -1,0 +1,168 @@
+name: Publish User Guide
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish_on_release:
+        description: "Also publish on release creation"
+        required: false
+        default: false
+  release:
+    types: [published]
+
+jobs:
+  publish-guide:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Pandoc and dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pandoc
+
+      - name: Create build directory
+        run: mkdir -p build/docs
+
+      - name: Generate single-page HTML
+        run: |
+          pandoc docs/USER-GUIDE.md \
+            --from markdown \
+            --to html5 \
+            --self-contained \
+            --css=https://cdn.jsdelivr.net/npm/water.css@2/out/water.css \
+            --output build/docs/index.html \
+            --title "QuickMail User Guide"
+
+      - name: Generate sectioned HTML with navigation
+        run: |
+          python3 - <<'EOF'
+          import re
+          import os
+
+          # Read the markdown file
+          with open('docs/USER-GUIDE.md', 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Split by top-level headers (## Title)
+          sections = re.split(r'^## ', content, flags=re.MULTILINE)
+
+          # First section is preamble/intro
+          preamble = sections[0]
+
+          # Process remaining sections
+          section_files = []
+          for i, section in enumerate(sections[1:], 1):
+              lines = section.split('\n', 1)
+              title = lines[0].strip()
+              body = lines[1] if len(lines) > 1 else ""
+
+              # Create safe filename from title
+              filename = re.sub(r'[^\w\s-]', '', title).strip().lower().replace(' ', '-')
+
+              # Create full markdown for this section
+              section_md = f"# {title}\n\n{body}"
+
+              # Convert to HTML
+              section_html = f"""<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>{title} - QuickMail User Guide</title>
+              <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+              <style>
+                  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; }}
+                  .nav {{ margin-bottom: 2em; padding-bottom: 1em; border-bottom: 1px solid #ccc; }}
+                  .nav a {{ margin-right: 1em; }}
+                  .nav-title {{ font-weight: bold; margin-bottom: 0.5em; }}
+                  .section-nav {{ display: flex; justify-content: space-between; margin-top: 2em; padding-top: 1em; border-top: 1px solid #ccc; }}
+              </style>
+          </head>
+          <body>
+              <div class="nav">
+                  <div class="nav-title"><a href="index.html">QuickMail User Guide</a></div>
+              </div>
+              <main>
+          """
+
+              # Use pandoc for markdown conversion
+              import subprocess
+              result = subprocess.run(
+                  ['pandoc', '--from', 'markdown', '--to', 'html5'],
+                  input=section_md,
+                  capture_output=True,
+                  text=True
+              )
+              section_html += result.stdout
+
+              section_html += """
+              </main>
+          </body>
+          </html>
+          """
+
+              # Write section file
+              output_file = f"build/docs/{filename}.html"
+              with open(output_file, 'w', encoding='utf-8') as f:
+                  f.write(section_html)
+
+              section_files.append((filename, title))
+
+          # Generate table of contents / landing page
+          toc_html = """<!DOCTYPE html>
+          <html lang="en">
+          <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>QuickMail User Guide</title>
+              <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/water.css@2/out/water.css">
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+                  .toc { list-style: none; padding: 0; }
+                  .toc li { margin: 0.5em 0; }
+                  .toc a { text-decoration: none; font-size: 1.1em; }
+                  .toc a:hover { text-decoration: underline; }
+              </style>
+          </head>
+          <body>
+              <h1>QuickMail User Guide</h1>
+              <p>Keyboard-centric Windows email client for IMAP accounts.</p>
+              <h2>Contents</h2>
+              <ul class="toc">
+          """
+
+          for filename, title in section_files:
+              toc_html += f'        <li><a href="{filename}.html">{title}</a></li>\n'
+
+          toc_html += """
+              </ul>
+              <hr>
+              <p><strong>View as:</strong> <a href="index.html">Single Page</a></p>
+          </body>
+          </html>
+          """
+
+          # Rename single-page to a different name
+          os.rename('build/docs/index.html', 'build/docs/full.html')
+
+          # Write TOC as new index.html
+          with open('build/docs/index.html', 'w', encoding='utf-8') as f:
+              f.write(toc_html)
+
+          print(f"Generated {len(section_files)} sections")
+          EOF
+
+      - name: Create CNAME file (if needed)
+        run: |
+          # Optional: uncomment if you have a custom domain
+          # echo "docs.quickmail.app" > build/docs/CNAME
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build/docs
+          cname: ''

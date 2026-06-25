@@ -48,6 +48,35 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 - **ProfileContextTests** — profile directory validation
 - **IcsModelTests**, **MessageFilterTests**, **TutorialViewModelTests**, **SessionFeaturesTests**, **BatchObservableCollectionTests**
 
+## User Guide Publishing
+
+The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and published to GitHub Pages via `.github/workflows/publish-user-guide.yml`.
+
+### Publishing the User Guide
+
+**Manual publish** — any time, independent of release:
+1. Go to **Actions** → **Publish User Guide** → **Run workflow** (green button)
+2. Workflow generates single-page (`full.html`) and sectioned HTML with navigation (`index.html`)
+3. Deployed to `https://kellylford.github.io/QuickMail/`
+
+**Automatic publish** — triggered by GitHub release creation:
+- When you create a release, the workflow runs and publishes the current user guide automatically.
+
+**Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes, then publish (manual or automatic).
+
+### GitHub Pages Setup (One-time)
+
+GitHub Pages is already configured to serve from the `gh-pages` branch. If you need to verify or change it:
+1. Go to **Settings** → **Pages**
+2. Set **Source** to `gh-pages` branch
+3. Enforce HTTPS (recommended)
+
+The published guide appears at `https://kellylford.github.io/QuickMail/`.
+
+### Help Menu Link
+
+Users access the guide via **Help** → **Open User Guide** (F1). The link in `MainViewModel.ViewUserGuide()` points to `https://kellylford.github.io/QuickMail/`.
+
 ## Architecture
 
 Manual DI root in `App.xaml.cs` — no container. Services wired in `OnStartup`:
