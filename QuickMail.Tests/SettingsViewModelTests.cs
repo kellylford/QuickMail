@@ -178,4 +178,83 @@ public class SettingsViewModelTests
         var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
         Assert.False(vmLoad.AnnounceFlagStatus);
     }
+
+    // ── Logging ────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void EnableLogging_DefaultsToFalse()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        Assert.False(vm.EnableLogging);
+    }
+
+    [Fact]
+    public void EnableLogging_LoadAndSave_RoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        vmSave.EnableLogging = true;
+        vmSave.SaveCommand.Execute(null);
+
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.True(vmLoad.EnableLogging);
+    }
+
+    // ── Spelling suggestions ───────────────────────────────────────────────────────
+
+    [Fact]
+    public void SpellingSuggestionsVerbosity_DefaultsToNumbersWithSuggestions()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        Assert.Equal("numbersWithSuggestions", vm.SpellingSuggestionsVerbosity);
+    }
+
+    [Fact]
+    public void AnnounceSpellingSuggestions_DefaultsToTrue()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        Assert.True(vm.AnnounceSpellingSuggestions);
+    }
+
+    [Fact]
+    public void IsVerbosityProperties_ReflectCurrentSetting()
+    {
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+
+        Assert.True(vm.IsVerbosityNumbersWithSuggestions);
+        Assert.False(vm.IsVerbosityJustSuggestions);
+
+        vm.IsVerbosityJustSuggestions = true;
+
+        Assert.True(vm.IsVerbosityJustSuggestions);
+        Assert.False(vm.IsVerbosityNumbersWithSuggestions);
+        Assert.Equal("justSuggestions", vm.SpellingSuggestionsVerbosity);
+    }
+
+    [Fact]
+    public void SpellingSuggestionsVerbosity_LoadAndSave_RoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        vmSave.SpellingSuggestionsVerbosity = "justSuggestions";
+        vmSave.SaveCommand.Execute(null);
+
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.Equal("justSuggestions", vmLoad.SpellingSuggestionsVerbosity);
+    }
+
+    [Fact]
+    public void AnnounceSpellingSuggestions_LoadAndSave_RoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        vmSave.AnnounceSpellingSuggestions = false;
+        vmSave.SaveCommand.Execute(null);
+
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.False(vmLoad.AnnounceSpellingSuggestions);
+    }
 }
