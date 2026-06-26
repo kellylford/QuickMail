@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -35,66 +36,71 @@ public class SyncService : ISyncService
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         CancellationToken ct)
     {
-        var previewJobs = new List<(AccountModel Account, MailFolderModel Folder, List<MailMessageSummary> Incoming)>();
-
-        // Count total syncable folders for progress reporting.
+        var previewJobs = new ConcurrentBag<(AccountModel Account, MailFolderModel Folder, List<MailMessageSummary> Incoming)>();
         var accountList = accounts.ToList();
-        int totalFolders = 0;
-        foreach (var account in accountList)
+
+        int totalFolders = accountList.Sum(a =>
+            cachedFolders.TryGetValue(a.Id, out var fl) ? fl.Count(f => !f.ExcludeFromAllMail) : 0);
+
+        // int[] so Interlocked.Increment works inside async lambdas (can't use ref locals there).
+        int[] completedFolders = { 0 };
+
+        // Syncs one pass of folders (selected by folderFilter) across all accounts in parallel.
+        // Each account's folders are processed sequentially within that account's task so we
+        // never exceed MaxImapConnectionsPerAccount on a single account.
+        async Task SyncPassAsync(Func<MailFolderModel, bool> folderFilter)
         {
-            if (cachedFolders.TryGetValue(account.Id, out var folders))
-                totalFolders += folders.Count(f => !f.ExcludeFromAllMail);
+            await Task.WhenAll(accountList.Select(async account =>
+            {
+                if (!cachedFolders.TryGetValue(account.Id, out var folders)) return;
+                foreach (var folder in folders)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (folder.ExcludeFromAllMail || !folderFilter(folder)) continue;
+                    try
+                    {
+                        var incoming = await SyncFolderAsync(account, folder, ct);
+                        var previewLines = _config.Load().GetPreviewLines(account.Id);
+                        if (incoming.Count > 0 && previewLines > 0
+                            && incoming.Any(s => string.IsNullOrEmpty(s.Preview)))
+                            previewJobs.Add((account, folder, incoming));
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        LogService.Log($"Sync {account.AccountLabel}/{folder.DisplayName}", ex);
+                    }
+
+                    var count = Interlocked.Increment(ref completedFolders[0]);
+                    await Application.Current.Dispatcher.InvokeAsync(() => SyncProgressChanged?.Invoke(count, totalFolders));
+                }
+            }));
         }
 
-        int completedFolders = 0;
-
-        foreach (var account in accountList)
+        // Send NOOP to all accounts in parallel to keep connections alive and flush any
+        // server-side BYE before sync begins. Each account has an independent connection pool.
+        await Task.WhenAll(accountList.Select(async account =>
         {
-            ct.ThrowIfCancellationRequested();
-            if (!cachedFolders.TryGetValue(account.Id, out var folders)) continue;
-
-            // Send NOOP to keep the connection alive and flush any server-side
-            // BYE before we start syncing. NoOpAsync discards the stale client
-            // internally so GetOrReconnectAsync will create a fresh one when needed.
             try { await _imap.NoOpAsync(account.Id, ct); }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex) { LogService.Log($"NoOp {account.AccountLabel}", ex); }
+        }));
 
-            foreach (var folder in folders)
-            {
-                ct.ThrowIfCancellationRequested();
-                if (folder.ExcludeFromAllMail) continue;
+        // Pass 1: Inbox folders first, all accounts in parallel — fastest path to new-mail visibility.
+        await SyncPassAsync(f => f.Kind == SpecialFolderKind.Inbox);
+        ct.ThrowIfCancellationRequested();
+        // Pass 2: All remaining non-excluded folders, all accounts in parallel.
+        await SyncPassAsync(f => f.Kind != SpecialFolderKind.Inbox);
 
-                try
-                {
-                    var incoming = await SyncFolderAsync(account, folder, ct);
-                    // Only queue body-download fallback for messages the server didn't
-                    // already fill via the IMAP PREVIEW extension.
-                    var previewLines = _config.Load().GetPreviewLines(account.Id);
-                    if (incoming.Count > 0 && previewLines > 0
-                        && incoming.Any(s => string.IsNullOrEmpty(s.Preview)))
-                        previewJobs.Add((account, folder, incoming));
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex)
-                {
-                    LogService.Log($"Sync {account.AccountLabel}/{folder.DisplayName}", ex);
-                }
-
-                // Fire progress event after each folder completes.
-                completedFolders++;
-                await Application.Current.Dispatcher.InvokeAsync(() => SyncProgressChanged?.Invoke(completedFolders, totalFolders));
-            }
-
+        foreach (var account in accountList)
             _lastSyncedUtc[account.Id] = DateTimeOffset.UtcNow;
-        }
 
         // Fetch previews only after ALL folder syncs complete so preview IMAP calls
         // don't race with the sync IMAP calls on the same shared client.
         // They run sequentially — fire-and-forget the whole batch so SyncAllAccounts
         // returns promptly and the status bar updates, while previews trickle in.
-        if (previewJobs.Count > 0)
-            _ = FetchAllPreviewsAsync(previewJobs, ct);
+        if (!previewJobs.IsEmpty)
+            _ = FetchAllPreviewsAsync(previewJobs.ToList(), ct);
     }
 
     private async Task FetchAllPreviewsAsync(
