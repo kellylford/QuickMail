@@ -970,6 +970,9 @@ public partial class ComposeWindow : Window
                     category: AnnouncementCategory.Result);
                 ClearSpellingContext();
                 e.Handled = true;
+                // Arm Alt-menu suppression so the Alt key release that follows this
+                // Alt+digit shortcut does not activate the menu bar (focus stealing).
+                _suppressNextMenuActivation = true;
                 return;
             }
         }
@@ -1044,10 +1047,9 @@ public partial class ComposeWindow : Window
                     category: AnnouncementCategory.Result);
                 ClearSpellingContext();
                 e.Handled = true;
-                // Defer focus restoration so WPF's Alt-key menu activation logic,
-                // which runs after our handler returns, doesn't steal focus.
-                Dispatcher.BeginInvoke(() => { RichBodyBox.Focus(); Keyboard.Focus(RichBodyBox); },
-                    DispatcherPriority.Input);
+                // Arm Alt-menu suppression so the Alt key release that follows this
+                // Alt+digit shortcut does not activate the menu bar (focus stealing).
+                _suppressNextMenuActivation = true;
                 return;
             }
         }
