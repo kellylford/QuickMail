@@ -15,6 +15,30 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ## Bug Fixes
 
+### Newsletter emails no longer announce meaningless characters at the top
+
+Opening a newsletter from MailChimp, Mailmojo, or similar senders no longer causes screen readers to read a long sequence of invisible Unicode characters before reaching the message body. These characters (U+034F Combining Grapheme Joiner and U+200C Zero-Width Non-Joiner) are padding injected by newsletter tools to control the preview snippet shown in email client lists — they are meant to be invisible. QuickMail's HTML sanitizer was stripping the `display:none` style that kept them hidden, making the whole block visible to screen readers. They are now removed before sanitization runs. (#142)
+
+### Spell-check corrections no longer jump focus to the menu bar
+
+Pressing **Alt+1**, **Alt+2**, or **Alt+3** to apply a spell-check suggestion in the compose window no longer causes focus to jump to the menu bar (File menu). The earlier fix for this class of bug (#130) handled window-level shortcuts (Alt+S, Alt+U, Alt+M, Alt+Y) but missed the spell-check correction paths. The suppression flag is now armed in both the plain-text and rich-text correction handlers. (#140)
+
+### Shift+Tab from the message body returns focus to header fields
+
+In both plain-text and HTML compose modes, pressing **Shift+Tab** from the message body now moves focus back to the Subject field and through the other header fields in reverse order. Previously, `AcceptsTab` on the editor blocked WPF's reverse-tab navigation, leaving focus stranded in the body. List indentation (Tab to indent, Shift+Tab to dedent) continues to work correctly inside list items in Markdown and HTML modes. (#131)
+
+### Alt+key shortcuts in compose no longer activate the menu bar
+
+Pressing **Alt+S** to send, **Alt+U** for subject, **Alt+M** for From, or **Alt+Y** for body no longer causes the menu bar to receive focus after the shortcut runs. The previous fix intercepted the Win32 `SC_KEYMENU` system command but missed two additional paths: `DefWindowProc` generating `SC_KEYMENU` from the Alt key-release, and WPF's `AccessKeyManager` responding to the Alt key-up event independently of Win32. The fix now intercepts `WM_KEYUP(VK_MENU)` in the WndProc hook before either path fires. (#130)
+
+### Calendar invitation links no longer error when the source email has been purged
+
+Pressing **Enter** on a calendar event whose original invitation email had been removed from the local message cache (due to the sync window advancing or a remote deletion) previously failed with a "Message UID not found" error. The local store now clears the source-message link when the referenced message is purged, and a background cleanup pass at the end of each sync removes any orphaned links that slipped through earlier. If no source email is available, pressing Enter announces "The original invitation email is no longer in your local message cache" and does nothing, instead of attempting a failing network fetch.
+
+### "All Flagged Mail" virtual folder renamed to "All Flagged"
+
+The cross-account virtual folder that collects all flagged messages is now named **All Flagged** to match the shorter, consistent naming used by other virtual folders. (#135)
+
 ### Adding a new account no longer disconnects existing accounts
 
 Opening the Account Manager and adding a new account no longer causes all existing accounts to appear disconnected. The bug was a race condition in the `AccountReachabilityChanged` event handler: when the Account Manager refreshed the accounts collection, the event handler remained bound to the old account objects. New accounts would never receive their connection status updates and would show as disconnected indefinitely. The handler is now properly unsubscribed and re-subscribed when the accounts collection is refreshed. (#126)
@@ -34,6 +58,10 @@ When moving or copying a message on a Microsoft 365 or Exchange account, the fol
 ---
 
 ## Improvements
+
+### Account Manager no longer shows "Test Connection" for Microsoft 365 accounts
+
+The **Test Connection** button tests IMAP and SMTP settings, which Microsoft 365 and Exchange accounts managed via the Graph backend do not have. It is now hidden for those accounts, matching the existing behavior for the IMAP/SMTP settings panels. (#141)
 
 ### Logging control in Advanced settings
 
@@ -59,6 +87,10 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 ---
 
 ## Internal
+
+### InvokeOnUi dispatcher guard
+
+`InvokeOnUi` (the helper that marshals change-notifier events onto the UI thread) now detects background STA threads whose dispatcher is not pumping a message loop and runs the action inline instead of queuing it. This prevents a class of silent hang where an event fires on a background STA thread that has no WPF message loop — the queued work would never execute and the caller would time out.
 
 ### Virtual folder refresh reconciliation
 
