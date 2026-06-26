@@ -1665,15 +1665,16 @@ public partial class MainViewModel : ObservableObject
     });
 
     // Marshals a ThreadPool callback onto the UI thread. Runs inline when already on the UI thread,
-    // when there is no Application, when the dispatcher's STA thread has exited (unit-test
-    // teardown), or when the dispatcher thread is a background thread (xUnit STA test-helper
-    // threads are background threads and don't run a WPF message pump — InvokeAsync would queue
-    // work that never executes, causing test timeouts).  The production WPF main thread is always
-    // a foreground thread, so the IsBackground guard never triggers in production.
+    // when there is no Application, or when the current Application is not the real QuickMail App
+    // (unit tests create a vanilla System.Windows.Application as the process-wide Application.Current
+    // on a StaFact STA thread that never runs a WPF message pump — InvokeAsync would queue work
+    // onto that pump-less dispatcher and it would never execute, causing 30s test timeouts).
+    // In production Application.Current is always a QuickMail.App with a pumped dispatcher, so the
+    // marshal path is taken exactly when it should be.
     private static void InvokeOnUi(Action action)
     {
-        var dispatcher = App.Current?.Dispatcher;
-        if (dispatcher is null || dispatcher.CheckAccess() || !dispatcher.Thread.IsAlive || dispatcher.Thread.IsBackground)
+        var dispatcher = Application.Current is App app ? app.Dispatcher : null;
+        if (dispatcher is null || dispatcher.CheckAccess() || !dispatcher.Thread.IsAlive)
             action();
         else
             dispatcher.InvokeAsync(action);
