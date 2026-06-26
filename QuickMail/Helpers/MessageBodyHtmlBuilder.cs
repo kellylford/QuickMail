@@ -115,6 +115,11 @@ public static class MessageBodyHtmlBuilder
     public static string StripHeavyHtml(string html)
     {
         var body = html;
+        // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
+        // Must run before style-attribute stripping, which would make these visible.
+        body = SafeRegexReplace(body,
+            @"<(div|span|p)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?</\1>",
+            string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = SafeRegexReplace(body, "<!--.*?-->", string.Empty, RegexOptions.Singleline);
         body = SafeRegexReplace(body, "<script\\b.*?</script>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = SafeRegexReplace(body, "<style\\b.*?</style>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
