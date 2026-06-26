@@ -569,18 +569,24 @@ All the following questions must be answered before implementation starts.
 **Q1: Folder name rendering** — Should POP3 folders appear as a sub-tree "POP3 → Inbox, Sent" or as flat "Inbox, Sent" under the account (same as IMAP)? The `FolderTreeBuilder` will render `"POP3/Inbox"` as a child of a synthetic "POP3" parent. If flat is preferred, use `"Inbox"` and `"Sent"` as `FullName` values (same as IMAP). Cross-contamination between POP3 "Inbox" and IMAP "INBOX" in the local store is avoided because they are keyed by `(accountId, folderName)`.
 
 > **Recommended:** Use `"Inbox"` and `"Sent"` as the `FullName` values (consistent with IMAP naming). The `(accountId, folderName)` compound key in the local store prevents collision.
+KF: go with recommended
 
 **Q2: Local Trash folder** — Should POP3 accounts have a local "Trash" synthetic folder, or should deleted messages be permanently removed from the local store immediately? If we implement a local Trash, `CountTrashMessagesAsync` and `EmptyTrashAsync` return non-zero values for POP3 accounts.
 
 > **Recommended:** Implement a `"Trash"` synthetic folder (consistent with IMAP UX). Users familiar with IMAP expect two-step delete. `PermanentlyDeleteBatchAsync` performs the final local removal + optional server DELE.
+KF: Go with this option but make sure it is clearly communicated in documentation because I believe this differs from standard POP behavior. You'll also need to account for situations where the mail no longer exists on the server becuase the user perhaps accessed from another POP client and we absolutely don't want to delete the wrong email.
 
 **Q3: Attachment storage** — Does `LocalStoreService` store raw MIME bytes today? If not, what format stores attachments such that `DownloadAttachmentAsync` can extract them from the local store without a network call? This must be resolved before Phase 3.
 
 > **Investigate:** Read `MailMessageDetail` schema in `LocalStoreService.cs`. The answer determines whether Phase 3 needs a schema migration.
+KF: Research this further and come back with more details.
+
 
 **Q4: Draft support** — When a user composes and saves a draft from a POP3 account, should it appear in a synthetic `"Drafts"` folder in QuickMail, or be stored transparently in the same draft mechanism used by IMAP (which may expect a server folder)?
 
 > **Recommended:** Store POP3 drafts in a synthetic `"POP3/Drafts"` or simply `"Drafts"` folder in the local store. `FindDraftsFolderNameAsync` returns `"Drafts"` (or a POP3-specific value). The existing draft-save and draft-open code in `ComposeViewModel` calls `IMailService.AppendDraftAsync` — `Pop3MailService` handles this locally.
+
+KF: Go with the recommended option.
 
 ---
 

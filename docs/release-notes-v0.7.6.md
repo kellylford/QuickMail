@@ -59,6 +59,14 @@ When moving or copying a message on a Microsoft 365 or Exchange account, the fol
 
 ## Improvements
 
+### Startup sync is faster, especially with multiple accounts
+
+QuickMail now syncs your **Inbox folders first** across all accounts before syncing sent mail, drafts, trash, and other folders. Accounts also sync in parallel rather than one at a time. Together these changes mean new mail in your inboxes typically appears within a few seconds of launch rather than after the full sync cycle completes. No configuration is required — the improvement applies automatically. ([#144](https://github.com/kellylford/QuickMail/issues/144))
+
+### Move and copy now use a folder tree instead of a flat list
+
+When you choose to move or copy an email message or conversation, the folder picker now shows the same hierarchical tree view used in the main folder panel — folders nested under their parents, with account names as collapsible group headers when multiple accounts are present. Previously the picker showed a flat alphabetical list with full folder paths written out for every entry. ([#145](https://github.com/kellylford/QuickMail/issues/145))
+
 ### Account Manager no longer shows "Test Connection" for Microsoft 365 accounts
 
 The **Test Connection** button tests IMAP and SMTP settings, which Microsoft 365 and Exchange accounts managed via the Graph backend do not have. It is now hidden for those accounts, matching the existing behavior for the IMAP/SMTP settings panels. (#141)
