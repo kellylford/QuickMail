@@ -833,6 +833,16 @@ public partial class MainWindow : Window
             execute: () => { if (_vm.SelectedMessage != null) OpenMessageInNewWindow(_vm.SelectedMessage); },
             isAvailable: () => _vm.SelectedMessage != null));
 
+        _registry.Register(new CommandDefinition(
+            id: "mail.moveToFolder", category: "Mail", title: "Move to Folder…",
+            execute: async () => await MoveMessageToFolderAsync(),
+            isAvailable: () => _vm.HasSelectedMessage));
+
+        _registry.Register(new CommandDefinition(
+            id: "mail.copyToFolder", category: "Mail", title: "Copy to Folder…",
+            execute: async () => await CopyMessageToFolderAsync(),
+            isAvailable: () => _vm.HasSelectedMessage));
+
         // Create the WebView2 environment — always needed, shared with MessageWindow instances.
         try
         {
@@ -4200,7 +4210,7 @@ public partial class MainWindow : Window
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
 
-    private async void MessageContextMenu_MoveToFolder_Click(object sender, RoutedEventArgs e)
+    private async Task MoveMessageToFolderAsync()
     {
         var messages = GetSelectedMessages();
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
@@ -4220,16 +4230,22 @@ public partial class MainWindow : Window
             LandOnToGroupAfterRebuild(0);
     }
 
-    private async void MessageContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
+    private async Task CopyMessageToFolderAsync()
     {
         var messages = GetSelectedMessages();
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder") { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder", useTreeView: true) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
+
+    private async void MessageContextMenu_MoveToFolder_Click(object sender, RoutedEventArgs e)
+        => await MoveMessageToFolderAsync();
+
+    private async void MessageContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
+        => await CopyMessageToFolderAsync();
 
     // ── Conversation context menu handlers ───────────────────────────────────
 
@@ -4239,7 +4255,7 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var targetIdx = _vm.Conversations.IndexOf(group);
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Conversation to Folder") { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Conversation to Folder", useTreeView: true) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
@@ -4251,7 +4267,7 @@ public partial class MainWindow : Window
         if (ConversationTree.SelectedItem is not ConversationGroup group || group.Messages.Count == 0) return;
         if (_vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Conversation to Folder") { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Conversation to Folder", useTreeView: true) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
@@ -4270,9 +4286,9 @@ public partial class MainWindow : Window
                 ConversationTree.ContextMenu = (ContextMenu)FindResource("ConversationGroupContextMenu");
                 break;
             case MailMessageSummary:
-                // Child-node message: the MessageContextMenu is already on the TreeViewItem style;
-                // suppress the tree-level menu to avoid a double menu.
-                e.Handled = true;
+                // Assign at the tree level so PlacementTarget.DataContext resolves to MainViewModel
+                // (not MailMessageSummary), giving all context menu commands access to the right bindings.
+                ConversationTree.ContextMenu = (ContextMenu)FindResource("MessageContextMenu");
                 break;
             default:
                 e.Handled = true;
@@ -4373,7 +4389,7 @@ public partial class MainWindow : Window
         var folders  = _vm.CachedFolders
                           .Where(kv => ids.Contains(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value);
-        return new FolderPickerWindow(accounts, folders, title: title) { Owner = this };
+        return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true) { Owner = this };
     }
 
     private void RebuildViewsMenu()
