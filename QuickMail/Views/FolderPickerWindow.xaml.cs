@@ -22,8 +22,9 @@ public partial class FolderPickerWindow : Window
     private static readonly Dictionary<string, MailFolderModel> EmptyFolderById = new();
 
     private readonly ObservableCollection<FolderPickerItem> _items = [];
-    private readonly ICollectionView _view;
+    private readonly ICollectionView? _view;
     private readonly MailFolderModel? _initialFolder;
+    private readonly bool _useTreeView;
 
     public MailFolderModel? SelectedFolder { get; private set; }
     public AccountModel? SelectedAccount { get; private set; }
@@ -34,12 +35,20 @@ public partial class FolderPickerWindow : Window
         IEnumerable<MailFolderModel>? virtualFolders = null,
         string title = "Go to Folder",
         MailFolderModel? initialFolder = null,
-        IReadOnlyDictionary<Guid, MailFolderModel>? accountMailFolders = null)
+        IReadOnlyDictionary<Guid, MailFolderModel>? accountMailFolders = null,
+        bool useTreeView = false)
     {
         _initialFolder = initialFolder;
+        _useTreeView = useTreeView;
 
         InitializeComponent();
         Title = title;
+
+        if (_useTreeView)
+        {
+            BuildTreeView(accounts, cachedFolders);
+            return;
+        }
 
         if (virtualFolders != null)
         {
@@ -94,6 +103,42 @@ public partial class FolderPickerWindow : Window
 
             Dispatcher.InvokeAsync(FocusSelectedFolder, DispatcherPriority.Input);
         };
+    }
+
+    private void BuildTreeView(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+    {
+        SearchBox.Visibility = Visibility.Collapsed;
+        FolderListBox.Visibility = Visibility.Collapsed;
+        FolderTreeView.Visibility = Visibility.Visible;
+
+        var roots = new List<FolderTreeNode>();
+        var accountList = accounts.ToList();
+
+        foreach (var account in accountList)
+        {
+            if (!cachedFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
+                continue;
+
+            var nodes = FolderTreeBuilder.Build(folders, accountList.Count > 1 ? account : null);
+            ExpandAll(nodes);
+            roots.AddRange(nodes);
+        }
+
+        FolderTreeView.ItemsSource = roots;
+
+        Loaded += (_, _) => Dispatcher.InvokeAsync(
+            () => FolderTreeView.Focus(), DispatcherPriority.Input);
+    }
+
+    private static void ExpandAll(IEnumerable<FolderTreeNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsExpanded = true;
+            ExpandAll(node.Children);
+        }
     }
 
     // Backwards-compatible single-virtual-folder convenience constructor.
@@ -155,7 +200,7 @@ public partial class FolderPickerWindow : Window
 
     private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        _view.Refresh();
+        _view?.Refresh();
         SelectFirstVisibleItem();
     }
 
@@ -217,11 +262,22 @@ public partial class FolderPickerWindow : Window
 
     private void FolderListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e) => Commit();
 
+    private void FolderTreeView_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            Commit();
+        }
+    }
+
+    private void FolderTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e) => Commit();
+
     private void OpenButton_Click(object sender, RoutedEventArgs e) => Commit();
 
     private void SelectFirstVisibleItem()
     {
-        var first = _view.Cast<FolderPickerItem>().FirstOrDefault();
+        var first = _view?.Cast<FolderPickerItem>().FirstOrDefault();
         FolderListBox.SelectedItem = first;
         if (first != null)
             FolderListBox.ScrollIntoView(first);
@@ -258,6 +314,16 @@ public partial class FolderPickerWindow : Window
 
     private void Commit()
     {
+        if (_useTreeView)
+        {
+            if (FolderTreeView.SelectedItem is not FolderTreeNode node || node.Folder == null || node.IsHeader)
+                return;
+
+            SelectedFolder = node.Folder;
+            DialogResult = true;
+            return;
+        }
+
         if (FolderListBox.SelectedItem is not FolderPickerItem item)
             return;
 
