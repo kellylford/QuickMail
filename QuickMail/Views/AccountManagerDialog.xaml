@@ -229,6 +229,7 @@
                     Content="_Test Connection"
                     Command="{Binding TestConnectionCommand}"
                     AutomationProperties.Name="Test IMAP connection with current settings"
+                    Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}"
                     MinWidth="120" Margin="6,0,0,0"/>
             <Button DockPanel.Dock="Right"
                     Content="_Save"
