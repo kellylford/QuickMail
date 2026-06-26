@@ -71,7 +71,7 @@ Per Microsoft Learn (verified 2026-06):
 - **List / Get** message rules → `MailboxSettings.Read`
 - **Create / Update / Delete** message rules → `MailboxSettings.ReadWrite`
 
-**Current state:** `OAuthService.GraphMailScopes` already requests `MailboxSettings.Read` (see `QuickMail/Services/OAuthService.cs`). So **reading** server rules works today with no change. **Writing** needs the scope bumped to `MailboxSettings.ReadWrite`.
+**Current state:** `OAuthService.GraphMailScopes` requested `MailboxSettings.Read` before this work — **updated to `MailboxSettings.ReadWrite` by the scope-bump PR** (see §4 and §19; `QuickMail/Services/OAuthService.cs`). So **reading** server rules works with no change, and **writing** has the scope it needs once that PR merges.
 
 **Consequence:** Bumping the scope forces a **re-consent**. On the next interactive token acquisition, MSAL will prompt the user to grant the new permission. Existing Graph accounts will silently fail writes until they re-consent.
 
@@ -338,7 +338,7 @@ This is the single most important correctness decision; reviewers should confirm
 - **Categories management** (`assignCategories`/`categories`) beyond display.
 - **Rules on folders other than Inbox** — the Graph API is Inbox-scoped; not expanding it.
 - **Importing/exporting rules, or syncing client rules ⇄ server rules** — explicitly not attempted.
-- **Up-front re-consent migration** for all Graph accounts — lazy on first write instead (pending the Section 4 open decision).
+- **Lazy / on-first-write re-consent** — superseded. §4 adopted **up-front** consent via the scope-bump PR (captured pre-GA), so there is no re-consent migration to do and GA users won't face a re-prompt.
 - **Shared-mailbox rules** — deferred with the parked shared-mailbox spec (#31).
 
 ---
