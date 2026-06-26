@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Net;
+using System.Text;
 using System.Text.RegularExpressions;
 using QuickMail.Models;
 using QuickMail.Services;
@@ -24,6 +26,41 @@ public static class MessageBodyHtmlBuilder
 
     private static readonly char[] AutoLinkTrailingPunct =
         ['.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '\''];
+
+    // CSS properties allowed through the inline style= allowlist.
+    // Chosen to be safe (no network requests, no code execution) while preserving
+    // sender-intended layout: visibility, spacing, color, typography, table structure.
+    private static readonly HashSet<string> AllowedCssProperties = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Visibility — critical: preserves display:none on preheader/quoted-reply divs
+        "display", "visibility", "opacity",
+        // Box model
+        "width", "height", "min-width", "max-width", "min-height", "max-height",
+        "overflow", "overflow-x", "overflow-y",
+        // Spacing
+        "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+        "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+        // Color (background-image intentionally absent — url() risk)
+        "color", "background-color",
+        // Typography
+        "font", "font-family", "font-size", "font-weight", "font-style", "font-variant",
+        "line-height", "letter-spacing",
+        "text-align", "text-decoration", "text-transform", "text-indent",
+        "vertical-align", "white-space", "word-break", "word-wrap",
+        // Border
+        "border", "border-top", "border-right", "border-bottom", "border-left",
+        "border-width", "border-style", "border-color", "border-radius", "border-collapse",
+        // Table layout
+        "table-layout", "border-spacing", "caption-side",
+        // Flex / grid
+        "flex", "flex-direction", "flex-wrap", "justify-content", "align-items", "align-self", "gap",
+        // Floats
+        "float", "clear",
+    };
+
+    // Patterns that make a CSS value dangerous regardless of the property name.
+    private static readonly string[] DangerousValueTokens =
+        ["url(", "expression(", "behavior:", "javascript:"];
 
     public static string BuildMessageHtml(MailMessageDetail detail)
     {
@@ -115,19 +152,128 @@ public static class MessageBodyHtmlBuilder
     public static string StripHeavyHtml(string html)
     {
         var body = html;
-        // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
-        // Must run before style-attribute stripping, which would make these visible.
+
+        // 1. Remove elements hidden via inline display:none — must run before style filtering.
+        //    Covers all element types (not just div/span/p) so <td>, <section>, etc. are handled.
         body = SafeRegexReplace(body,
-            @"<(div|span|p)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?</\1>",
+            @"<([a-zA-Z][\w-]*)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?</\1>",
             string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 2. Remove elements hidden via inline visibility:hidden.
+        body = SafeRegexReplace(body,
+            @"<([a-zA-Z][\w-]*)\b[^>]*\bstyle\s*=\s*(?:""[^""]*visibility\s*:\s*hidden[^""]*""|'[^']*visibility\s*:\s*hidden[^']*')[^>]*>.*?</\1>",
+            string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 3. Strip HTML comments.
         body = SafeRegexReplace(body, "<!--.*?-->", string.Empty, RegexOptions.Singleline);
+
+        // 4. Strip <script> blocks entirely.
         body = SafeRegexReplace(body, "<script\\b.*?</script>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "<style\\b.*?</style>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 5. Sanitize <style> blocks — strip dangerous rules, preserve safe layout rules.
+        body = SafeRegexReplace(body,
+            @"<style\b[^>]*>(.*?)</style>",
+            m =>
+            {
+                var cleaned = CleanStyleBlock(m.Groups[1].Value);
+                return string.IsNullOrWhiteSpace(cleaned) ? string.Empty : $"<style>{cleaned}</style>";
+            },
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 6. Strip dangerous embedded content.
         body = SafeRegexReplace(body, "<svg\\b.*?</svg>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = SafeRegexReplace(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?</\\1>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 7. Strip void elements that pull external resources or create interactivity.
         body = SafeRegexReplace(body, "<(img|link|base|input|button|meta)\\b[^>]*>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "\\s(on\\w+|style|src|srcset|background)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 8. Strip event handlers and resource-loading attributes wholesale.
+        //    Note: 'style' is intentionally absent here — handled by step 9 via allowlist.
+        body = SafeRegexReplace(body, "\\s(on\\w+|src|srcset|background)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
+
+        // 9. Filter inline style= attributes via CSS property allowlist.
+        //    Safe layout properties (display, color, font-*, margin, etc.) are preserved.
+        //    Dangerous properties (position, content, background-image) and any value
+        //    containing url() / expression() / behavior: are removed.
+        body = SafeRegexReplace(body,
+            @"\bstyle\s*=\s*(?:""([^""]*)""|'([^']*)')",
+            m =>
+            {
+                var value    = m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value;
+                var filtered = FilterStyleAttribute(value);
+                return filtered is null ? string.Empty : $"style=\"{filtered}\"";
+            },
+            RegexOptions.IgnoreCase);
+
         return body;
+    }
+
+    /// <summary>
+    /// Filters an inline CSS style attribute value through the property allowlist.
+    /// Returns the sanitized declaration string, or null if no declarations survive.
+    /// </summary>
+    internal static string? FilterStyleAttribute(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        if (value.Length > 4000) return null; // Abnormally long; drop entirely.
+
+        var sb = new StringBuilder();
+        foreach (var part in value.Split(';'))
+        {
+            var decl = part.Trim();
+            if (decl.Length == 0) continue;
+
+            var colon = decl.IndexOf(':');
+            if (colon < 0) continue;
+
+            var property = decl[..colon].Trim();
+            var val      = decl[(colon + 1)..].Trim();
+
+            if (!AllowedCssProperties.Contains(property)) continue;
+
+            var dangerous = false;
+            foreach (var token in DangerousValueTokens)
+            {
+                if (val.Contains(token, StringComparison.OrdinalIgnoreCase))
+                {
+                    dangerous = true;
+                    break;
+                }
+            }
+            if (dangerous) continue;
+
+            if (sb.Length > 0) sb.Append("; ");
+            sb.Append(property).Append(": ").Append(val);
+        }
+
+        return sb.Length == 0 ? null : sb.ToString();
+    }
+
+    /// <summary>
+    /// Removes dangerous content from a CSS style block while preserving safe rules.
+    /// Strips @import, url() references, expression(), background-image, and -moz-binding.
+    /// Preserves class rules, ID rules, media queries, and safe typography declarations.
+    /// </summary>
+    internal static string CleanStyleBlock(string css)
+    {
+        if (string.IsNullOrWhiteSpace(css)) return string.Empty;
+
+        // Strip CSS comments (may conceal dangerous content).
+        css = SafeRegexReplace(css, @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
+
+        // Remove @import rules (external stylesheet loading).
+        css = SafeRegexReplace(css, @"@import\b[^;]*;?", string.Empty, RegexOptions.IgnoreCase);
+
+        // Remove any declaration whose value contains a dangerous token.
+        css = SafeRegexReplace(css,
+            @"[\w-]+\s*:[^;{}]*(?:url\s*\(|expression\s*\(|behavior\s*:|javascript\s*:)[^;{}]*;?",
+            string.Empty, RegexOptions.IgnoreCase);
+
+        // Remove background-image and -moz-binding unconditionally.
+        css = SafeRegexReplace(css, @"background-image\s*:[^;{}]*;?", string.Empty, RegexOptions.IgnoreCase);
+        css = SafeRegexReplace(css, @"-moz-binding\s*:[^;{}]*;?", string.Empty, RegexOptions.IgnoreCase);
+
+        return css.Trim();
     }
 
     public static string RemoveTitle(string html) =>
@@ -163,6 +309,16 @@ public static class MessageBodyHtmlBuilder
     public static string SafeRegexReplace(string input, string pattern, string replacement, RegexOptions options)
     {
         try { return Regex.Replace(input, pattern, replacement, options, HtmlRegexTimeout); }
+        catch (RegexMatchTimeoutException)
+        {
+            LogService.Log($"HTML cleanup timed out for pattern: {pattern}");
+            return input;
+        }
+    }
+
+    public static string SafeRegexReplace(string input, string pattern, MatchEvaluator evaluator, RegexOptions options)
+    {
+        try { return Regex.Replace(input, pattern, evaluator, options, HtmlRegexTimeout); }
         catch (RegexMatchTimeoutException)
         {
             LogService.Log($"HTML cleanup timed out for pattern: {pattern}");

@@ -107,4 +107,44 @@ public class HtmlStripperTests
         var text = HtmlStripper.ToPlainText("<a href=\"data:application/javascript,alert(1)\">click</a>");
         Assert.Equal("click", text);
     }
+
+    // Preview-text regression: the old StripHtml regex only removed <tags>, leaving
+    // CSS inside <style> blocks visible as raw text in the message list.
+    [Fact]
+    public void Strip_StyleBlockCss_NotAppearedInPreview()
+    {
+        var html = "<style>body { font-family: Arial; } .preheader { display: none; }</style><p>Hello world</p>";
+        var text = HtmlStripper.ToPlainText(html);
+        Assert.DoesNotContain("font-family", text);
+        Assert.DoesNotContain("display", text);
+        Assert.Contains("Hello world", text);
+    }
+
+    [Fact]
+    public void Strip_ScriptBlockContent_NotAppearedInPreview()
+    {
+        var html = "<script>var x = 'tracking code';</script><p>Actual content</p>";
+        var text = HtmlStripper.ToPlainText(html);
+        Assert.DoesNotContain("tracking code", text);
+        Assert.Contains("Actual content", text);
+    }
+
+    [Fact]
+    public void Strip_MultipleStyleBlocks_NoneLeakToPreview()
+    {
+        var html =
+            "<head><style>.a{color:red}</style></head>" +
+            "<body><style>.b{margin:0}</style><p>Body text</p></body>";
+        var text = HtmlStripper.ToPlainText(html);
+        Assert.DoesNotContain("color", text);
+        Assert.DoesNotContain("margin", text);
+        Assert.Contains("Body text", text);
+    }
+
+    [Fact]
+    public void Strip_EmptyStyleBlock_ProducesNoOutput()
+    {
+        var text = HtmlStripper.ToPlainText("<style></style><p>hi</p>");
+        Assert.Equal("hi", text);
+    }
 }

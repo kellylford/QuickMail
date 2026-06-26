@@ -5016,21 +5016,13 @@ public partial class MainViewModel : ObservableObject
     private static string ExtractPreview(string plainText, string htmlText, int maxLines)
     {
         if (maxLines <= 0) return string.Empty;
-        var source = !string.IsNullOrWhiteSpace(plainText) ? plainText : StripHtml(htmlText);
+        var source = !string.IsNullOrWhiteSpace(plainText) ? plainText : HtmlStripper.ToPlainText(htmlText);
         var lines  = source
             .Split('\n')
             .Select(l => l.Trim())
             .Where(l => l.Length > 0)
             .Take(maxLines);
         return string.Join(" ", lines);
-    }
-
-    private static string StripHtml(string html)
-    {
-        if (string.IsNullOrEmpty(html)) return string.Empty;
-        return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ")
-            .Replace("&nbsp;", " ").Replace("&amp;", "&").Replace("&lt;", "<").Replace("&gt;", ">")
-            .Trim();
     }
 
     // ── Calendar invite commands ─────────────────────────────────────────────────

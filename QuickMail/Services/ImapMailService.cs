@@ -13,6 +13,7 @@ using MailKit.Net.Imap;
 using MailKit.Search;
 using MailKit.Security;
 using MimeKit;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -729,7 +730,7 @@ public class ImapMailService : IMailService, IChangeNotifier
                     else if (s.HtmlBody != null)
                     {
                         var part = await folder.GetBodyPartAsync(s.UniqueId, s.HtmlBody, ct);
-                        if (part is TextPart tp) text = StripHtml(tp.Text ?? string.Empty);
+                        if (part is TextPart tp) text = HtmlStripper.ToPlainText(tp.Text ?? string.Empty);
                     }
 
                     var preview = ExtractPreviewLines(text, maxLines);
@@ -1397,15 +1398,6 @@ public class ImapMailService : IMailService, IChangeNotifier
             .Select(l => l.Trim())
             .Where(l => l.Length > 0)
             .Take(maxLines));
-
-    private static string StripHtml(string html)
-    {
-        if (string.IsNullOrEmpty(html)) return string.Empty;
-        return System.Text.RegularExpressions.Regex.Replace(html, "<[^>]+>", " ")
-            .Replace("&nbsp;", " ").Replace("&amp;", "&")
-            .Replace("&lt;", "<").Replace("&gt;", ">")
-            .Trim();
-    }
 
     private static bool IsExcludedFromAllMail(FolderAttributes attrs, string fullName)
     {
