@@ -13,6 +13,54 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ---
 
+## Important
+
+QuickMail is still under active development and supporting various email providers is an important goal for the product. That said, it is a broad target and you may want to use the BCC field or another option when sending email to ensure it is retained. Reasonable testing is done before releasing a build but as a bug fix here shows, sometimes issues can arise. An always BCC myself feature is also under consideration.
+
+---
+
+## Improvements
+
+### Calendar: upcoming appointments from invitation emails
+
+QuickMail now tracks upcoming appointments from calendar invitation emails in your mailbox. A **Calendar** node appears in the folder list; selecting it shows your upcoming events, drawn from `.ics` attachments in your messages and sorted by date and time.
+
+> **Scope note:** This initial calendar implementation is designed to close a specific gap: when you accept a meeting invitation from within QuickMail, you now have a place to see what you accepted. It is not a general-purpose calendar. A more complete calendar experience is under consideration for a future release.
+
+- **Keyboard navigation:** Arrow keys move through the event list and stay within the calendar pane. F6 cycles to the next pane as expected.
+- **Open the source email:** Press **Enter** on any event to open the invitation email it came from. If the email is no longer in your local cache, QuickMail announces this and does nothing instead of showing an error.
+- **Invite updates and cancellations:** When you receive an updated or cancelled invitation, the calendar reflects the change automatically — no restart required.
+- **Accepting invites:** Accepting a meeting invite updates the calendar without restarting.
+
+### Startup sync is faster, especially with multiple accounts
+
+QuickMail now syncs your **Inbox folders first** across all accounts before syncing sent mail, drafts, trash, and other folders. Accounts also sync in parallel rather than one at a time. Together these changes mean new mail in your inboxes typically appears within a few seconds of launch rather than after the full sync cycle completes. No configuration is required — the improvement applies automatically. ([#144](https://github.com/kellylford/QuickMail/issues/144))
+
+### Move and copy now use a folder tree instead of a flat list
+
+When you choose to move or copy an email message or conversation, the folder picker now shows the same hierarchical tree view used in the main folder panel — folders nested under their parents, with account names as collapsible group headers when multiple accounts are present. Previously the picker showed a flat alphabetical list with full folder paths written out for every entry. ([#145](https://github.com/kellylford/QuickMail/issues/145))
+
+### Move to Folder and Copy to Folder now appear in the command palette
+
+**Move to Folder** and **Copy to Folder** are now available in the command palette (**Ctrl+Shift+P**), in addition to the existing context menu entries. (#146)
+
+### Logging control in Advanced settings
+
+**Settings → Advanced** now has a **QuickMail Logging** section with two options:
+
+- **Enable logging** checkbox — turn logging on or off. Logging is **off by default**. When enabled, QuickMail writes activity to `quickmail.log` in your profile directory (usually `%APPDATA%\QuickMail`, or the path supplied via `--profileDir`). Changes take effect as soon as you select **Save** — no restart required.
+- **Delete QuickMail log** button — deletes the current log file after a Yes/No confirmation. If logging is still enabled, a fresh log file is created the next time an activity is logged.
+
+> **Note:** If QuickMail is launched with the `/debug` flag, logging always runs regardless of the **Enable logging** setting. The `/debug` flag is intended for diagnosing problems and overrides this preference so that no diagnostic detail is lost.
+
+### Spelling suggestions are now numbered
+
+When a misspelling is announced, each suggestion is now preceded by its number — for example: "Misspelling: teh. 1: the, 2: then, 3: them." This makes the `Alt+1` / `Alt+2` / `Alt+3` correction shortcuts immediately obvious without having to count suggestions mentally.
+
+A new **Spelling Suggestions Verbosity** setting in **Settings → Screen Reader Announcements** lets you choose between **Numbers with suggestions** (the new default) and **Just suggestions** if you prefer the previous style.
+
+---
+
 ## Bug Fixes
 
 ### Newsletter emails no longer announce meaningless characters at the top
@@ -47,44 +95,33 @@ Opening the Account Manager and adding a new account no longer causes all existi
 
 Pressing **F5** in **All Mail**, **All Inboxes**, **Drafts**, **Sent**, **Trash**, or a per-account All Mail view now correctly updates messages that were already in the list. Previously, if you marked a message read or flagged it in another mail client and then pressed F5, the existing row kept its stale state — only newly arrived messages were added. The refresh now updates `IsRead`, reply/forward state, attachments, and flag information on any message that has changed on the server, without disturbing selection or screen reader focus. (#111)
 
-### Microsoft 365 / Exchange: nested folders now appear in the folder tree
+### Sent folder now recognized on servers that name it "Sent Messages"
 
-When using a Microsoft 365 or Exchange account, folders nested inside other folders (for example, a **Projects** folder inside **Inbox**) now appear correctly in the folder tree. Previously, only top-level folders were fetched — any subfolder was invisible. (#109)
+On IMAP servers that use "Sent Messages" as the Sent folder name — including Apple Mail and some Dovecot configurations — sent mail now appears correctly in the Sent view. Previously, QuickMail's special-folder detection did not recognize this name variant, so sent messages were not mapped and the Sent view appeared empty for those accounts. (#149)
 
-### Microsoft 365 / Exchange: folder picker shows readable paths instead of internal IDs
+### Shift+F10 context menu regression in conversation tree fixed
 
-When moving or copying a message on a Microsoft 365 or Exchange account, the folder picker now shows readable folder paths (for example, **Inbox/Projects/2026**) instead of the opaque internal identifier that Graph uses for folder names. Screen readers were announcing strings like `QM Test — AAMkADRmODc0…`; they now announce the folder name as expected. (#109)
+Pressing **Shift+F10** on a message in the conversation tree now opens the QuickMail context menu correctly. A previous fix to conversation-tree context menu handling had inadvertently suppressed Shift+F10 for messages shown as tree items. The fix also corrects the menu's placement target so that Move to Folder and Copy to Folder work correctly when opened from the conversation tree. (#146)
 
 ---
 
-## Improvements
+## Known Issues
 
-### Startup sync is faster, especially with multiple accounts
+### First Shift+F10 press shows the system menu instead of the QuickMail context menu
 
-QuickMail now syncs your **Inbox folders first** across all accounts before syncing sent mail, drafts, trash, and other folders. Accounts also sync in parallel rather than one at a time. Together these changes mean new mail in your inboxes typically appears within a few seconds of launch rather than after the full sync cycle completes. No configuration is required — the improvement applies automatically. ([#144](https://github.com/kellylford/QuickMail/issues/144))
+On the very first Shift+F10 keypress after launching QuickMail, the Windows system menu (Restore, Move, Size, Minimize, Maximize, Close) may appear instead of the QuickMail context menu. All subsequent presses in the same session work correctly.
 
-### Move and copy now use a folder tree instead of a flat list
+**Workaround:** Press Shift+F10 a second time. After the first press, the behaviour is correct for the remainder of the session.
 
-When you choose to move or copy an email message or conversation, the folder picker now shows the same hierarchical tree view used in the main folder panel — folders nested under their parents, with account names as collapsible group headers when multiple accounts are present. Previously the picker showed a flat alphabetical list with full folder paths written out for every entry. ([#145](https://github.com/kellylford/QuickMail/issues/145))
+The root cause is a startup-timing issue: WebView2 initialization can claim Win32 focus before WPF's first focus-restoration pass completes. When Shift+F10 arrives while `Keyboard.FocusedElement` is null, WPF has no element to route `ContextMenuOpening` from and falls through to `DefWindowProc`, which shows the system menu. ([#148](https://github.com/kellylford/QuickMail/issues/148))
 
-### Account Manager no longer shows "Test Connection" for Microsoft 365 accounts
+### iCloud: two copies of sent messages appear in Sent Messages
 
-The **Test Connection** button tests IMAP and SMTP settings, which Microsoft 365 and Exchange accounts managed via the Graph backend do not have. It is now hidden for those accounts, matching the existing behavior for the IMAP/SMTP settings panels. (#141)
+When sending from an iCloud account, two identical copies of each sent message may appear in the Sent Messages folder. iCloud's SMTP server saves a copy automatically when relaying the message; QuickMail also appends a copy after a successful send. Before fix #149 added the "Sent Messages" folder alias, QuickMail's explicit append was silently failing — so only the auto-saved copy existed. The fix makes both copies land correctly.
 
-### Logging control in Advanced settings
+**Impact:** Cosmetic only. Both copies are identical and no mail is lost.
 
-**Settings → Advanced** now has a **QuickMail Logging** section with two options:
-
-- **Enable logging** checkbox — turn logging on or off. Logging is **off by default**. When enabled, QuickMail writes activity to `quickmail.log` in your profile directory (usually `%APPDATA%\QuickMail`, or the path supplied via `--profileDir`). Changes take effect as soon as you select **Save** — no restart required.
-- **Delete QuickMail log** button — deletes the current log file after a Yes/No confirmation. If logging is still enabled, a fresh log file is created the next time an activity is logged.
-
-> **Note:** If QuickMail is launched with the `/debug` flag, logging always runs regardless of the **Enable logging** setting. The `/debug` flag is intended for diagnosing problems and overrides this preference so that no diagnostic detail is lost.
-
-### Spelling suggestions are now numbered
-
-When a misspelling is announced, each suggestion is now preceded by its number — for example: "Misspelling: teh. 1: the, 2: then, 3: them." This makes the `Alt+1` / `Alt+2` / `Alt+3` correction shortcuts immediately obvious without having to count suggestions mentally.
-
-A new **Spelling Suggestions Verbosity** setting in **Settings → Screen Reader Announcements** lets you choose between **Numbers with suggestions** (the new default) and **Just suggestions** if you prefer the previous style.
+**Planned fix:** Before appending, search the Sent folder for a matching `Message-ID` and skip the append if a copy already exists. ([#150](https://github.com/kellylford/QuickMail/issues/150))
 
 ---
 
@@ -103,20 +140,3 @@ Thank you to everyone who has contributed to QuickMail through code, bug reports
 ### Virtual folder refresh reconciliation
 
 - `MainViewModel`: replaced the add-only `existingKeys` `HashSet` in all virtual-folder merge paths (All Mail, per-account All Mail, All Inboxes, Drafts, Sent, Trash) with a `Dictionary` keyed on `(MessageId, AccountId, FolderName)`. On collision, a new `ReconcileMessageState` helper copies server-fresh mutable fields (`IsRead`, `IsReplied`, `IsForwarded`, `HasAttachments`, `FlagId`, `FlagName`, `FlagColorHex`, `IsServerFlagged`) onto the existing `ObservableObject` in place, triggering `PropertyChanged` so rows update without disturbing selection or screen reader focus. Genuinely new messages continue to be inserted sorted. The local-store upsert at the end of each path already covered all fetched messages, so cache correctness was unaffected.
-
-### Change-notification extraction (`IChangeNotifier`)
-
-- New `IChangeNotifier` interface (`InboxNewMailDetected`, `AccountReachabilityChanged`, `StartWatchers`, `StopWatchers`) extracted from `IMailService`, so each backend can supply its own notification strategy without the interface coupling.
-- `ImapMailService` implements `IChangeNotifier` directly — the IMAP IDLE watcher is bound to the IMAP connection lifecycle (`DisconnectAsync` cancels an account's watcher; `Dispose` stops them all), so extracting it to a standalone class would require two-way event plumbing with more risk. `StartIdleWatchers`/`StopIdleWatchers` renamed to `StartWatchers`/`StopWatchers`.
-- New `ChangeNotifierRouter` aggregates per-backend notifiers behind one surface (mirrors `MailServiceRouter` for `IMailService`). `StartWatchers` partitions accounts by `BackendKind` so each notifier only watches accounts it owns; events from all backends are forwarded to a single subscriber set. Microsoft Graph accounts receive no watcher here — Graph delta-poll notification lands in PR 7b.
-- `MainViewModel` takes an optional `IChangeNotifier` (production wires the router; tests pass `null`) and subscribes to it instead of to `IMailService`. The `AccountReachabilityChanged` subscription is stored in `_onReachabilityChanged` and explicitly unsubscribed before re-subscribing, preventing handler stacking on repeated `StartBackgroundSyncAsync` calls; `RefreshAccountList` follows the same pattern so account-list refreshes always bind to the current account objects.
-- New `InvokeOnUi` helper in `MainViewModel` marshals ThreadPool-fired change-notifier events onto the UI thread before accessing `Accounts` or `_cachedFolders`.
-- New `ChangeNotifierRouterTests`: account partitioning, event forwarding, and dispose behaviour (6 tests). Existing `IdleNewMailTests` migrated to drive `IChangeNotifier` directly.
-
-### Microsoft Graph: nested folder fetch and readable picker paths
-
-- `GraphMailService.GetFoldersAsync`: now does a breadth-first descent into `/me/mailFolders/{id}/childFolders` for any folder reporting `childFolderCount > 0`. `/me/mailFolders` alone returns only top-level folders. `childFolderCount` added to the folder DTO (`GraphFolderDto`).
-- `MailFolderModel`: new nullable `ParentId` property (null for IMAP accounts, populated for Graph accounts).
-- `FolderTreeBuilder`: builds the hierarchy from `ParentId` when any folder in the set carries one (Graph); falls back to the existing separator-path logic for all-IMAP accounts. Well-known folders (Inbox, Drafts, Sent, Deleted, Junk) sort conventionally in both builders via a shared `WellKnownRank`; remaining folders sort alphabetically.
-- `FolderPickerWindow`: reconstructs a `DisplayName` path by walking the `ParentId` chain (for example, `Inbox/Projects/2026`) so Graph's opaque `FullName` id is never shown. For all-IMAP accounts the `byId` map is skipped entirely.
-- New tests: `GraphMailServiceTests.GetFoldersAsync_DescendsIntoChildFolders_AndSetsParentId`, `FolderTreeBuilderTests` (IMAP separator nesting, Graph parent-id nesting 3 deep, conventional well-known ordering), `FolderPickerPathTests` (IMAP keeps `FullName`; Graph builds display-name path without surfacing the id).
