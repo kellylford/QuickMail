@@ -1292,7 +1292,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             {
                 SpecialFolder.Trash  => ["Trash", "Deleted Messages"],
                 SpecialFolder.Junk   => ["Junk", "Spam"],
-                SpecialFolder.Sent   => ["Sent"],
+                SpecialFolder.Sent   => ["Sent", "Sent Messages"],
                 SpecialFolder.Drafts => ["Drafts"],
                 _                   => []
             })
