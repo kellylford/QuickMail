@@ -70,7 +70,8 @@ its own. For tenants that require admin consent (see §4), each delegated permis
 | `IMAP.AccessAsUser.All` | IMAP access (XOAUTH2) |
 | `SMTP.Send` | SMTP send (XOAUTH2) |
 
-Plus `offline_access` (refresh tokens) — granted implicitly via the scope request.
+Plus `offline_access` (refresh tokens) — standard OIDC scope, explicitly included in the scope
+arrays in `OAuthService.cs`; no separate portal permission entry required.
 
 > When a new scope is added to the code (e.g. `MailboxSettings.ReadWrite` was added for server-side
 > rules), it must be added to this list **and** admin consent re-granted in each admin-consent tenant.
