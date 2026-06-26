@@ -1,7 +1,8 @@
 # POP3 Backend — PM & Dev Specification
 
-**Status:** Draft — awaiting approval  
+**Status:** Implemented — awaiting testing (see [issue #128](https://github.com/kellylford/QuickMail/issues/128))  
 **Date:** 2026-06-24  
+**Implemented:** 2026-06-26  
 **Target:** v0.8.x (after Graph backend ships)  
 **Scope:** Large (new protocol backend, new service, model changes, UI additions)
 
