@@ -47,8 +47,14 @@ public class OAuthService : IOAuthService
         _msal = PublicClientApplicationBuilder
             .Create(ClientId)
             .WithAuthority(Authority)
-            // http://localhost loopback redirect — standard for native apps
-            .WithDefaultRedirectUri()
+            // Explicit loopback redirect for the system-browser flow (WithUseEmbeddedWebView(false)).
+            // MSAL opens a temporary listener on a random localhost port; Azure's loopback exception
+            // matches it against a bare "http://localhost" redirect registered under the app's
+            // "Mobile and desktop applications" platform. Setting it explicitly (rather than
+            // WithDefaultRedirectUri, which is framework-dependent) keeps the round-trip deterministic
+            // and avoids the legacy nativeclient redirect, which the system browser can't hand back —
+            // the cause of the "dead localhost page + re-auth" symptom. See docs/ENTRA-APP-REGISTRATION.md.
+            .WithRedirectUri("http://localhost")
             .Build();
 
         RegisterTokenCache();
