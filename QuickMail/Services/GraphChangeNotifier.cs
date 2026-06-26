@@ -50,6 +50,12 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
 
     public void StopWatchers()
     {
+        // Single-lifecycle assumption: StartWatchers once at startup, StopWatchers once on exit.
+        // Clearing _watchers and cancelling the CTS signals the poll tasks to exit, but does NOT
+        // await them — they unwind when they next observe the cancelled token. That's fine for the
+        // start-once/stop-once lifecycle; a caller that restarts watchers dynamically would see the
+        // old tasks briefly race the new ones (harmless — they hold the old CTS and independent
+        // accounts) but has no fence guaranteeing the old tasks have exited.
         var cts = _cts;
         _cts = null;
         _watchers.Clear();
@@ -61,8 +67,6 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
 
     private async Task PollLoopAsync(AccountModel account, CancellationToken ct)
     {
-        var intervalSec = Math.Clamp(_config?.Load().GraphPollSeconds ?? 60, 30, 600);
-
         while (!ct.IsCancellationRequested)
         {
             try
@@ -91,6 +95,11 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
                     url = resp?.NextLink;                             // null on the final page
                 }
 
+                // At-least-once semantics, by design: the event fires BEFORE the cursor is persisted.
+                // If the app exits in this window, the next startup re-polls from the old/absent cursor
+                // and may re-notify for the same messages — but the resulting sync is idempotent (same
+                // message ids are not re-inserted), so nothing is lost or duplicated. Persisting first
+                // would risk the opposite (a missed notification), which is worse.
                 if (sawMessages)
                     InboxNewMailDetected?.Invoke(account.Id);
 
@@ -100,6 +109,9 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
             catch (OperationCanceledException) { return; }
             catch (Exception ex) { LogService.Log($"GraphChangeNotifier {account.AccountLabel}", ex); }
 
+            // Re-read each tick so an edit to GraphPollSeconds in config.ini takes effect without an
+            // app restart. _config.Load() is a file read, but once per interval (>=30 s) is negligible.
+            var intervalSec = Math.Clamp(_config?.Load().GraphPollSeconds ?? 60, 30, 600);
             try { await Task.Delay(TimeSpan.FromSeconds(intervalSec), ct); }
             catch (OperationCanceledException) { return; }
         }
