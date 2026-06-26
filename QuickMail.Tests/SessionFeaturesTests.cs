@@ -114,7 +114,8 @@ public class PreviewSuppressionTests
         public Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
     }
 
-    private static readonly MailMessageSummary[] MessagesWithPreviews =
+    // Property (not field) so each test gets fresh instances — tests mutate Preview in place.
+    private static MailMessageSummary[] MessagesWithPreviews =>
     [
         new() { MessageId = "1", Preview = "First preview text",  Date = DateTimeOffset.Now },
         new() { MessageId = "2", Preview = "Second preview text", Date = DateTimeOffset.Now.AddMinutes(-1) },
