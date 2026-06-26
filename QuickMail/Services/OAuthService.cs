@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Identity.Client;
+using Microsoft.Identity.Client.Desktop;
 using Microsoft.Identity.Client.Extensions.Msal;
 using QuickMail.Models;
 
@@ -47,14 +48,16 @@ public class OAuthService : IOAuthService
         _msal = PublicClientApplicationBuilder
             .Create(ClientId)
             .WithAuthority(Authority)
-            // Explicit loopback redirect for the system-browser flow (WithUseEmbeddedWebView(false)).
-            // MSAL opens a temporary listener on a random localhost port; Azure's loopback exception
-            // matches it against a bare "http://localhost" redirect registered under the app's
-            // "Mobile and desktop applications" platform. Setting it explicitly (rather than
-            // WithDefaultRedirectUri, which is framework-dependent) keeps the round-trip deterministic
-            // and avoids the legacy nativeclient redirect, which the system browser can't hand back —
-            // the cause of the "dead localhost page + re-auth" symptom. See docs/ENTRA-APP-REGISTRATION.md.
+            // Interactive sign-in renders in the embedded WebView2 window (see WithUseEmbeddedWebView
+            // in SignInInteractiveAsync) — it shows in-app and closes itself on completion, so there
+            // is no separate browser tab or "authentication complete" page. The redirect is still
+            // http://localhost; the embedded view intercepts that navigation internally (no loopback
+            // listener), and it must be registered under the app's "Mobile and desktop applications"
+            // platform. Set explicitly rather than via the framework-dependent WithDefaultRedirectUri.
+            // See docs/ENTRA-APP-REGISTRATION.md.
             .WithRedirectUri("http://localhost")
+            // Enables the embedded WebView2 browser on net8.0-windows (Microsoft.Identity.Client.Desktop).
+            .WithWindowsEmbeddedBrowserSupport()
             .Build();
 
         RegisterTokenCache();
@@ -109,8 +112,9 @@ public class OAuthService : IOAuthService
         LogService.Log($"OAuthService: starting interactive sign-in for {account.Username}");
 
         var builder = _msal.AcquireTokenInteractive(scopes)
-            // Opens the system default browser; no embedded WebView dependency
-            .WithUseEmbeddedWebView(false)
+            // Embedded WebView2 window: renders in-app and closes itself on completion, returning
+            // focus to QuickMail — no system-browser tab and no lingering success page.
+            .WithUseEmbeddedWebView(true)
             // Force credential entry when a specific account is expected,
             // so the browser cannot silently reuse a different cached account.
             .WithPrompt(string.IsNullOrEmpty(account.Username) ? Prompt.SelectAccount : Prompt.ForceLogin);
