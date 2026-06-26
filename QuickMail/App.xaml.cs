@@ -17,6 +17,7 @@ public partial class App : Application
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
     private ImapMailService? _imapBackend;
+    private Pop3MailService? _pop3Backend;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -89,21 +90,26 @@ public partial class App : Application
             var graphBackend      = new GraphMailService(msOAuthService, configService);
             _graphSendMail        = new GraphSendMailService(msOAuthService);
             var smtpService       = new SmtpService(oauthService, _graphSendMail);
+            var localStore        = new LocalStoreService(profile);
+            if (!onlineMode)
+                localStore.Initialize();
+            _pop3Backend          = new Pop3MailService(localStore, onlineMode);
+            var pop3Backend       = _pop3Backend;
 
             // Per-account mail backend router. Each account is registered to the backend its
-            // BackendKind selects (IMAP by default, Graph for Microsoft 365 accounts).
-            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend });
-            IMailService BackendFor(AccountModel a)
-                => a.BackendKind == BackendKind.MicrosoftGraph ? graphBackend : imapBackend;
+            // BackendKind selects (IMAP by default, Graph for Microsoft 365 accounts, POP3/SMTP for POP3).
+            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend, pop3Backend });
+            IMailService BackendFor(AccountModel a) => a.BackendKind switch
+            {
+                BackendKind.MicrosoftGraph => graphBackend,
+                BackendKind.Pop3Smtp       => pop3Backend,
+                _                          => imapBackend,
+            };
 
             // Change-notification router (new-mail + reachability). IMAP's strategy is a held IDLE
             // connection, implemented by ImapMailService itself because it is bound to the IMAP
             // connection lifecycle. Graph delta-poll notification arrives in PR 7b.
             _changeNotifier = new ChangeNotifierRouter(imapBackend);
-
-            var localStore = new LocalStoreService(profile);
-            if (!onlineMode)
-                localStore.Initialize();
 
             // Load accounts once — after the store is initialized — and reuse the list for the VM.
             // Router registration runs via mainVm.RegisterAccountBackend (set below), which also
@@ -159,6 +165,7 @@ public partial class App : Application
     {
         _changeNotifier?.Dispose(); // stops IDLE watchers + severs the event chain
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
+        _pop3Backend?.Dispose();
         _graphSendMail?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();

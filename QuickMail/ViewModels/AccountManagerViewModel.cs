@@ -51,7 +51,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     partial void OnSelectedAccountChanged(AccountModel? value)
     {
         if (value == null) return;
-        BackendKind = value.BackendKind; // drives IsGraphBackend/IsImapBackend → hides auth + IMAP/SMTP for Graph
+        BackendKind = value.BackendKind; // drives IsGraphBackend/IsImapBackend/IsPop3Backend → section visibility
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;
         Username = value.Username;
@@ -63,6 +63,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         ImapPort = value.ImapPort;
         ImapUseSsl = value.ImapUseSsl;
         ImapAcceptInvalidCert = value.ImapAcceptInvalidCert;
+        Pop3Host = value.Pop3Host;
+        Pop3Port = value.Pop3Port;
+        Pop3UseSsl = value.Pop3UseSsl;
+        Pop3AcceptInvalidCert = value.Pop3AcceptInvalidCert;
+        Pop3LeaveMailOnServer = value.Pop3LeaveMailOnServer;
         SmtpHost = value.SmtpHost;
         SmtpPort = value.SmtpPort;
         SmtpUseSsl = value.SmtpUseSsl;
@@ -96,6 +101,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SelectedAccount.ImapPort = ImapPort;
         SelectedAccount.ImapUseSsl = ImapUseSsl;
         SelectedAccount.ImapAcceptInvalidCert = ImapAcceptInvalidCert;
+        SelectedAccount.Pop3Host = Pop3Host;
+        SelectedAccount.Pop3Port = Pop3Port;
+        SelectedAccount.Pop3UseSsl = Pop3UseSsl;
+        SelectedAccount.Pop3AcceptInvalidCert = Pop3AcceptInvalidCert;
+        SelectedAccount.Pop3LeaveMailOnServer = Pop3LeaveMailOnServer;
         SelectedAccount.SmtpHost = SmtpHost;
         SelectedAccount.SmtpPort = SmtpPort;
         SelectedAccount.SmtpUseSsl = SmtpUseSsl;

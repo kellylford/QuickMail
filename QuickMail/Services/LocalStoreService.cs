@@ -84,6 +84,9 @@ public class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN attachments_json TEXT DEFAULT NULL;");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN flag_id TEXT DEFAULT NULL;");
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN calendar_ics TEXT DEFAULT NULL;");
+        // Schema v5: raw MIME bytes for POP3 messages (NULL for IMAP/Graph). Stored only when the
+        // message has attachments, so the BLOB is absent for the vast majority of rows.
+        RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN mime_bytes BLOB DEFAULT NULL;");
 
         // CalendarEvent table (schema v4). Additive — no existing table touched.
         cmd.CommandText = """
@@ -653,6 +656,38 @@ public class LocalStoreService : ILocalStoreService
             CalendarIcs   = calendarIcs,
             CalendarInvite = string.IsNullOrWhiteSpace(calendarIcs) ? null : IcsModel.Parse(calendarIcs),
         };
+    }
+
+    public async Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "UPDATE MessageDetail SET mime_bytes=$mb " +
+            "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$mb",  (object?)mimeBytes ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$uid", messageId);
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        await cmd.ExecuteNonQueryAsync();
+    }
+
+    public async Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT mime_bytes FROM MessageDetail " +
+            "WHERE unique_id=$uid AND account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$uid", messageId);
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        await using var r = await cmd.ExecuteReaderAsync();
+        if (!await r.ReadAsync() || r.IsDBNull(0)) return null;
+        var len = r.GetBytes(0, 0, null, 0, 0);
+        var buf = new byte[len];
+        r.GetBytes(0, 0, buf, 0, (int)len);
+        return buf;
     }
 
     public async Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName)

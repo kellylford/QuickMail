@@ -153,6 +153,8 @@ sealed class RecordingFlagStore : ILocalStoreService
         return Task.CompletedTask;
     }
     public Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;
+    public Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes) => Task.CompletedTask;
+    public Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<byte[]?>(null);
     public Task UpsertCalendarEventAsync(CalendarEvent evt) => Task.CompletedTask;
     public Task<List<CalendarEvent>> LoadCalendarEventsAsync() => Task.FromResult(new List<CalendarEvent>());
     public Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status) => Task.CompletedTask;

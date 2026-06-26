@@ -43,9 +43,17 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// <summary>True when the IMAP host matches iCloud — drives the app-specific password hint.</summary>
     public bool IsICloudAccount => ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
 
+    [ObservableProperty] private string _pop3Host = string.Empty;
+    [ObservableProperty] private int    _pop3Port = 995;
+    [ObservableProperty] private bool   _pop3UseSsl = true;
+    [ObservableProperty] private bool   _pop3AcceptInvalidCert = false;
+    [ObservableProperty] private bool   _pop3LeaveMailOnServer = true;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGraphBackend))]
     [NotifyPropertyChangedFor(nameof(IsImapBackend))]
+    [NotifyPropertyChangedFor(nameof(IsPop3Backend))]
+    [NotifyPropertyChangedFor(nameof(ShowTestConnectionButton))]
     private BackendKind _backendKind = BackendKind.ImapSmtp;
 
     /// <summary>True when this account uses the Microsoft Graph backend (drives IMAP/SMTP field visibility).</summary>
@@ -53,6 +61,12 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     /// <summary>True when this account uses the standard IMAP/SMTP backend.</summary>
     public bool IsImapBackend => BackendKind == BackendKind.ImapSmtp;
+
+    /// <summary>True when this account uses the POP3/SMTP backend.</summary>
+    public bool IsPop3Backend => BackendKind == BackendKind.Pop3Smtp;
+
+    /// <summary>True when a Test Connection probe is meaningful (IMAP and POP3 backends; not Graph/OAuth).</summary>
+    public bool ShowTestConnectionButton => IsImapBackend || IsPop3Backend;
 
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private bool   _isBusy = false;
@@ -159,6 +173,53 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         if (IsGoogleOAuth)
         {
             StatusText = "For Gmail, use Sign in with Google to verify access.";
+            return;
+        }
+
+        if (IsPop3Backend)
+        {
+            if (string.IsNullOrWhiteSpace(Pop3Host) || string.IsNullOrWhiteSpace(Username))
+            {
+                StatusText = "Fill in POP3 host and username first.";
+                return;
+            }
+
+            IsBusy = true;
+            StatusText = "Testing POP3 connection…";
+            var testId = Guid.NewGuid();
+            try
+            {
+                var testAccount = new AccountModel
+                {
+                    Id = testId,
+                    AccountName = $"Test ({Username})",
+                    DisplayName = Username,
+                    Username    = Username,
+                    AuthType    = AuthType,
+                    BackendKind = BackendKind,
+                    Pop3Host              = Pop3Host,
+                    Pop3Port              = Pop3Port,
+                    Pop3UseSsl            = Pop3UseSsl,
+                    Pop3AcceptInvalidCert = Pop3AcceptInvalidCert,
+                    Pop3LeaveMailOnServer = Pop3LeaveMailOnServer,
+                    SmtpHost              = SmtpHost,
+                    SmtpPort              = SmtpPort,
+                    SmtpUseSsl            = SmtpUseSsl,
+                    SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
+                };
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                await MailService.ConnectAsync(testAccount, Password, cts.Token);
+                await MailService.DisconnectAsync(testId, cts.Token);
+                StatusText = "POP3 connection successful!";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Connection failed: {ex.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
             return;
         }
 

@@ -200,6 +200,63 @@
                           Margin="0,0,0,6" TabIndex="10"/>
                 </StackPanel>
 
+                <!-- POP3 + SMTP server settings — visible only for POP3/SMTP accounts. -->
+                <StackPanel Visibility="{Binding IsPop3Backend, Converter={StaticResource BoolToVisibility}}">
+                <Separator Margin="0,12"/>
+
+                <TextBlock Text="Incoming Mail (POP3)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                <TextBlock x:Name="LblPop3Host" Text="POP3 _Host:" Margin="0,4,0,2"/>
+                <TextBox Text="{Binding Pop3Host, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Host}"
+                         TabIndex="4"/>
+
+                <TextBlock x:Name="LblPop3Port" Text="POP3 _Port:" Margin="0,6,0,2"/>
+                <TextBox Text="{Binding Pop3Port, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblPop3Port}"
+                         TabIndex="5"/>
+
+                <CheckBox Content="Use _SSL (port 995)"
+                          IsChecked="{Binding Pop3UseSsl}"
+                          AutomationProperties.Name="POP3 use SSL"
+                          Margin="0,6" TabIndex="6"/>
+
+                <CheckBox Content="Accept _invalid certificates"
+                          IsChecked="{Binding Pop3AcceptInvalidCert}"
+                          AutomationProperties.Name="POP3 accept invalid SSL certificates"
+                          Margin="0,0,0,6" TabIndex="7"/>
+
+                <CheckBox Content="_Leave mail on server after download"
+                          IsChecked="{Binding Pop3LeaveMailOnServer}"
+                          AutomationProperties.Name="Leave mail on server after download"
+                          ToolTip="When checked, messages remain on the server so other POP3 clients can access them. When unchecked, messages are removed from the server after a successful download."
+                          Margin="0,0,0,6" TabIndex="8"/>
+
+                <Separator Margin="0,6"/>
+
+                <TextBlock Text="Outgoing Mail (SMTP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+
+                <TextBlock x:Name="LblPop3SmtpHost" Text="SMTP H_ost:" Margin="0,4,0,2"/>
+                <TextBox Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblPop3SmtpHost}"
+                         TabIndex="9"/>
+
+                <TextBlock x:Name="LblPop3SmtpPort" Text="SMTP Po_rt:" Margin="0,6,0,2"/>
+                <TextBox Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblPop3SmtpPort}"
+                         TabIndex="10"/>
+
+                <CheckBox Content="Implicit _SSL on connect (port 465; uncheck for STARTTLS on port 587)"
+                          IsChecked="{Binding SmtpUseSsl}"
+                          AutomationProperties.Name="SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587."
+                          Margin="0,6" TabIndex="11"/>
+
+                <CheckBox Content="Accept invalid certi_ficates"
+                          IsChecked="{Binding SmtpAcceptInvalidCert}"
+                          AutomationProperties.Name="POP3 account SMTP accept invalid SSL certificates"
+                          Margin="0,0,0,6" TabIndex="12"/>
+                </StackPanel>
+
                 <Separator Margin="0,6"/>
 
                 <!-- Signature -->
@@ -228,8 +285,8 @@
             <Button DockPanel.Dock="Right"
                     Content="_Test Connection"
                     Command="{Binding TestConnectionCommand}"
-                    AutomationProperties.Name="Test IMAP connection with current settings"
-                    Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}"
+                    AutomationProperties.Name="Test server connection with current settings"
+                    Visibility="{Binding ShowTestConnectionButton, Converter={StaticResource BoolToVisibility}}"
                     MinWidth="120" Margin="6,0,0,0"/>
             <Button DockPanel.Dock="Right"
                     Content="_Save"

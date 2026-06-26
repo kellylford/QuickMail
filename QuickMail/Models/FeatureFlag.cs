@@ -17,4 +17,10 @@ public enum FeatureFlag
     /// Default: true. Disable in config.ini with GoogleAuth=false under [features].
     /// </summary>
     GoogleAuth,
+
+    /// <summary>
+    /// Enables POP3/SMTP as a backend option in the Add Account dialog.
+    /// Default: false. Enable in config.ini with Pop3Backend=true under [features].
+    /// </summary>
+    Pop3Backend,
 }

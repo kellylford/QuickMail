@@ -11,4 +11,7 @@ public enum BackendKind
 
     /// <summary>Microsoft Graph for receive + send. Used for M365 / Outlook.com.</summary>
     MicrosoftGraph,
+
+    /// <summary>POP3 for receive + SMTP for send. Messages are downloaded in full at sync time and stored locally.</summary>
+    Pop3Smtp,
 }

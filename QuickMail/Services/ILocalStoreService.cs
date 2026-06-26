@@ -65,6 +65,21 @@ public interface ILocalStoreService
         IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items,
         string? flagId);
 
+    // ── POP3 raw MIME storage ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Stores the raw MIME bytes for a POP3 message so attachments can be extracted
+    /// locally without reconnecting to the server. Pass null to clear (e.g. on delete).
+    /// Only called by Pop3MailService; IMAP/Graph messages leave this column NULL.
+    /// </summary>
+    Task StoreMimeBytesAsync(Guid accountId, string folderName, string messageId, byte[]? mimeBytes);
+
+    /// <summary>
+    /// Returns the raw MIME bytes previously stored by <see cref="StoreMimeBytesAsync"/>,
+    /// or null if none were stored (IMAP/Graph messages, or store was cleared).
+    /// </summary>
+    Task<byte[]?> LoadMimeBytesAsync(Guid accountId, string folderName, string messageId);
+
     // ── Calendar events ──────────────────────────────────────────────────────────
 
     /// <summary>Upserts a calendar event by (Uid, AccountId).</summary>

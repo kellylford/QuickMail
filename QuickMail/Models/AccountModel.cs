@@ -26,6 +26,20 @@ public partial class AccountModel : ObservableObject
     public bool ImapUseSsl { get; set; } = true;
     public bool ImapAcceptInvalidCert { get; set; } = false;
 
+    // POP3
+    public string Pop3Host { get; set; } = string.Empty;
+    public int Pop3Port { get; set; } = 995;
+    public bool Pop3UseSsl { get; set; } = true;
+    public bool Pop3AcceptInvalidCert { get; set; } = false;
+
+    /// <summary>
+    /// When true (default), downloaded messages are left on the server so other clients can still access them.
+    /// When false, messages are deleted from the server after a successful local download.
+    /// Note: QuickMail uses a local Trash folder for POP3 — this differs from classic POP3 clients that
+    /// delete immediately. Messages moved to local Trash are only deleted from the server on permanent delete.
+    /// </summary>
+    public bool Pop3LeaveMailOnServer { get; set; } = true;
+
     // SMTP
     public string SmtpHost { get; set; } = string.Empty;
     public int SmtpPort { get; set; } = 587;

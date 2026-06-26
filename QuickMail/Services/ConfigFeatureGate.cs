@@ -17,6 +17,7 @@ public class ConfigFeatureGate : IFeatureGate
     {
         [FeatureFlag.GraphBackend] = false,
         [FeatureFlag.GoogleAuth]   = true,
+        [FeatureFlag.Pop3Backend]  = false,
     };
 
     private readonly Dictionary<string, string> _configFlags;

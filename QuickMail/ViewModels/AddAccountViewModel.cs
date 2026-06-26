@@ -20,6 +20,8 @@ public partial class AddAccountViewModel : AccountEditorViewModel
         };
         if (gate.IsEnabled(FeatureFlag.GraphBackend))
             backends.Add(new(BackendKind.MicrosoftGraph, "Microsoft 365 / Outlook.com"));
+        if (gate.IsEnabled(FeatureFlag.Pop3Backend))
+            backends.Add(new(BackendKind.Pop3Smtp, "POP3/SMTP"));
 
         AvailableBackends = backends;
         _selectedBackend = backends[0];
@@ -82,6 +84,14 @@ public partial class AddAccountViewModel : AccountEditorViewModel
             SmtpHost = string.Empty;
             Password = string.Empty;
         }
+        else if (BackendKind == BackendKind.Pop3Smtp)
+        {
+            // POP3 accounts use password auth and have separate POP3 host fields; clear IMAP fields.
+            AuthType = AuthType.Password;
+            ImapHost = string.Empty;
+            Pop3Port = 995;
+            Pop3UseSsl = true;
+        }
     }
 
     protected override void OnAuthTypeChangedInternal(AuthType value)
@@ -115,19 +125,24 @@ public partial class AddAccountViewModel : AccountEditorViewModel
 
     public AccountModel ToAccountModel() => new()
     {
-        AccountName = AccountName,
-        DisplayName = DisplayName,
-        Username = Username,
-        AuthType = AuthType,
-        BackendKind = BackendKind,
-        ImapHost = ImapHost,
-        ImapPort = ImapPort,
-        ImapUseSsl = ImapUseSsl,
+        AccountName           = AccountName,
+        DisplayName           = DisplayName,
+        Username              = Username,
+        AuthType              = AuthType,
+        BackendKind           = BackendKind,
+        ImapHost              = ImapHost,
+        ImapPort              = ImapPort,
+        ImapUseSsl            = ImapUseSsl,
         ImapAcceptInvalidCert = ImapAcceptInvalidCert,
-        SmtpHost = SmtpHost,
-        SmtpPort = SmtpPort,
-        SmtpUseSsl = SmtpUseSsl,
+        Pop3Host              = Pop3Host,
+        Pop3Port              = Pop3Port,
+        Pop3UseSsl            = Pop3UseSsl,
+        Pop3AcceptInvalidCert = Pop3AcceptInvalidCert,
+        Pop3LeaveMailOnServer = Pop3LeaveMailOnServer,
+        SmtpHost              = SmtpHost,
+        SmtpPort              = SmtpPort,
+        SmtpUseSsl            = SmtpUseSsl,
         SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
-        Signature = Signature,
+        Signature             = Signature,
     };
 }
