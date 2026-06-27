@@ -18,6 +18,9 @@ public class AttachmentModel
 
     public bool IsLoaded => Content != null;
 
+    public string AccessibleName =>
+        string.IsNullOrEmpty(FileName) ? "(unnamed attachment)" : $"{FileName}, {FileSizeDisplay}";
+
     public string FileSizeDisplay
     {
         get
