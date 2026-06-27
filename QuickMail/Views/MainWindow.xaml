@@ -512,6 +512,11 @@
 
             <!-- Help -->
             <MenuItem Header="_Help">
+                <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"
+                          AutomationProperties.Name="{Binding UpdateAvailableText, Mode=OneWay}"
+                          Command="{Binding OpenUpdatePageCommand}"
+                          Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}"/>
+                <Separator Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}"/>
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"
                           InputGestureText="F1"/>

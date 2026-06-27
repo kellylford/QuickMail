@@ -1316,7 +1316,6 @@ public partial class MainViewModel : ObservableObject
             foreach (var d in defs.OrderBy(d => d.SortOrder))
                 FlagDefinitions.Add(d);
         }
-        _ = CheckForUpdateInBackgroundAsync();
         if (OnlineMode)
         {
             StatusText = "Online mode — connecting…";
@@ -5280,7 +5279,7 @@ public partial class MainViewModel : ObservableObject
             Process.Start(new ProcessStartInfo(UpdateReleaseUrl) { UseShellExecute = true });
     }
 
-    private async Task CheckForUpdateInBackgroundAsync()
+    public async Task CheckForUpdateInBackgroundAsync()
     {
         if (_updateCheckService is null) return;
         try
@@ -5290,6 +5289,7 @@ public partial class MainViewModel : ObservableObject
             {
                 UpdateAvailableText = $"Update available: v{info.Version}";
                 UpdateReleaseUrl    = info.HtmlUrl;
+                Announce($"QuickMail update available: version {info.Version}. Check the Help menu.", AnnouncementCategory.Status);
             }
         }
         catch (Exception ex)
