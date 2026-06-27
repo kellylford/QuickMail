@@ -513,7 +513,6 @@
             <!-- Help -->
             <MenuItem Header="_Help">
                 <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"
-                          AutomationProperties.Name="{Binding UpdateAvailableText, Mode=OneWay}"
                           Command="{Binding OpenUpdatePageCommand}"
                           Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}"/>
                 <Separator Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}"/>
@@ -1687,7 +1686,6 @@
                         Style="{StaticResource StatusBarButtonStyle}"
                         Content="{Binding UpdateAvailableText, Mode=OneWay}"
                         Command="{Binding OpenUpdatePageCommand}"
-                        AutomationProperties.Name="{Binding UpdateAvailableText}"
                         ToolTip="Press Enter to open the release page in your browser"/>
             </StatusBarItem>
 

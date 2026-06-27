@@ -5284,12 +5284,17 @@ public partial class MainViewModel : ObservableObject
         if (_updateCheckService is null) return;
         try
         {
-            var info = await _updateCheckService.CheckForUpdateAsync();
+            // Scoped token gives the caller an explicit cancellation bound. The service also
+            // cancels its own internal token on Dispose (app exit), so either path stops the request.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var info = await _updateCheckService.CheckForUpdateAsync(cts.Token);
             if (info is not null)
             {
                 UpdateAvailableText = $"Update available: v{info.Version}";
                 UpdateReleaseUrl    = info.HtmlUrl;
-                Announce($"QuickMail update available: version {info.Version}. Check the Help menu.", AnnouncementCategory.Status);
+                // Result, not Status: a one-time discovery outcome. Users who silence background
+                // Status chatter (the main reason that setting exists) must still hear this.
+                Announce($"QuickMail update available: version {info.Version}. Check the Help menu.", AnnouncementCategory.Result);
             }
         }
         catch (Exception ex)
