@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.Json;
@@ -24,8 +25,10 @@ public partial class GoogleOAuthService : IGoogleOAuthService
 
     private readonly ICredentialService _credentialService;
 
-    // In-memory cache: lowercase username → live UserCredential (holds access token + auto-refresh)
-    private readonly Dictionary<string, UserCredential> _cache = [];
+    // In-memory cache: lowercase username → live UserCredential (holds access token + auto-refresh).
+    // Concurrent because IDLE watcher threads and pooled IMAP/SMTP operations call
+    // GetAccessTokenAsync simultaneously; a plain Dictionary races under read-during-write.
+    private readonly ConcurrentDictionary<string, UserCredential> _cache = new();
 
     public GoogleOAuthService(ICredentialService credentialService)
     {
@@ -96,7 +99,7 @@ public partial class GoogleOAuthService : IGoogleOAuthService
 
     public Task SignOutAsync(string username)
     {
-        _cache.Remove(username.ToLowerInvariant());
+        _cache.TryRemove(username.ToLowerInvariant(), out _);
         _credentialService.DeleteSecret(TokenKey(username));
         LogService.Log($"GoogleOAuthService: signed out {username}");
         return Task.CompletedTask;

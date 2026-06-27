@@ -846,12 +846,18 @@ public class ImapMailService : IMailService, IChangeNotifier
             }
             catch (Exception ex)
             {
-                // Exponential backoff: 30s, 60s, 120s cap
+                // Exponential backoff: 30s, 60s, 120s cap, plus ±30% randomized jitter.
+                // When a server kicks every connection at once (e.g. "Server shutting down"),
+                // all watchers fail within milliseconds. Without jitter they would all retry on
+                // the identical schedule and reconnect simultaneously, re-tripping the per-IP
+                // connection limit that kicked them — a self-perpetuating storm. Jitter spreads
+                // the reconnects out so they don't arrive in lockstep.
                 var retryCount = _idleRetryCount.AddOrUpdate(accountId, 1, (_, rc) => rc + 1);
-                var delaySeconds = retryCount == 1 ? 30 : retryCount == 2 ? 60 : 120;
+                var baseSeconds = retryCount == 1 ? 30 : retryCount == 2 ? 60 : 120;
+                var delaySeconds = baseSeconds * (0.7 + Random.Shared.NextDouble() * 0.6);
 
                 var username = _accounts.TryGetValue(accountId, out var acct) ? acct.Username : accountId.ToString();
-                LogService.Log($"IDLE watcher [{username}] error (attempt {retryCount}) — will retry in {delaySeconds}s: {LogService.FormatException(ex)}");
+                LogService.Log($"IDLE watcher [{username}] error (attempt {retryCount}) — will retry in {delaySeconds:F0}s: {LogService.FormatException(ex)}");
 
                 // Mark account as unreachable on first retry failure
                 if (retryCount == 1)
