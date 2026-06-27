@@ -1673,7 +1673,20 @@
             <!-- Spacer: pushes Rules and Progress to the right -->
             <Separator Style="{StaticResource StatusBarSpacerStyle}"/>
 
-            <!-- Region 3: Rules status (clickable — opens Rules Manager) -->
+            <!-- Region 3: Update notification (hidden until a newer release is detected) -->
+            <StatusBarItem x:Name="UpdateStatusItem"
+                           HorizontalAlignment="Right"
+                           KeyboardNavigation.IsTabStop="True"
+                           Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}">
+                <Button x:Name="UpdateStatusButton"
+                        Style="{StaticResource StatusBarButtonStyle}"
+                        Content="{Binding UpdateAvailableText, Mode=OneWay}"
+                        Command="{Binding OpenUpdatePageCommand}"
+                        AutomationProperties.Name="{Binding UpdateAvailableText}"
+                        ToolTip="Press Enter to open the release page in your browser"/>
+            </StatusBarItem>
+
+            <!-- Region 4: Rules status (clickable — opens Rules Manager) -->
             <StatusBarItem x:Name="RulesStatusItem"
                            HorizontalAlignment="Right"
                            KeyboardNavigation.IsTabStop="True">
