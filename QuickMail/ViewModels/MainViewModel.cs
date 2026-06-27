@@ -1482,8 +1482,9 @@ public partial class MainViewModel : ObservableObject
 
     private async Task StartPeriodicNoOpAsync(IReadOnlyList<AccountModel> accounts, CancellationToken ct)
     {
-        // 10-minute heartbeat to keep pool connections alive and detect mid-session drops.
-        // Runs fire-and-forget; cancellation is controlled by the application-level ct.
+        // 10-minute heartbeat: NOOPs one pooled connection per account to detect mid-session drops
+        // and keep at least one connection warm. Other idle pooled clients may still go stale and are
+        // lazily discarded on the next rent (IsClientUsable). Runs fire-and-forget; cancelled via the app ct.
         try
         {
             while (!ct.IsCancellationRequested)
@@ -1960,8 +1961,19 @@ public partial class MainViewModel : ObservableObject
         ConnectionStatusText = "Connecting…";
         IsBusy = true;
 
-        var tasks = Accounts.Select(account => ConnectOneAccountAsync(account)).ToList();
-        var results = await Task.WhenAll(tasks);
+        // Group by IMAP host: accounts sharing a server connect sequentially to stay under the
+        // per-IP connection limit shared hosting enforces (same rationale as SyncService); accounts
+        // on different hosts still connect in parallel.
+        var resultsByHost = await Task.WhenAll(
+            Accounts.GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
+                    .Select(async hostGroup =>
+                    {
+                        var groupResults = new List<(Guid Id, List<MailFolderModel>? Folders)>();
+                        foreach (var account in hostGroup)
+                            groupResults.Add(await ConnectOneAccountAsync(account));
+                        return groupResults;
+                    }));
+        var results = resultsByHost.SelectMany(r => r).ToList();
 
         foreach (var (id, folders) in results)
         {
@@ -2060,7 +2072,6 @@ public partial class MainViewModel : ObservableObject
             {
                 // Timeouts increase per attempt: 30s, 45s, 60s
                 int connectTimeout = attempt switch { 1 => 30, 2 => 45, _ => 60 };
-                int delaySeconds = attempt == 1 ? 15 : 30;
                 using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(connectTimeout));
                 await _imap.ConnectAsync(account, password, connectCts.Token);
                 using var folderCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
@@ -2069,18 +2080,18 @@ public partial class MainViewModel : ObservableObject
             }
             catch (OperationCanceledException) when (attempt < 3)
             {
-                // Per-attempt timeout — retry with backoff
-                int delaySeconds = attempt == 1 ? 15 : 30;
-                LogService.Log($"ConnectAll/{account.AccountLabel}: attempt {attempt} timed out — retrying in {delaySeconds}s");
+                // Per-attempt timeout — retry with jittered backoff
+                var delaySeconds = JitteredBackoffSeconds(attempt == 1 ? 15 : 30);
+                LogService.Log($"ConnectAll/{account.AccountLabel}: attempt {attempt} timed out — retrying in {delaySeconds:F0}s");
                 try { await Task.Delay(TimeSpan.FromSeconds(delaySeconds), CancellationToken.None); }
                 catch { /* best effort */ }
                 continue;
             }
             catch (Exception ex) when (attempt < 3)
             {
-                // Transient error — retry with backoff
-                int delaySeconds = attempt == 1 ? 15 : 30;
-                LogService.Log($"ConnectAll/{account.AccountLabel}: attempt {attempt} failed ({ex.Message}) — retrying in {delaySeconds}s");
+                // Transient error — retry with jittered backoff
+                var delaySeconds = JitteredBackoffSeconds(attempt == 1 ? 15 : 30);
+                LogService.Log($"ConnectAll/{account.AccountLabel}: attempt {attempt} failed ({ex.Message}) — retrying in {delaySeconds:F0}s");
                 try { await Task.Delay(TimeSpan.FromSeconds(delaySeconds), CancellationToken.None); }
                 catch { /* best effort */ }
                 continue;
@@ -2101,6 +2112,11 @@ public partial class MainViewModel : ObservableObject
 
         return (account.Id, null);
     }
+
+    // ±30% jitter so multiple accounts retrying after a shared outage (e.g. a server that
+    // dropped every connection at once) don't reconnect in lockstep and re-trip the limit.
+    private static double JitteredBackoffSeconds(int baseSeconds) =>
+        baseSeconds * (0.7 + Random.Shared.NextDouble() * 0.6);
 
     private void RebuildFolderListFromCache()
     {
