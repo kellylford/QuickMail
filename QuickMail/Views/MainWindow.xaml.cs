@@ -864,6 +864,8 @@ public partial class MainWindow : Window
         if (_vm.MessageOpenMode != MessageOpenMode.Window)
             await InitReadingPaneWebViewAsync();
 
+        _ = _vm.CheckForUpdateInBackgroundAsync();
+
         var firstAccount = _vm.Accounts.FirstOrDefault();
         if (firstAccount == null)
         {

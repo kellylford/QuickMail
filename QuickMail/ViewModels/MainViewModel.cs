@@ -33,6 +33,7 @@ public partial class MainViewModel : ObservableObject
     private readonly ISendMailService _smtp;
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
+    private readonly IUpdateCheckService? _updateCheckService;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -424,6 +425,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _showMessageStatus;
 
+    [ObservableProperty]
+    private string _updateAvailableText = string.Empty;
+
+    [ObservableProperty]
+    private string _updateReleaseUrl = string.Empty;
+
     private bool _showPreview;
     private int  _previewLines;
 
@@ -687,7 +694,8 @@ public partial class MainViewModel : ObservableObject
         bool onlineMode = false,
         IFlagService? flagService = null,
         ICalendarService? calendarService = null,
-        IChangeNotifier? changeNotifier = null)
+        IChangeNotifier? changeNotifier = null,
+        IUpdateCheckService? updateCheckService = null)
     {
         _imap            = imap;
         _changeNotifier  = changeNotifier;
@@ -701,9 +709,10 @@ public partial class MainViewModel : ObservableObject
         _viewService     = viewService;
         _ruleService     = ruleService;
         _smtp            = smtpService;
-        _flagService     = flagService;
-        _calendarService = calendarService;
-        OnlineMode       = onlineMode;
+        _flagService          = flagService;
+        _calendarService      = calendarService;
+        _updateCheckService   = updateCheckService;
+        OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
         _showMessageStatus = cfg.ShowMessageStatus;
@@ -5259,5 +5268,38 @@ public partial class MainViewModel : ObservableObject
         }, null, Timeout.Infinite, Timeout.Infinite);
 
         _calendarHarvestTimer.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
+    }
+
+    [RelayCommand]
+#pragma warning disable CA1822 // instance required for RelayCommand integration with ObservableObject
+    private void OpenUpdatePage()
+#pragma warning restore CA1822
+    {
+        if (!string.IsNullOrEmpty(UpdateReleaseUrl))
+            Process.Start(new ProcessStartInfo(UpdateReleaseUrl) { UseShellExecute = true });
+    }
+
+    public async Task CheckForUpdateInBackgroundAsync()
+    {
+        if (_updateCheckService is null) return;
+        try
+        {
+            // Scoped token gives the caller an explicit cancellation bound. The service also
+            // cancels its own internal token on Dispose (app exit), so either path stops the request.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            var info = await _updateCheckService.CheckForUpdateAsync(cts.Token);
+            if (info is not null)
+            {
+                UpdateAvailableText = $"Update available: v{info.Version}";
+                UpdateReleaseUrl    = info.HtmlUrl;
+                // Result, not Status: a one-time discovery outcome. Users who silence background
+                // Status chatter (the main reason that setting exists) must still hear this.
+                Announce($"QuickMail update available: version {info.Version}. Check the Help menu.", AnnouncementCategory.Result);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"CheckForUpdateInBackgroundAsync: {ex.Message}");
+        }
     }
 }

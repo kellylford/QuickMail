@@ -17,6 +17,7 @@ public partial class App : Application
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
     private ImapMailService? _imapBackend;
+    private UpdateCheckService? _updateCheckService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -136,9 +137,10 @@ public partial class App : Application
             var calendarProvider = new LocalCacheCalendarProvider(localStore);
             var calendarService = new CalendarService(calendarProvider);
 
+            _updateCheckService = new UpdateCheckService();
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier);
+                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
@@ -162,6 +164,7 @@ public partial class App : Application
         _graphSendMail?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();
+        _updateCheckService?.Dispose();
         base.OnExit(e);
     }
 
