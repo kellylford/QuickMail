@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Net.Sockets;
+using System.Text;
 
 namespace QuickMail.Services;
 
@@ -78,7 +80,28 @@ public static class LogService
     }
 
     public static void Log(string context, Exception ex) =>
-        Log($"[ERROR] {context}: {ex.GetType().Name}: {ex.Message}");
+        Log($"[ERROR] {context}: {FormatException(ex)}");
+
+    /// <summary>
+    /// Walks the full inner-exception chain, appending each type, message, and — for
+    /// SocketException — the socket error code and native error code.
+    /// </summary>
+    public static string FormatException(Exception ex)
+    {
+        var sb = new StringBuilder();
+        var current = ex;
+        var depth = 0;
+        while (current != null && depth < 6)
+        {
+            if (depth > 0) sb.Append(" → ");
+            sb.Append(current.GetType().Name).Append(": ").Append(current.Message);
+            if (current is SocketException se)
+                sb.Append($" (SocketError={se.SocketErrorCode}, NativeCode={se.NativeErrorCode})");
+            current = current.InnerException;
+            depth++;
+        }
+        return sb.ToString();
+    }
 
     /// <summary>Only writes when /debug was passed on the command line.</summary>
     public static void Debug(string message)

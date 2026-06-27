@@ -813,6 +813,7 @@ public class ImapMailService : IMailService, IChangeNotifier
                 }
 
                 inbox.CountChanged += OnCountChanged;
+                var idleSessionSw = Stopwatch.StartNew();
                 try
                 {
                     // Re-IDLE every 25 minutes — most servers time out at 30 minutes.
@@ -820,13 +821,16 @@ public class ImapMailService : IMailService, IChangeNotifier
                     {
                         using var idleTimeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(25));
                         using var combinedCts    = CancellationTokenSource.CreateLinkedTokenSource(ct, idleTimeoutCts.Token);
+                        LogService.Debug($"IDLE watcher [{account.Username}]: entering IDLE (session elapsed {idleSessionSw.Elapsed:mm\\:ss})");
                         try
                         {
                             await client.IdleAsync(combinedCts.Token, ct);
+                            LogService.Debug($"IDLE watcher [{account.Username}]: IdleAsync returned normally after {idleSessionSw.Elapsed:mm\\:ss}");
                         }
                         catch (OperationCanceledException) when (idleTimeoutCts.IsCancellationRequested && !ct.IsCancellationRequested)
                         {
                             // 25-minute timeout fired — send NOOP to keep the connection alive then re-enter IDLE.
+                            LogService.Debug($"IDLE watcher [{account.Username}]: 25-min timeout, sending NOOP at {idleSessionSw.Elapsed:mm\\:ss}");
                             await client.NoOpAsync(ct);
                         }
                     }
@@ -846,7 +850,8 @@ public class ImapMailService : IMailService, IChangeNotifier
                 var retryCount = _idleRetryCount.AddOrUpdate(accountId, 1, (_, rc) => rc + 1);
                 var delaySeconds = retryCount == 1 ? 30 : retryCount == 2 ? 60 : 120;
 
-                LogService.Log($"IDLE watcher [{accountId}] error (attempt {retryCount}) — will retry in {delaySeconds}s: {ex.Message}");
+                var username = _accounts.TryGetValue(accountId, out var acct) ? acct.Username : accountId.ToString();
+                LogService.Log($"IDLE watcher [{username}] error (attempt {retryCount}) — will retry in {delaySeconds}s: {LogService.FormatException(ex)}");
 
                 // Mark account as unreachable on first retry failure
                 if (retryCount == 1)

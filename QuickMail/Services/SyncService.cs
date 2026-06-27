@@ -45,45 +45,54 @@ public class SyncService : ISyncService
         // int[] so Interlocked.Increment works inside async lambdas (can't use ref locals there).
         int[] completedFolders = { 0 };
 
-        // Syncs one pass of folders (selected by folderFilter) across all accounts in parallel.
-        // Each account's folders are processed sequentially within that account's task so we
-        // never exceed MaxImapConnectionsPerAccount on a single account.
+        // Group accounts by IMAP host. Accounts on the same server sync sequentially within
+        // their group to avoid hitting per-IP connection limits (which trigger "Server shutting
+        // down" BYEs on shared hosting). Groups on different servers still run in parallel.
+        var accountsByHost = accountList
+            .GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         async Task SyncPassAsync(Func<MailFolderModel, bool> folderFilter)
         {
-            await Task.WhenAll(accountList.Select(async account =>
+            await Task.WhenAll(accountsByHost.Select(async hostGroup =>
             {
-                if (!cachedFolders.TryGetValue(account.Id, out var folders)) return;
-                foreach (var folder in folders)
+                foreach (var account in hostGroup)
                 {
-                    ct.ThrowIfCancellationRequested();
-                    if (folder.ExcludeFromAllMail || !folderFilter(folder)) continue;
-                    try
+                    if (!cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+                    foreach (var folder in folders)
                     {
-                        var incoming = await SyncFolderAsync(account, folder, ct);
-                        var previewLines = _config.Load().GetPreviewLines(account.Id);
-                        if (incoming.Count > 0 && previewLines > 0
-                            && incoming.Any(s => string.IsNullOrEmpty(s.Preview)))
-                            previewJobs.Add((account, folder, incoming));
-                    }
-                    catch (OperationCanceledException) { throw; }
-                    catch (Exception ex)
-                    {
-                        LogService.Log($"Sync {account.AccountLabel}/{folder.DisplayName}", ex);
-                    }
+                        ct.ThrowIfCancellationRequested();
+                        if (folder.ExcludeFromAllMail || !folderFilter(folder)) continue;
+                        try
+                        {
+                            var incoming = await SyncFolderAsync(account, folder, ct);
+                            var previewLines = _config.Load().GetPreviewLines(account.Id);
+                            if (incoming.Count > 0 && previewLines > 0
+                                && incoming.Any(s => string.IsNullOrEmpty(s.Preview)))
+                                previewJobs.Add((account, folder, incoming));
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            LogService.Log($"Sync {account.AccountLabel}/{folder.DisplayName}", ex);
+                        }
 
-                    var count = Interlocked.Increment(ref completedFolders[0]);
-                    await Application.Current.Dispatcher.InvokeAsync(() => SyncProgressChanged?.Invoke(count, totalFolders));
+                        var count = Interlocked.Increment(ref completedFolders[0]);
+                        await Application.Current.Dispatcher.InvokeAsync(() => SyncProgressChanged?.Invoke(count, totalFolders));
+                    }
                 }
             }));
         }
 
-        // Send NOOP to all accounts in parallel to keep connections alive and flush any
-        // server-side BYE before sync begins. Each account has an independent connection pool.
-        await Task.WhenAll(accountList.Select(async account =>
+        // NOOP: one per host group in parallel, sequential within each group.
+        await Task.WhenAll(accountsByHost.Select(async hostGroup =>
         {
-            try { await _imap.NoOpAsync(account.Id, ct); }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex) { LogService.Log($"NoOp {account.AccountLabel}", ex); }
+            foreach (var account in hostGroup)
+            {
+                try { await _imap.NoOpAsync(account.Id, ct); }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex) { LogService.Log($"NoOp {account.AccountLabel}", ex); }
+            }
         }));
 
         // Pass 1: Inbox folders first, all accounts in parallel — fastest path to new-mail visibility.
