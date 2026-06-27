@@ -513,9 +513,8 @@
             <!-- Help -->
             <MenuItem Header="_Help">
                 <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"
-                          Command="{Binding OpenUpdatePageCommand}"
-                          Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}"/>
-                <Separator Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}"/>
+                          Command="{Binding CheckForUpdatesCommand}"/>
+                <Separator/>
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"
                           InputGestureText="F1"/>
@@ -1677,11 +1676,13 @@
             <!-- Spacer: pushes Rules and Progress to the right -->
             <Separator Style="{StaticResource StatusBarSpacerStyle}"/>
 
-            <!-- Region 3: Update notification (hidden until a newer release is detected) -->
+            <!-- Region 3: Update notification (hidden until a newer release is detected).
+                 Visibility tracks UpdateReleaseUrl (set only when an update exists) rather than the
+                 menu label, which is now always populated ("No updates available" at rest). -->
             <StatusBarItem x:Name="UpdateStatusItem"
                            HorizontalAlignment="Right"
                            KeyboardNavigation.IsTabStop="True"
-                           Visibility="{Binding UpdateAvailableText, Converter={StaticResource StringToVisibilityConverter}}">
+                           Visibility="{Binding UpdateReleaseUrl, Converter={StaticResource StringToVisibilityConverter}}">
                 <Button x:Name="UpdateStatusButton"
                         Style="{StaticResource StatusBarButtonStyle}"
                         Content="{Binding UpdateAvailableText, Mode=OneWay}"

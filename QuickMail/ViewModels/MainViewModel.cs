@@ -425,8 +425,12 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _showMessageStatus;
 
+    // Help-menu label for the update entry. Always shown so users know the check exists and is
+    // available on demand; "No updates available" is the resting state, replaced with the version
+    // string when a newer release is found. UpdateReleaseUrl being non-empty is the signal that an
+    // update is actually available (drives the status-bar button and the menu's activation behavior).
     [ObservableProperty]
-    private string _updateAvailableText = string.Empty;
+    private string _updateAvailableText = "No updates available";
 
     [ObservableProperty]
     private string _updateReleaseUrl = string.Empty;
@@ -5295,7 +5299,25 @@ public partial class MainViewModel : ObservableObject
             Process.Start(new ProcessStartInfo(UpdateReleaseUrl) { UseShellExecute = true });
     }
 
-    public async Task CheckForUpdateInBackgroundAsync()
+    // Startup check: silent when already up to date (announcing "no updates" on every launch
+    // would be chatter). Only a found update is announced.
+    public Task CheckForUpdateInBackgroundAsync() => CheckForUpdateCoreAsync(announceWhenUpToDate: false);
+
+    // Manual check from the always-present Help-menu entry. If an update is already known, activating
+    // the entry opens the release page; otherwise it runs a fresh check and announces the outcome
+    // either way, so the user gets confirmation that the check ran.
+    [RelayCommand]
+    private async Task CheckForUpdates()
+    {
+        if (!string.IsNullOrEmpty(UpdateReleaseUrl))
+        {
+            OpenUpdatePage();
+            return;
+        }
+        await CheckForUpdateCoreAsync(announceWhenUpToDate: true);
+    }
+
+    private async Task CheckForUpdateCoreAsync(bool announceWhenUpToDate)
     {
         if (_updateCheckService is null) return;
         try
@@ -5312,10 +5334,19 @@ public partial class MainViewModel : ObservableObject
                 // Status chatter (the main reason that setting exists) must still hear this.
                 Announce($"QuickMail update available: version {info.Version}. Check the Help menu.", AnnouncementCategory.Result);
             }
+            else
+            {
+                UpdateAvailableText = "No updates available";
+                UpdateReleaseUrl    = string.Empty;
+                if (announceWhenUpToDate)
+                    Announce("No updates available. You are on the latest version.", AnnouncementCategory.Result);
+            }
         }
         catch (Exception ex)
         {
-            LogService.Debug($"CheckForUpdateInBackgroundAsync: {ex.Message}");
+            LogService.Debug($"CheckForUpdate: {ex.Message}");
+            if (announceWhenUpToDate)
+                Announce("Could not check for updates. Please try again later.", AnnouncementCategory.Result);
         }
     }
 }

@@ -17,12 +17,12 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ### Automatic update notifications
 
-QuickMail now checks for a newer release on startup. When an update is available, you are notified in two ways:
+QuickMail now checks for a newer release on startup, and an update entry is **always present** at the top of the **Help** menu so you have a reliable way to check.
 
-- A spoken announcement a few seconds after launch: "QuickMail update available: version X.Y.Z. Check the Help menu." This respects your action-result announcement preference.
-- A new item at the top of the **Help** menu showing the available version — activate it to open the release page in your default browser.
+- When you are up to date, the entry reads **"No updates available."** Activating it runs a fresh check on demand and tells you the result — so the entry is always there and you can trust the check is happening, rather than having to infer it from the absence of a notification.
+- When an update is found, the entry changes to **"Update available: version X.Y.Z"** — activating it opens the release page in your default browser — and a spoken announcement fires a few seconds after launch: "QuickMail update available: version X.Y.Z. Check the Help menu." This respects your action-result announcement preference.
 
-The check runs quietly in the background. If there is no network connection, or you are already on the latest version, nothing appears and startup is not delayed. This is what will let you know when fixes like the connection improvement below are available, without having to check manually.
+The startup check runs quietly in the background; it never delays startup, and when you are already on the latest version it stays silent rather than announcing on every launch. This is what will let you know when fixes like the connection improvement below are available, without having to check manually.
 
 ---
 
@@ -89,3 +89,5 @@ A larger structural follow-up — a per-host connection cap that also accounts f
 ### Update check service
 
 The startup update notification is implemented by `UpdateCheckService` (`IUpdateCheckService`), which queries the GitHub Releases API with `HttpClient` + `System.Text.Json` (no new dependencies, 10-second timeout, debug-level logging on failure). It holds an internal `CancellationTokenSource` that is cancelled before disposal so an in-flight request on app exit is cancelled cleanly rather than relying on the HTTP timeout or throwing `ObjectDisposedException`. The reflected assembly version is cached in a static field. ([#151](https://github.com/kellylford/QuickMail/pull/151))
+
+The Help-menu entry is always present: `UpdateAvailableText` defaults to "No updates available" and the entry binds to `CheckForUpdatesCommand`, which opens the release page when an update is known (`UpdateReleaseUrl` non-empty) or otherwise runs a fresh check that announces its result. The startup check (`CheckForUpdateInBackgroundAsync`) stays silent when up to date; the manual check announces either outcome. The status-bar update button's visibility tracks `UpdateReleaseUrl` so it appears only when an update actually exists.
