@@ -513,7 +513,7 @@
             <!-- Help -->
             <MenuItem Header="_Help">
                 <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"
-                          Command="{Binding CheckForUpdatesCommand}"/>
+                          Command="{Binding OpenUpdatePageCommand}"/>
                 <Separator/>
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"

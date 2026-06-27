@@ -5290,34 +5290,23 @@ public partial class MainViewModel : ObservableObject
         _calendarHarvestTimer.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
     }
 
+    // Releases landing page — used when no specific update is known so the always-present
+    // "No updates available" Help entry still takes users somewhere useful.
+    private const string ReleasesPageUrl = "https://github.com/kellylford/QuickMail/releases";
+
     [RelayCommand]
 #pragma warning disable CA1822 // instance required for RelayCommand integration with ObservableObject
     private void OpenUpdatePage()
 #pragma warning restore CA1822
     {
-        if (!string.IsNullOrEmpty(UpdateReleaseUrl))
-            Process.Start(new ProcessStartInfo(UpdateReleaseUrl) { UseShellExecute = true });
+        // The specific release when one was found; otherwise the general releases page.
+        var url = string.IsNullOrEmpty(UpdateReleaseUrl) ? ReleasesPageUrl : UpdateReleaseUrl;
+        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
     }
 
     // Startup check: silent when already up to date (announcing "no updates" on every launch
-    // would be chatter). Only a found update is announced.
-    public Task CheckForUpdateInBackgroundAsync() => CheckForUpdateCoreAsync(announceWhenUpToDate: false);
-
-    // Manual check from the always-present Help-menu entry. If an update is already known, activating
-    // the entry opens the release page; otherwise it runs a fresh check and announces the outcome
-    // either way, so the user gets confirmation that the check ran.
-    [RelayCommand]
-    private async Task CheckForUpdates()
-    {
-        if (!string.IsNullOrEmpty(UpdateReleaseUrl))
-        {
-            OpenUpdatePage();
-            return;
-        }
-        await CheckForUpdateCoreAsync(announceWhenUpToDate: true);
-    }
-
-    private async Task CheckForUpdateCoreAsync(bool announceWhenUpToDate)
+    // would be chatter). Only a found update is announced; the menu entry reflects the result either way.
+    public async Task CheckForUpdateInBackgroundAsync()
     {
         if (_updateCheckService is null) return;
         try
@@ -5338,15 +5327,11 @@ public partial class MainViewModel : ObservableObject
             {
                 UpdateAvailableText = "No updates available";
                 UpdateReleaseUrl    = string.Empty;
-                if (announceWhenUpToDate)
-                    Announce("No updates available. You are on the latest version.", AnnouncementCategory.Result);
             }
         }
         catch (Exception ex)
         {
             LogService.Debug($"CheckForUpdate: {ex.Message}");
-            if (announceWhenUpToDate)
-                Announce("Could not check for updates. Please try again later.", AnnouncementCategory.Result);
         }
     }
 }
