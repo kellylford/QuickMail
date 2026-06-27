@@ -17,11 +17,10 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ### Automatic update notifications
 
-QuickMail now checks for a newer release on startup. When an update is available, you are notified in three ways:
+QuickMail now checks for a newer release on startup. When an update is available, you are notified in two ways:
 
 - A spoken announcement a few seconds after launch: "QuickMail update available: version X.Y.Z. Check the Help menu." This respects your action-result announcement preference.
 - A new item at the top of the **Help** menu showing the available version — activate it to open the release page in your default browser.
-- A matching button in the status bar for sighted users.
 
 The check runs quietly in the background. If there is no network connection, or you are already on the latest version, nothing appears and startup is not delayed. This is what will let you know when fixes like the connection improvement below are available, without having to check manually.
 
