@@ -32,7 +32,6 @@
                        Focusable="False"/>
             <TextBox x:Name="FolderNameBox"
                      AutomationProperties.Name="Folder name"
-                     AutomationProperties.HelpText="Enter a name for the new folder"
                      MaxLength="255"
                      PreviewKeyDown="FolderNameBox_PreviewKeyDown"/>
         </StackPanel>

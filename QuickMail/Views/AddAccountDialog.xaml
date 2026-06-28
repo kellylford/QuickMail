@@ -74,9 +74,10 @@
                     <TextBlock x:Name="LblPassword" Text="_Password:" Margin="0,0,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                                 AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
                                  TabIndex="5"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
+                    <TextBlock Text="Stored in Windows Credential Manager."
+                               Foreground="DimGray" FontSize="11" Margin="0,2,0,0"/>
                     <!-- iCloud app-specific password hint -->
                     <Border Visibility="{Binding IsICloudAccount, Converter={StaticResource BoolToVisibility}}"
                             Background="#FFF3E3"
@@ -168,10 +169,9 @@
 
                 <!-- Signature -->
                 <TextBlock Text="Email Signature" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                <TextBlock x:Name="LblSignature" Text="_Signature (plain text, appended to new messages):" Margin="0,4,0,2"/>
+                <TextBlock x:Name="LblSignature" Text="_Signature (plain text, appended to new messages, replies, and forwards):" Margin="0,4,0,2"/>
                 <TextBox Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblSignature}"
-                         AutomationProperties.HelpText="This text is automatically added to the end of new messages, replies, and forwards"
                          AcceptsReturn="True"
                          TextWrapping="Wrap"
                          MinHeight="60"
