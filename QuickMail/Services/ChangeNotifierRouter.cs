@@ -9,23 +9,29 @@ namespace QuickMail.Services;
 /// <summary>
 /// Aggregates per-backend <see cref="IChangeNotifier"/> implementations behind one surface, the way
 /// <see cref="MailServiceRouter"/> does for <see cref="IMailService"/>. <see cref="StartWatchers"/>
-/// partitions accounts by backend so each notifier only watches the accounts it owns; events from
-/// every backend are forwarded to a single set of subscribers.
+/// fans the account list out to every notifier; each notifier watches only the accounts it owns
+/// (IMAP IDLE filters to <see cref="BackendKind.ImapSmtp"/>, Graph delta-poll to
+/// <see cref="BackendKind.MicrosoftGraph"/>). Events from every backend are forwarded to a single
+/// set of subscribers.
 ///
-/// PR 7a wires only the IMAP notifier (a held IDLE connection per account, implemented by
-/// <see cref="ImapMailService"/> itself — IMAP's IDLE watcher is bound to the IMAP connection
-/// lifecycle, so it is not a separate object). PR 7b adds a Graph delta-poll notifier and routes
-/// Microsoft Graph accounts to it; IMAP accounts continue to go to the IMAP notifier.
+/// The IMAP notifier is <see cref="ImapMailService"/> itself — IMAP's IDLE watcher is bound to the
+/// IMAP connection lifecycle, so it is not a separate object — while the Graph notifier is a
+/// standalone <see cref="GraphChangeNotifier"/> (it owns its own polling loop and HTTP client).
+/// Each notifier is owned and disposed by the composition root; this router only stops watchers and
+/// unsubscribes on <see cref="Dispose"/>.
 /// </summary>
 public sealed class ChangeNotifierRouter : IChangeNotifier, IDisposable
 {
-    private readonly IChangeNotifier _imap;
+    private readonly IReadOnlyList<IChangeNotifier> _notifiers;
 
-    public ChangeNotifierRouter(IChangeNotifier imapNotifier)
+    public ChangeNotifierRouter(IEnumerable<IChangeNotifier> notifiers)
     {
-        _imap = imapNotifier;
-        _imap.InboxNewMailDetected += OnInboxNewMail;
-        _imap.AccountReachabilityChanged += OnReachabilityChanged;
+        _notifiers = notifiers.ToList();
+        foreach (var n in _notifiers)
+        {
+            n.InboxNewMailDetected += OnInboxNewMail;
+            n.AccountReachabilityChanged += OnReachabilityChanged;
+        }
     }
 
     public event Action<Guid>? InboxNewMailDetected;
@@ -36,18 +42,24 @@ public sealed class ChangeNotifierRouter : IChangeNotifier, IDisposable
 
     public void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
     {
-        // IMAP IDLE watches only IMAP accounts. Graph accounts get no watcher until PR 7b adds the
-        // delta-poll notifier; routing them here would attempt a doomed IMAP connection.
-        var imapAccounts = accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp).ToList();
-        _imap.StartWatchers(imapAccounts, ct);
+        // Fan the full list out to each notifier; every notifier filters to the accounts it owns.
+        foreach (var n in _notifiers)
+            n.StartWatchers(accounts, ct);
     }
 
-    public void StopWatchers() => _imap.StopWatchers();
+    public void StopWatchers()
+    {
+        foreach (var n in _notifiers)
+            n.StopWatchers();
+    }
 
     public void Dispose()
     {
-        _imap.StopWatchers(); // tear down watcher tasks before severing the event chain
-        _imap.InboxNewMailDetected -= OnInboxNewMail;
-        _imap.AccountReachabilityChanged -= OnReachabilityChanged;
+        foreach (var n in _notifiers)
+        {
+            n.StopWatchers(); // tear down watcher tasks before severing the event chain
+            n.InboxNewMailDetected -= OnInboxNewMail;
+            n.AccountReachabilityChanged -= OnReachabilityChanged;
+        }
     }
 }

@@ -169,42 +169,46 @@ public class ChangeNotifierRouterTests
     }
 
     [Fact]
-    public void StartWatchers_PassesOnlyImapAccountsToNotifier()
+    public void StartWatchers_FansFullListToEveryNotifier()
     {
         var imap = new RecordingChangeNotifier();
-        var router = new ChangeNotifierRouter(imap);
+        var graph = new RecordingChangeNotifier();
+        var router = new ChangeNotifierRouter(new IChangeNotifier[] { imap, graph });
 
         var imapAcct  = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.ImapSmtp };
         var graphAcct = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
 
         router.StartWatchers(new[] { imapAcct, graphAcct }, TestContext.Current.CancellationToken);
 
-        // Graph accounts have no notifier until PR 7b, so only the IMAP account is watched.
-        Assert.NotNull(imap.LastWatchedAccounts);
-        Assert.Equal(new[] { imapAcct.Id }, imap.LastWatchedAccounts!.Select(a => a.Id));
-        Assert.DoesNotContain(graphAcct.Id, imap.LastWatchedAccounts!.Select(a => a.Id));
+        // The router fans the full list to every notifier; each notifier filters to its own accounts.
+        Assert.Equal(new[] { imapAcct.Id, graphAcct.Id }, imap.LastWatchedAccounts!.Select(a => a.Id));
+        Assert.Equal(new[] { imapAcct.Id, graphAcct.Id }, graph.LastWatchedAccounts!.Select(a => a.Id));
     }
 
     [Fact]
-    public void ForwardsInboxNewMailFromInnerNotifier()
+    public void ForwardsInboxNewMailFromAnyNotifier()
     {
         var imap = new RecordingChangeNotifier();
-        var router = new ChangeNotifierRouter(imap);
+        var graph = new RecordingChangeNotifier();
+        var router = new ChangeNotifierRouter(new IChangeNotifier[] { imap, graph });
 
         var seen = new List<Guid>();
         router.InboxNewMailDetected += seen.Add;
 
-        var id = Guid.NewGuid();
-        imap.RaiseNewMail(id);
+        var fromImap = Guid.NewGuid();
+        var fromGraph = Guid.NewGuid();
+        imap.RaiseNewMail(fromImap);
+        graph.RaiseNewMail(fromGraph);
 
-        Assert.Equal(new[] { id }, seen);
+        Assert.Equal(new[] { fromImap, fromGraph }, seen);
     }
 
     [Fact]
-    public void ForwardsReachabilityFromInnerNotifier()
+    public void ForwardsReachabilityFromAnyNotifier()
     {
         var imap = new RecordingChangeNotifier();
-        var router = new ChangeNotifierRouter(imap);
+        var graph = new RecordingChangeNotifier();
+        var router = new ChangeNotifierRouter(new IChangeNotifier[] { imap, graph });
 
         var seen = new List<(Guid Id, bool Reachable)>();
         router.AccountReachabilityChanged += (id, r) => seen.Add((id, r));
@@ -219,7 +223,7 @@ public class ChangeNotifierRouterTests
     public void Dispose_StopsForwarding()
     {
         var imap = new RecordingChangeNotifier();
-        var router = new ChangeNotifierRouter(imap);
+        var router = new ChangeNotifierRouter(new IChangeNotifier[] { imap });
 
         var seen = new List<Guid>();
         router.InboxNewMailDetected += seen.Add;
@@ -231,15 +235,17 @@ public class ChangeNotifierRouterTests
     }
 
     [Fact]
-    public void Dispose_CallsStopWatchersOnInnerNotifier()
+    public void Dispose_CallsStopWatchersOnEveryNotifier()
     {
         var imap = new RecordingChangeNotifier();
-        var router = new ChangeNotifierRouter(imap);
+        var graph = new RecordingChangeNotifier();
+        var router = new ChangeNotifierRouter(new IChangeNotifier[] { imap, graph });
 
         router.Dispose();
 
-        // Disposing the router must tear down the watcher tasks, not just unsubscribe events.
+        // Disposing the router must tear down every notifier's watcher tasks, not just unsubscribe.
         Assert.True(imap.StopWatchersCalled);
+        Assert.True(graph.StopWatchersCalled);
     }
 }
 

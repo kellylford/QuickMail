@@ -23,6 +23,9 @@ public class GraphMailService : IMailService
     private readonly GraphClient _client;
     private readonly IConfigService? _config;
 
+    /// <summary>The shared Graph HTTP client, reused by <see cref="GraphChangeNotifier"/> for delta polling.</summary>
+    internal GraphClient Client => _client;
+
     // accountId -> the connected AccountModel, so per-accountId calls can acquire the right token.
     private readonly ConcurrentDictionary<Guid, AccountModel> _accounts = new();
 
