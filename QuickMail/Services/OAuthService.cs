@@ -26,7 +26,14 @@ public class OAuthService : IOAuthService
     [
         "https://graph.microsoft.com/Mail.ReadWrite",
         "https://graph.microsoft.com/Mail.Send",
-        "https://graph.microsoft.com/MailboxSettings.Read",
+        // MailboxSettings.ReadWrite grants read AND write access to server-side Inbox rules
+        // (the Graph messageRule API: /me/mailFolders/inbox/messageRules). It is requested up
+        // front -- while the Graph backend is still behind its feature gate and no production
+        // account has consented yet -- so the permission set captured at the very first sign-in
+        // already includes it. That way users will NOT face a second consent prompt when the
+        // server-side rules manager ships. ReadWrite supersedes the read-only MailboxSettings.Read
+        // we previously requested. Rationale and feature design: docs/planning/server-rules-pm-dev-spec.md.
+        "https://graph.microsoft.com/MailboxSettings.ReadWrite",
         "https://graph.microsoft.com/User.Read",
         "https://graph.microsoft.com/User.ReadBasic.All",
         "offline_access",
