@@ -92,4 +92,13 @@ public interface ILocalStoreService
     /// "message not found" errors when the user tries to open the invitation.
     /// </summary>
     Task ClearOrphanedCalendarSourceLinksAsync();
+
+    /// <summary>
+    /// Returns the stored Microsoft Graph delta cursor (a full <c>@odata.deltaLink</c> URL) for an
+    /// account+folder, or null if none has been persisted yet (first poll). See dev spec §6.12.
+    /// </summary>
+    Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId);
+
+    /// <summary>Persists the Graph delta cursor for an account+folder, replacing any existing value.</summary>
+    Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken);
 }

@@ -16,6 +16,7 @@ public partial class App : Application
     private ContactService? _contactService;
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
+    private GraphChangeNotifier? _graphNotifier;
     private ImapMailService? _imapBackend;
     private UpdateCheckService? _updateCheckService;
 
@@ -97,14 +98,16 @@ public partial class App : Application
             IMailService BackendFor(AccountModel a)
                 => a.BackendKind == BackendKind.MicrosoftGraph ? graphBackend : imapBackend;
 
-            // Change-notification router (new-mail + reachability). IMAP's strategy is a held IDLE
-            // connection, implemented by ImapMailService itself because it is bound to the IMAP
-            // connection lifecycle. Graph delta-poll notification arrives in PR 7b.
-            _changeNotifier = new ChangeNotifierRouter(imapBackend);
-
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
                 localStore.Initialize();
+
+            // Change-notification router (new-mail + reachability). IMAP's strategy is a held IDLE
+            // connection, implemented by ImapMailService itself because it is bound to the IMAP
+            // connection lifecycle. Graph uses delta polling, which needs the local store for its
+            // delta cursor — hence wired after localStore. Each notifier filters to its own accounts.
+            _graphNotifier  = new GraphChangeNotifier(graphBackend.Client, localStore, configService);
+            _changeNotifier = new ChangeNotifierRouter(new IChangeNotifier[] { imapBackend, _graphNotifier });
 
             // Load accounts once — after the store is initialized — and reuse the list for the VM.
             // Router registration runs via mainVm.RegisterAccountBackend (set below), which also
@@ -159,7 +162,8 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _changeNotifier?.Dispose(); // stops IDLE watchers + severs the event chain
+        _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
+        _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
         _graphSendMail?.Dispose();
         _contactService?.Dispose();

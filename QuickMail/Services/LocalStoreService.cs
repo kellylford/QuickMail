@@ -906,4 +906,35 @@ public class LocalStoreService : ILocalStoreService
             """;
         await cmd.ExecuteNonQueryAsync();
     }
+
+    // ── Graph delta cursors (PR 7b) ──────────────────────────────────────────────
+
+    public async Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT delta_token FROM DeltaToken WHERE account_id=$aid AND folder_id=$fid;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fid", folderId);
+        var result = await cmd.ExecuteScalarAsync();
+        return result as string;
+    }
+
+    public async Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            INSERT INTO DeltaToken(account_id, folder_id, delta_token, updated_utc)
+            VALUES($aid, $fid, $token, $now)
+            ON CONFLICT(account_id, folder_id) DO UPDATE SET
+                delta_token = excluded.delta_token,
+                updated_utc = excluded.updated_utc;
+            """;
+        cmd.Parameters.AddWithValue("$aid",   accountId.ToString());
+        cmd.Parameters.AddWithValue("$fid",   folderId);
+        cmd.Parameters.AddWithValue("$token", deltaToken);
+        cmd.Parameters.AddWithValue("$now",   DateTime.UtcNow.Ticks);
+        await cmd.ExecuteNonQueryAsync();
+    }
 }

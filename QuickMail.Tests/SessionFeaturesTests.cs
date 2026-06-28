@@ -112,6 +112,8 @@ public class PreviewSuppressionTests
         public Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
             => Task.FromResult(new List<(Guid, string, string, string)>());
         public Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
+        public Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId) => Task.FromResult<string?>(null);
+        public Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken) => Task.CompletedTask;
     }
 
     // Property (not field) so each test gets fresh instances — tests mutate Preview in place.
