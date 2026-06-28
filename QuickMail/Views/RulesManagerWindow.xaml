@@ -131,8 +131,9 @@
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsFromEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsFromEnabled}"
-                             AutomationProperties.Name="From contains"
-                             AutomationProperties.HelpText="e.g., manager@company.com or just company.com"/>
+                             AutomationProperties.Name="From contains"/>
+                    <TextBlock Text="Match a full address or domain only, e.g., company.com"
+                               Foreground="DimGray" FontSize="11" Margin="0,1,0,4"/>
 
                     <!-- To condition -->
                     <CheckBox Content="To"
@@ -143,8 +144,7 @@
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsToEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsToEnabled}"
-                             AutomationProperties.Name="To contains"
-                             AutomationProperties.HelpText="e.g., team@company.com"/>
+                             AutomationProperties.Name="To contains"/>
 
                     <!-- Subject condition -->
                     <CheckBox Content="Subject"
@@ -155,8 +155,7 @@
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsSubjectEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsSubjectEnabled}"
-                             AutomationProperties.Name="Subject contains"
-                             AutomationProperties.HelpText="e.g., Weekly Report"/>
+                             AutomationProperties.Name="Subject contains"/>
 
                     <!-- Body condition -->
                     <CheckBox Content="Body"
@@ -167,8 +166,9 @@
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsBodyEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsBodyEnabled}"
-                             AutomationProperties.Name="Body contains"
-                             AutomationProperties.HelpText="Text to search in message body preview"/>
+                             AutomationProperties.Name="Body preview contains"/>
+                    <TextBlock Text="Matches against the message body preview, not the full body."
+                               Foreground="DimGray" FontSize="11" Margin="0,1,0,4"/>
 
                     <CheckBox Content="Has attachments"
                               IsChecked="{Binding SelectedRule.MustHaveAttachments}"
