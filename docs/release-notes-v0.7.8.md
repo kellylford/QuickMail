@@ -15,7 +15,7 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ## Bug Fixes
 
-- **Attachment list now announces correctly with screen readers.** When arrowing through the attachment list in a compose window or reading pane, NVDA and Narrator were reading the internal class name (`QuickMail.Models.AttachmentModel`) instead of the file name. Each attachment now has a proper accessible label — file name and size — that screen readers announce when focus moves to it. This bug did not affect JAWS, which has a long-standing workaround for this specific WPF pattern.
+- **Attachment list now announces correctly with screen readers.** When arrowing through the attachment list in a compose window or reading pane, some screen readers were reading the internal class name (`QuickMail.Models.AttachmentModel`) instead of the file name. Each attachment now has a proper accessible label — file name and size — that screen readers announce when focus moves to it. This bug did not affect JAWS, which has a long-standing workaround for this specific WPF pattern.
 
 ---
 
