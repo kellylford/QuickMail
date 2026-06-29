@@ -582,6 +582,8 @@ public partial class MainWindow : Window
     // On startup: initialise WebView2, connect to first account, open INBOX, focus message list
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        AccessibilityHelper.RegisterDebugInputTrace(this);
+
         // Register commands that require UI access (must run after InitializeComponent).
         _registry.Register(new CommandDefinition(
             id: "view.focusFolders", category: "View", title: "Focus Folder Tree",

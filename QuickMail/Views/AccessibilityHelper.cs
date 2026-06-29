@@ -1,6 +1,7 @@
 using System.Windows;
-using System.Windows.Automation.Peers;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Input;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -91,4 +92,58 @@ internal static class AccessibilityHelper
         AnnouncementCategory.Result => _resultsEnabled,
         _                           => true
     };
+
+    // ── Debug input trace ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When <see cref="LogService.DebugMode"/> is active, registers window-level event
+    /// handlers that write every key press and every keyboard-focus change to the debug
+    /// log under [INPUT] tags — an AccEvent-style event stream for the window.
+    /// No-op in normal (non-debug) runs; safe to call on any Window at any time.
+    /// </summary>
+    internal static void RegisterDebugInputTrace(Window window)
+    {
+        if (!LogService.DebugMode) return;
+
+        // Fires for every key-down anywhere in the window, even if already handled.
+        window.AddHandler(UIElement.PreviewKeyDownEvent, new KeyEventHandler((_, e) =>
+        {
+            var key = e.Key == Key.System       ? e.SystemKey
+                    : e.Key == Key.ImeProcessed  ? e.ImeProcessedKey
+                    : e.Key;
+            if (IsModifierOnlyKey(key)) return;
+            LogService.Debug($"[INPUT] key={key}+{e.KeyboardDevice.Modifiers} handled={e.Handled} focused={DescribeElement(Keyboard.FocusedElement)}");
+        }), handledEventsToo: true);
+
+        // GotKeyboardFocus bubbles — log once when it arrives at the element that
+        // actually received focus (OriginalSource), not again on each ancestor.
+        window.AddHandler(UIElement.GotKeyboardFocusEvent, new KeyboardFocusChangedEventHandler((_, e) =>
+        {
+            if (!ReferenceEquals(e.OriginalSource, e.NewFocus)) return;
+            LogService.Debug($"[INPUT] focus: {DescribeElement(e.OldFocus)} → {DescribeElement(e.NewFocus)}");
+        }), handledEventsToo: true);
+    }
+
+    private static bool IsModifierOnlyKey(Key key) =>
+        key is Key.LeftCtrl  or Key.RightCtrl  or Key.LeftShift or Key.RightShift
+             or Key.LeftAlt  or Key.RightAlt   or Key.System
+             or Key.LWin     or Key.RWin       or Key.Capital;
+
+    /// <summary>
+    /// Returns a compact label for a focused element, preferring AutomationProperties.Name
+    /// (what the screen reader reads), then XAML x:Name, then DataContext type, then element type.
+    /// </summary>
+    private static string DescribeElement(IInputElement? element)
+    {
+        if (element is null) return "null";
+        if (element is FrameworkElement fe)
+        {
+            var ap = AutomationProperties.GetName(fe);
+            if (ap?.Length > 0) return $"{fe.GetType().Name}['{ap}']";
+            if (fe.Name?.Length > 0) return $"{fe.GetType().Name}#{fe.Name}";
+            if (fe.DataContext is { } dc) return $"{fe.GetType().Name}<{dc.GetType().Name}>";
+            return fe.GetType().Name;
+        }
+        return element.GetType().Name;
+    }
 }

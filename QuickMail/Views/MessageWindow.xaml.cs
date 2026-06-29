@@ -127,6 +127,8 @@ public partial class MessageWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        AccessibilityHelper.RegisterDebugInputTrace(this);
+
         try
         {
             var env = _sharedEnv ?? await CoreWebView2Environment.CreateAsync(null,
