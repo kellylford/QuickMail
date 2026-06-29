@@ -441,6 +441,33 @@ public partial class MessageWindow : Window
         _loadCts.Dispose();
     }
 
+    private void AttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (AttachmentList.SelectedItem == null && AttachmentList.Items.Count > 0)
+            AttachmentList.SelectedIndex = 0;
+    }
+
+    // Enter opens the selected attachment; Alt+Enter shows its properties.
+    private void AttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.None
+            && AttachmentList.SelectedItem is AttachmentModel openAtt)
+        {
+            _ = _vm.OpenAttachmentCommand.ExecuteAsync(openAtt);
+            e.Handled = true;
+            return;
+        }
+        if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.Alt
+            && AttachmentList.SelectedItem is AttachmentModel attachment)
+        {
+            var (title, sections) = AttachmentPropertiesBuilder.Build(attachment);
+            var win = new PropertiesWindow(new PropertiesViewModel(title, sections)) { Owner = this };
+            win.ShowDialog();
+            e.Handled = true;
+        }
+    }
+
     private void FocusLastHeaderField() => SubjectField.Focus();
 
     private void OnMoveToMainWindowRequested(MessageWindowViewModel vm)

@@ -843,6 +843,15 @@ public partial class MainWindow : Window
             execute: async () => await CopyMessageToFolderAsync(),
             isAvailable: () => _vm.HasSelectedMessage));
 
+        // Install the WM_CONTEXTMENU hook before WebView2 init. WebView2 initialization
+        // creates an out-of-process HWND that grabs Win32 focus without WPF tracking it,
+        // leaving Keyboard.FocusedElement null. If the user presses Shift+F10 before the
+        // Input-priority FocusActiveMessagePanel dispatches land, WPF routes WM_CONTEXTMENU
+        // to DefWindowProc and the Win32 system menu appears instead of our context menu.
+        // The hook intercepts WM_CONTEXTMENU first and synchronously parks WPF focus on the
+        // active panel, giving WPF a non-null FocusedElement to route ContextMenuOpening from.
+        HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(OnWmContextMenu);
+
         // Create the WebView2 environment — always needed, shared with MessageWindow instances.
         try
         {
@@ -882,6 +891,29 @@ public partial class MainWindow : Window
 
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
+    }
+
+    // WM_CONTEXTMENU hook: fires synchronously before DefWindowProc so we can ensure
+    // Keyboard.FocusedElement is non-null before WPF routes ContextMenuOpening.
+    // Without this, the first Shift+F10 after startup shows the Win32 system menu
+    // because WebView2 init steals Win32 focus without WPF tracking it (issue #148).
+    private IntPtr OnWmContextMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_CONTEXTMENU = 0x007B;
+        if (msg == WM_CONTEXTMENU && Keyboard.FocusedElement == null)
+            FocusPanelSynchronously();
+        return IntPtr.Zero;
+    }
+
+    // Synchronous panel focus — no Dispatcher.InvokeAsync — used from the Win32 hook
+    // where we must update Keyboard.FocusedElement before the hook returns.
+    private void FocusPanelSynchronously()
+    {
+        if (_vm.IsCalendarView)           CalendarList.Focus();
+        else if (_vm.IsConversationsView)  ConversationTree.Focus();
+        else if (_vm.IsFromView)           SenderGroupTree.Focus();
+        else if (_vm.IsToView)             ToGroupTree.Focus();
+        else                               MessageList.Focus();
     }
 
     // Fallback for when a rebuild removed the focused ListViewItem; WPF then routes ContextMenuOpening to the Window and Shift+F10 would show the Win32 system menu.
@@ -947,6 +979,11 @@ public partial class MainWindow : Window
         // to the panel here gives ContextMenuOpening a real element to route from.
         if (key == Key.F10 && modifiers == ModifierKeys.Shift)
         {
+            // If focus is in the attachment list, leave it — its ContextMenu opens
+            // correctly via WM_CONTEXTMENU without needing a focus redirect.
+            if (ReadingPaneAttachmentList.IsKeyboardFocusWithin)
+                return;
+
             if (!IsMessageListFocused() && !IsGroupTreeFocused())
             {
                 if (_vm.IsConversationsView)      ConversationTree.Focus();
@@ -2232,10 +2269,23 @@ public partial class MainWindow : Window
             DateField.Focus();
     }
 
-    // Alt+Enter on a selected attachment opens Attachment Properties directly.
+    private void ReadingPaneAttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (ReadingPaneAttachmentList.SelectedItem == null && ReadingPaneAttachmentList.Items.Count > 0)
+            ReadingPaneAttachmentList.SelectedIndex = 0;
+    }
+
+    // Enter opens the selected attachment; Alt+Enter shows its properties.
     private void ReadingPaneAttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.None
+            && ReadingPaneAttachmentList.SelectedItem is AttachmentModel openAtt)
+        {
+            _vm.OpenAttachmentCommand.Execute(openAtt);
+            e.Handled = true;
+            return;
+        }
         if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.Alt
             && ReadingPaneAttachmentList.SelectedItem is AttachmentModel attachment)
         {
@@ -3810,6 +3860,21 @@ public partial class MainWindow : Window
                 .ToList();
             if (addresses.Count == 0) return;
             new GrabAddressesDialog(addresses, _contactService) { Owner = win }.Show();
+        };
+        winVm.OpenAttachmentAction = async (attachment) =>
+        {
+            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
+            await _vm.OpenAttachmentCommand.ExecuteAsync(attachment);
+        };
+        winVm.SaveAttachmentAction = async (attachment) =>
+        {
+            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
+            await _vm.SaveAttachmentCommand.ExecuteAsync(attachment);
+        };
+        winVm.SaveAllAttachmentsAction = async () =>
+        {
+            if (winVm.MessageDetail != null) _vm.MessageDetail = winVm.MessageDetail;
+            await _vm.SaveAllAttachmentsCommand.ExecuteAsync(null);
         };
 
         win.MoveToMainWindowRequested += (_, vm) =>

@@ -184,7 +184,9 @@
                                       FallbackValue=Collapsed}"
                          KeyboardNavigation.TabNavigation="Once"
                          KeyboardNavigation.DirectionalNavigation="Contained"
-                         AutomationProperties.Name="Attachments">
+                         AutomationProperties.Name="Attachments"
+                         PreviewKeyDown="AttachmentList_PreviewKeyDown"
+                         GotKeyboardFocus="AttachmentList_GotKeyboardFocus">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
@@ -195,6 +197,23 @@
                             <TextBlock Text="{Binding FileName}" ToolTip="{Binding FileSizeDisplay}"/>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="_Save…"
+                                      Command="{Binding PlacementTarget.DataContext.SaveAttachmentCommand,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <MenuItem Header="Save _All…"
+                                      Command="{Binding PlacementTarget.DataContext.SaveAllAttachmentsCommand,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                            <MenuItem Header="_Open"
+                                      Command="{Binding PlacementTarget.DataContext.OpenAttachmentCommand,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                      CommandParameter="{Binding PlacementTarget.SelectedItem,
+                                                RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
                 </ListBox>
             </StackPanel>
         </Border>

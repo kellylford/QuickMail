@@ -943,7 +943,8 @@
                                      KeyboardNavigation.TabNavigation="Once"
                                      KeyboardNavigation.DirectionalNavigation="Contained"
                                      AutomationProperties.Name="Attachments"
-                                     PreviewKeyDown="ReadingPaneAttachmentList_PreviewKeyDown">
+                                     PreviewKeyDown="ReadingPaneAttachmentList_PreviewKeyDown"
+                                     GotKeyboardFocus="ReadingPaneAttachmentList_GotKeyboardFocus">
                                 <ListBox.ItemContainerStyle>
                                     <Style TargetType="ListBoxItem">
                                         <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>

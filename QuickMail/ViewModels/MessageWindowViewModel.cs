@@ -35,6 +35,9 @@ public sealed partial class MessageWindowViewModel : ObservableObject
     public Action? DeleteAction      { get; set; }
     public Action? MarkReadAction    { get; set; }
     public Action? GrabAddressesAction { get; set; }
+    public Func<AttachmentModel?, Task>? OpenAttachmentAction   { get; set; }
+    public Func<AttachmentModel?, Task>? SaveAttachmentAction   { get; set; }
+    public Func<Task>? SaveAllAttachmentsAction { get; set; }
 
     public string WindowTitle
     {
@@ -85,6 +88,18 @@ public sealed partial class MessageWindowViewModel : ObservableObject
 
     [RelayCommand]
     private void GrabAddresses() => GrabAddressesAction?.Invoke();
+
+    [RelayCommand]
+    private Task OpenAttachment(AttachmentModel? attachment) =>
+        OpenAttachmentAction?.Invoke(attachment) ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SaveAttachment(AttachmentModel? attachment) =>
+        SaveAttachmentAction?.Invoke(attachment) ?? Task.CompletedTask;
+
+    [RelayCommand]
+    private Task SaveAllAttachments() =>
+        SaveAllAttachmentsAction?.Invoke() ?? Task.CompletedTask;
 
     public bool CanNavigatePrevious =>
         SelectedMessage != null && MessageList.Count > 0
