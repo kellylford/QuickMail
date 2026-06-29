@@ -900,8 +900,15 @@ public partial class MainWindow : Window
     private IntPtr OnWmContextMenu(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         const int WM_CONTEXTMENU = 0x007B;
-        if (msg == WM_CONTEXTMENU && Keyboard.FocusedElement == null)
-            FocusPanelSynchronously();
+        if (msg == WM_CONTEXTMENU)
+        {
+            var focused = Keyboard.FocusedElement;
+            LogService.Debug($"[ATTLOG] WM_CONTEXTMENU: FocusedElement={focused?.GetType().Name ?? "null"}, " +
+                           $"AttachListFocusWithin={ReadingPaneAttachmentList.IsKeyboardFocusWithin}, " +
+                           $"AttachListFocused={ReferenceEquals(focused, ReadingPaneAttachmentList)}");
+            if (focused == null)
+                FocusPanelSynchronously();
+        }
         return IntPtr.Zero;
     }
 
@@ -919,12 +926,20 @@ public partial class MainWindow : Window
     // Fallback for when a rebuild removed the focused ListViewItem; WPF then routes ContextMenuOpening to the Window and Shift+F10 would show the Win32 system menu.
     private void OnWindowContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
+        var srcType  = e.OriginalSource?.GetType().Name ?? "null";
+        var inAttach = e.OriginalSource is DependencyObject x && IsDescendantOf(ReadingPaneAttachmentList, x);
+        LogService.Debug($"[ATTLOG] OnWindowContextMenuOpening: Handled={e.Handled}, OrigSrc={srcType}, InAttachList={inAttach}");
+
         if (e.Handled) return;
 
         // Only act as the message-list fallback. The folder tree owns its own FolderContextMenu;
         // if the request came from there, bail so that menu opens instead of stealing it with the
         // message menu (which would wrongly show Reply/Reply All on a folder).
         if (e.OriginalSource is DependencyObject src && IsDescendantOf(FolderList, src))
+            return;
+
+        // The attachment list handles Shift+F10 directly and owns its own ContextMenu.
+        if (e.OriginalSource is DependencyObject attSrc && IsDescendantOf(ReadingPaneAttachmentList, attSrc))
             return;
 
         if (_vm.IsMessagesView && MessageList.Visibility == Visibility.Visible
@@ -979,6 +994,9 @@ public partial class MainWindow : Window
         // to the panel here gives ContextMenuOpening a real element to route from.
         if (key == Key.F10 && modifiers == ModifierKeys.Shift)
         {
+            var focused = Keyboard.FocusedElement;
+            LogService.Debug($"[ATTLOG] OnWindowKeyDown Shift+F10: FocusedElement={focused?.GetType().Name ?? "null"}, " +
+                           $"AttachListFocusWithin={ReadingPaneAttachmentList.IsKeyboardFocusWithin}");
             // If focus is in the attachment list, leave it — its ContextMenu opens
             // correctly via WM_CONTEXTMENU without needing a focus redirect.
             if (ReadingPaneAttachmentList.IsKeyboardFocusWithin)
@@ -2264,21 +2282,55 @@ public partial class MainWindow : Window
     private void FocusLastHeaderField()
     {
         if (ReadingPaneAttachmentList.Visibility == Visibility.Visible)
+        {
+            LogService.Debug($"[ATTLOG] FocusLastHeaderField: focusing ReadingPaneAttachmentList");
             ReadingPaneAttachmentList.Focus();
+        }
         else
             DateField.Focus();
     }
 
     private void ReadingPaneAttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        if (ReadingPaneAttachmentList.SelectedItem == null && ReadingPaneAttachmentList.Items.Count > 0)
+        var isShell = ReferenceEquals(e.OriginalSource, ReadingPaneAttachmentList);
+        LogService.Debug($"[ATTLOG] RPAttachList_GotFocus: OrigSrc={e.OriginalSource?.GetType().Name ?? "null"}, " +
+                       $"IsShell={isShell}, Items={ReadingPaneAttachmentList.Items.Count}, SelIdx={ReadingPaneAttachmentList.SelectedIndex}");
+
+        // GotKeyboardFocus bubbles; only act when focus landed on the ListBox shell
+        // itself, not on a child ListBoxItem that already has focus.
+        if (!isShell) return;
+        if (ReadingPaneAttachmentList.Items.Count == 0) return;
+
+        if (ReadingPaneAttachmentList.SelectedIndex < 0)
             ReadingPaneAttachmentList.SelectedIndex = 0;
+
+        var idx = ReadingPaneAttachmentList.SelectedIndex;
+        var container = ReadingPaneAttachmentList.ItemContainerGenerator.ContainerFromIndex(idx);
+        LogService.Debug($"[ATTLOG] RPAttachList_GotFocus: ContainerFromIndex({idx})={container?.GetType().Name ?? "null"}");
+        if (container is ListBoxItem focusItem)
+            focusItem.Focus();
     }
 
+    // Shift+F10 / Apps: open the attachment ContextMenu directly so the window-level
+    // OnWindowContextMenuOpening fallback cannot intercept and open the message menu instead.
     // Enter opens the selected attachment; Alt+Enter shows its properties.
     private void ReadingPaneAttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        LogService.Debug($"[ATTLOG] RPAttachList_PreviewKeyDown: eKey={e.Key}, sysKey={e.SystemKey}, computed={key}, mod={e.KeyboardDevice.Modifiers}");
+
+        if ((key == Key.F10 && e.KeyboardDevice.Modifiers == ModifierKeys.Shift) || key == Key.Apps)
+        {
+            LogService.Debug($"[ATTLOG] RPAttachList_PreviewKeyDown: opening ContextMenu directly, IsNull={ReadingPaneAttachmentList.ContextMenu == null}");
+            if (ReadingPaneAttachmentList.ContextMenu != null)
+            {
+                ReadingPaneAttachmentList.ContextMenu.PlacementTarget = ReadingPaneAttachmentList;
+                ReadingPaneAttachmentList.ContextMenu.IsOpen = true;
+            }
+            e.Handled = true;
+            return;
+        }
+
         if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.None
             && ReadingPaneAttachmentList.SelectedItem is AttachmentModel openAtt)
         {

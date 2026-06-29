@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
@@ -443,14 +444,44 @@ public partial class MessageWindow : Window
 
     private void AttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
     {
-        if (AttachmentList.SelectedItem == null && AttachmentList.Items.Count > 0)
+        var isShell = ReferenceEquals(e.OriginalSource, AttachmentList);
+        LogService.Debug($"[ATTLOG] MsgWin_AttachList_GotFocus: OrigSrc={e.OriginalSource?.GetType().Name ?? "null"}, " +
+                       $"IsShell={isShell}, Items={AttachmentList.Items.Count}, SelIdx={AttachmentList.SelectedIndex}");
+
+        // GotKeyboardFocus bubbles; only act when focus landed on the ListBox shell
+        // itself, not on a child ListBoxItem that already has focus.
+        if (!isShell) return;
+        if (AttachmentList.Items.Count == 0) return;
+
+        if (AttachmentList.SelectedIndex < 0)
             AttachmentList.SelectedIndex = 0;
+
+        var idx = AttachmentList.SelectedIndex;
+        var container = AttachmentList.ItemContainerGenerator.ContainerFromIndex(idx);
+        LogService.Debug($"[ATTLOG] MsgWin_AttachList_GotFocus: ContainerFromIndex({idx})={container?.GetType().Name ?? "null"}");
+        if (container is ListBoxItem focusItem)
+            focusItem.Focus();
     }
 
+    // Shift+F10 / Apps: open the attachment ContextMenu directly.
     // Enter opens the selected attachment; Alt+Enter shows its properties.
     private void AttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        LogService.Debug($"[ATTLOG] MsgWin_AttachList_PreviewKeyDown: eKey={e.Key}, sysKey={e.SystemKey}, computed={key}, mod={e.KeyboardDevice.Modifiers}");
+
+        if ((key == Key.F10 && e.KeyboardDevice.Modifiers == ModifierKeys.Shift) || key == Key.Apps)
+        {
+            LogService.Debug($"[ATTLOG] MsgWin_AttachList_PreviewKeyDown: opening ContextMenu directly, IsNull={AttachmentList.ContextMenu == null}");
+            if (AttachmentList.ContextMenu != null)
+            {
+                AttachmentList.ContextMenu.PlacementTarget = AttachmentList;
+                AttachmentList.ContextMenu.IsOpen = true;
+            }
+            e.Handled = true;
+            return;
+        }
+
         if (key == Key.Return && e.KeyboardDevice.Modifiers == ModifierKeys.None
             && AttachmentList.SelectedItem is AttachmentModel openAtt)
         {
