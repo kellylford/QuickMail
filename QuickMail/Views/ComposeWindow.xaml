@@ -260,7 +260,6 @@
                       DisplayMemberPath="AccountLabel"
                       AutomationProperties.Name="From account"
                       AutomationProperties.AcceleratorKey="Alt+M"
-                      AutomationProperties.HelpText="Choose which account to send from"
                       Margin="0,4" TabIndex="0"/>
 
             <!-- To -->
@@ -271,7 +270,6 @@
                      x:Name="ToBox"
                      AddressText="{Binding To, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=ToLabel}"
-                     AutomationProperties.HelpText="Type an address and press comma, semicolon, or Tab to add it. Arrow keys navigate between addresses. Delete removes the focused address."
                      Margin="0,4" TabIndex="1"/>
 
             <!-- Cc -->

@@ -213,8 +213,9 @@
                                 <CheckBox Content="Announce spelling errors while _navigating"
                                           IsChecked="{Binding AnnounceSpellingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when the caret moves into a misspelled word during navigation"
-                                          AutomationProperties.HelpText="F7 and Shift+F7 always announce spelling regardless of this setting"/>
+                                          AutomationProperties.Name="Announce spelling errors when the caret moves into a misspelled word during navigation"/>
+                                <TextBlock Text="F7 and Shift+F7 always announce spelling, regardless of this setting."
+                                           Foreground="DimGray" FontSize="11" Margin="32,0,0,4"/>
 
                                 <CheckBox Content="Announce spelling _suggestions"
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"
@@ -230,14 +231,18 @@
                                                  IsChecked="{Binding IsVerbosityNumbersWithSuggestions, Mode=TwoWay}"
                                                  GroupName="SpellingSuggestionsVerbosity"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Numbers with suggestions"
-                                                 AutomationProperties.HelpText="Each suggestion is preceded by its number, for example: 1: the, 2: then, 3: them"/>
+                                                 AutomationProperties.Name="Numbers with suggestions"/>
+                                    <TextBlock Text="Example: 1: the, 2: then, 3: them"
+                                               Foreground="DimGray" FontSize="11" Margin="16,2,0,8"
+                                               FontFamily="Consolas"/>
                                     <RadioButton Content="_Just suggestions"
                                                  IsChecked="{Binding IsVerbosityJustSuggestions, Mode=TwoWay}"
                                                  GroupName="SpellingSuggestionsVerbosity"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Just suggestions"
-                                                 AutomationProperties.HelpText="Suggestions are read without numbers, for example: the, then, them"/>
+                                                 AutomationProperties.Name="Just suggestions"/>
+                                    <TextBlock Text="Example: the, then, them"
+                                               Foreground="DimGray" FontSize="11" Margin="16,2,0,0"
+                                               FontFamily="Consolas"/>
                                 </StackPanel>
 
                                 <CheckBox Content="Announce _formatting while navigating in HTML compose"
@@ -284,8 +289,7 @@
                                              IsChecked="{Binding IsLogFormatActionFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
                                              Checked="RadioButton_Checked"
-                                             AutomationProperties.Name="Action first"
-                                             AutomationProperties.HelpText="Message then timestamp — easier to scan since the log is already chronological."/>
+                                             AutomationProperties.Name="Action first"/>
                                 <TextBlock Text="Example: Sync completed: 42 messages  [2024-11-15 14:23:45.123]"
                                            Foreground="DimGray" FontSize="11" Margin="16,2,0,8"
                                            FontFamily="Consolas"/>
@@ -293,8 +297,7 @@
                                              IsChecked="{Binding IsLogFormatTimeFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
                                              Checked="RadioButton_Checked"
-                                             AutomationProperties.Name="Time first"
-                                             AutomationProperties.HelpText="Timestamp then message — the original log format."/>
+                                             AutomationProperties.Name="Time first"/>
                                 <TextBlock Text="Example: 2024-11-15 14:23:45.123  Sync completed: 42 messages"
                                            Foreground="DimGray" FontSize="11" Margin="16,2,0,0"
                                            FontFamily="Consolas"/>
@@ -382,16 +385,14 @@
                                                  IsChecked="{Binding IsReadingPaneMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Reading pane"
-                                                 AutomationProperties.HelpText="Opens messages in the reading pane below the message list. This is the default behaviour."/>
+                                                 AutomationProperties.Name="Reading pane"/>
                                     <TextBlock Text="Enter opens a message in the reading pane below the list."
                                                Foreground="DimGray" FontSize="11" Margin="16,2,0,8"/>
                                     <RadioButton Content="_Tab"
                                                  IsChecked="{Binding IsTabMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Tab"
-                                                 AutomationProperties.HelpText="Opens messages in a tab strip above the message list."/>
+                                                 AutomationProperties.Name="Tab"/>
                                     <TextBlock Text="Enter opens a message as a new tab. Ctrl+Tab cycles tabs. Ctrl+W closes."
                                                TextWrapping="Wrap"
                                                Foreground="DimGray" FontSize="11" Margin="16,2,0,8"/>
@@ -399,8 +400,7 @@
                                                  IsChecked="{Binding IsWindowMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Window"
-                                                 AutomationProperties.HelpText="Opens each message in its own window."/>
+                                                 AutomationProperties.Name="Window"/>
                                     <TextBlock Text="Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window."
                                                TextWrapping="Wrap"
                                                Foreground="DimGray" FontSize="11" Margin="16,2,0,0"/>

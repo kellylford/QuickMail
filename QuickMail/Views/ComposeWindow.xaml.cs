@@ -67,6 +67,8 @@ public partial class ComposeWindow : Window
     // Set before moving focus into the autocomplete popup so the return trip
     // doesn't re-announce addresses the user is actively editing.
     private bool _suppressNextFocusAnnouncement;
+    // Ensures the address-field usage hint fires only once per compose window.
+    private bool _addressHintGiven;
     private int _lastAnnouncedSpellingIndex = -1;
     private TextPointer? _richSpellingWordStart;
     private TextPointer? _richSpellingWordEnd;
@@ -345,6 +347,13 @@ public partial class ComposeWindow : Window
             // reader lands on the edit cursor after all the chips and just says "Edit".
             if (!_suppressNextFocusAnnouncement)
             {
+                if (!_addressHintGiven)
+                {
+                    _addressHintGiven = true;
+                    AccessibilityHelper.Announce(this,
+                        "Type an address and press comma, semicolon, or Tab to add it. Arrow keys navigate between addresses. Delete removes the focused address.",
+                        category: AnnouncementCategory.Hint);
+                }
                 var box = (TokenizedAddressBox)sender;
                 var chips = box.GetChips();
                 if (chips.Count > 0)
