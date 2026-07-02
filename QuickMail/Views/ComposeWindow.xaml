@@ -47,13 +47,6 @@
                 <MenuItem Header="_Copy" Command="ApplicationCommands.Copy"/>
                 <MenuItem Header="_Paste" Command="ApplicationCommands.Paste"/>
                 <MenuItem Header="Select _All" Command="ApplicationCommands.SelectAll"/>
-                <Separator/>
-                <MenuItem Header="_Next Misspelling" InputGestureText="F7"
-                          IsEnabled="{Binding IsSpellNavAvailable}"
-                          Click="MenuNextMisspelling_Click"/>
-                <MenuItem Header="Pre_vious Misspelling" InputGestureText="Shift+F7"
-                          IsEnabled="{Binding IsSpellNavAvailable}"
-                          Click="MenuPrevMisspelling_Click"/>
             </MenuItem>
             <MenuItem Header="_View">
                 <MenuItem Header="_Plain Text" x:Name="MenuModePlain"
@@ -101,9 +94,19 @@
                           IsEnabled="{Binding IsFormattingAvailable}" Click="MenuShowFormatting_Click"/>
             </MenuItem>
             <MenuItem Header="_Tools">
+                <MenuItem Header="Check _Spelling…" InputGestureText="F7"
+                          IsEnabled="{Binding IsSpellNavAvailable}"
+                          Click="MenuCheckSpelling_Click"/>
+                <MenuItem Header="_Next Misspelling" InputGestureText="Ctrl+F7"
+                          IsEnabled="{Binding IsSpellNavAvailable}"
+                          Click="MenuNextMisspelling_Click"/>
+                <MenuItem Header="Pre_vious Misspelling" InputGestureText="Ctrl+Shift+F7"
+                          IsEnabled="{Binding IsSpellNavAvailable}"
+                          Click="MenuPrevMisspelling_Click"/>
+                <MenuItem Header="_Toggle Spelling Announcements" Click="MenuToggleSpelling_Click"/>
+                <Separator/>
                 <MenuItem Header="_Address Book…" InputGestureText="Ctrl+Shift+B" Click="MenuAddressBook_Click"/>
                 <MenuItem Header="Chec_k Addresses" InputGestureText="Ctrl+K" Click="MenuCheckAddresses_Click"/>
-                <MenuItem Header="Toggle _Spelling Announcements" Click="MenuToggleSpelling_Click"/>
                 <Separator/>
                 <MenuItem Header="Command _Palette…" InputGestureText="Ctrl+Shift+P" Click="MenuCommandPalette_Click"/>
             </MenuItem>
@@ -304,6 +307,8 @@
                      AutomationProperties.LabeledBy="{Binding ElementName=SubjectLabel}"
                      AutomationProperties.Name="Subject"
                      AutomationProperties.AcceleratorKey="Alt+U"
+                     SpellCheck.IsEnabled="True"
+                     IsInactiveSelectionHighlightEnabled="True"
                      Margin="0,4" TabIndex="4"/>
 
             <Separator Grid.Row="5" Grid.ColumnSpan="2" Margin="0,4"/>
@@ -397,6 +402,7 @@
                          AcceptsReturn="True" AcceptsTab="True"
                          TextWrapping="Wrap"
                          SpellCheck.IsEnabled="True"
+                         IsInactiveSelectionHighlightEnabled="True"
                          VerticalScrollBarVisibility="Auto"
                          FontFamily="Segoe UI"
                          Margin="0,4" TabIndex="7"
@@ -410,6 +416,7 @@
                              AutomationProperties.AcceleratorKey="Alt+Y"
                              AcceptsReturn="True" AcceptsTab="True"
                              SpellCheck.IsEnabled="True"
+                             IsInactiveSelectionHighlightEnabled="True"
                              VerticalScrollBarVisibility="Auto"
                              FontFamily="Segoe UI"
                              Margin="0,4" TabIndex="7"

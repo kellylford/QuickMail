@@ -244,15 +244,39 @@ Messages composed in Markdown or HTML are sent with both an HTML part and a plai
 
 Press **F8** to open a rendered preview in a separate window. The preview is fully focusable, so you can browse the formatted output exactly as a recipient would. Links open in your default browser. Press **Escape** or **Ctrl+W** to close the preview.
 
-### Spell Check
+### Check Spelling (Full Dialog)
+
+Press **F7** (or choose **Tools → Check Spelling**) to review the whole message in the classic spelling dialog. The check covers the message body first, then the subject line, and finishes with a confirmation that reports how many words were changed.
+
+For each word that is not in the dictionary, the Spelling window shows the word in the line where it appears, a list of suggestions, and a "Change to" box pre-filled with the top suggestion. A screen reader announces "Not in dictionary:" followed by the word, and focus lands on the suggestions list with the first suggestion selected so it is spoken automatically. Arrow through the list to hear other choices — the highlighted suggestion fills the Change to box — or type your own correction.
+
+| Key | Action |
+|-----|--------|
+| `Alt+C` or `Enter` | Change — replace the word with the Change to text |
+| `Alt+L` | Change All — also fix every later occurrence this session |
+| `Alt+I` | Ignore this occurrence |
+| `Alt+G` | Ignore All — skip this word for the rest of the check |
+| `Alt+A` | Add to Dictionary — never flag this word again |
+| `Alt+R` | Read the line containing the word |
+| `Alt+T` / `Alt+S` / `Alt+N` | Move to the Change to box / Suggestions list / context |
+| `F6` / `Shift+F6` | Cycle between the context, suggestions, and buttons |
+| `Escape` | Close the dialog and return to the message |
+
+Words you add to the dictionary are stored in `custom.lex` in your QuickMail profile folder and apply everywhere spell checking runs, permanently. To remove a word, edit that file in a text editor while QuickMail is closed (one word per line). Ignore All lasts only for the current check.
+
+The message stays visible and editable behind the Spelling window, with the current word selected, so you can always see the correction in place.
+
+### Inline Spell Check
 
 | Shortcut | Action |
 |----------|--------|
-| `F7` | Jump to next misspelling |
-| `Shift+F7` | Jump to previous misspelling |
+| `Ctrl+F7` | Jump to next misspelling |
+| `Ctrl+Shift+F7` | Jump to previous misspelling |
 | `Alt+1` / `Alt+2` / `Alt+3` | Accept first / second / third spelling suggestion |
 
-Spell check wraps from end to beginning (and beginning to end for Shift+F7) so it always finds misspellings wherever the cursor starts.
+> **Changed keys:** inline navigation was previously `F7` / `Shift+F7`. `F7` now opens the Check Spelling dialog, matching the binding word processors have used for decades. If you had customized these shortcuts, your bindings are unchanged; to restore the old behavior, reassign them in the keyboard customizations dialog.
+
+Inline navigation wraps around the message so it always finds misspellings wherever the cursor starts.
 
 When a screen reader is active, QuickMail announces each misspelling along with up to three suggestions. By default, each suggestion is numbered — for example: "Misspelling: teh. 1: the, 2: then, 3: them." Press `Alt+1`, `Alt+2`, or `Alt+3` to replace the misspelled word with that numbered suggestion without leaving the compose area.
 
@@ -490,7 +514,8 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Alt+Y` | Focus message body |
 | `Alt+S` or `Ctrl+Enter` | Send |
 | `Ctrl+Shift+1/2/3` | Switch to Plain Text / Markdown / HTML mode |
-| `F7` / `Shift+F7` | Next / previous misspelling |
+| `F7` | Check Spelling (full dialog) |
+| `Ctrl+F7` / `Ctrl+Shift+F7` | Next / previous misspelling (inline) |
 | `Alt+1` / `Alt+2` / `Alt+3` | Accept first / second / third spelling suggestion |
 | `F8` | Open preview (Markdown and HTML) |
 | `Ctrl+B` | Bold |

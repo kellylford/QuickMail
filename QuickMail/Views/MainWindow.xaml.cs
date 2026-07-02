@@ -171,6 +171,7 @@ public partial class MainWindow : Window
     private readonly IRuleService _ruleService;
     private readonly ITemplateService _templateService;
     private readonly IFlagService? _flagService;
+    private readonly ICustomDictionaryService? _customDictionary;
 
     private TutorialViewModel? _tutorialVm;
 
@@ -198,7 +199,8 @@ public partial class MainWindow : Window
         IRuleService ruleService,
         ITemplateService templateService,
         IFeatureGate featureGate,
-        IFlagService? flagService = null)
+        IFlagService? flagService = null,
+        ICustomDictionaryService? customDictionary = null)
     {
         _vm = vm;
         _smtp = smtp;
@@ -215,6 +217,7 @@ public partial class MainWindow : Window
         _templateService = templateService;
         _featureGate = featureGate;
         _flagService = flagService;
+        _customDictionary = customDictionary;
 
         InitializeComponent();
         DataContext = vm;
@@ -3688,7 +3691,7 @@ public partial class MainWindow : Window
     {
         var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
         composeVm.Seed(composeModel);
-        var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService);
+        var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary);
         composeVm.CloseRequested += window.Close;
         _openComposeWindows.Add(window);
         window.Closed += (_, _) => _openComposeWindows.Remove(window);
@@ -4273,7 +4276,7 @@ public partial class MainWindow : Window
         {
             if (pending?.IsLoaded == true) return pending;
             var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
-            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService);
+            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary);
             cvm.CloseRequested += pending.Close;
             var tracked = pending;
             _openComposeWindows.Add(tracked);

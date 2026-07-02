@@ -391,7 +391,7 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"AnnounceSpellingWhileNavigating = {(config.AnnounceSpellingWhileNavigating ? "on" : "off")}");
         sb.AppendLine("# Announce spelling errors when the caret moves into a misspelled word during navigation.");
-        sb.AppendLine("# F7/Shift+F7 always announce regardless of this setting.");
+        sb.AppendLine("# Ctrl+F7/Ctrl+Shift+F7 always announce regardless of this setting.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 

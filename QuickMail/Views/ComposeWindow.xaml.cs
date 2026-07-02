@@ -60,6 +60,7 @@ public partial class ComposeWindow : Window
     private readonly IContactService    _contactService;
     private readonly ITemplateService   _templateService;
     private readonly IConfigService     _configService;
+    private readonly ICustomDictionaryService? _customDictionary;
     private readonly CommandRegistry    _registry = new();
     private TokenizedAddressBox? _activeAddressControl;
     private CancellationTokenSource? _autocompleteCts;
@@ -102,14 +103,25 @@ public partial class ComposeWindow : Window
     private DispatcherTimer? _spellingTypingTimer;
     private static readonly TimeSpan SpellingTypingDelay = TimeSpan.FromMilliseconds(500);
 
-    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService)
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null)
     {
         _vm = vm;
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
+        _customDictionary = customDictionary;
         InitializeComponent();
         DataContext = vm;
+
+        // Register the user's custom dictionary on all spell-checked editors and
+        // keep the registration fresh when words are added (WPF only re-reads a
+        // lexicon on remove + re-add of its Uri). Paired unsubscribe is in Closed.
+        if (_customDictionary != null)
+        {
+            RegisterCustomDictionary();
+            _customDictionary.DictionaryChanged += RegisterCustomDictionary;
+            Closed += (_, _) => _customDictionary.DictionaryChanged -= RegisterCustomDictionary;
+        }
 
         // ── Compose command palette ──────────────────────────────────────────────
         RegisterComposeCommands();
@@ -578,6 +590,10 @@ public partial class ComposeWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // Belt-and-suspenders: OnWindowClosing already closed the Spelling
+        // dialog silently, but close paths that bypass it must not leave the
+        // owned dialog to fire its completion UI against this dead window.
+        CloseSpellCheckDialogSilently();
         // Cancel before Dispose so a still-running autocomplete search unwinds via
         // OperationCanceledException rather than ObjectDisposedException.
         try { _autocompleteCts?.Cancel(); _autocompleteCts?.Dispose(); } catch { /* best effort */ }
@@ -590,6 +606,7 @@ public partial class ComposeWindow : Window
     {
         _vm.CancelAutoSave();
         _previewWindow?.Close();
+        CloseSpellCheckDialogSilently();
 
         // If the message was sent, or nothing was edited, let the window close freely.
         if (_vm.IsSent || !_vm.IsDirty)
@@ -660,7 +677,7 @@ public partial class ComposeWindow : Window
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
-    // Ctrl+Shift+P → Command Palette; F7 → next misspelling; Shift+F7 → previous misspelling.
+    // Ctrl+Shift+P → Command Palette; F7 → Check Spelling dialog; Ctrl+F7 / Ctrl+Shift+F7 → inline misspelling navigation.
     // Ctrl+Enter → Send message (secondary shortcut alongside Alt+S).
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -810,6 +827,25 @@ public partial class ComposeWindow : Window
             AnnounceSpellingAtCurrentPosition();
     }
 
+    /// <summary>
+    /// (Re-)registers the custom dictionary lexicon on every spell-checked editor.
+    /// Remove-then-add forces WPF to re-read the file, which is how a word added
+    /// mid-session stops being flagged without reopening the window.
+    /// </summary>
+    private void RegisterCustomDictionary()
+    {
+        if (_customDictionary == null) return;
+        if (!System.IO.File.Exists(_customDictionary.DictionaryPath)) return;
+
+        var uri = new Uri(_customDictionary.DictionaryPath);
+        foreach (var editor in new TextBoxBase[] { BodyBox, RichBodyBox, SubjectBox })
+        {
+            var dictionaries = SpellCheck.GetCustomDictionaries(editor);
+            dictionaries.Remove(uri);
+            dictionaries.Add(uri);
+        }
+    }
+
     private void ClearSpellingContext()
     {
         _lastAnnouncedSpellingIndex = -1;
@@ -945,7 +981,8 @@ public partial class ComposeWindow : Window
     }
 
     /// <summary>
-    /// F7 moves to the next misspelled word; Shift+F7 moves to the previous one.
+    /// Typing detection for spelling announcements, Alt+1/2/3 quick replace,
+    /// and Markdown list indent/dedent on Tab.
     /// </summary>
     private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -1018,12 +1055,9 @@ public partial class ComposeWindow : Window
             return;
         }
 
-        if (e.Key == Key.F7)
-        {
-            var forward = (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
-            NavigateSpellingError(forward);
-            e.Handled = true;
-        }
+        // Spelling keys (F7 dialog, Ctrl+F7 / Ctrl+Shift+F7 inline) dispatch
+        // through the command registry in Window_PreviewKeyDown — no hardcoded
+        // branch here, so user rebinds always win.
     }
 
     private void RichBodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1144,15 +1178,24 @@ public partial class ComposeWindow : Window
             execute: CheckAddresses,
             defaultKey: Key.K, defaultModifiers: ModifierKeys.Control));
 
+        // F7 is the full Check Spelling dialog (classic word-processor binding);
+        // inline navigation moved to Ctrl+F7 / Ctrl+Shift+F7. User overrides in
+        // hotkeys.json take precedence over these defaults as always.
+        _registry.Register(new CommandDefinition(
+            id: "compose.checkSpelling", category: "Compose", title: "Check Spelling…",
+            execute: CheckSpelling,
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsSpellNavAvailable));
+
         _registry.Register(new CommandDefinition(
             id: "compose.nextMisspelling", category: "Compose", title: "Next Misspelling",
             execute: () => NavigateSpellingError(forward: true),
-            defaultKey: Key.F7, defaultModifiers: ModifierKeys.None));
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
             id: "compose.prevMisspelling", category: "Compose", title: "Previous Misspelling",
             execute: () => NavigateSpellingError(forward: false),
-            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Shift));
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "compose.toggleSpellingAnnouncements", category: "Compose",
@@ -1235,6 +1278,133 @@ public partial class ComposeWindow : Window
         _previewWindow.Show();
     }
 
+    // ── Check Spelling (full dialog) ─────────────────────────────────────────
+
+    private SpellCheckDialog? _spellCheckDialog;
+
+    /// <summary>
+    /// F7 / Tools → Check Spelling…: runs the full dialog-based spelling review.
+    /// Body first (whichever editor the current mode uses), then the subject,
+    /// then a completion confirmation. The dialog is modeless per the Modal
+    /// Dialog Rules — it live-updates this window's editors while open.
+    /// </summary>
+    // True while this window's close is proceeding (or when the Spelling dialog
+    // is being closed programmatically as part of it). The dialog's Closed
+    // handler must not announce, show a MessageBox, or move focus on a window
+    // that is tearing down.
+    private bool _spellCheckDialogClosingSilently;
+
+    private void CheckSpelling()
+    {
+        // One session at a time: a second F7 returns to the open dialog.
+        if (_spellCheckDialog != null)
+        {
+            _spellCheckDialog.Activate();
+            return;
+        }
+
+        var bodySource = _vm.CurrentMode == ComposeMode.Html
+            ? (ISpellCheckSource)new RichTextBoxSpellSource(RichBodyBox, "body")
+            : new TextBoxSpellSource(BodyBox, "body");
+        var sources = new List<ISpellCheckSource>
+        {
+            bodySource,
+            new TextBoxSpellSource(SubjectBox, "subject"),
+        };
+        var vm = new SpellCheckDialogViewModel(sources, _customDictionary);
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+
+        // The session drives editor selection programmatically; keep the inline
+        // navigating/formatting announcements quiet until it ends. The finally
+        // restores them if the scan or dialog setup throws, so a spell-engine
+        // failure cannot leave announcements suppressed for the window's lifetime.
+        _suppressSpellingAnnouncement = true;
+        _suppressFormattingAnnouncement = true;
+        var sessionStarted = false;
+        try
+        {
+            if (!vm.MoveNext())
+            {
+                FinishSpellCheckSession(vm, () => previousFocus?.Focus());
+                return;
+            }
+
+            var dialog = new SpellCheckDialog(vm) { Owner = this };
+            _spellCheckDialog = dialog;
+            dialog.Closed += (_, _) =>
+            {
+                _spellCheckDialog = null;
+                if (_spellCheckDialogClosingSilently)
+                    return;
+
+                FinishSpellCheckSession(vm, () =>
+                {
+                    // The last word worked on is still selected in its editor;
+                    // land focus there.
+                    if (vm.LastPresentedSourceName == "subject")
+                        SubjectBox.Focus();
+                    else
+                        FocusActiveEditor();
+                });
+            };
+            dialog.Show();
+            sessionStarted = true;
+        }
+        finally
+        {
+            if (!sessionStarted)
+            {
+                _spellCheckDialog = null;
+                _suppressSpellingAnnouncement = false;
+                _suppressFormattingAnnouncement = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Common teardown for a spelling session: restore the suppressed inline
+    /// announcements, clear stale inline spelling offsets, report the outcome
+    /// (completed or canceled — corrections already applied are ordinary editor
+    /// edits and are kept either way), then restore focus.
+    /// </summary>
+    private void FinishSpellCheckSession(SpellCheckDialogViewModel vm, Action restoreFocus)
+    {
+        _suppressSpellingAnnouncement = false;
+        _suppressFormattingAnnouncement = false;
+        ClearSpellingContext();
+
+        if (vm.IsCompleted)
+        {
+            AccessibilityHelper.Announce(this, vm.CompletionAnnouncement,
+                category: AnnouncementCategory.Result);
+            MessageBox.Show(this, vm.CompletionText, "Spelling",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        else
+        {
+            AccessibilityHelper.Announce(this, vm.CancelAnnouncement,
+                category: AnnouncementCategory.Result);
+        }
+
+        restoreFocus();
+    }
+
+    /// <summary>
+    /// Closes an open Spelling dialog without its usual completion/cancel UI.
+    /// Used when the compose window itself is closing: announcing, popping a
+    /// MessageBox, or moving focus on a tearing-down window is wrong (and the
+    /// WPF owned-window auto-close would do exactly that via the Closed handler).
+    /// </summary>
+    private void CloseSpellCheckDialogSilently()
+    {
+        if (_spellCheckDialog == null) return;
+        _spellCheckDialogClosingSilently = true;
+        try { _spellCheckDialog.Close(); }
+        finally { _spellCheckDialogClosingSilently = false; }
+        _suppressSpellingAnnouncement = false;
+        _suppressFormattingAnnouncement = false;
+    }
+
     private void NavigateSpellingError(bool forward)
     {
         if (_vm.CurrentMode == ComposeMode.Html)
@@ -1246,44 +1416,11 @@ public partial class ComposeWindow : Window
         var text = BodyBox.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        int start = BodyBox.CaretIndex;
-        int foundIndex = -1;
-
-        if (forward)
-        {
-            for (int i = start; i < text.Length; i++)
-            {
-                if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-            }
-            if (foundIndex < 0 && start > 0)
-            {
-                for (int i = 0; i < start; i++)
-                {
-                    if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-                }
-            }
-        }
-        else
-        {
-            for (int i = Math.Min(start - 1, text.Length - 1); i >= 0; i--)
-            {
-                if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-            }
-            if (foundIndex < 0)
-            {
-                for (int i = text.Length - 1; i >= start; i--)
-                {
-                    if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-                }
-            }
-        }
+        int foundIndex = SpellScan.FindErrorIndex(BodyBox, BodyBox.CaretIndex, forward);
 
         if (foundIndex >= 0)
         {
-            int wordStart = foundIndex;
-            while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1])) wordStart--;
-            int wordEnd = foundIndex;
-            while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd])) wordEnd++;
+            var (wordStart, wordEnd) = SpellScan.ExpandWord(text, foundIndex);
 
             BodyBox.SelectionStart = wordStart;
             BodyBox.SelectionLength = wordEnd - wordStart;
@@ -1312,26 +1449,8 @@ public partial class ComposeWindow : Window
 
     private void NavigateSpellingErrorInRichBox(bool forward)
     {
-        var doc = RichBodyBox.Document;
-        var direction = forward ? LogicalDirection.Forward : LogicalDirection.Backward;
-        var errorPos = RichBodyBox.GetNextSpellingErrorPosition(RichBodyBox.CaretPosition, direction);
-
-        if (errorPos == null)
+        if (SpellScan.FindErrorRange(RichBodyBox, forward) is ({ } errorPos, { } wordRange))
         {
-            var wrapFrom = forward ? doc.ContentStart : doc.ContentEnd;
-            errorPos = RichBodyBox.GetNextSpellingErrorPosition(wrapFrom, direction);
-        }
-
-        if (errorPos != null)
-        {
-            var wordRange = RichBodyBox.GetSpellingErrorRange(errorPos);
-            if (wordRange == null)
-            {
-                ClearSpellingContext();
-                AccessibilityHelper.Announce(this, "No misspellings found.", category: AnnouncementCategory.Result);
-                return;
-            }
-
             RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
             RichBodyBox.Focus();
 
@@ -1499,6 +1618,7 @@ public partial class ComposeWindow : Window
                 category: AnnouncementCategory.Hint);
     }
 
+    private void MenuCheckSpelling_Click(object sender, RoutedEventArgs e)   => CheckSpelling();
     private void MenuNextMisspelling_Click(object sender, RoutedEventArgs e) => NavigateSpellingError(forward: true);
     private void MenuPrevMisspelling_Click(object sender, RoutedEventArgs e) => NavigateSpellingError(forward: false);
     private void MenuAnnounceFormatting_Click(object sender, RoutedEventArgs e) => AnnounceFormattingState();

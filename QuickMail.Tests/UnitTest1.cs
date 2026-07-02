@@ -260,6 +260,16 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void SpellCheckDialog_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new SpellCheckDialogViewModel([], dictionary: null);
+        var dialog = new SpellCheckDialog(vm);
+        Assert.NotNull(dialog);
+        dialog.Close();
+    }
+
+    [StaFact]
     public void InsertLinkDialog_XamlParsesWithoutException()
     {
         EnsureApplication();
