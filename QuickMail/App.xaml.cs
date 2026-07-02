@@ -18,6 +18,7 @@ public partial class App : Application
     private ChangeNotifierRouter? _changeNotifier;
     private GraphChangeNotifier? _graphNotifier;
     private ImapMailService? _imapBackend;
+    private GraphMailService? _graphBackend;
     private UpdateCheckService? _updateCheckService;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -88,7 +89,8 @@ public partial class App : Application
             var oauthService      = new OAuthRouter(msOAuthService, googleOAuth);
             _imapBackend          = new ImapMailService(oauthService, configService);
             var imapBackend       = _imapBackend;
-            var graphBackend      = new GraphMailService(msOAuthService, configService);
+            _graphBackend         = new GraphMailService(msOAuthService, configService);
+            var graphBackend      = _graphBackend;
             _graphSendMail        = new GraphSendMailService(msOAuthService);
             var smtpService       = new SmtpService(oauthService, _graphSendMail);
 
@@ -165,6 +167,7 @@ public partial class App : Application
         _changeNotifier?.Dispose(); // stops all watchers (IDLE + Graph poll) + severs the event chain
         _graphNotifier?.Dispose();  // disposes the Graph poll CTS (StopWatchers already ran; idempotent)
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
+        _graphBackend?.Dispose();   // releases GraphClient/HttpClient; after the notifiers, which poll through its client
         _graphSendMail?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();
