@@ -291,4 +291,66 @@ public class SpellCheckDialogViewModelTests
         vm.Ignore();
         Assert.Equal("Not in dictionary: xqzt. No suggestions.", vm.BuildErrorAnnouncement());
     }
+
+    [Fact]
+    public void Change_WithUnchangedWord_AdvancesWithoutEditingOrCounting()
+    {
+        var body = new ScriptedSource("body", Err("xqzt"), Err("recieve", "receive"));
+        var vm = MakeVm(body);
+        vm.MoveNext();
+
+        Assert.False(vm.HasSuggestions);
+        Assert.Equal("xqzt", vm.ChangeToText);   // pre-filled with the word itself
+        Assert.True(vm.Change());                // Enter on the default Change button
+
+        Assert.Empty(body.Replacements);         // no self-replacement edit, no dirty draft
+        Assert.Equal(0, vm.ChangedCount);
+        Assert.Equal("recieve", vm.CurrentWord); // but the scan still advanced
+    }
+
+    [Fact]
+    public void ChangeAll_WithUnchangedWord_DoesNotAutoReplaceLaterOccurrences()
+    {
+        var body = new ScriptedSource("body", Err("xqzt"), Err("xqzt"));
+        var vm = MakeVm(body);
+        vm.MoveNext();
+
+        Assert.True(vm.ChangeAll());   // no-op change-all must not enter the map
+
+        Assert.Empty(body.Replacements);
+        Assert.Equal(0, vm.ChangedCount);
+        Assert.Equal("xqzt", vm.CurrentWord);   // second occurrence is still presented
+    }
+
+    [Fact]
+    public void CancelAnnouncement_ReportsKeptChanges()
+    {
+        var body = new ScriptedSource("body",
+            Err("recieve", "receive"), Err("pacakge", "package"), Err("blorf"));
+        var vm = MakeVm(body);
+        vm.MoveNext();
+        Assert.Equal("Spelling check canceled.", vm.CancelAnnouncement);
+
+        vm.Change();
+        Assert.Equal("Spelling check canceled. 1 change kept.", vm.CancelAnnouncement);
+
+        vm.Change();
+        Assert.Equal("Spelling check canceled. 2 changes kept.", vm.CancelAnnouncement);
+    }
+
+    [Fact]
+    public void LastPresentedSourceName_SurvivesCompletion()
+    {
+        var body = new ScriptedSource("body");
+        var subject = new ScriptedSource("subject", Err("Shiping", "Shipping"));
+        var vm = MakeVm(body, subject);
+
+        Assert.True(vm.MoveNext());
+        Assert.Equal("subject", vm.LastPresentedSourceName);
+
+        Assert.False(vm.Change());   // exhausts the session
+        Assert.True(vm.IsCompleted);
+        Assert.Equal(string.Empty, vm.CurrentSourceName);      // current source is gone at completion…
+        Assert.Equal("subject", vm.LastPresentedSourceName);   // …but the last presented one survives for focus restore
+    }
 }

@@ -590,6 +590,10 @@ public partial class ComposeWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // Belt-and-suspenders: OnWindowClosing already closed the Spelling
+        // dialog silently, but close paths that bypass it must not leave the
+        // owned dialog to fire its completion UI against this dead window.
+        CloseSpellCheckDialogSilently();
         // Cancel before Dispose so a still-running autocomplete search unwinds via
         // OperationCanceledException rather than ObjectDisposedException.
         try { _autocompleteCts?.Cancel(); _autocompleteCts?.Dispose(); } catch { /* best effort */ }
@@ -602,6 +606,7 @@ public partial class ComposeWindow : Window
     {
         _vm.CancelAutoSave();
         _previewWindow?.Close();
+        CloseSpellCheckDialogSilently();
 
         // If the message was sent, or nothing was edited, let the window close freely.
         if (_vm.IsSent || !_vm.IsDirty)
@@ -1283,6 +1288,12 @@ public partial class ComposeWindow : Window
     /// then a completion confirmation. The dialog is modeless per the Modal
     /// Dialog Rules — it live-updates this window's editors while open.
     /// </summary>
+    // True while this window's close is proceeding (or when the Spelling dialog
+    // is being closed programmatically as part of it). The dialog's Closed
+    // handler must not announce, show a MessageBox, or move focus on a window
+    // that is tearing down.
+    private bool _spellCheckDialogClosingSilently;
+
     private void CheckSpelling()
     {
         // One session at a time: a second F7 returns to the open dialog.
@@ -1301,54 +1312,97 @@ public partial class ComposeWindow : Window
             new TextBoxSpellSource(SubjectBox, "subject"),
         };
         var vm = new SpellCheckDialogViewModel(sources, _customDictionary);
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
 
         // The session drives editor selection programmatically; keep the inline
-        // navigating/formatting announcements quiet until it ends.
+        // navigating/formatting announcements quiet until it ends. The finally
+        // restores them if the scan or dialog setup throws, so a spell-engine
+        // failure cannot leave announcements suppressed for the window's lifetime.
         _suppressSpellingAnnouncement = true;
         _suppressFormattingAnnouncement = true;
-
-        if (!vm.MoveNext())
+        var sessionStarted = false;
+        try
         {
-            _suppressSpellingAnnouncement = false;
-            _suppressFormattingAnnouncement = false;
-            var previousFocus = Keyboard.FocusedElement as IInputElement;
+            if (!vm.MoveNext())
+            {
+                FinishSpellCheckSession(vm, () => previousFocus?.Focus());
+                return;
+            }
+
+            var dialog = new SpellCheckDialog(vm) { Owner = this };
+            _spellCheckDialog = dialog;
+            dialog.Closed += (_, _) =>
+            {
+                _spellCheckDialog = null;
+                if (_spellCheckDialogClosingSilently)
+                    return;
+
+                FinishSpellCheckSession(vm, () =>
+                {
+                    // The last word worked on is still selected in its editor;
+                    // land focus there.
+                    if (vm.LastPresentedSourceName == "subject")
+                        SubjectBox.Focus();
+                    else
+                        FocusActiveEditor();
+                });
+            };
+            dialog.Show();
+            sessionStarted = true;
+        }
+        finally
+        {
+            if (!sessionStarted)
+            {
+                _spellCheckDialog = null;
+                _suppressSpellingAnnouncement = false;
+                _suppressFormattingAnnouncement = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Common teardown for a spelling session: restore the suppressed inline
+    /// announcements, clear stale inline spelling offsets, report the outcome
+    /// (completed or canceled — corrections already applied are ordinary editor
+    /// edits and are kept either way), then restore focus.
+    /// </summary>
+    private void FinishSpellCheckSession(SpellCheckDialogViewModel vm, Action restoreFocus)
+    {
+        _suppressSpellingAnnouncement = false;
+        _suppressFormattingAnnouncement = false;
+        ClearSpellingContext();
+
+        if (vm.IsCompleted)
+        {
             AccessibilityHelper.Announce(this, vm.CompletionAnnouncement,
                 category: AnnouncementCategory.Result);
             MessageBox.Show(this, vm.CompletionText, "Spelling",
                 MessageBoxButton.OK, MessageBoxImage.Information);
-            previousFocus?.Focus();
-            return;
+        }
+        else
+        {
+            AccessibilityHelper.Announce(this, vm.CancelAnnouncement,
+                category: AnnouncementCategory.Result);
         }
 
-        var dialog = new SpellCheckDialog(vm) { Owner = this };
-        _spellCheckDialog = dialog;
-        dialog.Closed += (_, _) =>
-        {
-            _spellCheckDialog = null;
-            _suppressSpellingAnnouncement = false;
-            _suppressFormattingAnnouncement = false;
-            ClearSpellingContext();
+        restoreFocus();
+    }
 
-            if (vm.IsCompleted)
-            {
-                AccessibilityHelper.Announce(this, vm.CompletionAnnouncement,
-                    category: AnnouncementCategory.Result);
-                MessageBox.Show(this, vm.CompletionText, "Spelling",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            else
-            {
-                AccessibilityHelper.Announce(this, "Spelling check canceled.",
-                    category: AnnouncementCategory.Result);
-            }
-
-            // The current word is still selected in its editor; land focus there.
-            if (vm.CurrentSourceName == "subject")
-                SubjectBox.Focus();
-            else
-                FocusActiveEditor();
-        };
-        dialog.Show();
+    /// <summary>
+    /// Closes an open Spelling dialog without its usual completion/cancel UI.
+    /// Used when the compose window itself is closing: announcing, popping a
+    /// MessageBox, or moving focus on a tearing-down window is wrong (and the
+    /// WPF owned-window auto-close would do exactly that via the Closed handler).
+    /// </summary>
+    private void CloseSpellCheckDialogSilently()
+    {
+        if (_spellCheckDialog == null) return;
+        _spellCheckDialogClosingSilently = true;
+        try { _spellCheckDialog.Close(); }
+        finally { _spellCheckDialogClosingSilently = false; }
+        _suppressSpellingAnnouncement = false;
+        _suppressFormattingAnnouncement = false;
     }
 
     private void NavigateSpellingError(bool forward)

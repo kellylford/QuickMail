@@ -19,6 +19,10 @@ internal static class SpellScan
     /// Finds the character index of the nearest spelling error in a TextBox,
     /// scanning from <paramref name="start"/> in the given direction and
     /// wrapping once around the document. Returns -1 when the text has no errors.
+    /// Uses <see cref="TextBoxBase.GetNextSpellingErrorCharacterIndex"/> — one
+    /// engine call per error rather than one per character. The API returns the
+    /// start of the error containing the probe index (inclusive), matching the
+    /// old per-character walk's behavior of landing on the word under the probe.
     /// </summary>
     internal static int FindErrorIndex(TextBox box, int start, bool forward)
     {
@@ -27,18 +31,29 @@ internal static class SpellScan
 
         if (forward)
         {
-            for (int i = start; i < text.Length; i++)
-                if (box.GetSpellingError(i) != null) return i;
+            if (start < text.Length)
+            {
+                int idx = box.GetNextSpellingErrorCharacterIndex(start, LogicalDirection.Forward);
+                if (idx >= 0) return idx;
+            }
             if (start > 0)
-                for (int i = 0; i < start; i++)
-                    if (box.GetSpellingError(i) != null) return i;
+            {
+                int idx = box.GetNextSpellingErrorCharacterIndex(0, LogicalDirection.Forward);
+                if (idx >= 0 && idx < start) return idx;
+            }
         }
         else
         {
-            for (int i = Math.Min(start - 1, text.Length - 1); i >= 0; i--)
-                if (box.GetSpellingError(i) != null) return i;
-            for (int i = text.Length - 1; i >= start; i--)
-                if (box.GetSpellingError(i) != null) return i;
+            if (start > 0)
+            {
+                int idx = box.GetNextSpellingErrorCharacterIndex(
+                    Math.Min(start - 1, text.Length - 1), LogicalDirection.Backward);
+                if (idx >= 0) return idx;
+            }
+            int wrapIdx = box.GetNextSpellingErrorCharacterIndex(text.Length - 1, LogicalDirection.Backward);
+            // Accept a wrapped hit only if its extent reaches back to the start
+            // position — mirrors the old walk over [start, end).
+            if (wrapIdx >= 0 && wrapIdx + box.GetSpellingErrorLength(wrapIdx) > start) return wrapIdx;
         }
         return -1;
     }
@@ -114,23 +129,42 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
             text = _box.Text;
             int limit = _wrapped ? Math.Min(_startIndex, text.Length) : text.Length;
 
-            for (int i = _scanIndex; i < limit; i++)
+            if (text.Length > 0 && _scanIndex < limit)
             {
-                var error = _box.GetSpellingError(i);
-                if (error == null) continue;
+                // One engine call per error instead of one per character. The
+                // API returns the start of the error containing the probe index
+                // (inclusive), so a session started with the caret inside a
+                // misspelled word presents that word first — same as the old
+                // per-character walk.
+                int idx = _box.GetNextSpellingErrorCharacterIndex(
+                    Math.Min(_scanIndex, text.Length - 1), LogicalDirection.Forward);
+                if (idx >= 0 && idx < limit)
+                {
+                    // Exact error extent (not whitespace-delimited expansion) so a
+                    // replacement of "tomorow." touches only "tomorow", not the period.
+                    int errStart = _box.GetSpellingErrorStart(idx);
+                    int errLen = _box.GetSpellingErrorLength(idx);
+                    if (errLen <= 0 || errStart < 0)
+                        (errStart, errLen) = FallbackExtent(text, idx);
 
-                // Exact error extent (not whitespace-delimited expansion) so a
-                // replacement of "tomorow." touches only "tomorow", not the period.
-                int errStart = _box.GetSpellingErrorStart(i);
-                int errLen = _box.GetSpellingErrorLength(i);
-                if (errLen <= 0 || errStart < 0)
-                    (errStart, errLen) = FallbackExtent(text, i);
+                    // Accept only an error extending past the scan position — a
+                    // probe clamped to the last character can re-surface the word
+                    // just handled at the end of the text.
+                    if (errStart + errLen > _scanIndex)
+                    {
+                        // After wrapping, a word straddling the session start was
+                        // already presented in the pre-wrap pass — the scan is done.
+                        if (_wrapped && errStart + errLen > limit) return null;
 
-                _currentWordStart = errStart;
-                _currentWordEnd = errStart + errLen;
-                _scanIndex = _currentWordEnd;
-                var word = text[_currentWordStart.._currentWordEnd];
-                return new SpellingErrorInfo(word, error.Suggestions.ToList());
+                        _currentWordStart = errStart;
+                        _currentWordEnd = errStart + errLen;
+                        _scanIndex = _currentWordEnd;
+                        var word = text[_currentWordStart.._currentWordEnd];
+                        var error = _box.GetSpellingError(idx);
+                        return new SpellingErrorInfo(word,
+                            error?.Suggestions.ToList() ?? new List<string>());
+                    }
+                }
             }
 
             if (_wrapped) return null;
@@ -234,7 +268,11 @@ internal sealed class RichTextBoxSpellSource : ISpellCheckSource
                 if (range != null)
                 {
                     // After wrapping, stop once the scan reaches the session start.
-                    if (_wrapped && _startPos != null && range.Start.CompareTo(_startPos) >= 0)
+                    // Compare the error's END: a word straddling the start was
+                    // already presented pre-wrap (GetNextSpellingErrorPosition is
+                    // inclusive of the error containing its input position), so
+                    // re-presenting it here would prompt for the same word twice.
+                    if (_wrapped && _startPos != null && range.End.CompareTo(_startPos) > 0)
                         return null;
 
                     _currentRange = range;

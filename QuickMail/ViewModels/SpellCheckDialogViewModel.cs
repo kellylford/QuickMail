@@ -49,6 +49,14 @@ public sealed partial class SpellCheckDialogViewModel : ObservableObject
     public string CurrentSourceName => _currentSource?.DisplayName ?? string.Empty;
 
     /// <summary>
+    /// Display name of the source that presented the most recent error. Unlike
+    /// <see cref="CurrentSourceName"/> this survives completion (when
+    /// <c>_currentSource</c> is already null), so the View can return focus to
+    /// the editor the user last worked in.
+    /// </summary>
+    public string LastPresentedSourceName { get; private set; } = string.Empty;
+
+    /// <summary>
     /// Raised when the scan moves into a new source, with its display name
     /// ("subject"). The View announces the transition (Status category).
     /// </summary>
@@ -112,6 +120,7 @@ public sealed partial class SpellCheckDialogViewModel : ObservableObject
     private void Present(SpellingErrorInfo error)
     {
         PresentedAnyError = true;
+        LastPresentedSourceName = _currentSource?.DisplayName ?? string.Empty;
         CurrentWord = error.Word;
 
         Suggestions.Clear();
@@ -131,6 +140,7 @@ public sealed partial class SpellCheckDialogViewModel : ObservableObject
         if (_currentSource == null) return false;
         var replacement = ChangeToText.Trim();
         if (replacement.Length == 0) return true;   // nothing to change with — stay on the word
+        if (replacement == CurrentWord) return MoveNext();   // no-op (e.g. Enter on a no-suggestion word) — advance without editing or counting
 
         _currentSource.ReplaceCurrent(replacement);
         ChangedCount++;
@@ -143,6 +153,7 @@ public sealed partial class SpellCheckDialogViewModel : ObservableObject
         if (_currentSource == null) return false;
         var replacement = ChangeToText.Trim();
         if (replacement.Length == 0) return true;
+        if (replacement == CurrentWord) return MoveNext();   // no-op — a change-all to the same word would silently "count" every occurrence
 
         _changeAllMap[CurrentWord] = replacement;
         _currentSource.ReplaceCurrent(replacement);
@@ -192,5 +203,17 @@ public sealed partial class SpellCheckDialogViewModel : ObservableObject
         0 => "Spelling check complete. No changes made.",
         1 => "Spelling check complete. 1 word changed.",
         _ => $"Spelling check complete. {ChangedCount} words changed.",
+    };
+
+    /// <summary>
+    /// Announcement when the dialog is closed before the scan completes.
+    /// Corrections already applied are ordinary editor edits and remain in the
+    /// message, so the count is reported rather than implying a rollback.
+    /// </summary>
+    public string CancelAnnouncement => ChangedCount switch
+    {
+        0 => "Spelling check canceled.",
+        1 => "Spelling check canceled. 1 change kept.",
+        _ => $"Spelling check canceled. {ChangedCount} changes kept.",
     };
 }

@@ -155,4 +155,40 @@ public class SpellCheckSourceTests
         var (start, end) = SpellScan.ExpandWord(text, index);
         return text[start..end];
     }
+
+    [StaFact]
+    public void TextBoxSource_CaretInsideMisspelledWord_PresentsItOnlyOnce()
+    {
+        var box = MakeSpellCheckedTextBox("recieve then fine", caret: 3);   // caret inside "recieve"
+        if (!EngineAvailable(box)) return;
+
+        var source = new TextBoxSpellSource(box, "body");
+
+        Assert.Equal("recieve", source.MoveToNextError()!.Word);
+        // The wrapped pass covers [0, caret) — it must not re-present the word
+        // that straddles the session start.
+        Assert.Null(source.MoveToNextError());
+    }
+
+    [StaFact]
+    public void RichTextBoxSource_CaretInsideMisspelledWord_PresentsItOnlyOnce()
+    {
+        var box = new RichTextBox();
+        box.SpellCheck.IsEnabled = true;
+        box.Document.Blocks.Clear();
+        var run = new Run("recieve and pacakge");
+        box.Document.Blocks.Add(new Paragraph(run));
+        box.Measure(new System.Windows.Size(500, 500));
+        box.Arrange(new System.Windows.Rect(0, 0, 500, 500));
+        box.CaretPosition = run.ContentStart.GetPositionAtOffset(3)!;   // inside "recieve"
+
+        if (box.GetNextSpellingErrorPosition(box.Document.ContentStart, LogicalDirection.Forward) == null)
+            return;   // engine unavailable on this runner
+
+        var source = new RichTextBoxSpellSource(box, "body");
+
+        Assert.Equal("recieve", source.MoveToNextError()!.Word);
+        Assert.Equal("pacakge", source.MoveToNextError()!.Word);
+        Assert.Null(source.MoveToNextError());   // wrap stops before re-presenting "recieve"
+    }
 }

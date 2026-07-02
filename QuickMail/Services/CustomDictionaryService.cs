@@ -59,10 +59,30 @@ public sealed class CustomDictionaryService : ICustomDictionaryService
 
         try
         {
+            // The profile directory may not exist yet (fresh --profileDir);
+            // without this the append throws and the word silently degrades
+            // to session-ignore.
+            var dir = Path.GetDirectoryName(DictionaryPath);
+            if (!string.IsNullOrEmpty(dir))
+                Directory.CreateDirectory(dir);
+
+            // The user guide invites hand-editing custom.lex; a hand-saved file
+            // may lack a trailing newline, and appending directly would merge
+            // the last word with the new one into a single unrecognized token.
+            // The file is small, so a read-check is cheap.
+            var needsLeadingNewline = false;
+            if (File.Exists(DictionaryPath))
+            {
+                var existing = File.ReadAllText(DictionaryPath);
+                needsLeadingNewline = existing.Length > 0 && !existing.EndsWith('\n');
+            }
+
             // AppendAllText writes the UTF-16 LE BOM when it creates the file
             // (StreamWriter emits the preamble at stream position 0) and appends
             // without a BOM thereafter.
-            File.AppendAllText(DictionaryPath, trimmed + Environment.NewLine, Encoding.Unicode);
+            File.AppendAllText(DictionaryPath,
+                (needsLeadingNewline ? Environment.NewLine : string.Empty) + trimmed + Environment.NewLine,
+                Encoding.Unicode);
         }
         catch (Exception ex)
         {

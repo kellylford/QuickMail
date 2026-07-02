@@ -56,6 +56,38 @@ public class CustomDictionaryServiceTests : IDisposable
     }
 
     [Fact]
+    public void AddWord_CreatesMissingProfileDirectory()
+    {
+        var svc = new CustomDictionaryService(_profile);
+        if (Directory.Exists(_dir)) Directory.Delete(_dir, recursive: true);
+
+        Assert.True(svc.AddWord("QuickMail"));   // must not silently degrade to session-ignore
+
+        Assert.Contains("QuickMail", File.ReadAllLines(svc.DictionaryPath));
+    }
+
+    [Fact]
+    public void AddWord_AppendsCleanly_WhenHandEditedFileLacksTrailingNewline()
+    {
+        Directory.CreateDirectory(_dir);
+        var path = Path.Combine(_dir, "custom.lex");
+        File.WriteAllText(path, "Kestrelworks", Encoding.Unicode);   // hand-saved, no trailing newline
+
+        var svc = new CustomDictionaryService(_profile);
+        Assert.True(svc.AddWord("QuickMail"));
+
+        var lines = File.ReadAllLines(path);
+        Assert.Contains("Kestrelworks", lines);
+        Assert.Contains("QuickMail", lines);
+        Assert.DoesNotContain(lines, l => l.Contains("KestrelworksQuickMail", StringComparison.Ordinal));
+
+        // A fresh load recognizes both words separately.
+        var reloaded = new CustomDictionaryService(_profile);
+        Assert.True(reloaded.Contains("Kestrelworks"));
+        Assert.True(reloaded.Contains("QuickMail"));
+    }
+
+    [Fact]
     public void AddWord_RejectsEmptyAndWhitespaceWords()
     {
         var svc = new CustomDictionaryService(_profile);
