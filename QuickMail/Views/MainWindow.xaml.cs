@@ -245,6 +245,22 @@ public partial class MainWindow : Window
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
+        // Win32 file dialogs are View-layer (CLAUDE.md MVVM rules); the VM requests a
+        // path and the View owns the dialog.
+        vm.SaveFilePathRequested = suggestedName =>
+        {
+            var dlg = new Microsoft.Win32.SaveFileDialog
+            {
+                FileName = suggestedName,
+                Title    = "Save Attachment",
+            };
+            return dlg.ShowDialog(this) == true ? dlg.FileName : null;
+        };
+        vm.SaveFolderPathRequested = title =>
+        {
+            var dlg = new Microsoft.Win32.OpenFolderDialog { Title = title };
+            return dlg.ShowDialog(this) == true ? dlg.FolderName : null;
+        };
         vm.RulesManagerRequested += (_, _) => OpenRulesManager();
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
@@ -490,6 +506,9 @@ public partial class MainWindow : Window
     {
         foreach (var w in _openComposeWindows.ToList())
             w.Close();
+        // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
+        // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
+        _vm.Dispose();
         base.OnClosed(e);
     }
 
@@ -2249,18 +2268,10 @@ public partial class MainWindow : Window
             _vm.DeclineInviteCommand.Execute(null);
     }
 
-    private static void OpenExternal(string uri)
-    {
-        if (string.IsNullOrWhiteSpace(uri)) return;
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            LogService.Log($"OpenExternal {uri}", ex);
-        }
-    }
+    // Message content is untrusted; only allow-listed schemes (http/https/mailto)
+    // may leave the app via ShellExecute. See ExternalUriPolicy.
+    private static void OpenExternal(string uri) =>
+        Helpers.ExternalUriPolicy.TryOpenExternal(uri);
 
     // When the WebView2 host receives WPF keyboard focus (e.g. Tab from a header field),
     // push focus into the HTML document body so the user can read/navigate content.

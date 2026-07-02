@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using QuickMail.Helpers;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -109,7 +110,8 @@ public class SyncService : ISyncService
         // They run sequentially — fire-and-forget the whole batch so SyncAllAccounts
         // returns promptly and the status bar updates, while previews trickle in.
         if (!previewJobs.IsEmpty)
-            _ = FetchAllPreviewsAsync(previewJobs.ToList(), ct);
+            FetchAllPreviewsAsync(previewJobs.ToList(), ct)
+                .LogFaults("sync: preview fetch batch");
     }
 
     private async Task FetchAllPreviewsAsync(
@@ -119,7 +121,19 @@ public class SyncService : ISyncService
         foreach (var (account, folder, incoming) in jobs)
         {
             if (ct.IsCancellationRequested) return;
-            await FetchAndApplyPreviewsAsync(account, folder, incoming, ct);
+            try
+            {
+                await FetchAndApplyPreviewsAsync(account, folder, incoming, ct);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                // One folder's preview failure must not kill the rest of the batch.
+                LogService.Log($"Preview fetch failed for {account.AccountLabel}/{folder.DisplayName}", ex);
+            }
         }
     }
 

@@ -515,14 +515,8 @@ public partial class MessageWindow : Window
     /// </summary>
     public event EventHandler<MessageWindowViewModel>? MoveToMainWindowRequested;
 
-    private static void OpenExternal(string uri)
-    {
-        if (string.IsNullOrWhiteSpace(uri)) return;
-        try
-        {
-            System.Diagnostics.Process.Start(
-                new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
-        }
-        catch (Exception ex) { LogService.Log($"MessageWindow.OpenExternal {uri}", ex); }
-    }
+    // Message content is untrusted; only allow-listed schemes (http/https/mailto)
+    // may leave the app via ShellExecute. See ExternalUriPolicy.
+    private static void OpenExternal(string uri) =>
+        Helpers.ExternalUriPolicy.TryOpenExternal(uri);
 }

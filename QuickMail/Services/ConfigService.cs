@@ -81,15 +81,27 @@ public class ConfigService : IConfigService
     {
         _cached = config;
         Directory.CreateDirectory(_dataFolder);
-        File.WriteAllText(_configFile, BuildFileText(config), Encoding.UTF8);
+        WriteAtomic(_configFile, BuildFileText(config));
 
         // Save custom hotkeys to separate JSON file (only write when non-empty)
         if (config.CustomHotkeys.Count > 0)
-            File.WriteAllText(_hotkeysFile, JsonSerializer.Serialize(config.CustomHotkeys, JsonOptions), Encoding.UTF8);
+            WriteAtomic(_hotkeysFile, JsonSerializer.Serialize(config.CustomHotkeys, JsonOptions));
         else if (File.Exists(_hotkeysFile))
             File.Delete(_hotkeysFile);
 
         Views.AccessibilityHelper.Configure(config);
+    }
+
+    /// <summary>
+    /// Writes via a sibling temp file + atomic rename so a crash or power loss mid-write
+    /// can never leave a truncated config — the old file survives intact until the new
+    /// content is fully on disk.
+    /// </summary>
+    private static void WriteAtomic(string path, string content)
+    {
+        var tempPath = path + ".tmp";
+        File.WriteAllText(tempPath, content, Encoding.UTF8);
+        File.Move(tempPath, path, overwrite: true);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────────

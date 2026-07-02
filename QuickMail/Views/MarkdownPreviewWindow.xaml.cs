@@ -96,15 +96,9 @@ public partial class MarkdownPreviewWindow : Window
                     uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
-                if (!uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        System.Diagnostics.Process.Start(
-                            new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
-                    }
-                    catch { /* best effort */ }
-                }
+                // Only allow-listed schemes (http/https/mailto) may leave the app
+                // via ShellExecute; data: and everything else is dropped. See ExternalUriPolicy.
+                Helpers.ExternalUriPolicy.TryOpenExternal(uri);
             };
 
             PreviewBody.CoreWebView2.NavigateToString(_html);

@@ -28,8 +28,12 @@ public static class MessageBodyHtmlBuilder
     public static string BuildMessageHtml(MailMessageDetail detail)
     {
         var htmlBody = detail.HtmlBody ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(htmlBody) && !ShouldUseReaderMode(htmlBody))
-            return BuildSanitizedHtmlDocument(detail.Subject, htmlBody);
+        // Fail closed: if any stripping pass times out we cannot claim the HTML is
+        // sanitized, so fall through to the plain-text (reader mode) rendering instead
+        // of showing partially stripped markup.
+        if (!string.IsNullOrWhiteSpace(htmlBody) && !ShouldUseReaderMode(htmlBody)
+            && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, out var sanitized))
+            return sanitized;
 
         var text = !string.IsNullOrWhiteSpace(detail.PlainTextBody)
             ? detail.PlainTextBody
@@ -45,9 +49,28 @@ public static class MessageBodyHtmlBuilder
         html.Length > MaxRichHtmlRenderChars ||
         CountOccurrences(html, "<table") > MaxRichHtmlTableCount;
 
-    public static string BuildSanitizedHtmlDocument(string? subject, string html)
+    /// <summary>
+    /// Builds the full sanitized document for the reading pane. Returns false when any
+    /// stripping pass timed out — the output must then be discarded and the caller must
+    /// fall back to plain-text rendering (a partially stripped document is not sanitized).
+    /// </summary>
+    public static bool TryBuildSanitizedHtmlDocument(string? subject, string html, out string document) =>
+        TryBuildSanitizedHtmlDocument(subject, html, HtmlRegexTimeout, out document);
+
+    internal static bool TryBuildSanitizedHtmlDocument(
+        string? subject, string html, TimeSpan timeout, out string document)
     {
-        var body     = StripHeavyHtml(html);
+        if (!TryStripHeavyHtml(html, timeout, out var body))
+        {
+            document = string.Empty;
+            return false;
+        }
+        document = ComposeSanitizedDocument(subject, body);
+        return true;
+    }
+
+    private static string ComposeSanitizedDocument(string? subject, string body)
+    {
         var titleTag = $"<title>{WebUtility.HtmlEncode(subject ?? string.Empty)}</title>";
         const string cspTag =
             "<meta http-equiv=\"Content-Security-Policy\" " +
@@ -112,22 +135,59 @@ public static class MessageBodyHtmlBuilder
         catch (RegexMatchTimeoutException) { return encoded; }
     }
 
+    /// <summary>
+    /// Best-effort stripping for non-rendered consumers (e.g. HtmlToText, whose output is
+    /// HTML-encoded before display). Rendering paths must use <see cref="TryStripHeavyHtml"/>
+    /// and fail closed on a false return.
+    /// </summary>
     public static string StripHeavyHtml(string html)
     {
+        TryStripHeavyHtml(html, HtmlRegexTimeout, out var body);
+        return body;
+    }
+
+    public static bool TryStripHeavyHtml(string html, out string stripped) =>
+        TryStripHeavyHtml(html, HtmlRegexTimeout, out stripped);
+
+    /// <summary>
+    /// SECURITY NOTE: this regex pass is defense-in-depth, not the security boundary.
+    /// Regex-based HTML stripping is structurally bypassable (e.g. slash-separated
+    /// attributes, malformed nesting); the strict CSP injected by
+    /// ComposeSanitizedDocument — script-src 'none', default-src 'none' — is what actually
+    /// prevents execution and remote loads. Never weaken that CSP on the assumption that
+    /// this stripping protects the document. Returns false when any pass timed out, in
+    /// which case <paramref name="stripped"/> holds a PARTIALLY stripped document that
+    /// must not be rendered.
+    /// </summary>
+    internal static bool TryStripHeavyHtml(string html, TimeSpan timeout, out string stripped)
+    {
+        var complete = true;
+        string Step(string input, string pattern, RegexOptions options, string replacement = "")
+        {
+            try { return Regex.Replace(input, pattern, replacement, options, timeout); }
+            catch (RegexMatchTimeoutException)
+            {
+                LogService.Log($"HTML cleanup timed out for pattern: {pattern}");
+                complete = false;
+                return input;
+            }
+        }
+
         var body = html;
         // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
         // Must run before style-attribute stripping, which would make these visible.
-        body = SafeRegexReplace(body,
+        body = Step(body,
             @"<(div|span|p)\b[^>]*\bstyle\s*=\s*(?:""[^""]*display\s*:\s*none[^""]*""|'[^']*display\s*:\s*none[^']*')[^>]*>.*?</\1>",
-            string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "<!--.*?-->", string.Empty, RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "<script\\b.*?</script>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "<style\\b.*?</style>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "<svg\\b.*?</svg>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?</\\1>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "<(img|link|base|input|button|meta)\\b[^>]*>", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = SafeRegexReplace(body, "\\s(on\\w+|style|src|srcset|background)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", string.Empty, RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        return body;
+            RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<!--.*?-->", RegexOptions.Singleline);
+        body = Step(body, "<script\\b.*?</script>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<style\\b.*?</style>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<svg\\b.*?</svg>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?</\\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "<(img|link|base|input|button|meta)\\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        body = Step(body, "\\s(on\\w+|style|src|srcset|background)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        stripped = body;
+        return complete;
     }
 
     public static string RemoveTitle(string html) =>
