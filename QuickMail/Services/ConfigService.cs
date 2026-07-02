@@ -81,11 +81,11 @@ public class ConfigService : IConfigService
     {
         _cached = config;
         Directory.CreateDirectory(_dataFolder);
-        File.WriteAllText(_configFile, BuildFileText(config), Encoding.UTF8);
+        Helpers.AtomicFile.WriteAllText(_configFile, BuildFileText(config), Encoding.UTF8);
 
         // Save custom hotkeys to separate JSON file (only write when non-empty)
         if (config.CustomHotkeys.Count > 0)
-            File.WriteAllText(_hotkeysFile, JsonSerializer.Serialize(config.CustomHotkeys, JsonOptions), Encoding.UTF8);
+            Helpers.AtomicFile.WriteAllText(_hotkeysFile, JsonSerializer.Serialize(config.CustomHotkeys, JsonOptions), Encoding.UTF8);
         else if (File.Exists(_hotkeysFile))
             File.Delete(_hotkeysFile);
 

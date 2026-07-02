@@ -66,11 +66,29 @@ public class OAuthService : IOAuthService
             // Enables the embedded WebView2 browser on net8.0-windows (Microsoft.Identity.Client.Desktop).
             .WithWindowsEmbeddedBrowserSupport()
             .Build();
-
-        RegisterTokenCache();
     }
 
-    private void RegisterTokenCache()
+    // Registered lazily on first token use rather than in the constructor: the service is
+    // built on the UI thread during startup, and MsalCacheHelper.CreateAsync does file I/O
+    // and DPAPI work that shouldn't be waited on synchronously there. The registration task
+    // is created once and shared, so concurrent first calls await the same registration.
+    private Task? _cacheRegistration;
+    private readonly object _cacheRegistrationLock = new();
+
+    private Task EnsureTokenCacheAsync()
+    {
+        lock (_cacheRegistrationLock)
+        {
+            // A failed registration must not be cached: a transient fault (cache file
+            // briefly locked, DPAPI hiccup) would otherwise disable every OAuth operation
+            // until app restart. Drop the completed-unsuccessful task so this call retries.
+            if (_cacheRegistration is { IsCompleted: true, IsCompletedSuccessfully: false })
+                _cacheRegistration = null;
+            return _cacheRegistration ??= RegisterTokenCacheAsync();
+        }
+    }
+
+    private async Task RegisterTokenCacheAsync()
     {
         Directory.CreateDirectory(_cacheDir);
 
@@ -78,7 +96,7 @@ public class OAuthService : IOAuthService
         var storageProps = new StorageCreationPropertiesBuilder(CacheFileName, _cacheDir)
             .Build();
 
-        var helper = MsalCacheHelper.CreateAsync(storageProps).GetAwaiter().GetResult();
+        var helper = await MsalCacheHelper.CreateAsync(storageProps).ConfigureAwait(false);
         helper.RegisterCache(_msal.UserTokenCache);
 
         LogService.Log("OAuthService: token cache registered.");
@@ -89,6 +107,7 @@ public class OAuthService : IOAuthService
 
     public async Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
+        await EnsureTokenCacheAsync();
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
             string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
@@ -116,6 +135,7 @@ public class OAuthService : IOAuthService
 
     public async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
+        await EnsureTokenCacheAsync();
         LogService.Log($"OAuthService: starting interactive sign-in for {account.Username}");
 
         var builder = _msal.AcquireTokenInteractive(scopes)
@@ -136,6 +156,7 @@ public class OAuthService : IOAuthService
 
     public async Task SignOutAsync(AccountModel account)
     {
+        await EnsureTokenCacheAsync();
         var msalAccounts = await _msal.GetAccountsAsync();
         var msalAccount  = msalAccounts.FirstOrDefault(a =>
             string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));

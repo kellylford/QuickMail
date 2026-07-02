@@ -126,8 +126,6 @@ public class TemplateService : ITemplateService, IDisposable
     private async Task SaveAsyncLocked()
     {
         var json = JsonSerializer.Serialize(_cache, WriteOptions);
-        var tempPath = _filePath + ".tmp";
-        await File.WriteAllTextAsync(tempPath, json);
-        File.Move(tempPath, _filePath, overwrite: true);
+        await Helpers.AtomicFile.WriteAllTextAsync(_filePath, json);
     }
 }

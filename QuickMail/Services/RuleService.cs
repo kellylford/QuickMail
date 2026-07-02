@@ -60,10 +60,7 @@ public class RuleService : IRuleService
         var dir = Path.GetDirectoryName(_filePath)!;
         Directory.CreateDirectory(dir);
 
-        // Atomic write: write to temp file, then rename.
-        var tempPath = _filePath + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(rules, JsonOptions));
-        File.Move(tempPath, _filePath, overwrite: true);
+        Helpers.AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(rules, JsonOptions));
         _loaded = true;
     }
 

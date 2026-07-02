@@ -37,6 +37,7 @@ public class ViewService : IViewService
     public void Save(List<SavedView> views)
     {
         Directory.CreateDirectory(_dataFolder);
-        File.WriteAllText(_viewsFile, JsonSerializer.Serialize(views, JsonOptions));
+        // Atomic: a crash mid-write must not truncate views.json (all saved views).
+        Helpers.AtomicFile.WriteAllText(_viewsFile, JsonSerializer.Serialize(views, JsonOptions));
     }
 }

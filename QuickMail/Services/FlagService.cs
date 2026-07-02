@@ -76,9 +76,7 @@ public class FlagService : IFlagService
     public async Task SaveFlagDefinitionsAsync(List<FlagDefinition> flags)
     {
         var json = JsonSerializer.Serialize(flags, JsonOpts);
-        var tmp  = _flagsFile + ".tmp";
-        await File.WriteAllTextAsync(tmp, json);
-        File.Move(tmp, _flagsFile, overwrite: true);
+        await Helpers.AtomicFile.WriteAllTextAsync(_flagsFile, json);
         FlagDefinitionsChanged?.Invoke(this, EventArgs.Empty);
     }
 

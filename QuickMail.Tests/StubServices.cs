@@ -284,3 +284,10 @@ sealed class StubCalendarService : ICalendarService
         return Task.CompletedTask;
     }
 }
+
+/// <summary>Runs everything inline — VM unit tests are single-threaded by design.</summary>
+sealed class StubUiDispatcher : IUiDispatcher
+{
+    public void Invoke(Action action) => action();
+    public void Post(Action action) => action();
+}
