@@ -2,7 +2,8 @@
 
 ## Status
 
-**On hold.** Tracked in [#156](https://github.com/kellylford/QuickMail/issues/156).
+**Superseded.** Tracked in [#156](https://github.com/kellylford/QuickMail/issues/156). See
+[velopack-auto-update-plan.md](velopack-auto-update-plan.md) for the active plan.
 
 A spike branch (`worktree-squirrel-auto-update`) implemented Phase 1 of this plan and hit two
 packaging blockers: `squirrel pack` rejects the project's 4-part version scheme (`X.Y.Z.W`,
@@ -11,8 +12,9 @@ that `SquirrelAwareApp.HandleEvents()` alone does not provide. Before fixing tho
 surfaced that Clowd.Squirrel is effectively superseded by [Velopack](https://velopack.io/) —
 built by the same author as the actual successor to Squirrel.Windows/Clowd.Squirrel, with an
 official migration path from Squirrel. The spike branch was discarded rather than fixed forward.
-Next step is exhaustive research into Velopack as the replacement mechanism before writing a new
-plan.
+A follow-up spike on `worktree-velopack-auto-update` confirmed Velopack resolves both blockers,
+and the [new plan](velopack-auto-update-plan.md) carries that work forward. This document is
+kept for historical context only.
 
 ## TL;DR
 
