@@ -45,7 +45,8 @@ public class SpellCheckSourceTests
 
         Assert.Equal("recieve", source.MoveToNextError()!.Word);
         Assert.Equal("pacakge", source.MoveToNextError()!.Word);
-        Assert.Equal("tomorow.", source.MoveToNextError()!.Word);
+        // Exact error extent: the trailing period is not part of the misspelling.
+        Assert.Equal("tomorow", source.MoveToNextError()!.Word);
         Assert.Null(source.MoveToNextError());
     }
 

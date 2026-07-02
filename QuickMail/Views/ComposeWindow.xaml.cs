@@ -1266,6 +1266,84 @@ public partial class ComposeWindow : Window
         _previewWindow.Show();
     }
 
+    // ── Check Spelling (full dialog) ─────────────────────────────────────────
+
+    private SpellCheckDialog? _spellCheckDialog;
+
+    /// <summary>
+    /// F7 / Tools → Check Spelling…: runs the full dialog-based spelling review.
+    /// Body first (whichever editor the current mode uses), then the subject,
+    /// then a completion confirmation. The dialog is modeless per the Modal
+    /// Dialog Rules — it live-updates this window's editors while open.
+    /// </summary>
+    private void CheckSpelling()
+    {
+        // One session at a time: a second F7 returns to the open dialog.
+        if (_spellCheckDialog != null)
+        {
+            _spellCheckDialog.Activate();
+            return;
+        }
+
+        var bodySource = _vm.CurrentMode == ComposeMode.Html
+            ? (ISpellCheckSource)new RichTextBoxSpellSource(RichBodyBox, "body")
+            : new TextBoxSpellSource(BodyBox, "body");
+        var sources = new List<ISpellCheckSource>
+        {
+            bodySource,
+            new TextBoxSpellSource(SubjectBox, "subject"),
+        };
+        var vm = new SpellCheckDialogViewModel(sources, _customDictionary);
+
+        // The session drives editor selection programmatically; keep the inline
+        // navigating/formatting announcements quiet until it ends.
+        _suppressSpellingAnnouncement = true;
+        _suppressFormattingAnnouncement = true;
+
+        if (!vm.MoveNext())
+        {
+            _suppressSpellingAnnouncement = false;
+            _suppressFormattingAnnouncement = false;
+            var previousFocus = Keyboard.FocusedElement as IInputElement;
+            AccessibilityHelper.Announce(this, vm.CompletionAnnouncement,
+                category: AnnouncementCategory.Result);
+            MessageBox.Show(this, vm.CompletionText, "Spelling",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            previousFocus?.Focus();
+            return;
+        }
+
+        var dialog = new SpellCheckDialog(vm) { Owner = this };
+        _spellCheckDialog = dialog;
+        dialog.Closed += (_, _) =>
+        {
+            _spellCheckDialog = null;
+            _suppressSpellingAnnouncement = false;
+            _suppressFormattingAnnouncement = false;
+            ClearSpellingContext();
+
+            if (vm.IsCompleted)
+            {
+                AccessibilityHelper.Announce(this, vm.CompletionAnnouncement,
+                    category: AnnouncementCategory.Result);
+                MessageBox.Show(this, vm.CompletionText, "Spelling",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                AccessibilityHelper.Announce(this, "Spelling check canceled.",
+                    category: AnnouncementCategory.Result);
+            }
+
+            // The current word is still selected in its editor; land focus there.
+            if (vm.CurrentSourceName == "subject")
+                SubjectBox.Focus();
+            else
+                FocusActiveEditor();
+        };
+        dialog.Show();
+    }
+
     private void NavigateSpellingError(bool forward)
     {
         if (_vm.CurrentMode == ComposeMode.Html)

@@ -119,7 +119,15 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
                 var error = _box.GetSpellingError(i);
                 if (error == null) continue;
 
-                (_currentWordStart, _currentWordEnd) = SpellScan.ExpandWord(text, i);
+                // Exact error extent (not whitespace-delimited expansion) so a
+                // replacement of "tomorow." touches only "tomorow", not the period.
+                int errStart = _box.GetSpellingErrorStart(i);
+                int errLen = _box.GetSpellingErrorLength(i);
+                if (errLen <= 0 || errStart < 0)
+                    (errStart, errLen) = FallbackExtent(text, i);
+
+                _currentWordStart = errStart;
+                _currentWordEnd = errStart + errLen;
                 _scanIndex = _currentWordEnd;
                 var word = text[_currentWordStart.._currentWordEnd];
                 return new SpellingErrorInfo(word, error.Suggestions.ToList());
@@ -129,6 +137,12 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
             _wrapped = true;
             _scanIndex = 0;
         }
+    }
+
+    private static (int Start, int Length) FallbackExtent(string text, int index)
+    {
+        var (start, end) = SpellScan.ExpandWord(text, index);
+        return (start, end - start);
     }
 
     public void ReplaceCurrent(string replacement)
