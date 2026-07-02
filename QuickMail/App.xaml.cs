@@ -137,6 +137,7 @@ public partial class App : Application
 
             var viewService = new ViewService(profile);
             var flagService = new FlagService(profile, configService, localStore, mailRouter);
+            var customDictionary = new CustomDictionaryService(profile);
 
             // Calendar service: harvests events from the local message cache.
             var calendarProvider = new LocalCacheCalendarProvider(localStore);
@@ -149,7 +150,7 @@ public partial class App : Application
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary);
             mainWindow.Show();
         }
         catch (Exception ex)

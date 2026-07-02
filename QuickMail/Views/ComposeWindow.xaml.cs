@@ -60,6 +60,7 @@ public partial class ComposeWindow : Window
     private readonly IContactService    _contactService;
     private readonly ITemplateService   _templateService;
     private readonly IConfigService     _configService;
+    private readonly ICustomDictionaryService? _customDictionary;
     private readonly CommandRegistry    _registry = new();
     private TokenizedAddressBox? _activeAddressControl;
     private CancellationTokenSource? _autocompleteCts;
@@ -102,14 +103,25 @@ public partial class ComposeWindow : Window
     private DispatcherTimer? _spellingTypingTimer;
     private static readonly TimeSpan SpellingTypingDelay = TimeSpan.FromMilliseconds(500);
 
-    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService)
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null)
     {
         _vm = vm;
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
+        _customDictionary = customDictionary;
         InitializeComponent();
         DataContext = vm;
+
+        // Register the user's custom dictionary on all spell-checked editors and
+        // keep the registration fresh when words are added (WPF only re-reads a
+        // lexicon on remove + re-add of its Uri). Paired unsubscribe is in Closed.
+        if (_customDictionary != null)
+        {
+            RegisterCustomDictionary();
+            _customDictionary.DictionaryChanged += RegisterCustomDictionary;
+            Closed += (_, _) => _customDictionary.DictionaryChanged -= RegisterCustomDictionary;
+        }
 
         // ── Compose command palette ──────────────────────────────────────────────
         RegisterComposeCommands();
@@ -808,6 +820,25 @@ public partial class ComposeWindow : Window
 
         if (!_caretMovedByTyping && config.AnnounceSpellingWhileNavigating)
             AnnounceSpellingAtCurrentPosition();
+    }
+
+    /// <summary>
+    /// (Re-)registers the custom dictionary lexicon on every spell-checked editor.
+    /// Remove-then-add forces WPF to re-read the file, which is how a word added
+    /// mid-session stops being flagged without reopening the window.
+    /// </summary>
+    private void RegisterCustomDictionary()
+    {
+        if (_customDictionary == null) return;
+        if (!System.IO.File.Exists(_customDictionary.DictionaryPath)) return;
+
+        var uri = new Uri(_customDictionary.DictionaryPath);
+        foreach (var editor in new TextBoxBase[] { BodyBox, RichBodyBox, SubjectBox })
+        {
+            var dictionaries = SpellCheck.GetCustomDictionaries(editor);
+            dictionaries.Remove(uri);
+            dictionaries.Add(uri);
+        }
     }
 
     private void ClearSpellingContext()

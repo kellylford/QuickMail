@@ -304,6 +304,8 @@
                      AutomationProperties.LabeledBy="{Binding ElementName=SubjectLabel}"
                      AutomationProperties.Name="Subject"
                      AutomationProperties.AcceleratorKey="Alt+U"
+                     SpellCheck.IsEnabled="True"
+                     IsInactiveSelectionHighlightEnabled="True"
                      Margin="0,4" TabIndex="4"/>
 
             <Separator Grid.Row="5" Grid.ColumnSpan="2" Margin="0,4"/>
@@ -397,6 +399,7 @@
                          AcceptsReturn="True" AcceptsTab="True"
                          TextWrapping="Wrap"
                          SpellCheck.IsEnabled="True"
+                         IsInactiveSelectionHighlightEnabled="True"
                          VerticalScrollBarVisibility="Auto"
                          FontFamily="Segoe UI"
                          Margin="0,4" TabIndex="7"
@@ -410,6 +413,7 @@
                              AutomationProperties.AcceleratorKey="Alt+Y"
                              AcceptsReturn="True" AcceptsTab="True"
                              SpellCheck.IsEnabled="True"
+                             IsInactiveSelectionHighlightEnabled="True"
                              VerticalScrollBarVisibility="Auto"
                              FontFamily="Segoe UI"
                              Margin="0,4" TabIndex="7"
