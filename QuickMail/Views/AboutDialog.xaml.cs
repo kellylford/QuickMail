@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Navigation;
@@ -20,7 +19,8 @@ public partial class AboutDialog : Window
 
     private void LicenseLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
     {
-        Process.Start(new ProcessStartInfo { FileName = e.Uri.AbsoluteUri, UseShellExecute = true });
+        // All ShellExecute launches go through the allow-list. See ExternalUriPolicy.
+        Helpers.ExternalUriPolicy.TryOpenExternal(e.Uri.AbsoluteUri);
         e.Handled = true;
     }
 }

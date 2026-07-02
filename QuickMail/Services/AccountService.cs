@@ -41,7 +41,8 @@ public class AccountService : IAccountService
     {
         Directory.CreateDirectory(_dataFolder);
         var json = JsonSerializer.Serialize(accounts, JsonOptions);
-        File.WriteAllText(_accountsFile, json);
+        // Atomic: a crash mid-write must not truncate accounts.json (all account config).
+        Helpers.AtomicFile.WriteAllText(_accountsFile, json);
     }
 
     public void SetDefaultAccount(Guid accountId)

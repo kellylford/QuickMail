@@ -79,6 +79,11 @@ public class OAuthService : IOAuthService
     {
         lock (_cacheRegistrationLock)
         {
+            // A failed registration must not be cached: a transient fault (cache file
+            // briefly locked, DPAPI hiccup) would otherwise disable every OAuth operation
+            // until app restart. Drop the completed-unsuccessful task so this call retries.
+            if (_cacheRegistration is { IsCompleted: true, IsCompletedSuccessfully: false })
+                _cacheRegistration = null;
             return _cacheRegistration ??= RegisterTokenCacheAsync();
         }
     }

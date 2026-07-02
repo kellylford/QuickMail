@@ -2445,7 +2445,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     Conversations = new ObservableCollection<ConversationGroup>(groups);
                 }
             });
-        });
+        }).LogFaults("conversation rebuild");
     }
 
     private void ScheduleSenderGroupRebuild()
@@ -2479,7 +2479,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
                 }
             });
-        });
+        }).LogFaults("sender group rebuild");
     }
 
     private void ScheduleToGroupRebuild()
@@ -2513,7 +2513,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
                 }
             });
-        });
+        }).LogFaults("to-recipient group rebuild");
     }
 
     [RelayCommand]
@@ -4887,11 +4887,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ViewUserGuide()
     {
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "https://kellylford.github.io/QuickMail/",
-            UseShellExecute = true
-        });
+        // All ShellExecute launches go through the allow-list. See ExternalUriPolicy.
+        Helpers.ExternalUriPolicy.TryOpenExternal("https://kellylford.github.io/QuickMail/");
     }
 #pragma warning restore CA1822
 

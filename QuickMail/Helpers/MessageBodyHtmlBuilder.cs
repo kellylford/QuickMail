@@ -164,13 +164,9 @@ public static class MessageBodyHtmlBuilder
         var complete = true;
         string Step(string input, string pattern, RegexOptions options, string replacement = "")
         {
-            try { return Regex.Replace(input, pattern, replacement, options, timeout); }
-            catch (RegexMatchTimeoutException)
-            {
-                LogService.Log($"HTML cleanup timed out for pattern: {pattern}");
+            if (!TryRegexReplace(input, pattern, replacement, options, timeout, out var result))
                 complete = false;
-                return input;
-            }
+            return result;
         }
 
         var body = html;
@@ -222,11 +218,28 @@ public static class MessageBodyHtmlBuilder
 
     public static string SafeRegexReplace(string input, string pattern, string replacement, RegexOptions options)
     {
-        try { return Regex.Replace(input, pattern, replacement, options, HtmlRegexTimeout); }
+        TryRegexReplace(input, pattern, replacement, options, HtmlRegexTimeout, out var result);
+        return result;
+    }
+
+    /// <summary>
+    /// Single home for the timeout-guarded regex replace: on timeout logs the pattern,
+    /// hands back the input unchanged, and returns false.
+    /// </summary>
+    private static bool TryRegexReplace(
+        string input, string pattern, string replacement, RegexOptions options,
+        TimeSpan timeout, out string result)
+    {
+        try
+        {
+            result = Regex.Replace(input, pattern, replacement, options, timeout);
+            return true;
+        }
         catch (RegexMatchTimeoutException)
         {
             LogService.Log($"HTML cleanup timed out for pattern: {pattern}");
-            return input;
+            result = input;
+            return false;
         }
     }
 
