@@ -50,6 +50,35 @@ The compose **Tools** menu now groups all spelling commands at the top: Check Sp
 
 ---
 
+## Improved security and resource management (Fable5CR)
+
+### Security hardening
+
+- **URI allow-list (`ExternalUriPolicy`)** — Every URI that leaves the app via `ShellExecute` (reading pane links, message windows, markdown preview, update page) now goes through a configurable http/https/mailto allow-list. Everything else is logged and dropped. This closes the attack surface for social engineering attacks via crafted message content.
+- **Attachment safety** — New `AttachmentSafety` service consolidates filename sanitization (directory stripping, invalid characters, trailing dots and spaces) and enforces an expanded dangerous-file-extension list, closing the path-traversal gap.
+- **HTML sanitizer fail-closed** — If the HTML sanitizer's regex timeout during stripping, the app falls back to reader mode rather than rendering partially stripped HTML. The actual security boundary is CSP, which remains in place for all navigation and scripting.
+
+### Resource management
+
+- `GraphMailService` is now properly disposed in `App.OnExit` (it owns an `HttpClient` via the `GraphClient`).
+- `MainViewModel` now implements `IDisposable` and is disposed when the main window closes, releasing its seven `CancellationTokenSource` instances and calendar timer.
+- Compose window autocomplete `CancellationTokenSource` is properly cancelled and disposed on tab switch and window close.
+- `ConfigService` now writes `config.ini` and `hotkeys.json` atomically via temp file + rename, matching the pattern used for account and view persistence.
+
+### MVVM and testability improvements
+
+- New `IUiDispatcher` service centralizes all `Dispatcher` calls out of `MainViewModel`, improving testability and MVVM compliance.
+- Win32 file dialogs are no longer called directly from `ViewModels`; they are now wired through View-layer callbacks.
+- 82 new unit tests added (URI policy, attachment safety, sanitizer behavior, config persistence, main window lifecycle, compose attachment behavior, background task fault logging). Full test suite: 879/879 passing.
+
+### Reliability
+
+- Background `Task.Run` calls now use `Task.LogFaults(context)` so failures are logged promptly instead of surfacing at finalization. Applied to local store writes, mark-read batches, and preview fetch operations.
+- `SyncService` preview batch now has a per-folder catch block so a single folder failure cannot stop the rest.
+- MSAL token-cache registration is now lazy and asynchronous instead of blocking the `OAuthService` constructor.
+
+---
+
 ## Thank You to Contributors
 
 Thank you to everyone who has contributed to QuickMail through code, bug reports, feature suggestions, and other feedback. Your contributions make the project better for everyone.
