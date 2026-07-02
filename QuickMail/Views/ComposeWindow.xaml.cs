@@ -53,7 +53,7 @@ internal sealed class AddressSuggestion
     public AddressSuggestion(GroupModel g)   { Group   = g; }
 }
 
-[SuppressMessage("Design", "CA1001", Justification = "Window cleans up _autocompleteCts in OnClosing; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
+[SuppressMessage("Design", "CA1001", Justification = "_autocompleteCts is cancelled and disposed in OnClosed; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class ComposeWindow : Window
 {
     private readonly ComposeViewModel   _vm;
@@ -128,6 +128,14 @@ public partial class ComposeWindow : Window
         vm.ConfirmationRequested = (message, title) =>
             MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning)
             == MessageBoxResult.Yes;
+
+        // Win32 file dialogs are View-layer (CLAUDE.md MVVM rules); the VM requests
+        // paths and the View owns the dialog.
+        vm.OpenFilePathsRequested = () =>
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = "Add Attachments" };
+            return dlg.ShowDialog(this) == true ? dlg.FileNames : null;
+        };
 
         // Wire the template picker so the VM stays out of System.Windows.
         vm.InsertTemplateRequested += () =>
@@ -233,8 +241,11 @@ public partial class ComposeWindow : Window
         var searchToken = _activeAddressControl.CurrentInputText.Trim();
         if (searchToken.Length < 1) { AutoCompletePopup.IsOpen = false; return; }
 
-        _autocompleteCts?.Cancel();
+        // Cancel and dispose the superseded CTS (its token was already captured by the
+        // in-flight search, which unwinds via OperationCanceledException).
+        var previous = _autocompleteCts;
         _autocompleteCts = new CancellationTokenSource();
+        try { previous?.Cancel(); previous?.Dispose(); } catch { /* best effort */ }
 
         try
         {
@@ -567,6 +578,10 @@ public partial class ComposeWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // Cancel before Dispose so a still-running autocomplete search unwinds via
+        // OperationCanceledException rather than ObjectDisposedException.
+        try { _autocompleteCts?.Cancel(); _autocompleteCts?.Dispose(); } catch { /* best effort */ }
+        _autocompleteCts = null;
         _vm.Dispose();
         base.OnClosed(e);
     }

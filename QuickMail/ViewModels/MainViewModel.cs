@@ -10,14 +10,13 @@ using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
 using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
 
-public partial class MainViewModel : ObservableObject
+public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IMailService _imap;
     private readonly IChangeNotifier? _changeNotifier;
@@ -34,6 +33,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
     private readonly IUpdateCheckService? _updateCheckService;
+    // UI-thread marshaller — ViewModels must not touch Dispatcher directly (CLAUDE.md MVVM rules).
+    private readonly IUiDispatcher _ui;
 
     // Separate CTS per operation type so they can't cancel each other accidentally
     private CancellationTokenSource? _connectCts;
@@ -61,6 +62,33 @@ public partial class MainViewModel : ObservableObject
         var previous = Interlocked.Exchange(ref slot, cts);
         try { previous?.Cancel(); previous?.Dispose(); } catch { /* best effort */ }
         token = cts.Token;
+    }
+
+    /// <summary>
+    /// Called by MainWindow.OnClosed (app shutdown). Cancels all in-flight operations so
+    /// background work (sync, prefetch, message loads) unwinds via OperationCanceledException
+    /// instead of being killed with the process, then releases the CTS handles and timer.
+    /// </summary>
+    public void Dispose()
+    {
+        DrainCts(ref _connectCts);
+        DrainCts(ref _folderCts);
+        DrainCts(ref _messageLoadCts);
+        DrainCts(ref _messageActionCts);
+        DrainCts(ref _flagActionCts);
+        DrainCts(ref _prefetchCts);
+        DrainCts(ref _bgSyncCts);
+        _calendarHarvestTimer?.Dispose();
+        _calendarHarvestTimer = null;
+        GC.SuppressFinalize(this);
+    }
+
+    private static void DrainCts(ref CancellationTokenSource? slot)
+    {
+        var cts = Interlocked.Exchange(ref slot, null);
+        // Cancel before Dispose so in-flight tasks get OperationCanceledException
+        // rather than ObjectDisposedException.
+        try { cts?.Cancel(); cts?.Dispose(); } catch { /* best effort at shutdown */ }
     }
 
     // How many days of mail to sync (0 = all); set via the Sync Range menu
@@ -699,9 +727,11 @@ public partial class MainViewModel : ObservableObject
         IFlagService? flagService = null,
         ICalendarService? calendarService = null,
         IChangeNotifier? changeNotifier = null,
-        IUpdateCheckService? updateCheckService = null)
+        IUpdateCheckService? updateCheckService = null,
+        IUiDispatcher? uiDispatcher = null)
     {
         _imap            = imap;
+        _ui              = uiDispatcher ?? new WpfUiDispatcher();
         _changeNotifier  = changeNotifier;
         _accountService  = accountService;
         _credentials     = credentials;
@@ -1064,7 +1094,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             if (!OnlineMode && newMessages.Count > 0)
-                _ = _localStore.UpsertSummariesAsync(newMessages);
+                _localStore.UpsertSummariesAsync(newMessages).LogFaults("local store: upsert summaries");
 
             var count = Messages.Count;
             StatusText = count == 0
@@ -1362,7 +1392,7 @@ public partial class MainViewModel : ObservableObject
             if (_onReachabilityChanged != null)
                 _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
 
-            _onReachabilityChanged = (accountId, isReachable) => InvokeOnUi(() =>
+            _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
             {
                 var account = accountList.FirstOrDefault(a => a.Id == accountId);
                 if (account != null)
@@ -1649,7 +1679,7 @@ public partial class MainViewModel : ObservableObject
     // Called on a ThreadPool thread by the change notifier when new mail lands in an inbox.
     // Runs a targeted sync for that account's INBOX so the message appears in the list. Accounts and
     // _cachedFolders are UI-thread-owned, so resolve them on the UI thread before the background sync.
-    private void OnInboxNewMailDetected(Guid accountId) => InvokeOnUi(() =>
+    private void OnInboxNewMailDetected(Guid accountId) => _ui.Post(() =>
     {
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
         if (account is null) return;
@@ -1677,22 +1707,6 @@ public partial class MainViewModel : ObservableObject
             }
         });
     });
-
-    // Marshals a ThreadPool callback onto the UI thread. Runs inline when already on the UI thread,
-    // when there is no Application, or when the current Application is not the real QuickMail App
-    // (unit tests create a vanilla System.Windows.Application as the process-wide Application.Current
-    // on a StaFact STA thread that never runs a WPF message pump — InvokeAsync would queue work
-    // onto that pump-less dispatcher and it would never execute, causing 30s test timeouts).
-    // In production Application.Current is always a QuickMail.App with a pumped dispatcher, so the
-    // marshal path is taken exactly when it should be.
-    private static void InvokeOnUi(Action action)
-    {
-        var dispatcher = Application.Current is App app ? app.Dispatcher : null;
-        if (dispatcher is null || dispatcher.CheckAccess() || !dispatcher.Thread.IsAlive)
-            action();
-        else
-            dispatcher.InvokeAsync(action);
-    }
 
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
@@ -2418,7 +2432,7 @@ public partial class MainViewModel : ObservableObject
                 _                           => built.OrderByDescending(g => g.Messages.Count > 0 ? g.Messages[0].Date : DateTimeOffset.MinValue),
             };
             var groups = ordered.ToList();
-            App.Current.Dispatcher.InvokeAsync(() =>
+            _ui.Post(() =>
             {
                 if (version == _conversationRebuildVersion)
                 {
@@ -2431,7 +2445,7 @@ public partial class MainViewModel : ObservableObject
                     Conversations = new ObservableCollection<ConversationGroup>(groups);
                 }
             });
-        });
+        }).LogFaults("conversation rebuild");
     }
 
     private void ScheduleSenderGroupRebuild()
@@ -2452,7 +2466,7 @@ public partial class MainViewModel : ObservableObject
                 _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
             };
             var groups = ordered.ToList();
-            App.Current.Dispatcher.InvokeAsync(() =>
+            _ui.Post(() =>
             {
                 if (version == _senderGroupRebuildVersion)
                 {
@@ -2465,7 +2479,7 @@ public partial class MainViewModel : ObservableObject
                     SenderGroups = new ObservableCollection<SenderGroup>(groups);
                 }
             });
-        });
+        }).LogFaults("sender group rebuild");
     }
 
     private void ScheduleToGroupRebuild()
@@ -2486,7 +2500,7 @@ public partial class MainViewModel : ObservableObject
                 _                           => built.OrderBy(g => g.SenderKey, StringComparer.OrdinalIgnoreCase),
             };
             var groups = ordered.ToList();
-            App.Current.Dispatcher.InvokeAsync(() =>
+            _ui.Post(() =>
             {
                 if (version == _toGroupRebuildVersion)
                 {
@@ -2499,7 +2513,7 @@ public partial class MainViewModel : ObservableObject
                     ToGroups = new ObservableCollection<SenderGroup>(groups);
                 }
             });
-        });
+        }).LogFaults("to-recipient group rebuild");
     }
 
     [RelayCommand]
@@ -2706,7 +2720,7 @@ public partial class MainViewModel : ObservableObject
             SetMessages(list);
             StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
             if (!OnlineMode)
-                _ = _localStore.UpsertSummariesAsync(list);
+                _localStore.UpsertSummariesAsync(list).LogFaults("local store: upsert summaries");
 
             if (IsConversationsView)
                 ScheduleConversationRebuild();
@@ -2779,7 +2793,8 @@ public partial class MainViewModel : ObservableObject
             summary.HasAttachments = detail.Attachments.Count > 0;
             if (!OnlineMode)
             {
-                _ = _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.MessageId, true);
+                _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.MessageId, true)
+                    .LogFaults("local store: update is-read");
 
                 // Extract preview and persist if not already set.
                 if (string.IsNullOrEmpty(summary.Preview))
@@ -2789,7 +2804,8 @@ public partial class MainViewModel : ObservableObject
                     if (!string.IsNullOrEmpty(preview))
                     {
                         summary.Preview = preview;
-                        _ = _localStore.UpdatePreviewAsync(summary.AccountId, summary.FolderName, summary.MessageId, preview);
+                        _localStore.UpdatePreviewAsync(summary.AccountId, summary.FolderName, summary.MessageId, preview)
+                            .LogFaults("local store: update preview");
                     }
                 }
             }
@@ -3024,7 +3040,7 @@ public partial class MainViewModel : ObservableObject
 
                 SetMessages(repaired);
                 if (!OnlineMode)
-                    _ = _localStore.UpsertSummariesAsync(repaired);
+                    _localStore.UpsertSummariesAsync(repaired).LogFaults("local store: upsert repaired summaries");
 
                 var totalCount = Messages.Count;
                 StatusText = totalCount == 0
@@ -3077,7 +3093,7 @@ public partial class MainViewModel : ObservableObject
                 return;
 
             if (newMessages.Count > 0)
-                _ = _localStore.UpsertSummariesAsync(newMessages);
+                _localStore.UpsertSummariesAsync(newMessages).LogFaults("local store: upsert summaries");
 
             var count = Messages.Count;
             StatusText = count == 0
@@ -3481,7 +3497,7 @@ public partial class MainViewModel : ObservableObject
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
             if (newMessages.Count > 0)
-                _ = _localStore.UpsertSummariesAsync(newMessages);
+                _localStore.UpsertSummariesAsync(newMessages).LogFaults("local store: upsert summaries");
 
             var count = Messages.Count;
             StatusText = count == 0
@@ -3541,7 +3557,7 @@ public partial class MainViewModel : ObservableObject
                 ? $"No messages in {displayName}."
                 : $"{sorted.Count} messages in {displayName}.";
             if (!OnlineMode)
-                _ = _localStore.UpsertSummariesAsync(sorted);
+                _localStore.UpsertSummariesAsync(sorted).LogFaults("local store: upsert summaries");
         }
         catch (OperationCanceledException)
         {
@@ -3610,13 +3626,15 @@ public partial class MainViewModel : ObservableObject
         var label = unread.Count == 1 ? "message" : $"{unread.Count} messages";
         StatusText = $"Marked {label} as read.";
 
-        _ = _localStore.UpdateIsReadBatchAsync(
-            unread.Select(m => (m.AccountId, m.FolderName, m.MessageId)), true);
+        _localStore.UpdateIsReadBatchAsync(
+                unread.Select(m => (m.AccountId, m.FolderName, m.MessageId)), true)
+            .LogFaults("local store: update is-read batch");
 
         foreach (var group in unread.GroupBy(m => (m.AccountId, m.FolderName)))
         {
             var uids = group.Select(m => m.MessageId).ToList();
-            _ = _imap.MarkReadBatchAsync(group.Key.AccountId, group.Key.FolderName, uids);
+            _imap.MarkReadBatchAsync(group.Key.AccountId, group.Key.FolderName, uids)
+                .LogFaults($"mark read batch ({group.Key.FolderName}, {uids.Count} messages)");
         }
 
         return Task.CompletedTask;
@@ -4010,7 +4028,7 @@ public partial class MainViewModel : ObservableObject
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
                 detail = await _imap.GetMessageDetailAsync(
                     summary.AccountId, summary.FolderName, summary.MessageId, cts.Token);
-                _ = _localStore.UpsertDetailAsync(detail);
+                _localStore.UpsertDetailAsync(detail).LogFaults("local store: upsert detail");
             }
 
             return detail;
@@ -4275,6 +4293,19 @@ public partial class MainViewModel : ObservableObject
     /// Parameters: message, title. Returns true when the user confirms.
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
+
+    /// <summary>
+    /// Set by the View to show a Save File dialog (CLAUDE.md MVVM rules: Win32 dialogs
+    /// are View-layer). Parameter: suggested filename. Returns the chosen full path,
+    /// or null when cancelled or unwired (headless/tests).
+    /// </summary>
+    public Func<string, string?>? SaveFilePathRequested { get; set; }
+
+    /// <summary>
+    /// Set by the View to show a folder picker. Parameter: dialog title.
+    /// Returns the chosen folder path, or null when cancelled or unwired.
+    /// </summary>
+    public Func<string, string?>? SaveFolderPathRequested { get; set; }
 
     [RelayCommand]
     private async Task DeleteAccountAsync(AccountModel? account)
@@ -4856,18 +4887,12 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void ViewUserGuide()
     {
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = "https://kellylford.github.io/QuickMail/",
-            UseShellExecute = true
-        });
+        // All ShellExecute launches go through the allow-list. See ExternalUriPolicy.
+        Helpers.ExternalUriPolicy.TryOpenExternal("https://kellylford.github.io/QuickMail/");
     }
 #pragma warning restore CA1822
 
     // ── Attachment commands ─────────────────────────────────────────────────────
-
-    private static readonly string[] DangerousExtensions =
-        [".exe", ".bat", ".cmd", ".ps1", ".msi", ".scr", ".vbs", ".js", ".jar"];
 
     [RelayCommand]
     private async Task SaveAttachmentAsync(AttachmentModel? attachment)
@@ -4895,13 +4920,11 @@ public partial class MainViewModel : ObservableObject
             IsBusy = false;
         }
 
-        var dlg = new SaveFileDialog
-        {
-            FileName = att.FileName,
-            Title    = "Save Attachment",
-        };
-        if (dlg.ShowDialog() != true) return;
-        await File.WriteAllBytesAsync(dlg.FileName, att.Content!);
+        // Sanitized: a crafted server-supplied name with path separators or invalid
+        // characters must not reach the dialog (or steer the write outside the chosen folder).
+        var savePath = SaveFilePathRequested?.Invoke(AttachmentSafety.SanitizeFileName(att.FileName));
+        if (savePath == null) return;
+        await File.WriteAllBytesAsync(savePath, att.Content!);
         StatusText = $"Saved {att.FileName}.";
     }
 
@@ -4910,9 +4933,8 @@ public partial class MainViewModel : ObservableObject
     {
         if (MessageDetail == null || MessageDetail.Attachments.Count == 0) return;
 
-        var dlg = new OpenFolderDialog { Title = "Choose folder to save attachments" };
-        if (dlg.ShowDialog() != true) return;
-        var folder = dlg.FolderName;
+        var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
+        if (folder == null) return;
 
         IsBusy = true;
         StatusText = "Saving attachments…";
@@ -4928,10 +4950,9 @@ public partial class MainViewModel : ObservableObject
 
                 if (att.Content != null)
                 {
-                    // Strip directory components from the server-supplied filename to
-                    // prevent path traversal writing outside the chosen save folder.
-                    var safeFileName = Path.GetFileName(att.FileName);
-                    if (string.IsNullOrEmpty(safeFileName)) safeFileName = "attachment";
+                    // Sanitized so a crafted server-supplied filename can't write
+                    // outside the chosen save folder.
+                    var safeFileName = AttachmentSafety.SanitizeFileName(att.FileName);
                     await File.WriteAllBytesAsync(Path.Combine(folder, safeFileName), att.Content);
                 }
             }
@@ -4971,13 +4992,11 @@ public partial class MainViewModel : ObservableObject
             IsBusy = false;
         }
 
-        // Strip any directory components from the server-supplied filename to prevent
-        // path traversal (e.g. a crafted name like "../../Startup/evil.exe").
-        var safeFileName = Path.GetFileName(att.FileName);
-        if (string.IsNullOrEmpty(safeFileName)) safeFileName = "attachment";
+        // Sanitized so a crafted server-supplied name (e.g. "../../Startup/evil.exe")
+        // can't escape the temp folder.
+        var safeFileName = AttachmentSafety.SanitizeFileName(att.FileName);
 
-        var ext = Path.GetExtension(safeFileName).ToLowerInvariant();
-        if (DangerousExtensions.Contains(ext))
+        if (AttachmentSafety.IsDangerousExtension(safeFileName))
         {
             if (ConfirmationRequested?.Invoke(
                 $"'{safeFileName}' is an executable file type. Opening it could be dangerous. Continue?",
@@ -5005,7 +5024,7 @@ public partial class MainViewModel : ObservableObject
                 _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
 
             var accountList = Accounts.ToList();
-            _onReachabilityChanged = (accountId, isReachable) => InvokeOnUi(() =>
+            _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
             {
                 var account = accountList.FirstOrDefault(a => a.Id == accountId);
                 if (account != null)
@@ -5017,19 +5036,26 @@ public partial class MainViewModel : ObservableObject
             _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
         }
 
-        // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts)
+        // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts).
+        // _cachedFolders is UI-thread-owned: snapshot the connected set here (still on the UI
+        // thread) and marshal every write back through _ui so the background loop never
+        // touches the dictionary directly.
+        var alreadyConnected = new HashSet<Guid>(_cachedFolders.Keys);
+        var accountsToConnect = Accounts.Where(a => !alreadyConnected.Contains(a.Id)).ToList();
         _ = Task.Run(async () =>
         {
-            foreach (var account in Accounts)
+            foreach (var account in accountsToConnect)
             {
-                if (_cachedFolders.ContainsKey(account.Id)) continue;
                 var result = await ConnectOneAccountAsync(account);
-                App.Current.Dispatcher.Invoke(() => ApplyAccountStatus(account, result.Folders));
-                if (result.Folders != null)
+                _ui.Invoke(() =>
                 {
-                    _cachedFolders[result.Id] = result.Folders;
-                    App.Current.Dispatcher.Invoke(RebuildFolderListFromCache);
-                }
+                    ApplyAccountStatus(account, result.Folders);
+                    if (result.Folders != null)
+                    {
+                        _cachedFolders[result.Id] = result.Folders;
+                        RebuildFolderListFromCache();
+                    }
+                });
             }
         });
     }
@@ -5277,7 +5303,7 @@ public partial class MainViewModel : ObservableObject
         // Reset the timer — if a previous harvest was pending, it gets pushed back 2s.
         _calendarHarvestTimer ??= new System.Threading.Timer(_ =>
         {
-            System.Windows.Application.Current?.Dispatcher.InvokeAsync(async () =>
+            _ui.Post(async () =>
             {
                 if (_calendarService == null || CalendarVm == null) return;
                 await _calendarService.RefreshAsync();
@@ -5300,8 +5326,10 @@ public partial class MainViewModel : ObservableObject
 #pragma warning restore CA1822
     {
         // The specific release when one was found; otherwise the general releases page.
+        // UpdateReleaseUrl comes from the GitHub API response, so route it through the
+        // external-URI allow-list like any other externally sourced link.
         var url = string.IsNullOrEmpty(UpdateReleaseUrl) ? ReleasesPageUrl : UpdateReleaseUrl;
-        Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+        Helpers.ExternalUriPolicy.TryOpenExternal(url);
     }
 
     // Startup check: silent when already up to date (announcing "no updates" on every launch

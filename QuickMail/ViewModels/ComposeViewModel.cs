@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Win32;
 using MimeKit;
 using QuickMail.Helpers;
 using QuickMail.Models;
@@ -577,12 +576,19 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         StatusText = $"Template saved as '{template.Title}'.";
     }
 
+    /// <summary>
+    /// Set by the View to show a multi-select Open File dialog (CLAUDE.md MVVM rules:
+    /// Win32 dialogs are View-layer). Returns the chosen paths, or null when cancelled
+    /// or unwired (headless/tests).
+    /// </summary>
+    public Func<string[]?>? OpenFilePathsRequested { get; set; }
+
     [RelayCommand]
     private async Task AddAttachmentsAsync()
     {
-        var dlg = new OpenFileDialog { Multiselect = true, Title = "Add Attachments" };
-        if (dlg.ShowDialog() != true) return;
-        foreach (var path in dlg.FileNames)
+        var paths = OpenFilePathsRequested?.Invoke();
+        if (paths == null) return;
+        foreach (var path in paths)
             await AddAttachmentFromPathAsync(path);
     }
 
@@ -626,22 +632,22 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
     }
 
-    private static readonly string[] DangerousExtensions =
-        [".exe", ".bat", ".cmd", ".ps1", ".msi", ".scr", ".vbs", ".js", ".jar"];
-
     [RelayCommand]
-    private void OpenComposeAttachment(AttachmentModel? attachment)
+    private async Task OpenComposeAttachmentAsync(AttachmentModel? attachment)
     {
         if (attachment?.Content == null) return;
 
-        var ext = Path.GetExtension(attachment.FileName).ToLowerInvariant();
-        if (DangerousExtensions.Contains(ext))
+        // Sanitized: forwarded/replied attachments carry server-supplied names, so a
+        // crafted name (path separators, absolute path) must not escape the temp folder.
+        var safeFileName = AttachmentSafety.SanitizeFileName(attachment.FileName);
+
+        if (AttachmentSafety.IsDangerousExtension(safeFileName))
         {
             // CLAUDE.md MVVM Rules: ViewModels must not call MessageBox directly.
             // If the View hasn't wired a confirmation handler, treat that as deny so
             // we never silently open something potentially dangerous.
             var confirmed = ConfirmationRequested?.Invoke(
-                $"'{attachment.FileName}' is an executable file type. Opening it could be dangerous. Continue?",
+                $"'{safeFileName}' is an executable file type. Opening it could be dangerous. Continue?",
                 "Security Warning") ?? false;
             if (!confirmed) return;
         }
@@ -650,8 +656,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         // from different messages or sessions) don't overwrite each other in %TEMP%\QuickMail.
         var tempDir = Path.Combine(Path.GetTempPath(), "QuickMail", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
-        var tempPath = Path.Combine(tempDir, attachment.FileName);
-        File.WriteAllBytes(tempPath, attachment.Content);
+        var tempPath = Path.Combine(tempDir, safeFileName);
+        await File.WriteAllBytesAsync(tempPath, attachment.Content);
         Process.Start(new ProcessStartInfo(tempPath) { UseShellExecute = true });
     }
 

@@ -436,8 +436,6 @@ public class ContactService : IContactService, IDisposable
     private async Task WriteJsonAtomicallyAsync<T>(string path, T payload)
     {
         var json = JsonSerializer.Serialize(payload, _jsonOptions);
-        var tempPath = path + ".tmp";
-        await File.WriteAllTextAsync(tempPath, json);
-        File.Move(tempPath, path, overwrite: true);
+        await Helpers.AtomicFile.WriteAllTextAsync(path, json);
     }
 }
