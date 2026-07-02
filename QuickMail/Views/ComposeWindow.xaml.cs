@@ -1277,44 +1277,11 @@ public partial class ComposeWindow : Window
         var text = BodyBox.Text;
         if (string.IsNullOrEmpty(text)) return;
 
-        int start = BodyBox.CaretIndex;
-        int foundIndex = -1;
-
-        if (forward)
-        {
-            for (int i = start; i < text.Length; i++)
-            {
-                if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-            }
-            if (foundIndex < 0 && start > 0)
-            {
-                for (int i = 0; i < start; i++)
-                {
-                    if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-                }
-            }
-        }
-        else
-        {
-            for (int i = Math.Min(start - 1, text.Length - 1); i >= 0; i--)
-            {
-                if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-            }
-            if (foundIndex < 0)
-            {
-                for (int i = text.Length - 1; i >= start; i--)
-                {
-                    if (BodyBox.GetSpellingError(i) != null) { foundIndex = i; break; }
-                }
-            }
-        }
+        int foundIndex = SpellScan.FindErrorIndex(BodyBox, BodyBox.CaretIndex, forward);
 
         if (foundIndex >= 0)
         {
-            int wordStart = foundIndex;
-            while (wordStart > 0 && !char.IsWhiteSpace(text[wordStart - 1])) wordStart--;
-            int wordEnd = foundIndex;
-            while (wordEnd < text.Length && !char.IsWhiteSpace(text[wordEnd])) wordEnd++;
+            var (wordStart, wordEnd) = SpellScan.ExpandWord(text, foundIndex);
 
             BodyBox.SelectionStart = wordStart;
             BodyBox.SelectionLength = wordEnd - wordStart;
@@ -1343,26 +1310,8 @@ public partial class ComposeWindow : Window
 
     private void NavigateSpellingErrorInRichBox(bool forward)
     {
-        var doc = RichBodyBox.Document;
-        var direction = forward ? LogicalDirection.Forward : LogicalDirection.Backward;
-        var errorPos = RichBodyBox.GetNextSpellingErrorPosition(RichBodyBox.CaretPosition, direction);
-
-        if (errorPos == null)
+        if (SpellScan.FindErrorRange(RichBodyBox, forward) is ({ } errorPos, { } wordRange))
         {
-            var wrapFrom = forward ? doc.ContentStart : doc.ContentEnd;
-            errorPos = RichBodyBox.GetNextSpellingErrorPosition(wrapFrom, direction);
-        }
-
-        if (errorPos != null)
-        {
-            var wordRange = RichBodyBox.GetSpellingErrorRange(errorPos);
-            if (wordRange == null)
-            {
-                ClearSpellingContext();
-                AccessibilityHelper.Announce(this, "No misspellings found.", category: AnnouncementCategory.Result);
-                return;
-            }
-
             RichBodyBox.Selection.Select(wordRange.Start, wordRange.End);
             RichBodyBox.Focus();
 
