@@ -2,7 +2,17 @@
 
 ## Status
 
-Not started. Tracked in [#156](https://github.com/kellylford/QuickMail/issues/156).
+**On hold.** Tracked in [#156](https://github.com/kellylford/QuickMail/issues/156).
+
+A spike branch (`worktree-squirrel-auto-update`) implemented Phase 1 of this plan and hit two
+packaging blockers: `squirrel pack` rejects the project's 4-part version scheme (`X.Y.Z.W`,
+e.g. `0.7.8.1`) as non-SemVer, and the exe must carry a `SquirrelAwareVersion` manifest marker
+that `SquirrelAwareApp.HandleEvents()` alone does not provide. Before fixing those, research
+surfaced that Clowd.Squirrel is effectively superseded by [Velopack](https://velopack.io/) —
+built by the same author as the actual successor to Squirrel.Windows/Clowd.Squirrel, with an
+official migration path from Squirrel. The spike branch was discarded rather than fixed forward.
+Next step is exhaustive research into Velopack as the replacement mechanism before writing a new
+plan.
 
 ## TL;DR
 
