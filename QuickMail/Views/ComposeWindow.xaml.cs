@@ -672,7 +672,7 @@ public partial class ComposeWindow : Window
     }
 
     // Alt+U → Subject field; Alt+M → From combo; Alt+Y → Body; Ctrl+V with files → add attachments; Escape → cancel.
-    // Ctrl+Shift+P → Command Palette; F7 → next misspelling; Shift+F7 → previous misspelling.
+    // Ctrl+Shift+P → Command Palette; F7 → Check Spelling dialog; Ctrl+F7 / Ctrl+Shift+F7 → inline misspelling navigation.
     // Ctrl+Enter → Send message (secondary shortcut alongside Alt+S).
     private async void Window_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -976,7 +976,8 @@ public partial class ComposeWindow : Window
     }
 
     /// <summary>
-    /// F7 moves to the next misspelled word; Shift+F7 moves to the previous one.
+    /// Typing detection for spelling announcements, Alt+1/2/3 quick replace,
+    /// and Markdown list indent/dedent on Tab.
     /// </summary>
     private void BodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -1049,12 +1050,9 @@ public partial class ComposeWindow : Window
             return;
         }
 
-        if (e.Key == Key.F7)
-        {
-            var forward = (Keyboard.Modifiers & ModifierKeys.Shift) == 0;
-            NavigateSpellingError(forward);
-            e.Handled = true;
-        }
+        // Spelling keys (F7 dialog, Ctrl+F7 / Ctrl+Shift+F7 inline) dispatch
+        // through the command registry in Window_PreviewKeyDown — no hardcoded
+        // branch here, so user rebinds always win.
     }
 
     private void RichBodyBox_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -1175,15 +1173,24 @@ public partial class ComposeWindow : Window
             execute: CheckAddresses,
             defaultKey: Key.K, defaultModifiers: ModifierKeys.Control));
 
+        // F7 is the full Check Spelling dialog (classic word-processor binding);
+        // inline navigation moved to Ctrl+F7 / Ctrl+Shift+F7. User overrides in
+        // hotkeys.json take precedence over these defaults as always.
+        _registry.Register(new CommandDefinition(
+            id: "compose.checkSpelling", category: "Compose", title: "Check Spelling…",
+            execute: CheckSpelling,
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsSpellNavAvailable));
+
         _registry.Register(new CommandDefinition(
             id: "compose.nextMisspelling", category: "Compose", title: "Next Misspelling",
             execute: () => NavigateSpellingError(forward: true),
-            defaultKey: Key.F7, defaultModifiers: ModifierKeys.None));
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
             id: "compose.prevMisspelling", category: "Compose", title: "Previous Misspelling",
             execute: () => NavigateSpellingError(forward: false),
-            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Shift));
+            defaultKey: Key.F7, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "compose.toggleSpellingAnnouncements", category: "Compose",
@@ -1557,6 +1564,7 @@ public partial class ComposeWindow : Window
                 category: AnnouncementCategory.Hint);
     }
 
+    private void MenuCheckSpelling_Click(object sender, RoutedEventArgs e)   => CheckSpelling();
     private void MenuNextMisspelling_Click(object sender, RoutedEventArgs e) => NavigateSpellingError(forward: true);
     private void MenuPrevMisspelling_Click(object sender, RoutedEventArgs e) => NavigateSpellingError(forward: false);
     private void MenuAnnounceFormatting_Click(object sender, RoutedEventArgs e) => AnnounceFormattingState();

@@ -1071,7 +1071,7 @@ QuickMail supports spelling error detection and announcement while composing mes
 
 #### The default experience
 
-By default you will not hear about spelling errors as you are typing. You will hear about them when navigating through text with cursor keys, or using **F7** and **Shift+F7** to jump from spelling issue to spelling issue.
+By default you will not hear about spelling errors as you are typing. You will hear about them when navigating through text with cursor keys, or using **Ctrl+F7** and **Ctrl+Shift+F7** to jump from spelling issue to spelling issue. For a full review of the whole message, press **F7** to open the Check Spelling dialog (see below).
 
 When a spelling issue is encountered, you will hear the incorrect spelling and three possible replacements. With focus on the error, press **Alt+1**, **Alt+2**, or **Alt+3** to select one of the three replacements you heard. You can also press **Shift+F10** to bring up a context menu with additional spelling suggestions and an option to ignore the word. After you hear a spelling error announced, you can use your screen reader's Say Line command to read the word in context. To have the spelling error and suggestions repeated, press **Alt+F7**.
 
@@ -1080,7 +1080,7 @@ When a spelling issue is encountered, you will hear the incorrect spelling and t
 If the defaults for the spell checking experience are not to your liking, you can make adjustments in QuickMail settings from the main QuickMail window, not the compose window. Open **File → Settings** and select the **General** tab. In the **Screen Reader Announcements** section you will find:
 
 - **Announce spelling errors when typing** — turn this on to hear about spelling errors while you type. Announcements are held until you pause so you hear the complete word, not a partial one.
-- **Announce spelling errors while navigating** — turn this off if you do not want to hear about spelling errors as you move through the message body with cursor keys. F7 and Shift+F7 always announce regardless of this setting.
+- **Announce spelling errors while navigating** — turn this off if you do not want to hear about spelling errors as you move through the message body with cursor keys. Ctrl+F7 and Ctrl+Shift+F7 always announce regardless of this setting.
 - **Announce spelling suggestions** — when on, up to three replacement suggestions are spoken alongside the misspelled word. Turn this off if you prefer to hear only the misspelled word and use Alt+1/2/3 or Shift+F10 yourself.
 - **Announce formatting while navigating in HTML compose** — when on (the default), moving the caret to a paragraph with a different block type in HTML mode announces what it is — for example, moving onto a heading announces "Heading 2" without pressing `Ctrl+T`. Turn this off if you prefer to check formatting on demand only. This setting has no effect in Plain Text or Markdown mode.
 
@@ -1088,7 +1088,13 @@ Mix and match these settings for the experience you want.
 
 #### Quickly toggling announcements while composing
 
-If you want to temporarily silence spelling announcements without leaving the compose window, open the compose Command Palette with **Ctrl+Shift+P** and search for **Toggle Spelling Announcements**. This flips the "announce while navigating" setting on or off immediately and QuickMail confirms the change aloud. F7 and Shift+F7 navigation always announces regardless of this toggle.
+If you want to temporarily silence spelling announcements without leaving the compose window, open the compose Command Palette with **Ctrl+Shift+P** and search for **Toggle Spelling Announcements**. This flips the "announce while navigating" setting on or off immediately and QuickMail confirms the change aloud. Ctrl+F7 and Ctrl+Shift+F7 navigation always announces regardless of this toggle.
+
+#### Check Spelling — the full dialog
+
+Press **F7** (or choose **Tools → Check Spelling**) to review the whole message in the classic spelling dialog. The check covers the body first, then the subject line, and ends with a confirmation reporting how many words were changed. For each word not in the dictionary you hear "Not in dictionary:" followed by the word, and focus lands on the suggestions list with the first suggestion selected so it is spoken automatically. Arrow through the list to hear other choices, or type your own correction in the Change to box.
+
+Inside the dialog: **Alt+C** (or Enter) changes the word, **Alt+L** changes all occurrences, **Alt+I** ignores this occurrence, **Alt+G** ignores the word for the rest of the check, **Alt+A** adds it to your personal dictionary permanently, **Alt+R** reads the line containing the word, and **Escape** closes the dialog. Words you add are stored in `custom.lex` in your QuickMail profile folder; edit that file in a text editor (while QuickMail is closed) to remove a word.
 
 ### Reply, Reply All, and Forward
 
@@ -1125,8 +1131,9 @@ These are also available as buttons in the toolbar.
 | Ctrl+T | Announce formatting at the cursor (rich modes) |
 | Ctrl+Shift+T | Show formatting at the cursor in a list (rich modes) |
 | F8 | Open or close the preview window (Markdown and HTML modes) |
-| F7 | Jump to next misspelling |
-| Shift+F7 | Jump to previous misspelling |
+| F7 | Check Spelling (full dialog) |
+| Ctrl+F7 | Jump to next misspelling |
+| Ctrl+Shift+F7 | Jump to previous misspelling |
 | Alt+F7 | Repeat spelling announcement for current word |
 | Alt+1/2/3 | Replace misspelling with 1st/2nd/3rd suggestion |
 | Ctrl+Shift+P | Open command palette |
@@ -1398,8 +1405,9 @@ To skip the confirmation, open **File → Settings**, select the **General** tab
 | Ctrl+A (in address field) | Select all address chips |
 | Ctrl+C (with chips selected) | Copy all selected addresses |
 | Ctrl+C (on an address) | Copy address to clipboard |
-| F7 | Jump to next misspelling |
-| Shift+F7 | Jump to previous misspelling |
+| F7 | Check Spelling (full dialog) |
+| Ctrl+F7 | Jump to next misspelling |
+| Ctrl+Shift+F7 | Jump to previous misspelling |
 | Alt+F7 | Repeat spelling announcement |
 | Alt+1 / Alt+2 / Alt+3 | Replace misspelling with suggestion |
 | Ctrl+Shift+A | Add file attachments |

@@ -214,7 +214,7 @@
                                           IsChecked="{Binding AnnounceSpellingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce spelling errors when the caret moves into a misspelled word during navigation"
-                                          AutomationProperties.HelpText="F7 and Shift+F7 always announce spelling regardless of this setting"/>
+                                          AutomationProperties.HelpText="Ctrl+F7 and Ctrl+Shift+F7 always announce spelling regardless of this setting"/>
 
                                 <CheckBox Content="Announce spelling _suggestions"
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"
