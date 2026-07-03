@@ -17,18 +17,20 @@
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <TextBlock Grid.Row="0" Grid.Column="0"
-                   x:Name="UrlLabel" Text="_URL:"
-                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <Label Grid.Row="0" Grid.Column="0"
+               x:Name="UrlLabel" Content="_URL:"
+               Target="{Binding ElementName=UrlBox}"
+               Padding="0" VerticalAlignment="Center" Margin="0,4,8,4"/>
         <TextBox Grid.Row="0" Grid.Column="1"
                  x:Name="UrlBox"
                  AutomationProperties.LabeledBy="{Binding ElementName=UrlLabel}"
                  Margin="0,4" TabIndex="0"
                  TextChanged="UrlBox_TextChanged"/>
 
-        <TextBlock Grid.Row="1" Grid.Column="0"
-                   x:Name="TextLabel" Text="_Display text:"
-                   VerticalAlignment="Center" Margin="0,4,8,4"/>
+        <Label Grid.Row="1" Grid.Column="0"
+               x:Name="TextLabel" Content="_Display text:"
+               Target="{Binding ElementName=DisplayTextBox}"
+               Padding="0" VerticalAlignment="Center" Margin="0,4,8,4"/>
         <TextBox Grid.Row="1" Grid.Column="1"
                  x:Name="DisplayTextBox"
                  AutomationProperties.LabeledBy="{Binding ElementName=TextLabel}"

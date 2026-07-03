@@ -561,7 +561,7 @@
                     AutomationProperties.Name="Forward"
                     AutomationProperties.AcceleratorKey="Ctrl+F"
                     ToolTip="Forward (Ctrl+F)"
-                    Content="_Forward"/>
+                    Content="For_ward"/>
             <Separator/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding DeleteMessageCommand}"
@@ -575,7 +575,7 @@
                     AutomationProperties.Name="Refresh"
                     AutomationProperties.AcceleratorKey="F5"
                     ToolTip="Refresh (F5)"
-                    Content="Refres_h"/>
+                    Content="R_efresh"/>
             <Button x:Name="SyncRangeButton"
                     Style="{StaticResource ToolbarButton}"
                     Content="{Binding SyncRangeLabel}"
@@ -659,7 +659,7 @@
                     Command="{Binding ManageAccountsCommand}"
                     AutomationProperties.Name="Manage email accounts"
                     ToolTip="Manage email accounts"
-                    Content="Accoun_ts"/>
+                    Content="Ac_counts"/>
             <Separator/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding ViewUserGuideCommand}"
