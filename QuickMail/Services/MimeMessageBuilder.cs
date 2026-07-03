@@ -2,7 +2,6 @@ using System;
 using System.Buffers.Text;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,8 +19,7 @@ namespace QuickMail.Services;
 public static class MimeMessageBuilder
 {
     /// <summary>The User-Agent string for outgoing mail — one source of truth for every sender.</summary>
-    internal static readonly string AppUserAgent =
-        "QuickMail/" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0");
+    internal static readonly string AppUserAgent = "QuickMail/" + AppVersion.Display;
 
     /// <summary>
     /// Serializes a <see cref="MimeMessage"/> to base64-encoded ASCII bytes — the form Graph's

@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Windows;
 using System.Windows.Navigation;
 
@@ -12,8 +11,7 @@ public partial class AboutDialog : Window
     public AboutDialog()
     {
         InitializeComponent();
-        var version = Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.6.6";
-        VersionText.Text = $"Version {version}";
+        VersionText.Text = $"Version {Helpers.AppVersion.Display}";
         Loaded += (_, _) => LicenseLink.Focus();
     }
 

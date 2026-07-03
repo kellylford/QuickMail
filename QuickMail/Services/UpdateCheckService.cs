@@ -1,7 +1,6 @@
 using System;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,9 +12,10 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
 {
     private const string ApiUrl = "https://api.github.com/repos/kellylford/QuickMail/releases/latest";
 
-    // Reflection result is static for the lifetime of the app — compute once.
-    private static readonly string _currentVersion =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    // Reflection result is static for the lifetime of the app — compute once. Uses the shared
+    // display version so a hotfix build (e.g. 0.7.9.1) compares at full precision and does not
+    // treat its own release as a newer version.
+    private static readonly string _currentVersion = Helpers.AppVersion.Display;
 
     private readonly HttpClient _http;
     // Internal lifetime token: cancelled in Dispose() so an in-flight request on app exit
