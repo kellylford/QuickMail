@@ -184,7 +184,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.7.6</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.7.9.1</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -619,7 +619,79 @@ window. The preview is fully focusable, so you can browse the formatted
 output exactly as a recipient would. Links open in your default browser.
 Press <strong>Escape</strong> or <strong>Ctrl+W</strong> to close the
 preview.</p>
-<h3 id="spell-check">Spell Check</h3>
+<h3 id="check-spelling-full-dialog">Check Spelling (Full Dialog)</h3>
+<p>Press <strong>F7</strong> (or choose <strong>Tools → Check
+Spelling</strong>) to review the whole message in the classic spelling
+dialog. The check covers the message body first, then the subject line,
+and finishes with a confirmation that reports how many words were
+changed.</p>
+<p>For each word that is not in the dictionary, the Spelling window
+shows the word in the line where it appears, a list of suggestions, and
+a “Change to” box pre-filled with the top suggestion. A screen reader
+announces “Not in dictionary:” followed by the word, and focus lands on
+the suggestions list with the first suggestion selected so it is spoken
+automatically. Arrow through the list to hear other choices — the
+highlighted suggestion fills the Change to box — or type your own
+correction.</p>
+<table>
+<colgroup>
+<col style="width: 38%" />
+<col style="width: 61%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Alt+C</code> or <code>Enter</code></td>
+<td>Change — replace the word with the Change to text</td>
+</tr>
+<tr class="even">
+<td><code>Alt+L</code></td>
+<td>Change All — also fix every later occurrence this session</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+I</code></td>
+<td>Ignore this occurrence</td>
+</tr>
+<tr class="even">
+<td><code>Alt+G</code></td>
+<td>Ignore All — skip this word for the rest of the check</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+A</code></td>
+<td>Add to Dictionary — never flag this word again</td>
+</tr>
+<tr class="even">
+<td><code>Alt+R</code></td>
+<td>Read the line containing the word</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+T</code> / <code>Alt+S</code> / <code>Alt+N</code></td>
+<td>Move to the Change to box / Suggestions list / context</td>
+</tr>
+<tr class="even">
+<td><code>F6</code> / <code>Shift+F6</code></td>
+<td>Cycle between the context, suggestions, and buttons</td>
+</tr>
+<tr class="odd">
+<td><code>Escape</code></td>
+<td>Close the dialog and return to the message</td>
+</tr>
+</tbody>
+</table>
+<p>Words you add to the dictionary are stored in <code>custom.lex</code>
+in your QuickMail profile folder and apply everywhere spell checking
+runs, permanently. To remove a word, edit that file in a text editor
+while QuickMail is closed (one word per line). Ignore All lasts only for
+the current check.</p>
+<p>The message stays visible and editable behind the Spelling window,
+with the current word selected, so you can always see the correction in
+place.</p>
+<h3 id="inline-spell-check">Inline Spell Check</h3>
 <table>
 <colgroup>
 <col style="width: 55%" />
@@ -633,11 +705,11 @@ preview.</p>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>F7</code></td>
+<td><code>Ctrl+F7</code></td>
 <td>Jump to next misspelling</td>
 </tr>
 <tr class="even">
-<td><code>Shift+F7</code></td>
+<td><code>Ctrl+Shift+F7</code></td>
 <td>Jump to previous misspelling</td>
 </tr>
 <tr class="odd">
@@ -646,9 +718,16 @@ preview.</p>
 </tr>
 </tbody>
 </table>
-<p>Spell check wraps from end to beginning (and beginning to end for
-Shift+F7) so it always finds misspellings wherever the cursor
-starts.</p>
+<blockquote>
+<p><strong>Changed keys:</strong> inline navigation was previously
+<code>F7</code> / <code>Shift+F7</code>. <code>F7</code> now opens the
+Check Spelling dialog, matching the binding word processors have used
+for decades. If you had customized these shortcuts, your bindings are
+unchanged; to restore the old behavior, reassign them in the keyboard
+customizations dialog.</p>
+</blockquote>
+<p>Inline navigation wraps around the message so it always finds
+misspellings wherever the cursor starts.</p>
 <p>When a screen reader is active, QuickMail announces each misspelling
 along with up to three suggestions. By default, each suggestion is
 numbered — for example: “Misspelling: teh. 1: the, 2: then, 3: them.”
@@ -1112,70 +1191,74 @@ box with any screen reader.</p>
 <td>Switch to Plain Text / Markdown / HTML mode</td>
 </tr>
 <tr class="odd">
-<td><code>F7</code> / <code>Shift+F7</code></td>
-<td>Next / previous misspelling</td>
+<td><code>F7</code></td>
+<td>Check Spelling (full dialog)</td>
 </tr>
 <tr class="even">
+<td><code>Ctrl+F7</code> / <code>Ctrl+Shift+F7</code></td>
+<td>Next / previous misspelling (inline)</td>
+</tr>
+<tr class="odd">
 <td><code>Alt+1</code> / <code>Alt+2</code> / <code>Alt+3</code></td>
 <td>Accept first / second / third spelling suggestion</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>F8</code></td>
 <td>Open preview (Markdown and HTML)</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+B</code></td>
 <td>Bold</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+I</code></td>
 <td>Italic</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+U</code></td>
 <td>Underline (HTML only)</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+Shift+X</code></td>
 <td>Strikethrough</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Alt+1/2/3</code></td>
 <td>Heading 1 / 2 / 3</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+Shift+L</code></td>
 <td>Bullet list</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+N</code></td>
 <td>Numbered list</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+L</code></td>
 <td>Insert link</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Space</code></td>
 <td>Clear formatting</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+T</code></td>
 <td>Announce formatting at cursor</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+T</code></td>
 <td>Show formatting in browsable list</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+Shift+A</code></td>
 <td>Add attachment</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+P</code></td>
 <td>Command palette</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Escape</code></td>
 <td>Close window (when no menu or dropdown is open)</td>
 </tr>
