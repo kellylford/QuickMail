@@ -29,7 +29,7 @@
         <DockPanel Grid.Column="0" Grid.Row="0">
             <TextBlock DockPanel.Dock="Top" Text="Accounts" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
-                <Button Content="_New"
+                <Button Content="Ne_w"
                         Click="NewButton_Click"
                         AutomationProperties.Name="Add new account"
                         MinWidth="60" Margin="0,0,4,0"/>
@@ -74,27 +74,31 @@
                 <TextBlock Text="Account Settings" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
 
                 <!-- Account Name -->
-                <TextBlock x:Name="LblAccountName" Text="_Account Name:" Margin="0,4,0,2"/>
-                <TextBox Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblAccountName" Content="Account _Name:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,4,0,2"/>
+                <TextBox x:Name="AccountNameBox"
+                         Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
                          TabIndex="0"/>
 
                 <!-- Sender Display Name -->
-                <TextBlock x:Name="LblDisplayName" Text="Sender _Display Name:" Margin="0,8,0,2"/>
-                <TextBox Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblDisplayName" Content="Sender _Display Name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
+                <TextBox x:Name="DisplayNameBox"
+                         Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
                          TabIndex="1"/>
 
                 <!-- Username -->
-                <TextBlock x:Name="LblUsername" Text="_Email / Username:" Margin="0,8,0,2"/>
-                <TextBox Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblUsername" Content="_Email / Username:" Target="{Binding ElementName=UsernameBox}" Padding="0" Margin="0,8,0,2"/>
+                <TextBox x:Name="UsernameBox"
+                         Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
                          TabIndex="2"/>
 
                 <!-- Authentication type — hidden for Microsoft 365 (Graph), which is always OAuth. -->
                 <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock x:Name="LblAuthType" Text="_Authentication:" Margin="0,8,0,2"/>
-                    <ComboBox SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
+                    <Label x:Name="LblAuthType" Content="_Authentication:" Target="{Binding ElementName=AuthTypeCombo}" Padding="0" Margin="0,8,0,2"/>
+                    <ComboBox x:Name="AuthTypeCombo"
+                              SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
                               AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
                               AutomationProperties.Name="Authentication method"
                               TabIndex="3">
@@ -106,7 +110,7 @@
 
                 <!-- Password panel -->
                 <StackPanel Visibility="{Binding IsPasswordAuth, Converter={StaticResource BoolToVisibility}}">
-                    <TextBlock x:Name="LblPassword" Text="_Password:" Margin="0,0,0,2"/>
+                    <Label x:Name="LblPassword" Content="_Password:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,0,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
                                  AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
@@ -154,13 +158,15 @@
                 <!-- IMAP Settings -->
                 <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
-                <TextBlock x:Name="LblImapHost" Text="IMAP _Host:" Margin="0,4,0,2"/>
-                <TextBox Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblImapHost" Content="IMAP _Host:" Target="{Binding ElementName=ImapHostBox}" Padding="0" Margin="0,4,0,2"/>
+                <TextBox x:Name="ImapHostBox"
+                         Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
                          TabIndex="4"/>
 
-                <TextBlock x:Name="LblImapPort" Text="IMAP _Port:" Margin="0,6,0,2"/>
-                <TextBox Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblImapPort" Content="IMAP _Port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
+                <TextBox x:Name="ImapPortBox"
+                         Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
                          TabIndex="4"/>
 
@@ -179,13 +185,15 @@
                 <!-- SMTP Settings -->
                 <TextBlock Text="Outgoing Mail (SMTP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
-                <TextBlock x:Name="LblSmtpHost" Text="SMTP H_ost:" Margin="0,4,0,2"/>
-                <TextBox Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblSmtpHost" Content="SMTP H_ost:" Target="{Binding ElementName=SmtpHostBox}" Padding="0" Margin="0,4,0,2"/>
+                <TextBox x:Name="SmtpHostBox"
+                         Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpHost}"
                          TabIndex="7"/>
 
-                <TextBlock x:Name="LblSmtpPort" Text="SMTP Po_rt:" Margin="0,6,0,2"/>
-                <TextBox Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblSmtpPort" Content="SMTP Po_rt:" Target="{Binding ElementName=SmtpPortBox}" Padding="0" Margin="0,6,0,2"/>
+                <TextBox x:Name="SmtpPortBox"
+                         Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
                          TabIndex="8"/>
 
@@ -204,8 +212,9 @@
 
                 <!-- Signature -->
                 <TextBlock Text="Email Signature" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                <TextBlock x:Name="LblSignature" Text="_Signature (plain text, appended to new messages):" Margin="0,4,0,2"/>
-                <TextBox Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
+                <Label x:Name="LblSignature" Content="_Signature (plain text, appended to new messages):" Target="{Binding ElementName=SignatureBox}" Padding="0" Margin="0,4,0,2"/>
+                <TextBox x:Name="SignatureBox"
+                         Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblSignature}"
                          AutomationProperties.HelpText="This text is automatically added to the end of new messages, replies, and forwards"
                          AcceptsReturn="True"

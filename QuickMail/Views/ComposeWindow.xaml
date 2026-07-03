@@ -253,9 +253,11 @@
             </Grid.ColumnDefinitions>
 
             <!-- From -->
-            <TextBlock Grid.Row="0" Grid.Column="0"
-                       Text="Fro_m:"
-                       VerticalAlignment="Center" Margin="0,4"/>
+            <Label Grid.Row="0" Grid.Column="0"
+                   x:Name="FromLabel"
+                   Content="Fro_m:"
+                   Target="{Binding ElementName=FromCombo}"
+                   Padding="0" VerticalAlignment="Center" Margin="0,4"/>
             <ComboBox Grid.Row="0" Grid.Column="1"
                       x:Name="FromCombo"
                       ItemsSource="{Binding SenderAccounts}"
@@ -298,9 +300,10 @@
                      Margin="0,4" TabIndex="3"/>
 
             <!-- Subject -->
-            <TextBlock Grid.Row="4" Grid.Column="0"
-                       x:Name="SubjectLabel" Text="S_ubject:"
-                       VerticalAlignment="Center" Margin="0,4"/>
+            <Label Grid.Row="4" Grid.Column="0"
+                   x:Name="SubjectLabel" Content="S_ubject:"
+                   Target="{Binding ElementName=SubjectBox}"
+                   Padding="0" VerticalAlignment="Center" Margin="0,4"/>
             <TextBox Grid.Row="4" Grid.Column="1"
                      x:Name="SubjectBox"
                      Text="{Binding Subject, UpdateSourceTrigger=PropertyChanged}"

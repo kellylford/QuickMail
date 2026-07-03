@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -453,12 +454,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showMessageStatus;
 
+    // Running version, clean digits (AssemblyVersion), e.g. "0.7.9". Same source the About dialog
+    // and update check use. Deliberately not the informational/product version, which the SDK can
+    // suffix with a git commit hash.
+    private static readonly string CurrentVersion =
+        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+
+    // Resting state of the update entry: no newer release, so surface the running version instead
+    // (issue #169) so the Help menu always answers "what am I running?".
+    private static readonly string NoUpdateText = $"No updates available — running version {CurrentVersion}";
+
     // Help-menu label for the update entry. Always shown so users know the check exists and is
-    // available on demand; "No updates available" is the resting state, replaced with the version
+    // available on demand; NoUpdateText is the resting state, replaced with the version
     // string when a newer release is found. UpdateReleaseUrl being non-empty is the signal that an
     // update is actually available (drives the status-bar button and the menu's activation behavior).
     [ObservableProperty]
-    private string _updateAvailableText = "No updates available";
+    private string _updateAvailableText = NoUpdateText;
 
     [ObservableProperty]
     private string _updateReleaseUrl = string.Empty;
@@ -5353,7 +5364,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                UpdateAvailableText = "No updates available";
+                UpdateAvailableText = NoUpdateText;
                 UpdateReleaseUrl    = string.Empty;
             }
         }
