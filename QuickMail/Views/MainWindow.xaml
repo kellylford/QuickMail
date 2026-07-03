@@ -542,40 +542,40 @@
                     AutomationProperties.Name="New Message"
                     AutomationProperties.AcceleratorKey="Ctrl+N"
                     ToolTip="New Message (Ctrl+N)"
-                    Content="_New"/>
+                    Content="New"/>
             <Separator/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding ReplyCommand}"
                     AutomationProperties.Name="Reply"
                     AutomationProperties.AcceleratorKey="Ctrl+R"
                     ToolTip="Reply (Ctrl+R)"
-                    Content="_Reply"/>
+                    Content="Reply"/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding ReplyAllCommand}"
                     AutomationProperties.Name="Reply All"
                     AutomationProperties.AcceleratorKey="Ctrl+Shift+R"
                     ToolTip="Reply All (Ctrl+Shift+R)"
-                    Content="Reply _All"/>
+                    Content="Reply All"/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding ForwardCommand}"
                     AutomationProperties.Name="Forward"
                     AutomationProperties.AcceleratorKey="Ctrl+F"
                     ToolTip="Forward (Ctrl+F)"
-                    Content="For_ward"/>
+                    Content="Forward"/>
             <Separator/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding DeleteMessageCommand}"
                     AutomationProperties.Name="Delete message"
                     AutomationProperties.AcceleratorKey="Delete"
                     ToolTip="Delete (Del)"
-                    Content="_Delete"/>
+                    Content="Delete"/>
             <Separator/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding RefreshCommand}"
                     AutomationProperties.Name="Refresh"
                     AutomationProperties.AcceleratorKey="F5"
                     ToolTip="Refresh (F5)"
-                    Content="R_efresh"/>
+                    Content="Refresh"/>
             <Button x:Name="SyncRangeButton"
                     Style="{StaticResource ToolbarButton}"
                     Content="{Binding SyncRangeLabel}"
@@ -653,20 +653,20 @@
                     AutomationProperties.Name="Empty Trash"
                     AutomationProperties.AcceleratorKey="Ctrl+Shift+E"
                     ToolTip="Empty Trash (Ctrl+Shift+E)"
-                    Content="Empty _Trash"/>
+                    Content="Empty Trash"/>
             <Separator/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding ManageAccountsCommand}"
                     AutomationProperties.Name="Manage email accounts"
                     ToolTip="Manage email accounts"
-                    Content="Ac_counts"/>
+                    Content="Accounts"/>
             <Separator/>
             <Button Style="{StaticResource ToolbarButton}"
                     Command="{Binding ViewUserGuideCommand}"
                     AutomationProperties.Name="View User Guide"
                     AutomationProperties.AcceleratorKey="F1"
                     ToolTip="View User Guide (F1)"
-                    Content="User _Guide"/>
+                    Content="User Guide"/>
         </ToolBar>
 
         <!-- ── Three-pane layout (Outlook-style): Accounts+Folders left | Messages right ── -->
