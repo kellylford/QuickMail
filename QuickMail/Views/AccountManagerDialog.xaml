@@ -29,7 +29,7 @@
         <DockPanel Grid.Column="0" Grid.Row="0">
             <TextBlock DockPanel.Dock="Top" Text="Accounts" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
-                <Button Content="_New"
+                <Button Content="Ne_w"
                         Click="NewButton_Click"
                         AutomationProperties.Name="Add new account"
                         MinWidth="60" Margin="0,0,4,0"/>
@@ -185,13 +185,13 @@
                 <!-- SMTP Settings -->
                 <TextBlock Text="Outgoing Mail (SMTP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
-                <Label x:Name="LblSmtpHost" Content="SMTP _Host:" Target="{Binding ElementName=SmtpHostBox}" Padding="0" Margin="0,4,0,2"/>
+                <Label x:Name="LblSmtpHost" Content="SMTP H_ost:" Target="{Binding ElementName=SmtpHostBox}" Padding="0" Margin="0,4,0,2"/>
                 <TextBox x:Name="SmtpHostBox"
                          Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpHost}"
                          TabIndex="7"/>
 
-                <Label x:Name="LblSmtpPort" Content="SMTP _Port:" Target="{Binding ElementName=SmtpPortBox}" Padding="0" Margin="0,6,0,2"/>
+                <Label x:Name="LblSmtpPort" Content="SMTP Po_rt:" Target="{Binding ElementName=SmtpPortBox}" Padding="0" Margin="0,6,0,2"/>
                 <TextBox x:Name="SmtpPortBox"
                          Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
@@ -202,7 +202,7 @@
                           AutomationProperties.Name="SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587."
                           Margin="0,6" TabIndex="9"/>
 
-                <CheckBox Content="Accept invalid _certificates"
+                <CheckBox Content="Accept invalid certi_ficates"
                           IsChecked="{Binding SmtpAcceptInvalidCert}"
                           AutomationProperties.Name="SMTP accept invalid SSL certificates"
                           Margin="0,0,0,6" TabIndex="10"/>
