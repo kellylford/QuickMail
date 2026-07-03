@@ -1,6 +1,8 @@
 # Debug Screenshot Capture — PM & Dev Specification
 
 > Status: **Draft / exploratory.** Not committed to the roadmap. Written up so the idea is captured with enough rigor to build later if we decide to. This is a developer/diagnostic tool, not a shipping end-user feature.
+>
+> **Tracking:** [Issue #175](https://github.com/kellylford/QuickMail/issues/175)
 
 ---
 
