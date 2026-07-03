@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -454,11 +453,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _showMessageStatus;
 
-    // Running version, clean digits (AssemblyVersion), e.g. "0.7.9". Same source the About dialog
-    // and update check use. Deliberately not the informational/product version, which the SDK can
-    // suffix with a git commit hash.
-    private static readonly string CurrentVersion =
-        Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    // Running version for the Help "running version" entry, e.g. "0.7.9" (or "0.7.9.1" for a
+    // hotfix). Shared with the About dialog and update check via AppVersion; deliberately not the
+    // informational/product version, which the SDK can suffix with a git commit hash.
+    private static readonly string CurrentVersion = Helpers.AppVersion.Display;
 
     // Resting state of the update entry: no newer release, so surface the running version instead
     // (issue #169) so the Help menu always answers "what am I running?".
