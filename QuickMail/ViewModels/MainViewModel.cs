@@ -1217,6 +1217,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         registry.Register(new CommandDefinition(
             id: "mail.refresh", category: "Mail", title: "Refresh",
+            // RefreshAsync itself delegates to the calendar's refresh while it's the active
+            // view, so this single command is correct from every entry point (menu, toolbar,
+            // Command Palette, F5) — no isAvailable disambiguation needed here.
             execute: () => RefreshCommand.Execute(null),
             defaultKey: Key.F5, defaultModifiers: ModifierKeys.None));
 
@@ -2916,6 +2919,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task RefreshAsync()
     {
+        // Delegate to the calendar's own refresh while it's the active view, so every entry
+        // point (View menu, toolbar button, Command Palette, F5) agrees — none of those bind
+        // through CommandRegistry, so an isAvailable guard alone can't disambiguate them.
+        if (IsCalendarView)
+        {
+            if (CalendarVm != null)
+                await CalendarVm.RefreshCommand.ExecuteAsync(null);
+            return;
+        }
+
         // Pick up folders created/removed on the server since the last full sync. Only rebuilds the
         // tree when the folder set actually changed, so an ordinary refresh doesn't disturb focus.
         await RefreshAllFolderListsAsync();
@@ -5299,6 +5312,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (CalendarVm == null) return;
         await SelectFolderCommand.ExecuteAsync(CalendarFolder);
+    }
+
+    /// <summary>
+    /// Opens the source invite message for a calendar event. Constructs a minimal
+    /// <see cref="MailMessageSummary"/> stub and routes through <see cref="SelectMessageCommand"/>
+    /// so the user's MessageOpenMode (ReadingPane/Tab/Window) is honored and SelectedAccount is
+    /// resolved by the existing SelectMessageAsync logic (no duplicate account lookup needed here).
+    /// Called by the View in response to <see cref="CalendarViewModel.OpenSourceMessageRequested"/>.
+    /// </summary>
+    internal void OpenCalendarSourceMessage(Guid accountId, string folder, string messageId)
+    {
+        LogService.Debug($"[CALENDAR] OpenCalendarSourceMessage accountId={accountId} folder={folder} messageId={messageId}");
+
+        var summary = new MailMessageSummary
+        {
+            MessageId   = messageId,
+            AccountId   = accountId,
+            FolderName  = folder,
+            Subject     = "Calendar invitation", // fallback; replaced when detail loads
+        };
+        SelectMessageCommand.Execute(summary);
     }
 
     /// <summary>
