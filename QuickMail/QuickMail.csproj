@@ -24,6 +24,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Built-in themes ship inside the assembly; ThemeStore parses them with the same loader as user theme files. -->
+    <EmbeddedResource Include="Themes\BuiltIn\*.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="AdysTech.CredentialManager" Version="3.1.0" />
     <PackageReference Include="Google.Apis.Auth" Version="1.75.0" />
     <PackageReference Include="Markdig" Version="1.3.2" />

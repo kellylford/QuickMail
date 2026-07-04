@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "ember",
+  "name": "Ember",
+  "base": "light",
+  "colors": {
+    "accent": "#8F4531",
+    "windowBackground": "#FBF7F2",
+    "accentSubtle": "#F5E9E3",
+    "selectionBackground": "#F0DFD6"
+  },
+  "typography": {
+    "fontFamily": "Segoe UI",
+    "monoFontFamily": "Cascadia Code",
+    "baseFontSize": 13
+  }
+}

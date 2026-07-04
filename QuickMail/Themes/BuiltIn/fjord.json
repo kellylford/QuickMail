@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "fjord",
+  "name": "Fjord",
+  "base": "light",
+  "colors": {
+    "accent": "#2E6462",
+    "windowBackground": "#F8FAFA",
+    "accentSubtle": "#E4EFEE",
+    "selectionBackground": "#D8E8E7"
+  },
+  "typography": {
+    "fontFamily": "Segoe UI",
+    "monoFontFamily": "Cascadia Code",
+    "baseFontSize": 13
+  }
+}
