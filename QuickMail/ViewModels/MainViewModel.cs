@@ -1218,7 +1218,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "mail.refresh", category: "Mail", title: "Refresh",
             execute: () => RefreshCommand.Execute(null),
-            defaultKey: Key.F5, defaultModifiers: ModifierKeys.None));
+            defaultKey: Key.F5, defaultModifiers: ModifierKeys.None,
+            // calendar.refresh shares the F5 gesture and takes over while the calendar is
+            // the active view (registered in MainWindow.xaml.cs, which owns CalendarList focus).
+            isAvailable: () => !IsCalendarView));
 
         registry.Register(new CommandDefinition(
             id: "mail.emptyTrash", category: "Mail", title: "Empty Trash",
@@ -5299,6 +5302,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (CalendarVm == null) return;
         await SelectFolderCommand.ExecuteAsync(CalendarFolder);
+    }
+
+    /// <summary>
+    /// Opens the source invite message for a calendar event. Constructs a minimal
+    /// <see cref="MailMessageSummary"/> stub and routes through <see cref="SelectMessageCommand"/>
+    /// so the user's MessageOpenMode (ReadingPane/Tab/Window) is honored and SelectedAccount is
+    /// resolved by the existing SelectMessageAsync logic (no duplicate account lookup needed here).
+    /// Called by the View in response to <see cref="CalendarViewModel.OpenSourceMessageRequested"/>.
+    /// </summary>
+    internal void OpenCalendarSourceMessage(Guid accountId, string folder, string messageId)
+    {
+        LogService.Debug($"[CALENDAR] OpenCalendarSourceMessage accountId={accountId} folder={folder} messageId={messageId}");
+
+        var summary = new MailMessageSummary
+        {
+            MessageId   = messageId,
+            AccountId   = accountId,
+            FolderName  = folder,
+            Subject     = "Calendar invitation", // fallback; replaced when detail loads
+        };
+        SelectMessageCommand.Execute(summary);
     }
 
     /// <summary>

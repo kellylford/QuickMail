@@ -284,7 +284,7 @@ public partial class MainWindow : Window
             vm.CalendarVm.AnnouncementRequested += (text, category) =>
                 AccessibilityHelper.Announce(this, text, interrupt: true, category: category);
             vm.CalendarVm.OpenSourceMessageRequested += (accountId, folder, messageId) =>
-                OpenSourceMessageFromCalendar(accountId, folder, messageId);
+                vm.OpenCalendarSourceMessage(accountId, folder, messageId);
         }
 
         vm.PropertyChanged += async (_, e) =>
@@ -866,6 +866,30 @@ public partial class MainWindow : Window
             id: "mail.copyToFolder", category: "Mail", title: "Copy to Folder…",
             execute: async () => await CopyMessageToFolderAsync(),
             isAvailable: () => _vm.HasSelectedMessage));
+
+        // ── Calendar list commands (T/Enter/F5 while the calendar list has focus) ──
+        // Scoped to CalendarList.IsKeyboardFocusWithin (not just IsCalendarView) so these
+        // plain-key gestures don't hijack type-ahead or other keys if focus is elsewhere
+        // (e.g. the folder tree) while the Calendar folder happens to remain selected.
+        _registry.Register(new CommandDefinition(
+            id: "calendar.toggleTodayFilter", category: "View", title: "Toggle Today Filter",
+            execute: () => _vm.CalendarVm?.ToggleTodayFilterCommand.Execute(null),
+            defaultKey: Key.T, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.openSourceMessage", category: "View", title: "Open Calendar Event Source Message",
+            execute: () => _vm.CalendarVm?.OpenSourceMessageCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        // Shares the F5 gesture with mail.refresh; the registry prefers whichever command
+        // is available for the current focus (mail.refresh excludes itself via !IsCalendarView).
+        _registry.Register(new CommandDefinition(
+            id: "calendar.refresh", category: "View", title: "Refresh Calendar",
+            execute: () => _vm.CalendarVm?.RefreshCommand.Execute(null),
+            defaultKey: Key.F5, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsCalendarView));
 
         // Install the WM_CONTEXTMENU hook before WebView2 init. WebView2 initialization
         // creates an out-of-process HWND that grabs Win32 focus without WPF tracking it,
@@ -1668,10 +1692,13 @@ public partial class MainWindow : Window
 
     // Enter: open the source invite; T: toggle today filter; F5: refresh.
     // Escape is handled at the window level (returns focus to the folder tree).
+    // Enter/T/F5 are dispatched through the CommandRegistry (calendar.openSourceMessage,
+    // calendar.toggleTodayFilter, calendar.refresh — registered in OnLoaded), which fires
+    // before this handler since Window.PreviewKeyDown tunnels first. This handler only
+    // guards the empty-list case, which is UI-only and not a registrable command.
     private void CalendarList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        var vm = _vm.CalendarVm;
-        if (vm == null) return;
+        if (_vm.CalendarVm == null) return;
 
         // Prevent arrow keys from escaping an empty ListBox to the toolbar/status bar.
         if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -1679,28 +1706,6 @@ public partial class MainWindow : Window
             && CalendarList.Items.Count == 0)
         {
             e.Handled = true;
-            return;
-        }
-
-        switch (e.Key)
-        {
-            case Key.Enter:
-                if (vm.SelectedEvent != null)
-                {
-                    vm.OpenSourceMessageCommand.Execute(vm.SelectedEvent);
-                    e.Handled = true;
-                }
-                break;
-
-            case Key.T:
-                vm.ToggleTodayFilterCommand.Execute(null);
-                e.Handled = true;
-                break;
-
-            case Key.F5:
-                vm.RefreshCommand.Execute(null);
-                e.Handled = true;
-                break;
         }
     }
 
@@ -2380,31 +2385,6 @@ public partial class MainWindow : Window
         _vm.IsMessageOpen = false;
         _vm.MessageDetail = null;
         ReturnFocusToMessageList();
-    }
-
-    /// <summary>
-    /// Opens the source invite message from a calendar event.
-    /// Constructs a minimal MailMessageSummary and routes through SelectMessageCommand
-    /// so the user's MessageOpenMode (ReadingPane/Tab/Window) is honored.
-    /// </summary>
-    private void OpenSourceMessageFromCalendar(Guid accountId, string folder, string messageId)
-    {
-        LogService.Debug($"[CALENDAR] OpenSourceMessageFromCalendar accountId={accountId} folder={folder} messageId={messageId}");
-
-        // Find the account and select it so SelectMessageAsync has the right context.
-        var account = _vm.Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account != null)
-            _vm.SelectedAccount = account;
-
-        // Construct a summary stub; SelectMessageAsync will fetch the full detail.
-        var summary = new MailMessageSummary
-        {
-            MessageId   = messageId,
-            AccountId   = accountId,
-            FolderName  = folder,
-            Subject     = "Calendar invitation",  // fallback; replaced when detail loads
-        };
-        _vm.SelectMessageCommand.Execute(summary);
     }
 
     // Return keyboard focus to the active message panel after reading a message.

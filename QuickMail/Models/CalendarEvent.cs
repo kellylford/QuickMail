@@ -42,6 +42,7 @@ public partial class CalendarEvent : ObservableObject
     public string SourceFolder { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayLine))]
     private CalendarResponseStatus _responseStatus = CalendarResponseStatus.Pending;
 
     /// <summary>True when the organizer cancelled the event (ICS METHOD:CANCEL).</summary>
