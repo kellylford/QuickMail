@@ -432,6 +432,63 @@ Controls the order of timestamp and message text in each log line. **Action firs
 
 Reassign shortcuts for any registered command.
 
+### Appearance
+
+Choose how QuickMail looks and adjust it to your vision needs.
+
+**Theme** — the color scheme for the whole app:
+
+- **System** (default) — follows the Windows light or dark setting automatically.
+- **Quill** — the standard light look: warm off-whites with a muted steel-blue accent.
+- **Quill Dark** — the dark counterpart.
+- **Ember**, **Fjord**, **Heather** — warm, cool, and muted variations on the light look.
+- Any theme you created or imported in the Theme Manager also appears here.
+
+Theme changes apply immediately — no restart. Open messages re-render in the new colors.
+
+**Font** — override the app font. **(Theme default)** uses the theme's own font.
+
+**Text size** — scale all app text from 100% up to 200%, independent of Windows display scaling.
+
+**Vision settings:**
+
+- **Always underline links** — underlines every link in message content, even when the sender removed the underline.
+- **Thicker keyboard focus indicators** — doubles the width of the keyboard focus ring.
+- **Apply theme colors to message content** — overrides the colors and fonts chosen by a message's sender with your theme's colors. Turn on when messages arrive with hard-to-read colors; turn off to see messages as their senders designed them.
+
+**Windows High Contrast:** when High Contrast is on, QuickMail steps aside entirely — every color comes from your Windows High Contrast palette, and QuickMail's own styling is withdrawn. Your theme choice is remembered and returns when High Contrast is turned off. Font and text-size settings continue to apply.
+
+### Theme Manager
+
+Open the Command Palette (**Ctrl+Shift+P**) and choose **Manage Themes** to open the Theme Manager. From the theme list, press Tab to reach the actions:
+
+- **Apply** — switch to the selected theme immediately.
+- **Duplicate** — copy a theme as a starting point for your own. A name field appears with a suggested name.
+- **Rename** / **Delete** — for your own themes (built-ins cannot be changed or deleted).
+- **Export…** — save a theme as a `.quickmailtheme` file to share or move to another machine.
+- **Import…** — load a `.quickmailtheme` file. If a theme file has a problem, QuickMail tells you exactly what is wrong (for example, which color value is not a valid hex color).
+- **Open themes folder** — opens the folder where your themes are stored, for hand-editing.
+
+The Command Palette also offers **Next Theme** and **Previous Theme** to cycle through themes, and a **Theme: [name]** command for each theme — assign a keyboard shortcut to any of them in Settings → Keyboard Shortcuts.
+
+**Editing a theme by hand:** a theme is a plain, documented JSON text file. Duplicate a built-in theme, choose **Open themes folder**, and edit the copy in any text editor. Colors are hex values like `#3D5A80`; any color you leave out is filled in from the built-in Light or Dark theme (whichever the file's `base` names). A typical minimal theme:
+
+```json
+{
+  "formatVersion": 1,
+  "id": "my-theme",
+  "name": "My Theme",
+  "base": "light",
+  "colors": {
+    "accent": "#8F4531",
+    "windowBackground": "#FBF7F2"
+  },
+  "typography": { "fontFamily": "Segoe UI", "baseFontSize": 13 }
+}
+```
+
+The full color token list: `windowBackground`, `surfaceBackground`, `chromeBackground`, `inputBackground`, `border`, `borderSubtle`, `inputBorder`, `textPrimary`, `textSecondary`, `textDisabled`, `textOnAccent`, `accent`, `accentSubtle`, `hyperlink`, `selectionBackground`, `selectionText`, `selectionInactive`, `focusIndicator`, `error`, `errorBackground`, `warning`, `warningBackground`, `success`, `successBackground`, `info`, `infoBackground`. Edits take effect the next time the theme is applied (reopen the Theme Manager and choose Apply, or restart).
+
 ### Screen Reader Announcements
 
 Control which categories of announcements QuickMail makes:

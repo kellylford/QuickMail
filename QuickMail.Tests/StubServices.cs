@@ -291,3 +291,83 @@ sealed class StubUiDispatcher : IUiDispatcher
     public void Invoke(Action action) => action();
     public void Post(Action action) => action();
 }
+
+/// <summary>
+/// In-memory theme service: a fixed light theme, no OS probes, no Application
+/// resources. Records applied ids so tests can assert theme switching.
+/// </summary>
+sealed class StubThemeService : IThemeService
+{
+    private readonly List<ThemeDefinition> _userThemes = [];
+
+    public string ConfiguredThemeId { get; private set; } = "system";
+    public bool IsHighContrastActive { get; set; }
+    public string UserThemesFolder { get; set; } = string.Empty;
+    public List<string> AppliedThemeIds { get; } = [];
+
+    public event EventHandler? ThemeChanged;
+
+    public ThemeDefinition ResolvedTheme { get; set; } = BuildDefaultResolved();
+
+    private static ThemeDefinition BuildDefaultResolved()
+    {
+        var theme = new ThemeDefinition { Id = "quill", Name = "Quill", Base = "light", IsBuiltIn = true };
+        foreach (var key in QuickMail.Theming.ThemeKeys.ColorTokens.Keys)
+            theme.Colors[key] = "#000000";
+        return theme;
+    }
+
+    public IReadOnlyList<ThemeDefinition> GetAvailableThemes()
+    {
+        var list = new List<ThemeDefinition>
+        {
+            new() { Id = "system", Name = "System", Base = "light", IsBuiltIn = true },
+            new() { Id = "quill",  Name = "Quill",  Base = "light", IsBuiltIn = true },
+            new() { Id = "dark",   Name = "Quill Dark", Base = "dark", IsBuiltIn = true },
+        };
+        list.AddRange(_userThemes);
+        return list;
+    }
+
+    public void ApplyTheme(string themeId)
+    {
+        ConfiguredThemeId = themeId;
+        AppliedThemeIds.Add(themeId);
+        ThemeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public ThemeDefinition ImportTheme(string filePath)
+    {
+        var theme = ThemeDefinition.Parse(System.IO.File.ReadAllText(filePath));
+        _userThemes.Add(theme);
+        return theme;
+    }
+
+    public void ExportTheme(string themeId, string filePath)
+    {
+        ThemeDefinition? theme = null;
+        foreach (var t in GetAvailableThemes())
+            if (string.Equals(t.Id, themeId, StringComparison.OrdinalIgnoreCase)) { theme = t; break; }
+        if (theme is null) throw new InvalidOperationException($"No theme {themeId}.");
+        System.IO.File.WriteAllText(filePath, theme.ToJson());
+    }
+
+    public void SaveUserTheme(ThemeDefinition theme)
+    {
+        _userThemes.RemoveAll(t => string.Equals(t.Id, theme.Id, StringComparison.OrdinalIgnoreCase));
+        _userThemes.Add(theme);
+    }
+
+    public void DeleteUserTheme(string themeId)
+    {
+        _userThemes.RemoveAll(t => string.Equals(t.Id, themeId, StringComparison.OrdinalIgnoreCase));
+        if (string.Equals(ConfiguredThemeId, themeId, StringComparison.OrdinalIgnoreCase))
+            ApplyTheme("system");
+    }
+
+    public void ApplyVisionSettings(ConfigModel config) { }
+
+    public string BuildMessageCss(bool forceOnContent) => string.Empty;
+
+    public void Dispose() { }
+}
