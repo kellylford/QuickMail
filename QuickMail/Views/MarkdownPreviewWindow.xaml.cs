@@ -23,13 +23,19 @@ public partial class MarkdownPreviewWindow : Window
     private readonly CommandRegistry _registry = new();
     private readonly CancellationTokenSource _cts = new();
 
-    public MarkdownPreviewWindow(string? subject, string htmlFragment)
+    /// <param name="themeCss">
+    /// Optional theme CSS from <see cref="IThemeService.BuildMessageCss"/>. When
+    /// present, the preview palette aliases the <c>--qm-*</c> variables (one
+    /// variable set app-wide); when null, the legacy light/dark defaults apply
+    /// via prefers-color-scheme.
+    /// </param>
+    public MarkdownPreviewWindow(string? subject, string htmlFragment, string? themeCss = null)
     {
         Title = string.IsNullOrWhiteSpace(subject)
             ? "Compose — Preview — QuickMail"
             : $"{subject.Trim()} — Preview — QuickMail";
 
-        _html = BuildHtml(subject, htmlFragment);
+        _html = BuildHtml(subject, htmlFragment, themeCss);
         InitializeComponent();
         RegisterCommands();
         Loaded += OnLoaded;
@@ -191,17 +197,23 @@ public partial class MarkdownPreviewWindow : Window
 
     // ── HTML builder ─────────────────────────────────────────────────────────
 
-    private static string BuildHtml(string? subject, string fragment)
+    private static string BuildHtml(string? subject, string fragment, string? themeCss)
     {
         var isEmpty = string.IsNullOrWhiteSpace(fragment);
         var body = isEmpty
-            ? "<p style=\"color:#888;font-style:italic;\">No content to preview.</p>"
+            ? "<p style=\"color:var(--text-muted);font-style:italic;\">No content to preview.</p>"
             : fragment;
 
         var titleText = string.IsNullOrWhiteSpace(subject)
             ? "Preview"
             : $"Preview — {subject.Trim()}";
         var encodedTitle = System.Net.WebUtility.HtmlEncode(titleText);
+
+        // With theme CSS the palette aliases the shared --qm-* variables; without
+        // it (no theme service, e.g. tests) the legacy light/dark defaults apply.
+        var paletteCss = themeCss is null
+            ? LegacyPaletteCss
+            : themeCss + "\n" + ThemeAliasCss;
 
         return
             "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n" +
@@ -210,14 +222,25 @@ public partial class MarkdownPreviewWindow : Window
             "<meta http-equiv=\"Content-Security-Policy\" " +
             "content=\"default-src 'none'; style-src 'unsafe-inline'; font-src 'unsafe-inline'; img-src data:;\">\n" +
             $"<title>{encodedTitle}</title>\n" +
-            "<style>\n" + PreviewCss + "\n</style>\n" +
+            "<style>\n" + paletteCss + PreviewCss + "\n</style>\n" +
             "</head>\n<body>\n" +
             body +
             "\n</body>\n</html>";
     }
 
-    private const string PreviewCss =
-        "*, *::before, *::after { box-sizing: border-box; }\n" +
+    /// <summary>Maps the preview's local variables onto the app-wide --qm-* theme variables.</summary>
+    private const string ThemeAliasCss =
+        ":root {\n" +
+        "  --font: var(--qm-font, 'Segoe UI', system-ui, sans-serif);\n" +
+        "  --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;\n" +
+        "  --text: var(--qm-text, CanvasText); --text-muted: var(--qm-text-muted, GrayText);\n" +
+        "  --bg: var(--qm-bg, Canvas); --surface: var(--qm-surface, Canvas);\n" +
+        "  --border: var(--qm-border, GrayText);\n" +
+        "  --accent: var(--qm-link, LinkText); --quote-bg: var(--qm-surface, Canvas);\n" +
+        "}\n";
+
+    /// <summary>Pre-theming palette, used only when no theme CSS is supplied.</summary>
+    private const string LegacyPaletteCss =
         ":root {\n" +
         "  --font: 'Segoe UI', system-ui, -apple-system, sans-serif;\n" +
         "  --font-mono: 'Cascadia Code', 'Consolas', 'Courier New', monospace;\n" +
@@ -231,7 +254,10 @@ public partial class MarkdownPreviewWindow : Window
         "    --surface: #2a2a2a; --border: #404040;\n" +
         "    --accent: #4da6ff; --quote-bg: #252525;\n" +
         "  }\n" +
-        "}\n" +
+        "}\n";
+
+    private const string PreviewCss =
+        "*, *::before, *::after { box-sizing: border-box; }\n" +
         "html { scroll-behavior: smooth; }\n" +
         "body {\n" +
         "  font-family: var(--font); font-size: 15px; line-height: 1.7;\n" +

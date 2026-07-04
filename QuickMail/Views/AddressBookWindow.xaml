@@ -11,7 +11,11 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
         AutomationProperties.Name="Address Book"
-        PreviewKeyDown="Window_PreviewKeyDown">
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
@@ -157,7 +161,7 @@
 
                         <!-- Row 2: Error message (shown only when non-empty) -->
                         <TextBlock Grid.Row="2" Text="{Binding ContactError}"
-                                   Foreground="Red" Margin="0,4,0,0">
+                                   Foreground="{DynamicResource Theme.Error}" Margin="0,4,0,0">
                             <TextBlock.Style>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Visibility" Value="Collapsed"/>
@@ -195,7 +199,7 @@
                                             AutomationProperties.Name="{Binding Display}">
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                     <TextBlock Text="  &lt;"/>
-                                    <TextBlock Text="{Binding EmailAddress}" Foreground="#666"/>
+                                    <TextBlock Text="{Binding EmailAddress}" Foreground="{DynamicResource Theme.TextSecondary}"/>
                                     <TextBlock Text="&gt;"/>
                                 </StackPanel>
                             </DataTemplate>
@@ -243,7 +247,7 @@
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  "/>
                                         <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
-                                                   Foreground="#666"/>
+                                                   Foreground="{DynamicResource Theme.TextSecondary}"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -295,7 +299,7 @@
                                                 AutomationProperties.Name="{Binding Display}">
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  &lt;"/>
-                                        <TextBlock Text="{Binding EmailAddress}" Foreground="#666"/>
+                                        <TextBlock Text="{Binding EmailAddress}" Foreground="{DynamicResource Theme.TextSecondary}"/>
                                         <TextBlock Text="&gt;"/>
                                     </StackPanel>
                                 </DataTemplate>

@@ -16,10 +16,12 @@
         WindowStartupLocation="Manual"
         ShowInTaskbar="False"
         d:DataContext="{d:DesignInstance Type=vm:CommandPaletteViewModel}"
-        PreviewKeyDown="OnPreviewKeyDown">
+        PreviewKeyDown="OnPreviewKeyDown"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
-    <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
-            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+    <Border Background="{DynamicResource Theme.WindowBackground}"
+            BorderBrush="{DynamicResource Theme.Border}"
             BorderThickness="1"
             CornerRadius="4">
         <Border.Effect>
@@ -61,18 +63,17 @@
 
                         <StackPanel Grid.Column="0" VerticalAlignment="Center">
                             <TextBlock Text="{Binding Title}"
-                                       FontSize="13"
                                        TextTrimming="CharacterEllipsis"/>
                             <TextBlock Text="{Binding Category}"
-                                       FontSize="11"
+                                       FontSize="{DynamicResource Theme.FontSizeSmall}"
                                        Opacity="0.6"
                                        Margin="0,1,0,0"/>
                         </StackPanel>
 
                         <TextBlock Grid.Column="1"
                                    Text="{Binding GestureText}"
-                                   FontSize="11"
-                                   FontFamily="Consolas"
+                                   FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                   FontFamily="{DynamicResource Theme.FontFamilyMono}"
                                    Opacity="0.6"
                                    VerticalAlignment="Center"
                                    Margin="12,0,0,0"/>

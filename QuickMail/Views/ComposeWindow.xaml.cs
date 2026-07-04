@@ -61,6 +61,7 @@ public partial class ComposeWindow : Window
     private readonly ITemplateService   _templateService;
     private readonly IConfigService     _configService;
     private readonly ICustomDictionaryService? _customDictionary;
+    private readonly IThemeService? _themeService;
     private readonly CommandRegistry    _registry = new();
     private TokenizedAddressBox? _activeAddressControl;
     private CancellationTokenSource? _autocompleteCts;
@@ -103,13 +104,14 @@ public partial class ComposeWindow : Window
     private DispatcherTimer? _spellingTypingTimer;
     private static readonly TimeSpan SpellingTypingDelay = TimeSpan.FromMilliseconds(500);
 
-    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null)
+    public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null)
     {
         _vm = vm;
         _contactService = contactService;
         _templateService = templateService;
         _configService = configService;
         _customDictionary = customDictionary;
+        _themeService = themeService;
         InitializeComponent();
         DataContext = vm;
 
@@ -1273,7 +1275,8 @@ public partial class ComposeWindow : Window
             return;
         }
         var fragment = _vm.GetBodyHtml();
-        _previewWindow = new MarkdownPreviewWindow(_vm.Subject, fragment) { Owner = this };
+        _previewWindow = new MarkdownPreviewWindow(_vm.Subject, fragment,
+            _themeService?.BuildMessageCss(forceOnContent: false)) { Owner = this };
         _previewWindow.Closed += (_, _) => { _previewWindow = null; FocusActiveEditor(); };
         _previewWindow.Show();
     }

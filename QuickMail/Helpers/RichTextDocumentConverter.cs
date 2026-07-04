@@ -44,7 +44,20 @@ public static class RichTextDocumentConverter
     /// <summary>Run text shown for images whose alt text is empty (round-trips back to alt="").</summary>
     public const string ImageAltPlaceholder = "(image)";
 
-    private static readonly FontFamily CodeFont = new("Consolas");
+    private static readonly FontFamily FallbackCodeFont = new("Consolas");
+
+    /// <summary>
+    /// TextElement/Freezable properties cannot use SetResourceReference, so theme
+    /// tokens are read once per document build via TryFindResource with a hardcoded
+    /// fallback (never FindResource — it throws when the app resources are absent,
+    /// e.g. in unit tests). A document built before a theme switch keeps its colors
+    /// until it is rebuilt — bounded per message.
+    /// </summary>
+    private static Brush ThemeBrush(string resourceKey, Brush fallback) =>
+        Application.Current?.TryFindResource(resourceKey) as Brush ?? fallback;
+
+    private static FontFamily CodeFont =>
+        Application.Current?.TryFindResource(Theming.ThemeKeys.FontFamilyMono) as FontFamily ?? FallbackCodeFont;
 
     /// <summary>Heading visual sizes relative to the editor's default 13px body text.</summary>
     public static double HeadingFontSize(int level) => level switch
@@ -176,7 +189,7 @@ public static class RichTextDocumentConverter
                         if (inner is Paragraph qp)
                         {
                             qp.Margin = new Thickness(20, qp.Margin.Top, 0, qp.Margin.Bottom);
-                            qp.Foreground = Brushes.DarkSlateGray;
+                            qp.Foreground = ThemeBrush(Theming.ThemeKeys.TextSecondary, Brushes.DarkSlateGray);
                         }
                         yield return inner;
                     }
@@ -260,7 +273,7 @@ public static class RichTextDocumentConverter
                 AddInlines(cp.Inlines, cellNode.Children, new InlineStyle());
                 var cell = new TableCell(cp)
                 {
-                    BorderBrush = Brushes.Gray,
+                    BorderBrush = ThemeBrush(Theming.ThemeKeys.Border, Brushes.Gray),
                     BorderThickness = new Thickness(0.5),
                     Padding = new Thickness(6, 2, 6, 2),
                     Tag = (isHeader ? "TH" : "TD") + alignment switch
