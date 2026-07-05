@@ -261,9 +261,6 @@
                 <Separator/>
                 <MenuItem Header="_Manage Accounts…"
                           Command="{Binding ManageAccountsCommand}"/>
-                <MenuItem Header="Address _Book…"
-                          Click="MenuAddressBook_Click"
-                          InputGestureText="Ctrl+Shift+B"/>
                 <Separator/>
                 <MenuItem Header="S_ettings…"
                           Click="MenuSettings_Click"
@@ -333,12 +330,6 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
-                <Separator/>
-                <MenuItem Header="_Rules…"
-                          Command="{Binding OpenRulesManagerCommand}"
-                          InputGestureText="Ctrl+Shift+L"
-                          AutomationProperties.Name="Manage Rules"
-                          AutomationProperties.AcceleratorKey="Ctrl+Shift+L"/>
             </MenuItem>
 
             <!-- View -->
@@ -509,13 +500,10 @@
                 <MenuItem Header="_Search Folders…"
                           Click="MenuSearchFolders_Click"
                           InputGestureText="Ctrl+Shift+F"/>
-                <MenuItem Header="Command _Palette…"
-                          Click="MenuCommandPalette_Click"
-                          InputGestureText="Ctrl+Shift+P"/>
             </MenuItem>
 
-            <!-- Tools — always available. Each command lives in exactly one menu,
-                 so this carries the theme actions (previously palette-only). -->
+            <!-- Tools — always available (mirrors the Compose window's Tools menu).
+                 Each command lives here only; not duplicated in File/Message/View. -->
             <MenuItem Header="_Tools">
                 <MenuItem Header="Manage _Themes…"
                           Click="MenuManageThemes_Click"
@@ -524,6 +512,19 @@
                           Click="MenuNextTheme_Click"/>
                 <MenuItem Header="Pre_vious Theme"
                           Click="MenuPreviousTheme_Click"/>
+                <Separator/>
+                <MenuItem Header="Address _Book…"
+                          Click="MenuAddressBook_Click"
+                          InputGestureText="Ctrl+Shift+B"/>
+                <MenuItem Header="_Rules…"
+                          Command="{Binding OpenRulesManagerCommand}"
+                          InputGestureText="Ctrl+Shift+L"
+                          AutomationProperties.Name="Manage Rules"
+                          AutomationProperties.AcceleratorKey="Ctrl+Shift+L"/>
+                <Separator/>
+                <MenuItem Header="Command _Palette…"
+                          Click="MenuCommandPalette_Click"
+                          InputGestureText="Ctrl+Shift+P"/>
             </MenuItem>
 
             <!-- Help -->
