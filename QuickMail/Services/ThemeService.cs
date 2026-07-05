@@ -425,10 +425,16 @@ public class ThemeService : IThemeService
         }
     }
 
-    private string BuildSignature(ThemeDefinition resolved) =>
-        $"{_isHighContrast}|{resolved.Id}|{string.Join(",", resolved.Colors.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value))}"
-        + $"|{resolved.Typography.FontFamily}|{resolved.Typography.MonoFontFamily}|{resolved.Typography.BaseFontSize}"
-        + $"|{_textScale}|{_fontFamilyOverride}|{_underlineLinks}|{_thickFocus}";
+    private string BuildSignature(ThemeDefinition resolved)
+    {
+        // Format doubles with InvariantCulture (like the rest of this file) so the
+        // signature is locale-stable — it is only compared to itself today, but a
+        // comma-decimal locale would otherwise make it inconsistent if ever logged.
+        var c = CultureInfo.InvariantCulture;
+        return $"{_isHighContrast}|{resolved.Id}|{string.Join(",", resolved.Colors.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value))}"
+            + $"|{resolved.Typography.FontFamily}|{resolved.Typography.MonoFontFamily}|{resolved.Typography.BaseFontSize.ToString(c)}"
+            + $"|{_textScale.ToString(c)}|{_fontFamilyOverride}|{_underlineLinks}|{_thickFocus}";
+    }
 
     private void PublishDictionary(ThemeDefinition resolved)
     {

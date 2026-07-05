@@ -65,6 +65,23 @@ public class ThemeManagerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void Apply_WhenEffectivePaletteUnchanged_AnnouncesSoItIsNotSilent()
+    {
+        // When applying a theme that resolves to the same palette (e.g. System
+        // already shows the built-in you pick), the service raises no ThemeChanged
+        // event, so the main window stays silent — the VM must announce instead.
+        var vm = NewVm();
+        var announced = new List<(string Text, AnnouncementCategory Category)>();
+        vm.AnnouncementRequested += (text, cat) => announced.Add((text, cat));
+
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "parchment");
+        vm.ApplyCommand.Execute(null);
+
+        Assert.Contains(announced, a => a.Text.StartsWith("Theme changed to", StringComparison.Ordinal)
+                                        && a.Category == AnnouncementCategory.Status);
+    }
+
+    [Fact]
     public void Duplicate_OpensNamePanelPrefilled_ThenCreatesUserTheme()
     {
         var vm = NewVm();

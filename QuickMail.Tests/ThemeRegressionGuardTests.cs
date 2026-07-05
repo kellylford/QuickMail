@@ -46,9 +46,19 @@ public class ThemeRegressionGuardTests
         return null;
     }
 
-    private static IEnumerable<string> ViewXamlFiles(string root) =>
-        Directory.EnumerateFiles(Path.Combine(root, "QuickMail", "Views"), "*.xaml")
-            .Concat(Directory.EnumerateFiles(Path.Combine(root, "QuickMail", "Controls"), "*.xaml"));
+    // Views + Controls + Styles. Styles/ holds the implicit control templates
+    // (ThemedControls.xaml, AccessibleStyles.xaml) — the place a hardcoded color is
+    // most likely to slip back in during retemplating, so it must be guarded too.
+    private static IEnumerable<string> ViewXamlFiles(string root)
+    {
+        foreach (var sub in new[] { "Views", "Controls", "Styles" })
+        {
+            var dir = Path.Combine(root, "QuickMail", sub);
+            if (!Directory.Exists(dir)) continue;
+            foreach (var file in Directory.EnumerateFiles(dir, "*.xaml"))
+                yield return file;
+        }
+    }
 
     private static bool IsAllowed(string fileName, string offendingText) =>
         Allowlist.TryGetValue(fileName, out var allowed)

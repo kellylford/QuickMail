@@ -123,11 +123,19 @@ public partial class ThemeManagerViewModel : ObservableObject
     private void Apply()
     {
         if (SelectedTheme is null) return;
+        var resolvedBefore = _themeService.ResolvedTheme.Id;
         _themeService.ApplyTheme(SelectedTheme.Id);
         PersistConfiguredTheme();
         RefreshCurrentMarkers();
-        // "Theme changed to …" is announced by the main window's ThemeChanged
-        // handler — no announcement here, so it is never doubled. Focus stays put.
+
+        // When the effective palette changes, the main window's ThemeChanged
+        // handler announces it — announcing here too would double it. But when the
+        // selection resolves to the same palette (e.g. System already shows the
+        // built-in you pick), ThemeChanged never fires, so announce here — Apply
+        // must never be silent. Mirrors MainViewModel.ApplyThemeById. Focus stays put.
+        if (_themeService.ResolvedTheme.Id == resolvedBefore)
+            AnnouncementRequested?.Invoke(
+                $"Theme changed to {_themeService.ConfiguredThemeName}.", AnnouncementCategory.Status);
     }
 
     [RelayCommand]
