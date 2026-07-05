@@ -51,7 +51,7 @@ public class ThemeServiceTests : IDisposable
     {
         using var svc = NewService(osLight: true);
         svc.Initialize(Config("system"));
-        Assert.Equal("quill", svc.ResolvedTheme.Id);
+        Assert.Equal("parchment", svc.ResolvedTheme.Id);
 
         using var dark = NewService(osLight: false);
         dark.Initialize(Config("system"));
@@ -63,7 +63,7 @@ public class ThemeServiceTests : IDisposable
     {
         using var svc = NewService(osLight: true);
         svc.Initialize(Config("no-such-theme"));
-        Assert.Equal("quill", svc.ResolvedTheme.Id);
+        Assert.Equal("parchment", svc.ResolvedTheme.Id);
     }
 
     [StaFact]
@@ -123,11 +123,11 @@ public class ThemeServiceTests : IDisposable
     {
         using var light = NewService(osLight: true);
         light.Initialize(Config("system"));
-        Assert.Equal("System, showing Quill", light.ConfiguredThemeName);
+        Assert.Equal("System, showing Parchment", light.ConfiguredThemeName);
 
         using var dark = NewService(osLight: false);
         dark.Initialize(Config("system"));
-        Assert.Equal("System, showing Quill Dark", dark.ConfiguredThemeName);
+        Assert.Equal("System, showing Parchment Dark", dark.ConfiguredThemeName);
     }
 
     [StaFact]
@@ -171,7 +171,7 @@ public class ThemeServiceTests : IDisposable
     public void TokenDictionary_ContainsEveryTokenAsFrozenBrush_PlusTypographyAndFocus()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill"));
+        svc.Initialize(Config("parchment"));
 
         var dict = svc.BuildTokenDictionary(svc.ResolvedTheme);
 
@@ -193,7 +193,7 @@ public class ThemeServiceTests : IDisposable
     public void TokenDictionary_AppliesTextScaleAndVisionSettings()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill", scale: 1.5, font: "Verdana", thickFocus: true));
+        svc.Initialize(Config("parchment", scale: 1.5, font: "Verdana", thickFocus: true));
 
         var dict = svc.BuildTokenDictionary(svc.ResolvedTheme);
 
@@ -208,7 +208,7 @@ public class ThemeServiceTests : IDisposable
     public void BuildMessageCss_EmitsAllColorVariables()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill"));
+        svc.Initialize(Config("parchment"));
 
         var css = svc.BuildMessageCss(forceOnContent: false);
 
@@ -222,7 +222,7 @@ public class ThemeServiceTests : IDisposable
     public void BuildMessageCss_ForceOnContent_AppendsImportantOverrides()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill"));
+        svc.Initialize(Config("parchment"));
 
         var css = svc.BuildMessageCss(forceOnContent: true);
         Assert.Contains("background-color:var(--qm-bg) !important", css);
@@ -233,7 +233,7 @@ public class ThemeServiceTests : IDisposable
     public void BuildMessageCss_UnderlineLinks_EmitsUnderlineRule()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill", underline: true));
+        svc.Initialize(Config("parchment", underline: true));
 
         Assert.Contains("text-decoration:underline", svc.BuildMessageCss(forceOnContent: false));
     }
@@ -242,7 +242,7 @@ public class ThemeServiceTests : IDisposable
     public void BuildMessageCss_HighContrast_EmitsNoColorVariables()
     {
         using var svc = NewService(highContrast: true);
-        svc.Initialize(Config("quill"));
+        svc.Initialize(Config("parchment"));
 
         var css = svc.BuildMessageCss(forceOnContent: true);
 
@@ -259,7 +259,7 @@ public class ThemeServiceTests : IDisposable
     public void ExportThenImport_RoundTrips_WithReIdOnCollision()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill"));
+        svc.Initialize(Config("parchment"));
 
         var exportPath = Path.Combine(_dir, "exported.quickmailtheme");
         svc.ExportTheme("ember", exportPath);
@@ -279,7 +279,7 @@ public class ThemeServiceTests : IDisposable
     public void ImportTheme_MalformedFile_ThrowsFriendlyThemeFormatException()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill"));
+        svc.Initialize(Config("parchment"));
 
         var path = Path.Combine(_dir, "broken.quickmailtheme");
         Directory.CreateDirectory(_dir);
@@ -292,7 +292,7 @@ public class ThemeServiceTests : IDisposable
     public void DeleteUserTheme_WhenActive_FallsBackToSystem()
     {
         using var svc = NewService();
-        svc.Initialize(Config("quill"));
+        svc.Initialize(Config("parchment"));
 
         var custom = new ThemeDefinition { Id = "my-theme", Name = "Mine", Base = "light" };
         svc.SaveUserTheme(custom);

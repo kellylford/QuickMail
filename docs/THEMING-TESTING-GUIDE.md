@@ -19,9 +19,9 @@ This guide has two halves: a short orientation on how theming works, then a stru
 
 | Theme | What it is |
 |---|---|
-| System (default) | Follows the Windows light/dark app setting. Light → Quill, dark → Quill Dark. |
-| Quill | The standard light look: warm off-whites, muted steel-blue accent. |
-| Quill Dark | The dark counterpart. |
+| System (default) | Follows the Windows light/dark app setting. Light → Parchment, dark → Parchment Dark. |
+| Parchment | The standard light look: warm off-whites, muted steel-blue accent. |
+| Parchment Dark | The dark counterpart. |
 | Ember / Fjord / Heather | Warm, cool, and muted variations on the light look. |
 | (your themes) | Anything duplicated or imported in the Theme Manager. |
 
@@ -60,21 +60,21 @@ For the "default experience" scenario below, use a **fresh** (empty) profile dir
 ### A. Default experience (fresh profile)
 
 1. Launch with a fresh profile, Windows in light mode, HC off.
-2. **Verify:** the app opens in the Quill look (warm off-white, not stark white). No new announcements at startup beyond the usual ones.
+2. **Verify:** the app opens in the Parchment look (warm off-white, not stark white). No new announcements at startup beyond the usual ones.
 3. Open `config.ini` in the profile directory. **Verify:** `AppearanceThemeId = system` is present with its comment block, plus the five other `Appearance*` keys.
 
 ### B. Choosing a theme in Settings (§7 first walkthrough)
 
 1. Open a message so the reading pane is populated, then open Settings and move to the **Appearance** tab. **Expected:** the tab announces as "Appearance".
 2. Tab to the **Theme** combo box. **Expected:** announces the label and current value ("Theme", "System").
-3. Choose **Quill Dark**, then activate **Save**. **Expected:** the dialog closes; the whole app goes dark immediately; you hear "Theme changed to Quill Dark." (Status category); the open message re-renders with dark background; focus returns to where Settings was invoked from.
-4. Reopen Settings → Appearance. **Expected:** the Theme combo reads "Quill Dark".
-5. Restart the app. **Expected:** Quill Dark persists.
+3. Choose **Parchment Dark**, then activate **Save**. **Expected:** the dialog closes; the whole app goes dark immediately; you hear "Theme changed to Parchment Dark." (Status category); the open message re-renders with dark background; focus returns to where Settings was invoked from.
+4. Reopen Settings → Appearance. **Expected:** the Theme combo reads "Parchment Dark".
+5. Restart the app. **Expected:** Parchment Dark persists.
 6. Walk each remaining built-in theme in turn (Settings or the cycle commands). **Verify:** no unreadable text anywhere you check — message list, folder tree, menus, status bar, Settings itself, a compose window.
 
 ### C. Dark theme deep pass (the riskiest area)
 
-With Quill Dark active, exercise each retemplated control with the keyboard and confirm both behavior and speech are unchanged from the light theme:
+With Parchment Dark active, exercise each retemplated control with the keyboard and confirm both behavior and speech are unchanged from the light theme:
 
 - **Menus** — open each main menu, arrow through items, check submenus (View → Filter, flag submenus), check a checkable item, activate one with an access key. Verify InputGestureText still reads, disabled items still announce as dimmed/unavailable, and Escape closes levels one at a time.
 - **Message list** — arrow through rows; verify selection is visible (tinted, not white-on-white), unread rows are SemiBold with a small accent bar at the left edge, flag color bars still show, and column headers render.
@@ -106,10 +106,10 @@ If any control here has broken keyboard behavior or wrong/missing speech, per §
 
 Note one deliberate deviation from the spec draft: the manager is a **modeless** window (this is the same pattern as Grab Addresses, for the same reason), so it stays open while themes apply behind it.
 
-1. Ctrl+Shift+P → type "theme" → **Manage Themes**. **Expected:** window opens with focus in the theme list; the list announces as "Themes" and the current item includes its kind and current-theme marker (e.g. "Quill, built-in, current theme"); a one-time hint offers Tab for actions.
+1. Ctrl+Shift+P → type "theme" → **Manage Themes**. **Expected:** window opens with focus in the theme list; the list announces as "Themes" and the current item includes its kind and current-theme marker (e.g. "Parchment, built-in, current theme"); a one-time hint offers Tab for actions.
 2. **Apply:** arrow to Ember, Tab to Apply, press Enter. **Expected:** the app restyles behind the window; "Theme changed to Ember."; focus stays on Apply.
 3. **F6 / Shift+F6:** cycles list ↔ buttons.
-4. **Duplicate:** select Quill, activate Duplicate. **Expected:** a name field appears prefilled "Quill copy" with focus in it; Enter (or OK) creates it; "Theme Quill copy created."; focus returns to the new item in the list.
+4. **Duplicate:** select Parchment, activate Duplicate. **Expected:** a name field appears prefilled "Parchment copy" with focus in it; Enter (or OK) creates it; "Theme Parchment copy created."; focus returns to the new item in the list.
 5. **Rename:** works on your copy; disabled (announced unavailable) on built-ins.
 6. **Export:** with the copy selected, activate Export. **Expected:** a standard Save dialog filtered to `*.quickmailtheme`, filename prefilled; on save, "Theme exported."
 7. **Delete:** delete the copy. **Expected:** confirmation ("This cannot be undone", focus on No); on Yes, the item disappears, focus lands on a neighboring list item, "Theme deleted." Delete the *active* theme and verify the app falls back to System.
@@ -127,7 +127,7 @@ Note one deliberate deviation from the spec draft: the manager is a **modeless**
 
 ### H. Shared-component regressions (§9)
 
-1. **Compose invalid address:** type a bad address in To and commit it. **Verify:** the chip shows a distinct error state in both Quill and Quill Dark, and announces "Unrecognized:".
+1. **Compose invalid address:** type a bad address in To and commit it. **Verify:** the chip shows a distinct error state in both Parchment and Parchment Dark, and announces "Unrecognized:".
 2. **KeyCaptureDialog:** Settings → Keyboard Shortcuts → Set Shortcut; verify the captured-key text is readable in both themes.
 3. **Event card:** open a message with a calendar invite. **Verify:** the card and its Accept/Tentative/Decline buttons are readable in both themes (they now use the status tint style — pale background, dark status text).
 4. **Markdown preview:** in a Markdown compose, press F8. **Verify:** the preview follows the theme.

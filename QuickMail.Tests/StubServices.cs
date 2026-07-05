@@ -315,7 +315,7 @@ sealed class StubThemeService : IThemeService
 
     private static ThemeDefinition BuildDefaultResolved()
     {
-        var theme = new ThemeDefinition { Id = "quill", Name = "Quill", Base = "light", IsBuiltIn = true };
+        var theme = new ThemeDefinition { Id = "parchment", Name = "Parchment", Base = "light", IsBuiltIn = true };
         foreach (var key in QuickMail.Theming.ThemeKeys.ColorTokens.Keys)
             theme.Colors[key] = "#000000";
         return theme;
@@ -326,8 +326,8 @@ sealed class StubThemeService : IThemeService
         var list = new List<ThemeDefinition>
         {
             new() { Id = "system", Name = "System", Base = "light", IsBuiltIn = true },
-            new() { Id = "quill",  Name = "Quill",  Base = "light", IsBuiltIn = true },
-            new() { Id = "dark",   Name = "Quill Dark", Base = "dark", IsBuiltIn = true },
+            new() { Id = "parchment", Name = "Parchment", Base = "light", IsBuiltIn = true },
+            new() { Id = "dark",      Name = "Parchment Dark", Base = "dark", IsBuiltIn = true },
         };
         list.AddRange(_userThemes);
         return list;

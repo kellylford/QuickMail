@@ -964,10 +964,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Helpers.ThemePersistence.PersistConfiguredTheme(_themeService, _configService);
 
         // When the selection changes but the effective palette does not (e.g.
-        // System → Quill while the OS is in light mode), ThemeChanged never fires
-        // and the window's handler stays silent — announce the switch here so
+        // System → Parchment while the OS is in light mode), ThemeChanged never
+        // fires and the window's handler stays silent — announce the switch here so
         // cycling always reports the new theme. ConfiguredThemeName (not the
-        // resolved name) so cycling to System announces "System", not "Quill".
+        // resolved name) so cycling to System announces "System", not "Parchment".
         if (_themeService.ResolvedTheme.Id == resolvedBefore)
             Announce($"Theme changed to {_themeService.ConfiguredThemeName}.", AnnouncementCategory.Status);
     }
@@ -5230,7 +5230,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (invite == null) return string.Empty;
 
         // Card colors come from the resolved theme as hex strings (IThemeService
-        // never exposes UI types). Fallbacks match the Quill light palette for
+        // never exposes UI types). Fallbacks match the Parchment light palette for
         // tests that run without a theme service.
         var theme = _themeService?.ResolvedTheme;
         string Color(string token, string fallback) => theme?.ColorOf(token) ?? fallback;

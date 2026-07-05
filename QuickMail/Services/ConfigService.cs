@@ -381,7 +381,7 @@ public class ConfigService : IConfigService
         sb.AppendLine($"AppearanceThemeId = {config.AppearanceThemeId}");
         sb.AppendLine("# The active theme. \"system\" follows the Windows light/dark setting and");
         sb.AppendLine("# yields entirely to Windows High Contrast.");
-        sb.AppendLine("# Built-in values: system, quill, dark, ember, fjord, heather.");
+        sb.AppendLine("# Built-in values: system, parchment, dark, ember, fjord, heather.");
         sb.AppendLine("# User themes (from the Theme Manager) are referenced by their id.");
         sb.AppendLine();
 

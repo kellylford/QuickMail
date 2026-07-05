@@ -4409,6 +4409,16 @@ public partial class MainWindow : Window
         window.Show();
     }
 
+    // ── Tools menu (theme actions dispatch through the registered commands so the
+    //    Command Palette and any custom hotkeys stay the single source of truth) ──
+    private void MenuManageThemes_Click(object sender, RoutedEventArgs e) => OpenThemeManager();
+
+    private void MenuNextTheme_Click(object sender, RoutedEventArgs e)
+        => _registry.FindById("theme.next")?.Execute();
+
+    private void MenuPreviousTheme_Click(object sender, RoutedEventArgs e)
+        => _registry.FindById("theme.previous")?.Execute();
+
     private void MenuGrabAddresses_Click(object sender, RoutedEventArgs e)
         => GrabAddressesFromMessage();
 

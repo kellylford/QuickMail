@@ -12,7 +12,7 @@ namespace QuickMail.Services;
 /// </summary>
 public interface IThemeService : IDisposable
 {
-    /// <summary>The configured theme id, e.g. "system", "quill", "dark", or a user theme id.</summary>
+    /// <summary>The configured theme id, e.g. "system", "parchment", "dark", or a user theme id.</summary>
     string ConfiguredThemeId { get; }
 
     /// <summary>

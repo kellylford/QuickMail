@@ -51,7 +51,7 @@ public class ConfigModel
 
     /// <summary>
     /// The active theme id. "system" follows the OS light/dark setting and yields
-    /// entirely to Windows High Contrast; other values name a built-in ("quill",
+    /// entirely to Windows High Contrast; other values name a built-in ("parchment",
     /// "dark", "ember", "fjord", "heather") or a user theme id.
     /// </summary>
     public string AppearanceThemeId { get; set; } = "system";

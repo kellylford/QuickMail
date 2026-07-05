@@ -439,8 +439,8 @@ Choose how QuickMail looks and adjust it to your vision needs.
 **Theme** — the color scheme for the whole app:
 
 - **System** (default) — follows the Windows light or dark setting automatically.
-- **Quill** — the standard light look: warm off-whites with a muted steel-blue accent.
-- **Quill Dark** — the dark counterpart.
+- **Parchment** — the standard light look: warm off-whites with a muted steel-blue accent.
+- **Parchment Dark** — the dark counterpart.
 - **Ember**, **Fjord**, **Heather** — warm, cool, and muted variations on the light look.
 - Any theme you created or imported in the Theme Manager also appears here.
 

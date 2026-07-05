@@ -71,7 +71,7 @@ public class ThemeService : IThemeService
     {
         _store = store;
         // Safe default so ResolvedTheme is never null even before Initialize.
-        _resolved = BuiltInById("quill").ResolveAgainst(BuiltInById("quill"));
+        _resolved = BuiltInById("parchment").ResolveAgainst(BuiltInById("parchment"));
     }
 
     public string ConfiguredThemeId => _configuredThemeId;
@@ -79,8 +79,8 @@ public class ThemeService : IThemeService
     /// <summary>
     /// The display name to announce for the current selection. For the virtual
     /// System theme this is "System" qualified with the base it currently shows
-    /// (e.g. "System, showing Quill") — so cycling to System never announces the
-    /// resolved built-in name as if the user had picked it directly.
+    /// (e.g. "System, showing Parchment") — so cycling to System never announces
+    /// the resolved built-in name as if the user had picked it directly.
     /// </summary>
     public string ConfiguredThemeName =>
         string.Equals(_configuredThemeId, SystemThemeId, StringComparison.OrdinalIgnoreCase)
@@ -302,7 +302,7 @@ public class ThemeService : IThemeService
 
     /// <summary>The complete built-in that supplies missing keys for a given base name.</summary>
     private ThemeDefinition BaseTheme(string baseName) =>
-        BuiltInById(baseName == "dark" ? "dark" : "quill");
+        BuiltInById(baseName == "dark" ? "dark" : "parchment");
 
     private ThemeDefinition ResolveEffectiveTheme()
     {
@@ -320,7 +320,7 @@ public class ThemeService : IThemeService
     {
         var id = string.IsNullOrWhiteSpace(themeId) ? SystemThemeId : themeId.Trim();
         if (string.Equals(id, SystemThemeId, StringComparison.OrdinalIgnoreCase))
-            id = OsLightModeProbe() ? "quill" : "dark";
+            id = OsLightModeProbe() ? "parchment" : "dark";
 
         var theme = _store.LoadBuiltIns()
                         .Concat(_store.LoadUserThemes())
@@ -329,7 +329,7 @@ public class ThemeService : IThemeService
         {
             // Unknown id — fall back to system resolution, never throw.
             LogService.Log($"Theme id \"{id}\" not found; falling back to system.");
-            theme = OsLightModeProbe() ? BuiltInById("quill") : BuiltInById("dark");
+            theme = OsLightModeProbe() ? BuiltInById("parchment") : BuiltInById("dark");
         }
 
         return theme.ResolveAgainst(BaseTheme(theme.Base));

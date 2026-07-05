@@ -27,7 +27,7 @@ public class BuiltInThemeTests
     {
         var store = NewStore();
         var builtIns = store.LoadBuiltIns();
-        var light = builtIns.First(t => t.Id == "quill");
+        var light = builtIns.First(t => t.Id == "parchment");
         var dark  = builtIns.First(t => t.Id == "dark");
         return builtIns.Select(t => t.ResolveAgainst(t.Base == "dark" ? dark : light)).ToList();
     }
@@ -36,14 +36,14 @@ public class BuiltInThemeTests
     public void AllBuiltInsParse_AndCarryTheExpectedLineup()
     {
         var ids = NewStore().LoadBuiltIns().Select(t => t.Id).ToList();
-        Assert.Equal(new[] { "quill", "dark", "ember", "fjord", "heather" }, ids);
+        Assert.Equal(new[] { "parchment", "dark", "ember", "fjord", "heather" }, ids);
     }
 
     [Fact]
     public void BaseThemes_DefineEveryToken()
     {
         var builtIns = NewStore().LoadBuiltIns();
-        foreach (var id in new[] { "quill", "dark" })
+        foreach (var id in new[] { "parchment", "dark" })
         {
             var theme = builtIns.First(t => t.Id == id);
             var missing = ThemeKeys.ColorTokens.Keys.Where(k => !theme.Colors.ContainsKey(k)).ToList();
@@ -61,7 +61,7 @@ public class BuiltInThemeTests
     // ── WCAG contrast policy (§6) ─────────────────────────────────────────────
 
     public static IEnumerable<object[]> BuiltInIds() =>
-        new[] { "quill", "dark", "ember", "fjord", "heather" }.Select(id => new object[] { id });
+        new[] { "parchment", "dark", "ember", "fjord", "heather" }.Select(id => new object[] { id });
 
     [Theory]
     [MemberData(nameof(BuiltInIds))]

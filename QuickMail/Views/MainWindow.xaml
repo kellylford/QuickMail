@@ -514,6 +514,29 @@
                           InputGestureText="Ctrl+Shift+P"/>
             </MenuItem>
 
+            <!-- Tools — always available (mirrors the Compose window's Tools menu) -->
+            <MenuItem Header="_Tools">
+                <MenuItem Header="Manage _Themes…"
+                          Click="MenuManageThemes_Click"
+                          AutomationProperties.Name="Manage Themes"/>
+                <MenuItem Header="_Next Theme"
+                          Click="MenuNextTheme_Click"/>
+                <MenuItem Header="Pre_vious Theme"
+                          Click="MenuPreviousTheme_Click"/>
+                <Separator/>
+                <MenuItem Header="Address _Book…"
+                          Click="MenuAddressBook_Click"
+                          InputGestureText="Ctrl+Shift+B"/>
+                <MenuItem Header="_Rules…"
+                          Command="{Binding OpenRulesManagerCommand}"
+                          InputGestureText="Ctrl+Shift+L"
+                          AutomationProperties.Name="Manage Rules"/>
+                <Separator/>
+                <MenuItem Header="Command _Palette…"
+                          Click="MenuCommandPalette_Click"
+                          InputGestureText="Ctrl+Shift+P"/>
+            </MenuItem>
+
             <!-- Help -->
             <MenuItem Header="_Help">
                 <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"

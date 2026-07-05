@@ -21,17 +21,17 @@ public class ThemeDescriberTests : IDisposable
     {
         var store = new ThemeStore(new ProfileContext(_dir));
         var theme = store.LoadBuiltIns().First(t => t.Id == id);
-        var baseTheme = store.LoadBuiltIns().First(t => t.Id == (theme.Base == "dark" ? "dark" : "quill"));
+        var baseTheme = store.LoadBuiltIns().First(t => t.Id == (theme.Base == "dark" ? "dark" : "parchment"));
         return theme.ResolveAgainst(baseTheme);
     }
 
     [Theory]
     [InlineData("#FFFFFF", "white")]
     [InlineData("#000000", "black")]
-    [InlineData("#3D5A80", "blue")]     // Quill accent
-    [InlineData("#B3261E", "red")]      // Quill error
-    [InlineData("#2E6B3E", "green")]    // Quill success
-    [InlineData("#8A5A00", "orange")]   // Quill warning (dark amber)
+    [InlineData("#3D5A80", "blue")]     // Parchment accent
+    [InlineData("#B3261E", "red")]      // Parchment error
+    [InlineData("#2E6B3E", "green")]    // Parchment success
+    [InlineData("#8A5A00", "orange")]   // Parchment warning (dark amber)
     public void DescribeColor_NamesTheHueFamily(string hex, string expectedWord)
     {
         var text = ThemeDescriber.DescribeColor(hex);
@@ -42,17 +42,17 @@ public class ThemeDescriberTests : IDisposable
     [Fact]
     public void DescribeColor_WarmOffWhite_ReadsAsOffWhite()
     {
-        // Quill window background is a very light, slightly warm neutral.
+        // Parchment window background is a very light, slightly warm neutral.
         var text = ThemeDescriber.DescribeColor("#FBFAF8");
         Assert.Contains("off-white", text, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public void Describe_Quill_CoversFontsAndEveryTokenGroup_WithUsage()
+    public void Describe_Parchment_CoversFontsAndEveryTokenGroup_WithUsage()
     {
-        var text = ThemeDescriber.Describe(Resolved("quill"));
+        var text = ThemeDescriber.Describe(Resolved("parchment"));
 
-        Assert.Contains("Quill", text);
+        Assert.Contains("Parchment", text);
         Assert.Contains("light theme", text);
         Assert.Contains("Fonts", text);
         Assert.Contains("Segoe UI", text);
@@ -76,7 +76,7 @@ public class ThemeDescriberTests : IDisposable
     [Fact]
     public void Describe_System_SaysItFollowsTheOs()
     {
-        var text = ThemeDescriber.Describe(Resolved("quill"), isSystem: true);
+        var text = ThemeDescriber.Describe(Resolved("parchment"), isSystem: true);
         Assert.Contains("follows the Windows light and dark setting", text);
     }
 }

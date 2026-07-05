@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
   "id": "dark",
-  "name": "Quill Dark",
+  "name": "Parchment Dark",
   "base": "dark",
   "colors": {
     "windowBackground": "#1E2023",

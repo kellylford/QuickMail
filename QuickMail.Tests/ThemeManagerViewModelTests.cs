@@ -34,7 +34,7 @@ public class ThemeManagerViewModelTests : IDisposable
         _themes.ApplyTheme("dark");
         var vm = NewVm();
 
-        Assert.Equal(new[] { "system", "quill", "dark" }, vm.Themes.Select(t => t.Id));
+        Assert.Equal(new[] { "system", "parchment", "dark" }, vm.Themes.Select(t => t.Id));
         Assert.Equal("dark", vm.SelectedTheme?.Id);
         Assert.True(vm.Themes.First(t => t.Id == "dark").IsCurrent);
     }
@@ -42,12 +42,12 @@ public class ThemeManagerViewModelTests : IDisposable
     [Fact]
     public void AccessibleName_CarriesKindAndCurrentMarker()
     {
-        _themes.ApplyTheme("quill");
+        _themes.ApplyTheme("parchment");
         var vm = NewVm();
 
-        Assert.Equal("Quill, built-in, current theme",
-            vm.Themes.First(t => t.Id == "quill").AccessibleName);
-        Assert.Equal("Quill Dark, built-in",
+        Assert.Equal("Parchment, built-in, current theme",
+            vm.Themes.First(t => t.Id == "parchment").AccessibleName);
+        Assert.Equal("Parchment Dark, built-in",
             vm.Themes.First(t => t.Id == "dark").AccessibleName);
     }
 
@@ -68,22 +68,22 @@ public class ThemeManagerViewModelTests : IDisposable
     public void Duplicate_OpensNamePanelPrefilled_ThenCreatesUserTheme()
     {
         var vm = NewVm();
-        vm.SelectedTheme = vm.Themes.First(t => t.Id == "quill");
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "parchment");
         var announced = new List<string>();
         vm.AnnouncementRequested += (text, _) => announced.Add(text);
 
         vm.DuplicateCommand.Execute(null);
         Assert.True(vm.IsNamePanelOpen);
-        Assert.Equal("Quill copy", vm.EditName);
+        Assert.Equal("Parchment copy", vm.EditName);
 
         vm.ConfirmNameCommand.Execute(null);
 
         Assert.False(vm.IsNamePanelOpen);
-        var copy = vm.Themes.FirstOrDefault(t => t.Name == "Quill copy");
+        var copy = vm.Themes.FirstOrDefault(t => t.Name == "Parchment copy");
         Assert.NotNull(copy);
         Assert.False(copy!.IsBuiltIn);
         Assert.Equal(copy.Id, vm.SelectedTheme?.Id);
-        Assert.Contains("Theme Quill copy created.", announced);
+        Assert.Contains("Theme Parchment copy created.", announced);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class ThemeManagerViewModelTests : IDisposable
         AddUserTheme();
         var vm = NewVm();
 
-        vm.SelectedTheme = vm.Themes.First(t => t.Id == "quill");
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "parchment");
         Assert.False(vm.CanRename);
 
         vm.SelectedTheme = vm.Themes.First(t => t.Id == "custom");
@@ -160,7 +160,7 @@ public class ThemeManagerViewModelTests : IDisposable
     public void Delete_IsDisabledForBuiltIns()
     {
         var vm = NewVm();
-        vm.SelectedTheme = vm.Themes.First(t => t.Id == "quill");
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "parchment");
         Assert.False(vm.CanDelete);
     }
 
@@ -169,22 +169,22 @@ public class ThemeManagerViewModelTests : IDisposable
     {
         Directory.CreateDirectory(_dir);
         var vm = NewVm();
-        var path = Path.Combine(_dir, "quill.quickmailtheme");
+        var path = Path.Combine(_dir, "parchment.quickmailtheme");
 
-        vm.SelectedTheme = vm.Themes.First(t => t.Id == "quill");
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "parchment");
         vm.ExportPathRequested = _ => path;
         vm.ExportCommand.Execute(null);
         Assert.True(File.Exists(path));
 
         // Give the exported copy a fresh id so the stub lists it as a new theme.
-        var json = File.ReadAllText(path).Replace("\"quill\"", "\"quill-2\"");
+        var json = File.ReadAllText(path).Replace("\"parchment\"", "\"parchment-2\"");
         File.WriteAllText(path, json);
 
         vm.ImportPathRequested = () => path;
         vm.ImportCommand.Execute(null);
 
-        Assert.Contains(vm.Themes, t => t.Id == "quill-2");
-        Assert.Equal("quill-2", vm.SelectedTheme?.Id);
+        Assert.Contains(vm.Themes, t => t.Id == "parchment-2");
+        Assert.Equal("parchment-2", vm.SelectedTheme?.Id);
     }
 
     [Fact]
@@ -211,11 +211,11 @@ public class ThemeManagerViewModelTests : IDisposable
     {
         var vm = NewVm();
 
-        vm.SelectedTheme = vm.Themes.First(t => t.Id == "quill");
-        var quillText = vm.SelectedThemeDescription;
-        Assert.False(string.IsNullOrWhiteSpace(quillText));
-        Assert.Contains("Window background", quillText);   // a "where it is used" line
-        Assert.Contains("Fonts", quillText);
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "parchment");
+        var parchmentText = vm.SelectedThemeDescription;
+        Assert.False(string.IsNullOrWhiteSpace(parchmentText));
+        Assert.Contains("Window background", parchmentText);   // a "where it is used" line
+        Assert.Contains("Fonts", parchmentText);
 
         var changed = false;
         vm.PropertyChanged += (_, e) =>

@@ -1,7 +1,7 @@
 {
   "formatVersion": 1,
-  "id": "quill",
-  "name": "Quill",
+  "id": "parchment",
+  "name": "Parchment",
   "base": "light",
   "colors": {
     "windowBackground": "#FBFAF8",
