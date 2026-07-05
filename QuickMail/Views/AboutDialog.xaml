@@ -6,7 +6,11 @@
         MinHeight="180" MinWidth="300"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <DockPanel Margin="20">
 
@@ -20,7 +24,7 @@
 
         <StackPanel>
             <TextBlock Text="QuickMail"
-                       FontSize="18"
+                       FontSize="{DynamicResource Theme.FontSizeHeader}"
                        FontWeight="Bold"
                        Margin="0,0,0,6"/>
             <TextBlock x:Name="VersionText"

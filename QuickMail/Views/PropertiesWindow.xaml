@@ -7,7 +7,11 @@
         MinWidth="360" MinHeight="280"
         ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <Window.Resources>
         <local:NullToCollapsedConverter x:Key="NullToCollapsed"/>
@@ -58,7 +62,7 @@
                                 <DataTrigger Binding="{Binding IsHeader}" Value="True">
                                     <Setter Property="FontWeight" Value="SemiBold"/>
                                     <Setter Property="Background"
-                                        Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+                                        Value="{DynamicResource Theme.ChromeBackground}"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>
@@ -76,7 +80,7 @@
                              TextWrapping="Wrap"
                              VerticalScrollBarVisibility="Auto"
                              MaxHeight="200"
-                             FontFamily="Consolas"
+                             FontFamily="{DynamicResource Theme.FontFamilyMono}"
                              AutomationProperties.Name="Raw message headers"/>
                 </Expander>
 

@@ -9,7 +9,11 @@
         MinHeight="500" MinWidth="580"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
-        Loaded="Window_Loaded">
+        Loaded="Window_Loaded"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
@@ -58,7 +62,7 @@
                     <DataTemplate>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="{Binding AccountLabel}" VerticalAlignment="Center"/>
-                            <TextBlock Text=" - default" FontStyle="Italic" Foreground="DarkBlue"
+                            <TextBlock Text=" - default" FontStyle="Italic" Foreground="{DynamicResource Theme.Accent}"
                                        VerticalAlignment="Center"
                                        Visibility="{Binding IsDefault, Converter={StaticResource BoolToVisibility}}"/>
                         </StackPanel>
@@ -71,7 +75,7 @@
         <ScrollViewer Grid.Column="1" Grid.Row="0" Margin="10,0,0,0" VerticalScrollBarVisibility="Auto">
             <StackPanel IsEnabled="{Binding IsEditing}">
 
-                <TextBlock Text="Account Settings" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
+                <TextBlock Text="Account Settings" FontWeight="SemiBold" Margin="0,0,0,8"/>
 
                 <!-- Account Name -->
                 <Label x:Name="LblAccountName" Content="Account _Name:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,4,0,2"/>
@@ -118,12 +122,12 @@
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
                     <!-- iCloud app-specific password hint -->
                     <Border Visibility="{Binding IsICloudAccount, Converter={StaticResource BoolToVisibility}}"
-                            Background="#FFF3E3"
-                            BorderBrush="#E08000"
+                            Background="{DynamicResource Theme.WarningBackground}"
+                            BorderBrush="{DynamicResource Theme.Warning}"
                             BorderThickness="1"
                             Padding="8,6"
                             Margin="0,6,0,0">
-                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                        <TextBlock TextWrapping="Wrap"
                                    AutomationProperties.Name="iCloud requires an app-specific password, not your Apple ID password. Generate one at appleid.apple.com under Sign-In and Security, App-Specific Passwords.">
                             <Run FontWeight="SemiBold">iCloud requires an app-specific password.</Run>
                             <Run>Do not enter your Apple ID password. Generate one at</Run>
@@ -249,7 +253,7 @@
             <TextBlock VerticalAlignment="Center"
                        Text="{Binding StatusText}"
                        AutomationProperties.Name="Account manager status"
-                       Foreground="DarkBlue"/>
+                       Foreground="{DynamicResource Theme.Accent}"/>
         </DockPanel>
     </Grid>
 </Window>

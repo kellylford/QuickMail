@@ -1,0 +1,39 @@
+{
+  "formatVersion": 1,
+  "id": "dark",
+  "name": "Parchment Dark",
+  "base": "dark",
+  "colors": {
+    "windowBackground": "#1E2023",
+    "surfaceBackground": "#26292E",
+    "chromeBackground": "#2B2F34",
+    "inputBackground": "#26292E",
+    "border": "#3D4147",
+    "borderSubtle": "#33373C",
+    "inputBorder": "#4A4F56",
+    "textPrimary": "#E8E6E3",
+    "textSecondary": "#A8ACB3",
+    "textDisabled": "#767B83",
+    "textOnAccent": "#16202E",
+    "accent": "#8FB0D9",
+    "accentSubtle": "#2C3A4C",
+    "hyperlink": "#8FB8E8",
+    "selectionBackground": "#33465E",
+    "selectionText": "#E8E6E3",
+    "selectionInactive": "#2E3238",
+    "focusIndicator": "#E8E6E3",
+    "error": "#F0857C",
+    "errorBackground": "#3B2523",
+    "warning": "#E0B45C",
+    "warningBackground": "#3A3223",
+    "success": "#87C795",
+    "successBackground": "#233A2A",
+    "info": "#A3C4E8",
+    "infoBackground": "#24303C"
+  },
+  "typography": {
+    "fontFamily": "Segoe UI",
+    "monoFontFamily": "Cascadia Code",
+    "baseFontSize": 13
+  }
+}

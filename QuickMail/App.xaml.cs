@@ -20,6 +20,7 @@ public partial class App : Application
     private ImapMailService? _imapBackend;
     private GraphMailService? _graphBackend;
     private UpdateCheckService? _updateCheckService;
+    private ThemeService? _themeService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -128,6 +129,12 @@ public partial class App : Application
             LogService.Format  = startupCfg.LogFormat;
             LogService.Enabled = startupCfg.EnableLogging;
 
+            // Theme tokens must be published before the first window parses so every
+            // Theme.* DynamicResource resolves on first render.
+            _themeService = new ThemeService(new ThemeStore(profile));
+            _themeService.Initialize(startupCfg);
+            var themeService = _themeService;
+
             // Feature gate: CLI --feature/--no-feature > config.ini [features] section > built-in defaults.
             var (enableFlags, disableFlags) = ParseFeatureFlags(e.Args);
             var featureGate = new ConfigFeatureGate(startupCfg, enableFlags, disableFlags);
@@ -146,11 +153,12 @@ public partial class App : Application
             _updateCheckService = new UpdateCheckService();
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService);
+                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
+                themeService: themeService);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService);
             mainWindow.Show();
         }
         catch (Exception ex)
@@ -173,6 +181,7 @@ public partial class App : Application
         _contactService?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();
+        _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         base.OnExit(e);
     }
 

@@ -25,14 +25,20 @@ public static class MessageBodyHtmlBuilder
     private static readonly char[] AutoLinkTrailingPunct =
         ['.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '\''];
 
-    public static string BuildMessageHtml(MailMessageDetail detail)
+    /// <param name="themeCss">
+    /// Optional theme CSS from <see cref="IThemeService.BuildMessageCss"/> — the
+    /// <c>:root { --qm-* }</c> variable block. When null the document's CSS
+    /// variables are absent and the <c>var(--qm-*, fallback)</c> declarations
+    /// resolve to their system-color fallbacks (the pre-theming behavior).
+    /// </param>
+    public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null)
     {
         var htmlBody = detail.HtmlBody ?? string.Empty;
         // Fail closed: if any stripping pass times out we cannot claim the HTML is
         // sanitized, so fall through to the plain-text (reader mode) rendering instead
         // of showing partially stripped markup.
         if (!string.IsNullOrWhiteSpace(htmlBody) && !ShouldUseReaderMode(htmlBody)
-            && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, out var sanitized))
+            && TryBuildSanitizedHtmlDocument(detail.Subject, htmlBody, themeCss, out var sanitized))
             return sanitized;
 
         var text = !string.IsNullOrWhiteSpace(detail.PlainTextBody)
@@ -42,7 +48,7 @@ public static class MessageBodyHtmlBuilder
         var note = !string.IsNullOrWhiteSpace(htmlBody)
             ? "This message uses complex HTML, so QuickMail is showing a simplified body."
             : null;
-        return BuildPlainTextHtmlDocument(detail.Subject, text, note);
+        return BuildPlainTextHtmlDocument(detail.Subject, text, note, themeCss);
     }
 
     public static bool ShouldUseReaderMode(string html) =>
@@ -55,21 +61,31 @@ public static class MessageBodyHtmlBuilder
     /// fall back to plain-text rendering (a partially stripped document is not sanitized).
     /// </summary>
     public static bool TryBuildSanitizedHtmlDocument(string? subject, string html, out string document) =>
-        TryBuildSanitizedHtmlDocument(subject, html, HtmlRegexTimeout, out document);
+        TryBuildSanitizedHtmlDocument(subject, html, null, HtmlRegexTimeout, out document);
+
+    public static bool TryBuildSanitizedHtmlDocument(string? subject, string html, string? themeCss, out string document) =>
+        TryBuildSanitizedHtmlDocument(subject, html, themeCss, HtmlRegexTimeout, out document);
 
     internal static bool TryBuildSanitizedHtmlDocument(
-        string? subject, string html, TimeSpan timeout, out string document)
+        string? subject, string html, string? themeCss, TimeSpan timeout, out string document)
     {
         if (!TryStripHeavyHtml(html, timeout, out var body))
         {
             document = string.Empty;
             return false;
         }
-        document = ComposeSanitizedDocument(subject, body);
+        document = ComposeSanitizedDocument(subject, body, themeCss);
         return true;
     }
 
-    private static string ComposeSanitizedDocument(string? subject, string body)
+    /// <summary>
+    /// The theme <c>:root</c> variable block as a style tag, or empty. Emitted
+    /// before the default CSS so the <c>var(--qm-*)</c> references resolve.
+    /// </summary>
+    private static string ThemeStyleTag(string? themeCss) =>
+        string.IsNullOrEmpty(themeCss) ? string.Empty : "<style>" + themeCss + "</style>";
+
+    private static string ComposeSanitizedDocument(string? subject, string body, string? themeCss)
     {
         var titleTag = $"<title>{WebUtility.HtmlEncode(subject ?? string.Empty)}</title>";
         const string cspTag =
@@ -77,25 +93,33 @@ public static class MessageBodyHtmlBuilder
             "content=\"default-src 'none'; script-src 'none'; object-src 'none'; " +
             "frame-src 'none'; img-src 'none'; media-src 'none'; connect-src 'none'; " +
             "form-action 'none'; base-uri 'none'; style-src 'unsafe-inline';\">";
+        // Defaults only — sender-styled HTML still wins unless the user opts into
+        // force-theme (which arrives inside themeCss as !important rules). The
+        // var() fallbacks are the CSS system colors, so with no theme CSS the
+        // document renders exactly as before theming existed.
         const string css =
-            "<style>html,body{margin:0;padding:8px 12px;font-family:Segoe UI,Arial,sans-serif;" +
-            "font-size:13px;line-height:1.45;word-break:break-word;background:Window;color:WindowText;}" +
-            "table{max-width:100%;border-collapse:collapse;}td,th{vertical-align:top;}a{color:#0645ad;}</style>";
+            "<style>html,body{margin:0;padding:8px 12px;" +
+            "font-family:var(--qm-font, 'Segoe UI', Arial, sans-serif);" +
+            "font-size:var(--qm-font-size, 13px);line-height:1.45;word-break:break-word;" +
+            "background:var(--qm-bg, Canvas);color:var(--qm-text, CanvasText);}" +
+            "table{max-width:100%;border-collapse:collapse;}td,th{vertical-align:top;}" +
+            "a{color:var(--qm-link, #0645ad);}</style>";
+        var styleBlock = ThemeStyleTag(themeCss) + css;
 
         var headIdx = body.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
         if (headIdx >= 0)
         {
             body = RemoveTitle(body);
-            body = body.Insert(headIdx + 6, "<meta charset=\"utf-8\">" + titleTag + cspTag + css);
+            body = body.Insert(headIdx + 6, "<meta charset=\"utf-8\">" + titleTag + cspTag + styleBlock);
             return EnsureBodyFocusable(body);
         }
 
         return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
-               titleTag + cspTag + css +
+               titleTag + cspTag + styleBlock +
                "</head><body tabindex=\"0\">" + body + "</body></html>";
     }
 
-    public static string BuildPlainTextHtmlDocument(string? subject, string text, string? note)
+    public static string BuildPlainTextHtmlDocument(string? subject, string text, string? note, string? themeCss = null)
     {
         var clipped  = Truncate(text ?? string.Empty, MaxReaderTextChars);
         var encoded  = WebUtility.HtmlEncode(clipped);
@@ -108,10 +132,14 @@ public static class MessageBodyHtmlBuilder
         return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
                titleTag +
                "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; style-src 'unsafe-inline';\">" +
-               "<style>html,body{margin:0;padding:8px 12px;font-family:Segoe UI,Arial,sans-serif;" +
-               "font-size:13px;white-space:pre-wrap;word-break:break-word;background:Window;color:WindowText;}" +
-               "a{color:#0645ad;}" +
-               ".note{white-space:normal;border-left:3px solid #777;padding-left:8px;margin:0 0 12px 0;color:#555;}</style>" +
+               ThemeStyleTag(themeCss) +
+               "<style>html,body{margin:0;padding:8px 12px;" +
+               "font-family:var(--qm-font, 'Segoe UI', Arial, sans-serif);" +
+               "font-size:var(--qm-font-size, 13px);white-space:pre-wrap;word-break:break-word;" +
+               "background:var(--qm-bg, Canvas);color:var(--qm-text, CanvasText);}" +
+               "a{color:var(--qm-link, #0645ad);}" +
+               ".note{white-space:normal;border-left:3px solid var(--qm-border, #777);" +
+               "padding-left:8px;margin:0 0 12px 0;color:var(--qm-text-muted, #555);}</style>" +
                "</head><body tabindex=\"0\">" + noteHtml + linked + "</body></html>";
     }
 

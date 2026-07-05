@@ -38,6 +38,8 @@ public partial class MessageWindow : Window
     private readonly IMailService        _imap;
     private readonly ILocalStoreService  _localStore;
     private readonly CoreWebView2Environment? _sharedEnv;
+    private readonly IThemeService?      _themeService;
+    private readonly IConfigService?     _configService;
 
     // Local command registry for the command palette (issue 53).
     private readonly CommandRegistry _localRegistry = new();
@@ -49,15 +51,22 @@ public partial class MessageWindow : Window
         MessageWindowViewModel vm,
         IMailService imap,
         ILocalStoreService localStore,
-        CoreWebView2Environment? sharedEnv = null)
+        CoreWebView2Environment? sharedEnv = null,
+        IThemeService? themeService = null,
+        IConfigService? configService = null)
     {
-        _vm         = vm;
-        _imap       = imap;
-        _localStore = localStore;
-        _sharedEnv  = sharedEnv;
+        _vm            = vm;
+        _imap          = imap;
+        _localStore    = localStore;
+        _sharedEnv     = sharedEnv;
+        _themeService  = themeService;
+        _configService = configService;
 
         InitializeComponent();
         DataContext = vm;
+
+        if (_themeService != null)
+            _themeService.ThemeChanged += OnThemeChanged;
 
         vm.RequestClose            += _ => Close();
         vm.RequestMoveToMainWindow += OnMoveToMainWindowRequested;
@@ -140,6 +149,8 @@ public partial class MessageWindow : Window
             MessageBody.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled             = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled             = false;
+
+            ApplyWebViewColorScheme();
 
             // Relay Escape, Shift+Tab, F6 / Shift+F6, and Ctrl+W from inside the WebView.
             await MessageBody.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
@@ -231,12 +242,48 @@ public partial class MessageWindow : Window
         }
     }
 
+    /// <summary>The theme's --qm-* CSS block for this window's documents, or null.</summary>
+    private string? BuildThemeCss() =>
+        _themeService?.BuildMessageCss(_configService?.Load().AppearanceForceMessageTheme ?? false);
+
+    /// <summary>Re-renders the open message with fresh theme CSS. Never moves focus.</summary>
+    private void OnThemeChanged(object? sender, EventArgs e)
+    {
+        ApplyWebViewColorScheme();
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
+            var version = Interlocked.Increment(ref _renderVersion);
+            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss()));
+            if (version != _renderVersion) return;
+            try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
+            MessageBody.CoreWebView2.NavigateToString(html);
+        });
+    }
+
+    private void ApplyWebViewColorScheme()
+    {
+        if (!_webViewReady || _themeService is null) return;
+        try
+        {
+            MessageBody.CoreWebView2.Profile.PreferredColorScheme = _themeService.IsHighContrastActive
+                ? CoreWebView2PreferredColorScheme.Auto
+                : _themeService.ResolvedTheme.Base == "dark"
+                    ? CoreWebView2PreferredColorScheme.Dark
+                    : CoreWebView2PreferredColorScheme.Light;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("MessageWindow.ApplyWebViewColorScheme", ex);
+        }
+    }
+
     private async Task ShowMessageBodyAsync(MailMessageDetail detail)
     {
         if (!_webViewReady) return;
 
         var version = Interlocked.Increment(ref _renderVersion);
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail));
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss()));
         if (version != _renderVersion) return;
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -440,6 +487,8 @@ public partial class MessageWindow : Window
         // would otherwise call LoadSelectedMessageAsync on the disposed CTS.
         if (_vmPropertyChangedHandler != null)
             _vm.PropertyChanged -= _vmPropertyChangedHandler;
+        if (_themeService != null)
+            _themeService.ThemeChanged -= OnThemeChanged;
         _loadCts.Cancel();
         _loadCts.Dispose();
     }

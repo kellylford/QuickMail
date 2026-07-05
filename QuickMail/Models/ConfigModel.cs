@@ -47,6 +47,30 @@ public class ConfigModel
     /// </summary>
     public int GraphPollSeconds { get; set; } = 60;
 
+    // ── Appearance ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The active theme id. "system" follows the OS light/dark setting and yields
+    /// entirely to Windows High Contrast; other values name a built-in ("parchment",
+    /// "dark", "ember", "fjord", "heather") or a user theme id.
+    /// </summary>
+    public string AppearanceThemeId { get; set; } = "system";
+
+    /// <summary>App-wide text scale. Discrete steps 1.0/1.1/1.25/1.5/1.75/2.0.</summary>
+    public double AppearanceTextScale { get; set; } = 1.0;
+
+    /// <summary>Font family override applied app-wide. Empty = use the theme's font.</summary>
+    public string AppearanceFontFamily { get; set; } = string.Empty;
+
+    /// <summary>Always underline hyperlinks in message content. Default off.</summary>
+    public bool AppearanceUnderlineLinks { get; set; } = false;
+
+    /// <summary>Thicker keyboard focus indicators (2px → 4px). Default off.</summary>
+    public bool AppearanceThickFocus { get; set; } = false;
+
+    /// <summary>Override sender HTML colors/fonts with theme colors in the reading pane. Default off.</summary>
+    public bool AppearanceForceMessageTheme { get; set; } = false;
+
     // ── Screen reader announcement settings ──────────────────────────────────────
 
     /// <summary>Master switch for all custom screen reader announcements from QuickMail code.</summary>
