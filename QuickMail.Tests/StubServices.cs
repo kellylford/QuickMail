@@ -369,6 +369,20 @@ sealed class StubThemeService : IThemeService
             ApplyTheme("system");
     }
 
+    public ThemeDefinition ResolveForPreview(string themeId)
+    {
+        ThemeDefinition? match = null;
+        foreach (var t in GetAvailableThemes())
+            if (string.Equals(t.Id, themeId, StringComparison.OrdinalIgnoreCase)) { match = t; break; }
+
+        var full = (match ?? ResolvedTheme).Clone();
+        if (string.IsNullOrEmpty(full.Name)) full.Name = ResolvedTheme.Name;
+        var fill = BuildDefaultResolved();
+        foreach (var key in QuickMail.Theming.ThemeKeys.ColorTokens.Keys)
+            if (!full.Colors.ContainsKey(key)) full.Colors[key] = fill.Colors[key];
+        return full;
+    }
+
     public void ApplyVisionSettings(ConfigModel config) { }
 
     public void ApplyAppearance(ConfigModel config) =>

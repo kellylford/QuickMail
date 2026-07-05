@@ -136,13 +136,10 @@ public partial class ThemeManagerWindow : Window
             return;
         }
 
-        // F6 / Shift+F6: two-stop ring, theme list ↔ action buttons.
+        // F6 / Shift+F6: three-stop ring — theme list → action buttons → description.
         if (e.Key == Key.F6)
         {
-            if (ButtonColumn.IsKeyboardFocusWithin)
-                FocusSelectedListItem();
-            else
-                MoveFocusToButtons();
+            CycleFocus(backward: (Keyboard.Modifiers & ModifierKeys.Shift) != 0);
             e.Handled = true;
             return;
         }
@@ -158,6 +155,21 @@ public partial class ThemeManagerWindow : Window
     private void MoveFocusToButtons()
     {
         ButtonColumn.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+    }
+
+    /// <summary>Moves through the F6 ring: theme list → action buttons → description box.</summary>
+    private void CycleFocus(bool backward)
+    {
+        int current = DescriptionBox.IsKeyboardFocusWithin ? 2
+                    : ButtonColumn.IsKeyboardFocusWithin  ? 1
+                    : 0;
+        int next = ((current + (backward ? -1 : 1)) % 3 + 3) % 3;
+        switch (next)
+        {
+            case 0: FocusSelectedListItem(); break;
+            case 1: MoveFocusToButtons();    break;
+            case 2: DescriptionBox.Focus();  break;
+        }
     }
 
     private void OpenLocalCommandPalette()

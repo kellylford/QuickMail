@@ -308,8 +308,17 @@ public class ThemeService : IThemeService
     {
         if (HighContrastProbe())
             return BuildHighContrastTheme();
+        return ResolveForPreview(_activeThemeId);
+    }
 
-        var id = _activeThemeId;
+    /// <summary>
+    /// Resolves a theme id to a complete theme for display/description, ignoring
+    /// High Contrast. Shared by the effective-theme path (non-HC) and the Theme
+    /// Manager's description box.
+    /// </summary>
+    public ThemeDefinition ResolveForPreview(string themeId)
+    {
+        var id = string.IsNullOrWhiteSpace(themeId) ? SystemThemeId : themeId.Trim();
         if (string.Equals(id, SystemThemeId, StringComparison.OrdinalIgnoreCase))
             id = OsLightModeProbe() ? "quill" : "dark";
 
@@ -318,7 +327,7 @@ public class ThemeService : IThemeService
                         .FirstOrDefault(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
         if (theme is null)
         {
-            // Unknown configured id — fall back to system resolution, never throw.
+            // Unknown id — fall back to system resolution, never throw.
             LogService.Log($"Theme id \"{id}\" not found; falling back to system.");
             theme = OsLightModeProbe() ? BuiltInById("quill") : BuiltInById("dark");
         }

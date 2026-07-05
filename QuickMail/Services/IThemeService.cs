@@ -42,6 +42,14 @@ public interface IThemeService : IDisposable
     IReadOnlyList<ThemeDefinition> GetAvailableThemes();
 
     /// <summary>
+    /// Fully resolves a theme by id (every token filled from its light/dark base)
+    /// for display and description, without applying it or consulting High
+    /// Contrast. The virtual "system" id resolves to whichever base the OS
+    /// currently selects. An unknown id falls back to the system base.
+    /// </summary>
+    ThemeDefinition ResolveForPreview(string themeId);
+
+    /// <summary>
     /// Applies a theme by id and re-publishes the token dictionary. An unknown id
     /// falls back to "system" without throwing. The caller persists the id to config.
     /// </summary>

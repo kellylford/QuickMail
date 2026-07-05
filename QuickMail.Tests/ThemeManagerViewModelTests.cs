@@ -207,6 +207,28 @@ public class ThemeManagerViewModelTests : IDisposable
     }
 
     [Fact]
+    public void SelectedThemeDescription_DescribesTheSelection_AndUpdatesOnChange()
+    {
+        var vm = NewVm();
+
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "quill");
+        var quillText = vm.SelectedThemeDescription;
+        Assert.False(string.IsNullOrWhiteSpace(quillText));
+        Assert.Contains("Window background", quillText);   // a "where it is used" line
+        Assert.Contains("Fonts", quillText);
+
+        var changed = false;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(vm.SelectedThemeDescription)) changed = true;
+        };
+
+        vm.SelectedTheme = vm.Themes.First(t => t.Id == "system");
+        Assert.True(changed, "changing the selection should raise SelectedThemeDescription");
+        Assert.Contains("follows the Windows light and dark setting", vm.SelectedThemeDescription);
+    }
+
+    [Fact]
     public void OpenThemesFolder_RaisesTheFolderRequest()
     {
         _themes.UserThemesFolder = @"C:\somewhere\themes";

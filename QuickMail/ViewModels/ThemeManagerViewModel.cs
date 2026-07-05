@@ -32,7 +32,21 @@ public partial class ThemeManagerViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanRename))]
     [NotifyPropertyChangedFor(nameof(CanDelete))]
     [NotifyPropertyChangedFor(nameof(CanExport))]
+    [NotifyPropertyChangedFor(nameof(SelectedThemeDescription))]
     private ThemeRowViewModel? _selectedTheme;
+
+    /// <summary>
+    /// A read-only, screen-reader-friendly account of the selected theme — what
+    /// colors it uses and where, plus fonts. Backs the "Theme description" box so
+    /// a non-visual user can understand a theme without seeing its swatches.
+    /// Regenerated on each selection change (see NotifyPropertyChangedFor above).
+    /// </summary>
+    public string SelectedThemeDescription =>
+        SelectedTheme is null
+            ? string.Empty
+            : Helpers.ThemeDescriber.Describe(
+                _themeService.ResolveForPreview(SelectedTheme.Id),
+                isSystem: SelectedTheme.IsSystem);
 
     /// <summary>True while the inline name panel (duplicate/rename) is open.</summary>
     [ObservableProperty]
