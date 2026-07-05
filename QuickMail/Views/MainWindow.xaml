@@ -514,7 +514,8 @@
                           InputGestureText="Ctrl+Shift+P"/>
             </MenuItem>
 
-            <!-- Tools — always available (mirrors the Compose window's Tools menu) -->
+            <!-- Tools — always available. Each command lives in exactly one menu,
+                 so this carries the theme actions (previously palette-only). -->
             <MenuItem Header="_Tools">
                 <MenuItem Header="Manage _Themes…"
                           Click="MenuManageThemes_Click"
@@ -523,18 +524,6 @@
                           Click="MenuNextTheme_Click"/>
                 <MenuItem Header="Pre_vious Theme"
                           Click="MenuPreviousTheme_Click"/>
-                <Separator/>
-                <MenuItem Header="Address _Book…"
-                          Click="MenuAddressBook_Click"
-                          InputGestureText="Ctrl+Shift+B"/>
-                <MenuItem Header="_Rules…"
-                          Command="{Binding OpenRulesManagerCommand}"
-                          InputGestureText="Ctrl+Shift+L"
-                          AutomationProperties.Name="Manage Rules"/>
-                <Separator/>
-                <MenuItem Header="Command _Palette…"
-                          Click="MenuCommandPalette_Click"
-                          InputGestureText="Ctrl+Shift+P"/>
             </MenuItem>
 
             <!-- Help -->
