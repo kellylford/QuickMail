@@ -16,6 +16,14 @@ public interface IThemeService : IDisposable
     string ConfiguredThemeId { get; }
 
     /// <summary>
+    /// The display name to announce for the current selection. For the virtual
+    /// System theme this reads "System, showing …" (qualified with the base it
+    /// currently resolves to) so cycling to System never announces the resolved
+    /// built-in name as if the user had selected it directly.
+    /// </summary>
+    string ConfiguredThemeName { get; }
+
+    /// <summary>
     /// The effective theme after System/HC resolution — fully populated, hex strings only.
     /// Under High Contrast this reflects the live SystemColors palette.
     /// </summary>
@@ -61,6 +69,14 @@ public interface IThemeService : IDisposable
     /// Called after the Settings dialog saves.
     /// </summary>
     void ApplyVisionSettings(ConfigModel config);
+
+    /// <summary>
+    /// Applies the configured theme id and the vision-assist settings together in
+    /// a single re-publish, so a combined Settings save raises <see cref="ThemeChanged"/>
+    /// at most once (no double announcement, no double reading-pane re-render).
+    /// The caller is responsible for persisting config.
+    /// </summary>
+    void ApplyAppearance(ConfigModel config);
 
     /// <summary>
     /// The token → CSS-variable bridge for WebView2 documents. Emits the

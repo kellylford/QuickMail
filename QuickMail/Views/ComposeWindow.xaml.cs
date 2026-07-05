@@ -1516,6 +1516,16 @@ public partial class ComposeWindow : Window
             RichBodyBox.Selection.Select(RichBodyBox.Selection.End, RichBodyBox.Selection.End);
         };
 
+        // Compose is modeless and can stay open across a theme switch. The rich
+        // editor reads theme brushes (blockquote foreground, table borders, code
+        // font) once at build time, so those go stale on a switch — rebuild from
+        // the document's own HTML with fresh tokens. Paired unsubscribe in Closed.
+        if (_themeService != null)
+        {
+            _themeService.ThemeChanged += OnThemeChangedRefreshRichBody;
+            Closed += (_, _) => _themeService.ThemeChanged -= OnThemeChangedRefreshRichBody;
+        }
+
         SyncModeSelector();
     }
 
@@ -1536,6 +1546,31 @@ public partial class ComposeWindow : Window
 
         if (targetMode == ComposeMode.PlainText) return;
         _vm.SetMode(targetMode);
+    }
+
+    /// <summary>
+    /// Rebuilds the rich editor's document from its own HTML so theme-dependent
+    /// brushes (blockquote foreground, table borders, code font) pick up the new
+    /// theme. Runs off ThemeChanged; not a user edit, so the draft stays clean and
+    /// the caret is restored by offset. Same content ⇒ identical structure, so the
+    /// offset round-trips.
+    /// </summary>
+    private void OnThemeChangedRefreshRichBody(object? sender, EventArgs e)
+    {
+        if (RichBodyBox.Document.Blocks.Count == 0) return;
+
+        var html = RichTextDocumentConverter.ToHtml(RichBodyBox.Document);
+        var caretOffset = RichBodyBox.Document.ContentStart.GetOffsetToPosition(RichBodyBox.CaretPosition);
+
+        _suppressRichTextChanged = true;
+        _suppressFormattingAnnouncement = true;
+        _lastAnnouncedBlockType = null;
+        RichTextDocumentConverter.LoadInto(RichBodyBox.Document, html);
+        _suppressRichTextChanged = false;
+        _suppressFormattingAnnouncement = false;
+
+        RichBodyBox.CaretPosition =
+            RichBodyBox.Document.ContentStart.GetPositionAtOffset(caretOffset) ?? RichBodyBox.Document.ContentEnd;
     }
 
     private void RichBodyBox_TextChanged(object sender, TextChangedEventArgs e)

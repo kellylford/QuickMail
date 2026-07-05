@@ -98,6 +98,47 @@ public class ThemeServiceTests : IDisposable
         Assert.Equal("fjord", svc.ResolvedTheme.Id);
     }
 
+    [StaFact]
+    public void ApplyAppearance_ThemeAndVisionTogether_RaisesThemeChangedOnce()
+    {
+        using var svc = NewService();
+        svc.Initialize(Config("system"));
+
+        var raised = 0;
+        svc.ThemeChanged += (_, _) => raised++;
+
+        // A combined Settings save: new theme id AND a vision setting (thick focus).
+        // Both mutations must coalesce into a single re-publish / single event.
+        svc.ApplyAppearance(Config("ember", thickFocus: true));
+
+        Assert.Equal("ember", svc.ConfiguredThemeId);
+        Assert.Equal("ember", svc.ResolvedTheme.Id);
+        Assert.Equal(1, raised);
+    }
+
+    // ── Announcement naming ───────────────────────────────────────────────────
+
+    [StaFact]
+    public void ConfiguredThemeName_System_NamesTheResolvedBase()
+    {
+        using var light = NewService(osLight: true);
+        light.Initialize(Config("system"));
+        Assert.Equal("System, showing Quill", light.ConfiguredThemeName);
+
+        using var dark = NewService(osLight: false);
+        dark.Initialize(Config("system"));
+        Assert.Equal("System, showing Quill Dark", dark.ConfiguredThemeName);
+    }
+
+    [StaFact]
+    public void ConfiguredThemeName_RealTheme_IsItsOwnName()
+    {
+        using var svc = NewService();
+        svc.Initialize(Config("ember"));
+        Assert.Equal(svc.ResolvedTheme.Name, svc.ConfiguredThemeName);
+        Assert.DoesNotContain("System", svc.ConfiguredThemeName);
+    }
+
     // ── High Contrast passthrough ─────────────────────────────────────────────
 
     [StaFact]

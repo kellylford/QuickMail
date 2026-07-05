@@ -28,6 +28,7 @@ public class ThemeStore
 
     private readonly string _themesFolder;
     private IReadOnlyList<ThemeDefinition>? _builtIns;
+    private IReadOnlyList<ThemeDefinition>? _userThemes;
 
     public ThemeStore(ProfileContext profile)
     {
@@ -59,13 +60,18 @@ public class ThemeStore
 
     /// <summary>
     /// All user themes from {profile}\themes\*.json, sorted by name.
-    /// Files that fail to parse are skipped and logged.
+    /// Files that fail to parse are skipped and logged. Cached after first load
+    /// (mirroring <see cref="LoadBuiltIns"/>) and invalidated by
+    /// <see cref="SaveUserTheme"/> / <see cref="DeleteUserTheme"/>, so the hot
+    /// paths (theme apply, Next/Previous cycling, OS refresh) do no disk I/O.
     /// </summary>
-    public List<ThemeDefinition> LoadUserThemes()
+    public IReadOnlyList<ThemeDefinition> LoadUserThemes()
     {
+        if (_userThemes != null) return _userThemes;
+
         var result = new List<ThemeDefinition>();
         if (!Directory.Exists(_themesFolder))
-            return result;
+            return _userThemes = result;
 
         foreach (var file in Directory.EnumerateFiles(_themesFolder, "*.json").OrderBy(f => f, StringComparer.OrdinalIgnoreCase))
         {
@@ -87,7 +93,7 @@ public class ThemeStore
                 LogService.Log($"Theme file skipped ({ex.Message}): {file}");
             }
         }
-        return result.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+        return _userThemes = result.OrderBy(t => t.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
     }
 
     /// <summary>Writes a user theme to {profile}\themes\{id}.json atomically.</summary>
@@ -97,6 +103,7 @@ public class ThemeStore
             throw new InvalidOperationException("Built-in themes cannot be saved to the themes folder.");
         Directory.CreateDirectory(_themesFolder);
         Helpers.AtomicFile.WriteAllText(PathForId(theme.Id), theme.ToJson());
+        _userThemes = null; // invalidate cache; next load re-reads the folder
     }
 
     /// <summary>Deletes a user theme file. No-op if absent.</summary>
@@ -105,6 +112,7 @@ public class ThemeStore
         var path = PathForId(themeId);
         if (File.Exists(path))
             File.Delete(path);
+        _userThemes = null; // invalidate cache; next load re-reads the folder
     }
 
     private string PathForId(string id)

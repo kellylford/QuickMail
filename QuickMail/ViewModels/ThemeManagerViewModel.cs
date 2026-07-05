@@ -100,12 +100,8 @@ public partial class ThemeManagerViewModel : ObservableObject
             row.IsCurrent = string.Equals(row.Id, configured, StringComparison.OrdinalIgnoreCase);
     }
 
-    private void PersistConfiguredTheme()
-    {
-        var cfg = _configService.Load();
-        cfg.AppearanceThemeId = _themeService.ConfiguredThemeId;
-        _configService.Save(cfg);
-    }
+    private void PersistConfiguredTheme() =>
+        Helpers.ThemePersistence.PersistConfiguredTheme(_themeService, _configService);
 
     // ── Commands ──────────────────────────────────────────────────────────────
 

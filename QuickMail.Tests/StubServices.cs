@@ -301,6 +301,10 @@ sealed class StubThemeService : IThemeService
     private readonly List<ThemeDefinition> _userThemes = [];
 
     public string ConfiguredThemeId { get; private set; } = "system";
+    public string ConfiguredThemeName =>
+        string.Equals(ConfiguredThemeId, "system", StringComparison.OrdinalIgnoreCase)
+            ? $"System, showing {ResolvedTheme.Name}"
+            : ResolvedTheme.Name;
     public bool IsHighContrastActive { get; set; }
     public string UserThemesFolder { get; set; } = string.Empty;
     public List<string> AppliedThemeIds { get; } = [];
@@ -366,6 +370,9 @@ sealed class StubThemeService : IThemeService
     }
 
     public void ApplyVisionSettings(ConfigModel config) { }
+
+    public void ApplyAppearance(ConfigModel config) =>
+        ApplyTheme(string.IsNullOrWhiteSpace(config.AppearanceThemeId) ? "system" : config.AppearanceThemeId);
 
     public string BuildMessageCss(bool forceOnContent) => string.Empty;
 

@@ -961,16 +961,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_themeService is null) return;
         var resolvedBefore = _themeService.ResolvedTheme.Id;
         _themeService.ApplyTheme(themeId);
-        var cfg = _configService.Load();
-        cfg.AppearanceThemeId = _themeService.ConfiguredThemeId;
-        _configService.Save(cfg);
+        Helpers.ThemePersistence.PersistConfiguredTheme(_themeService, _configService);
 
         // When the selection changes but the effective palette does not (e.g.
         // System → Quill while the OS is in light mode), ThemeChanged never fires
         // and the window's handler stays silent — announce the switch here so
-        // cycling always reports the new theme.
+        // cycling always reports the new theme. ConfiguredThemeName (not the
+        // resolved name) so cycling to System announces "System", not "Quill".
         if (_themeService.ResolvedTheme.Id == resolvedBefore)
-            Announce($"Theme changed to {_themeService.ResolvedTheme.Name}.", AnnouncementCategory.Status);
+            Announce($"Theme changed to {_themeService.ConfiguredThemeName}.", AnnouncementCategory.Status);
     }
 
     /// <summary>Steps to the next/previous theme in display order (System first, then built-ins, then user themes).</summary>
@@ -1233,13 +1232,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         // Theme + vision-assist first, after the modal Settings dialog has closed —
         // ThemeChanged handlers rebuild UI and must never run inside a nested
-        // message loop (CLAUDE.md modal-dialog rules).
-        if (_themeService != null)
-        {
-            _themeService.ApplyVisionSettings(cfg);
-            if (!string.Equals(_themeService.ConfiguredThemeId, cfg.AppearanceThemeId, StringComparison.OrdinalIgnoreCase))
-                _themeService.ApplyTheme(cfg.AppearanceThemeId);
-        }
+        // message loop (CLAUDE.md modal-dialog rules). ApplyAppearance coalesces
+        // both mutations into one re-publish so a combined save (theme + a vision
+        // setting) raises ThemeChanged once, not twice.
+        _themeService?.ApplyAppearance(cfg);
 
         ShowMessageStatus = cfg.ShowMessageStatus;
         _announceFlagStatus = cfg.AnnounceFlagStatus;

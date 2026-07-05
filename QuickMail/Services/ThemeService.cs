@@ -75,6 +75,18 @@ public class ThemeService : IThemeService
     }
 
     public string ConfiguredThemeId => _configuredThemeId;
+
+    /// <summary>
+    /// The display name to announce for the current selection. For the virtual
+    /// System theme this is "System" qualified with the base it currently shows
+    /// (e.g. "System, showing Quill") — so cycling to System never announces the
+    /// resolved built-in name as if the user had picked it directly.
+    /// </summary>
+    public string ConfiguredThemeName =>
+        string.Equals(_configuredThemeId, SystemThemeId, StringComparison.OrdinalIgnoreCase)
+            ? $"System, showing {_resolved.Name}"
+            : _resolved.Name;
+
     public ThemeDefinition ResolvedTheme => _resolved;
     public bool IsHighContrastActive => _isHighContrast;
     public string UserThemesFolder => _store.ThemesFolder;
@@ -188,6 +200,22 @@ public class ThemeService : IThemeService
     public void ApplyVisionSettings(ConfigModel config)
     {
         ReadVisionSettings(config);
+        Refresh(raiseEvent: true);
+    }
+
+    /// <summary>
+    /// Applies the configured theme id and the vision-assist settings from config
+    /// in a single re-publish. A combined Settings save (theme + font/scale/focus)
+    /// must not raise <see cref="ThemeChanged"/> twice — that would speak the
+    /// "Theme changed" announcement twice and re-render an open message's WebView2
+    /// back-to-back. Both mutations land before one <see cref="Refresh"/>.
+    /// </summary>
+    public void ApplyAppearance(ConfigModel config)
+    {
+        ReadVisionSettings(config);
+        var id = string.IsNullOrWhiteSpace(config.AppearanceThemeId) ? SystemThemeId : config.AppearanceThemeId.Trim();
+        _activeThemeId = id;
+        _configuredThemeId = id;
         Refresh(raiseEvent: true);
     }
 

@@ -178,6 +178,11 @@ public partial class MainWindow : Window
     // with the HC wording and everything else as "Theme changed to …".
     private bool _lastAnnouncedHighContrast;
 
+    // The single live Theme Manager, if open. The manager is modeless, so guard
+    // against stacking two over the same themes folder — a second open activates
+    // the existing one instead of creating a rival that could write concurrently.
+    private ThemeManagerWindow? _themeManagerWindow;
+
     private TutorialViewModel? _tutorialVm;
 
     // Tracks open compose windows so they can be explicitly closed when the main window
@@ -2140,7 +2145,7 @@ public partial class MainWindow : Window
         var hc = _themeService.IsHighContrastActive;
         var text = hc && !_lastAnnouncedHighContrast
             ? "High contrast is on; colors are supplied by Windows."
-            : $"Theme changed to {_themeService.ResolvedTheme.Name}.";
+            : $"Theme changed to {_themeService.ConfiguredThemeName}.";
         _lastAnnouncedHighContrast = hc;
         AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Status);
 
@@ -4381,16 +4386,26 @@ public partial class MainWindow : Window
     {
         if (_themeService is null) return;
 
+        // Single-instance: a second invocation activates the open manager rather
+        // than stacking a rival over the same {profile}\themes folder.
+        if (_themeManagerWindow != null)
+        {
+            _themeManagerWindow.Activate();
+            return;
+        }
+
         var previousFocus = Keyboard.FocusedElement as IInputElement;
         var vm = new ThemeManagerViewModel(_themeService, _configService);
         var window = new ThemeManagerWindow(vm) { Owner = this };
         window.Closed += (_, _) =>
         {
+            _themeManagerWindow = null;
             // Safe point for parent updates — no nested message loop is running.
             // Re-register theme.apply.{id} commands for imported/renamed/deleted themes.
             _vm.RegisterThemeCommands();
             previousFocus?.Focus();
         };
+        _themeManagerWindow = window;
         window.Show();
     }
 
