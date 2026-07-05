@@ -16,7 +16,10 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 - [Flags](#flags)
 - [Mail Rules](#mail-rules)
 - [Saved Views](#saved-views)
+- [Calendar](#calendar)
+- [Tools Menu](#tools-menu)
 - [Settings](#settings)
+- [Themes](#themes)
 - [Screen Reader Announcements](#screen-reader-announcements)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 
@@ -92,6 +95,10 @@ You can also jump directly to any pane:
 
 Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date.
 
+### Moving and Copying Messages
+
+Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy.
+
 ### Message List Views
 
 Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are grouped:
@@ -120,6 +127,12 @@ Press **Ctrl+Shift+P** to open the command palette. Type any part of a command n
 ### Keyboard Customization
 
 Open **Settings → Keyboard** to reassign any shortcut to a different key. Type in the field for a command to capture a new key combination. Changes take effect immediately and survive restarts.
+
+### Checking for Updates
+
+QuickMail checks for a newer release in the background each time it starts. The top entry of the **Help** menu always shows the result: **"No updates available — running version X.Y.Z"** when you are current, or **"Update available: vX.Y.Z"** when a newer release exists. Activating the entry opens the matching page on the QuickMail releases site in your browser, so it is always useful — even when there is nothing new. If an update is found, a spoken announcement follows a few seconds after launch; the background check itself is silent when you are already up to date.
+
+The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive walkthrough of core navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and Escape) for anyone new to the app.
 
 ---
 
@@ -289,6 +302,19 @@ Control announcement behavior in **Settings → Screen Reader Announcements**:
 
 Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached.
 
+### Message Templates
+
+Save a message you write often — a standard reply, a form response — as a reusable template.
+
+- **Save as Template** (command palette) saves the current subject and body as a new template, titled from the subject line (or "Untitled" if the subject is empty).
+- **Insert Template…** (command palette) opens a search-and-select picker: type to filter by title, arrow to a template, and press **Insert** or Enter to add its subject (if the Subject field is empty) and body into the message you are composing.
+
+Templates can include `{sender}`, `{date}`, and `{time}` placeholders, which are replaced with your display name and today's date and time when the template is inserted. Templates are plain text; in HTML mode, only the text is inserted.
+
+### Checking Addresses
+
+Press `Ctrl+K` to check every address in the To, Cc, and Bcc fields. QuickMail looks up any bare name against your address book — if exactly one contact matches, it fills in that contact's address automatically. Addresses that are not valid and cannot be resolved are flagged as invalid. A screen reader announces how many addresses were resolved and how many are invalid.
+
 ### Sending
 
 | Shortcut | Action |
@@ -380,13 +406,17 @@ The flag name is announced before the read status when you navigate to a flagged
 
 Mail rules run automatically when mail arrives and can move, flag, mark as read, or delete messages based on sender, recipient, subject, or other criteria.
 
-Open the **Rules Manager** from the **Tools** menu or the command palette. Each rule has:
+Open the **Rules Manager** from the **Tools** menu (`Ctrl+Shift+L`) or the command palette. Each rule has:
 
 - **Conditions** — criteria the message must match (any or all)
 - **Actions** — what to do when conditions are met (move to folder, flag, mark read, delete)
 - **Active** toggle — turn a rule on or off without deleting it
 
 Rules run in order. Drag to reorder, or use the Move Up / Move Down commands.
+
+### Creating a Rule from a Message
+
+Select a message and choose **Create Rule from Message** from the context menu or the command palette. QuickMail opens a new rule pre-filled with a condition matching the sender and, if present, the subject — a quick starting point you can adjust before saving.
 
 ---
 
@@ -397,6 +427,36 @@ A saved view is a named filter you can return to instantly — for example, "Unr
 Open the **View Manager** from the **View** menu or the command palette. Create a view by choosing a folder (or All Inboxes), a message filter, and optionally a date limit. Assign a hotkey to jump to it directly.
 
 Press the assigned hotkey from anywhere in the main window to switch to that view immediately.
+
+---
+
+## Calendar
+
+QuickMail tracks upcoming appointments drawn from meeting-invitation emails (`.ics` attachments) in your mailbox. This is not a general-purpose calendar — it exists so that once you accept a meeting invitation in QuickMail, you have a place to see what you accepted.
+
+A **Calendar** node appears in the folder tree. Select it to replace the message list with a list of upcoming events, sorted by date and time.
+
+- **Arrow keys** move through the event list.
+- **Enter** opens the email the selected event came from. If that message is no longer in your local cache, QuickMail announces this and does nothing rather than attempting a failing fetch.
+- **T** filters the list to today's events.
+- **F5** refreshes the calendar.
+- **F6** cycles to the next pane as usual.
+
+### Responding to Invitations
+
+Open a meeting invitation email as you would any message. Below the invitation details (organizer, time, location, description), the message body shows three response links: **Accept**, **Tentative**, and **Decline**. Activating one records your response and updates the Calendar immediately — no restart or refresh needed. These links are not shown on a cancellation notice. When you receive an updated or cancelled invitation, the corresponding calendar entry updates or is removed automatically.
+
+---
+
+## Tools Menu
+
+The **Tools** menu is always available from the main window menu bar and groups together the commands used less often than day-to-day mail actions:
+
+- **Manage Themes…** — opens the [Theme Manager](#themes).
+- **Next Theme** / **Previous Theme** — cycle through your available themes.
+- **Address Book…** (`Ctrl+Shift+B`)
+- **Rules…** (`Ctrl+Shift+L`) — opens the [Rules Manager](#mail-rules).
+- **Command Palette…** (`Ctrl+Shift+P`)
 
 ---
 
@@ -448,7 +508,7 @@ Theme changes apply immediately — no restart. Open messages re-render in the n
 
 **Font** — override the app font. **(Theme default)** uses the theme's own font.
 
-**Text size** — scale all app text from 100% up to 200%, independent of Windows display scaling.
+**Text size** — a dropdown with fixed stops at 100%, 110%, 125%, 150%, 175%, and 200%, independent of Windows display scaling.
 
 **Vision settings:**
 
@@ -458,9 +518,34 @@ Theme changes apply immediately — no restart. Open messages re-render in the n
 
 **Windows High Contrast:** when High Contrast is on, QuickMail steps aside entirely — every color comes from your Windows High Contrast palette, and QuickMail's own styling is withdrawn. Your theme choice is remembered and returns when High Contrast is turned off. Font and text-size settings continue to apply.
 
+See [Themes](#themes) for the Theme Manager and a description of each built-in theme.
+
+### Screen Reader Announcements
+
+Control which categories of announcements QuickMail makes:
+
+| Setting | What it controls |
+|---------|-----------------|
+| Custom Announcements | Master on/off for all programmatic announcements |
+| Announce hints | Instructional tips ("Press Escape to return") |
+| Announce status | Background progress (sync, loading, connection state) |
+| Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
+| Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
+| Announce flag status | Flag name prepended to message row when navigating the list |
+| Announce spelling suggestions | Suggestions included when a misspelling is announced |
+| Spelling Suggestions Verbosity | Numbers with suggestions (default) or just suggestions |
+
+All settings default to on except **Announce flag status** and **Announce spelling while typing** (off by default). **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
+
+---
+
+## Themes
+
+QuickMail's color scheme is controlled through **Settings → Appearance** (see [Settings](#settings)) and managed in more detail through the **Theme Manager**.
+
 ### Theme Manager
 
-Open the Command Palette (**Ctrl+Shift+P**) and choose **Manage Themes** to open the Theme Manager. From the theme list, press Tab to reach the actions:
+Open the Command Palette (**Ctrl+Shift+P**) and choose **Manage Themes**, or choose **Manage Themes…** from the **Tools** menu. The Theme Manager is a separate, non-blocking window, so you can leave it open while you try a theme against real messages. From the theme list, press Tab to reach the actions:
 
 - **Apply** — switch to the selected theme immediately.
 - **Duplicate** — copy a theme as a starting point for your own. A name field appears with a suggested name.
@@ -469,7 +554,9 @@ Open the Command Palette (**Ctrl+Shift+P**) and choose **Manage Themes** to open
 - **Import…** — load a `.quickmailtheme` file. If a theme file has a problem, QuickMail tells you exactly what is wrong (for example, which color value is not a valid hex color).
 - **Open themes folder** — opens the folder where your themes are stored, for hand-editing.
 
-The Command Palette also offers **Next Theme** and **Previous Theme** to cycle through themes, and a **Theme: [name]** command for each theme — assign a keyboard shortcut to any of them in Settings → Keyboard Shortcuts.
+Below the theme list and actions, a read-only **Theme description** box always shows a plain-language account of the currently selected theme — its overall look, its fonts, and every individual color together with where in the app that color is used. This box is there so you can understand and compare themes by ear or by reading, without needing to see the colors. See [Built-in Themes](#built-in-themes) below for the description of each theme that ships with QuickMail.
+
+The Command Palette also offers **Next Theme** and **Previous Theme** to cycle through themes, and a **Theme: [name]** command for each theme. None of these have a default keyboard shortcut — assign one in **Settings → Keyboard** if you want direct access.
 
 **Editing a theme by hand:** a theme is a plain, documented JSON text file. Duplicate a built-in theme, choose **Open themes folder**, and edit the copy in any text editor. Colors are hex values like `#3D5A80`; any color you leave out is filled in from the built-in Light or Dark theme (whichever the file's `base` names). A typical minimal theme:
 
@@ -489,22 +576,23 @@ The Command Palette also offers **Next Theme** and **Previous Theme** to cycle t
 
 The full color token list: `windowBackground`, `surfaceBackground`, `chromeBackground`, `inputBackground`, `border`, `borderSubtle`, `inputBorder`, `textPrimary`, `textSecondary`, `textDisabled`, `textOnAccent`, `accent`, `accentSubtle`, `hyperlink`, `selectionBackground`, `selectionText`, `selectionInactive`, `focusIndicator`, `error`, `errorBackground`, `warning`, `warningBackground`, `success`, `successBackground`, `info`, `infoBackground`. Edits take effect the next time the theme is applied (reopen the Theme Manager and choose Apply, or restart).
 
-### Screen Reader Announcements
+### Built-in Themes
 
-Control which categories of announcements QuickMail makes:
+QuickMail ships with six themes. **System** follows Windows; the other five are always available regardless of your Windows setting. Each description below is a shorter version of what the Theme Manager's **Theme description** box reads for that theme — open the Theme Manager and select a theme to hear or read the full breakdown, including every individual color and exactly where it is used (message list, links, selection, focus outline, error/warning/success text, and so on).
 
-| Setting | What it controls |
-|---------|-----------------|
-| Custom Announcements | Master on/off for all programmatic announcements |
-| Announce hints | Instructional tips ("Press Escape to return") |
-| Announce status | Background progress (sync, loading, connection state) |
-| Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
-| Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
-| Announce flag status | Flag name prepended to message row when navigating the list |
-| Announce spelling suggestions | Suggestions included when a misspelling is announced |
-| Spelling Suggestions Verbosity | Numbers with suggestions (default) or just suggestions |
+**System** — follows the Windows light or dark setting. Whichever it resolves to today, it currently displays the same colors as Parchment (below): an off-white background, very dark cool-gray text, and a dark muted-blue accent.
 
-All settings default to on except **Announce flag status** and **Announce spelling while typing** (off by default). **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
+**Parchment** (light, default) — an off-white background (Snow) with very dark cool-gray text and a dark muted-blue accent (Dark Slate Blue) used for buttons and the unread marker. Panels and toolbars use warm off-white tones (White Smoke, Linen); links are medium blue. This is QuickMail's standard light look.
+
+**Parchment Dark** — the dark counterpart to Parchment: a very dark gray background with light gray text and a light muted-blue accent. Panels and toolbars use slightly lighter dark-gray tones for depth; links are light blue. Status colors (error, warning, success, information) are lightened versions of Parchment's, chosen for contrast against the dark background.
+
+**Ember** — a warm light theme: a warm off-white background (Floral White) with very dark cool-gray text and a dark red accent (Sienna) in place of Parchment's blue. Selection highlights use a pale muted orange rather than blue. Links remain medium blue for consistency across themes.
+
+**Fjord** — a cool light theme: an off-white background with a faint cool cast (Ghost White) and a dark muted-cyan accent (Dark Slate Gray) in place of Parchment's blue. Selection highlights use a light cool gray-green.
+
+**Heather** — a muted light theme: an off-white background (Ghost White) with a cool gray accent (Dim Gray) instead of a saturated color. Selection highlights use a light cool gray-lavender. This is the most subdued of the built-in themes.
+
+The four light themes are close cousins. Ember, Fjord, and Heather each change only four colors from Parchment: the main window background tint, the accent color, the soft accent-fill color, and the selection highlight. Everything else — panels and toolbars, borders, body and secondary text, the medium-blue hyperlink color, the focus outline, and the four status colors (error, warning, success, information) — is inherited unchanged from Parchment. Parchment Dark is the only theme with a fully dark palette.
 
 ---
 
@@ -545,10 +633,15 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+V` | View menu |
 | `Ctrl+Shift+G` | Grab Addresses from Message |
 | `Ctrl+Shift+B` | Address Book |
+| `Ctrl+Shift+L` | Rules Manager |
 | `Ctrl+,` | Settings |
 | `F1` | User Guide |
 | `Shift+,` | First message in group |
 | `Shift+.` | Last message in group |
+
+**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, and **Previous Theme** are likewise command-palette-only unless you assign a shortcut yourself in Settings → Keyboard.
+
+**Calendar list** (when the Calendar folder is selected): `T` filters to today's events; `Enter` opens the source invitation email; `F5` refreshes; arrow keys browse.
 
 ### Tabs
 
@@ -587,5 +680,8 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+T` | Announce formatting at cursor |
 | `Ctrl+Shift+T` | Show formatting in browsable list |
 | `Ctrl+Shift+A` | Add attachment |
+| `Ctrl+K` | Check addresses |
 | `Ctrl+Shift+P` | Command palette |
 | `Escape` | Close window (when no menu or dropdown is open) |
+
+**Insert Template…** and **Save as Template** are available from the command palette; they have no default keyboard shortcut.
