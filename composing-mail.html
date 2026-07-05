@@ -325,6 +325,30 @@ numbers.</li>
 pasting files from the clipboard (<code>Ctrl+V</code>), or by dragging
 and dropping them onto the window. A screen reader announces how many
 files were attached.</p>
+<h3 id="message-templates">Message Templates</h3>
+<p>Save a message you write often — a standard reply, a form response —
+as a reusable template.</p>
+<ul>
+<li><strong>Save as Template</strong> (command palette) saves the
+current subject and body as a new template, titled from the subject line
+(or “Untitled” if the subject is empty).</li>
+<li><strong>Insert Template…</strong> (command palette) opens a
+search-and-select picker: type to filter by title, arrow to a template,
+and press <strong>Insert</strong> or Enter to add its subject (if the
+Subject field is empty) and body into the message you are
+composing.</li>
+</ul>
+<p>Templates can include <code>{sender}</code>, <code>{date}</code>, and
+<code>{time}</code> placeholders, which are replaced with your display
+name and today’s date and time when the template is inserted. Templates
+are plain text; in HTML mode, only the text is inserted.</p>
+<h3 id="checking-addresses">Checking Addresses</h3>
+<p>Press <code>Ctrl+K</code> to check every address in the To, Cc, and
+Bcc fields. QuickMail looks up any bare name against your address book —
+if exactly one contact matches, it fills in that contact’s address
+automatically. Addresses that are not valid and cannot be resolved are
+flagged as invalid. A screen reader announces how many addresses were
+resolved and how many are invalid.</p>
 <h3 id="sending">Sending</h3>
 <table>
 <thead>

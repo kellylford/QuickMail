@@ -162,6 +162,70 @@
       vertical-align: middle;
     }
     .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+    /* CSS for syntax highlighting */
+    pre > code.sourceCode { white-space: pre; position: relative; }
+    pre > code.sourceCode > span { line-height: 1.25; }
+    pre > code.sourceCode > span:empty { height: 1.2em; }
+    .sourceCode { overflow: visible; }
+    code.sourceCode > span { color: inherit; text-decoration: inherit; }
+    div.sourceCode { margin: 1em 0; }
+    pre.sourceCode { margin: 0; }
+    @media screen {
+    div.sourceCode { overflow: auto; }
+    }
+    @media print {
+    pre > code.sourceCode { white-space: pre-wrap; }
+    pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+    }
+    pre.numberSource code
+      { counter-reset: source-line 0; }
+    pre.numberSource code > span
+      { position: relative; left: -4em; counter-increment: source-line; }
+    pre.numberSource code > span > a:first-child::before
+      { content: counter(source-line);
+        position: relative; left: -1em; text-align: right; vertical-align: baseline;
+        border: none; display: inline-block;
+        -webkit-touch-callout: none; -webkit-user-select: none;
+        -khtml-user-select: none; -moz-user-select: none;
+        -ms-user-select: none; user-select: none;
+        padding: 0 4px; width: 4em;
+        color: #aaaaaa;
+      }
+    pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+    div.sourceCode
+      {   }
+    @media screen {
+    pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+    }
+    code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+    code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+    code span.at { color: #7d9029; } /* Attribute */
+    code span.bn { color: #40a070; } /* BaseN */
+    code span.bu { color: #008000; } /* BuiltIn */
+    code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+    code span.ch { color: #4070a0; } /* Char */
+    code span.cn { color: #880000; } /* Constant */
+    code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+    code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+    code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+    code span.dt { color: #902000; } /* DataType */
+    code span.dv { color: #40a070; } /* DecVal */
+    code span.er { color: #ff0000; font-weight: bold; } /* Error */
+    code span.ex { } /* Extension */
+    code span.fl { color: #40a070; } /* Float */
+    code span.fu { color: #06287e; } /* Function */
+    code span.im { color: #008000; font-weight: bold; } /* Import */
+    code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+    code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+    code span.op { color: #666666; } /* Operator */
+    code span.ot { color: #007020; } /* Other */
+    code span.pp { color: #bc7a00; } /* Preprocessor */
+    code span.sc { color: #4070a0; } /* SpecialChar */
+    code span.ss { color: #bb6688; } /* SpecialString */
+    code span.st { color: #4070a0; } /* String */
+    code span.va { color: #19177c; } /* Variable */
+    code span.vs { color: #4070a0; } /* VerbatimString */
+    code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
   </style>
   <style>
     body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
@@ -184,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.7.9.1</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.0</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -204,7 +268,10 @@ Message</a></li>
 <li><a href="#flags">Flags</a></li>
 <li><a href="#mail-rules">Mail Rules</a></li>
 <li><a href="#saved-views">Saved Views</a></li>
+<li><a href="#calendar">Calendar</a></li>
+<li><a href="#tools-menu">Tools Menu</a></li>
 <li><a href="#settings">Settings</a></li>
+<li><a href="#themes">Themes</a></li>
 <li><a href="#screen-reader-announcements">Screen Reader
 Announcements</a></li>
 <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
@@ -325,6 +392,15 @@ all accounts in unified view</li>
 <h3 id="unified-inbox">Unified Inbox</h3>
 <p>Select <strong>All Inboxes</strong> at the top of the folder tree to
 see messages from all accounts merged into one list, sorted by date.</p>
+<h3 id="moving-and-copying-messages">Moving and Copying Messages</h3>
+<p>Select one or more messages (or a sender/recipient group, or a
+conversation) and choose <strong>Move to Folder…</strong> or
+<strong>Copy to Folder…</strong> from the context menu (Shift+F10) or
+the command palette. Both open a folder picker showing the same
+hierarchical tree used in the main folder panel — folders nested under
+their parent, with account names as headers when more than one account
+is present. Arrow through the tree and press Enter to complete the move
+or copy.</p>
 <h3 id="message-list-views">Message List Views</h3>
 <p>Press <code>Ctrl+Shift+V</code> (or use the <strong>View</strong>
 menu) to switch how messages are grouped:</p>
@@ -351,6 +427,20 @@ the fastest way to discover and run any action in the app.</p>
 <p>Open <strong>Settings → Keyboard</strong> to reassign any shortcut to
 a different key. Type in the field for a command to capture a new key
 combination. Changes take effect immediately and survive restarts.</p>
+<h3 id="checking-for-updates">Checking for Updates</h3>
+<p>QuickMail checks for a newer release in the background each time it
+starts. The top entry of the <strong>Help</strong> menu always shows the
+result: <strong>“No updates available — running version X.Y.Z”</strong>
+when you are current, or <strong>“Update available: vX.Y.Z”</strong>
+when a newer release exists. Activating the entry opens the matching
+page on the QuickMail releases site in your browser, so it is always
+useful — even when there is nothing new. If an update is found, a spoken
+announcement follows a few seconds after launch; the background check
+itself is silent when you are already up to date.</p>
+<p>The <strong>Help</strong> menu also has a <strong>Keyboard
+Tutorial</strong> entry, a short interactive walkthrough of core
+navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and
+Escape) for anyone new to the app.</p>
 <hr />
 <h2 id="reading-mail">Reading Mail</h2>
 <h3 id="opening-a-message">Opening a Message</h3>
@@ -750,6 +840,30 @@ numbers.</li>
 pasting files from the clipboard (<code>Ctrl+V</code>), or by dragging
 and dropping them onto the window. A screen reader announces how many
 files were attached.</p>
+<h3 id="message-templates">Message Templates</h3>
+<p>Save a message you write often — a standard reply, a form response —
+as a reusable template.</p>
+<ul>
+<li><strong>Save as Template</strong> (command palette) saves the
+current subject and body as a new template, titled from the subject line
+(or “Untitled” if the subject is empty).</li>
+<li><strong>Insert Template…</strong> (command palette) opens a
+search-and-select picker: type to filter by title, arrow to a template,
+and press <strong>Insert</strong> or Enter to add its subject (if the
+Subject field is empty) and body into the message you are
+composing.</li>
+</ul>
+<p>Templates can include <code>{sender}</code>, <code>{date}</code>, and
+<code>{time}</code> placeholders, which are replaced with your display
+name and today’s date and time when the template is inserted. Templates
+are plain text; in HTML mode, only the text is inserted.</p>
+<h3 id="checking-addresses">Checking Addresses</h3>
+<p>Press <code>Ctrl+K</code> to check every address in the To, Cc, and
+Bcc fields. QuickMail looks up any bare name against your address book —
+if exactly one contact matches, it fills in that contact’s address
+automatically. Addresses that are not valid and cannot be resolved are
+flagged as invalid. A screen reader announces how many addresses were
+resolved and how many are invalid.</p>
 <h3 id="sending">Sending</h3>
 <table>
 <thead>
@@ -873,7 +987,8 @@ Announce flag status</strong>.</p>
 mark as read, or delete messages based on sender, recipient, subject, or
 other criteria.</p>
 <p>Open the <strong>Rules Manager</strong> from the
-<strong>Tools</strong> menu or the command palette. Each rule has:</p>
+<strong>Tools</strong> menu (<code>Ctrl+Shift+L</code>) or the command
+palette. Each rule has:</p>
 <ul>
 <li><strong>Conditions</strong> — criteria the message must match (any
 or all)</li>
@@ -884,6 +999,12 @@ deleting it</li>
 </ul>
 <p>Rules run in order. Drag to reorder, or use the Move Up / Move Down
 commands.</p>
+<h3 id="creating-a-rule-from-a-message">Creating a Rule from a
+Message</h3>
+<p>Select a message and choose <strong>Create Rule from Message</strong>
+from the context menu or the command palette. QuickMail opens a new rule
+pre-filled with a condition matching the sender and, if present, the
+subject — a quick starting point you can adjust before saving.</p>
 <hr />
 <h2 id="saved-views">Saved Views</h2>
 <p>A saved view is a named filter you can return to instantly — for
@@ -894,6 +1015,48 @@ Inboxes), a message filter, and optionally a date limit. Assign a hotkey
 to jump to it directly.</p>
 <p>Press the assigned hotkey from anywhere in the main window to switch
 to that view immediately.</p>
+<hr />
+<h2 id="calendar">Calendar</h2>
+<p>QuickMail tracks upcoming appointments drawn from meeting-invitation
+emails (<code>.ics</code> attachments) in your mailbox. This is not a
+general-purpose calendar — it exists so that once you accept a meeting
+invitation in QuickMail, you have a place to see what you accepted.</p>
+<p>A <strong>Calendar</strong> node appears in the folder tree. Select
+it to replace the message list with a list of upcoming events, sorted by
+date and time.</p>
+<ul>
+<li><strong>Arrow keys</strong> move through the event list.</li>
+<li><strong>Enter</strong> opens the email the selected event came from.
+If that message is no longer in your local cache, QuickMail announces
+this and does nothing rather than attempting a failing fetch.</li>
+<li><strong>T</strong> filters the list to today’s events.</li>
+<li><strong>F5</strong> refreshes the calendar.</li>
+<li><strong>F6</strong> cycles to the next pane as usual.</li>
+</ul>
+<h3 id="responding-to-invitations">Responding to Invitations</h3>
+<p>Open a meeting invitation email as you would any message. Below the
+invitation details (organizer, time, location, description), the message
+body shows three response links: <strong>Accept</strong>,
+<strong>Tentative</strong>, and <strong>Decline</strong>. Activating one
+records your response and updates the Calendar immediately — no restart
+or refresh needed. These links are not shown on a cancellation notice.
+When you receive an updated or cancelled invitation, the corresponding
+calendar entry updates or is removed automatically.</p>
+<hr />
+<h2 id="tools-menu">Tools Menu</h2>
+<p>The <strong>Tools</strong> menu is always available from the main
+window menu bar and groups together the commands used less often than
+day-to-day mail actions:</p>
+<ul>
+<li><strong>Manage Themes…</strong> — opens the <a href="#themes">Theme
+Manager</a>.</li>
+<li><strong>Next Theme</strong> / <strong>Previous Theme</strong> —
+cycle through your available themes.</li>
+<li><strong>Address Book…</strong> (<code>Ctrl+Shift+B</code>)</li>
+<li><strong>Rules…</strong> (<code>Ctrl+Shift+L</code>) — opens the <a
+href="#mail-rules">Rules Manager</a>.</li>
+<li><strong>Command Palette…</strong> (<code>Ctrl+Shift+P</code>)</li>
+</ul>
 <hr />
 <h2 id="settings">Settings</h2>
 <p>Press <strong>Ctrl+,</strong> to open Settings.</p>
@@ -934,6 +1097,46 @@ chronological order. <strong>Time first</strong> uses the original
 format with the timestamp at the start of each line.</p>
 <h3 id="keyboard">Keyboard</h3>
 <p>Reassign shortcuts for any registered command.</p>
+<h3 id="appearance">Appearance</h3>
+<p>Choose how QuickMail looks and adjust it to your vision needs.</p>
+<p><strong>Theme</strong> — the color scheme for the whole app:</p>
+<ul>
+<li><strong>System</strong> (default) — follows the Windows light or
+dark setting automatically.</li>
+<li><strong>Parchment</strong> — the standard light look: warm
+off-whites with a muted steel-blue accent.</li>
+<li><strong>Parchment Dark</strong> — the dark counterpart.</li>
+<li><strong>Ember</strong>, <strong>Fjord</strong>,
+<strong>Heather</strong> — warm, cool, and muted variations on the light
+look.</li>
+<li>Any theme you created or imported in the Theme Manager also appears
+here.</li>
+</ul>
+<p>Theme changes apply immediately — no restart. Open messages re-render
+in the new colors.</p>
+<p><strong>Font</strong> — override the app font. <strong>(Theme
+default)</strong> uses the theme’s own font.</p>
+<p><strong>Text size</strong> — a dropdown with fixed stops at 100%,
+110%, 125%, 150%, 175%, and 200%, independent of Windows display
+scaling.</p>
+<p><strong>Vision settings:</strong></p>
+<ul>
+<li><strong>Always underline links</strong> — underlines every link in
+message content, even when the sender removed the underline.</li>
+<li><strong>Thicker keyboard focus indicators</strong> — doubles the
+width of the keyboard focus ring.</li>
+<li><strong>Apply theme colors to message content</strong> — overrides
+the colors and fonts chosen by a message’s sender with your theme’s
+colors. Turn on when messages arrive with hard-to-read colors; turn off
+to see messages as their senders designed them.</li>
+</ul>
+<p><strong>Windows High Contrast:</strong> when High Contrast is on,
+QuickMail steps aside entirely — every color comes from your Windows
+High Contrast palette, and QuickMail’s own styling is withdrawn. Your
+theme choice is remembered and returns when High Contrast is turned off.
+Font and text-size settings continue to apply.</p>
+<p>See <a href="#themes">Themes</a> for the Theme Manager and a
+description of each built-in theme.</p>
 <h3 id="screen-reader-announcements">Screen Reader Announcements</h3>
 <p>Control which categories of announcements QuickMail makes:</p>
 <table>
@@ -989,6 +1192,124 @@ by default). <strong>Spelling Suggestions Verbosity</strong> defaults to
 <strong>Numbers with suggestions</strong>. Turn off <strong>Custom
 Announcements</strong> to silence everything at once; turn it back on to
 restore your individual preferences.</p>
+<hr />
+<h2 id="themes">Themes</h2>
+<p>QuickMail’s color scheme is controlled through <strong>Settings →
+Appearance</strong> (see <a href="#settings">Settings</a>) and managed
+in more detail through the <strong>Theme Manager</strong>.</p>
+<h3 id="theme-manager">Theme Manager</h3>
+<p>Open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
+<strong>Manage Themes</strong>, or choose <strong>Manage
+Themes…</strong> from the <strong>Tools</strong> menu. The Theme Manager
+is a separate, non-blocking window, so you can leave it open while you
+try a theme against real messages. From the theme list, press Tab to
+reach the actions:</p>
+<ul>
+<li><strong>Apply</strong> — switch to the selected theme
+immediately.</li>
+<li><strong>Duplicate</strong> — copy a theme as a starting point for
+your own. A name field appears with a suggested name.</li>
+<li><strong>Rename</strong> / <strong>Delete</strong> — for your own
+themes (built-ins cannot be changed or deleted).</li>
+<li><strong>Export…</strong> — save a theme as a
+<code>.quickmailtheme</code> file to share or move to another
+machine.</li>
+<li><strong>Import…</strong> — load a <code>.quickmailtheme</code> file.
+If a theme file has a problem, QuickMail tells you exactly what is wrong
+(for example, which color value is not a valid hex color).</li>
+<li><strong>Open themes folder</strong> — opens the folder where your
+themes are stored, for hand-editing.</li>
+</ul>
+<p>Below the theme list and actions, a read-only <strong>Theme
+description</strong> box always shows a plain-language account of the
+currently selected theme — its overall look, its fonts, and every
+individual color together with where in the app that color is used. This
+box is there so you can understand and compare themes by ear or by
+reading, without needing to see the colors. See <a
+href="#built-in-themes">Built-in Themes</a> below for the description of
+each theme that ships with QuickMail.</p>
+<p>The Command Palette also offers <strong>Next Theme</strong> and
+<strong>Previous Theme</strong> to cycle through themes, and a
+<strong>Theme: [name]</strong> command for each theme. None of these
+have a default keyboard shortcut — assign one in <strong>Settings →
+Keyboard</strong> if you want direct access.</p>
+<p><strong>Editing a theme by hand:</strong> a theme is a plain,
+documented JSON text file. Duplicate a built-in theme, choose
+<strong>Open themes folder</strong>, and edit the copy in any text
+editor. Colors are hex values like <code>#3D5A80</code>; any color you
+leave out is filled in from the built-in Light or Dark theme (whichever
+the file’s <code>base</code> names). A typical minimal theme:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;formatVersion&quot;</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;my-theme&quot;</span><span class="fu">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;My Theme&quot;</span><span class="fu">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;base&quot;</span><span class="fu">:</span> <span class="st">&quot;light&quot;</span><span class="fu">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;colors&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;accent&quot;</span><span class="fu">:</span> <span class="st">&quot;#8F4531&quot;</span><span class="fu">,</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;windowBackground&quot;</span><span class="fu">:</span> <span class="st">&quot;#FBF7F2&quot;</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">},</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;typography&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;fontFamily&quot;</span><span class="fu">:</span> <span class="st">&quot;Segoe UI&quot;</span><span class="fu">,</span> <span class="dt">&quot;baseFontSize&quot;</span><span class="fu">:</span> <span class="dv">13</span> <span class="fu">}</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>The full color token list: <code>windowBackground</code>,
+<code>surfaceBackground</code>, <code>chromeBackground</code>,
+<code>inputBackground</code>, <code>border</code>,
+<code>borderSubtle</code>, <code>inputBorder</code>,
+<code>textPrimary</code>, <code>textSecondary</code>,
+<code>textDisabled</code>, <code>textOnAccent</code>,
+<code>accent</code>, <code>accentSubtle</code>, <code>hyperlink</code>,
+<code>selectionBackground</code>, <code>selectionText</code>,
+<code>selectionInactive</code>, <code>focusIndicator</code>,
+<code>error</code>, <code>errorBackground</code>, <code>warning</code>,
+<code>warningBackground</code>, <code>success</code>,
+<code>successBackground</code>, <code>info</code>,
+<code>infoBackground</code>. Edits take effect the next time the theme
+is applied (reopen the Theme Manager and choose Apply, or restart).</p>
+<h3 id="built-in-themes">Built-in Themes</h3>
+<p>QuickMail ships with six themes. <strong>System</strong> follows
+Windows; the other five are always available regardless of your Windows
+setting. Each description below is a shorter version of what the Theme
+Manager’s <strong>Theme description</strong> box reads for that theme —
+open the Theme Manager and select a theme to hear or read the full
+breakdown, including every individual color and exactly where it is used
+(message list, links, selection, focus outline, error/warning/success
+text, and so on).</p>
+<p><strong>System</strong> — follows the Windows light or dark setting.
+Whichever it resolves to today, it currently displays the same colors as
+Parchment (below): an off-white background, very dark cool-gray text,
+and a dark muted-blue accent.</p>
+<p><strong>Parchment</strong> (light, default) — an off-white background
+(Snow) with very dark cool-gray text and a dark muted-blue accent (Dark
+Slate Blue) used for buttons and the unread marker. Panels and toolbars
+use warm off-white tones (White Smoke, Linen); links are medium blue.
+This is QuickMail’s standard light look.</p>
+<p><strong>Parchment Dark</strong> — the dark counterpart to Parchment:
+a very dark gray background with light gray text and a light muted-blue
+accent. Panels and toolbars use slightly lighter dark-gray tones for
+depth; links are light blue. Status colors (error, warning, success,
+information) are lightened versions of Parchment’s, chosen for contrast
+against the dark background.</p>
+<p><strong>Ember</strong> — a warm light theme: a warm off-white
+background (Floral White) with very dark cool-gray text and a dark red
+accent (Sienna) in place of Parchment’s blue. Selection highlights use a
+pale muted orange rather than blue. Links remain medium blue for
+consistency across themes.</p>
+<p><strong>Fjord</strong> — a cool light theme: an off-white background
+with a faint cool cast (Ghost White) and a dark muted-cyan accent (Dark
+Slate Gray) in place of Parchment’s blue. Selection highlights use a
+light cool gray-green.</p>
+<p><strong>Heather</strong> — a muted light theme: an off-white
+background (Ghost White) with a cool gray accent (Dim Gray) instead of a
+saturated color. Selection highlights use a light cool gray-lavender.
+This is the most subdued of the built-in themes.</p>
+<p>The four light themes are close cousins. Ember, Fjord, and Heather
+each change only four colors from Parchment: the main window background
+tint, the accent color, the soft accent-fill color, and the selection
+highlight. Everything else — panels and toolbars, borders, body and
+secondary text, the medium-blue hyperlink color, the focus outline, and
+the four status colors (error, warning, success, information) — is
+inherited unchanged from Parchment. Parchment Dark is the only theme
+with a fully dark palette.</p>
 <hr />
 <h2 id="screen-reader-announcements-1">Screen Reader Announcements</h2>
 <p>QuickMail uses UIA Notification events (the correct API for desktop
@@ -1101,23 +1422,37 @@ box with any screen reader.</p>
 <td>Address Book</td>
 </tr>
 <tr class="even">
+<td><code>Ctrl+Shift+L</code></td>
+<td>Rules Manager</td>
+</tr>
+<tr class="odd">
 <td><code>Ctrl+,</code></td>
 <td>Settings</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>F1</code></td>
 <td>User Guide</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Shift+,</code></td>
 <td>First message in group</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Shift+.</code></td>
 <td>Last message in group</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Move to Folder…</strong> and <strong>Copy to Folder…</strong>
+are available from the context menu (Shift+F10) or the command palette;
+they have no default keyboard shortcut. <strong>Manage Themes</strong>,
+<strong>Next Theme</strong>, and <strong>Previous Theme</strong> are
+likewise command-palette-only unless you assign a shortcut yourself in
+Settings → Keyboard.</p>
+<p><strong>Calendar list</strong> (when the Calendar folder is
+selected): <code>T</code> filters to today’s events; <code>Enter</code>
+opens the source invitation email; <code>F5</code> refreshes; arrow keys
+browse.</p>
 <h3 id="tabs-1">Tabs</h3>
 <table>
 <thead>
@@ -1255,14 +1590,21 @@ box with any screen reader.</p>
 <td>Add attachment</td>
 </tr>
 <tr class="odd">
+<td><code>Ctrl+K</code></td>
+<td>Check addresses</td>
+</tr>
+<tr class="even">
 <td><code>Ctrl+Shift+P</code></td>
 <td>Command palette</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Escape</code></td>
 <td>Close window (when no menu or dropdown is open)</td>
 </tr>
 </tbody>
 </table>
+<p><strong>Insert Template…</strong> and <strong>Save as
+Template</strong> are available from the command palette; they have no
+default keyboard shortcut.</p>
 </body>
 </html>
