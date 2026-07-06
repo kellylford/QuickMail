@@ -266,6 +266,15 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void ReportBugWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var window = new ReportBugWindow(new StubBugReportService());
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
     public void SpellCheckDialog_XamlParsesWithoutException()
     {
         EnsureApplication();

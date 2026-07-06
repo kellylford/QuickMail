@@ -173,6 +173,7 @@ public partial class MainWindow : Window
     private readonly IFlagService? _flagService;
     private readonly ICustomDictionaryService? _customDictionary;
     private readonly IThemeService? _themeService;
+    private readonly IBugReportService? _bugReportService;
 
     // Last High Contrast state announced, so an HC transition is announced once
     // with the HC wording and everything else as "Theme changed to …".
@@ -211,7 +212,8 @@ public partial class MainWindow : Window
         IFeatureGate featureGate,
         IFlagService? flagService = null,
         ICustomDictionaryService? customDictionary = null,
-        IThemeService? themeService = null)
+        IThemeService? themeService = null,
+        IBugReportService? bugReportService = null)
     {
         _vm = vm;
         _smtp = smtp;
@@ -230,6 +232,7 @@ public partial class MainWindow : Window
         _flagService = flagService;
         _customDictionary = customDictionary;
         _themeService = themeService;
+        _bugReportService = bugReportService;
 
         InitializeComponent();
         DataContext = vm;
@@ -290,6 +293,7 @@ public partial class MainWindow : Window
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
         vm.AboutRequested += (_, _) => ShowAboutDialog();
+        vm.ReportBugRequested += (_, _) => ShowReportBugWindow();
         vm.PropertiesRequested += propertiesVm =>
         {
             var win = new PropertiesWindow(propertiesVm) { Owner = this };
@@ -2720,6 +2724,23 @@ public partial class MainWindow : Window
     {
         var dlg = new AboutDialog { Owner = this };
         dlg.ShowDialog();
+    }
+
+    // Modeless — see the class doc comment on ReportBugWindow for why (editable text
+    // fields opened over this window's live WebView2 reading pane).
+    private void ShowReportBugWindow()
+    {
+        if (_bugReportService == null) return;
+
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+        var window = new ReportBugWindow(_bugReportService) { Owner = this };
+        window.Closed += (_, _) => previousFocus?.Focus();
+        window.Show();
+    }
+
+    private void MenuReportBug_Click(object sender, RoutedEventArgs e)
+    {
+        ShowReportBugWindow();
     }
 
     private void MenuAbout_Click(object sender, RoutedEventArgs e)
