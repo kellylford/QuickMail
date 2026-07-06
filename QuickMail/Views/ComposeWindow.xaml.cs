@@ -104,6 +104,11 @@ public partial class ComposeWindow : Window
     private DispatcherTimer? _spellingTypingTimer;
     private static readonly TimeSpan SpellingTypingDelay = TimeSpan.FromMilliseconds(500);
 
+    // True once the WPF speller has been enabled on the editors. Enabling is deferred
+    // off the construction path (issue #181); EnsureSpellCheckEnabled flips this exactly
+    // once, from either the deferred pre-warm or a spell-check entry point.
+    private bool _spellCheckEnabled;
+
     public ComposeWindow(ComposeViewModel vm, IContactService contactService, ITemplateService templateService, IConfigService configService, ICustomDictionaryService? customDictionary = null, IThemeService? themeService = null)
     {
         _vm = vm;
@@ -834,13 +839,8 @@ public partial class ComposeWindow : Window
     }
 
     /// <summary>
-    /// (Re-)registers the custom dictionary lexicon on every spell-checked editor.
-    /// Remove-then-add forces WPF to re-read the file, which is how a word added
-    /// mid-session stops being flagged without reopening the window.
-    /// </summary>
-    /// <summary>
-    /// Turns on spell-checking for the compose editors, deferred to Background
-    /// dispatcher priority so it runs after the window has shown.
+    /// Pre-warms spell-checking at Background dispatcher priority so it runs after the
+    /// window has shown.
     ///
     /// Enabling <see cref="SpellCheck"/> spins up WPF's Natural-Language speller,
     /// whose COM class-object activation (<c>NLGSpellerInterop.NlGetClassObject</c>)
@@ -850,19 +850,43 @@ public partial class ComposeWindow : Window
     /// issue #181), a window badly widened by x64-on-ARM64 emulation. Deferring to
     /// Background priority moves the activation off the construction path to a point
     /// where the dispatcher is already pumping normally, so it no longer blocks the
-    /// window from opening. Registering the custom dictionary also touches the
-    /// speller, so it runs in the same deferred callback, after enabling.
+    /// window from opening.
     /// </summary>
     private void EnableSpellCheckDeferred()
     {
         Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
         {
-            foreach (var editor in new TextBoxBase[] { SubjectBox, BodyBox, RichBodyBox })
-                SpellCheck.SetIsEnabled(editor, true);
-            RegisterCustomDictionary();
+            // The window may have closed before this queued op ran; nothing to enable.
+            if (!IsLoaded) return;
+            EnsureSpellCheckEnabled();
         }));
     }
 
+    /// <summary>
+    /// Enables spell-check on the three editors and registers the custom dictionary,
+    /// exactly once. Idempotent. Called from the deferred pre-warm
+    /// (<see cref="EnableSpellCheckDeferred"/>) and, as a safety net, from every
+    /// spell-check entry point (F7 dialog, Next/Previous misspelling, navigation
+    /// announcement) so a spell action taken in the brief window before the deferred
+    /// callback fires never runs against a disabled speller — which would silently
+    /// return no errors and falsely report "no misspellings" (#181 follow-up). The
+    /// custom dictionary is registered after enabling, since it also touches the
+    /// speller.
+    /// </summary>
+    private void EnsureSpellCheckEnabled()
+    {
+        if (_spellCheckEnabled) return;
+        _spellCheckEnabled = true;
+        foreach (var editor in new TextBoxBase[] { SubjectBox, BodyBox, RichBodyBox })
+            SpellCheck.SetIsEnabled(editor, true);
+        RegisterCustomDictionary();
+    }
+
+    /// <summary>
+    /// (Re-)registers the custom dictionary lexicon on every spell-checked editor.
+    /// Remove-then-add forces WPF to re-read the file, which is how a word added
+    /// mid-session stops being flagged without reopening the window.
+    /// </summary>
     private void RegisterCustomDictionary()
     {
         if (_customDictionary == null) return;
@@ -889,6 +913,7 @@ public partial class ComposeWindow : Window
 
     private void AnnounceSpellingAtCurrentPosition()
     {
+        EnsureSpellCheckEnabled();
         if (_vm.CurrentMode == ComposeMode.Html)
         {
             AnnounceSpellingAtRichPosition();
@@ -1328,6 +1353,8 @@ public partial class ComposeWindow : Window
 
     private void CheckSpelling()
     {
+        EnsureSpellCheckEnabled();
+
         // One session at a time: a second F7 returns to the open dialog.
         if (_spellCheckDialog != null)
         {
@@ -1439,6 +1466,7 @@ public partial class ComposeWindow : Window
 
     private void NavigateSpellingError(bool forward)
     {
+        EnsureSpellCheckEnabled();
         if (_vm.CurrentMode == ComposeMode.Html)
         {
             NavigateSpellingErrorInRichBox(forward);
