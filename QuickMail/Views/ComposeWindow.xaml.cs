@@ -115,12 +115,16 @@ public partial class ComposeWindow : Window
         InitializeComponent();
         DataContext = vm;
 
-        // Register the user's custom dictionary on all spell-checked editors and
-        // keep the registration fresh when words are added (WPF only re-reads a
-        // lexicon on remove + re-add of its Uri). Paired unsubscribe is in Closed.
+        // Spell-check is turned on in code (not via SpellCheck.IsEnabled in XAML) and
+        // deferred to Background priority — see EnableSpellCheckDeferred for why (#181).
+        EnableSpellCheckDeferred();
+
+        // Keep the custom-dictionary registration fresh when words are added (WPF only
+        // re-reads a lexicon on remove + re-add of its Uri). The initial registration
+        // runs inside EnableSpellCheckDeferred, after the speller is enabled. Paired
+        // unsubscribe is in Closed.
         if (_customDictionary != null)
         {
-            RegisterCustomDictionary();
             _customDictionary.DictionaryChanged += RegisterCustomDictionary;
             Closed += (_, _) => _customDictionary.DictionaryChanged -= RegisterCustomDictionary;
         }
@@ -834,6 +838,31 @@ public partial class ComposeWindow : Window
     /// Remove-then-add forces WPF to re-read the file, which is how a word added
     /// mid-session stops being flagged without reopening the window.
     /// </summary>
+    /// <summary>
+    /// Turns on spell-checking for the compose editors, deferred to Background
+    /// dispatcher priority so it runs after the window has shown.
+    ///
+    /// Enabling <see cref="SpellCheck"/> spins up WPF's Natural-Language speller,
+    /// whose COM class-object activation (<c>NLGSpellerInterop.NlGetClassObject</c>)
+    /// is a synchronous, pump-waiting call on the STA UI thread. When it ran during
+    /// <c>InitializeComponent()</c> — while the window's control tree was being built
+    /// — it could intermittently never return and freeze the whole app (AppHangB1,
+    /// issue #181), a window badly widened by x64-on-ARM64 emulation. Deferring to
+    /// Background priority moves the activation off the construction path to a point
+    /// where the dispatcher is already pumping normally, so it no longer blocks the
+    /// window from opening. Registering the custom dictionary also touches the
+    /// speller, so it runs in the same deferred callback, after enabling.
+    /// </summary>
+    private void EnableSpellCheckDeferred()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            foreach (var editor in new TextBoxBase[] { SubjectBox, BodyBox, RichBodyBox })
+                SpellCheck.SetIsEnabled(editor, true);
+            RegisterCustomDictionary();
+        }));
+    }
+
     private void RegisterCustomDictionary()
     {
         if (_customDictionary == null) return;

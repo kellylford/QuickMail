@@ -317,7 +317,6 @@
                      AutomationProperties.LabeledBy="{Binding ElementName=SubjectLabel}"
                      AutomationProperties.Name="Subject"
                      AutomationProperties.AcceleratorKey="Alt+U"
-                     SpellCheck.IsEnabled="True"
                      IsInactiveSelectionHighlightEnabled="True"
                      Margin="0,4" TabIndex="4"/>
 
@@ -411,7 +410,6 @@
                          AutomationProperties.AcceleratorKey="Alt+Y"
                          AcceptsReturn="True" AcceptsTab="True"
                          TextWrapping="Wrap"
-                         SpellCheck.IsEnabled="True"
                          IsInactiveSelectionHighlightEnabled="True"
                          VerticalScrollBarVisibility="Auto"
                          FontFamily="{DynamicResource Theme.FontFamily}"
@@ -425,7 +423,6 @@
                              AutomationProperties.Name="Message body"
                              AutomationProperties.AcceleratorKey="Alt+Y"
                              AcceptsReturn="True" AcceptsTab="True"
-                             SpellCheck.IsEnabled="True"
                              IsInactiveSelectionHighlightEnabled="True"
                              VerticalScrollBarVisibility="Auto"
                              FontFamily="{DynamicResource Theme.FontFamily}"
