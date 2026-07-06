@@ -134,6 +134,12 @@ QuickMail checks for a newer release in the background each time it starts. The 
 
 The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive walkthrough of core navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and Escape) for anyone new to the app.
 
+### Reporting a Bug
+
+Choose **Report a Bug** from the **Help** menu (also available from the command palette) to open a report window without needing a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce; a **Preview** box below the fields always shows exactly what will be sent, built fresh from those fields. Press **Send** to submit — QuickMail creates the GitHub issue directly using its own limited-scope credential, and the window shows a link to the created issue. No log content is ever collected or sent.
+
+If sending fails, or you'd rather review the report yourself, choose **Copy report and open GitHub** instead: your report is copied to the clipboard and a pre-filled GitHub issue page opens in your browser, ready to paste and submit.
+
 ---
 
 ## Reading Mail
@@ -639,7 +645,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Shift+,` | First message in group |
 | `Shift+.` | Last message in group |
 
-**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, and **Previous Theme** are likewise command-palette-only unless you assign a shortcut yourself in Settings → Keyboard.
+**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, and **Report a Bug** are likewise command-palette-only unless you assign a shortcut yourself in Settings → Keyboard.
 
 **Calendar list** (when the Calendar folder is selected): `T` filters to today's events; `Enter` opens the source invitation email; `F5` refreshes; arrow keys browse.
 

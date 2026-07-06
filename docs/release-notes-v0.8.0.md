@@ -11,7 +11,7 @@ Two options are available for v0.8.0:
 
 Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
 
-This release introduces **theming and a visual design system**: light and dark themes, app-wide text scaling and font choice, vision-assist options, and a Theme Manager for creating, sharing, and hand-editing themes. It also adds an always-available **Tools** menu. QuickMail continues to work correctly out of the box with any screen reader — no custom scripting required — and steps fully aside for Windows High Contrast.
+This release introduces **theming and a visual design system**: light and dark themes, app-wide text scaling and font choice, vision-assist options, and a Theme Manager for creating, sharing, and hand-editing themes. See the [Themes section of the User Guide](https://kellylford.github.io/QuickMail/themes.html) for the full walkthrough. It also adds an always-available **Tools** menu and in-app **bug reporting** that doesn't require a GitHub account. QuickMail continues to work correctly out of the box with any screen reader — no custom scripting required — and steps fully aside for Windows High Contrast.
 
 ---
 
@@ -65,11 +65,18 @@ When Windows High Contrast is on, QuickMail steps aside entirely — every color
 
 ---
 
+## New: Report a Bug
+
+**Help → Report a Bug** opens a report window without requiring a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce — a **Preview** area always shows exactly what will be sent. QuickMail submits the report directly to GitHub Issues using its own narrowly-scoped, app-owned credential, and shows a link to the created issue on success. If sending isn't possible (no credential available, or the request fails), **Copy report and open GitHub** copies your report to the clipboard and opens a pre-filled issue page in your browser instead. By deliberate design, no log content is ever collected or sent — only what you type plus non-sensitive app/version metadata.
+
+---
+
 ## Accessibility
 
 - Theme switching never moves focus, collapses trees, or clears selection; the only thing that re-renders is the open message.
 - Every custom announcement continues to respect your **Screen Reader Announcements** settings; theme and High Contrast changes are announced as **status**, and Theme Manager outcomes as **results**.
 - Every built-in theme meets the WCAG contrast policy (4.5:1 for text, 3:1 for indicators and status colors) — enforced automatically by a unit test, so a theme that would fail contrast cannot ship.
+- The Report a Bug preview is a genuine editable `TextBox` (edits blocked in code, not by making it read-only), so arrow-key navigation through the preview behaves the same as any other text field instead of losing character-by-character review. Its window title reads and announces as "Report a Bug - QuickMail".
 
 ---
 
@@ -90,6 +97,14 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - `Helpers/ThemeDescriber.cs` generates the plain-language Theme description: it converts each hex color to a spoken descriptor (lightness, chroma-gated saturation, hue) plus the nearest documented CSS/X11 color name, and lays out where each token is used.
 - The `ThemeRegressionGuard` test rejects new hardcoded colors or numeric font sizes in `Views/`, `Controls/`, and `Styles/` XAML outside a reviewed allowlist, so future work keeps everything token-driven.
 - Two independent code reviews (logic and UI/accessibility) were run against the branch; findings were fixed, including a case where applying a theme from the Theme Manager could be silent when the selection resolved to the palette already showing. Full test suite: 1017/1017 passing.
+- Post-merge screenshot review of the dark theme found three controls with a local `Style` lacking `BasedOn`, which silently discarded the themed background/foreground and reverted to WPF's default light chrome: the message list and the Conversation/Sender/Recipient tree views (severe — white background made dark-theme Conversation view unreadable), Rules Manager text boxes and dropdowns (moderate), and the compose formatting toolbar (minor). All now chain `BasedOn` to the themed implicit or keyed styles.
+- Theme files are a shareable, attacker-influenced artifact (Export/Import, dropped into `{profile}\themes\`), so their parse path was hardened per issue #183: `fontFamily`/`monoFontFamily` are validated to plain family names (a raw WPF `FontFamily` string allows `#` to mean `baseUri#familyName`, which could otherwise point the font loader at an attacker-controlled file/UNC/pack URI); theme files over 256 KB are rejected before being read; and `PathForId` asserts the resolved path stays a direct child of the themes folder as defense-in-depth against path traversal.
+
+### Bug reporting (issue #186)
+
+- `IBugReportService` submits directly to the GitHub Issues API using an app-owned, repo-scoped (`Issues:Write` only) token stored through the existing `ICredentialService` — no user GitHub sign-in. `BuildFallbackUrl` uses `Uri.EscapeDataString` (correct percent-encoding) and truncates the body so the pre-filled fallback URL can't exceed what `ShellExecute` will open; the full report is always available via the clipboard regardless.
+- `ReportBugViewModel` collects only what the user types plus non-sensitive app/version metadata — it never reads `quickmail.log`, an explicit product decision recorded in `docs/planning/bug-reporting-pm-dev-spec.md`, not an oversight.
+- `ReportBugWindow` is opened modeless (`.Show()`, not `.ShowDialog()`) per this codebase's modal-dialog rules, since it has editable text fields and can be opened over a window with a live WebView2 reading pane. Its event subscriptions use named handlers so `OnClosed` can unsubscribe all of them, preventing a Send still in flight from touching the window after it closes and is disposed.
 
 ### Version
 
