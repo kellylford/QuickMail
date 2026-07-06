@@ -9,11 +9,7 @@
         MinHeight="540" MinWidth="360"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
-        Loaded="Window_Loaded"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        Loaded="Window_Loaded">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
@@ -42,7 +38,7 @@
                     <Separator Margin="0,12"/>
                 </StackPanel>
 
-                <TextBlock Text="Account Details" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <TextBlock Text="Account Details" FontWeight="SemiBold" FontSize="13" Margin="0,0,0,8"/>
 
                 <Label x:Name="LblAccountName" Content="Account _Name:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,4,0,2"/>
                 <TextBox x:Name="AccountNameBox"
@@ -86,12 +82,12 @@
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
                     <!-- iCloud app-specific password hint -->
                     <Border Visibility="{Binding IsICloudAccount, Converter={StaticResource BoolToVisibility}}"
-                            Background="{DynamicResource Theme.WarningBackground}"
-                            BorderBrush="{DynamicResource Theme.Warning}"
+                            Background="#FFF3E3"
+                            BorderBrush="#E08000"
                             BorderThickness="1"
                             Padding="8,6"
                             Margin="0,6,0,0">
-                        <TextBlock TextWrapping="Wrap"
+                        <TextBlock TextWrapping="Wrap" FontSize="12"
                                    AutomationProperties.Name="iCloud requires an app-specific password, not your Apple ID password. Generate one at appleid.apple.com under Sign-In and Security, App-Specific Passwords.">
                             <Run FontWeight="SemiBold">iCloud requires an app-specific password.</Run>
                             <Run>Do not enter your Apple ID password. Generate one at</Run>
@@ -197,7 +193,7 @@
         <TextBlock Grid.Row="1"
                    Text="{Binding StatusText}"
                    AutomationProperties.Name="Add account status"
-                   Foreground="{DynamicResource Theme.Accent}"
+                   Foreground="DarkBlue"
                    Margin="0,8,0,4"
                    TextWrapping="Wrap"/>
 

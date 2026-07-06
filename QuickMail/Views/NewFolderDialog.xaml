@@ -6,11 +6,7 @@
         MinHeight="140" MinWidth="260"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
-        ShowInTaskbar="False"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        ShowInTaskbar="False">
 
     <DockPanel Margin="12">
 

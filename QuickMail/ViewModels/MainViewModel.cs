@@ -33,9 +33,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
     private readonly IUpdateCheckService? _updateCheckService;
-    // Exposes hex strings only, so consuming it here does not violate the
-    // no-UI-types-in-ViewModels rule. Null in tests that don't exercise theming.
-    private readonly IThemeService? _themeService;
     // UI-thread marshaller — ViewModels must not touch Dispatcher directly (CLAUDE.md MVVM rules).
     private readonly IUiDispatcher _ui;
 
@@ -740,8 +737,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ICalendarService? calendarService = null,
         IChangeNotifier? changeNotifier = null,
         IUpdateCheckService? updateCheckService = null,
-        IUiDispatcher? uiDispatcher = null,
-        IThemeService? themeService = null)
+        IUiDispatcher? uiDispatcher = null)
     {
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
@@ -759,7 +755,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _flagService          = flagService;
         _calendarService      = calendarService;
         _updateCheckService   = updateCheckService;
-        _themeService         = themeService;
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
@@ -793,7 +788,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Load saved views and register their commands before the UI is shown.
         LoadSavedViews();
         RegisterCommands(commandRegistry);
-        RegisterThemeCommands();
         UpdateRulesStatusText();
     }
 
@@ -899,96 +893,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             execute:          () => _ = ApplyViewByIdAsync(capturedId, allFolders: false),
             defaultKey:       defaultKey,
             defaultModifiers: defaultMods));
-    }
-
-    // ── Theme commands ────────────────────────────────────────────────────────────
-
-    /// <summary>Raised when the user invokes "Manage themes"; the View opens the Theme Manager.</summary>
-    public event EventHandler? ThemeManagerRequested;
-
-    /// <summary>
-    /// Registers (or re-registers) the theme commands: manager, cycle, and one
-    /// hotkey-assignable apply command per available theme (like view.saved.{id}).
-    /// Called at startup and again after the Theme Manager closes with changes.
-    /// </summary>
-    public void RegisterThemeCommands()
-    {
-        if (_themeService is null) return;
-
-        var stale = _commandRegistry.GetAll()
-            .Where(c => c.Id.StartsWith("theme.", StringComparison.OrdinalIgnoreCase))
-            .Select(c => c.Id)
-            .ToList();
-        foreach (var id in stale)
-            _commandRegistry.Unregister(id);
-
-        _commandRegistry.Register(new CommandDefinition(
-            id: "theme.manager.open", category: "Settings", title: "Manage Themes",
-            execute: () => ThemeManagerRequested?.Invoke(this, EventArgs.Empty)));
-
-        _commandRegistry.Register(new CommandDefinition(
-            id: "theme.next", category: "Settings", title: "Next Theme",
-            execute: () => CycleTheme(+1)));
-
-        _commandRegistry.Register(new CommandDefinition(
-            id: "theme.previous", category: "Settings", title: "Previous Theme",
-            execute: () => CycleTheme(-1)));
-
-        var cfg = _configService.Load();
-        foreach (var theme in _themeService.GetAvailableThemes())
-        {
-            var commandId = $"theme.apply.{theme.Id}";
-            var binding = cfg.CustomHotkeys.FirstOrDefault(h => h.CommandId == commandId);
-            Key defaultKey = Key.None;
-            ModifierKeys defaultMods = ModifierKeys.None;
-            if (!string.IsNullOrEmpty(binding?.Gesture))
-                _ = GestureHelper.TryParse(binding.Gesture, out defaultKey, out defaultMods);
-
-            var capturedId = theme.Id;
-            _commandRegistry.Register(new CommandDefinition(
-                id: commandId,
-                category: "Settings",
-                title: $"Theme: {theme.Name}",
-                execute: () => ApplyThemeById(capturedId),
-                defaultKey: defaultKey,
-                defaultModifiers: defaultMods));
-        }
-    }
-
-    /// <summary>Applies a theme and persists the choice (the service never writes config).</summary>
-    public void ApplyThemeById(string themeId)
-    {
-        if (_themeService is null) return;
-        var resolvedBefore = _themeService.ResolvedTheme.Id;
-        _themeService.ApplyTheme(themeId);
-        Helpers.ThemePersistence.PersistConfiguredTheme(_themeService, _configService);
-
-        // When the selection changes but the effective palette does not (e.g.
-        // System → Parchment while the OS is in light mode), ThemeChanged never
-        // fires and the window's handler stays silent — announce the switch here so
-        // cycling always reports the new theme. ConfiguredThemeName (not the
-        // resolved name) so cycling to System announces "System", not "Parchment".
-        if (_themeService.ResolvedTheme.Id == resolvedBefore)
-            Announce($"Theme changed to {_themeService.ConfiguredThemeName}.", AnnouncementCategory.Status);
-    }
-
-    /// <summary>Steps to the next/previous theme in display order (System first, then built-ins, then user themes).</summary>
-    private void CycleTheme(int direction)
-    {
-        if (_themeService is null) return;
-        var themes = _themeService.GetAvailableThemes();
-        if (themes.Count == 0) return;
-        var index = 0;
-        for (int i = 0; i < themes.Count; i++)
-        {
-            if (string.Equals(themes[i].Id, _themeService.ConfiguredThemeId, StringComparison.OrdinalIgnoreCase))
-            {
-                index = i;
-                break;
-            }
-        }
-        var next = themes[(index + direction + themes.Count) % themes.Count];
-        ApplyThemeById(next.Id);
     }
 
     // ── View application ──────────────────────────────────────────────────────────
@@ -1230,13 +1134,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     internal void ApplySettings(ConfigModel cfg)
     {
-        // Theme + vision-assist first, after the modal Settings dialog has closed —
-        // ThemeChanged handlers rebuild UI and must never run inside a nested
-        // message loop (CLAUDE.md modal-dialog rules). ApplyAppearance coalesces
-        // both mutations into one re-publish so a combined save (theme + a vision
-        // setting) raises ThemeChanged once, not twice.
-        _themeService?.ApplyAppearance(cfg);
-
         ShowMessageStatus = cfg.ShowMessageStatus;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
         OnPropertyChanged(nameof(AnnounceFlagStatus));
@@ -5229,17 +5126,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var invite = MessageDetail?.CalendarInvite;
         if (invite == null) return string.Empty;
 
-        // Card colors come from the resolved theme as hex strings (IThemeService
-        // never exposes UI types). Fallbacks match the Parchment light palette for
-        // tests that run without a theme service.
-        var theme = _themeService?.ResolvedTheme;
-        string Color(string token, string fallback) => theme?.ColorOf(token) ?? fallback;
-        var cardBorder = Color("border", "#D8D4CC");
-        var cardBg     = Color("surfaceBackground", "#F5F3EF");
-        var cardText   = Color("textPrimary", "#1F2328");
-
         var sb = new System.Text.StringBuilder();
-        sb.Append($"<div style=\"border:1px solid {cardBorder};border-radius:6px;padding:12px;margin:0 0 16px 0;background:{cardBg};color:{cardText};font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;\" role=\"region\" aria-label=\"");
+        sb.Append("<div style=\"border:1px solid #888;border-radius:6px;padding:12px;margin:0 0 16px 0;background:#f5f5f5;color:#222;font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;\" role=\"region\" aria-label=\"");
         sb.Append(System.Net.WebUtility.HtmlEncode(invite.DisplaySummary));
         sb.Append("\">");
         sb.Append("<div style=\"font-weight:bold;font-size:15px;margin-bottom:8px;\">Event Invitation</div>");
@@ -5249,7 +5137,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var isCancel = string.Equals(invite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
         if (isCancel)
         {
-            sb.Append($"<div style=\"font-weight:bold;color:{Color("error", "#B3261E")};margin-bottom:8px;\">This event has been cancelled by the organizer.</div>");
+            sb.Append("<div style=\"font-weight:bold;color:#d13438;margin-bottom:8px;\">This event has been cancelled by the organizer.</div>");
         }
 
         if (!string.IsNullOrWhiteSpace(invite.Summary))
@@ -5298,26 +5186,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
             sb.Append("</div>");
         }
 
-        // Buttons: Accept, Tentative, Decline — hidden for cancellations. Each uses
-        // its status color's pale background tint with the dark status text partner
-        // and a 1px status border, readable in light and dark themes alike; the
-        // verb text (not color) carries the meaning.
+        // Buttons: Accept, Tentative, Decline — hidden for cancellations.
         if (!isCancel)
         {
-            void AppendButton(string href, string ariaLabel, string label, string fg, string bg, bool last = false)
-            {
-                sb.Append($"<a href=\"{href}\" role=\"button\" aria-label=\"{ariaLabel}\" ");
-                sb.Append($"style=\"display:inline-block;padding:6px 14px;{(last ? "" : "margin-right:8px;")}margin-bottom:4px;");
-                sb.Append($"background:{bg};color:{fg};border:1px solid {fg};border-radius:4px;text-decoration:none;font-weight:600;\">{label}</a>");
-            }
-
             sb.Append("<div style=\"margin-top:8px;\">");
-            AppendButton("quickmail:ics-accept", "Accept invitation", "Accept",
-                Color("success", "#2E6B3E"), Color("successBackground", "#E9F3EC"));
-            AppendButton("quickmail:ics-tentative", "Tentatively accept invitation", "Tentative",
-                Color("warning", "#8A5A00"), Color("warningBackground", "#FBF3E2"));
-            AppendButton("quickmail:ics-decline", "Decline invitation", "Decline",
-                Color("error", "#B3261E"), Color("errorBackground", "#FBEAE9"), last: true);
+            sb.Append("<a href=\"quickmail:ics-accept\" role=\"button\" aria-label=\"Accept invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+            sb.Append("background:#107c10;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Accept</a>");
+            sb.Append("<a href=\"quickmail:ics-tentative\" role=\"button\" aria-label=\"Tentatively accept invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-right:8px;margin-bottom:4px;");
+            sb.Append("background:#ff8c00;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Tentative</a>");
+            sb.Append("<a href=\"quickmail:ics-decline\" role=\"button\" aria-label=\"Decline invitation\" ");
+            sb.Append("style=\"display:inline-block;padding:6px 14px;margin-bottom:4px;");
+            sb.Append("background:#d13438;color:#fff;border-radius:4px;text-decoration:none;font-weight:600;\">Decline</a>");
             sb.Append("</div>");
         }
 

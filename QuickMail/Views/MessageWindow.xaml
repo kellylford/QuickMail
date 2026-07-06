@@ -13,11 +13,7 @@
         WindowStartupLocation="Manual"
         d:DataContext="{d:DesignInstance Type=vm:MessageWindowViewModel}"
         Closing="OnClosing"
-        PreviewKeyDown="OnPreviewKeyDown"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        PreviewKeyDown="OnPreviewKeyDown">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -133,14 +129,14 @@
         <!-- Header fields -->
         <Border DockPanel.Dock="Top"
                 BorderThickness="0,0,0,1"
-                BorderBrush="{DynamicResource Theme.Border}"
+                BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
                 Padding="8,6,8,6">
             <StackPanel>
                 <TextBox x:Name="SubjectField"
                          Text="{Binding MessageDetail.Subject, FallbackValue='', Mode=OneWay}"
                          IsReadOnly="True" IsReadOnlyCaretVisible="True"
                          BorderThickness="0" Background="Transparent"
-                         FontWeight="SemiBold" TextWrapping="Wrap"
+                         FontSize="13" FontWeight="SemiBold" TextWrapping="Wrap"
                          AutomationProperties.Name="Subject"/>
                 <TextBox x:Name="FromField"
                          Text="{Binding MessageDetail.From, FallbackValue='', Mode=OneWay}"
@@ -228,14 +224,14 @@
                           AutomationProperties.Name="Message body"
                           KeyboardNavigation.IsTabStop="True"
                           GotKeyboardFocus="MessageBody_GotKeyboardFocus"/>
-            <Border Background="{DynamicResource Theme.WindowBackground}"
+            <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}}"
                     IsHitTestVisible="False">
                 <TextBlock Text="Loading…"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
-                           FontSize="{DynamicResource Theme.FontSizeLarge}"
-                           Foreground="{DynamicResource Theme.TextSecondary}"
+                           FontSize="14"
+                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
                            AutomationProperties.LiveSetting="Polite"/>
             </Border>
         </Grid>

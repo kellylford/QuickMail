@@ -15,8 +15,8 @@
         <Border Background="#CC1E1E1E"/>
 
         <!-- Centered instruction card -->
-        <Border Background="{DynamicResource Theme.SurfaceBackground}"
-                BorderBrush="{DynamicResource Theme.Accent}"
+        <Border Background="#F0F0F0"
+                BorderBrush="#0078D4"
                 BorderThickness="2"
                 CornerRadius="8"
                 Padding="32,24"
@@ -27,8 +27,8 @@
                 AutomationProperties.Name="{Binding CurrentStep.InstructionText, FallbackValue='Keyboard tutorial'}">
             <StackPanel>
                 <!-- Step counter -->
-                <TextBlock FontSize="{DynamicResource Theme.FontSizeLarge}"
-                           Foreground="{DynamicResource Theme.TextSecondary}"
+                <TextBlock FontSize="14"
+                           Foreground="#666666"
                            Margin="0,0,0,12">
                     <Run Text="Step "/>
                     <Run Text="{Binding CurrentStepNumber, Mode=OneWay, FallbackValue=1}"/>
@@ -37,15 +37,15 @@
                 </TextBlock>
 
                 <!-- Instruction -->
-                <TextBlock FontSize="{DynamicResource Theme.FontSizeHeader}"
+                <TextBlock FontSize="22"
                            FontWeight="SemiBold"
                            TextWrapping="Wrap"
                            Margin="0,0,0,16"
                            Text="{Binding CurrentStep.InstructionText, FallbackValue='Press a key...'}"/>
 
                 <!-- Hint -->
-                <TextBlock FontSize="{DynamicResource Theme.FontSizeLarge}"
-                           Foreground="{DynamicResource Theme.TextSecondary}"
+                <TextBlock FontSize="14"
+                           Foreground="#666666"
                            TextWrapping="Wrap"
                            Text="Press Escape to skip the tutorial at any time."/>
             </StackPanel>

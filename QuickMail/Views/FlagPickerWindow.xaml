@@ -9,11 +9,7 @@
         Width="280" Height="340"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        ShowInTaskbar="False">
 
     <Window.Resources>
         <views:StringToBrushConverter x:Key="StringToBrushConverter"/>

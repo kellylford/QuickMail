@@ -70,8 +70,7 @@ public partial class KeyCaptureDialog : Window
 
         var gesture = GestureHelper.Format(_capturedKey, _capturedModifiers);
         CapturedKeyText.Text = gesture;
-        CapturedKeyText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
-            Theming.ThemeKeys.TextPrimary);
+        CapturedKeyText.Foreground = System.Windows.Media.Brushes.Black;
 
         ListeningHeader.Text = "Captured shortcut";
         ListeningHint.Visibility = Visibility.Collapsed;
@@ -112,9 +111,8 @@ public partial class KeyCaptureDialog : Window
         _capturedModifiers  = ModifierKeys.None;
         HasConflict         = false;
 
-        CapturedKeyText.Text = "(waiting for input...)";
-        CapturedKeyText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
-            Theming.ThemeKeys.TextSecondary);
+        CapturedKeyText.Text       = "(waiting for input...)";
+        CapturedKeyText.Foreground = System.Windows.Media.Brushes.DimGray;
         ListeningHeader.Text       = "Press your desired key combination";
         ListeningHint.Visibility   = Visibility.Visible;
         ConflictText.Visibility    = Visibility.Collapsed;

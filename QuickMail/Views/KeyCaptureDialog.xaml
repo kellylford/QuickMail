@@ -12,11 +12,7 @@
         ShowInTaskbar="False"
         Loaded="Window_Loaded"
         PreviewKeyDown="Window_PreviewKeyDown"
-        AutomationProperties.Name="Assign keyboard shortcut dialog"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        AutomationProperties.Name="Assign keyboard shortcut dialog">
 
     <Grid Margin="20" Focusable="True" x:Name="MainGrid">
         <Grid.RowDefinitions>
@@ -32,26 +28,28 @@
         <TextBlock x:Name="ListeningHeader"
                    Grid.Row="0"
                    Text="Press your desired key combination"
-                   FontSize="{DynamicResource Theme.FontSizeLarge}"
+                   FontSize="14"
                    FontWeight="SemiBold"
                    Margin="0,0,0,4"/>
         <TextBlock x:Name="ListeningHint"
                    Grid.Row="1"
                    Text="(with Ctrl, Shift, or Alt)"
-                   Foreground="{DynamicResource Theme.TextSecondary}"
+                   FontSize="12"
+                   Foreground="DimGray"
                    Margin="0,0,0,16"/>
 
         <!-- Captured key display -->
         <Border Grid.Row="2"
                 BorderThickness="1"
-                BorderBrush="{DynamicResource Theme.Border}"
-                Background="{DynamicResource Theme.SurfaceBackground}"
+                BorderBrush="LightGray"
+                Background="#F5F5F5"
                 Padding="12"
                 Margin="0,0,0,8"
                 CornerRadius="2">
             <TextBlock x:Name="CapturedKeyText"
                        Text="(waiting for input...)"
-                       Foreground="{DynamicResource Theme.TextSecondary}"
+                       FontSize="13"
+                       Foreground="DimGray"
                        TextAlignment="Center"
                        AutomationProperties.Name="Captured key combination"/>
         </Border>
@@ -60,7 +58,8 @@
         <TextBlock x:Name="ConflictText"
                    Grid.Row="3"
                    Visibility="Collapsed"
-                   Foreground="{DynamicResource Theme.Error}"
+                   FontSize="12"
+                   Foreground="#D32F2F"
                    TextWrapping="Wrap"
                    Margin="0,0,0,8"
                    AutomationProperties.LiveSetting="Polite"/>

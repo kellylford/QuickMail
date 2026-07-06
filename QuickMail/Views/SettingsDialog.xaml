@@ -8,15 +8,8 @@
         Height="560" Width="520"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}"
+        Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
         Loaded="Window_Loaded">
-
-    <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-    </Window.Resources>
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -51,8 +44,8 @@
                                         <ComboBoxItem Tag="5" Content="5 lines"/>
                                     </ComboBox>
                                     <TextBlock Text="Takes effect after reopening a folder."
-                                               Foreground="{DynamicResource Theme.TextSecondary}"
-                                               FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                               Foreground="DimGray"
+                                               FontSize="11"
                                                Margin="0,4,0,0"/>
                                 </StackPanel>
 
@@ -135,7 +128,7 @@
                                           IsChecked="{Binding ConfirmEmptyTrash, Mode=TwoWay}"
                                           AutomationProperties.Name="Show a confirmation dialog before permanently deleting all messages in trash"/>
                                 <TextBlock Text="Recommended: emptying trash cannot be undone."
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
+                                           Foreground="DimGray" FontSize="11" Margin="0,3,0,0"/>
                             </StackPanel>
                         </GroupBox>
 
@@ -147,7 +140,7 @@
                                           IsChecked="{Binding AutoSaveDrafts, Mode=TwoWay}"
                                           AutomationProperties.Name="Automatically save the message as a draft while composing"/>
                                 <TextBlock Text="Auto-save is quiet: the time of the last save shows in the compose status row. A failed save is announced once."
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
+                                           Foreground="DimGray" FontSize="11" Margin="0,3,0,8" TextWrapping="Wrap"/>
 
                                 <StackPanel Margin="0,0,0,8">
                                     <Label x:Name="AutoSaveIntervalLabel"
@@ -181,7 +174,7 @@
                                         <ComboBoxItem Tag="html" Content="HTML"/>
                                     </ComboBox>
                                     <TextBlock Text="Drafts and templates always reopen in plain text."
-                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
+                                               Foreground="DimGray" FontSize="11" Margin="0,3,0,0"/>
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
@@ -195,7 +188,7 @@
                                           FontWeight="SemiBold"
                                           AutomationProperties.Name="Enable all custom screen reader announcements from QuickMail"/>
                                 <TextBlock Text="When off, only native control announcements are spoken."
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,2,0,8"/>
+                                           Foreground="DimGray" FontSize="11" Margin="0,2,0,8"/>
 
                                 <CheckBox Content="Announce _hints and instructions"
                                           IsChecked="{Binding AnnounceHints, Mode=TwoWay}"
@@ -294,8 +287,8 @@
                                              AutomationProperties.Name="Action first"
                                              AutomationProperties.HelpText="Message then timestamp — easier to scan since the log is already chronological."/>
                                 <TextBlock Text="Example: Sync completed: 42 messages  [2024-11-15 14:23:45.123]"
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8"
-                                           FontFamily="{DynamicResource Theme.FontFamilyMono}"/>
+                                           Foreground="DimGray" FontSize="11" Margin="16,2,0,8"
+                                           FontFamily="Consolas"/>
                                 <RadioButton Content="_Time first"
                                              IsChecked="{Binding IsLogFormatTimeFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
@@ -303,8 +296,8 @@
                                              AutomationProperties.Name="Time first"
                                              AutomationProperties.HelpText="Timestamp then message — the original log format."/>
                                 <TextBlock Text="Example: 2024-11-15 14:23:45.123  Sync completed: 42 messages"
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0"
-                                           FontFamily="{DynamicResource Theme.FontFamilyMono}"/>
+                                           Foreground="DimGray" FontSize="11" Margin="16,2,0,0"
+                                           FontFamily="Consolas"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>
@@ -325,7 +318,7 @@
                                Text="Arrow to a command, then press Enter to assign a shortcut or Delete to restore the default."
                                TextWrapping="Wrap"
                                Margin="0,0,0,10"
-                               Foreground="{DynamicResource Theme.TextSecondary}"/>
+                               Foreground="DimGray"/>
 
                     <!-- Hotkeys ListView -->
                     <ListView Grid.Row="1"
@@ -381,7 +374,7 @@
                         <GroupBox Header="_Message Open Mode" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Message open mode settings">
                             <StackPanel>
-                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="DimGray" FontSize="11"
                                            Text="Choose where messages open when you press Enter or select one."/>
                                 <StackPanel KeyboardNavigation.TabNavigation="Once"
                                             KeyboardNavigation.DirectionalNavigation="Cycle">
@@ -392,7 +385,7 @@
                                                  AutomationProperties.Name="Reading pane"
                                                  AutomationProperties.HelpText="Opens messages in the reading pane below the message list. This is the default behaviour."/>
                                     <TextBlock Text="Enter opens a message in the reading pane below the list."
-                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8"/>
+                                               Foreground="DimGray" FontSize="11" Margin="16,2,0,8"/>
                                     <RadioButton Content="_Tab"
                                                  IsChecked="{Binding IsTabMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
@@ -401,7 +394,7 @@
                                                  AutomationProperties.HelpText="Opens messages in a tab strip above the message list."/>
                                     <TextBlock Text="Enter opens a message as a new tab. Ctrl+Tab cycles tabs. Ctrl+W closes."
                                                TextWrapping="Wrap"
-                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8"/>
+                                               Foreground="DimGray" FontSize="11" Margin="16,2,0,8"/>
                                     <RadioButton Content="_Window"
                                                  IsChecked="{Binding IsWindowMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
@@ -410,7 +403,7 @@
                                                  AutomationProperties.HelpText="Opens each message in its own window."/>
                                     <TextBlock Text="Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window."
                                                TextWrapping="Wrap"
-                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0"/>
+                                               Foreground="DimGray" FontSize="11" Margin="16,2,0,0"/>
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
@@ -422,96 +415,6 @@
                                 <CheckBox Content="_Confirm before closing a tab with unsaved changes"
                                           IsChecked="{Binding ConfirmCloseTabWithUnsaved, Mode=TwoWay}"
                                           AutomationProperties.Name="Show a confirmation dialog before closing a tab that has unsaved draft changes"/>
-                            </StackPanel>
-                        </GroupBox>
-                    </StackPanel>
-                </ScrollViewer>
-            </TabItem>
-            <!-- Appearance Tab -->
-            <TabItem Header="A_ppearance" AutomationProperties.Name="Appearance">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="10">
-                        <!-- High Contrast notice — visible only while Windows HC is active. -->
-                        <TextBlock Text="Windows High Contrast is active; theme colors are supplied by Windows. Your theme choice below is saved and returns when High Contrast is turned off."
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,10"
-                                   Visibility="{Binding IsHighContrastActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
-
-                        <!-- Theme Group -->
-                        <GroupBox Header="_Theme" Padding="10" Margin="0,0,0,15"
-                                  AutomationProperties.Name="Theme settings">
-                            <StackPanel>
-                                <Label x:Name="ThemeLabel"
-                                       Content="The_me:"
-                                       Target="{Binding ElementName=ThemeCombo}"
-                                       FontWeight="SemiBold"/>
-                                <ComboBox x:Name="ThemeCombo"
-                                          ItemsSource="{Binding ThemeOptions}"
-                                          DisplayMemberPath="Name"
-                                          SelectedValuePath="Id"
-                                          SelectedValue="{Binding AppearanceThemeId, Mode=TwoWay}"
-                                          AutomationProperties.LabeledBy="{Binding ElementName=ThemeLabel}"/>
-                                <TextBlock Text="System follows the Windows light or dark setting. Themes can be managed, shared, and imported from the Theme Manager (Command Palette: Manage Themes)."
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource Theme.TextSecondary}"
-                                           FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                           Margin="0,4,0,0"/>
-                            </StackPanel>
-                        </GroupBox>
-
-                        <!-- Text Group -->
-                        <GroupBox Header="Te_xt" Padding="10" Margin="0,0,0,15"
-                                  AutomationProperties.Name="Text settings">
-                            <StackPanel>
-                                <Label x:Name="FontLabel"
-                                       Content="_Font:"
-                                       Target="{Binding ElementName=FontCombo}"
-                                       FontWeight="SemiBold"/>
-                                <ComboBox x:Name="FontCombo"
-                                          ItemsSource="{Binding FontOptions}"
-                                          SelectedItem="{Binding AppearanceFontOption, Mode=TwoWay}"
-                                          AutomationProperties.LabeledBy="{Binding ElementName=FontLabel}"/>
-
-                                <StackPanel Margin="0,8,0,0">
-                                    <Label x:Name="TextSizeLabel"
-                                           Content="Text si_ze:"
-                                           Target="{Binding ElementName=TextSizeCombo}"
-                                           FontWeight="SemiBold"/>
-                                    <ComboBox x:Name="TextSizeCombo"
-                                              SelectedValue="{Binding AppearanceTextScalePercent, Mode=TwoWay}"
-                                              SelectedValuePath="Tag"
-                                              AutomationProperties.LabeledBy="{Binding ElementName=TextSizeLabel}">
-                                        <ComboBoxItem Tag="100" Content="100%"/>
-                                        <ComboBoxItem Tag="110" Content="110%"/>
-                                        <ComboBoxItem Tag="125" Content="125%"/>
-                                        <ComboBoxItem Tag="150" Content="150%"/>
-                                        <ComboBoxItem Tag="175" Content="175%"/>
-                                        <ComboBoxItem Tag="200" Content="200%"/>
-                                    </ComboBox>
-                                </StackPanel>
-                            </StackPanel>
-                        </GroupBox>
-
-                        <!-- Vision Group -->
-                        <GroupBox Header="_Vision" Padding="10"
-                                  AutomationProperties.Name="Vision settings">
-                            <StackPanel>
-                                <CheckBox Content="Always _underline links"
-                                          IsChecked="{Binding AppearanceUnderlineLinks, Mode=TwoWay}"
-                                          AutomationProperties.Name="Always underline links"/>
-                                <CheckBox Content="Thicker keyboard focus in_dicators"
-                                          IsChecked="{Binding AppearanceThickFocus, Mode=TwoWay}"
-                                          Margin="0,6,0,0"
-                                          AutomationProperties.Name="Thicker keyboard focus indicators"/>
-                                <CheckBox Content="Apply theme colors to message c_ontent"
-                                          IsChecked="{Binding AppearanceForceMessageTheme, Mode=TwoWay}"
-                                          Margin="0,6,0,0"
-                                          AutomationProperties.Name="Apply theme colors to message content"/>
-                                <TextBlock Text="Overrides the colors and fonts chosen by a message's sender. Turn on when messages arrive with hard-to-read colors."
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource Theme.TextSecondary}"
-                                           FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                           Margin="0,3,0,0"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

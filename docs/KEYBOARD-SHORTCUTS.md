@@ -53,10 +53,6 @@
 | *(unassigned)* | `tabs.promote` | Move Tab to New Window |
 | *(unassigned)* | `mail.openInNewTab` | Open in New Tab |
 | *(unassigned)* | `mail.openInWindow` | Open in New Window |
-| *(unassigned)* | `theme.manager.open` | Manage Themes |
-| *(unassigned)* | `theme.next` | Next Theme |
-| *(unassigned)* | `theme.previous` | Previous Theme |
-| *(unassigned)* | `theme.apply.{id}` | Theme: [name] — one per available theme |
 
 ## Compose Window
 

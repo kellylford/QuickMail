@@ -14,8 +14,8 @@
             <Setter Property="Padding" Value="6,1"/>
             <Setter Property="Margin" Value="2,2"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Background" Value="{DynamicResource Theme.ChromeBackground}"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource Theme.InputBorder}"/>
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -31,12 +31,12 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="ChipBorder" Property="BorderBrush"
-                                        Value="{DynamicResource Theme.Accent}"/>
+                                        Value="{DynamicResource {x:Static SystemColors.HotTrackBrushKey}}"/>
                                 <Setter TargetName="ChipBorder" Property="BorderThickness" Value="2"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="ChipBorder" Property="Background"
-                                        Value="{DynamicResource Theme.AccentSubtle}"/>
+                                        Value="{DynamicResource {x:Static SystemColors.ControlLightBrushKey}}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -47,8 +47,8 @@
 
     <Border x:Name="OuterBorder"
             BorderThickness="1"
-            BorderBrush="{DynamicResource Theme.InputBorder}"
-            Background="{DynamicResource Theme.InputBackground}"
+            BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+            Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
             Padding="2"
             MinHeight="26">
         <ScrollViewer VerticalScrollBarVisibility="Auto"

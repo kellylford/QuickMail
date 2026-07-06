@@ -8,11 +8,7 @@
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
         ShowInTaskbar="False"
-        PreviewKeyDown="Window_PreviewKeyDown"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        PreviewKeyDown="Window_PreviewKeyDown">
 
     <Grid Margin="12">
         <Grid.RowDefinitions>

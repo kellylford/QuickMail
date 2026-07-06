@@ -7,11 +7,7 @@
         MinWidth="600" MinHeight="440"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
-        WindowStyle="ToolWindow"
-        Background="{DynamicResource Theme.WindowBackground}"
-        Foreground="{DynamicResource Theme.TextPrimary}"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        WindowStyle="ToolWindow">
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -92,7 +88,7 @@
                     <TextBox Text="{Binding SelectedRule.Name, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource RuleTextBox}"
                              AutomationProperties.Name="Rule name"/>
-                    <TextBlock Text="{Binding NameError}" Foreground="{DynamicResource Theme.Error}"
+                    <TextBlock Text="{Binding NameError}" Foreground="Red"
                                KeyboardNavigation.IsTabStop="False"
                                AutomationProperties.LiveSetting="Assertive">
                         <TextBlock.Style>
@@ -179,7 +175,7 @@
                               Style="{StaticResource RuleCheckBox}"
                               AutomationProperties.Name="Must have attachments"/>
 
-                    <TextBlock Text="{Binding ConditionsError}" Foreground="{DynamicResource Theme.Error}"
+                    <TextBlock Text="{Binding ConditionsError}" Foreground="Red"
                                KeyboardNavigation.IsTabStop="False"
                                AutomationProperties.LiveSetting="Assertive">
                         <TextBlock.Style>
@@ -214,7 +210,7 @@
                             Width="140" Height="26" Margin="0,2,0,8"
                             HorizontalAlignment="Left"
                             AutomationProperties.Name="Choose target folder"/>
-                    <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
+                    <TextBlock Text="{Binding FolderError}" Foreground="Red"
                                KeyboardNavigation.IsTabStop="False"
                                AutomationProperties.LiveSetting="Assertive">
                         <TextBlock.Style>

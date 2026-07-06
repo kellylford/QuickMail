@@ -15,12 +15,10 @@
         WindowStartupLocation="Manual"
         ShowInTaskbar="False"
         PreviewKeyDown="OnPreviewKeyDown"
-        Loaded="OnLoaded"
-        FontFamily="{DynamicResource Theme.FontFamily}"
-        FontSize="{DynamicResource Theme.FontSizeBase}">
+        Loaded="OnLoaded">
 
-    <Border Background="{DynamicResource Theme.WindowBackground}"
-            BorderBrush="{DynamicResource Theme.Border}"
+    <Border Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}"
+            BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
             BorderThickness="1"
             CornerRadius="4">
         <Border.Effect>
@@ -32,7 +30,7 @@
                        Text="Open tabs"
                        FontWeight="SemiBold"
                        Padding="10,8,10,4"
-                       Foreground="{DynamicResource Theme.TextPrimary}"/>
+                       Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"/>
 
             <ListBox x:Name="TabList"
                      Margin="4,0,4,4"
@@ -65,7 +63,7 @@
                                     Width="20" Height="20"
                                     Padding="0"
                                     Margin="8,0,0,0"
-                                    FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                    FontSize="10"
                                     Tag="{Binding}"
                                     Click="CloseTabButton_Click"
                                     AutomationProperties.Name="Close this tab"

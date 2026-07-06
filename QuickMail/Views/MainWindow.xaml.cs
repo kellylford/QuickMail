@@ -172,16 +172,6 @@ public partial class MainWindow : Window
     private readonly ITemplateService _templateService;
     private readonly IFlagService? _flagService;
     private readonly ICustomDictionaryService? _customDictionary;
-    private readonly IThemeService? _themeService;
-
-    // Last High Contrast state announced, so an HC transition is announced once
-    // with the HC wording and everything else as "Theme changed to …".
-    private bool _lastAnnouncedHighContrast;
-
-    // The single live Theme Manager, if open. The manager is modeless, so guard
-    // against stacking two over the same themes folder — a second open activates
-    // the existing one instead of creating a rival that could write concurrently.
-    private ThemeManagerWindow? _themeManagerWindow;
 
     private TutorialViewModel? _tutorialVm;
 
@@ -210,8 +200,7 @@ public partial class MainWindow : Window
         ITemplateService templateService,
         IFeatureGate featureGate,
         IFlagService? flagService = null,
-        ICustomDictionaryService? customDictionary = null,
-        IThemeService? themeService = null)
+        ICustomDictionaryService? customDictionary = null)
     {
         _vm = vm;
         _smtp = smtp;
@@ -229,20 +218,9 @@ public partial class MainWindow : Window
         _featureGate = featureGate;
         _flagService = flagService;
         _customDictionary = customDictionary;
-        _themeService = themeService;
 
         InitializeComponent();
         DataContext = vm;
-
-        if (_themeService != null)
-        {
-            _lastAnnouncedHighContrast = _themeService.IsHighContrastActive;
-            // Raised on the Dispatcher, never during a modal's nested message loop:
-            // settings-driven applies run after the dialog closes (ApplySettings) and
-            // OS-driven refreshes are debounced + dispatcher-posted by ThemeService.
-            _themeService.ThemeChanged += OnThemeChanged;
-            vm.ThemeManagerRequested += (_, _) => OpenThemeManager();
-        }
 
         vm.ComposeRequested += OpenComposeWindow;
         vm.SelectAttachmentsForForwardRequested += ShowForwardAttachmentDialogAsync;
@@ -2070,8 +2048,6 @@ public partial class MainWindow : Window
             MessageBody.CoreWebView2.Settings.AreDevToolsEnabled = false;
             MessageBody.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
-            ApplyWebViewColorScheme();
-
             await MessageBody.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){"
                 +"if(e.key==='Escape'){window.chrome.webview.postMessage('escape');e.preventDefault();}"
@@ -2129,81 +2105,13 @@ public partial class MainWindow : Window
         }
     }
 
-    /// <summary>The theme's --qm-* CSS block for reading-pane documents, or null without a theme service.</summary>
-    private string? BuildReadingPaneThemeCss() =>
-        _themeService?.BuildMessageCss(_configService.Load().AppearanceForceMessageTheme);
-
-    /// <summary>
-    /// Handles an effective-theme change: announces it, updates the WebView2 color
-    /// scheme, and re-renders the open message with the new theme CSS. Never moves
-    /// focus — the reading-pane re-render is the only document-level change.
-    /// </summary>
-    private void OnThemeChanged(object? sender, EventArgs e)
-    {
-        if (_themeService is null) return;
-
-        var hc = _themeService.IsHighContrastActive;
-        var text = hc && !_lastAnnouncedHighContrast
-            ? "High contrast is on; colors are supplied by Windows."
-            : $"Theme changed to {_themeService.ConfiguredThemeName}.";
-        _lastAnnouncedHighContrast = hc;
-        AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Status);
-
-        ApplyWebViewColorScheme();
-        _ = RerenderReadingPaneAsync();
-    }
-
-    /// <summary>Points WebView2's prefers-color-scheme at the resolved theme's base.</summary>
-    private void ApplyWebViewColorScheme()
-    {
-        if (!_webViewReady || _themeService is null) return;
-        try
-        {
-            MessageBody.CoreWebView2.Profile.PreferredColorScheme = _themeService.IsHighContrastActive
-                ? CoreWebView2PreferredColorScheme.Auto
-                : _themeService.ResolvedTheme.Base == "dark"
-                    ? CoreWebView2PreferredColorScheme.Dark
-                    : CoreWebView2PreferredColorScheme.Light;
-        }
-        catch (Exception ex)
-        {
-            LogService.Log("ApplyWebViewColorScheme", ex);
-        }
-    }
-
-    /// <summary>
-    /// Re-renders the currently open message with fresh theme CSS, without the
-    /// focus handoff that ShowMessageBodyAsync performs (theme switching must
-    /// never move focus). Scroll position resets — accepted; theme changes are rare.
-    /// </summary>
-    private async Task RerenderReadingPaneAsync()
-    {
-        if (!_webViewReady || !_vm.IsMessageOpen || _vm.MessageDetail is null) return;
-
-        // Invalidate any in-flight render so its deferred focus logic bails out.
-        var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
-        var detail   = _vm.MessageDetail;
-        var themeCss = BuildReadingPaneThemeCss();
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss));
-        if (renderVersion != _messageBodyRenderVersion) return;
-
-        var eventCardHtml = _vm.BuildEventCardHtml();
-        if (!string.IsNullOrEmpty(eventCardHtml))
-            html = InjectEventCard(html, eventCardHtml);
-
-        try { MessageBody.CoreWebView2.Stop(); }
-        catch (Exception ex) { LogService.Log("RerenderReadingPane/Stop", ex); }
-        MessageBody.CoreWebView2.NavigateToString(html);
-    }
-
     // Render the message body in the browser and move focus into it
     private async Task ShowMessageBodyAsync(MailMessageDetail detail)
     {
         if (!_webViewReady) return;
 
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
-        var themeCss = BuildReadingPaneThemeCss();
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss));
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail));
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
@@ -3756,7 +3664,7 @@ public partial class MainWindow : Window
     {
         var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
         composeVm.Seed(composeModel);
-        var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+        var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary);
         composeVm.CloseRequested += window.Close;
         _openComposeWindows.Add(window);
         window.Closed += (_, _) => _openComposeWindows.Remove(window);
@@ -3945,7 +3853,7 @@ public partial class MainWindow : Window
         // which causes screen readers to keep browse mode active for the message window's
         // WebView2 even after the user alt-tabs back to the main window. As an independent
         // window, the AT cleanly exits browse mode when focus leaves the message window.
-        var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService, _configService);
+        var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment);
 
         // Wire mail action delegates so the window has full message operations.
         // Each delegate syncs MainViewModel selection to the window's current message
@@ -4341,7 +4249,7 @@ public partial class MainWindow : Window
         {
             if (pending?.IsLoaded == true) return pending;
             var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
-            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary);
             cvm.CloseRequested += pending.Close;
             var tracked = pending;
             _openComposeWindows.Add(tracked);
@@ -4360,64 +4268,15 @@ public partial class MainWindow : Window
 
     private void MenuSettings_Click(object sender, RoutedEventArgs e)
     {
-        // Font enumeration is a View-layer concern; the VM receives plain strings.
-        var fontNames = System.Windows.Media.Fonts.SystemFontFamilies
-            .Select(f => f.Source)
-            .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
+        var vm = new SettingsViewModel(_configService, _registry);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
-            // The dialog's message loop is dead here, so ApplySettings may safely
-            // apply the theme (ThemeChanged handlers rebuild parent UI).
             var cfg = _configService.Load();
             _vm.ApplySettings(cfg);
             _registry.ApplyUserOverrides(cfg.CustomHotkeys);
         }
     }
-
-    /// <summary>
-    /// Opens the Theme Manager (command palette: "Manage Themes"). Modeless per
-    /// the modal-dialog rules: Apply restyles this window (live WebView2) while
-    /// the manager is open, and its rename panel has an editable text field.
-    /// </summary>
-    private void OpenThemeManager()
-    {
-        if (_themeService is null) return;
-
-        // Single-instance: a second invocation activates the open manager rather
-        // than stacking a rival over the same {profile}\themes folder.
-        if (_themeManagerWindow != null)
-        {
-            _themeManagerWindow.Activate();
-            return;
-        }
-
-        var previousFocus = Keyboard.FocusedElement as IInputElement;
-        var vm = new ThemeManagerViewModel(_themeService, _configService);
-        var window = new ThemeManagerWindow(vm) { Owner = this };
-        window.Closed += (_, _) =>
-        {
-            _themeManagerWindow = null;
-            // Safe point for parent updates — no nested message loop is running.
-            // Re-register theme.apply.{id} commands for imported/renamed/deleted themes.
-            _vm.RegisterThemeCommands();
-            previousFocus?.Focus();
-        };
-        _themeManagerWindow = window;
-        window.Show();
-    }
-
-    // ── Tools menu (theme actions dispatch through the registered commands so the
-    //    Command Palette and any custom hotkeys stay the single source of truth) ──
-    private void MenuManageThemes_Click(object sender, RoutedEventArgs e) => OpenThemeManager();
-
-    private void MenuNextTheme_Click(object sender, RoutedEventArgs e)
-        => _registry.FindById("theme.next")?.Execute();
-
-    private void MenuPreviousTheme_Click(object sender, RoutedEventArgs e)
-        => _registry.FindById("theme.previous")?.Execute();
 
     private void MenuGrabAddresses_Click(object sender, RoutedEventArgs e)
         => GrabAddressesFromMessage();
