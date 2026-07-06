@@ -29,9 +29,9 @@ public partial class ReportBugWindow : Window
         DataContext = _vm;
 
         _vm.AnnouncementRequested += OnAnnouncementRequested;
-        _vm.CloseRequested        += (_, _) => Close();
-        _vm.SendSucceeded         += (_, _) => IssueLinkButton.Focus();
-        _vm.SendFailed            += (_, _) => CopyAndOpenButton.Focus();
+        _vm.CloseRequested        += OnCloseRequested;
+        _vm.SendSucceeded         += OnSendSucceeded;
+        _vm.SendFailed            += OnSendFailed;
 
         RegisterCommands();
 
@@ -40,6 +40,13 @@ public partial class ReportBugWindow : Window
 
     private void OnAnnouncementRequested(string text, AnnouncementCategory category) =>
         AccessibilityHelper.Announce(this, text, category: category);
+
+    // Named handlers (not lambdas) so OnClosed can unsubscribe them individually. Without this,
+    // a Send still in flight when the window closes resumes after Dispose() and — with the
+    // lambda still subscribed — calls Focus() on a control belonging to an already-closed window.
+    private void OnCloseRequested(object? sender, EventArgs e) => Close();
+    private void OnSendSucceeded(object? sender, EventArgs e) => IssueLinkButton.Focus();
+    private void OnSendFailed(object? sender, EventArgs e) => CopyAndOpenButton.Focus();
 
     private void RegisterCommands()
     {
@@ -101,6 +108,9 @@ public partial class ReportBugWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _vm.AnnouncementRequested -= OnAnnouncementRequested;
+        _vm.CloseRequested        -= OnCloseRequested;
+        _vm.SendSucceeded         -= OnSendSucceeded;
+        _vm.SendFailed            -= OnSendFailed;
         _vm.Dispose();
         base.OnClosed(e);
     }

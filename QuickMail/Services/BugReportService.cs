@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
 using QuickMail.Models;
 
 namespace QuickMail.Services;
@@ -92,12 +91,23 @@ public partial class BugReportService : IBugReportService, IDisposable
         }
     }
 
+    // Browsers/shell APIs impose practical URL length limits; a very long report would
+    // otherwise silently fail to open via ShellExecute. The full, untruncated text always
+    // reaches the user separately via clipboard copy (ReportBugViewModel.CopyAndOpen), so
+    // truncating just this URL loses nothing the user can't already paste in full.
+    private const int MaxFallbackUrlBodyLength = 4000;
+
     public string BuildFallbackUrl(BugReportModel report)
     {
-        var title = HttpUtility.UrlEncode(report.Summary ?? string.Empty);
-        var body  = HttpUtility.UrlEncode(BuildReportText(report));
+        var title = Uri.EscapeDataString(report.Summary ?? string.Empty);
+        var body  = Uri.EscapeDataString(Truncate(BuildReportText(report), MaxFallbackUrlBodyLength));
         return $"https://github.com/{RepoOwner}/{RepoName}/issues/new?title={title}&body={body}&labels=bug,user-reported";
     }
+
+    private static string Truncate(string text, int maxLength) =>
+        text.Length <= maxLength
+            ? text
+            : text[..maxLength] + "\n\n…(truncated — the full report was copied to your clipboard)";
 
     public string BuildReportText(BugReportModel report)
     {

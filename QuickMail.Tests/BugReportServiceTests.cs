@@ -136,6 +136,22 @@ public class BugReportServiceTests
     }
 
     [Fact]
+    public void BuildFallbackUrl_VeryLongReport_TruncatesBodyInsteadOfProducingAnUnusableUrl()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+        var report = SampleReport();
+        report.WhatHappened = new string('x', 10_000);
+
+        var url = service.BuildFallbackUrl(report);
+
+        // The encoded body must stay well short of what could fail via ShellExecute, and the
+        // truncated content should not just be silently cut — it should point the user back to
+        // the clipboard copy, which always has the full untruncated text.
+        Assert.True(url.Length < 6000, $"Fallback URL was {url.Length} chars — expected truncation to keep it well under browser/shell limits.");
+        Assert.Contains(Uri.EscapeDataString("truncated"), url);
+    }
+
+    [Fact]
     public void BuildReportText_ContainsOnlyUserTextAndMetadata_NoLogContent()
     {
         var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
