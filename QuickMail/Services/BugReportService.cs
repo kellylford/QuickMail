@@ -29,6 +29,7 @@ public partial class BugReportService : IBugReportService, IDisposable
     private static readonly string[] IssueLabels = ["bug", "user-reported"];
 
     private readonly ICredentialService _credentials;
+    private readonly string _appOwnedToken;
     private readonly HttpClient _http;
     private readonly CancellationTokenSource _cts = new();
     private bool _disposed;
@@ -38,10 +39,13 @@ public partial class BugReportService : IBugReportService, IDisposable
     }
 
     // Internal overload so tests can substitute a fake HttpMessageHandler instead of hitting
-    // the real GitHub API.
-    internal BugReportService(ICredentialService credentials, HttpMessageHandler handler)
+    // the real GitHub API, and pin the app-owned token. The compiled-in AppOwnedToken is baked
+    // in at build time (empty in most builds, a real secret on release CI), so tests must inject
+    // a known value rather than depend on whichever the build happens to carry.
+    internal BugReportService(ICredentialService credentials, HttpMessageHandler handler, string? appOwnedToken = null)
     {
         _credentials = credentials;
+        _appOwnedToken = appOwnedToken ?? AppOwnedToken;
         _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("QuickMail", Helpers.AppVersion.Display));
         _http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
@@ -144,10 +148,10 @@ public partial class BugReportService : IBugReportService, IDisposable
         var stored = _credentials.GetSecret(TokenCredentialKey);
         if (!string.IsNullOrWhiteSpace(stored)) return stored;
 
-        if (string.IsNullOrWhiteSpace(AppOwnedToken)) return null;
+        if (string.IsNullOrWhiteSpace(_appOwnedToken)) return null;
 
-        _credentials.SaveSecret(TokenCredentialKey, AppOwnedToken);
-        return AppOwnedToken;
+        _credentials.SaveSecret(TokenCredentialKey, _appOwnedToken);
+        return _appOwnedToken;
     }
 
     public void Dispose()

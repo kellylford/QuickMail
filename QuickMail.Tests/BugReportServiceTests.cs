@@ -54,10 +54,11 @@ public class BugReportServiceTests
     private static BugReportService MakeService(
         Func<HttpRequestMessage, HttpResponseMessage> responder,
         out FakeHttpMessageHandler handler,
-        FakeCredentialService? credentials = null)
+        FakeCredentialService? credentials = null,
+        string appOwnedToken = "")   // hermetic: never inherit the CI-baked compiled-in token
     {
         handler = new FakeHttpMessageHandler(responder);
-        return new BugReportService(credentials ?? new FakeCredentialService(), handler);
+        return new BugReportService(credentials ?? new FakeCredentialService(), handler, appOwnedToken);
     }
 
     [Fact]
@@ -71,6 +72,24 @@ public class BugReportServiceTests
         Assert.False(result.Success);
         Assert.False(handlerCalled);
         Assert.Null(result.IssueUrl);
+    }
+
+    [Fact]
+    public async Task SubmitAsync_UsesAppOwnedToken_WhenNoStoredSecret()
+    {
+        // No per-user stored secret; only the app-owned token is available (the normal
+        // release path). Submit must use it and cache it into the credential store.
+        var credentials = new FakeCredentialService();
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent("{\"html_url\":\"https://github.com/kellylford/QuickMail/issues/1\"}"),
+        }, out var handler, credentials, appOwnedToken: "app-token");
+
+        var result = await service.SubmitAsync(SampleReport());
+
+        Assert.True(result.Success);
+        Assert.Equal("app-token", handler.LastRequest!.Headers.Authorization!.Parameter);
+        Assert.Equal("app-token", credentials.GetSecret("QuickMail.BugReportService.AppOwnedToken"));
     }
 
     [Fact]
