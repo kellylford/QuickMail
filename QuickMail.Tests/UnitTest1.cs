@@ -210,14 +210,20 @@ public class XamlParseTests
                 new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         }
 
-        // Merge the same resource dictionaries that App.xaml merges, so StaticResources
-        // like ToolbarButton that are defined there are available to Window XAML.
-        const string stylesUri = "pack://application:,,,/QuickMail;component/Styles/AccessibleStyles.xaml";
-        var uri = new Uri(stylesUri, UriKind.Absolute);
-        // Capture to local so nullable analysis knows it's non-null (it was just created above).
+        // Merge the same resource dictionaries the running app has present when its
+        // windows are parsed, so StaticResource references resolve: AccessibleStyles
+        // (merged by App.xaml) and ThemedControls (merged by ThemeService.Initialize
+        // before the first window is created). ThemedControls defines the implicit
+        // container styles ({x:Type ListView/TreeView/ListBox}) that window XAML now
+        // references via BasedOn; its DynamicResource Theme.* tokens resolve to nothing
+        // in the test (no ThemeService), which is harmless for parsing.
         var app = Application.Current!;
-        if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
-            app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
+        foreach (var style in new[] { "AccessibleStyles", "ThemedControls" })
+        {
+            var uri = new Uri($"pack://application:,,,/QuickMail;component/Styles/{style}.xaml", UriKind.Absolute);
+            if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
+        }
     }
 
     private static void ParseXamlFile(string relativePathFromAssembly)
