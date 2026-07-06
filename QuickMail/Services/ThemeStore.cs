@@ -77,7 +77,7 @@ public class ThemeStore
         {
             try
             {
-                var theme = ThemeDefinition.Parse(File.ReadAllText(file));
+                var theme = ThemeDefinition.Parse(ReadThemeFile(file));
                 theme.IsBuiltIn = false;
                 // A user file must not shadow a built-in id or duplicate another user id.
                 if (LoadBuiltIns().Any(b => string.Equals(b.Id, theme.Id, StringComparison.OrdinalIgnoreCase))
@@ -119,6 +119,33 @@ public class ThemeStore
     {
         // Theme ids come from JSON files; sanitize so an id can't escape the folder.
         var safe = string.Concat(id.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '-' : c));
-        return Path.Combine(_themesFolder, safe + ".json");
+        var result = Path.Combine(_themesFolder, safe + ".json");
+
+        // Belt-and-suspenders containment: the resolved path must be a direct child
+        // of the themes folder. The sanitization above already strips separators and
+        // ':', so this can't fire today — it's here so a future change to id handling
+        // can't silently reintroduce path traversal.
+        var folder = Path.TrimEndingDirectorySeparator(Path.GetFullPath(_themesFolder));
+        var resolvedParent = Path.GetDirectoryName(Path.GetFullPath(result));
+        if (!string.Equals(resolvedParent, folder, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                $"Theme id \"{id}\" resolves to a path outside the themes folder.");
+
+        return result;
+    }
+
+    /// <summary>
+    /// Reads a theme file, rejecting anything larger than
+    /// <see cref="ThemeDefinition.MaxFileBytes"/> before allocating. Shared by the
+    /// folder loader and by import so an untrusted file can't force a large read.
+    /// </summary>
+    public static string ReadThemeFile(string path)
+    {
+        var length = new FileInfo(path).Length;
+        if (length > ThemeDefinition.MaxFileBytes)
+            throw new ThemeFormatException(
+                $"The theme file is too large ({length / 1024} KB). " +
+                $"Theme files must be under {ThemeDefinition.MaxFileBytes / 1024} KB.");
+        return File.ReadAllText(path);
     }
 }

@@ -55,6 +55,17 @@ public class ThemeDefinition
     public const double MinBaseFontSize = 9;
     public const double MaxBaseFontSize = 24;
 
+    /// <summary>
+    /// Maximum size, in bytes, of a theme file we will read. A legitimate theme is
+    /// a few KB; a much larger file (dropped into the themes folder or chosen at
+    /// import) is rejected before <c>File.ReadAllText</c> so an untrusted file can't
+    /// force a large allocation. Enforced by both load paths (folder scan, import).
+    /// </summary>
+    public const long MaxFileBytes = 256 * 1024;
+
+    /// <summary>Longest font-family value we accept from a theme file.</summary>
+    private const int MaxFontFamilyLength = 128;
+
     public int FormatVersion { get; set; } = CurrentFormatVersion;
 
     /// <summary>Stable identifier, e.g. "quill" or a Guid string for user themes.</summary>
@@ -169,9 +180,9 @@ public class ThemeDefinition
         if (raw.Typography != null)
         {
             if (!string.IsNullOrWhiteSpace(raw.Typography.FontFamily))
-                theme.Typography.FontFamily = raw.Typography.FontFamily.Trim();
+                theme.Typography.FontFamily = ValidateFontFamily(raw.Typography.FontFamily.Trim(), "fontFamily");
             if (!string.IsNullOrWhiteSpace(raw.Typography.MonoFontFamily))
-                theme.Typography.MonoFontFamily = raw.Typography.MonoFontFamily.Trim();
+                theme.Typography.MonoFontFamily = ValidateFontFamily(raw.Typography.MonoFontFamily.Trim(), "monoFontFamily");
             if (raw.Typography.BaseFontSize is double size)
             {
                 if (double.IsNaN(size) || size < MinBaseFontSize || size > MaxBaseFontSize)
@@ -254,6 +265,42 @@ public class ThemeDefinition
         };
         foreach (var (k, v) in Colors) copy.Colors[k] = v;
         return copy;
+    }
+
+    // ── Font-family validation ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// True when <paramref name="value"/> is a plain font-family name safe to hand
+    /// to <c>new FontFamily(...)</c>. A WPF <c>FontFamily</c> string is not just a
+    /// family name: a value containing <c>#</c> is treated as
+    /// <c>baseUri#familyName</c>, so a theme could point the font loader at an
+    /// attacker-chosen resource (e.g. <c>file:///C:/evil.ttf#X</c>, a UNC/remote
+    /// URI, or a pack URI). We therefore allow only characters that appear in real
+    /// family names — letters, digits, spaces, and a small punctuation set — and
+    /// reject URI schemes, <c>#</c>, path separators, and <c>:</c> by construction.
+    /// </summary>
+    public static bool IsValidFontFamily(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > MaxFontFamilyLength)
+            return false;
+        foreach (var ch in value)
+        {
+            if (char.IsLetterOrDigit(ch)) continue;
+            // Punctuation seen in legitimate family names ("Times New Roman",
+            // "Comic Sans MS", "Bahnschrift SemiBold", "PT Sans-Narrow").
+            if (ch is ' ' or '-' or '_' or '.' or '&' or '\'') continue;
+            return false;
+        }
+        return true;
+    }
+
+    private static string ValidateFontFamily(string value, string jsonKey)
+    {
+        if (!IsValidFontFamily(value))
+            throw new ThemeFormatException(
+                $"The \"{jsonKey}\" value \"{value}\" is not a plain font-family name. " +
+                "Use only letters, digits, spaces, and simple punctuation, e.g. \"Segoe UI\".");
+        return value;
     }
 
     // ── Hex validation ────────────────────────────────────────────────────────

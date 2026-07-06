@@ -251,7 +251,11 @@ public class ThemeService : IThemeService
         string json;
         try
         {
-            json = System.IO.File.ReadAllText(filePath);
+            json = ThemeStore.ReadThemeFile(filePath);
+        }
+        catch (ThemeFormatException)
+        {
+            throw; // already a friendly, user-facing message (e.g. file too large)
         }
         catch (Exception ex)
         {
@@ -506,6 +510,14 @@ public class ThemeService : IThemeService
 
     private static FontFamily SafeFontFamily(string name, string fallback)
     {
+        // Choke point for every font name that becomes a live FontFamily. Theme
+        // values are already validated at parse time; this also guards the config
+        // AppearanceFontFamily override, which reaches here without going through
+        // ThemeDefinition.Parse. A FontFamily string containing '#' is treated as
+        // baseUri#familyName, so an unvalidated value could point the loader at an
+        // arbitrary file/URI — reject anything that isn't a plain family name.
+        if (!ThemeDefinition.IsValidFontFamily(name))
+            return new FontFamily(fallback);
         try
         {
             return new FontFamily(name);

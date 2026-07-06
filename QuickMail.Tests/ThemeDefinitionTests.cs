@@ -138,6 +138,59 @@ public class ThemeDefinitionTests
         Assert.Throws<ThemeFormatException>(() => ThemeDefinition.Parse("this is not json"));
     }
 
+    [Theory]
+    [InlineData("Segoe UI")]
+    [InlineData("Times New Roman")]
+    [InlineData("Comic Sans MS")]
+    [InlineData("Cascadia Code")]
+    [InlineData("PT Sans-Narrow")]
+    public void Parse_LegitimateFontFamily_IsAccepted(string font)
+    {
+        var json = MinimalJson.Replace("\"fontFamily\": \"Segoe UI\"", $"\"fontFamily\": \"{font}\"");
+        var theme = ThemeDefinition.Parse(json);
+        Assert.Equal(font, theme.Typography.FontFamily);
+    }
+
+    [Theory]
+    [InlineData("file:///C:/evil.ttf#X")]          // URI location#family — the core threat
+    [InlineData("\\\\attacker\\share\\evil.ttf#X")] // UNC path
+    [InlineData("pack://application:,,,/x#Y")]      // pack URI
+    [InlineData("Segoe UI#Arial")]                  // bare '#'
+    [InlineData("C:/Windows/Fonts/x")]              // path separators + ':'
+    public void Parse_MaliciousFontFamily_IsRejected(string font)
+    {
+        var json = MinimalJson.Replace("\"fontFamily\": \"Segoe UI\"", $"\"fontFamily\": {System.Text.Json.JsonSerializer.Serialize(font)}");
+        var ex = Assert.Throws<ThemeFormatException>(() => ThemeDefinition.Parse(json));
+        Assert.Contains("fontFamily", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_MaliciousMonoFontFamily_IsRejected()
+    {
+        var json = MinimalJson.Replace("\"monoFontFamily\": \"Cascadia Code\"", "\"monoFontFamily\": \"file:///C:/evil.ttf#X\"");
+        var ex = Assert.Throws<ThemeFormatException>(() => ThemeDefinition.Parse(json));
+        Assert.Contains("monoFontFamily", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("Segoe UI", true)]
+    [InlineData("", false)]
+    [InlineData("  ", false)]
+    [InlineData("evil#font", false)]
+    [InlineData("a/b", false)]
+    [InlineData("a\\b", false)]
+    [InlineData("a:b", false)]
+    public void IsValidFontFamily_ClassifiesValues(string value, bool expected)
+    {
+        Assert.Equal(expected, ThemeDefinition.IsValidFontFamily(value));
+    }
+
+    [Fact]
+    public void IsValidFontFamily_OverlongValue_IsRejected()
+    {
+        Assert.False(ThemeDefinition.IsValidFontFamily(new string('a', 200)));
+    }
+
     [Fact]
     public void HexToArgb_ParsesAllThreeForms()
     {

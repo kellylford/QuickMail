@@ -289,6 +289,63 @@ public class ThemeServiceTests : IDisposable
     }
 
     [StaFact]
+    public void ImportTheme_OversizedFile_IsRejectedBeforeParsing()
+    {
+        using var svc = NewService();
+        svc.Initialize(Config("parchment"));
+
+        var path = Path.Combine(_dir, "huge.quickmailtheme");
+        Directory.CreateDirectory(_dir);
+        // One byte over the cap is enough; content need not be valid JSON — the
+        // size check must fire before any read/parse.
+        File.WriteAllBytes(path, new byte[ThemeDefinition.MaxFileBytes + 1]);
+
+        var ex = Assert.Throws<ThemeFormatException>(() => svc.ImportTheme(path));
+        Assert.Contains("too large", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [StaFact]
+    public void ReadThemeFile_OversizedFile_Throws()
+    {
+        Directory.CreateDirectory(_dir);
+        var path = Path.Combine(_dir, "huge.json");
+        File.WriteAllBytes(path, new byte[ThemeDefinition.MaxFileBytes + 1]);
+
+        Assert.Throws<ThemeFormatException>(() => ThemeStore.ReadThemeFile(path));
+    }
+
+    [StaFact]
+    public void LoadUserThemes_SkipsOversizedFile()
+    {
+        var themesFolder = Path.Combine(_dir, "themes");
+        Directory.CreateDirectory(themesFolder);
+        File.WriteAllBytes(Path.Combine(themesFolder, "huge.json"), new byte[ThemeDefinition.MaxFileBytes + 1]);
+
+        var store = new ThemeStore(new ProfileContext(_dir));
+        // The oversized file is skipped (logged), not thrown, and never appears.
+        Assert.Empty(store.LoadUserThemes());
+    }
+
+    [StaFact]
+    public void SaveUserTheme_MaliciousIdWithSeparators_StaysInThemesFolder()
+    {
+        var store = new ThemeStore(new ProfileContext(_dir));
+        var theme = ThemeDefinition.Parse("""
+            { "formatVersion": 1, "id": "../../escape", "name": "Escape", "base": "light" }
+            """);
+
+        store.SaveUserTheme(theme);
+
+        // The id's separators are sanitized to '-', so the file lands directly in the
+        // themes folder and nothing is written outside it.
+        var themesFolder = Path.Combine(_dir, "themes");
+        var written = Directory.GetFiles(themesFolder, "*.json");
+        Assert.Single(written);
+        Assert.Equal(Path.GetFullPath(themesFolder),
+            Path.GetFullPath(Path.GetDirectoryName(written[0])!));
+    }
+
+    [StaFact]
     public void DeleteUserTheme_WhenActive_FallsBackToSystem()
     {
         using var svc = NewService();
