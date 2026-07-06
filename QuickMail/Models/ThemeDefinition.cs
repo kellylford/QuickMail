@@ -55,6 +55,27 @@ public class ThemeDefinition
     public const double MinBaseFontSize = 9;
     public const double MaxBaseFontSize = 24;
 
+    /// <summary>
+    /// Maximum size, in bytes, of a theme file we will read. A legitimate theme is
+    /// a few KB; a much larger file (dropped into the themes folder or chosen at
+    /// import) is rejected before <c>File.ReadAllText</c> so an untrusted file can't
+    /// force a large allocation. Enforced by both load paths (folder scan, import).
+    /// </summary>
+    public const long MaxFileBytes = 256 * 1024;
+
+    /// <summary>Longest font-family value we accept from a theme file.</summary>
+    private const int MaxFontFamilyLength = 128;
+
+    /// <summary>
+    /// Longest accepted theme <see cref="Id"/> and <see cref="Name"/>. Both come
+    /// from an untrusted file; with the file-size cap allowing up to
+    /// <see cref="MaxFileBytes"/>, an unbounded name/id would otherwise flow into
+    /// screen-reader announcements, the command palette, log lines, and (for id) a
+    /// filename — so they are length- and content-limited at parse time.
+    /// </summary>
+    private const int MaxIdLength = 64;
+    private const int MaxNameLength = 100;
+
     public int FormatVersion { get; set; } = CurrentFormatVersion;
 
     /// <summary>Stable identifier, e.g. "quill" or a Guid string for user themes.</summary>
@@ -146,8 +167,8 @@ public class ThemeDefinition
         var theme = new ThemeDefinition
         {
             FormatVersion = version,
-            Id   = raw.Id.Trim(),
-            Name = raw.Name.Trim(),
+            Id   = ValidateId(raw.Id.Trim()),
+            Name = ValidateName(raw.Name.Trim()),
             Base = baseName,
         };
 
@@ -169,9 +190,9 @@ public class ThemeDefinition
         if (raw.Typography != null)
         {
             if (!string.IsNullOrWhiteSpace(raw.Typography.FontFamily))
-                theme.Typography.FontFamily = raw.Typography.FontFamily.Trim();
+                theme.Typography.FontFamily = ValidateFontFamily(raw.Typography.FontFamily.Trim(), "fontFamily");
             if (!string.IsNullOrWhiteSpace(raw.Typography.MonoFontFamily))
-                theme.Typography.MonoFontFamily = raw.Typography.MonoFontFamily.Trim();
+                theme.Typography.MonoFontFamily = ValidateFontFamily(raw.Typography.MonoFontFamily.Trim(), "monoFontFamily");
             if (raw.Typography.BaseFontSize is double size)
             {
                 if (double.IsNaN(size) || size < MinBaseFontSize || size > MaxBaseFontSize)
@@ -254,6 +275,85 @@ public class ThemeDefinition
         };
         foreach (var (k, v) in Colors) copy.Colors[k] = v;
         return copy;
+    }
+
+    // ── Id / name validation ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Validates the theme id. The id becomes both an on-disk filename
+    /// (<c>{id}.json</c>) and a <c>CommandRegistry</c> command id persisted to
+    /// config.ini, so it is restricted to an ASCII-safe charset — letters, digits,
+    /// '.', '_', '-'. This keeps id↔filename 1:1 (no lossy sanitization collisions)
+    /// and avoids Unicode-normalization surprises. Empty/whitespace is rejected by
+    /// the caller before this runs.
+    /// </summary>
+    private static string ValidateId(string id)
+    {
+        if (id.Length > MaxIdLength)
+            throw new ThemeFormatException(
+                $"The \"id\" is too long ({id.Length} characters). Keep it under {MaxIdLength}.");
+        foreach (var ch in id)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch is '.' or '_' or '-') continue;
+            throw new ThemeFormatException(
+                $"The \"id\" value \"{id}\" contains an unsupported character. " +
+                "Use only letters, digits, '.', '_', or '-'.");
+        }
+        return id;
+    }
+
+    /// <summary>
+    /// Validates the display name. It is shown in menus and read aloud by screen
+    /// readers, so it is length-capped and must not contain control characters
+    /// (a line break or NUL would corrupt an announcement, menu, or log line).
+    /// Empty/whitespace is rejected by the caller before this runs.
+    /// </summary>
+    private static string ValidateName(string name)
+    {
+        if (name.Length > MaxNameLength)
+            throw new ThemeFormatException(
+                $"The \"name\" is too long ({name.Length} characters). Keep it under {MaxNameLength}.");
+        foreach (var ch in name)
+            if (char.IsControl(ch))
+                throw new ThemeFormatException(
+                    "The \"name\" contains a control character (such as a line break), which is not allowed.");
+        return name;
+    }
+
+    // ── Font-family validation ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// True when <paramref name="value"/> is a plain font-family name safe to hand
+    /// to <c>new FontFamily(...)</c>. A WPF <c>FontFamily</c> string is not just a
+    /// family name: a value containing <c>#</c> is treated as
+    /// <c>baseUri#familyName</c>, so a theme could point the font loader at an
+    /// attacker-chosen resource (e.g. <c>file:///C:/evil.ttf#X</c>, a UNC/remote
+    /// URI, or a pack URI). We therefore allow only characters that appear in real
+    /// family names — letters, digits, spaces, and a small punctuation set — and
+    /// reject URI schemes, <c>#</c>, path separators, and <c>:</c> by construction.
+    /// </summary>
+    public static bool IsValidFontFamily(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > MaxFontFamilyLength)
+            return false;
+        foreach (var ch in value)
+        {
+            if (char.IsLetterOrDigit(ch)) continue;
+            // Punctuation seen in legitimate family names ("Times New Roman",
+            // "Comic Sans MS", "Bahnschrift SemiBold", "PT Sans-Narrow").
+            if (ch is ' ' or '-' or '_' or '.' or '&' or '\'') continue;
+            return false;
+        }
+        return true;
+    }
+
+    private static string ValidateFontFamily(string value, string jsonKey)
+    {
+        if (!IsValidFontFamily(value))
+            throw new ThemeFormatException(
+                $"The \"{jsonKey}\" value \"{value}\" is not a plain font-family name. " +
+                "Use only letters, digits, spaces, and simple punctuation, e.g. \"Segoe UI\".");
+        return value;
     }
 
     // ── Hex validation ────────────────────────────────────────────────────────

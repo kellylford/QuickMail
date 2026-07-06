@@ -219,6 +219,21 @@ public class ThemeServiceTests : IDisposable
     }
 
     [StaFact]
+    public void BuildMessageCss_InvalidFontOverride_DoesNotReachCss()
+    {
+        using var svc = NewService();
+        // A hand-edited config font that tries to break out of the CSS string.
+        svc.Initialize(Config("parchment", font: "x;} body{display:none"));
+
+        var css = svc.BuildMessageCss(forceOnContent: false);
+
+        // The invalid override is rejected; the CSS falls back to the theme font and
+        // the injection payload never appears in the reading-pane CSS.
+        Assert.DoesNotContain("display:none", css);
+        Assert.DoesNotContain("x;}", css);
+    }
+
+    [StaFact]
     public void BuildMessageCss_ForceOnContent_AppendsImportantOverrides()
     {
         using var svc = NewService();
@@ -286,6 +301,64 @@ public class ThemeServiceTests : IDisposable
         File.WriteAllText(path, "not json at all");
 
         Assert.Throws<ThemeFormatException>(() => svc.ImportTheme(path));
+    }
+
+    [StaFact]
+    public void ImportTheme_OversizedFile_IsRejectedBeforeParsing()
+    {
+        using var svc = NewService();
+        svc.Initialize(Config("parchment"));
+
+        var path = Path.Combine(_dir, "huge.quickmailtheme");
+        Directory.CreateDirectory(_dir);
+        // One byte over the cap is enough; content need not be valid JSON — the
+        // size check must fire before any read/parse.
+        File.WriteAllBytes(path, new byte[ThemeDefinition.MaxFileBytes + 1]);
+
+        var ex = Assert.Throws<ThemeFormatException>(() => svc.ImportTheme(path));
+        Assert.Contains("too large", ex.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [StaFact]
+    public void ReadThemeFile_OversizedFile_Throws()
+    {
+        Directory.CreateDirectory(_dir);
+        var path = Path.Combine(_dir, "huge.json");
+        File.WriteAllBytes(path, new byte[ThemeDefinition.MaxFileBytes + 1]);
+
+        Assert.Throws<ThemeFormatException>(() => ThemeStore.ReadThemeFile(path));
+    }
+
+    [StaFact]
+    public void LoadUserThemes_SkipsOversizedFile()
+    {
+        var themesFolder = Path.Combine(_dir, "themes");
+        Directory.CreateDirectory(themesFolder);
+        File.WriteAllBytes(Path.Combine(themesFolder, "huge.json"), new byte[ThemeDefinition.MaxFileBytes + 1]);
+
+        var store = new ThemeStore(new ProfileContext(_dir));
+        // The oversized file is skipped (logged), not thrown, and never appears.
+        Assert.Empty(store.LoadUserThemes());
+    }
+
+    [StaFact]
+    public void SaveUserTheme_MaliciousIdWithSeparators_StaysInThemesFolder()
+    {
+        var store = new ThemeStore(new ProfileContext(_dir));
+        // Parse now rejects a traversal id outright, so build the object directly to
+        // exercise PathForId's sanitization + containment for a theme that did not
+        // come through Parse (belt-and-suspenders).
+        var theme = new ThemeDefinition { Id = "../../escape", Name = "Escape", Base = "light" };
+
+        store.SaveUserTheme(theme);
+
+        // The id's separators are sanitized to '-', so the file lands directly in the
+        // themes folder and nothing is written outside it.
+        var themesFolder = Path.Combine(_dir, "themes");
+        var written = Directory.GetFiles(themesFolder, "*.json");
+        Assert.Single(written);
+        Assert.Equal(Path.GetFullPath(themesFolder),
+            Path.GetFullPath(Path.GetDirectoryName(written[0])!));
     }
 
     [StaFact]
