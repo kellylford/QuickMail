@@ -39,6 +39,19 @@ jobs:
           }
           "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
 
+      - name: Write bug-report credentials
+        shell: pwsh
+        env:
+          BUG_REPORT_TOKEN: ${{ secrets.BUG_REPORT_TOKEN }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class BugReportService
+          {
+              private const string AppOwnedToken = "$env:BUG_REPORT_TOKEN";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
