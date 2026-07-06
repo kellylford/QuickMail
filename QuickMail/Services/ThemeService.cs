@@ -535,7 +535,13 @@ public class ThemeService : IThemeService
         var sb = new StringBuilder();
         var t = _resolved;
 
-        var fontName = _fontFamilyOverride.Length > 0 ? _fontFamilyOverride : t.Typography.FontFamily;
+        // The theme font is validated at parse; the config override is not, and this
+        // CSS --qm-font is a second sink into the reading-pane WebView2. Validate the
+        // override here too so an invalid value can't reach the CSS string (the
+        // quote-strip below is a further belt on top of the charset allowlist).
+        var fontName = _fontFamilyOverride.Length > 0 && ThemeDefinition.IsValidFontFamily(_fontFamilyOverride)
+            ? _fontFamilyOverride
+            : t.Typography.FontFamily;
         var fontSize = Math.Round(t.Typography.BaseFontSize * _textScale, 1)
             .ToString(CultureInfo.InvariantCulture);
 

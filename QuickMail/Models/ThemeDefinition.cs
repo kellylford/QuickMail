@@ -66,6 +66,16 @@ public class ThemeDefinition
     /// <summary>Longest font-family value we accept from a theme file.</summary>
     private const int MaxFontFamilyLength = 128;
 
+    /// <summary>
+    /// Longest accepted theme <see cref="Id"/> and <see cref="Name"/>. Both come
+    /// from an untrusted file; with the file-size cap allowing up to
+    /// <see cref="MaxFileBytes"/>, an unbounded name/id would otherwise flow into
+    /// screen-reader announcements, the command palette, log lines, and (for id) a
+    /// filename — so they are length- and content-limited at parse time.
+    /// </summary>
+    private const int MaxIdLength = 64;
+    private const int MaxNameLength = 100;
+
     public int FormatVersion { get; set; } = CurrentFormatVersion;
 
     /// <summary>Stable identifier, e.g. "quill" or a Guid string for user themes.</summary>
@@ -157,8 +167,8 @@ public class ThemeDefinition
         var theme = new ThemeDefinition
         {
             FormatVersion = version,
-            Id   = raw.Id.Trim(),
-            Name = raw.Name.Trim(),
+            Id   = ValidateId(raw.Id.Trim()),
+            Name = ValidateName(raw.Name.Trim()),
             Base = baseName,
         };
 
@@ -265,6 +275,49 @@ public class ThemeDefinition
         };
         foreach (var (k, v) in Colors) copy.Colors[k] = v;
         return copy;
+    }
+
+    // ── Id / name validation ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Validates the theme id. The id becomes both an on-disk filename
+    /// (<c>{id}.json</c>) and a <c>CommandRegistry</c> command id persisted to
+    /// config.ini, so it is restricted to an ASCII-safe charset — letters, digits,
+    /// '.', '_', '-'. This keeps id↔filename 1:1 (no lossy sanitization collisions)
+    /// and avoids Unicode-normalization surprises. Empty/whitespace is rejected by
+    /// the caller before this runs.
+    /// </summary>
+    private static string ValidateId(string id)
+    {
+        if (id.Length > MaxIdLength)
+            throw new ThemeFormatException(
+                $"The \"id\" is too long ({id.Length} characters). Keep it under {MaxIdLength}.");
+        foreach (var ch in id)
+        {
+            if (char.IsAsciiLetterOrDigit(ch) || ch is '.' or '_' or '-') continue;
+            throw new ThemeFormatException(
+                $"The \"id\" value \"{id}\" contains an unsupported character. " +
+                "Use only letters, digits, '.', '_', or '-'.");
+        }
+        return id;
+    }
+
+    /// <summary>
+    /// Validates the display name. It is shown in menus and read aloud by screen
+    /// readers, so it is length-capped and must not contain control characters
+    /// (a line break or NUL would corrupt an announcement, menu, or log line).
+    /// Empty/whitespace is rejected by the caller before this runs.
+    /// </summary>
+    private static string ValidateName(string name)
+    {
+        if (name.Length > MaxNameLength)
+            throw new ThemeFormatException(
+                $"The \"name\" is too long ({name.Length} characters). Keep it under {MaxNameLength}.");
+        foreach (var ch in name)
+            if (char.IsControl(ch))
+                throw new ThemeFormatException(
+                    "The \"name\" contains a control character (such as a line break), which is not allowed.");
+        return name;
     }
 
     // ── Font-family validation ──────────────────────────────────────────────────

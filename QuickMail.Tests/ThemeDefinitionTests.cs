@@ -139,6 +139,66 @@ public class ThemeDefinitionTests
     }
 
     [Theory]
+    [InlineData("../../escape")]     // path traversal
+    [InlineData("a/b")]
+    [InlineData("a\\b")]
+    [InlineData("a:b")]
+    [InlineData("has space")]
+    [InlineData("emoji\U0001F600")]
+    public void Parse_InvalidIdCharset_IsRejected(string id)
+    {
+        var json = MinimalJson.Replace("\"id\": \"test-theme\"", $"\"id\": {System.Text.Json.JsonSerializer.Serialize(id)}");
+        var ex = Assert.Throws<ThemeFormatException>(() => ThemeDefinition.Parse(json));
+        Assert.Contains("id", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("my-theme")]
+    [InlineData("Quill")]
+    [InlineData("theme.v2_final")]
+    [InlineData("0f9c8b7a6d5e4f3a2b1c0d9e8f7a6b5c")] // guid "N"
+    public void Parse_ValidId_IsAccepted(string id)
+    {
+        var json = MinimalJson.Replace("\"id\": \"test-theme\"", $"\"id\": \"{id}\"");
+        Assert.Equal(id, ThemeDefinition.Parse(json).Id);
+    }
+
+    [Fact]
+    public void Parse_OverlongId_IsRejected()
+    {
+        var json = MinimalJson.Replace("\"id\": \"test-theme\"", $"\"id\": \"{new string('a', 200)}\"");
+        var ex = Assert.Throws<ThemeFormatException>(() => ThemeDefinition.Parse(json));
+        Assert.Contains("id", ex.Message);
+    }
+
+    [Theory]
+    [InlineData("line\\nbreak")]  // JSON \n → real newline in the value
+    [InlineData("nul\\u0000char")]
+    [InlineData("tab\\tchar")]
+    public void Parse_NameWithControlChar_IsRejected(string nameLiteral)
+    {
+        var json = MinimalJson.Replace("\"name\": \"Test Theme\"", $"\"name\": \"{nameLiteral}\"");
+        var ex = Assert.Throws<ThemeFormatException>(() => ThemeDefinition.Parse(json));
+        Assert.Contains("name", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_OverlongName_IsRejected()
+    {
+        var json = MinimalJson.Replace("\"name\": \"Test Theme\"", $"\"name\": \"{new string('a', 200)}\"");
+        var ex = Assert.Throws<ThemeFormatException>(() => ThemeDefinition.Parse(json));
+        Assert.Contains("name", ex.Message);
+    }
+
+    [Fact]
+    public void Parse_NameWithSpacesAndParens_IsAccepted()
+    {
+        // The import flow appends " (imported)" to names — must remain parseable.
+        var json = MinimalJson.Replace("\"name\": \"Test Theme\"", "\"name\": \"Ember (imported)\"");
+        Assert.Equal("Ember (imported)", ThemeDefinition.Parse(json).Name);
+    }
+
+    [Theory]
     [InlineData("Segoe UI")]
     [InlineData("Times New Roman")]
     [InlineData("Comic Sans MS")]

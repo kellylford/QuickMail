@@ -219,6 +219,21 @@ public class ThemeServiceTests : IDisposable
     }
 
     [StaFact]
+    public void BuildMessageCss_InvalidFontOverride_DoesNotReachCss()
+    {
+        using var svc = NewService();
+        // A hand-edited config font that tries to break out of the CSS string.
+        svc.Initialize(Config("parchment", font: "x;} body{display:none"));
+
+        var css = svc.BuildMessageCss(forceOnContent: false);
+
+        // The invalid override is rejected; the CSS falls back to the theme font and
+        // the injection payload never appears in the reading-pane CSS.
+        Assert.DoesNotContain("display:none", css);
+        Assert.DoesNotContain("x;}", css);
+    }
+
+    [StaFact]
     public void BuildMessageCss_ForceOnContent_AppendsImportantOverrides()
     {
         using var svc = NewService();
@@ -330,9 +345,10 @@ public class ThemeServiceTests : IDisposable
     public void SaveUserTheme_MaliciousIdWithSeparators_StaysInThemesFolder()
     {
         var store = new ThemeStore(new ProfileContext(_dir));
-        var theme = ThemeDefinition.Parse("""
-            { "formatVersion": 1, "id": "../../escape", "name": "Escape", "base": "light" }
-            """);
+        // Parse now rejects a traversal id outright, so build the object directly to
+        // exercise PathForId's sanitization + containment for a theme that did not
+        // come through Parse (belt-and-suspenders).
+        var theme = new ThemeDefinition { Id = "../../escape", Name = "Escape", Base = "light" };
 
         store.SaveUserTheme(theme);
 
