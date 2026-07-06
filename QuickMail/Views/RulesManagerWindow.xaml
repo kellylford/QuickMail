@@ -17,16 +17,16 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
 
-        <Style TargetType="TextBox" x:Key="RuleTextBox">
+        <Style TargetType="TextBox" x:Key="RuleTextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="Margin" Value="0,2,0,8"/>
             <Setter Property="Padding" Value="4,3"/>
             <Setter Property="Height" Value="26"/>
         </Style>
-        <Style TargetType="ComboBox" x:Key="RuleComboBox">
+        <Style TargetType="ComboBox" x:Key="RuleComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
             <Setter Property="Margin" Value="0,2,0,8"/>
             <Setter Property="Height" Value="26"/>
         </Style>
-        <Style TargetType="CheckBox" x:Key="RuleCheckBox">
+        <Style TargetType="CheckBox" x:Key="RuleCheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,4,0,4"/>
         </Style>
     </Window.Resources>

@@ -1116,7 +1116,7 @@
                               PreviewKeyDown="MessageList_PreviewKeyDown"
                               MouseLeftButtonUp="MessageList_MouseLeftButtonUp">
                         <ListView.Style>
-                            <Style TargetType="ListView">
+                            <Style TargetType="ListView" BasedOn="{StaticResource {x:Type ListView}}">
                                 <Setter Property="Visibility" Value="{Binding IsMessagesView, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsCalendarView}" Value="True">
@@ -1305,7 +1305,7 @@
                               PreviewMouseRightButtonDown="ConversationTree_PreviewMouseRightButtonDown"
                               ContextMenuOpening="ConversationTree_ContextMenuOpening">
                         <TreeView.Style>
-                            <Style TargetType="TreeView">
+                            <Style TargetType="TreeView" BasedOn="{StaticResource {x:Type TreeView}}">
                                 <Setter Property="Visibility" Value="{Binding IsConversationsView, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsCalendarView}" Value="True">
@@ -1444,7 +1444,7 @@
                               PreviewMouseRightButtonDown="SenderGroupTree_PreviewMouseRightButtonDown"
                               ContextMenuOpening="SenderGroupTree_ContextMenuOpening">
                         <TreeView.Style>
-                            <Style TargetType="TreeView">
+                            <Style TargetType="TreeView" BasedOn="{StaticResource {x:Type TreeView}}">
                                 <Setter Property="Visibility" Value="{Binding IsFromView, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsCalendarView}" Value="True">
@@ -1583,7 +1583,7 @@
                               PreviewMouseRightButtonDown="ToGroupTree_PreviewMouseRightButtonDown"
                               ContextMenuOpening="ToGroupTree_ContextMenuOpening">
                         <TreeView.Style>
-                            <Style TargetType="TreeView">
+                            <Style TargetType="TreeView" BasedOn="{StaticResource {x:Type TreeView}}">
                                 <Setter Property="Visibility" Value="{Binding IsToView, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsCalendarView}" Value="True">

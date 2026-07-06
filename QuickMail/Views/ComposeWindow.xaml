@@ -122,9 +122,12 @@
                Drop="Window_Drop">
 
         <!-- Formatting toolbar — visible in HTML mode only (managed in code-behind) -->
-        <ToolBarTray DockPanel.Dock="Top" x:Name="FormattingToolbarTray" Visibility="Collapsed">
+        <ToolBarTray DockPanel.Dock="Top" x:Name="FormattingToolbarTray" Visibility="Collapsed"
+                     Background="{DynamicResource Theme.ChromeBackground}">
             <ToolBar KeyboardNavigation.TabNavigation="Once"
-                     KeyboardNavigation.DirectionalNavigation="Cycle">
+                     KeyboardNavigation.DirectionalNavigation="Cycle"
+                     Background="{DynamicResource Theme.ChromeBackground}"
+                     Foreground="{DynamicResource Theme.TextPrimary}">
                 <Button x:Name="BoldButton" Content="B" FontWeight="Bold" MinWidth="28"
                         AutomationProperties.Name="Bold"
                         AutomationProperties.AcceleratorKey="Ctrl+B"
