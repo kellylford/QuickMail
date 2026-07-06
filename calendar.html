@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calendar - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="saved-views.html">Previous: Saved Views</a> | <a href="tools-menu.html">Next: Tools Menu</a></div>
+  <h1 id="calendar">Calendar</h1>
+<p>QuickMail tracks upcoming appointments drawn from meeting-invitation
+emails (<code>.ics</code> attachments) in your mailbox. This is not a
+general-purpose calendar — it exists so that once you accept a meeting
+invitation in QuickMail, you have a place to see what you accepted.</p>
+<p>A <strong>Calendar</strong> node appears in the folder tree. Select
+it to replace the message list with a list of upcoming events, sorted by
+date and time.</p>
+<ul>
+<li><strong>Arrow keys</strong> move through the event list.</li>
+<li><strong>Enter</strong> opens the email the selected event came from.
+If that message is no longer in your local cache, QuickMail announces
+this and does nothing rather than attempting a failing fetch.</li>
+<li><strong>T</strong> filters the list to today’s events.</li>
+<li><strong>F5</strong> refreshes the calendar.</li>
+<li><strong>F6</strong> cycles to the next pane as usual.</li>
+</ul>
+<h3 id="responding-to-invitations">Responding to Invitations</h3>
+<p>Open a meeting invitation email as you would any message. Below the
+invitation details (organizer, time, location, description), the message
+body shows three response links: <strong>Accept</strong>,
+<strong>Tentative</strong>, and <strong>Decline</strong>. Activating one
+records your response and updates the Calendar immediately — no restart
+or refresh needed. These links are not shown on a cancellation notice.
+When you receive an updated or cancelled invitation, the corresponding
+calendar entry updates or is removed automatically.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="saved-views.html">Previous: Saved Views</a> | <a href="tools-menu.html">Next: Tools Menu</a></div>
+</body>
+</html>

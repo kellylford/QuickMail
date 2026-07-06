@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Themes - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="settings.html">Previous: Settings</a> | <a href="screen-reader-announcements.html">Next: Screen Reader Announcements</a></div>
+  <h1 id="themes">Themes</h1>
+<p>QuickMail’s color scheme is controlled through <strong>Settings →
+Appearance</strong> (see <a href="#settings">Settings</a>) and managed
+in more detail through the <strong>Theme Manager</strong>.</p>
+<h3 id="theme-manager">Theme Manager</h3>
+<p>Open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
+<strong>Manage Themes</strong>, or choose <strong>Manage
+Themes…</strong> from the <strong>Tools</strong> menu. The Theme Manager
+is a separate, non-blocking window, so you can leave it open while you
+try a theme against real messages. From the theme list, press Tab to
+reach the actions:</p>
+<ul>
+<li><strong>Apply</strong> — switch to the selected theme
+immediately.</li>
+<li><strong>Duplicate</strong> — copy a theme as a starting point for
+your own. A name field appears with a suggested name.</li>
+<li><strong>Rename</strong> / <strong>Delete</strong> — for your own
+themes (built-ins cannot be changed or deleted).</li>
+<li><strong>Export…</strong> — save a theme as a
+<code>.quickmailtheme</code> file to share or move to another
+machine.</li>
+<li><strong>Import…</strong> — load a <code>.quickmailtheme</code> file.
+If a theme file has a problem, QuickMail tells you exactly what is wrong
+(for example, which color value is not a valid hex color).</li>
+<li><strong>Open themes folder</strong> — opens the folder where your
+themes are stored, for hand-editing.</li>
+</ul>
+<p>Below the theme list and actions, a read-only <strong>Theme
+description</strong> box always shows a plain-language account of the
+currently selected theme — its overall look, its fonts, and every
+individual color together with where in the app that color is used. This
+box is there so you can understand and compare themes by ear or by
+reading, without needing to see the colors. See <a
+href="#built-in-themes">Built-in Themes</a> below for the description of
+each theme that ships with QuickMail.</p>
+<p>The Command Palette also offers <strong>Next Theme</strong> and
+<strong>Previous Theme</strong> to cycle through themes, and a
+<strong>Theme: [name]</strong> command for each theme. None of these
+have a default keyboard shortcut — assign one in <strong>Settings →
+Keyboard</strong> if you want direct access.</p>
+<p><strong>Editing a theme by hand:</strong> a theme is a plain,
+documented JSON text file. Duplicate a built-in theme, choose
+<strong>Open themes folder</strong>, and edit the copy in any text
+editor. Colors are hex values like <code>#3D5A80</code>; any color you
+leave out is filled in from the built-in Light or Dark theme (whichever
+the file’s <code>base</code> names). A typical minimal theme:</p>
+<div class="sourceCode" id="cb1"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;formatVersion&quot;</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;my-theme&quot;</span><span class="fu">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;My Theme&quot;</span><span class="fu">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;base&quot;</span><span class="fu">:</span> <span class="st">&quot;light&quot;</span><span class="fu">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;colors&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;accent&quot;</span><span class="fu">:</span> <span class="st">&quot;#8F4531&quot;</span><span class="fu">,</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;windowBackground&quot;</span><span class="fu">:</span> <span class="st">&quot;#FBF7F2&quot;</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">},</span></span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;typography&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;fontFamily&quot;</span><span class="fu">:</span> <span class="st">&quot;Segoe UI&quot;</span><span class="fu">,</span> <span class="dt">&quot;baseFontSize&quot;</span><span class="fu">:</span> <span class="dv">13</span> <span class="fu">}</span></span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>The full color token list: <code>windowBackground</code>,
+<code>surfaceBackground</code>, <code>chromeBackground</code>,
+<code>inputBackground</code>, <code>border</code>,
+<code>borderSubtle</code>, <code>inputBorder</code>,
+<code>textPrimary</code>, <code>textSecondary</code>,
+<code>textDisabled</code>, <code>textOnAccent</code>,
+<code>accent</code>, <code>accentSubtle</code>, <code>hyperlink</code>,
+<code>selectionBackground</code>, <code>selectionText</code>,
+<code>selectionInactive</code>, <code>focusIndicator</code>,
+<code>error</code>, <code>errorBackground</code>, <code>warning</code>,
+<code>warningBackground</code>, <code>success</code>,
+<code>successBackground</code>, <code>info</code>,
+<code>infoBackground</code>. Edits take effect the next time the theme
+is applied (reopen the Theme Manager and choose Apply, or restart).</p>
+<h3 id="built-in-themes">Built-in Themes</h3>
+<p>QuickMail ships with six themes. <strong>System</strong> follows
+Windows; the other five are always available regardless of your Windows
+setting. Each description below is a shorter version of what the Theme
+Manager’s <strong>Theme description</strong> box reads for that theme —
+open the Theme Manager and select a theme to hear or read the full
+breakdown, including every individual color and exactly where it is used
+(message list, links, selection, focus outline, error/warning/success
+text, and so on).</p>
+<p><strong>System</strong> — follows the Windows light or dark setting.
+Whichever it resolves to today, it currently displays the same colors as
+Parchment (below): an off-white background, very dark cool-gray text,
+and a dark muted-blue accent.</p>
+<p><strong>Parchment</strong> (light, default) — an off-white background
+(Snow) with very dark cool-gray text and a dark muted-blue accent (Dark
+Slate Blue) used for buttons and the unread marker. Panels and toolbars
+use warm off-white tones (White Smoke, Linen); links are medium blue.
+This is QuickMail’s standard light look.</p>
+<p><strong>Parchment Dark</strong> — the dark counterpart to Parchment:
+a very dark gray background with light gray text and a light muted-blue
+accent. Panels and toolbars use slightly lighter dark-gray tones for
+depth; links are light blue. Status colors (error, warning, success,
+information) are lightened versions of Parchment’s, chosen for contrast
+against the dark background.</p>
+<p><strong>Ember</strong> — a warm light theme: a warm off-white
+background (Floral White) with very dark cool-gray text and a dark red
+accent (Sienna) in place of Parchment’s blue. Selection highlights use a
+pale muted orange rather than blue. Links remain medium blue for
+consistency across themes.</p>
+<p><strong>Fjord</strong> — a cool light theme: an off-white background
+with a faint cool cast (Ghost White) and a dark muted-cyan accent (Dark
+Slate Gray) in place of Parchment’s blue. Selection highlights use a
+light cool gray-green.</p>
+<p><strong>Heather</strong> — a muted light theme: an off-white
+background (Ghost White) with a cool gray accent (Dim Gray) instead of a
+saturated color. Selection highlights use a light cool gray-lavender.
+This is the most subdued of the built-in themes.</p>
+<p>The four light themes are close cousins. Ember, Fjord, and Heather
+each change only four colors from Parchment: the main window background
+tint, the accent color, the soft accent-fill color, and the selection
+highlight. Everything else — panels and toolbars, borders, body and
+secondary text, the medium-blue hyperlink color, the focus outline, and
+the four status colors (error, warning, success, information) — is
+inherited unchanged from Parchment. Parchment Dark is the only theme
+with a fully dark palette.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="settings.html">Previous: Settings</a> | <a href="screen-reader-announcements.html">Next: Screen Reader Announcements</a></div>
+</body>
+</html>
