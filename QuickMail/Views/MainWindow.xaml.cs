@@ -3754,13 +3754,18 @@ public partial class MainWindow : Window
 
     private void OpenComposeWindow(ComposeModel composeModel)
     {
+        using var _t = LogService.Trace($"OpenComposeWindow kind={composeModel.Kind}");
         var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
-        composeVm.Seed(composeModel);
-        var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+        using (LogService.Trace("OpenComposeWindow.Seed"))
+            composeVm.Seed(composeModel);
+        ComposeWindow window;
+        using (LogService.Trace("OpenComposeWindow.ctor"))
+            window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
         composeVm.CloseRequested += window.Close;
         _openComposeWindows.Add(window);
         window.Closed += (_, _) => _openComposeWindows.Remove(window);
-        window.Show();
+        using (LogService.Trace("OpenComposeWindow.Show"))
+            window.Show();
     }
 
     private Task<IReadOnlyList<AttachmentModel>?> ShowForwardAttachmentDialogAsync(IReadOnlyList<AttachmentModel> attachments)

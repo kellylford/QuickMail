@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Text;
@@ -107,5 +108,41 @@ public static class LogService
     public static void Debug(string message)
     {
         if (DebugMode) Log($"[DEBUG] {message}");
+    }
+
+    /// <summary>
+    /// Debug-only scoped tracer for hang diagnosis. On entry writes "[TRACE] &gt;&gt;&gt; label";
+    /// on <see cref="IDisposable.Dispose"/> writes "[TRACE] &lt;&lt;&lt; label (Nms)". Because
+    /// <see cref="Log"/> opens-writes-closes the file per line, each line is flushed to disk
+    /// immediately, so a UI-thread freeze leaves the last unmatched "&gt;&gt;&gt; label" on disk —
+    /// that names the blocking call. Returns <see langword="null"/> (a no-op) unless /debug is
+    /// set, so there is zero overhead in normal runs. Intended use:
+    /// <code>using var _ = LogService.Trace("SomeOperation");</code>
+    /// </summary>
+    public static IDisposable? Trace(string label)
+    {
+        if (!DebugMode) return null;
+        return new TraceScope(label);
+    }
+
+    private sealed class TraceScope : IDisposable
+    {
+        private readonly string _label;
+        private readonly int    _tid;
+        private readonly long   _startTicks;
+
+        public TraceScope(string label)
+        {
+            _label      = label;
+            _tid        = Environment.CurrentManagedThreadId;
+            _startTicks = Stopwatch.GetTimestamp();
+            Log($"[TRACE] >>> {label} (tid={_tid})");
+        }
+
+        public void Dispose()
+        {
+            var ms = (Stopwatch.GetTimestamp() - _startTicks) * 1000.0 / Stopwatch.Frequency;
+            Log($"[TRACE] <<< {_label} (tid={_tid}, {ms:F0}ms)");
+        }
     }
 }

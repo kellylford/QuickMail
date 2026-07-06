@@ -112,7 +112,8 @@ public partial class ComposeWindow : Window
         _configService = configService;
         _customDictionary = customDictionary;
         _themeService = themeService;
-        InitializeComponent();
+        using (LogService.Trace("ComposeWindow.InitializeComponent"))
+            InitializeComponent();
         DataContext = vm;
 
         // Register the user's custom dictionary on all spell-checked editors and
@@ -136,7 +137,8 @@ public partial class ComposeWindow : Window
                 ApplyComposeMode();
         };
 
-        WireRichCompose();
+        using (LogService.Trace("ComposeWindow.WireRichCompose"))
+            WireRichCompose();
 
         // Wire the View confirmation callback so the VM stays out of System.Windows.
         vm.ConfirmationRequested = (message, title) =>
@@ -184,7 +186,9 @@ public partial class ComposeWindow : Window
         // New compose / Forward: To is empty, so land in the To field.
         Loaded += (_, _) =>
         {
-            ApplyDefaultComposeMode();
+            using var _tl = LogService.Trace("ComposeWindow.Loaded");
+            using (LogService.Trace("ComposeWindow.ApplyDefaultComposeMode"))
+                ApplyDefaultComposeMode();
             if (string.IsNullOrWhiteSpace(_vm.To))
             {
                 // Forward: body caret goes to 0 so tabbing to body lands at the top,
@@ -1499,6 +1503,7 @@ public partial class ComposeWindow : Window
 
         _vm.LoadHtmlIntoEditorRequested += html =>
         {
+            using var _t = LogService.Trace("Compose.LoadHtmlIntoEditor");
             // Programmatic load is not a user edit — don't mark the draft dirty.
             _suppressRichTextChanged = true;
             _suppressFormattingAnnouncement = true;
@@ -1590,6 +1595,7 @@ public partial class ComposeWindow : Window
     /// <summary>Reacts to a mode change: swaps editors, toolbar, fonts, and announces.</summary>
     private void ApplyComposeMode()
     {
+        using var _t = LogService.Trace("Compose.ApplyComposeMode");
         var mode = _vm.CurrentMode;
         var bodyHadFocus = BodyBox.IsKeyboardFocusWithin || RichBodyBox.IsKeyboardFocusWithin;
         _suppressFormattingAnnouncement = true;

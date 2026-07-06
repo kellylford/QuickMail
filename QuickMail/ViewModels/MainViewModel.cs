@@ -4014,18 +4014,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task Reply()
     {
-        var detail = await EnsureDetailAsync();
+        using var _t = LogService.Trace("MainVM.Reply");
+        MailMessageDetail? detail;
+        using (LogService.Trace("MainVM.Reply.EnsureDetail"))
+            detail = await EnsureDetailAsync();
         if (detail == null) return;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
+        using (LogService.Trace("MainVM.Reply.ComposeRequested"))
+            ComposeRequested?.Invoke(ComposeViewModel.CreateReply(detail, detail.AccountId));
     }
 
     [RelayCommand]
     private async Task ReplyAll()
     {
-        var detail = await EnsureDetailAsync();
+        using var _t = LogService.Trace("MainVM.ReplyAll");
+        MailMessageDetail? detail;
+        using (LogService.Trace("MainVM.ReplyAll.EnsureDetail"))
+            detail = await EnsureDetailAsync();
         if (detail == null) return;
         var ownAddress = Accounts.FirstOrDefault(a => a.Id == detail.AccountId)?.Username ?? string.Empty;
-        ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId, ownAddress));
+        using (LogService.Trace("MainVM.ReplyAll.ComposeRequested"))
+            ComposeRequested?.Invoke(ComposeViewModel.CreateReplyAll(detail, detail.AccountId, ownAddress));
     }
 
     [RelayCommand]
