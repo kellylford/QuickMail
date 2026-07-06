@@ -96,9 +96,8 @@ public partial class TokenizedAddressBox : UserControl
             }, System.Windows.Threading.DispatcherPriority.Background);
 
         IsKeyboardFocusWithinChanged += (_, _) =>
-            OuterBorder.BorderBrush = IsKeyboardFocusWithin
-                ? SystemColors.HotTrackBrush
-                : SystemColors.ControlDarkBrush;
+            OuterBorder.SetResourceReference(Border.BorderBrushProperty,
+                IsKeyboardFocusWithin ? Theming.ThemeKeys.Accent : Theming.ThemeKeys.InputBorder);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -293,8 +292,10 @@ public partial class TokenizedAddressBox : UserControl
     {
         if (isInvalid)
         {
-            btn.Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xEE, 0xEE));
-            btn.BorderBrush = Brushes.Red;
+            // Resource references (not brush copies) so the error state restyles
+            // live on theme change and stays visually distinct in every theme.
+            btn.SetResourceReference(BackgroundProperty, Theming.ThemeKeys.ErrorBackground);
+            btn.SetResourceReference(BorderBrushProperty, Theming.ThemeKeys.Error);
         }
         else
         {
@@ -311,8 +312,8 @@ public partial class TokenizedAddressBox : UserControl
         var btn = (Button)ChipPanel.Children[index];
         if (selected)
         {
-            btn.Background = SystemColors.HighlightBrush;
-            btn.Foreground = SystemColors.HighlightTextBrush;
+            btn.SetResourceReference(BackgroundProperty, Theming.ThemeKeys.SelectionBackground);
+            btn.SetResourceReference(ForegroundProperty, Theming.ThemeKeys.SelectionText);
         }
         else
         {

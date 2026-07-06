@@ -114,6 +114,43 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _confirmCloseTabWithUnsaved = true;
 
+    // ── Appearance ─────────────────────────────────────────────────────────────────
+
+    /// <summary>Sentinel shown in the font ComboBox for "use the theme's font".</summary>
+    public const string ThemeDefaultFontLabel = "(Theme default)";
+
+    /// <summary>One row of the theme ComboBox — id + display name only, no UI types.</summary>
+    public sealed record ThemeOption(string Id, string Name);
+
+    /// <summary>Selectable themes in display order. Empty when no theme service is wired (tests).</summary>
+    public ObservableCollection<ThemeOption> ThemeOptions { get; } = [];
+
+    /// <summary>Font choices: the theme-default sentinel followed by installed families.</summary>
+    public ObservableCollection<string> FontOptions { get; } = [];
+
+    /// <summary>True while Windows High Contrast supplies the colors; shows the notice in the tab.</summary>
+    public bool IsHighContrastActive { get; }
+
+    [ObservableProperty]
+    private string _appearanceThemeId = "system";
+
+    /// <summary>Bound to the text-size ComboBox by tag; values are percent (100–200).</summary>
+    [ObservableProperty]
+    private int _appearanceTextScalePercent = 100;
+
+    /// <summary>The selected font option; <see cref="ThemeDefaultFontLabel"/> means no override.</summary>
+    [ObservableProperty]
+    private string _appearanceFontOption = ThemeDefaultFontLabel;
+
+    [ObservableProperty]
+    private bool _appearanceUnderlineLinks;
+
+    [ObservableProperty]
+    private bool _appearanceThickFocus;
+
+    [ObservableProperty]
+    private bool _appearanceForceMessageTheme;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLogFormatActionFirst))]
     [NotifyPropertyChangedFor(nameof(IsLogFormatTimeFirst))]
@@ -139,10 +176,40 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private HotkeyRowViewModel? _selectedHotkey;
 
-    public SettingsViewModel(IConfigService configService, ICommandRegistry registry)
+    public SettingsViewModel(
+        IConfigService configService,
+        ICommandRegistry registry,
+        IThemeService? themeService = null,
+        System.Collections.Generic.IEnumerable<string>? fontFamilies = null)
     {
         _configService = configService;
         var cfg = configService.Load();
+
+        // Appearance: themes from the service; installed fonts from the View
+        // (font enumeration is a presentation concern the caller supplies).
+        if (themeService != null)
+        {
+            foreach (var t in themeService.GetAvailableThemes())
+                ThemeOptions.Add(new ThemeOption(t.Id, t.Name));
+            IsHighContrastActive = themeService.IsHighContrastActive;
+        }
+        FontOptions.Add(ThemeDefaultFontLabel);
+        if (fontFamilies != null)
+            foreach (var f in fontFamilies)
+                FontOptions.Add(f);
+
+        AppearanceThemeId = cfg.AppearanceThemeId;
+        AppearanceTextScalePercent = (int)System.Math.Round(cfg.AppearanceTextScale * 100);
+        if (AppearanceTextScalePercent is not (100 or 110 or 125 or 150 or 175 or 200))
+            AppearanceTextScalePercent = 100;
+        AppearanceFontOption = string.IsNullOrWhiteSpace(cfg.AppearanceFontFamily)
+            ? ThemeDefaultFontLabel
+            : cfg.AppearanceFontFamily;
+        if (AppearanceFontOption != ThemeDefaultFontLabel && !FontOptions.Contains(AppearanceFontOption))
+            FontOptions.Add(AppearanceFontOption); // keep an uninstalled configured font selectable
+        AppearanceUnderlineLinks    = cfg.AppearanceUnderlineLinks;
+        AppearanceThickFocus        = cfg.AppearanceThickFocus;
+        AppearanceForceMessageTheme = cfg.AppearanceForceMessageTheme;
 
         PreviewLines = cfg.PreviewLines;
         ShowMessageStatus = cfg.ShowMessageStatus;
@@ -195,6 +262,15 @@ public partial class SettingsViewModel : ObservableObject
     private void Save()
     {
         var cfg = _configService.Load();
+
+        cfg.AppearanceThemeId = AppearanceThemeId;
+        cfg.AppearanceTextScale = AppearanceTextScalePercent / 100.0;
+        cfg.AppearanceFontFamily = AppearanceFontOption == ThemeDefaultFontLabel
+            ? string.Empty
+            : AppearanceFontOption;
+        cfg.AppearanceUnderlineLinks    = AppearanceUnderlineLinks;
+        cfg.AppearanceThickFocus        = AppearanceThickFocus;
+        cfg.AppearanceForceMessageTheme = AppearanceForceMessageTheme;
 
         cfg.PreviewLines = PreviewLines;
         cfg.ShowMessageStatus = ShowMessageStatus;

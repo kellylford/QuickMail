@@ -418,6 +418,25 @@ public class XamlParseTests
         window.Close();
     }
 
+    [StaFact]
+    public void ThemedControls_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var uri = new Uri("pack://application:,,,/QuickMail;component/Styles/ThemedControls.xaml", UriKind.Absolute);
+        var dict = new ResourceDictionary { Source = uri };
+        Assert.True(dict.Count > 0);
+    }
+
+    [StaFact]
+    public void ThemeManagerWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new ThemeManagerViewModel(new StubThemeService(), new StubConfigService());
+        var window = new ThemeManagerWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
     private static (StubImapMailService imap, StubAccountService accounts, StubCredentialService creds,
         StubLocalStoreService store, StubSyncService sync, StubConfigService config,
         StubCommandRegistry registry, StubContactService contacts, StubTemplateService templates)

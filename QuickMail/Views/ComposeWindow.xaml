@@ -12,7 +12,11 @@
         MinHeight="360" MinWidth="480"
         WindowStartupLocation="CenterScreen"
         PreviewKeyDown="Window_PreviewKeyDown"
-        PreviewKeyUp="Window_PreviewKeyUp">
+        PreviewKeyUp="Window_PreviewKeyUp"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <Window.InputBindings>
         <KeyBinding Key="S" Modifiers="Alt"  Command="{Binding SendCommand}"/>
@@ -225,12 +229,12 @@
             <TextBlock DockPanel.Dock="Left"
                        VerticalAlignment="Center"
                        Text="{Binding AutoSaveText}"
-                       Foreground="Gray"
+                       Foreground="{DynamicResource Theme.TextSecondary}"
                        Margin="0,0,8,0"/>
             <TextBlock VerticalAlignment="Center"
                        Text="{Binding StatusText}"
                        AutomationProperties.Name="Send status"
-                       Foreground="DarkRed"/>
+                       Foreground="{DynamicResource Theme.Error}"/>
         </DockPanel>
 
         <!-- Form fields -->
@@ -374,8 +378,8 @@
             <!-- Attachment summary: file count and total size -->
             <TextBlock Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="2"
                        Text="{Binding AttachmentSummaryText}"
-                       FontSize="11"
-                       Foreground="Gray"
+                       FontSize="{DynamicResource Theme.FontSizeSmall}"
+                       Foreground="{DynamicResource Theme.TextSecondary}"
                        VerticalAlignment="Bottom"
                        Margin="2,0,0,2">
                 <TextBlock.Style>
@@ -407,7 +411,7 @@
                          SpellCheck.IsEnabled="True"
                          IsInactiveSelectionHighlightEnabled="True"
                          VerticalScrollBarVisibility="Auto"
-                         FontFamily="Segoe UI"
+                         FontFamily="{DynamicResource Theme.FontFamily}"
                          Margin="0,4" TabIndex="7"
                          VerticalAlignment="Stretch"
                          PreviewKeyDown="BodyBox_PreviewKeyDown"/>
@@ -421,7 +425,7 @@
                              SpellCheck.IsEnabled="True"
                              IsInactiveSelectionHighlightEnabled="True"
                              VerticalScrollBarVisibility="Auto"
-                             FontFamily="Segoe UI"
+                             FontFamily="{DynamicResource Theme.FontFamily}"
                              Margin="0,4" TabIndex="7"
                              VerticalAlignment="Stretch"
                              TextChanged="RichBodyBox_TextChanged"/>
@@ -433,9 +437,9 @@
                StaysOpen="True"
                AllowsTransparency="True"
                PopupAnimation="None">
-            <Border BorderBrush="{DynamicResource {x:Static SystemColors.ControlDarkBrushKey}}"
+            <Border BorderBrush="{DynamicResource Theme.Border}"
                     BorderThickness="1"
-                    Background="{DynamicResource {x:Static SystemColors.WindowBrushKey}}">
+                    Background="{DynamicResource Theme.WindowBackground}">
                 <ListBox x:Name="SuggestionList"
                          MaxHeight="200"
                          MinWidth="300"
@@ -455,8 +459,8 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding PrimaryText}" FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding SecondaryText}"
-                                           Foreground="{DynamicResource {x:Static SystemColors.GrayTextBrushKey}}"
-                                           FontSize="11"/>
+                                           Foreground="{DynamicResource Theme.TextSecondary}"
+                                           FontSize="{DynamicResource Theme.FontSizeSmall}"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>

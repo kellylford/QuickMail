@@ -9,7 +9,11 @@
         MinHeight="420" MinWidth="580"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        AutomationProperties.Name="View Manager">
+        AutomationProperties.Name="View Manager"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <Window.Resources>
         <Style x:Key="SectionLabel" TargetType="TextBlock">
@@ -18,8 +22,8 @@
         </Style>
         <Style x:Key="FieldLabel" TargetType="TextBlock">
             <Setter Property="Margin" Value="0,0,0,3"/>
-            <Setter Property="Foreground" Value="DimGray"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{DynamicResource Theme.TextSecondary}"/>
+            <Setter Property="FontSize" Value="{DynamicResource Theme.FontSizeSmall}"/>
         </Style>
         <Style x:Key="ReadonlyField" TargetType="TextBox">
             <Setter Property="IsReadOnly" Value="True"/>
@@ -43,7 +47,7 @@
         </Grid.RowDefinitions>
 
         <!-- ── Current state strip ─────────────────────────────────────────── -->
-        <Border Grid.Row="0" Background="#F0F4FF" BorderBrush="#C0CCE8"
+        <Border Grid.Row="0" Background="{DynamicResource Theme.InfoBackground}" BorderBrush="{DynamicResource Theme.Info}"
                 BorderThickness="1" CornerRadius="3" Padding="10,7" Margin="0,0,0,10">
             <StackPanel Orientation="Horizontal">
                 <TextBlock Text="Current state: " FontWeight="SemiBold" VerticalAlignment="Center"/>
@@ -81,7 +85,7 @@
 
                     <!-- ── Empty state: nothing selected ─────────────────────────── -->
                     <TextBlock Text="Select a view from the list, or create a new one."
-                               Foreground="DimGray" Margin="0,8,0,0"
+                               Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,8,0,0"
                                Visibility="{Binding HasNoSelectedView, Converter={StaticResource BoolToVis}}"/>
                     <Button x:Name="CreateNewViewButton"
                             Content="Create New View from Current State"
@@ -95,7 +99,7 @@
 
                     <!-- View name as a heading -->
                     <TextBlock Text="{Binding SelectedView.Name}"
-                               FontWeight="SemiBold" FontSize="14"
+                               FontWeight="SemiBold" FontSize="{DynamicResource Theme.FontSizeLarge}"
                                Margin="0,4,0,8"
                                TextTrimming="CharacterEllipsis"
                                Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
@@ -161,7 +165,7 @@
                         <TextBox Grid.Column="0"
                                  Text="{Binding EditHotkey, Mode=OneWay}"
                                  IsReadOnly="True" IsTabStop="False"
-                                 Background="#F5F5F5"
+                                 Background="{DynamicResource Theme.SurfaceBackground}"
                                  AutomationProperties.Name="Assigned shortcut"
                                  Margin="0,0,4,0"/>
                         <Button x:Name="SetHotkeyButton"
@@ -177,7 +181,7 @@
                                 AutomationProperties.Name="Clear keyboard shortcut"/>
                     </Grid>
                     <TextBlock Text="Also configurable in File → Settings → Keyboard Shortcuts."
-                               FontSize="10" Foreground="DimGray" Margin="0,3,0,0"
+                               FontSize="{DynamicResource Theme.FontSizeSmall}" Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,3,0,0"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Day Limit -->
@@ -201,7 +205,7 @@
                                  MaxLength="4"
                                  PreviewTextInput="DayLimitBox_PreviewTextInput"/>
                         <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"
-                                   Foreground="DimGray" FontSize="11"
+                                   Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
                                    Text="days"/>
                     </Grid>
 

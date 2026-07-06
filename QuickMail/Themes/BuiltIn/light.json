@@ -1,0 +1,39 @@
+{
+  "formatVersion": 1,
+  "id": "parchment",
+  "name": "Parchment",
+  "base": "light",
+  "colors": {
+    "windowBackground": "#FBFAF8",
+    "surfaceBackground": "#F5F3EF",
+    "chromeBackground": "#EFEDE8",
+    "inputBackground": "#FFFFFF",
+    "border": "#D8D4CC",
+    "borderSubtle": "#E9E6E0",
+    "inputBorder": "#B8B4AC",
+    "textPrimary": "#1F2328",
+    "textSecondary": "#5A6068",
+    "textDisabled": "#7E858C",
+    "textOnAccent": "#FFFFFF",
+    "accent": "#3D5A80",
+    "accentSubtle": "#E7EDF4",
+    "hyperlink": "#2A5D9E",
+    "selectionBackground": "#D6E2F0",
+    "selectionText": "#1F2328",
+    "selectionInactive": "#E6E7E9",
+    "focusIndicator": "#1F2328",
+    "error": "#B3261E",
+    "errorBackground": "#FBEAE9",
+    "warning": "#8A5A00",
+    "warningBackground": "#FBF3E2",
+    "success": "#2E6B3E",
+    "successBackground": "#E9F3EC",
+    "info": "#31597F",
+    "infoBackground": "#EAF0F7"
+  },
+  "typography": {
+    "fontFamily": "Segoe UI",
+    "monoFontFamily": "Cascadia Code",
+    "baseFontSize": 13
+  }
+}

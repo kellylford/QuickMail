@@ -1,0 +1,17 @@
+{
+  "formatVersion": 1,
+  "id": "heather",
+  "name": "Heather",
+  "base": "light",
+  "colors": {
+    "accent": "#5E566E",
+    "windowBackground": "#FAF9FB",
+    "accentSubtle": "#ECEAF1",
+    "selectionBackground": "#E2DFE9"
+  },
+  "typography": {
+    "fontFamily": "Segoe UI",
+    "monoFontFamily": "Cascadia Code",
+    "baseFontSize": 13
+  }
+}

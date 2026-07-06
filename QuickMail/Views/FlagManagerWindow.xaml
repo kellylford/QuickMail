@@ -9,7 +9,11 @@
         Width="520" Height="440"
         MinWidth="420" MinHeight="340"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <Window.Resources>
         <views:StringToBrushConverter x:Key="StringToBrushConverter"/>
@@ -101,7 +105,7 @@
                 <StackPanel>
                     <TextBlock Text="No flag selected."
                                Margin="0,8,0,0"
-                               Foreground="Gray">
+                               Foreground="{DynamicResource Theme.TextSecondary}">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -169,8 +173,8 @@
                                      AutomationProperties.Name="Flag name"
                                      Margin="0,0,0,2"/>
                             <TextBlock Text="{Binding RenameError}"
-                                       Foreground="Red"
-                                       FontSize="11"
+                                       Foreground="{DynamicResource Theme.Error}"
+                                       FontSize="{DynamicResource Theme.FontSizeSmall}"
                                        Margin="0,0,0,4">
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
@@ -205,8 +209,8 @@
                                     Background="{Binding SelectedFlag.ColorHex, Converter={StaticResource StringToBrushConverter}}"/>
                             <TextBlock Text="{Binding SelectedFlag.ColorHex}"
                                        VerticalAlignment="Center"
-                                       Foreground="Gray"
-                                       FontSize="11"/>
+                                       Foreground="{DynamicResource Theme.TextSecondary}"
+                                       FontSize="{DynamicResource Theme.FontSizeSmall}"/>
                         </StackPanel>
 
                         <!-- 12 preset color buttons (radio group) -->

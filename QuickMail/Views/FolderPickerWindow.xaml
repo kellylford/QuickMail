@@ -7,7 +7,11 @@
         MinHeight="220" MinWidth="300"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
 
     <DockPanel Margin="10">
 
@@ -53,7 +57,7 @@
                                    TextTrimming="CharacterEllipsis"/>
                         <TextBlock Grid.Row="1"
                                    Text="{Binding AccountName}"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource Theme.FontSizeSmall}"
                                    Opacity="0.75"
                                    TextTrimming="CharacterEllipsis">
                             <TextBlock.Style>

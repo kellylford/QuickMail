@@ -221,6 +221,20 @@ public class ConfigService : IConfigService
                     case "graphpollseconds":
                         if (int.TryParse(value, out var gps)) config.GraphPollSeconds = Math.Clamp(gps, 30, 600);
                         break;
+                    case "appearancethemeid":
+                        if (!string.IsNullOrWhiteSpace(value)) config.AppearanceThemeId = value;
+                        break;
+                    case "appearancetextscale":
+                        if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out var scale))
+                            config.AppearanceTextScale = Math.Clamp(scale, 1.0, 2.0);
+                        break;
+                    case "appearancefontfamily":
+                        config.AppearanceFontFamily = value;
+                        break;
+                    case "appearanceunderlinelinks":   config.AppearanceUnderlineLinks   = ParseBool(value); break;
+                    case "appearancethickfocus":       config.AppearanceThickFocus       = ParseBool(value); break;
+                    case "appearanceforcemessagetheme": config.AppearanceForceMessageTheme = ParseBool(value); break;
                     case "customannouncements":  config.CustomAnnouncements = ParseBool(value); break;
                     case "announcehints":        config.AnnounceHints        = ParseBool(value); break;
                     case "announcestatus":       config.AnnounceStatus       = ParseBool(value); break;
@@ -362,6 +376,37 @@ public class ConfigService : IConfigService
         sb.AppendLine($"GraphPollSeconds = {Math.Clamp(config.GraphPollSeconds, 30, 600)}");
         sb.AppendLine("# Poll interval (seconds) for the Microsoft Graph new-mail watcher.");
         sb.AppendLine("# Default is 60. Values: 30-600. IMAP accounts use IDLE and ignore this.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AppearanceThemeId = {config.AppearanceThemeId}");
+        sb.AppendLine("# The active theme. \"system\" follows the Windows light/dark setting and");
+        sb.AppendLine("# yields entirely to Windows High Contrast.");
+        sb.AppendLine("# Built-in values: system, parchment, dark, ember, fjord, heather.");
+        sb.AppendLine("# User themes (from the Theme Manager) are referenced by their id.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AppearanceTextScale = {config.AppearanceTextScale.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+        sb.AppendLine("# App-wide text size scale. Values: 1.0, 1.1, 1.25, 1.5, 1.75, 2.0.");
+        sb.AppendLine();
+
+        if (!string.IsNullOrEmpty(config.AppearanceFontFamily))
+        {
+            sb.AppendLine($"AppearanceFontFamily = {config.AppearanceFontFamily}");
+            sb.AppendLine("# Font family override applied app-wide. Remove to use the theme's font.");
+            sb.AppendLine();
+        }
+
+        sb.AppendLine($"AppearanceUnderlineLinks = {(config.AppearanceUnderlineLinks ? "on" : "off")}");
+        sb.AppendLine("# Always underline hyperlinks in message content. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AppearanceThickFocus = {(config.AppearanceThickFocus ? "on" : "off")}");
+        sb.AppendLine("# Thicker keyboard focus indicators. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AppearanceForceMessageTheme = {(config.AppearanceForceMessageTheme ? "on" : "off")}");
+        sb.AppendLine("# Override sender colors and fonts in message content with theme colors.");
+        sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"CustomAnnouncements = {(config.CustomAnnouncements ? "on" : "off")}");

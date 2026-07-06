@@ -80,7 +80,7 @@ public class MessageBodyHtmlBuilderTests
             "<div style=\"color:red\"><p onclick=\"x()\">content</p></div>", 5000));
 
         var ok = MessageBodyHtmlBuilder.TryBuildSanitizedHtmlDocument(
-            "Subject", html, System.TimeSpan.FromTicks(1), out var document);
+            "Subject", html, themeCss: null, System.TimeSpan.FromTicks(1), out var document);
 
         // The partially stripped document must be discarded, never rendered.
         Assert.False(ok);
