@@ -89,12 +89,43 @@ public partial class ReportBugWindow : Window
         }
     }
 
-    // Two logical F6 stops: the form fields, and the read-only preview. With exactly two
-    // stops, F6 and Shift+F6 both just toggle — there is no distinct "forward"/"reverse".
+    // Two logical F6 stops: the form fields, and the preview. With exactly two stops, F6 and
+    // Shift+F6 both just toggle — there is no distinct "forward"/"reverse".
     private void CycleFocus()
     {
         System.Windows.Controls.TextBox target = PreviewBox.IsKeyboardFocusWithin ? SummaryBox : PreviewBox;
         target.Focus();
+    }
+
+    // PreviewBox is intentionally not IsReadOnly (see the XAML comment above it) so a screen
+    // reader can arrow through it exactly like the editable fields above. These three handlers
+    // are what keep it non-editable instead: block every typed character, block the specific
+    // keys that would modify content (arrows/Home/End/paging/Ctrl+C/Ctrl+A all pass through
+    // untouched), and block Cut/Delete however they're invoked (keyboard, context menu, or the
+    // Edit menu). None of this affects what's actually submitted — SendAsync always rebuilds the
+    // report text fresh from the underlying fields, never from whatever this TextBox displays.
+    private void PreviewBox_PreviewTextInput(object sender, TextCompositionEventArgs e) => e.Handled = true;
+
+    private void PreviewBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Delete or Key.Back)
+        {
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.None)
+        {
+            e.Handled = true;
+        }
+        else if (Keyboard.Modifiers == ModifierKeys.Control && e.Key is Key.V or Key.X)
+        {
+            e.Handled = true;
+        }
+    }
+
+    private void DisallowEdit_CanExecute(object sender, CanExecuteRoutedEventArgs e)
+    {
+        e.CanExecute = false;
+        e.Handled = true;
     }
 
     private void OpenCommandPalette()

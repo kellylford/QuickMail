@@ -4,7 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
-        Title="Report a Bug"
+        Title="Report a Bug - QuickMail"
+        AutomationProperties.Name="Report a Bug - QuickMail"
         Height="620" Width="520"
         MinHeight="480" MinWidth="420"
         WindowStartupLocation="CenterOwner"
@@ -70,16 +71,28 @@
                    Text="Preview — exactly what will be sent:"
                    Margin="0,8,0,2"/>
 
-        <!-- ── Preview (F6 stop 2) ── -->
+        <!-- ── Preview (F6 stop 2) ──
+             Deliberately NOT IsReadOnly: a read-only TextBox doesn't support the same
+             character-by-character arrow-key navigation with a screen reader that an
+             editable one does. This is a genuine editable TextBox with edits blocked in
+             code-behind (PreviewBox_PreviewKeyDown / PreviewBox_PreviewTextInput / the Cut
+             and Delete CommandBindings below), so navigation behaves identically to the
+             fields above it while the content still can't actually be changed. -->
         <TextBox x:Name="PreviewBox"
                  Grid.Row="2"
                  Text="{Binding PreviewText, Mode=OneWay}"
                  AutomationProperties.Name="Preview"
-                 IsReadOnly="True"
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto"
-                 Margin="0,0,0,8"/>
+                 PreviewTextInput="PreviewBox_PreviewTextInput"
+                 PreviewKeyDown="PreviewBox_PreviewKeyDown"
+                 Margin="0,0,0,8">
+            <TextBox.CommandBindings>
+                <CommandBinding Command="ApplicationCommands.Cut" CanExecute="DisallowEdit_CanExecute"/>
+                <CommandBinding Command="ApplicationCommands.Delete" CanExecute="DisallowEdit_CanExecute"/>
+            </TextBox.CommandBindings>
+        </TextBox>
 
         <TextBlock Grid.Row="3"
                    Text="{Binding StatusMessage}"
