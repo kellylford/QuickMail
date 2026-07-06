@@ -1446,6 +1446,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "help.about", category: "Help", title: "About QuickMail",
             execute: () => AboutRequested?.Invoke(this, EventArgs.Empty)));
+
+        registry.Register(new CommandDefinition(
+            id: "help.reportBug", category: "Help", title: "Report a Bug",
+            execute: () => ReportBugRequested?.Invoke(this, EventArgs.Empty)));
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -3921,6 +3925,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;
     public event EventHandler? TutorialRequested;
     public event EventHandler? AboutRequested;
+    public event EventHandler? ReportBugRequested;
 
     /// <summary>
     /// Raised when a Properties dialog should be shown. The View subscribes and

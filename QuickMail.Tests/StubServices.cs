@@ -72,6 +72,14 @@ sealed class StubCredentialService : ICredentialService
     public void DeleteSecret(string key) { }
 }
 
+sealed class StubBugReportService : IBugReportService
+{
+    public Task<BugReportResult> SubmitAsync(BugReportModel report, CancellationToken cancellationToken = default) =>
+        Task.FromResult(BugReportResult.Failed("stub"));
+    public string BuildFallbackUrl(BugReportModel report) => "https://github.com/kellylford/QuickMail/issues/new";
+    public string BuildReportText(BugReportModel report) => report.WhatHappened;
+}
+
 sealed class StubGoogleOAuthService : IGoogleOAuthService
 {
     public Task<string> GetAccessTokenAsync(string username, CancellationToken ct = default) => Task.FromResult(string.Empty);

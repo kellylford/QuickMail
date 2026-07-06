@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Windows.Input;
 using QuickMail.Models;
 using QuickMail.Services;
+using QuickMail.ViewModels;
 using Xunit;
 
 namespace QuickMail.Tests;
@@ -228,5 +229,26 @@ public class CommandRegistryTests
         // Both live defaults must still fire — the orphan binding shouldn't suppress them.
         Assert.Equal("mail.reply",   reg.FindByGesture(Key.R, ModifierKeys.Control)!.Id);
         Assert.Equal("mail.forward", reg.FindByGesture(Key.F, ModifierKeys.Control)!.Id);
+    }
+
+    [Fact]
+    public void MainViewModel_RegistersReportBugCommand_InHelpCategoryWithNoDefaultHotkey()
+    {
+        var registry = new CommandRegistry();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), registry, new StubViewService(), new StubRuleService(),
+            new StubSmtpService());
+        Assert.NotNull(vm);
+
+        var cmd = registry.FindById("help.reportBug");
+        Assert.NotNull(cmd);
+        Assert.Equal("Help", cmd!.Category);
+        Assert.Equal(Key.None, cmd.DefaultKey);
+
+        // Adjacent existing Help commands still resolve — the new registration didn't disturb them.
+        Assert.Equal("help.userGuide", registry.FindByGesture(Key.F1, ModifierKeys.None)!.Id);
+        Assert.NotNull(registry.FindById("help.about"));
     }
 }

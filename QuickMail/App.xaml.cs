@@ -21,6 +21,7 @@ public partial class App : Application
     private GraphMailService? _graphBackend;
     private UpdateCheckService? _updateCheckService;
     private ThemeService? _themeService;
+    private BugReportService? _bugReportService;
 
     protected override void OnStartup(StartupEventArgs e)
     {
@@ -151,6 +152,7 @@ public partial class App : Application
             var calendarService = new CalendarService(calendarProvider);
 
             _updateCheckService = new UpdateCheckService();
+            _bugReportService   = new BugReportService(credentialService);
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
@@ -158,7 +160,7 @@ public partial class App : Application
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService);
             mainWindow.Show();
         }
         catch (Exception ex)
@@ -181,6 +183,7 @@ public partial class App : Application
         _contactService?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();
+        _bugReportService?.Dispose();
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         base.OnExit(e);
     }

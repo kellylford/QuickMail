@@ -1,0 +1,135 @@
+<Window x:Class="QuickMail.Views.ReportBugWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="Report a Bug - QuickMail"
+        AutomationProperties.Name="Report a Bug - QuickMail"
+        Height="620" Width="520"
+        MinHeight="480" MinWidth="420"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ── Form fields (F6 stop 1) ── -->
+        <StackPanel x:Name="FormPanel" Grid.Row="0">
+            <TextBlock Text="Summary:" Margin="0,0,0,2"/>
+            <TextBox x:Name="SummaryBox"
+                     Text="{Binding Summary, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.Name="Summary"
+                     MaxLength="200"
+                     Margin="0,0,0,8"/>
+
+            <TextBlock Text="What happened:" Margin="0,0,0,2"/>
+            <TextBox Text="{Binding WhatHappened, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.Name="What happened"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Height="70"
+                     VerticalScrollBarVisibility="Auto"
+                     Margin="0,0,0,8"/>
+
+            <TextBlock Text="What you expected:" Margin="0,0,0,2"/>
+            <TextBox Text="{Binding WhatExpected, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.Name="What you expected"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Height="50"
+                     VerticalScrollBarVisibility="Auto"
+                     Margin="0,0,0,8"/>
+
+            <TextBlock Text="Steps to reproduce:" Margin="0,0,0,2"/>
+            <TextBox Text="{Binding StepsToReproduce, UpdateSourceTrigger=PropertyChanged}"
+                     AutomationProperties.Name="Steps to reproduce"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     Height="60"
+                     VerticalScrollBarVisibility="Auto"/>
+        </StackPanel>
+
+        <TextBlock Grid.Row="1"
+                   Text="Preview — exactly what will be sent:"
+                   Margin="0,8,0,2"/>
+
+        <!-- ── Preview (F6 stop 2) ──
+             Deliberately NOT IsReadOnly: a read-only TextBox doesn't support the same
+             character-by-character arrow-key navigation with a screen reader that an
+             editable one does. This is a genuine editable TextBox with edits blocked in
+             code-behind (PreviewBox_PreviewKeyDown / PreviewBox_PreviewTextInput / the Cut
+             and Delete CommandBindings below), so navigation behaves identically to the
+             fields above it while the content still can't actually be changed. -->
+        <TextBox x:Name="PreviewBox"
+                 Grid.Row="2"
+                 Text="{Binding PreviewText, Mode=OneWay}"
+                 AutomationProperties.Name="Preview"
+                 AcceptsReturn="True"
+                 TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto"
+                 PreviewTextInput="PreviewBox_PreviewTextInput"
+                 PreviewKeyDown="PreviewBox_PreviewKeyDown"
+                 Margin="0,0,0,8">
+            <TextBox.CommandBindings>
+                <CommandBinding Command="ApplicationCommands.Cut" CanExecute="DisallowEdit_CanExecute"/>
+                <CommandBinding Command="ApplicationCommands.Delete" CanExecute="DisallowEdit_CanExecute"/>
+            </TextBox.CommandBindings>
+        </TextBox>
+
+        <TextBlock Grid.Row="3"
+                   Text="{Binding StatusMessage}"
+                   Margin="0,0,0,4"
+                   TextWrapping="Wrap"/>
+
+        <Button x:Name="IssueLinkButton"
+                Grid.Row="4"
+                Content="{Binding IssueUrl, StringFormat='Open issue: {0}'}"
+                AutomationProperties.Name="Open issue in browser"
+                Command="{Binding OpenIssueCommand}"
+                Visibility="{Binding IsSent, Converter={StaticResource BoolToVisibility}}"
+                HorizontalAlignment="Left"
+                Margin="0,0,0,8"/>
+
+        <StackPanel Grid.Row="5"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button x:Name="SendButton"
+                    Content="_Send"
+                    IsDefault="True"
+                    AutomationProperties.Name="Send"
+                    Command="{Binding SendCommand}"
+                    IsEnabled="{Binding CanSend}"
+                    MinWidth="80"
+                    Margin="0,0,8,0"/>
+            <Button x:Name="CopyAndOpenButton"
+                    Content="_Copy report and open GitHub"
+                    AutomationProperties.Name="Copy report and open GitHub"
+                    Command="{Binding CopyAndOpenCommand}"
+                    MinWidth="80"
+                    Margin="0,0,8,0"/>
+            <Button x:Name="CancelButton"
+                    Content="{Binding CancelButtonLabel}"
+                    AutomationProperties.Name="{Binding CancelButtonLabel}"
+                    Command="{Binding CancelCommand}"
+                    MinWidth="80"/>
+        </StackPanel>
+    </Grid>
+</Window>
