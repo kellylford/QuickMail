@@ -10,6 +10,12 @@ public class SavedView
 {
     public Guid            Id        { get; set; } = Guid.NewGuid();
     public string          Name      { get; set; } = string.Empty;
+
+    // A screen reader reads a data-bound ListBox/ComboBox item's UIA Name from
+    // ToString() — DisplayMemberPath only sets the visual. Without this the Saved
+    // Views list announces "QuickMail.Models.SavedView" for every row. See the
+    // "Data-bound Selector items" accessibility rule in CLAUDE.md.
+    public override string ToString() => Name;
     public List<ViewFolder> Folders  { get; set; } = [];
 
     /// <summary>Values: "messages" | "conversations" | "from" | "to".</summary>

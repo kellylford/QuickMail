@@ -14,6 +14,11 @@ public class MailRule
     /// <summary>User-visible name for this rule. Required — validated on save.</summary>
     public string Name { get; set; } = string.Empty;
 
+    // A screen reader reads a data-bound Selector item's UIA Name from ToString()
+    // (DisplayMemberPath only sets the visual). Without this the Rules list announces
+    // "QuickMail.Models.MailRule" for every row. See CLAUDE.md.
+    public override string ToString() => Name;
+
     /// <summary>When false, the rule is skipped during evaluation.</summary>
     public bool IsEnabled { get; set; } = true;
 

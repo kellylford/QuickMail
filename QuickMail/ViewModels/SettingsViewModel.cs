@@ -120,7 +120,14 @@ public partial class SettingsViewModel : ObservableObject
     public const string ThemeDefaultFontLabel = "(Theme default)";
 
     /// <summary>One row of the theme ComboBox — id + display name only, no UI types.</summary>
-    public sealed record ThemeOption(string Id, string Name);
+    public sealed record ThemeOption(string Id, string Name)
+    {
+        // A screen reader reads a data-bound Selector item's UIA Name from ToString()
+        // (DisplayMemberPath="Name" only sets the visual). A record's default ToString
+        // is "ThemeOption { Id = ..., Name = ... }", so without this the theme ComboBox
+        // announced that punctuation-laden string. See CLAUDE.md.
+        public override string ToString() => Name;
+    }
 
     /// <summary>Selectable themes in display order. Empty when no theme service is wired (tests).</summary>
     public ObservableCollection<ThemeOption> ThemeOptions { get; } = [];
