@@ -9,7 +9,6 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.Views;
@@ -34,7 +33,7 @@ public partial class FolderPickerWindow : Window
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         IEnumerable<MailFolderModel>? virtualFolders = null,
-        string? title = null,
+        string title = "Go to Folder",
         MailFolderModel? initialFolder = null,
         IReadOnlyDictionary<Guid, MailFolderModel>? accountMailFolders = null,
         bool useTreeView = false)
@@ -43,7 +42,7 @@ public partial class FolderPickerWindow : Window
         _useTreeView = useTreeView;
 
         InitializeComponent();
-        Title = title ?? Strings.FolderPicker_Title;
+        Title = title;
 
         if (_useTreeView)
         {
@@ -147,7 +146,7 @@ public partial class FolderPickerWindow : Window
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         MailFolderModel? allMailFolder,
-        string? title = null)
+        string title = "Go to Folder")
         : this(accounts, cachedFolders,
                allMailFolder != null ? new[] { allMailFolder } : null,
                title,

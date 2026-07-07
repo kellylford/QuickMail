@@ -5,7 +5,6 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:QuickMail.Controls"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         AutomationProperties.Name="{Binding WindowTitle}"
@@ -33,87 +32,87 @@
         <Menu DockPanel.Dock="Top"
               IsTabStop="False"
               KeyboardNavigation.TabNavigation="None">
-            <MenuItem Header="{x:Static strings:Strings.Compose_Menu_File}">
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Send}" InputGestureText="Alt+S" Click="MenuSend_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_SaveDraft}" Command="{Binding SaveDraftCommand}" InputGestureText="Ctrl+S"/>
+            <MenuItem Header="_File">
+                <MenuItem Header="_Send" InputGestureText="Alt+S" Click="MenuSend_Click"/>
+                <MenuItem Header="Save _Draft" Command="{Binding SaveDraftCommand}" InputGestureText="Ctrl+S"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_InsertTemplate}" Command="{Binding InsertTemplateCommand}"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_SaveAsTemplate}" Command="{Binding SaveAsTemplateCommand}"/>
+                <MenuItem Header="_Insert Template…" Command="{Binding InsertTemplateCommand}"/>
+                <MenuItem Header="Save as _Template" Command="{Binding SaveAsTemplateCommand}"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_AddAttachments}" Command="{Binding AddAttachmentsCommand}" InputGestureText="Ctrl+Shift+A"/>
+                <MenuItem Header="_Add Attachments…" Command="{Binding AddAttachmentsCommand}" InputGestureText="Ctrl+Shift+A"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Close}" Command="{Binding CancelCommand}" InputGestureText="Esc"/>
+                <MenuItem Header="_Close" Command="{Binding CancelCommand}" InputGestureText="Esc"/>
             </MenuItem>
-            <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Edit}">
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Undo}" Command="ApplicationCommands.Undo"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Redo}" Command="ApplicationCommands.Redo"/>
+            <MenuItem Header="_Edit">
+                <MenuItem Header="_Undo" Command="ApplicationCommands.Undo"/>
+                <MenuItem Header="_Redo" Command="ApplicationCommands.Redo"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Cut}" Command="ApplicationCommands.Cut"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Copy}" Command="ApplicationCommands.Copy"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Paste}" Command="ApplicationCommands.Paste"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_SelectAll}" Command="ApplicationCommands.SelectAll"/>
+                <MenuItem Header="Cu_t" Command="ApplicationCommands.Cut"/>
+                <MenuItem Header="_Copy" Command="ApplicationCommands.Copy"/>
+                <MenuItem Header="_Paste" Command="ApplicationCommands.Paste"/>
+                <MenuItem Header="Select _All" Command="ApplicationCommands.SelectAll"/>
             </MenuItem>
-            <MenuItem Header="{x:Static strings:Strings.Compose_Menu_View}">
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_PlainText}" x:Name="MenuModePlain"
+            <MenuItem Header="_View">
+                <MenuItem Header="_Plain Text" x:Name="MenuModePlain"
                           InputGestureText="Ctrl+Shift+1" Click="MenuModePlain_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Markdown}" x:Name="MenuModeMarkdown"
+                <MenuItem Header="_Markdown" x:Name="MenuModeMarkdown"
                           InputGestureText="Ctrl+Shift+2" Click="MenuModeMarkdown_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Html}" x:Name="MenuModeHtml"
+                <MenuItem Header="_HTML" x:Name="MenuModeHtml"
                           InputGestureText="Ctrl+Shift+3" Click="MenuModeHtml_Click"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Preview}" IsEnabled="{Binding IsPreviewAvailable}" InputGestureText="F8" Click="MenuOpenPreview_Click" AutomationProperties.Name="{x:Static strings:Strings.Compose_OpenPreview}"/>
+                <MenuItem Header="Pre_view" IsEnabled="{Binding IsPreviewAvailable}" InputGestureText="F8" Click="MenuOpenPreview_Click" AutomationProperties.Name="Open preview"/>
             </MenuItem>
             <!-- The top-level Format menu is always enabled (Windows standard:
                  top-level menus are never skipped); individual items gray out
                  in Plain Text mode. Formatting works in HTML (real formatting)
                  and Markdown (inserts the equivalent syntax). -->
-            <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Format}" SubmenuOpened="FormatMenu_SubmenuOpened">
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Bold}" InputGestureText="Ctrl+B"
+            <MenuItem Header="F_ormat" SubmenuOpened="FormatMenu_SubmenuOpened">
+                <MenuItem Header="_Bold" InputGestureText="Ctrl+B"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarBold_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Italic}" InputGestureText="Ctrl+I"
+                <MenuItem Header="_Italic" InputGestureText="Ctrl+I"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarItalic_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Underline}" InputGestureText="Ctrl+U"
+                <MenuItem Header="_Underline" InputGestureText="Ctrl+U"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarUnderline_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Strikethrough}" InputGestureText="Ctrl+Shift+X"
+                <MenuItem Header="_Strikethrough" InputGestureText="Ctrl+Shift+X"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarStrikethrough_Click"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Heading1}" InputGestureText="Ctrl+Alt+1"
+                <MenuItem Header="Heading _1" InputGestureText="Ctrl+Alt+1"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarHeading1_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Heading2}" InputGestureText="Ctrl+Alt+2"
+                <MenuItem Header="Heading _2" InputGestureText="Ctrl+Alt+2"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarHeading2_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Heading3}" InputGestureText="Ctrl+Alt+3"
+                <MenuItem Header="Heading _3" InputGestureText="Ctrl+Alt+3"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarHeading3_Click"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_BulletList}" InputGestureText="Ctrl+Shift+L"
+                <MenuItem Header="Bu_llet List" InputGestureText="Ctrl+Shift+L"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarBulletList_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_NumberedList}" InputGestureText="Ctrl+Shift+N"
+                <MenuItem Header="_Numbered List" InputGestureText="Ctrl+Shift+N"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarNumberedList_Click"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_InsertLink}" InputGestureText="Ctrl+L"
+                <MenuItem Header="Insert Lin_k…" InputGestureText="Ctrl+L"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarInsertLink_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_ClearFormatting}" InputGestureText="Ctrl+Space"
+                <MenuItem Header="_Clear Formatting" InputGestureText="Ctrl+Space"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="ToolbarClearFormatting_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_AnnounceFormatting}" InputGestureText="Ctrl+T"
+                <MenuItem Header="_Announce Formatting" InputGestureText="Ctrl+T"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="MenuAnnounceFormatting_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_ShowFormatting}" InputGestureText="Ctrl+Shift+T"
+                <MenuItem Header="Sho_w Formatting…" InputGestureText="Ctrl+Shift+T"
                           IsEnabled="{Binding IsFormattingAvailable}" Click="MenuShowFormatting_Click"/>
             </MenuItem>
-            <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Tools}">
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_CheckSpelling}" InputGestureText="F7"
+            <MenuItem Header="_Tools">
+                <MenuItem Header="Check _Spelling…" InputGestureText="F7"
                           IsEnabled="{Binding IsSpellNavAvailable}"
                           Click="MenuCheckSpelling_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_NextMisspelling}" InputGestureText="Ctrl+F7"
+                <MenuItem Header="_Next Misspelling" InputGestureText="Ctrl+F7"
                           IsEnabled="{Binding IsSpellNavAvailable}"
                           Click="MenuNextMisspelling_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_PreviousMisspelling}" InputGestureText="Ctrl+Shift+F7"
+                <MenuItem Header="Pre_vious Misspelling" InputGestureText="Ctrl+Shift+F7"
                           IsEnabled="{Binding IsSpellNavAvailable}"
                           Click="MenuPrevMisspelling_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_ToggleSpellingAnnouncements}" Click="MenuToggleSpelling_Click"/>
+                <MenuItem Header="_Toggle Spelling Announcements" Click="MenuToggleSpelling_Click"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_AddressBook}" InputGestureText="Ctrl+Shift+B" Click="MenuAddressBook_Click"/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_CheckAddresses}" InputGestureText="Ctrl+K" Click="MenuCheckAddresses_Click"/>
+                <MenuItem Header="_Address Book…" InputGestureText="Ctrl+Shift+B" Click="MenuAddressBook_Click"/>
+                <MenuItem Header="Chec_k Addresses" InputGestureText="Ctrl+K" Click="MenuCheckAddresses_Click"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Compose_Menu_CommandPalette}" InputGestureText="Ctrl+Shift+P" Click="MenuCommandPalette_Click"/>
+                <MenuItem Header="Command _Palette…" InputGestureText="Ctrl+Shift+P" Click="MenuCommandPalette_Click"/>
             </MenuItem>
         </Menu>
 
@@ -130,92 +129,92 @@
                      Background="{DynamicResource Theme.ChromeBackground}"
                      Foreground="{DynamicResource Theme.TextPrimary}">
                 <Button x:Name="BoldButton" Content="B" FontWeight="Bold" MinWidth="28"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_FormatName_Bold}"
+                        AutomationProperties.Name="Bold"
                         AutomationProperties.AcceleratorKey="Ctrl+B"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_Bold}" Click="ToolbarBold_Click"/>
+                        ToolTip="Bold (Ctrl+B)" Click="ToolbarBold_Click"/>
                 <Button Content="I" FontStyle="Italic" MinWidth="28"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_FormatName_Italic}"
+                        AutomationProperties.Name="Italic"
                         AutomationProperties.AcceleratorKey="Ctrl+I"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_Italic}" Click="ToolbarItalic_Click"/>
+                        ToolTip="Italic (Ctrl+I)" Click="ToolbarItalic_Click"/>
                 <Button MinWidth="28"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_FormatName_Underline}"
+                        AutomationProperties.Name="Underline"
                         AutomationProperties.AcceleratorKey="Ctrl+U"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_Underline}" Click="ToolbarUnderline_Click">
+                        ToolTip="Underline (Ctrl+U)" Click="ToolbarUnderline_Click">
                     <TextBlock Text="U" TextDecorations="Underline"/>
                 </Button>
                 <Button MinWidth="28"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_FormatName_Strikethrough}"
+                        AutomationProperties.Name="Strikethrough"
                         AutomationProperties.AcceleratorKey="Ctrl+Shift+X"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_Strikethrough}" Click="ToolbarStrikethrough_Click">
+                        ToolTip="Strikethrough (Ctrl+Shift+X)" Click="ToolbarStrikethrough_Click">
                     <TextBlock Text="S" TextDecorations="Strikethrough"/>
                 </Button>
                 <Separator/>
                 <Button Content="H1" MinWidth="28"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_FormatName_Heading1}"
+                        AutomationProperties.Name="Heading 1"
                         AutomationProperties.AcceleratorKey="Ctrl+Alt+1"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_Heading1}" Click="ToolbarHeading1_Click"/>
+                        ToolTip="Heading 1 (Ctrl+Alt+1)" Click="ToolbarHeading1_Click"/>
                 <Button Content="H2" MinWidth="28"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_FormatName_Heading2}"
+                        AutomationProperties.Name="Heading 2"
                         AutomationProperties.AcceleratorKey="Ctrl+Alt+2"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_Heading2}" Click="ToolbarHeading2_Click"/>
+                        ToolTip="Heading 2 (Ctrl+Alt+2)" Click="ToolbarHeading2_Click"/>
                 <Button Content="H3" MinWidth="28"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_FormatName_Heading3}"
+                        AutomationProperties.Name="Heading 3"
                         AutomationProperties.AcceleratorKey="Ctrl+Alt+3"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_Heading3}" Click="ToolbarHeading3_Click"/>
+                        ToolTip="Heading 3 (Ctrl+Alt+3)" Click="ToolbarHeading3_Click"/>
                 <Separator/>
                 <Button Content="• List" MinWidth="40"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_BulletList}"
+                        AutomationProperties.Name="Bullet list"
                         AutomationProperties.AcceleratorKey="Ctrl+Shift+L"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_BulletList}" Click="ToolbarBulletList_Click"/>
+                        ToolTip="Bullet List (Ctrl+Shift+L)" Click="ToolbarBulletList_Click"/>
                 <Button Content="1. List" MinWidth="40"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_NumberedList}"
+                        AutomationProperties.Name="Numbered list"
                         AutomationProperties.AcceleratorKey="Ctrl+Shift+N"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_NumberedList}" Click="ToolbarNumberedList_Click"/>
+                        ToolTip="Numbered List (Ctrl+Shift+N)" Click="ToolbarNumberedList_Click"/>
                 <Separator/>
                 <Button Content="Link" MinWidth="40"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_InsertLink}"
+                        AutomationProperties.Name="Insert link"
                         AutomationProperties.AcceleratorKey="Ctrl+L"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_InsertLink}" Click="ToolbarInsertLink_Click"/>
+                        ToolTip="Insert Link (Ctrl+L)" Click="ToolbarInsertLink_Click"/>
                 <Button Content="Clear" MinWidth="40"
-                        AutomationProperties.Name="{x:Static strings:Strings.Compose_ClearFormatting}"
+                        AutomationProperties.Name="Clear formatting"
                         AutomationProperties.AcceleratorKey="Ctrl+Space"
-                        ToolTip="{x:Static strings:Strings.Compose_Tooltip_ClearFormatting}" Click="ToolbarClearFormatting_Click"/>
+                        ToolTip="Clear Formatting (Ctrl+Space)" Click="ToolbarClearFormatting_Click"/>
             </ToolBar>
         </ToolBarTray>
 
         <!-- Status / progress bar -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
             <Button DockPanel.Dock="Right"
-                    Content="{x:Static strings:Strings.Compose_CancelButton}"
+                    Content="_Cancel"
                     Command="{Binding CancelCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.Compose_CancelAndCloseComposeWindow}"
+                    AutomationProperties.Name="Cancel and close compose window"
                     IsCancel="True"
                     MinWidth="80" Margin="6,0,0,0"
                     TabIndex="11"/>
             <Button DockPanel.Dock="Right"
-                    Content="{x:Static strings:Strings.Compose_SaveDraftButton}"
+                    Content="Save Draft"
                     Command="{Binding SaveDraftCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.Compose_SaveAsDraft}"
+                    AutomationProperties.Name="Save as draft"
                     AutomationProperties.AcceleratorKey="Ctrl+S"
                     MinWidth="100" Margin="6,0,0,0"
                     TabIndex="10"/>
             <Button DockPanel.Dock="Right"
-                    Content="{x:Static strings:Strings.Compose_SaveAsTemplateButton}"
+                    Content="Save as Template"
                     Command="{Binding SaveAsTemplateCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.Compose_SaveCurrentMessageAsTemplate}"
+                    AutomationProperties.Name="Save current message as template"
                     MinWidth="120" Margin="6,0,0,0"
                     TabIndex="9"/>
             <Button DockPanel.Dock="Right"
-                    Content="{x:Static strings:Strings.Compose_InsertTemplateButton}"
+                    Content="Insert Template…"
                     Command="{Binding InsertTemplateCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.Compose_InsertASavedTemplate}"
+                    AutomationProperties.Name="Insert a saved template"
                     MinWidth="120" Margin="6,0,0,0"
                     TabIndex="8"/>
             <Button DockPanel.Dock="Right"
                     x:Name="SendButton"
-                    Content="{x:Static strings:Strings.Compose_SendButton}"
+                    Content="Send"
                     Command="{Binding SendCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.Compose_SendMessage}"
+                    AutomationProperties.Name="Send message"
                     AutomationProperties.AcceleratorKey="Alt+S"
                     IsDefault="True"
                     MinWidth="80"
@@ -223,12 +222,12 @@
             <ComboBox DockPanel.Dock="Left"
                       x:Name="ModeSelector"
                       MinWidth="110" Margin="0,0,6,0"
-                      AutomationProperties.Name="{x:Static strings:Strings.Compose_ComposeMode}"
+                      AutomationProperties.Name="Compose mode"
                       TabIndex="12"
                       SelectionChanged="ModeSelector_SelectionChanged">
-                <ComboBoxItem Content="{x:Static strings:Strings.Compose_Announce_ModeNamePlainText}"/>
-                <ComboBoxItem Content="{x:Static strings:Strings.Compose_Announce_ModeNameMarkdown}"/>
-                <ComboBoxItem Content="{x:Static strings:Strings.Compose_Announce_ModeNameHtml}"/>
+                <ComboBoxItem Content="Plain Text"/>
+                <ComboBoxItem Content="Markdown"/>
+                <ComboBoxItem Content="HTML"/>
             </ComboBox>
             <TextBlock DockPanel.Dock="Left"
                        VerticalAlignment="Center"
@@ -237,7 +236,7 @@
                        Margin="0,0,8,0"/>
             <TextBlock VerticalAlignment="Center"
                        Text="{Binding StatusText}"
-                       AutomationProperties.Name="{x:Static strings:Strings.Compose_SendStatus}"
+                       AutomationProperties.Name="Send status"
                        Foreground="{DynamicResource Theme.Error}"/>
         </DockPanel>
 
@@ -263,7 +262,7 @@
             <!-- From -->
             <Label Grid.Row="0" Grid.Column="0"
                    x:Name="FromLabel"
-                   Content="{x:Static strings:Strings.Compose_FromLabel}"
+                   Content="Fro_m:"
                    Target="{Binding ElementName=FromCombo}"
                    Padding="0" VerticalAlignment="Center" Margin="0,4"/>
             <ComboBox Grid.Row="0" Grid.Column="1"
@@ -271,25 +270,25 @@
                       ItemsSource="{Binding SenderAccounts}"
                       SelectedItem="{Binding SenderAccount, Mode=TwoWay}"
                       DisplayMemberPath="AccountLabel"
-                      AutomationProperties.Name="{x:Static strings:Strings.Compose_FromAccount}"
+                      AutomationProperties.Name="From account"
                       AutomationProperties.AcceleratorKey="Alt+M"
-                      AutomationProperties.HelpText="{x:Static strings:Strings.Compose_ChooseWhichAccountToSendFrom}"
+                      AutomationProperties.HelpText="Choose which account to send from"
                       Margin="0,4" TabIndex="0"/>
 
             <!-- To -->
             <TextBlock Grid.Row="1" Grid.Column="0"
-                       x:Name="ToLabel" Text="{x:Static strings:Strings.Compose_ToLabel}"
+                       x:Name="ToLabel" Text="To:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <controls:TokenizedAddressBox Grid.Row="1" Grid.Column="1"
                      x:Name="ToBox"
                      AddressText="{Binding To, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=ToLabel}"
-                     AutomationProperties.HelpText="{x:Static strings:Strings.Compose_AddressBoxHelpText}"
+                     AutomationProperties.HelpText="Type an address and press comma, semicolon, or Tab to add it. Arrow keys navigate between addresses. Delete removes the focused address."
                      Margin="0,4" TabIndex="1"/>
 
             <!-- Cc -->
             <TextBlock Grid.Row="2" Grid.Column="0"
-                       x:Name="CcLabel" Text="{x:Static strings:Strings.Compose_CcLabel}"
+                       x:Name="CcLabel" Text="Cc:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <controls:TokenizedAddressBox Grid.Row="2" Grid.Column="1"
                      x:Name="CcBox"
@@ -299,7 +298,7 @@
 
             <!-- Bcc -->
             <TextBlock Grid.Row="3" Grid.Column="0"
-                       x:Name="BccLabel" Text="{x:Static strings:Strings.Compose_BccLabel}"
+                       x:Name="BccLabel" Text="Bcc:"
                        VerticalAlignment="Center" Margin="0,4"/>
             <controls:TokenizedAddressBox Grid.Row="3" Grid.Column="1"
                      x:Name="BccBox"
@@ -309,14 +308,14 @@
 
             <!-- Subject -->
             <Label Grid.Row="4" Grid.Column="0"
-                   x:Name="SubjectLabel" Content="{x:Static strings:Strings.Compose_SubjectLabel}"
+                   x:Name="SubjectLabel" Content="S_ubject:"
                    Target="{Binding ElementName=SubjectBox}"
                    Padding="0" VerticalAlignment="Center" Margin="0,4"/>
             <TextBox Grid.Row="4" Grid.Column="1"
                      x:Name="SubjectBox"
                      Text="{Binding Subject, UpdateSourceTrigger=PropertyChanged}"
                      AutomationProperties.LabeledBy="{Binding ElementName=SubjectLabel}"
-                     AutomationProperties.Name="{x:Static strings:Strings.Compose_Subject}"
+                     AutomationProperties.Name="Subject"
                      AutomationProperties.AcceleratorKey="Alt+U"
                      IsInactiveSelectionHighlightEnabled="True"
                      Margin="0,4" TabIndex="4"/>
@@ -325,9 +324,9 @@
 
             <!-- Attachments -->
             <Button Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2"
-                    Content="{x:Static strings:Strings.Compose_AddFilesButton}"
+                    Content="Add Files…"
                     Command="{Binding AddAttachmentsCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.Compose_AddFileAttachments}"
+                    AutomationProperties.Name="Add file attachments"
                     AutomationProperties.AcceleratorKey="Ctrl+Shift+A"
                     HorizontalAlignment="Left"
                     Margin="0,2" TabIndex="5"/>
@@ -340,7 +339,7 @@
                      TabIndex="6"
                      KeyboardNavigation.TabNavigation="Once"
                      KeyboardNavigation.DirectionalNavigation="Contained"
-                     AutomationProperties.Name="{x:Static strings:Strings.Compose_Attachments}"
+                     AutomationProperties.Name="Attachments"
                      PreviewKeyDown="AttachmentList_PreviewKeyDown">
                 <ListBox.Style>
                     <Style TargetType="ListBox">
@@ -364,12 +363,12 @@
                 </ListBox.ItemTemplate>
                 <ListBox.ContextMenu>
                     <ContextMenu>
-                        <MenuItem Header="{x:Static strings:Strings.Compose_Menu_Open}"
+                        <MenuItem Header="_Open"
                                   Command="{Binding PlacementTarget.DataContext.OpenComposeAttachmentCommand,
                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                        <MenuItem Header="{x:Static strings:Strings.Compose_Menu_RemoveAttachment}"
+                        <MenuItem Header="_Remove"
                                   Command="{Binding PlacementTarget.DataContext.RemoveAttachmentCommand,
                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
@@ -407,7 +406,7 @@
                 <TextBox Grid.Row="0"
                          x:Name="BodyBox"
                          Text="{Binding Body, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.Name="{x:Static strings:Strings.Compose_MessageBody}"
+                         AutomationProperties.Name="Message body"
                          AutomationProperties.AcceleratorKey="Alt+Y"
                          AcceptsReturn="True" AcceptsTab="True"
                          TextWrapping="Wrap"
@@ -421,7 +420,7 @@
                 <RichTextBox Grid.Row="0"
                              x:Name="RichBodyBox"
                              Visibility="Collapsed"
-                             AutomationProperties.Name="{x:Static strings:Strings.Compose_MessageBody}"
+                             AutomationProperties.Name="Message body"
                              AutomationProperties.AcceleratorKey="Alt+Y"
                              AcceptsReturn="True" AcceptsTab="True"
                              IsInactiveSelectionHighlightEnabled="True"
@@ -444,7 +443,7 @@
                 <ListBox x:Name="SuggestionList"
                          MaxHeight="200"
                          MinWidth="300"
-                         AutomationProperties.Name="{x:Static strings:Strings.Compose_AddressSuggestions}"
+                         AutomationProperties.Name="Address suggestions"
                          IsTabStop="True"
                          KeyboardNavigation.TabNavigation="Cycle"
                          PreviewKeyDown="SuggestionList_PreviewKeyDown"

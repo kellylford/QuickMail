@@ -3,14 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="{x:Static strings:Strings.GroupManager_Title}"
+        Title="Group Manager"
         Height="520" Width="760"
         MinHeight="380" MinWidth="600"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        AutomationProperties.Name="{x:Static strings:Strings.GroupManager_Title}"
+        AutomationProperties.Name="Group Manager"
         PreviewKeyDown="Window_PreviewKeyDown"
         Background="{DynamicResource Theme.WindowBackground}"
         Foreground="{DynamicResource Theme.TextPrimary}"
@@ -39,17 +38,17 @@
 
             <!-- Left: groups list -->
             <DockPanel Grid.Column="0">
-                <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}" Text="{x:Static strings:Strings.GroupManager_GroupsHeading}"/>
+                <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}" Text="Groups"/>
                 <Button DockPanel.Dock="Bottom"
-                        Content="{x:Static strings:Strings.GroupManager_NewGroupButton}"
+                        Content="_New group"
                         Command="{Binding CreateGroupCommand}"
-                        AutomationProperties.Name="{x:Static strings:Strings.GroupManager_NewGroup}"
+                        AutomationProperties.Name="New group"
                         Margin="0,4,0,0"
                         TabIndex="20"/>
                 <TextBox DockPanel.Dock="Bottom"
                          x:Name="NewGroupNameBox"
                          Text="{Binding NewName, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.Name="{x:Static strings:Strings.GroupManager_NewGroupName}"
+                         AutomationProperties.Name="New group name"
                          Margin="0,4,0,0"
                          TabIndex="19"
                          PreviewKeyDown="NewGroupNameBox_PreviewKeyDown"/>
@@ -57,7 +56,7 @@
                          ItemsSource="{Binding Groups}"
                          SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
                          DisplayMemberPath="Display"
-                         AutomationProperties.Name="{x:Static strings:Strings.GroupManager_Groups}"
+                         AutomationProperties.Name="Groups"
                          TabIndex="10"
                          KeyboardNavigation.TabNavigation="Once"
                          PreviewKeyDown="GroupsList_PreviewKeyDown"/>
@@ -75,19 +74,12 @@
                 </Grid.RowDefinitions>
 
                 <!-- Members of selected group -->
-                <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}">
-                    <TextBlock.Text>
-                        <Binding Path="SelectedGroupName">
-                            <Binding.StringFormat>
-                                <x:Static Member="strings:Strings.GroupManager_MembersOfFormat"/>
-                            </Binding.StringFormat>
-                        </Binding>
-                    </TextBlock.Text>
-                </TextBlock>
+                <TextBlock Grid.Row="0" Style="{StaticResource SectionLabel}"
+                           Text="{Binding SelectedGroupName, StringFormat='Members of {0}'}"/>
                 <ListView Grid.Row="1"
                           x:Name="MembersList"
                           ItemsSource="{Binding GroupMembers}"
-                          AutomationProperties.Name="{x:Static strings:Strings.GroupManager_GroupMembers}"
+                          AutomationProperties.Name="Group members"
                           TabIndex="11"
                           KeyboardNavigation.TabNavigation="Once"
                           PreviewKeyDown="MembersList_PreviewKeyDown">
@@ -99,24 +91,24 @@
                     </ListView.ItemContainerStyle>
                     <ListView.View>
                         <GridView>
-                            <GridViewColumn Header="{x:Static strings:Strings.GroupManager_NameColumn}"  Width="180" DisplayMemberBinding="{Binding DisplayName}"/>
-                            <GridViewColumn Header="{x:Static strings:Strings.GroupManager_EmailColumn}" Width="240" DisplayMemberBinding="{Binding EmailAddress}"/>
+                            <GridViewColumn Header="Name"  Width="180" DisplayMemberBinding="{Binding DisplayName}"/>
+                            <GridViewColumn Header="Email" Width="240" DisplayMemberBinding="{Binding EmailAddress}"/>
                         </GridView>
                     </ListView.View>
                 </ListView>
 
                 <!-- Add member picker -->
-                <TextBlock Grid.Row="2" Style="{StaticResource SectionLabel}" Text="{x:Static strings:Strings.GroupManager_AddMembersHeading}"/>
+                <TextBlock Grid.Row="2" Style="{StaticResource SectionLabel}" Text="Add members"/>
                 <DockPanel Grid.Row="3">
                     <TextBox DockPanel.Dock="Top"
                              x:Name="CandidateSearchBox"
                              Text="{Binding CandidateSearch, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="{x:Static strings:Strings.GroupManager_SearchContactsToAdd}"
+                             AutomationProperties.Name="Search contacts to add"
                              Margin="0,0,0,4"
                              TabIndex="12"/>
                     <ListView x:Name="CandidatesList"
                               ItemsSource="{Binding ContactCandidates}"
-                              AutomationProperties.Name="{x:Static strings:Strings.GroupManager_ContactCandidates}"
+                              AutomationProperties.Name="Contact candidates"
                               TabIndex="13"
                               KeyboardNavigation.TabNavigation="Once"
                               PreviewKeyDown="CandidatesList_PreviewKeyDown">
@@ -128,8 +120,8 @@
                         </ListView.ItemContainerStyle>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="{x:Static strings:Strings.GroupManager_NameColumn}"  Width="180" DisplayMemberBinding="{Binding DisplayName}"/>
-                                <GridViewColumn Header="{x:Static strings:Strings.GroupManager_EmailColumn}" Width="240" DisplayMemberBinding="{Binding EmailAddress}"/>
+                                <GridViewColumn Header="Name"  Width="180" DisplayMemberBinding="{Binding DisplayName}"/>
+                                <GridViewColumn Header="Email" Width="240" DisplayMemberBinding="{Binding EmailAddress}"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -140,20 +132,20 @@
         <!-- Bottom buttons -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button x:Name="RenameButton"
-                    Content="{x:Static strings:Strings.GroupManager_RenameButton}"
+                    Content="_Rename"
                     Command="{Binding RenameSelectedCommand}"
                     IsEnabled="{Binding HasSelectedGroup}"
-                    AutomationProperties.Name="{x:Static strings:Strings.GroupManager_RenameGroup}"
+                    AutomationProperties.Name="Rename group"
                     MinWidth="80" Margin="0,0,6,0" TabIndex="21"/>
             <Button x:Name="DeleteButton"
-                    Content="{x:Static strings:Strings.GroupManager_DeleteButton}"
+                    Content="_Delete"
                     Command="{Binding DeleteSelectedCommand}"
                     IsEnabled="{Binding HasSelectedGroup}"
-                    AutomationProperties.Name="{x:Static strings:Strings.GroupManager_DeleteGroup}"
+                    AutomationProperties.Name="Delete group"
                     MinWidth="80" Margin="0,0,12,0" TabIndex="22"/>
-            <Button Content="{x:Static strings:Strings.Common_Close}"
+            <Button Content="Close"
                     IsCancel="True"
-                    AutomationProperties.Name="{x:Static strings:Strings.GroupManager_CloseGroupManager}"
+                    AutomationProperties.Name="Close group manager"
                     MinWidth="80" TabIndex="23"
                     Click="Close_Click"/>
         </StackPanel>

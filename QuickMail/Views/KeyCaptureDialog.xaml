@@ -3,9 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="{x:Static strings:Strings.KeyCapture_Title}"
+        Title="Assign Shortcut"
         Height="220" Width="420"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
@@ -13,7 +12,7 @@
         ShowInTaskbar="False"
         Loaded="Window_Loaded"
         PreviewKeyDown="Window_PreviewKeyDown"
-        AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_DialogName}"
+        AutomationProperties.Name="Assign keyboard shortcut dialog"
         Background="{DynamicResource Theme.WindowBackground}"
         Foreground="{DynamicResource Theme.TextPrimary}"
         FontFamily="{DynamicResource Theme.FontFamily}"
@@ -32,13 +31,13 @@
         <!-- Listening-state instructions -->
         <TextBlock x:Name="ListeningHeader"
                    Grid.Row="0"
-                   Text="{x:Static strings:Strings.KeyCapture_PressDesiredCombination}"
+                   Text="Press your desired key combination"
                    FontSize="{DynamicResource Theme.FontSizeLarge}"
                    FontWeight="SemiBold"
                    Margin="0,0,0,4"/>
         <TextBlock x:Name="ListeningHint"
                    Grid.Row="1"
-                   Text="{x:Static strings:Strings.KeyCapture_ModifierHint}"
+                   Text="(with Ctrl, Shift, or Alt)"
                    Foreground="{DynamicResource Theme.TextSecondary}"
                    Margin="0,0,0,16"/>
 
@@ -51,10 +50,10 @@
                 Margin="0,0,0,8"
                 CornerRadius="2">
             <TextBlock x:Name="CapturedKeyText"
-                       Text="{x:Static strings:Strings.KeyCapture_WaitingForInput}"
+                       Text="(waiting for input...)"
                        Foreground="{DynamicResource Theme.TextSecondary}"
                        TextAlignment="Center"
-                       AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_CapturedKeyCombination}"/>
+                       AutomationProperties.Name="Captured key combination"/>
         </Border>
 
         <!-- Conflict warning (shown only when the captured combo collides) -->
@@ -77,18 +76,18 @@
                     MinWidth="75"
                     Visibility="Collapsed"
                     Margin="0,0,8,0"
-                    AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_AcceptShortcut}"/>
+                    AutomationProperties.Name="Accept this shortcut"/>
             <Button x:Name="ChangeButton"
                     Content="C_hange"
                     Click="ChangeButton_Click"
                     MinWidth="75"
                     Visibility="Collapsed"
                     Margin="0,0,8,0"
-                    AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_CaptureDifferentShortcut}"/>
+                    AutomationProperties.Name="Capture a different shortcut"/>
             <Button Content="_Cancel"
                     IsCancel="True"
                     MinWidth="75"
-                    AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_CancelClose}"/>
+                    AutomationProperties.Name="Cancel and close without saving"/>
         </StackPanel>
     </Grid>
 </Window>

@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;

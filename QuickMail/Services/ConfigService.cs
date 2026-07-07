@@ -274,7 +274,6 @@ public class ConfigService : IConfigService
                         break;
                     case "showdeclinedevents": config.ShowDeclinedEvents = ParseBool(value); break;
                     case "calendarpaneopen":   config.CalendarPaneOpen   = ParseBool(value); break;
-                    case "uilanguage":         config.UILanguage         = value; break;
                 }
             }
             else if (section == "windowing")
@@ -538,13 +537,6 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Whether declined calendar events appear in the calendar list.");
         sb.AppendLine($"CalendarPaneOpen = {(config.CalendarPaneOpen ? "on" : "off")}");
         sb.AppendLine("# Whether the calendar pane was open when the app last closed.");
-        sb.AppendLine();
-
-        // ── Localization ──────────────────────────────────────────────────────────
-
-        sb.AppendLine($"UILanguage = {config.UILanguage}");
-        sb.AppendLine("# UI language as a culture tag (e.g. es, de, fr). Empty = follow the Windows");
-        sb.AppendLine("# display language when available, else English. Restart required to apply.");
         sb.AppendLine();
 
         // ── [account:guid] overrides ─────────────────────────────────────────────

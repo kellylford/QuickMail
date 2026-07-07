@@ -11,7 +11,6 @@ using CommunityToolkit.Mvvm.Input;
 using MimeKit;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -46,20 +45,20 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         {
             var kindLabel = ComposeKind switch
             {
-                ComposeKind.Reply        => Strings.Compose_Title_Reply,
-                ComposeKind.ReplyAll     => Strings.Compose_Title_ReplyAll,
-                ComposeKind.Forward      => Strings.Compose_Title_Forward,
-                ComposeKind.EditDraft    => Strings.Compose_Title_Draft,
-                ComposeKind.NewDraft     => Strings.Compose_Title_Draft,
-                ComposeKind.EditTemplate => Strings.Compose_Title_EditTemplate,
-                _                        => Strings.Compose_Title_NewMessage,
+                ComposeKind.Reply        => "Reply",
+                ComposeKind.ReplyAll     => "Reply All",
+                ComposeKind.Forward      => "Forward",
+                ComposeKind.EditDraft    => "Draft",
+                ComposeKind.NewDraft     => "Draft",
+                ComposeKind.EditTemplate => "Edit Template",
+                _                        => "New Message",
             };
             var lead = string.IsNullOrWhiteSpace(Subject) ? kindLabel : Subject.Trim();
             var mode = CurrentMode switch
             {
-                ComposeMode.Markdown => Strings.Compose_ModeDisplay_Markdown,
-                ComposeMode.Html     => Strings.Compose_ModeDisplay_Html,
-                _                    => Strings.Compose_ModeDisplay_PlainText,
+                ComposeMode.Markdown => "Markdown",
+                ComposeMode.Html     => "HTML",
+                _                    => "Plain Text",
             };
             return $"{lead} - {mode} - QuickMail";
         }
@@ -412,12 +411,12 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     // ── Compose modes ──────────────────────────────────────────────────────────
 
     /// <summary>Status-bar label for the active mode, e.g. "Mode: Markdown".</summary>
-    public string ModeDisplay => string.Format(Strings.Compose_ModeDisplay_Format, CurrentMode switch
+    public string ModeDisplay => "Mode: " + CurrentMode switch
     {
-        ComposeMode.Markdown => Strings.Compose_ModeDisplay_Markdown,
-        ComposeMode.Html     => Strings.Compose_ModeDisplay_Html,
-        _                    => Strings.Compose_ModeDisplay_PlainText,
-    });
+        ComposeMode.Markdown => "Markdown",
+        ComposeMode.Html     => "HTML",
+        _                    => "Plain Text",
+    };
 
     /// <summary>
     /// Set by the View. Returns the rich editor's current content serialized as

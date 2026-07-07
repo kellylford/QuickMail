@@ -4,7 +4,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 
 namespace QuickMail.Views;
 
@@ -74,14 +73,15 @@ public partial class KeyCaptureDialog : Window
         CapturedKeyText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
             Theming.ThemeKeys.TextPrimary);
 
-        ListeningHeader.Text = Strings.KeyCapture_CapturedShortcut;
+        ListeningHeader.Text = "Captured shortcut";
         ListeningHint.Visibility = Visibility.Collapsed;
 
         var conflict = ConflictChecker?.Invoke(_capturedKey, _capturedModifiers);
         HasConflict = !string.IsNullOrEmpty(conflict);
         if (HasConflict)
         {
-            ConflictText.Text = string.Format(Strings.KeyCapture_Announce_ConflictWarning, conflict);
+            ConflictText.Text = $"⚠ Already assigned to: {conflict}. " +
+                                "Select OK to reassign, Change to pick another, or Cancel to keep the existing binding.";
             ConflictText.Visibility = Visibility.Visible;
         }
         else
@@ -112,10 +112,10 @@ public partial class KeyCaptureDialog : Window
         _capturedModifiers  = ModifierKeys.None;
         HasConflict         = false;
 
-        CapturedKeyText.Text = Strings.KeyCapture_WaitingForInput;
+        CapturedKeyText.Text = "(waiting for input...)";
         CapturedKeyText.SetResourceReference(System.Windows.Controls.TextBlock.ForegroundProperty,
             Theming.ThemeKeys.TextSecondary);
-        ListeningHeader.Text       = Strings.KeyCapture_PressDesiredCombination;
+        ListeningHeader.Text       = "Press your desired key combination";
         ListeningHint.Visibility   = Visibility.Visible;
         ConflictText.Visibility    = Visibility.Collapsed;
         OkButton.Visibility        = Visibility.Collapsed;
@@ -123,7 +123,7 @@ public partial class KeyCaptureDialog : Window
 
         MainGrid.Focus();
         Keyboard.Focus(MainGrid);
-        AccessibilityHelper.Announce(MainGrid, Strings.KeyCapture_Announce_ListeningForNewShortcut, category: AnnouncementCategory.Hint);
+        AccessibilityHelper.Announce(MainGrid, "Listening for a new shortcut.", category: AnnouncementCategory.Hint);
     }
 
     private void OkButton_Click(object sender, RoutedEventArgs e)

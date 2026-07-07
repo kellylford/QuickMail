@@ -4,9 +4,8 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:QuickMail.ViewModels"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="{x:Static strings:Strings.CommandPalette_Title}"
+        Title="Command Palette"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -41,7 +40,7 @@
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  VirtualizingPanel.IsVirtualizing="True"
                  VirtualizingPanel.VirtualizationMode="Recycling"
-                 AutomationProperties.Name="{x:Static strings:Strings.CommandPalette_CommandsListName}"
+                 AutomationProperties.Name="Commands. Arrow keys to navigate, Enter to run, Escape to close."
                  MouseDoubleClick="CommandList_MouseDoubleClick">
             <ListBox.ItemContainerStyle>
                 <Style TargetType="ListBoxItem">

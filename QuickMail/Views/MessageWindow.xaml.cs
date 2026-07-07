@@ -12,7 +12,6 @@ using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -309,8 +308,8 @@ public partial class MessageWindow : Window
     private async Task FocusMessageBodyAsync(int version, string? subject)
     {
         var focusLabel = string.IsNullOrWhiteSpace(subject)
-            ? Strings.Message_Body_Name
-            : string.Format(Strings.Message_Body_WithSubject_Announce, subject.Trim());
+            ? "Message body"
+            : $"Message body. {subject.Trim()}";
 
         await Dispatcher.InvokeAsync(() =>
         {
@@ -364,8 +363,8 @@ public partial class MessageWindow : Window
     {
         _f6FocusStop = 2;
         _ = TryFocusDocumentAsync(_vm.MessageDetail?.Subject is { } s && !string.IsNullOrWhiteSpace(s)
-            ? string.Format(Strings.Message_Body_WithSubject_Announce, s.Trim())
-            : Strings.Message_Body_Name);
+            ? $"Message body. {s.Trim()}"
+            : "Message body");
     }
 
     private async Task<bool> TryFocusDocumentAsync(string focusLabel)

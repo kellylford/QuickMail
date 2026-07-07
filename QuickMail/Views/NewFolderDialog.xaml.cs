@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Input;
-using QuickMail.Resources;
 
 namespace QuickMail.Views;
 
@@ -16,7 +15,7 @@ public partial class NewFolderDialog : Window
         get => ParentLabel.Text;
         set => ParentLabel.Text = string.IsNullOrEmpty(value)
             ? string.Empty
-            : string.Format(Strings.NewFolder_ParentFolderFormat, value);
+            : $"Parent folder: {value}";
     }
 
     /// <summary>The folder name entered by the user. Only meaningful when DialogResult == true.</summary>

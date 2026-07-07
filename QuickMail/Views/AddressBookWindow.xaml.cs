@@ -4,7 +4,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -70,25 +69,25 @@ public partial class AddressBookWindow : Window
         // ── Contacts tab commands ────────────────────────────────────────────
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.add", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_AddContact,
+            id: "contacts.add", category: "Contacts", title: "Add Contact",
             defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
             execute: () => _vm.BeginAddContactCommand.Execute(null),
             isAvailable: () => MainTabs.SelectedIndex == 0 && !_vm.IsEditingContact));
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.edit", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_EditContact,
+            id: "contacts.edit", category: "Contacts", title: "Edit Contact",
             defaultKey: Key.F2, defaultModifiers: ModifierKeys.None,
             execute: () => _vm.BeginEditContactCommand.Execute(null),
             isAvailable: () => MainTabs.SelectedIndex == 0 && _vm.CanEditContact));
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.save", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_SaveContact,
+            id: "contacts.save", category: "Contacts", title: "Save Contact",
             defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
             execute: () => _ = _vm.SaveContactCommand.ExecuteAsync(null),
             isAvailable: () => MainTabs.SelectedIndex == 0 && _vm.IsEditingContact));
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.cancelEdit", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_CancelEdit,
+            id: "contacts.cancelEdit", category: "Contacts", title: "Cancel Edit",
             defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None,
             execute: () => _vm.CancelEditCommand.Execute(null),
             isAvailable: () => MainTabs.SelectedIndex == 0 && _vm.IsEditingContact));
@@ -97,7 +96,7 @@ public partial class AddressBookWindow : Window
 
         // Ctrl+Shift+N: switch to Groups tab and show the name entry area in create mode.
         _registry.Register(new CommandDefinition(
-            id: "contacts.createGroup", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_NewGroup,
+            id: "contacts.createGroup", category: "Contacts", title: "New Group",
             defaultKey: Key.N, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             execute: () =>
             {
@@ -110,14 +109,14 @@ public partial class AddressBookWindow : Window
         // When focus is in the group-members list, Delete there removes a member
         // and the GroupMembersList_PreviewKeyDown handler takes care of it.
         _registry.Register(new CommandDefinition(
-            id: "contacts.deleteGroup", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_DeleteGroup,
+            id: "contacts.deleteGroup", category: "Contacts", title: "Delete Group",
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             execute: () => _vm.DeleteGroupCommand.Execute(null),
             isAvailable: () => _vm.HasSelectedGroup && GroupsList.IsKeyboardFocusWithin));
 
         // F2 / Rename: show the name entry area pre-filled with the current name.
         _registry.Register(new CommandDefinition(
-            id: "contacts.renameGroup", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_RenameGroup,
+            id: "contacts.renameGroup", category: "Contacts", title: "Rename Group",
             defaultKey: Key.F2, defaultModifiers: ModifierKeys.None,
             execute: () =>
             {
@@ -127,12 +126,12 @@ public partial class AddressBookWindow : Window
             isAvailable: () => _vm.HasSelectedGroup && MainTabs.SelectedIndex == 1));
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.focusGroupsPane", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_FocusGroupsPane,
+            id: "contacts.focusGroupsPane", category: "Contacts", title: "Focus Groups Pane",
             defaultKey: Key.G, defaultModifiers: ModifierKeys.Control,
             execute: FocusGroupsPane));
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.manageGroups", category: Strings.AddressBook_CmdCategory, title: Strings.AddressBook_Cmd_ManageGroups,
+            id: "contacts.manageGroups", category: "Contacts", title: "Manage Groups…",
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             execute: OpenGroupManager));
     }
@@ -281,7 +280,7 @@ public partial class AddressBookWindow : Window
         {
             menu.Items.Add(new System.Windows.Controls.MenuItem
             {
-                Header = Strings.AddressBook_NoGroupsCreateOne,
+                Header = "No groups — create one on the Groups tab",
                 IsEnabled = false
             });
         }
@@ -289,7 +288,7 @@ public partial class AddressBookWindow : Window
         {
             foreach (var group in _vm.Groups)
             {
-                var item = new System.Windows.Controls.MenuItem { Header = string.Format(Strings.AddressBook_AddToGroupNameFormat, group.Name) };
+                var item = new System.Windows.Controls.MenuItem { Header = $"Add to \"{group.Name}\"" };
                 var g = group;
                 item.Click += (_, _) => _vm.AddContactToGroupCommand.Execute(g);
                 menu.Items.Add(item);
@@ -316,7 +315,7 @@ public partial class AddressBookWindow : Window
             e.Handled = true;
             ContactList.SelectAll();
             OnAnnouncement(
-                StringsHelper.Count("AddressBook_Announce_ContactsSelected", ContactList.SelectedItems.Count),
+                $"{ContactList.SelectedItems.Count} contact{(ContactList.SelectedItems.Count == 1 ? "" : "s")} selected.",
                 AnnouncementCategory.Result);
             return;
         }
@@ -401,7 +400,7 @@ public partial class AddressBookWindow : Window
             e.Handled = true;
             MainTabs.SelectedIndex = 0;
             SearchBox.Focus();
-            OnAnnouncement(Strings.AddressBook_Announce_ContactsTab, AnnouncementCategory.Status);
+            OnAnnouncement("Contacts tab", AnnouncementCategory.Status);
             return;
         }
 
@@ -446,7 +445,7 @@ public partial class AddressBookWindow : Window
             NewGroupButton.Focus();
         else
             GroupsList.Focus();
-        OnAnnouncement(Strings.AddressBook_Announce_GroupsTab, AnnouncementCategory.Status);
+        OnAnnouncement("Groups tab", AnnouncementCategory.Status);
     }
 
     // ── Group name entry helpers ─────────────────────────────────────────────
@@ -471,8 +470,8 @@ public partial class AddressBookWindow : Window
         NewGroupNameBox.Focus();
         OnAnnouncement(
             prefill is null
-                ? Strings.AddressBook_Announce_TypeNewGroupName
-                : string.Format(Strings.AddressBook_Announce_RenameGroupFormat, prefill),
+                ? "Type a new group name and press Enter. Press Escape to cancel."
+                : $"Rename \"{prefill}\". Type a new name and press Enter. Press Escape to cancel.",
             AnnouncementCategory.Hint);
     }
 
@@ -507,9 +506,9 @@ public partial class AddressBookWindow : Window
         if (selected.Count == 0) return;
 
         var prompt = selected.Count == 1
-            ? string.Format(Strings.AddressBook_DeleteContactPromptSingular, selected[0].Display)
-            : string.Format(Strings.AddressBook_DeleteContactPromptPlural, selected.Count);
-        var result = MessageBox.Show(prompt, Strings.AddressBook_ConfirmDeleteTitle,
+            ? $"Delete {selected[0].Display}?"
+            : $"Delete {selected.Count} contacts?";
+        var result = MessageBox.Show(prompt, "Confirm Delete",
             MessageBoxButton.YesNo, MessageBoxImage.Question);
         if (result == MessageBoxResult.Yes)
             await _vm.DeleteMultipleAsync(selected);

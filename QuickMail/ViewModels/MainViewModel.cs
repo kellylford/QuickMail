@@ -12,7 +12,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -387,13 +386,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public string? ActiveFlagFilterId   => _activeFlagFilterId;
     public string FilterLabel => ActiveFilter switch
     {
-        MessageFilter.Unread          => Strings.MainVM_FilterLabel_Unread,
-        MessageFilter.Read            => Strings.MainVM_FilterLabel_Read,
-        MessageFilter.WithAttachments => Strings.MainVM_FilterLabel_WithAttachments,
-        MessageFilter.Replied         => Strings.MainVM_FilterLabel_Replied,
-        MessageFilter.Forwarded       => Strings.MainVM_FilterLabel_Forwarded,
-        MessageFilter.ToMe            => Strings.MainVM_FilterLabel_ToMe,
-        MessageFilter.Flagged         => Strings.MainVM_FilterLabel_Flagged,
+        MessageFilter.Unread          => "Unread",
+        MessageFilter.Read            => "Read",
+        MessageFilter.WithAttachments => "With Attachments",
+        MessageFilter.Replied         => "Replied",
+        MessageFilter.Forwarded       => "Forwarded",
+        MessageFilter.ToMe            => "To Me",
+        MessageFilter.Flagged         => "Flagged",
         _                             => string.Empty,
     };
 
@@ -407,12 +406,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsCountSortAvailable => ViewMode != ViewMode.Messages;
     public string SortLabel => ActiveSort switch
     {
-        MessageSort.DateAscending   => Strings.MainVM_SortLabel_OldestFirst,
-        MessageSort.AlphaAscending  => Strings.MainVM_SortLabel_AlphaAsc,
-        MessageSort.AlphaDescending => Strings.MainVM_SortLabel_AlphaDesc,
-        MessageSort.CountDescending => Strings.MainVM_SortLabel_MostMessages,
-        MessageSort.CountAscending  => Strings.MainVM_SortLabel_FewestMessages,
-        MessageSort.FlaggedFirst    => Strings.MainVM_SortLabel_FlaggedFirst,
+        MessageSort.DateAscending   => "Oldest First",
+        MessageSort.AlphaAscending  => "A → Z",
+        MessageSort.AlphaDescending => "Z → A",
+        MessageSort.CountDescending => "Most Messages",
+        MessageSort.CountAscending  => "Fewest Messages",
+        MessageSort.FlaggedFirst    => "Flagged First",
         _                           => string.Empty,
     };
 
@@ -424,19 +423,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public string SyncRangeLabel => _syncDays switch
     {
-        7   => Strings.MainVM_SyncRangeLabel_7Days,
-        30  => Strings.MainVM_SyncRangeLabel_30Days,
-        180 => Strings.MainVM_SyncRangeLabel_6Months,
-        365 => Strings.MainVM_SyncRangeLabel_1Year,
-        _   => Strings.MainVM_SyncRangeLabel_All,
+        7   => "Sync: 7 Days",
+        30  => "Sync: 30 Days",
+        180 => "Sync: 6 Months",
+        365 => "Sync: 1 Year",
+        _   => "Sync: All",
     };
 
     public string ViewModeLabel => ViewMode switch
     {
-        ViewMode.Conversations => Strings.MainVM_ViewModeLabel_Conversations,
-        ViewMode.From          => Strings.MainVM_ViewModeLabel_From,
-        ViewMode.To            => Strings.MainVM_ViewModeLabel_To,
-        _                      => Strings.MainVM_ViewModeLabel_Messages,
+        ViewMode.Conversations => "View: Conversations",
+        ViewMode.From          => "View: From",
+        ViewMode.To            => "View: To",
+        _                      => "View: Messages",
     };
 
     [ObservableProperty]
@@ -1291,36 +1290,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void RegisterCommands(ICommandRegistry registry)
     {
         registry.Register(new CommandDefinition(
-            id: "mail.new", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_New_Title,
+            id: "mail.new", category: "Mail", title: "New Message",
             execute: () => NewMessageCommand.Execute(null),
             defaultKey: Key.N, defaultModifiers: ModifierKeys.Control));
 
         registry.Register(new CommandDefinition(
-            id: "mail.reply", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_Reply_Title,
+            id: "mail.reply", category: "Mail", title: "Reply",
             execute: () => ReplyCommand.Execute(null),
             defaultKey: Key.R, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
-            id: "mail.replyAll", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_ReplyAll_Title,
+            id: "mail.replyAll", category: "Mail", title: "Reply All",
             execute: () => ReplyAllCommand.Execute(null),
             defaultKey: Key.R, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
-            id: "mail.forward", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_Forward_Title,
+            id: "mail.forward", category: "Mail", title: "Forward",
             execute: () => ForwardCommand.Execute(null),
             defaultKey: Key.F, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
-            id: "mail.delete", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_Delete_Title,
+            id: "mail.delete", category: "Mail", title: "Delete",
             execute: () => DeleteMessageCommand.Execute(null),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
-            id: "mail.refresh", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_Refresh_Title,
+            id: "mail.refresh", category: "Mail", title: "Refresh",
             // RefreshAsync itself delegates to the calendar's refresh while it's the active
             // view, so this single command is correct from every entry point (menu, toolbar,
             // Command Palette, F5) — no isAvailable disambiguation needed here.
@@ -1328,128 +1327,128 @@ public partial class MainViewModel : ObservableObject, IDisposable
             defaultKey: Key.F5, defaultModifiers: ModifierKeys.None));
 
         registry.Register(new CommandDefinition(
-            id: "mail.emptyTrash", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_EmptyTrash_Title,
+            id: "mail.emptyTrash", category: "Mail", title: "Empty Trash",
             execute: () => EmptyTrashCommand.Execute(null),
             defaultKey: Key.E, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         registry.Register(new CommandDefinition(
-            id: "view.toggleConversation", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_ToggleConversation_Title,
+            id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
             execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 4)));
 
         registry.Register(new CommandDefinition(
-            id: "account.manage", category: Strings.Cmd_Category_Account, title: Strings.Cmd_Account_Manage_Title,
+            id: "account.manage", category: "Account", title: "Manage Accounts",
             execute: () => ManageAccountsCommand.Execute(null)));
 
         registry.Register(new CommandDefinition(
-            id: "help.userGuide", category: Strings.Cmd_Category_Help, title: Strings.Cmd_Help_UserGuide_Title,
+            id: "help.userGuide", category: "Help", title: "Open User Guide",
             execute: () => ViewUserGuideCommand.Execute(null),
             defaultKey: Key.F1, defaultModifiers: ModifierKeys.None));
 
         registry.Register(new CommandDefinition(
-            id: "view.search", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_Search_Title,
+            id: "view.search", category: "View", title: "Search Messages…",
             execute: () => { IsSearchActive = true; SearchRequested?.Invoke(this, EventArgs.Empty); },
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         registry.Register(new CommandDefinition(
-            id: "view.filterAll", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_FilterAll_Title,
+            id: "view.filterAll", category: "View", title: "Show All Messages",
             execute: () => SetFilterCommand.Execute("all")));
 
         registry.Register(new CommandDefinition(
-            id: "view.filterUnread", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_FilterUnread_Title,
+            id: "view.filterUnread", category: "View", title: "Show Unread Only",
             execute: () => SetFilterCommand.Execute("unread")));
 
         registry.Register(new CommandDefinition(
-            id: "view.filterRead", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_FilterRead_Title,
+            id: "view.filterRead", category: "View", title: "Show Read Only",
             execute: () => SetFilterCommand.Execute("read")));
 
         registry.Register(new CommandDefinition(
-            id: "view.filterWithAttachments", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_FilterWithAttachments_Title,
+            id: "view.filterWithAttachments", category: "View", title: "Show Messages with Attachments",
             execute: () => SetFilterCommand.Execute("attachments")));
 
         registry.Register(new CommandDefinition(
-            id: "view.filterReplied", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_FilterReplied_Title,
+            id: "view.filterReplied", category: "View", title: "Show Replied Only",
             execute: () => SetFilterCommand.Execute("replied")));
 
         registry.Register(new CommandDefinition(
-            id: "view.filterForwarded", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_FilterForwarded_Title,
+            id: "view.filterForwarded", category: "View", title: "Show Forwarded Only",
             execute: () => SetFilterCommand.Execute("forwarded")));
 
         registry.Register(new CommandDefinition(
-            id: "view.filterToMe", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_FilterToMe_Title,
+            id: "view.filterToMe", category: "View", title: "Show Messages Addressed to Me",
             execute: () => SetFilterCommand.Execute("tome")));
 
         registry.Register(new CommandDefinition(
-            id: "view.sortDateDesc", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_SortDateDesc_Title,
+            id: "view.sortDateDesc", category: "View", title: "Sort: Newest First",
             execute: () => SetSortCommand.Execute("dateDesc")));
 
         registry.Register(new CommandDefinition(
-            id: "view.sortDateAsc", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_SortDateAsc_Title,
+            id: "view.sortDateAsc", category: "View", title: "Sort: Oldest First",
             execute: () => SetSortCommand.Execute("dateAsc")));
 
         registry.Register(new CommandDefinition(
-            id: "view.sortAlphaAsc", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_SortAlphaAsc_Title,
+            id: "view.sortAlphaAsc", category: "View", title: "Sort: A → Z",
             execute: () => SetSortCommand.Execute("alphaAsc")));
 
         registry.Register(new CommandDefinition(
-            id: "view.sortAlphaDesc", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_SortAlphaDesc_Title,
+            id: "view.sortAlphaDesc", category: "View", title: "Sort: Z → A",
             execute: () => SetSortCommand.Execute("alphaDesc")));
 
         registry.Register(new CommandDefinition(
-            id: "view.sortCountDesc", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_SortCountDesc_Title,
+            id: "view.sortCountDesc", category: "View", title: "Sort: Most Messages",
             execute: () => SetSortCommand.Execute("countDesc"),
             isAvailable: () => IsCountSortAvailable));
 
         registry.Register(new CommandDefinition(
-            id: "view.sortCountAsc", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_SortCountAsc_Title,
+            id: "view.sortCountAsc", category: "View", title: "Sort: Fewest Messages",
             execute: () => SetSortCommand.Execute("countAsc"),
             isAvailable: () => IsCountSortAvailable));
 
         registry.Register(new CommandDefinition(
-            id: "view.sortFlaggedFirst", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_SortFlaggedFirst_Title,
+            id: "view.sortFlaggedFirst", category: "View", title: "Sort: Flagged First",
             execute: () => SetSortCommand.Execute("flaggedFirst")));
 
         registry.Register(new CommandDefinition(
-            id: "mail.rules", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_Rules_Title,
+            id: "mail.rules", category: "Mail", title: "Manage Rules",
             execute: () => OpenRulesManagerCommand.Execute(null),
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         registry.Register(new CommandDefinition(
-            id: "view.calendar", category: Strings.Cmd_Category_View, title: Strings.Cmd_View_Calendar_Title,
+            id: "view.calendar", category: "View", title: "Calendar",
             execute: () => OpenCalendarCommand.Execute(null),
             defaultKey: Key.C, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => CalendarVm != null));
 
         registry.Register(new CommandDefinition(
-            id: "mail.createRuleFromMessage", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_CreateRuleFromMessage_Title,
+            id: "mail.createRuleFromMessage", category: "Mail", title: "Create Rule from Message",
             execute: () => CreateRuleFromMessageCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
-            id: "mail.acceptInvite", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_AcceptInvite_Title,
+            id: "mail.acceptInvite", category: "Mail", title: "Accept Invitation",
             execute: () => AcceptInviteCommand.Execute(null),
             isAvailable: () => HasCalendarInvite));
 
         registry.Register(new CommandDefinition(
-            id: "mail.declineInvite", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_DeclineInvite_Title,
+            id: "mail.declineInvite", category: "Mail", title: "Decline Invitation",
             execute: () => DeclineInviteCommand.Execute(null),
             isAvailable: () => HasCalendarInvite));
 
         registry.Register(new CommandDefinition(
-            id: "mail.tentativeInvite", category: Strings.Cmd_Category_Mail, title: Strings.Cmd_Mail_TentativeInvite_Title,
+            id: "mail.tentativeInvite", category: "Mail", title: "Tentatively Accept Invitation",
             execute: () => TentativeInviteCommand.Execute(null),
             isAvailable: () => HasCalendarInvite));
 
         registry.Register(new CommandDefinition(
-            id: "help.keyboardTutorial", category: Strings.Cmd_Category_Help, title: Strings.Cmd_Help_KeyboardTutorial_Title,
+            id: "help.keyboardTutorial", category: "Help", title: "Keyboard Tutorial",
             execute: () => TutorialRequested?.Invoke(this, EventArgs.Empty)));
 
         registry.Register(new CommandDefinition(
-            id: "help.about", category: Strings.Cmd_Category_Help, title: Strings.Cmd_Help_About_Title,
+            id: "help.about", category: "Help", title: "About QuickMail",
             execute: () => AboutRequested?.Invoke(this, EventArgs.Empty)));
 
         registry.Register(new CommandDefinition(
-            id: "help.reportBug", category: Strings.Cmd_Category_Help, title: Strings.Cmd_Help_ReportBug_Title,
+            id: "help.reportBug", category: "Help", title: "Report a Bug",
             execute: () => ReportBugRequested?.Invoke(this, EventArgs.Empty)));
     }
 

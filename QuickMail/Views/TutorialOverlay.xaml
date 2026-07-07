@@ -3,7 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:strings="clr-namespace:QuickMail.Resources"
              mc:Ignorable="d"
              d:DesignHeight="650" d:DesignWidth="1000">
 
@@ -25,15 +24,15 @@
                 VerticalAlignment="Center"
                 MinWidth="400"
                 MaxWidth="600"
-                AutomationProperties.Name="{Binding CurrentStep.InstructionText, FallbackValue={x:Static strings:Strings.Tutorial_KeyboardTutorialFallback}}">
+                AutomationProperties.Name="{Binding CurrentStep.InstructionText, FallbackValue='Keyboard tutorial'}">
             <StackPanel>
                 <!-- Step counter -->
                 <TextBlock FontSize="{DynamicResource Theme.FontSizeLarge}"
                            Foreground="{DynamicResource Theme.TextSecondary}"
                            Margin="0,0,0,12">
-                    <Run Text="{x:Static strings:Strings.Tutorial_StepPrefix}"/>
+                    <Run Text="Step "/>
                     <Run Text="{Binding CurrentStepNumber, Mode=OneWay, FallbackValue=1}"/>
-                    <Run Text="{x:Static strings:Strings.Tutorial_StepOfSeparator}"/>
+                    <Run Text=" of "/>
                     <Run Text="{Binding Steps.Count, Mode=OneWay, FallbackValue=6}"/>
                 </TextBlock>
 
@@ -42,13 +41,13 @@
                            FontWeight="SemiBold"
                            TextWrapping="Wrap"
                            Margin="0,0,0,16"
-                           Text="{Binding CurrentStep.InstructionText, FallbackValue={x:Static strings:Strings.Tutorial_PressAKeyFallback}}"/>
+                           Text="{Binding CurrentStep.InstructionText, FallbackValue='Press a key...'}"/>
 
                 <!-- Hint -->
                 <TextBlock FontSize="{DynamicResource Theme.FontSizeLarge}"
                            Foreground="{DynamicResource Theme.TextSecondary}"
                            TextWrapping="Wrap"
-                           Text="{x:Static strings:Strings.Tutorial_EscapeToSkipHint}"/>
+                           Text="Press Escape to skip the tutorial at any time."/>
             </StackPanel>
         </Border>
     </Grid>

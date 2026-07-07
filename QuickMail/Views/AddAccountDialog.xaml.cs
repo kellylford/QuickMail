@@ -2,7 +2,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -70,8 +69,8 @@ public partial class AddAccountDialog : Window
         AccessibilityHelper.Announce(
             this,
             _vm.IsGraphBackend
-                ? string.Format(Strings.AddAccount_BackendSelected_NoImapSmtp_Announce, label)
-                : string.Format(Strings.AddAccount_BackendSelected_Announce, label),
+                ? $"{label}. IMAP and SMTP settings are not required."
+                : $"{label}.",
             category: AnnouncementCategory.Hint);
     }
 

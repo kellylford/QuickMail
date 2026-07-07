@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -191,17 +190,19 @@ public sealed partial class SpellCheckDialogViewModel : ObservableObject
     /// <summary>Message shown in the completion confirmation.</summary>
     public string CompletionText => ChangedCount switch
     {
-        0 when !PresentedAnyError => Strings.SpellCheck_Completion_NoMisspellingsFound,
-        0 => Strings.SpellCheck_Completion_NoChangesMade,
-        _ => StringsHelper.Count("SpellCheck_Completion_WordsChanged", ChangedCount),
+        0 when !PresentedAnyError => "The spelling check is complete. No misspellings were found.",
+        0 => "The spelling check is complete. No changes were made.",
+        1 => "The spelling check is complete. 1 word changed.",
+        _ => $"The spelling check is complete. {ChangedCount} words changed.",
     };
 
     /// <summary>Announcement matching <see cref="CompletionText"/>.</summary>
     public string CompletionAnnouncement => ChangedCount switch
     {
-        0 when !PresentedAnyError => Strings.SpellCheck_CompletionAnnouncement_NoMisspellingsFound,
-        0 => Strings.SpellCheck_CompletionAnnouncement_NoChangesMade,
-        _ => StringsHelper.Count("SpellCheck_CompletionAnnouncement_WordsChanged", ChangedCount),
+        0 when !PresentedAnyError => "Spelling check complete. No misspellings found.",
+        0 => "Spelling check complete. No changes made.",
+        1 => "Spelling check complete. 1 word changed.",
+        _ => $"Spelling check complete. {ChangedCount} words changed.",
     };
 
     /// <summary>
@@ -211,7 +212,8 @@ public sealed partial class SpellCheckDialogViewModel : ObservableObject
     /// </summary>
     public string CancelAnnouncement => ChangedCount switch
     {
-        0 => Strings.SpellCheck_Cancel_Canceled,
-        _ => StringsHelper.Count("SpellCheck_Cancel_ChangesKept", ChangedCount),
+        0 => "Spelling check canceled.",
+        1 => "Spelling check canceled. 1 change kept.",
+        _ => $"Spelling check canceled. {ChangedCount} changes kept.",
     };
 }

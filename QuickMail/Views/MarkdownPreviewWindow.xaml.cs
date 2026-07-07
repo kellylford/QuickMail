@@ -7,7 +7,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using Microsoft.Web.WebView2.Core;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.Views;
@@ -33,8 +32,8 @@ public partial class MarkdownPreviewWindow : Window
     public MarkdownPreviewWindow(string? subject, string htmlFragment, string? themeCss = null)
     {
         Title = string.IsNullOrWhiteSpace(subject)
-            ? Strings.MarkdownPreview_ComposePreviewTitle
-            : string.Format(Strings.MarkdownPreview_SubjectPreviewTitleFormat, subject.Trim());
+            ? "Compose — Preview — QuickMail"
+            : $"{subject.Trim()} — Preview — QuickMail";
 
         _html = BuildHtml(subject, htmlFragment, themeCss);
         InitializeComponent();
@@ -202,12 +201,12 @@ public partial class MarkdownPreviewWindow : Window
     {
         var isEmpty = string.IsNullOrWhiteSpace(fragment);
         var body = isEmpty
-            ? $"<p style=\"color:var(--text-muted);font-style:italic;\">{Strings.MarkdownPreview_NoContentToPreview}</p>"
+            ? "<p style=\"color:var(--text-muted);font-style:italic;\">No content to preview.</p>"
             : fragment;
 
         var titleText = string.IsNullOrWhiteSpace(subject)
-            ? Strings.MarkdownPreview_PreviewHtmlTitle
-            : string.Format(Strings.MarkdownPreview_PreviewHtmlTitleWithSubjectFormat, subject.Trim());
+            ? "Preview"
+            : $"Preview — {subject.Trim()}";
         var encodedTitle = System.Net.WebUtility.HtmlEncode(titleText);
 
         // With theme CSS the palette aliases the shared --qm-* variables; without

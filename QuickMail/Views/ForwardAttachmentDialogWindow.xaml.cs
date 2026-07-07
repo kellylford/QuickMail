@@ -3,7 +3,6 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -62,8 +61,8 @@ public partial class ForwardAttachmentDialogWindow : Window
     {
         MessageBox.Show(
             this,
-            string.Format(Strings.ForwardAttachment_PropertiesMessage, attachment.FileName, attachment.FileSizeDisplay, attachment.ContentType),
-            Strings.ForwardAttachment_PropertiesTitle,
+            $"File name: {attachment.FileName}\nSize: {attachment.FileSizeDisplay}\nType: {attachment.ContentType}",
+            "Attachment Properties",
             MessageBoxButton.OK);
     }
 }

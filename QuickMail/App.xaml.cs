@@ -1,8 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
-using System.Globalization;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Markup;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -128,12 +126,6 @@ public partial class App : Application
             var syncService = new SyncService(mailRouter, localStore, configService, ruleService);
 
             var startupCfg = configService.Load();
-
-            // Culture must be resolved before any window is constructed — {x:Static} bindings in
-            // XAML resolve once at parse time, and FrameworkElement.LanguageProperty metadata
-            // (used for WPF's own date/number formatting) must be set before the first element parses.
-            ApplyUiCulture(startupCfg.UILanguage);
-
             Views.AccessibilityHelper.Configure(startupCfg);
             LogService.Format  = startupCfg.LogFormat;
             LogService.Enabled = startupCfg.EnableLogging;
@@ -213,55 +205,6 @@ public partial class App : Application
                 disable.Add(args[i + 1]);
         }
         return (enable, disable);
-    }
-
-    /// <summary>
-    /// Culture tags shipping a reviewed (or, for the initial machine-generated drafts,
-    /// AI-translated) <c>Strings.&lt;tag&gt;.resx</c> satellite. Extend this list only after a
-    /// language's translation exists and has been reviewed per the localization spec.
-    /// </summary>
-    private static readonly string[] SupportedUiLanguages = ["en", "es", "de", "fr"];
-
-    /// <summary>
-    /// Resolves and applies the UI culture: <paramref name="configuredLanguage"/> if set and
-    /// supported, else the Windows display language if supported, else English. Must run before
-    /// any window is constructed (see call site in <see cref="OnStartup"/>).
-    /// </summary>
-    private static void ApplyUiCulture(string configuredLanguage)
-    {
-        var culture = TryGetSupportedCulture(configuredLanguage, out var configured)
-            ? configured
-            : TryGetSupportedCulture(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, out var osMatch)
-                ? osMatch
-                : new CultureInfo("en");
-
-        Thread.CurrentThread.CurrentUICulture = culture;
-        Thread.CurrentThread.CurrentCulture = culture;
-        CultureInfo.DefaultThreadCurrentUICulture = culture;
-        CultureInfo.DefaultThreadCurrentCulture = culture;
-
-        // WPF's own date/number formatting (e.g. DatePicker, Binding StringFormat) reads this
-        // metadata rather than CurrentCulture directly.
-        FrameworkElement.LanguageProperty.OverrideMetadata(
-            typeof(FrameworkElement),
-            new FrameworkPropertyMetadata(XmlLanguage.GetLanguage(culture.IetfLanguageTag)));
-    }
-
-    private static bool TryGetSupportedCulture(string? tag, out CultureInfo culture)
-    {
-        culture = CultureInfo.InvariantCulture;
-        if (string.IsNullOrWhiteSpace(tag)) return false;
-
-        // Exact match first (the common case: "es", or the OS's two-letter ISO code). The
-        // StartsWith fallback only matches a genuine regional culture tag like "es-MX" or
-        // "fr-CA" (hyphen boundary required) — never a bare prefix, so an unrelated value
-        // like a hand-edited "default" in config.ini can't accidentally match "de".
-        var match = Array.Find(SupportedUiLanguages, l => l.Equals(tag, StringComparison.OrdinalIgnoreCase))
-            ?? Array.Find(SupportedUiLanguages, l => tag.StartsWith(l + "-", StringComparison.OrdinalIgnoreCase));
-        if (match is null) return false;
-
-        culture = new CultureInfo(match);
-        return true;
     }
 
     private static bool IsHelpRequest(string[] args)

@@ -4,9 +4,8 @@
         xmlns:views="clr-namespace:QuickMail.Views"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="{x:Static strings:Strings.FlagManager_Title}"
+        Title="Flag Manager"
         Width="520" Height="440"
         MinWidth="420" MinHeight="340"
         WindowStartupLocation="CenterOwner"
@@ -25,35 +24,35 @@
         <ToolBar x:Name="FlagToolbar"
                  DockPanel.Dock="Top"
                  KeyboardNavigation.TabNavigation="Continue"
-                 AutomationProperties.Name="{x:Static strings:Strings.FlagManager_Title}">
+                 AutomationProperties.Name="Flag manager">
             <Button x:Name="AddButton"
-                    Content="{x:Static strings:Strings.FlagManager_AddFlag}"
+                    Content="Add Flag"
                     Command="{Binding AddFlagCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.FlagManager_AddFlag}"/>
+                    AutomationProperties.Name="Add Flag"/>
             <Button x:Name="DeleteButton"
-                    Content="{x:Static strings:Strings.Common_Delete}"
+                    Content="Delete"
                     Command="{Binding DeleteFlagCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.FlagManager_DeleteButtonName}"/>
+                    AutomationProperties.Name="Delete"/>
             <Separator/>
             <Button x:Name="MoveUpButton"
-                    Content="{x:Static strings:Strings.FlagManager_MoveUp}"
+                    Content="Move Up"
                     Command="{Binding MoveUpCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.FlagManager_MoveUp}"/>
+                    AutomationProperties.Name="Move up"/>
             <Button x:Name="MoveDownButton"
-                    Content="{x:Static strings:Strings.FlagManager_MoveDown}"
+                    Content="Move Down"
                     Command="{Binding MoveDownCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.FlagManager_MoveDown}"/>
+                    AutomationProperties.Name="Move down"/>
             <Separator/>
             <Button x:Name="SetDefaultButton"
-                    Content="{x:Static strings:Strings.FlagManager_SetKDefault}"
+                    Content="Set K Default"
                     Command="{Binding SetAsKDefaultCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.FlagManager_SetKDefaultAutomation}"/>
+                    AutomationProperties.Name="Set K default"/>
         </ToolBar>
 
         <!-- Close button row -->
         <Border DockPanel.Dock="Bottom" Padding="8,4">
             <Button x:Name="CloseButton"
-                    Content="{x:Static strings:Strings.Common_Close}"
+                    Content="Close"
                     IsCancel="True"
                     HorizontalAlignment="Right"
                     Width="72"/>
@@ -73,7 +72,7 @@
                      ItemsSource="{Binding Flags}"
                      SelectedItem="{Binding SelectedFlag}"
                      Margin="8,4,0,4"
-                     AutomationProperties.Name="{x:Static strings:Strings.FlagManager_Flags}">
+                     AutomationProperties.Name="Flags">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
                         <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
@@ -104,7 +103,7 @@
                           Margin="8,4,8,4"
                           VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="{x:Static strings:Strings.FlagManager_NoFlagSelected}"
+                    <TextBlock Text="No flag selected."
                                Margin="0,8,0,0"
                                Foreground="{DynamicResource Theme.TextSecondary}">
                         <TextBlock.Style>
@@ -132,7 +131,7 @@
                         </StackPanel.Style>
 
                         <!-- Name section -->
-                        <TextBlock Text="{x:Static strings:Strings.FlagManager_NameSectionHeader}" FontWeight="SemiBold" Margin="0,8,0,2"/>
+                        <TextBlock Text="Name" FontWeight="SemiBold" Margin="0,8,0,2"/>
 
                         <!-- Read-only name + Rename button (shown when not renaming) -->
                         <DockPanel>
@@ -147,10 +146,10 @@
                                 </Style>
                             </DockPanel.Style>
                             <Button DockPanel.Dock="Right"
-                                    Content="{x:Static strings:Strings.FlagManager_Rename}"
+                                    Content="Rename"
                                     Command="{Binding BeginRenameCommand}"
                                     Width="68" Margin="4,0,0,0"
-                                    AutomationProperties.Name="{x:Static strings:Strings.FlagManager_Rename}"/>
+                                    AutomationProperties.Name="Rename"/>
                             <TextBlock Text="{Binding SelectedFlag.Name}"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis"/>
@@ -171,7 +170,7 @@
                             <TextBox x:Name="EditNameBox"
                                      Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
                                      MaxLength="32"
-                                     AutomationProperties.Name="{x:Static strings:Strings.FlagManager_FlagName}"
+                                     AutomationProperties.Name="Flag name"
                                      Margin="0,0,0,2"/>
                             <TextBlock Text="{Binding RenameError}"
                                        Foreground="{DynamicResource Theme.Error}"
@@ -189,18 +188,18 @@
                                 </TextBlock.Style>
                             </TextBlock>
                             <StackPanel Orientation="Horizontal">
-                                <Button Content="{x:Static strings:Strings.Common_Save}"
+                                <Button Content="Save"
                                         Command="{Binding SaveRenameCommand}"
                                         Width="60" Margin="0,0,4,0"
                                         IsDefault="True"/>
-                                <Button Content="{x:Static strings:Strings.Common_Cancel}"
+                                <Button Content="Cancel"
                                         Command="{Binding CancelRenameCommand}"
                                         Width="60"/>
                             </StackPanel>
                         </StackPanel>
 
                         <!-- Color section -->
-                        <TextBlock Text="{x:Static strings:Strings.FlagManager_ColorSectionHeader}" FontWeight="SemiBold" Margin="0,12,0,4"/>
+                        <TextBlock Text="Color" FontWeight="SemiBold" Margin="0,12,0,4"/>
 
                         <!-- Color swatch for selected flag -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
@@ -216,7 +215,7 @@
 
                         <!-- 12 preset color buttons (radio group) -->
                         <WrapPanel x:Name="ColorPanel"
-                                   AutomationProperties.Name="{x:Static strings:Strings.FlagManager_PresetColors}"
+                                   AutomationProperties.Name="Preset colors"
                                    KeyboardNavigation.TabNavigation="Once"
                                    KeyboardNavigation.DirectionalNavigation="Cycle">
                             <WrapPanel.Resources>
@@ -266,18 +265,18 @@
                                     </Setter>
                                 </Style>
                             </WrapPanel.Resources>
-                            <RadioButton Tag="#E53E3E" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorRed}"     Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#E53E3E"/>
-                            <RadioButton Tag="#DD6B20" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorOrange}"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#DD6B20"/>
-                            <RadioButton Tag="#C05621" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorAmber}"   Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#C05621"/>
-                            <RadioButton Tag="#B7791F" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorYellow}"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#B7791F"/>
-                            <RadioButton Tag="#38A169" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorGreen}"   Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#38A169"/>
-                            <RadioButton Tag="#276749" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorLime}"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#276749"/>
-                            <RadioButton Tag="#319795" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorTeal}"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#319795"/>
-                            <RadioButton Tag="#0987A0" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorCyan}"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#0987A0"/>
-                            <RadioButton Tag="#3182CE" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorBlue}"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#3182CE"/>
-                            <RadioButton Tag="#5A67D8" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorIndigo}"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#5A67D8"/>
-                            <RadioButton Tag="#6B46C1" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorViolet}"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#6B46C1"/>
-                            <RadioButton Tag="#D53F8C" AutomationProperties.Name="{x:Static strings:Strings.FlagManager_ColorPink}"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#D53F8C"/>
+                            <RadioButton Tag="#E53E3E" AutomationProperties.Name="Red"     Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#E53E3E"/>
+                            <RadioButton Tag="#DD6B20" AutomationProperties.Name="Orange"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#DD6B20"/>
+                            <RadioButton Tag="#C05621" AutomationProperties.Name="Amber"   Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#C05621"/>
+                            <RadioButton Tag="#B7791F" AutomationProperties.Name="Yellow"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#B7791F"/>
+                            <RadioButton Tag="#38A169" AutomationProperties.Name="Green"   Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#38A169"/>
+                            <RadioButton Tag="#276749" AutomationProperties.Name="Lime"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#276749"/>
+                            <RadioButton Tag="#319795" AutomationProperties.Name="Teal"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#319795"/>
+                            <RadioButton Tag="#0987A0" AutomationProperties.Name="Cyan"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#0987A0"/>
+                            <RadioButton Tag="#3182CE" AutomationProperties.Name="Blue"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#3182CE"/>
+                            <RadioButton Tag="#5A67D8" AutomationProperties.Name="Indigo"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#5A67D8"/>
+                            <RadioButton Tag="#6B46C1" AutomationProperties.Name="Violet"  Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#6B46C1"/>
+                            <RadioButton Tag="#D53F8C" AutomationProperties.Name="Pink"    Command="{Binding DataContext.ChangeColorCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="#D53F8C"/>
                         </WrapPanel>
                     </StackPanel>
                 </StackPanel>

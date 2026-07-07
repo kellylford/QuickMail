@@ -6,7 +6,6 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -41,8 +40,8 @@ public partial class SettingsDialog : Window
     private void DeleteLogButton_Click(object sender, RoutedEventArgs e)
     {
         var result = MessageBox.Show(
-            Strings.Settings_DeleteLog_ConfirmMessage,
-            Strings.Settings_DeleteLog_ConfirmTitle,
+            "Delete the QuickMail log file? This cannot be undone.",
+            "Delete Log",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,
             MessageBoxResult.No);
@@ -126,7 +125,7 @@ public partial class SettingsDialog : Window
     private void AnnounceAssignment(string gesture, string commandTitle)
     {
         var source = Keyboard.FocusedElement as UIElement ?? this;
-        var text   = string.Format(Strings.Settings_Announce_HotkeyAssigned, gesture, commandTitle);
+        var text   = $"{gesture} assigned to {commandTitle}";
 
         LogService.Debug($"[Settings] Announce: source={source.GetType().Name} text='{text}'");
 
@@ -139,17 +138,6 @@ public partial class SettingsDialog : Window
         {
             LogService.Log("[Settings] Announce failed", ex);
         }
-    }
-
-    private void UILanguageCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (sender is not ComboBox { IsLoaded: true } combo) return;
-        if (combo.SelectedItem is not ComboBoxItem { Content: string displayName }) return;
-
-        AccessibilityHelper.Announce(
-            combo,
-            string.Format(Strings.Settings_Language_RestartRequired, displayName),
-            category: AnnouncementCategory.Result);
     }
 
     private void RadioButton_Checked(object sender, RoutedEventArgs e)

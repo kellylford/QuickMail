@@ -3,7 +3,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -45,7 +44,7 @@ public partial class SpellCheckDialog : Window
     }
 
     private void OnCheckingSourceChanged(string sourceName) =>
-        AccessibilityHelper.Announce(this, string.Format(Strings.SpellCheck_Announce_CheckingSource, sourceName),
+        AccessibilityHelper.Announce(this, $"Checking {sourceName}.",
             category: AnnouncementCategory.Status);
 
     /// <summary>Announces the current error and lands focus per the classic flow.</summary>

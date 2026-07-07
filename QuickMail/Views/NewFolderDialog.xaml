@@ -1,8 +1,7 @@
 <Window x:Class="QuickMail.Views.NewFolderDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
-        Title="{x:Static strings:Strings.NewFolder_Title}"
+        Title="New Folder"
         Height="160" Width="360"
         MinHeight="140" MinWidth="260"
         WindowStartupLocation="CenterOwner"
@@ -18,16 +17,16 @@
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="0,10,0,0">
             <Button x:Name="OkButton"
-                    Content="{x:Static strings:Strings.NewFolder_OK}"
+                    Content="_OK"
                     IsDefault="True"
                     MinWidth="75"
                     Margin="0,0,6,0"
                     Click="OkButton_Click"
-                    AutomationProperties.Name="{x:Static strings:Strings.NewFolder_CreateFolder}"/>
-            <Button Content="{x:Static strings:Strings.NewFolder_Cancel}"
+                    AutomationProperties.Name="Create folder"/>
+            <Button Content="_Cancel"
                     IsCancel="True"
                     MinWidth="75"
-                    AutomationProperties.Name="{x:Static strings:Strings.NewFolder_CancelButtonName}"/>
+                    AutomationProperties.Name="Cancel"/>
         </StackPanel>
 
         <StackPanel>
@@ -36,8 +35,8 @@
                        Margin="0,0,0,6"
                        Focusable="False"/>
             <TextBox x:Name="FolderNameBox"
-                     AutomationProperties.Name="{x:Static strings:Strings.NewFolder_FolderName}"
-                     AutomationProperties.HelpText="{x:Static strings:Strings.NewFolder_FolderNameHelpText}"
+                     AutomationProperties.Name="Folder name"
+                     AutomationProperties.HelpText="Enter a name for the new folder"
                      MaxLength="255"
                      PreviewKeyDown="FolderNameBox_PreviewKeyDown"/>
         </StackPanel>

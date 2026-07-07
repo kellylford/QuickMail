@@ -3,10 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="{x:Static strings:Strings.ReportBug_Title}"
-        AutomationProperties.Name="{x:Static strings:Strings.ReportBug_Title}"
+        Title="Report a Bug - QuickMail"
+        AutomationProperties.Name="Report a Bug - QuickMail"
         Height="620" Width="520"
         MinHeight="480" MinWidth="420"
         WindowStartupLocation="CenterOwner"
@@ -34,34 +33,34 @@
 
         <!-- ── Form fields (F6 stop 1) ── -->
         <StackPanel x:Name="FormPanel" Grid.Row="0">
-            <TextBlock Text="{x:Static strings:Strings.ReportBug_SummaryLabel}" Margin="0,0,0,2"/>
+            <TextBlock Text="Summary:" Margin="0,0,0,2"/>
             <TextBox x:Name="SummaryBox"
                      Text="{Binding Summary, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.Name="{x:Static strings:Strings.ReportBug_Summary}"
+                     AutomationProperties.Name="Summary"
                      MaxLength="200"
                      Margin="0,0,0,8"/>
 
-            <TextBlock Text="{x:Static strings:Strings.ReportBug_WhatHappenedLabel}" Margin="0,0,0,2"/>
+            <TextBlock Text="What happened:" Margin="0,0,0,2"/>
             <TextBox Text="{Binding WhatHappened, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.Name="{x:Static strings:Strings.ReportBug_WhatHappened}"
+                     AutomationProperties.Name="What happened"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
                      Height="70"
                      VerticalScrollBarVisibility="Auto"
                      Margin="0,0,0,8"/>
 
-            <TextBlock Text="{x:Static strings:Strings.ReportBug_WhatExpectedLabel}" Margin="0,0,0,2"/>
+            <TextBlock Text="What you expected:" Margin="0,0,0,2"/>
             <TextBox Text="{Binding WhatExpected, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.Name="{x:Static strings:Strings.ReportBug_WhatExpected}"
+                     AutomationProperties.Name="What you expected"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
                      Height="50"
                      VerticalScrollBarVisibility="Auto"
                      Margin="0,0,0,8"/>
 
-            <TextBlock Text="{x:Static strings:Strings.ReportBug_StepsToReproduceLabel}" Margin="0,0,0,2"/>
+            <TextBlock Text="Steps to reproduce:" Margin="0,0,0,2"/>
             <TextBox Text="{Binding StepsToReproduce, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.Name="{x:Static strings:Strings.ReportBug_StepsToReproduce}"
+                     AutomationProperties.Name="Steps to reproduce"
                      AcceptsReturn="True"
                      TextWrapping="Wrap"
                      Height="60"
@@ -69,7 +68,7 @@
         </StackPanel>
 
         <TextBlock Grid.Row="1"
-                   Text="{x:Static strings:Strings.ReportBug_PreviewLabel}"
+                   Text="Preview — exactly what will be sent:"
                    Margin="0,8,0,2"/>
 
         <!-- ── Preview (F6 stop 2) ──
@@ -82,7 +81,7 @@
         <TextBox x:Name="PreviewBox"
                  Grid.Row="2"
                  Text="{Binding PreviewText, Mode=OneWay}"
-                 AutomationProperties.Name="{x:Static strings:Strings.ReportBug_Preview}"
+                 AutomationProperties.Name="Preview"
                  AcceptsReturn="True"
                  TextWrapping="Wrap"
                  VerticalScrollBarVisibility="Auto"
@@ -102,34 +101,27 @@
 
         <Button x:Name="IssueLinkButton"
                 Grid.Row="4"
-                AutomationProperties.Name="{x:Static strings:Strings.ReportBug_OpenIssueInBrowser}"
+                Content="{Binding IssueUrl, StringFormat='Open issue: {0}'}"
+                AutomationProperties.Name="Open issue in browser"
                 Command="{Binding OpenIssueCommand}"
                 Visibility="{Binding IsSent, Converter={StaticResource BoolToVisibility}}"
                 HorizontalAlignment="Left"
-                Margin="0,0,0,8">
-            <Button.Content>
-                <Binding Path="IssueUrl">
-                    <Binding.StringFormat>
-                        <x:Static Member="strings:Strings.ReportBug_OpenIssueFormat"/>
-                    </Binding.StringFormat>
-                </Binding>
-            </Button.Content>
-        </Button>
+                Margin="0,0,0,8"/>
 
         <StackPanel Grid.Row="5"
                     Orientation="Horizontal"
                     HorizontalAlignment="Right">
             <Button x:Name="SendButton"
-                    Content="{x:Static strings:Strings.ReportBug_SendButton}"
+                    Content="_Send"
                     IsDefault="True"
-                    AutomationProperties.Name="{x:Static strings:Strings.ReportBug_Send}"
+                    AutomationProperties.Name="Send"
                     Command="{Binding SendCommand}"
                     IsEnabled="{Binding CanSend}"
                     MinWidth="80"
                     Margin="0,0,8,0"/>
             <Button x:Name="CopyAndOpenButton"
-                    Content="{x:Static strings:Strings.ReportBug_CopyAndOpenButton}"
-                    AutomationProperties.Name="{x:Static strings:Strings.ReportBug_CopyReportAndOpenGitHub}"
+                    Content="_Copy report and open GitHub"
+                    AutomationProperties.Name="Copy report and open GitHub"
                     Command="{Binding CopyAndOpenCommand}"
                     MinWidth="80"
                     Margin="0,0,8,0"/>

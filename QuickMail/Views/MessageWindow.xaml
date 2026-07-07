@@ -5,7 +5,6 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         xmlns:vm="clr-namespace:QuickMail.ViewModels"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         AutomationProperties.Name="{Binding WindowTitle}"
@@ -27,52 +26,52 @@
     <DockPanel>
         <!-- Menu bar (Alt / F10 to open) -->
         <Menu DockPanel.Dock="Top" IsMainMenu="True">
-            <MenuItem Header="{x:Static strings:Strings.Message_Menu_File}">
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_CloseWindow}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_CloseWindow_Name}"
+            <MenuItem Header="_File">
+                <MenuItem Header="Close _Window"
+                          AutomationProperties.Name="Close Window"
                           Command="{Binding CloseCommand}"
                           InputGestureText="Ctrl+W"/>
             </MenuItem>
-            <MenuItem Header="{x:Static strings:Strings.Message_Menu_Message}">
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_Reply}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_Reply_Name}"
+            <MenuItem Header="_Message">
+                <MenuItem Header="_Reply"
+                          AutomationProperties.Name="Reply"
                           Command="{Binding ReplyCommand}"
                           InputGestureText="Ctrl+R"/>
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_ReplyAll}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_ReplyAll_Name}"
+                <MenuItem Header="Reply _All"
+                          AutomationProperties.Name="Reply All"
                           Command="{Binding ReplyAllCommand}"
                           InputGestureText="Ctrl+Shift+R"/>
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_Forward}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_Forward_Name}"
+                <MenuItem Header="_Forward"
+                          AutomationProperties.Name="Forward"
                           Command="{Binding ForwardCommand}"
                           InputGestureText="Ctrl+F"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_Delete}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_DeleteMessageName}"
+                <MenuItem Header="_Delete"
+                          AutomationProperties.Name="Delete"
                           Command="{Binding DeleteMessageCommand}"
                           InputGestureText="Delete"/>
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_MarkAsRead}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_MarkAsRead_Name}"
+                <MenuItem Header="_Mark as Read"
+                          AutomationProperties.Name="Mark as Read"
                           Command="{Binding MarkReadCommand}"
                           InputGestureText="Ctrl+Q"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_GrabAddresses}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_GrabAddresses_Name}"
+                <MenuItem Header="_Grab Addresses from Message"
+                          AutomationProperties.Name="Grab Addresses from Message"
                           Command="{Binding GrabAddressesCommand}"
                           InputGestureText="Ctrl+Shift+G"/>
             </MenuItem>
-            <MenuItem Header="{x:Static strings:Strings.Message_Menu_Navigate}">
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_PreviousMessage}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_PreviousMessage_Name}"
+            <MenuItem Header="_Navigate">
+                <MenuItem Header="_Previous Message"
+                          AutomationProperties.Name="Previous Message"
                           Command="{Binding PreviousMessageCommand}"
                           InputGestureText="Alt+Left"/>
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_NextMessage}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_NextMessage_Name}"
+                <MenuItem Header="_Next Message"
+                          AutomationProperties.Name="Next Message"
                           Command="{Binding NextMessageCommand}"
                           InputGestureText="Alt+Right"/>
                 <Separator/>
-                <MenuItem Header="{x:Static strings:Strings.Message_Menu_MoveToMainWindow}"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_MoveToMainWindow_Name}"
+                <MenuItem Header="Move to _Main Window"
+                          AutomationProperties.Name="Move to Main Window"
                           Command="{Binding MoveToMainWindowCommand}"/>
             </MenuItem>
         </Menu>
@@ -81,50 +80,50 @@
         <ToolBarTray DockPanel.Dock="Top" IsLocked="True">
             <ToolBar Band="1" BandIndex="1">
                 <Button x:Name="PrevButton"
-                        Content="{x:Static strings:Strings.Message_Toolbar_Previous}"
+                        Content="◀ Previous"
                         Command="{Binding PreviousMessageCommand}"
                         Padding="6,2"
-                        ToolTip="{x:Static strings:Strings.Message_Toolbar_Previous_ToolTip}"
-                        AutomationProperties.Name="{x:Static strings:Strings.Message_PreviousMessage_Name}"/>
+                        ToolTip="Previous message (Alt+Left)"
+                        AutomationProperties.Name="Previous message"/>
                 <Button x:Name="NextButton"
-                        Content="{x:Static strings:Strings.Message_Toolbar_Next}"
+                        Content="Next ▶"
                         Command="{Binding NextMessageCommand}"
                         Padding="6,2"
-                        ToolTip="{x:Static strings:Strings.Message_Toolbar_Next_ToolTip}"
-                        AutomationProperties.Name="{x:Static strings:Strings.Message_NextMessage_Name}"/>
+                        ToolTip="Next message (Alt+Right)"
+                        AutomationProperties.Name="Next message"/>
                 <Separator/>
-                <Button Content="{x:Static strings:Strings.Message_Menu_Reply}"
+                <Button Content="Reply"
                         Command="{Binding ReplyCommand}"
                         Padding="6,2"
-                        ToolTip="{x:Static strings:Strings.Message_Toolbar_Reply_ToolTip}"
-                        AutomationProperties.Name="{x:Static strings:Strings.Message_Reply_Name}"/>
-                <Button Content="{x:Static strings:Strings.Message_Menu_ReplyAll}"
+                        ToolTip="Reply (Ctrl+R)"
+                        AutomationProperties.Name="Reply"/>
+                <Button Content="Reply All"
                         Command="{Binding ReplyAllCommand}"
                         Padding="6,2"
-                        ToolTip="{x:Static strings:Strings.Message_Toolbar_ReplyAll_ToolTip}"
-                        AutomationProperties.Name="{x:Static strings:Strings.Message_ReplyAll_Name}"/>
-                <Button Content="{x:Static strings:Strings.Message_Menu_Forward}"
+                        ToolTip="Reply All (Ctrl+Shift+R)"
+                        AutomationProperties.Name="Reply All"/>
+                <Button Content="Forward"
                         Command="{Binding ForwardCommand}"
                         Padding="6,2"
-                        ToolTip="{x:Static strings:Strings.Message_Toolbar_Forward_ToolTip}"
-                        AutomationProperties.Name="{x:Static strings:Strings.Message_Forward_Name}"/>
+                        ToolTip="Forward (Ctrl+F)"
+                        AutomationProperties.Name="Forward"/>
                 <Separator/>
-                <Button Content="{x:Static strings:Strings.Message_Menu_Delete}"
+                <Button Content="Delete"
                         Command="{Binding DeleteMessageCommand}"
                         Padding="6,2"
-                        ToolTip="{x:Static strings:Strings.Message_Toolbar_Delete_ToolTip}"
-                        AutomationProperties.Name="{x:Static strings:Strings.Message_DeleteMessageName}"/>
+                        ToolTip="Delete (Delete)"
+                        AutomationProperties.Name="Delete"/>
                 <Separator/>
-                <Button Content="{x:Static strings:Strings.Message_Menu_MoveToMainWindow}"
+                <Button Content="Move to Main Window"
                         Command="{Binding MoveToMainWindowCommand}"
                         Padding="6,2"
-                        AutomationProperties.Name="{x:Static strings:Strings.Message_MoveToMainWindowToolbar_Name}"/>
+                        AutomationProperties.Name="Move this message to the main window as a tab"/>
             </ToolBar>
         </ToolBarTray>
 
         <!-- Status bar -->
         <StatusBar DockPanel.Dock="Bottom"
-                   AutomationProperties.Name="{x:Static strings:Strings.Message_Status_Name}">
+                   AutomationProperties.Name="Status">
             <StatusBarItem>
                 <TextBlock Text="{Binding PositionText, Mode=OneWay}"
                            AutomationProperties.LiveSetting="Off"/>
@@ -142,23 +141,23 @@
                          IsReadOnly="True" IsReadOnlyCaretVisible="True"
                          BorderThickness="0" Background="Transparent"
                          FontWeight="SemiBold" TextWrapping="Wrap"
-                         AutomationProperties.Name="{x:Static strings:Strings.Message_Subject_Name}"/>
+                         AutomationProperties.Name="Subject"/>
                 <TextBox x:Name="FromField"
                          Text="{Binding MessageDetail.From, FallbackValue='', Mode=OneWay}"
                          IsReadOnly="True" IsReadOnlyCaretVisible="True"
                          BorderThickness="0" Background="Transparent"
                          Margin="0,2,0,0"
-                         AutomationProperties.Name="{x:Static strings:Strings.Message_From_Name}"/>
+                         AutomationProperties.Name="From"/>
                 <TextBox x:Name="ToField"
                          Text="{Binding MessageDetail.To, FallbackValue='', Mode=OneWay}"
                          IsReadOnly="True" IsReadOnlyCaretVisible="True"
                          BorderThickness="0" Background="Transparent"
-                         AutomationProperties.Name="{x:Static strings:Strings.Message_To_Name}"/>
+                         AutomationProperties.Name="To"/>
                 <TextBox x:Name="CcField"
                          Text="{Binding MessageDetail.Cc, FallbackValue='', Mode=OneWay}"
                          IsReadOnly="True" IsReadOnlyCaretVisible="True"
                          BorderThickness="0" Background="Transparent"
-                         AutomationProperties.Name="{x:Static strings:Strings.Message_Cc_Name}">
+                         AutomationProperties.Name="Cc">
                     <TextBox.Style>
                         <Style TargetType="TextBox">
                             <Style.Triggers>
@@ -176,7 +175,7 @@
                          Text="{Binding MessageDetail.Date, StringFormat='{}{0:f}', FallbackValue='', Mode=OneWay}"
                          IsReadOnly="True" IsReadOnlyCaretVisible="True"
                          BorderThickness="0" Background="Transparent"
-                         AutomationProperties.Name="{x:Static strings:Strings.Message_Date_Name}"/>
+                         AutomationProperties.Name="Date"/>
 
                 <!-- Attachments -->
                 <ListBox x:Name="AttachmentList"
@@ -189,7 +188,7 @@
                                       FallbackValue=Collapsed}"
                          KeyboardNavigation.TabNavigation="Once"
                          KeyboardNavigation.DirectionalNavigation="Contained"
-                         AutomationProperties.Name="{x:Static strings:Strings.Message_Attachments_Name}"
+                         AutomationProperties.Name="Attachments"
                          PreviewKeyDown="AttachmentList_PreviewKeyDown"
                          GotKeyboardFocus="AttachmentList_GotKeyboardFocus">
                     <ListBox.ItemContainerStyle>
@@ -204,15 +203,15 @@
                     </ListBox.ItemTemplate>
                     <ListBox.ContextMenu>
                         <ContextMenu>
-                            <MenuItem Header="{x:Static strings:Strings.Message_Menu_SaveAttachment}"
+                            <MenuItem Header="_Save…"
                                       Command="{Binding PlacementTarget.DataContext.SaveAttachmentCommand,
                                                 RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                       CommandParameter="{Binding PlacementTarget.SelectedItem,
                                                 RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                            <MenuItem Header="{x:Static strings:Strings.Message_Menu_SaveAllAttachments}"
+                            <MenuItem Header="Save _All…"
                                       Command="{Binding PlacementTarget.DataContext.SaveAllAttachmentsCommand,
                                                 RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                            <MenuItem Header="{x:Static strings:Strings.Message_Menu_OpenAttachment}"
+                            <MenuItem Header="_Open"
                                       Command="{Binding PlacementTarget.DataContext.OpenAttachmentCommand,
                                                 RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                       CommandParameter="{Binding PlacementTarget.SelectedItem,
@@ -226,13 +225,13 @@
         <!-- Message body + loading overlay -->
         <Grid>
             <wv2:WebView2 x:Name="MessageBody"
-                          AutomationProperties.Name="{x:Static strings:Strings.Message_Body_Name}"
+                          AutomationProperties.Name="Message body"
                           KeyboardNavigation.IsTabStop="True"
                           GotKeyboardFocus="MessageBody_GotKeyboardFocus"/>
             <Border Background="{DynamicResource Theme.WindowBackground}"
                     Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibilityConverter}}"
                     IsHitTestVisible="False">
-                <TextBlock Text="{x:Static strings:Strings.Message_Loading}"
+                <TextBlock Text="Loading…"
                            HorizontalAlignment="Center"
                            VerticalAlignment="Center"
                            FontSize="{DynamicResource Theme.FontSizeLarge}"

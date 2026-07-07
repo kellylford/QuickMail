@@ -3,9 +3,8 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="{x:Static strings:Strings.SpellCheck_Title}"
+        Title="Spelling"
         Height="380" Width="560"
         MinHeight="320" MinWidth="480"
         WindowStartupLocation="CenterOwner"
@@ -33,36 +32,36 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <Label Grid.Row="0" Content="{x:Static strings:Strings.SpellCheck_NotInDictionaryLabel}"
+            <Label Grid.Row="0" Content="_Not in dictionary:"
                    Target="{Binding ElementName=ContextBox}"
                    Padding="0,0,0,2"/>
             <TextBox Grid.Row="1"
                      x:Name="ContextBox"
                      Text="{Binding ContextLine, Mode=OneWay}"
-                     AutomationProperties.Name="{x:Static strings:Strings.SpellCheck_NotInDictionary}"
+                     AutomationProperties.Name="Not in dictionary"
                      IsReadOnly="True"
                      TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto"
                      Height="56"
                      Margin="0,0,0,8"/>
 
-            <Label Grid.Row="2" Content="{x:Static strings:Strings.SpellCheck_ChangeToLabel}"
+            <Label Grid.Row="2" Content="Change _to:"
                    Target="{Binding ElementName=ChangeToBox}"
                    Padding="0,0,0,2"/>
             <TextBox Grid.Row="3"
                      x:Name="ChangeToBox"
                      Text="{Binding ChangeToText, UpdateSourceTrigger=PropertyChanged}"
-                     AutomationProperties.Name="{x:Static strings:Strings.SpellCheck_ChangeTo}"
+                     AutomationProperties.Name="Change to"
                      Margin="0,0,0,8"/>
 
-            <Label Grid.Row="4" Content="{x:Static strings:Strings.SpellCheck_SuggestionsLabel}"
+            <Label Grid.Row="4" Content="_Suggestions:"
                    Target="{Binding ElementName=SuggestionsList}"
                    Padding="0,0,0,2"/>
             <ListBox Grid.Row="5"
                      x:Name="SuggestionsList"
                      ItemsSource="{Binding Suggestions}"
                      SelectedItem="{Binding SelectedSuggestion}"
-                     AutomationProperties.Name="{x:Static strings:Strings.SpellCheck_Suggestions}"
+                     AutomationProperties.Name="Suggestions"
                      KeyboardNavigation.TabNavigation="Once"
                      KeyboardNavigation.DirectionalNavigation="Contained"/>
         </Grid>
@@ -77,16 +76,16 @@
                 </Style>
             </StackPanel.Resources>
 
-            <Button x:Name="ChangeButton" Content="{x:Static strings:Strings.SpellCheck_Change}" IsDefault="True" Click="Change_Click"/>
-            <Button Content="{x:Static strings:Strings.SpellCheck_ChangeAll}" Click="ChangeAll_Click"/>
+            <Button x:Name="ChangeButton" Content="_Change" IsDefault="True" Click="Change_Click"/>
+            <Button Content="Change Al_l" Click="ChangeAll_Click"/>
             <Separator Margin="0,2,0,8"/>
-            <Button Content="{x:Static strings:Strings.SpellCheck_Ignore}" Click="Ignore_Click"/>
-            <Button Content="{x:Static strings:Strings.SpellCheck_IgnoreAll}" Click="IgnoreAll_Click"/>
+            <Button Content="_Ignore" Click="Ignore_Click"/>
+            <Button Content="I_gnore All" Click="IgnoreAll_Click"/>
             <Separator Margin="0,2,0,8"/>
-            <Button Content="{x:Static strings:Strings.SpellCheck_AddToDictionary}" Click="AddToDictionary_Click"/>
-            <Button Content="{x:Static strings:Strings.SpellCheck_ReadInContext}" Click="ReadContext_Click"/>
+            <Button Content="_Add to Dictionary" Click="AddToDictionary_Click"/>
+            <Button Content="_Read in Context" Click="ReadContext_Click"/>
             <Separator Margin="0,2,0,8"/>
-            <Button Content="{x:Static strings:Strings.SpellCheck_Close}" Click="Close_Click"/>
+            <Button Content="Cl_ose" Click="Close_Click"/>
         </StackPanel>
     </Grid>
 </Window>

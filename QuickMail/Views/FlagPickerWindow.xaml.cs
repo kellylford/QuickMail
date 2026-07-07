@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -46,14 +45,14 @@ public partial class FlagPickerWindow : Window
     private void RegisterLocalCommands()
     {
         _localRegistry.Register(new CommandDefinition(
-            "flagpicker.apply", Strings.FlagPicker_CmdCategory, Strings.FlagPicker_Cmd_ApplySelectedFlag,
+            "flagpicker.apply", "Flag", "Apply Selected Flag",
             () => _vm.ApplyFlagCommand.Execute(null),
             isAvailable: () => _vm.SelectedFlag != null));
         _localRegistry.Register(new CommandDefinition(
-            "flagpicker.clear", Strings.FlagPicker_CmdCategory, Strings.FlagPicker_Cmd_ClearFlag,
+            "flagpicker.clear", "Flag", "Clear Flag",
             () => _vm.ClearFlagCommand.Execute(null)));
         _localRegistry.Register(new CommandDefinition(
-            "flagpicker.cancel", Strings.FlagPicker_CmdCategory, Strings.FlagPicker_Cmd_Cancel,
+            "flagpicker.cancel", "Flag", "Cancel",
             () => { DialogResult = false; }));
     }
 
