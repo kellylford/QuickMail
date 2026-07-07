@@ -71,7 +71,7 @@
                     Orientation="Horizontal"
                     HorizontalAlignment="Right">
             <Button x:Name="OkButton"
-                    Content="_OK"
+                    Content="{x:Static strings:Strings.Common_OK}"
                     IsDefault="True"
                     Click="OkButton_Click"
                     MinWidth="75"
@@ -79,13 +79,13 @@
                     Margin="0,0,8,0"
                     AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_AcceptShortcut}"/>
             <Button x:Name="ChangeButton"
-                    Content="C_hange"
+                    Content="{x:Static strings:Strings.KeyCapture_ChangeButtonContent}"
                     Click="ChangeButton_Click"
                     MinWidth="75"
                     Visibility="Collapsed"
                     Margin="0,0,8,0"
                     AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_CaptureDifferentShortcut}"/>
-            <Button Content="_Cancel"
+            <Button Content="{x:Static strings:Strings.Common_Cancel}"
                     IsCancel="True"
                     MinWidth="75"
                     AutomationProperties.Name="{x:Static strings:Strings.KeyCapture_CancelClose}"/>

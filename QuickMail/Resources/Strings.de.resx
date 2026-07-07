@@ -360,6 +360,9 @@
   <data name="KeyCapture_CaptureDifferentShortcut" xml:space="preserve">
     <value>Andere Tastenkombination erfassen</value>
   </data>
+  <data name="KeyCapture_ChangeButtonContent" xml:space="preserve">
+    <value>Ä_ndern</value>
+  </data>
   <data name="KeyCapture_CancelClose" xml:space="preserve">
     <value>Abbrechen und schließen ohne zu speichern</value>
   </data>
@@ -419,6 +422,9 @@
   </data>
   <data name="Properties_CopyAllProperties" xml:space="preserve">
     <value>Alle Eigenschaften kopieren</value>
+  </data>
+  <data name="Properties_CopyAllButtonContent" xml:space="preserve">
+    <value>_Alles kopieren</value>
   </data>
   <data name="Properties_Field" xml:space="preserve">
     <value>Feld</value>
@@ -2196,11 +2202,17 @@ Abbrechen = nichts tun</value>
   <data name="Compose_BulletList" xml:space="preserve">
     <value>Aufzählungsliste</value>
   </data>
+  <data name="Compose_BulletList_ButtonContent" xml:space="preserve">
+    <value>• Liste</value>
+  </data>
   <data name="Compose_Tooltip_BulletList" xml:space="preserve">
     <value>Aufzählungsliste (Strg+Umschalt+L)</value>
   </data>
   <data name="Compose_NumberedList" xml:space="preserve">
     <value>Nummerierte Liste</value>
+  </data>
+  <data name="Compose_NumberedList_ButtonContent" xml:space="preserve">
+    <value>1. Liste</value>
   </data>
   <data name="Compose_Tooltip_NumberedList" xml:space="preserve">
     <value>Nummerierte Liste (Strg+Umschalt+N)</value>
@@ -2208,11 +2220,17 @@ Abbrechen = nichts tun</value>
   <data name="Compose_InsertLink" xml:space="preserve">
     <value>Link einfügen</value>
   </data>
+  <data name="Compose_InsertLink_ButtonContent" xml:space="preserve">
+    <value>Link</value>
+  </data>
   <data name="Compose_Tooltip_InsertLink" xml:space="preserve">
     <value>Link einfügen (Strg+L)</value>
   </data>
   <data name="Compose_ClearFormatting" xml:space="preserve">
     <value>Formatierung entfernen</value>
+  </data>
+  <data name="Compose_ClearFormatting_ButtonContent" xml:space="preserve">
+    <value>Löschen</value>
   </data>
   <data name="Compose_Tooltip_ClearFormatting" xml:space="preserve">
     <value>Formatierung entfernen (Strg+Leertaste)</value>
