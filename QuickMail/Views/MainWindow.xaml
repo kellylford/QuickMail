@@ -6,6 +6,7 @@
         xmlns:local="clr-namespace:QuickMail.Views"
         xmlns:models="clr-namespace:QuickMail.Models"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         Height="650" Width="1000"
@@ -28,185 +29,185 @@
 
         <!-- Sender-group context menu (root level of SenderGroupTree) -->
         <ContextMenu x:Key="SenderGroupContextMenu"
-                     AutomationProperties.Name="Sender group actions"
+                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_SenderGroupActions}"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="_Reply"
-                      AutomationProperties.Name="Reply"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Reply}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyName}"
                       Command="{Binding ReplySenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Reply _All"
-                      AutomationProperties.Name="Reply All"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ReplyAll}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyAllName}"
                       Command="{Binding ReplyAllSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="_Forward"
-                      AutomationProperties.Name="Forward"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Forward}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ForwardName}"
                       Command="{Binding ForwardSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
-                      AutomationProperties.Name="Move Sender Group to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_MoveToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MoveSenderGroupToFolder}"
                       Click="SenderGroupContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
-                      AutomationProperties.Name="Copy Sender Group to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CopyToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CopySenderGroupToFolder}"
                       Click="SenderGroupContextMenu_CopyToFolder_Click"/>
             <Separator/>
-            <MenuItem Header="_Delete All from Sender"
-                      AutomationProperties.Name="Delete All from Sender"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_DeleteAllFromSender}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DeleteAllFromSenderName}"
                       Command="{Binding DeleteSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="Flag_s"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Flags}"
                       Tag="FlagsSubmenu"
-                      AutomationProperties.Name="Flags"/>
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_FlagsName}"/>
             <Separator/>
-            <MenuItem Header="E_xpand Group"
-                      AutomationProperties.Name="Expand Group"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ExpandGroup}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ExpandGroupName}"
                       Command="{Binding ExpandSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Colla_pse Group"
-                      AutomationProperties.Name="Collapse Group"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CollapseGroup}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CollapseGroupName}"
                       Command="{Binding CollapseSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Expand All Groups"
-                      AutomationProperties.Name="Expand All Groups"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ExpandAllGroups}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ExpandAllGroupsName}"
                       Command="{Binding ExpandAllSenderGroupsCommand}"/>
-            <MenuItem Header="Collapse A_ll Groups"
-                      AutomationProperties.Name="Collapse All Groups"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CollapseAllGroups}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CollapseAllGroupsName}"
                       Command="{Binding CollapseAllSenderGroupsCommand}"/>
         </ContextMenu>
 
         <ContextMenu x:Key="ToGroupContextMenu"
-                     AutomationProperties.Name="Recipient group actions"
+                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_RecipientGroupActions}"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="_Reply"
-                      AutomationProperties.Name="Reply"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Reply}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyName}"
                       Command="{Binding ReplyToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Reply _All"
-                      AutomationProperties.Name="Reply All"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ReplyAll}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyAllName}"
                       Command="{Binding ReplyAllToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="_Forward"
-                      AutomationProperties.Name="Forward"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Forward}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ForwardName}"
                       Command="{Binding ForwardToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
-                      AutomationProperties.Name="Move Recipient Group to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_MoveToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MoveRecipientGroupToFolder}"
                       Click="ToGroupContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
-                      AutomationProperties.Name="Copy Recipient Group to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CopyToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CopyRecipientGroupToFolder}"
                       Click="ToGroupContextMenu_CopyToFolder_Click"/>
             <Separator/>
-            <MenuItem Header="_Delete All to Recipient"
-                      AutomationProperties.Name="Delete All to Recipient"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_DeleteAllToRecipient}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DeleteAllToRecipientName}"
                       Command="{Binding DeleteToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="Flag_s"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Flags}"
                       Tag="FlagsSubmenu"
-                      AutomationProperties.Name="Flags"/>
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_FlagsName}"/>
             <Separator/>
-            <MenuItem Header="E_xpand Group"
-                      AutomationProperties.Name="Expand Group"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ExpandGroup}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ExpandGroupName}"
                       Command="{Binding ExpandToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Colla_pse Group"
-                      AutomationProperties.Name="Collapse Group"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CollapseGroup}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CollapseGroupName}"
                       Command="{Binding CollapseToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Expand All Groups"
-                      AutomationProperties.Name="Expand All Groups"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ExpandAllGroups}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ExpandAllGroupsName}"
                       Command="{Binding ExpandAllToGroupsCommand}"/>
-            <MenuItem Header="Collapse A_ll Groups"
-                      AutomationProperties.Name="Collapse All Groups"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CollapseAllGroups}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CollapseAllGroupsName}"
                       Command="{Binding CollapseAllToGroupsCommand}"/>
         </ContextMenu>
 
         <!-- Conversation-group context menu (root level of ConversationTree) -->
         <ContextMenu x:Key="ConversationGroupContextMenu"
-                     AutomationProperties.Name="Conversation actions"
+                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ConversationActions}"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="_Reply"
-                      AutomationProperties.Name="Reply"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Reply}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyName}"
                       Command="{Binding ReplyConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Reply _All"
-                      AutomationProperties.Name="Reply All"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ReplyAll}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyAllName}"
                       Command="{Binding ReplyAllConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="_Forward"
-                      AutomationProperties.Name="Forward"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Forward}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ForwardName}"
                       Command="{Binding ForwardConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
-                      AutomationProperties.Name="Move Conversation to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_MoveToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MoveConversationToFolder}"
                       Click="ConversationContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
-                      AutomationProperties.Name="Copy Conversation to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CopyToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CopyConversationToFolder}"
                       Click="ConversationContextMenu_CopyToFolder_Click"/>
             <Separator/>
-            <MenuItem Header="_Delete Conversation"
-                      AutomationProperties.Name="Delete Conversation"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_DeleteConversation}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DeleteConversationName}"
                       Command="{Binding DeleteConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="Flag_s"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Flags}"
                       Tag="FlagsSubmenu"
-                      AutomationProperties.Name="Flags"/>
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_FlagsName}"/>
             <Separator/>
-            <MenuItem Header="E_xpand Conversation"
-                      AutomationProperties.Name="Expand Conversation"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ExpandConversation}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ExpandConversationName}"
                       Command="{Binding ExpandConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-            <MenuItem Header="Colla_pse Conversation"
-                      AutomationProperties.Name="Collapse Conversation"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CollapseConversation}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CollapseConversationName}"
                       Command="{Binding CollapseConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
-            <MenuItem Header="_Expand All Conversations"
-                      AutomationProperties.Name="Expand All Conversations"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ExpandAllConversations}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ExpandAllConversationsName}"
                       Command="{Binding ExpandAllConversationsCommand}"/>
-            <MenuItem Header="Collapse A_ll Conversations"
-                      AutomationProperties.Name="Collapse All Conversations"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CollapseAllConversations}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CollapseAllConversationsName}"
                       Command="{Binding CollapseAllConversationsCommand}"/>
         </ContextMenu>
 
         <!-- Individual-message context menu (MessageList and child nodes in ConversationTree) -->
         <ContextMenu x:Key="MessageContextMenu"
-                     AutomationProperties.Name="Message actions"
+                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MessageActions}"
                      DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-            <MenuItem Header="_Reply"
-                      AutomationProperties.Name="Reply"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Reply}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyName}"
                       Command="{Binding ReplyCommand}"/>
-            <MenuItem Header="Reply _All"
-                      AutomationProperties.Name="Reply All"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_ReplyAll}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyAllName}"
                       Command="{Binding ReplyAllCommand}"/>
-            <MenuItem Header="_Forward"
-                      AutomationProperties.Name="Forward"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Forward}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ForwardName}"
                       Command="{Binding ForwardCommand}"/>
             <Separator/>
-            <MenuItem Header="_Move to Folder…"
-                      AutomationProperties.Name="Move to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_MoveToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MoveToFolderName}"
                       Click="MessageContextMenu_MoveToFolder_Click"/>
-            <MenuItem Header="_Copy to Folder…"
-                      AutomationProperties.Name="Copy to Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CopyToFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CopyToFolderName}"
                       Click="MessageContextMenu_CopyToFolder_Click"/>
             <Separator/>
-            <MenuItem Header="_Delete"
-                      AutomationProperties.Name="Delete"
+            <MenuItem Header="{x:Static strings:Strings.Common_Delete}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DeleteMessageName}"
                       Command="{Binding DeleteMessageCommand}"/>
             <Separator/>
-            <MenuItem Header="Flag_s"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Flags}"
                       Tag="FlagsSubmenu"
-                      AutomationProperties.Name="Flags"/>
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_FlagsName}"/>
             <Separator/>
-            <MenuItem Header="Create _Rule from Message…"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CreateRuleFromMessageEllipsis}"
                       InputGestureText="Ctrl+Shift+T"
-                      AutomationProperties.Name="Create Rule from Message"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CreateRuleFromMessageName}"
                       AutomationProperties.AcceleratorKey="Ctrl+Shift+T"
                       Command="{Binding CreateRuleFromMessageCommand}"/>
         </ContextMenu>
@@ -215,20 +216,20 @@
              The WPF XAML compiler generates incorrect type casts for Click handlers inside
              Style setters (it emits GridSplitter instead of MenuItem), causing an APPCRASH. -->
         <ContextMenu x:Key="FolderContextMenu"
-                     AutomationProperties.Name="Folder actions">
-            <MenuItem Header="_New Folder…"
-                      AutomationProperties.Name="New Folder"
+                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_FolderActions}">
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_NewFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_NewFolderName}"
                       Click="FolderContextMenu_NewFolder_Click"/>
             <Separator/>
-            <MenuItem Header="_Move Folder…"
-                      AutomationProperties.Name="Move Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_MoveFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MoveFolderName}"
                       Click="FolderContextMenu_MoveFolder_Click"/>
-            <MenuItem Header="_Copy Folder…"
-                      AutomationProperties.Name="Copy Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_CopyFolderEllipsis}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CopyFolderName}"
                       Click="FolderContextMenu_CopyFolder_Click"/>
             <Separator/>
-            <MenuItem Header="_Delete Folder"
-                      AutomationProperties.Name="Delete Folder"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_DeleteFolder}"
+                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DeleteFolderName}"
                       Click="FolderContextMenu_DeleteFolder_Click"/>
         </ContextMenu>
     </Window.Resources>
@@ -251,48 +252,48 @@
               Grid.Row="0"
               IsTabStop="False"
               KeyboardNavigation.TabNavigation="None"
-              AutomationProperties.Name="Main menu">
+              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MainMenu}">
 
             <!-- File -->
-            <MenuItem Header="_File">
-                <MenuItem Header="_New Message"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_File}">
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_NewMessage}"
                           Command="{Binding NewMessageCommand}"
                           InputGestureText="Ctrl+N"/>
                 <Separator/>
-                <MenuItem Header="_Manage Accounts…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_ManageAccountsEllipsis}"
                           Command="{Binding ManageAccountsCommand}"/>
                 <Separator/>
-                <MenuItem Header="S_ettings…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_SettingsEllipsis}"
                           Click="MenuSettings_Click"
                           InputGestureText="Ctrl+,"/>
                 <Separator/>
-                <MenuItem Header="E_xit"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_Exit}"
                           Command="{Binding ExitCommand}"/>
             </MenuItem>
 
             <!-- Message -->
-            <MenuItem Header="_Message">
-                <MenuItem Header="_Reply"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_MessageMenu}">
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_Reply}"
                           Command="{Binding ReplyCommand}"
                           InputGestureText="Ctrl+R"/>
-                <MenuItem Header="Reply _All"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_ReplyAll}"
                           Command="{Binding ReplyAllCommand}"
                           InputGestureText="Ctrl+Shift+R"/>
-                <MenuItem Header="_Forward"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_Forward}"
                           Command="{Binding ForwardCommand}"
                           InputGestureText="Ctrl+F"/>
                 <Separator/>
-                <MenuItem Header="_Delete"
+                <MenuItem Header="{x:Static strings:Strings.Common_Delete}"
                           Command="{Binding DeleteMessageCommand}"
                           InputGestureText="Del"/>
-                <MenuItem Header="Empty _Trash"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_EmptyTrash}"
                           Command="{Binding EmptyTrashCommand}"
                           InputGestureText="Ctrl+Shift+E"/>
                 <Separator/>
                 <!-- Keep IsEnabled off these three items so they remain keyboard-navigable
                      per Windows convention (dimmed items are still focusable). Visual dimming
                      is applied via DataTrigger; the Click handlers guard against invalid state. -->
-                <MenuItem Header="_Move to Folder…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_MoveToFolderEllipsis}"
                           Click="MenuMoveToFolder_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -304,7 +305,7 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
-                <MenuItem Header="_Copy to Folder…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_CopyToFolderEllipsis}"
                           Click="MenuCopyToFolder_Click">
                     <MenuItem.Style>
                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
@@ -317,7 +318,7 @@
                     </MenuItem.Style>
                 </MenuItem>
                 <Separator/>
-                <MenuItem Header="Grab _Addresses from Message"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_GrabAddressesFromMessage}"
                           Click="MenuGrabAddresses_Click"
                           InputGestureText="Ctrl+Shift+G">
                     <MenuItem.Style>
@@ -333,77 +334,77 @@
             </MenuItem>
 
             <!-- View -->
-            <MenuItem Header="_View">
-                <MenuItem Header="_Refresh"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_View}">
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_Refresh}"
                           Command="{Binding RefreshCommand}"
                           InputGestureText="F5"/>
                 <Separator/>
-                <MenuItem Header="View _Mode">
-                    <MenuItem Header="_Messages"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_ViewMode}">
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_MessagesMode}"
                               IsCheckable="True"
                               IsChecked="{Binding IsMessagesView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="Messages"/>
-                    <MenuItem Header="_Conversations"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_ConversationsMode}"
                               IsCheckable="True"
                               IsChecked="{Binding IsConversationsView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="Conversations"/>
-                    <MenuItem Header="By _Sender"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_BySender}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFromView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="From"/>
-                    <MenuItem Header="By _Recipient"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_ByRecipient}"
                               IsCheckable="True"
                               IsChecked="{Binding IsToView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="To"/>
                 </MenuItem>
-                <MenuItem Header="F_ilter">
-                    <MenuItem Header="S_how All"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_Filter}">
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_ShowAll}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterAll, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="all"/>
                     <Separator/>
-                    <MenuItem Header="_Unread"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Unread}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterUnread, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="unread"/>
-                    <MenuItem Header="_Read"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Read}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterRead, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="read"/>
                     <Separator/>
-                    <MenuItem Header="With _Attachments"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_WithAttachments}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterWithAttachments, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="attachments"/>
-                    <MenuItem Header="Re_plied"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Replied}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterReplied, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="replied"/>
-                    <MenuItem Header="_Forwarded"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Forwarded}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterForwarded, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="forwarded"/>
                     <Separator/>
-                    <MenuItem Header="To _Me"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_ToMe}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFilterToMe, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="tome"/>
                     <Separator/>
                     <MenuItem x:Name="FilterFlaggedItem"
-                              Header="Fla_gged"
+                              Header="{x:Static strings:Strings.MainWindow_Flagged}"
                               IsChecked="{Binding IsFilterFlagged, Mode=OneWay}">
-                        <MenuItem Header="All Fla_gged"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_AllFlagged}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsFilterAllFlagged, Mode=OneWay}"
                                   Command="{Binding SetFilterCommand}"
@@ -411,140 +412,140 @@
                         <Separator x:Name="FilterFlaggedSeparator"/>
                     </MenuItem>
                 </MenuItem>
-                <MenuItem Header="S_ort">
-                    <MenuItem Header="Newest _First"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_Sort}">
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_NewestFirst}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortDateDesc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="dateDesc"/>
-                    <MenuItem Header="_Oldest First"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_OldestFirst}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortDateAsc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="dateAsc"/>
                     <Separator/>
-                    <MenuItem Header="_A → Z"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_AtoZ}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortAlphaAsc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="alphaAsc"/>
-                    <MenuItem Header="_Z → A"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_ZtoA}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortAlphaDesc, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="alphaDesc"/>
                     <Separator/>
-                    <MenuItem Header="Fla_gged First"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_FlaggedFirst}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortFlaggedFirst, Mode=OneWay}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="flaggedFirst"/>
                     <Separator/>
-                    <MenuItem Header="_Most Messages"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_MostMessages}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortCountDesc, Mode=OneWay}"
                               IsEnabled="{Binding IsCountSortAvailable}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="countDesc"/>
-                    <MenuItem Header="_Fewest Messages"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_FewestMessages}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSortCountAsc, Mode=OneWay}"
                               IsEnabled="{Binding IsCountSortAvailable}"
                               Command="{Binding SetSortCommand}"
                               CommandParameter="countAsc"/>
                 </MenuItem>
-                <MenuItem Header="_Views" x:Name="ViewsMenuItem">
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_Views}" x:Name="ViewsMenuItem">
                     <!-- Dynamic view items inserted by code-behind -->
                     <Separator x:Name="ViewsMenuSeparator" Visibility="Collapsed"/>
-                    <MenuItem Header="_Save View…"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_SaveViewEllipsis}"
                               Command="{Binding SaveViewCommand}"
-                              AutomationProperties.Name="Save current state as a view"/>
-                    <MenuItem Header="_Manage Views…"
+                              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_SaveViewName}"/>
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_ManageViewsEllipsis}"
                               Command="{Binding ManageViewsCommand}"
-                              AutomationProperties.Name="Open View Manager"/>
-                    <MenuItem Header="_Clear View"
+                              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ManageViewsName}"/>
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_ClearView}"
                               Command="{Binding ClearViewCommand}"
-                              AutomationProperties.Name="Deactivate the current view and return to folder navigation"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ClearViewName}"/>
                 </MenuItem>
-                <MenuItem Header="_Sync Range">
-                    <MenuItem Header="Last _7 Days"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_SyncRange}">
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Last7Days}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSyncDays7, Mode=OneWay}"
                               Command="{Binding SetSyncDaysCommand}"
                               CommandParameter="7"/>
-                    <MenuItem Header="Last _30 Days"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Last30Days}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSyncDays30, Mode=OneWay}"
                               Command="{Binding SetSyncDaysCommand}"
                               CommandParameter="30"/>
-                    <MenuItem Header="Last _6 Months"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Last6Months}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSyncDays180, Mode=OneWay}"
                               Command="{Binding SetSyncDaysCommand}"
                               CommandParameter="180"/>
-                    <MenuItem Header="Last _1 Year"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_Last1Year}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSyncDays365, Mode=OneWay}"
                               Command="{Binding SetSyncDaysCommand}"
                               CommandParameter="365"/>
                     <Separator/>
-                    <MenuItem Header="_All Mail"
+                    <MenuItem Header="{x:Static strings:Strings.MainWindow_AllMail}"
                               IsCheckable="True"
                               IsChecked="{Binding IsSyncDaysAll, Mode=OneWay}"
                               Command="{Binding SetSyncDaysCommand}"
                               CommandParameter="0"/>
                 </MenuItem>
                 <Separator/>
-                <MenuItem Header="Go to _Folder…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_GoToFolderEllipsis}"
                           Click="MenuFolderPicker_Click"/>
-                <MenuItem Header="_Search Folders…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_SearchFoldersEllipsis}"
                           Click="MenuSearchFolders_Click"
                           InputGestureText="Ctrl+Shift+F"/>
             </MenuItem>
 
             <!-- Tools — always available (mirrors the Compose window's Tools menu).
                  Each command lives here only; not duplicated in File/Message/View. -->
-            <MenuItem Header="_Tools">
-                <MenuItem Header="Manage _Themes…"
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Tools}">
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_ManageThemesEllipsis}"
                           Click="MenuManageThemes_Click"
-                          AutomationProperties.Name="Manage Themes"/>
-                <MenuItem Header="_Next Theme"
+                          AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ManageThemesName}"/>
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_NextTheme}"
                           Click="MenuNextTheme_Click"/>
-                <MenuItem Header="Pre_vious Theme"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_PreviousTheme}"
                           Click="MenuPreviousTheme_Click"/>
                 <Separator/>
-                <MenuItem Header="Address _Book…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_AddressBookEllipsis}"
                           Click="MenuAddressBook_Click"
                           InputGestureText="Ctrl+Shift+B"/>
-                <MenuItem Header="_Rules…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_RulesEllipsis}"
                           Command="{Binding OpenRulesManagerCommand}"
                           InputGestureText="Ctrl+Shift+L"
-                          AutomationProperties.Name="Manage Rules"
+                          AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ManageRulesName}"
                           AutomationProperties.AcceleratorKey="Ctrl+Shift+L"/>
                 <Separator/>
-                <MenuItem Header="Command _Palette…"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_CommandPaletteEllipsis}"
                           Click="MenuCommandPalette_Click"
                           InputGestureText="Ctrl+Shift+P"/>
             </MenuItem>
 
             <!-- Help -->
-            <MenuItem Header="_Help">
+            <MenuItem Header="{x:Static strings:Strings.MainWindow_Help}">
                 <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"
                           Command="{Binding OpenUpdatePageCommand}"/>
                 <Separator/>
-                <MenuItem Header="User _Guide"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_UserGuide}"
                           Command="{Binding ViewUserGuideCommand}"
                           InputGestureText="F1"/>
-                <MenuItem Header="_Keyboard Tutorial"
-                          AutomationProperties.Name="Keyboard Tutorial"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_KeyboardTutorial}"
+                          AutomationProperties.Name="{x:Static strings:Strings.MainWindow_KeyboardTutorialName}"
                           Click="MenuKeyboardTutorial_Click"/>
                 <Separator/>
-                <MenuItem Header="_Report a Bug"
-                          AutomationProperties.Name="Report a Bug"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_ReportABug}"
+                          AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReportABugName}"
                           Click="MenuReportBug_Click"/>
                 <Separator/>
-                <MenuItem Header="_About QuickMail"
-                          AutomationProperties.Name="About QuickMail"
+                <MenuItem Header="{x:Static strings:Strings.MainWindow_AboutQuickMail}"
+                          AutomationProperties.Name="{x:Static strings:Strings.MainWindow_AboutQuickMailName}"
                           Click="MenuAbout_Click"/>
             </MenuItem>
 
@@ -553,81 +554,81 @@
         <!-- ── Toolbar — Ctrl+0 only; excluded from Tab sequence ── -->
         <ToolBar x:Name="MainToolbar"
                  Grid.Row="1"
-                 AutomationProperties.Name="Main toolbar"
+                 AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MainToolbar}"
                  KeyboardNavigation.TabNavigation="None"
                  KeyboardNavigation.DirectionalNavigation="Cycle"
                  PreviewKeyDown="Toolbar_PreviewKeyDown">
             <Button x:Name="ToolbarFirstButton"
                     Style="{DynamicResource ToolbarButton}"
                     Command="{Binding NewMessageCommand}"
-                    AutomationProperties.Name="New Message"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_NewMessageName}"
                     AutomationProperties.AcceleratorKey="Ctrl+N"
-                    ToolTip="New Message (Ctrl+N)"
-                    Content="New"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_NewMessageToolTip}"
+                    Content="{x:Static strings:Strings.MainWindow_NewButton}"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ReplyCommand}"
-                    AutomationProperties.Name="Reply"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyName}"
                     AutomationProperties.AcceleratorKey="Ctrl+R"
-                    ToolTip="Reply (Ctrl+R)"
-                    Content="Reply"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_ReplyToolTip}"
+                    Content="{x:Static strings:Strings.MainWindow_Reply}"/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ReplyAllCommand}"
-                    AutomationProperties.Name="Reply All"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ReplyAllName}"
                     AutomationProperties.AcceleratorKey="Ctrl+Shift+R"
-                    ToolTip="Reply All (Ctrl+Shift+R)"
-                    Content="Reply All"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_ReplyAllToolTip}"
+                    Content="{x:Static strings:Strings.MainWindow_ReplyAll}"/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ForwardCommand}"
-                    AutomationProperties.Name="Forward"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ForwardName}"
                     AutomationProperties.AcceleratorKey="Ctrl+F"
-                    ToolTip="Forward (Ctrl+F)"
-                    Content="Forward"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_ForwardToolTip}"
+                    Content="{x:Static strings:Strings.MainWindow_Forward}"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding DeleteMessageCommand}"
-                    AutomationProperties.Name="Delete message"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DeleteMessageName}"
                     AutomationProperties.AcceleratorKey="Delete"
-                    ToolTip="Delete (Del)"
-                    Content="Delete"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_DeleteToolTip}"
+                    Content="{x:Static strings:Strings.Common_Delete}"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding RefreshCommand}"
-                    AutomationProperties.Name="Refresh"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_Refresh}"
                     AutomationProperties.AcceleratorKey="F5"
-                    ToolTip="Refresh (F5)"
-                    Content="Refresh"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_RefreshToolTip}"
+                    Content="{x:Static strings:Strings.MainWindow_Refresh}"/>
             <Button x:Name="SyncRangeButton"
                     Style="{DynamicResource ToolbarButton}"
                     Content="{Binding SyncRangeLabel}"
-                    AutomationProperties.Name="Sync range"
-                    ToolTip="Choose how many days of mail to sync"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_SyncRangeName}"
+                    ToolTip="{x:Static strings:Strings.MainWindow_SyncRangeToolTip}"
                     Click="SyncRangeButton_Click">
                 <Button.ContextMenu>
-                    <ContextMenu AutomationProperties.Name="Sync range"
+                    <ContextMenu AutomationProperties.Name="{x:Static strings:Strings.MainWindow_SyncRangeName}"
                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="Last _7 Days"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_Last7Days}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsSyncDays7, Mode=OneWay}"
                                   Command="{Binding SetSyncDaysCommand}"
                                   CommandParameter="7"/>
-                        <MenuItem Header="Last _30 Days"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_Last30Days}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsSyncDays30, Mode=OneWay}"
                                   Command="{Binding SetSyncDaysCommand}"
                                   CommandParameter="30"/>
-                        <MenuItem Header="Last _6 Months (180 Days)"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_Last6MonthsLong}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsSyncDays180, Mode=OneWay}"
                                   Command="{Binding SetSyncDaysCommand}"
                                   CommandParameter="180"/>
-                        <MenuItem Header="Last _1 Year (365 Days)"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_Last1YearLong}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsSyncDays365, Mode=OneWay}"
                                   Command="{Binding SetSyncDaysCommand}"
                                   CommandParameter="365"/>
                         <Separator/>
-                        <MenuItem Header="_All Mail"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_AllMail}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsSyncDaysAll, Mode=OneWay}"
                                   Command="{Binding SetSyncDaysCommand}"
@@ -639,28 +640,28 @@
             <Button x:Name="ViewModeButton"
                     Style="{DynamicResource ToolbarButton}"
                     Content="{Binding ViewModeLabel}"
-                    AutomationProperties.Name="View mode"
-                    ToolTip="Select message view mode (Ctrl+Shift+V)"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ViewModeName}"
+                    ToolTip="{x:Static strings:Strings.MainWindow_ViewModeToolTip}"
                     Click="ViewModeButton_Click">
                 <Button.ContextMenu>
-                    <ContextMenu AutomationProperties.Name="View mode"
+                    <ContextMenu AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ViewModeName}"
                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                        <MenuItem Header="_Messages"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_MessagesMode}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsMessagesView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
                                   CommandParameter="Messages"/>
-                        <MenuItem Header="_Conversations"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_ConversationsMode}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsConversationsView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
                                   CommandParameter="Conversations"/>
-                        <MenuItem Header="_From"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_From}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsFromView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
                                   CommandParameter="From"/>
-                        <MenuItem Header="_To"
+                        <MenuItem Header="{x:Static strings:Strings.MainWindow_To}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsToView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
@@ -671,23 +672,23 @@
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding EmptyTrashCommand}"
-                    AutomationProperties.Name="Empty Trash"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_EmptyTrash}"
                     AutomationProperties.AcceleratorKey="Ctrl+Shift+E"
-                    ToolTip="Empty Trash (Ctrl+Shift+E)"
-                    Content="Empty Trash"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_EmptyTrashToolTip}"
+                    Content="{x:Static strings:Strings.MainWindow_EmptyTrash}"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ManageAccountsCommand}"
-                    AutomationProperties.Name="Manage email accounts"
-                    ToolTip="Manage email accounts"
-                    Content="Accounts"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ManageEmailAccountsName}"
+                    ToolTip="{x:Static strings:Strings.MainWindow_ManageEmailAccountsName}"
+                    Content="{x:Static strings:Strings.MainWindow_Accounts}"/>
             <Separator/>
             <Button Style="{DynamicResource ToolbarButton}"
                     Command="{Binding ViewUserGuideCommand}"
-                    AutomationProperties.Name="View User Guide"
+                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ViewUserGuideName}"
                     AutomationProperties.AcceleratorKey="F1"
-                    ToolTip="View User Guide (F1)"
-                    Content="User Guide"/>
+                    ToolTip="{x:Static strings:Strings.MainWindow_ViewUserGuideToolTip}"
+                    Content="{x:Static strings:Strings.MainWindow_UserGuideButton}"/>
         </ToolBar>
 
         <!-- ── Three-pane layout (Outlook-style): Accounts+Folders left | Messages right ── -->
@@ -711,13 +712,13 @@
                     <RowDefinition Height="2*" MinHeight="80"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Text="Accounts" FontWeight="SemiBold" Padding="6,4"
+                <TextBlock Grid.Row="0" Text="{x:Static strings:Strings.MainWindow_Accounts}" FontWeight="SemiBold" Padding="6,4"
                            Focusable="False"
                            Background="{DynamicResource Theme.ChromeBackground}"/>
 
                 <ListBox Grid.Row="1"
                          x:Name="AccountList"
-                         AutomationProperties.Name="Email accounts"
+                         AutomationProperties.Name="{x:Static strings:Strings.MainWindow_EmailAccountsName}"
                          ItemsSource="{Binding Accounts}"
                          SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
                          TextSearch.TextPath="AccountLabel"
@@ -754,27 +755,27 @@
                     </ListBox.ItemTemplate>
 
                     <ListBox.ContextMenu>
-                        <ContextMenu AutomationProperties.Name="Account actions">
-                            <MenuItem Header="_Delete Account"
-                                      AutomationProperties.Name="Delete Account"
+                        <ContextMenu AutomationProperties.Name="{x:Static strings:Strings.MainWindow_AccountActions}">
+                            <MenuItem Header="{x:Static strings:Strings.MainWindow_DeleteAccount}"
+                                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DeleteAccountName}"
                                       Command="{Binding PlacementTarget.DataContext.DeleteAccountCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                            <MenuItem Header="Account _Settings…"
-                                      AutomationProperties.Name="Account Settings"
+                            <MenuItem Header="{x:Static strings:Strings.MainWindow_AccountSettingsEllipsis}"
+                                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_AccountSettingsName}"
                                       Command="{Binding PlacementTarget.DataContext.OpenAccountSettingsCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                         </ContextMenu>
                     </ListBox.ContextMenu>
                 </ListBox>
 
-                <TextBlock Grid.Row="2" Text="Folders" FontWeight="SemiBold" Padding="6,4"
+                <TextBlock Grid.Row="2" Text="{x:Static strings:Strings.MainWindow_Folders}" FontWeight="SemiBold" Padding="6,4"
                            Focusable="False"
                            Background="{DynamicResource Theme.ChromeBackground}"/>
 
                 <!-- True TreeView so screen readers announce level, expanded/collapsed state correctly. -->
                 <TreeView Grid.Row="3"
                           x:Name="FolderList"
-                          AutomationProperties.Name="Folder list"
+                          AutomationProperties.Name="{x:Static strings:Strings.MainWindow_FolderListName}"
                           ItemsSource="{Binding FolderTree}"
                           BorderThickness="0,0,1,0"
                           TabIndex="2"
@@ -838,7 +839,7 @@
 
             <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch"
                           IsTabStop="False"
-                          AutomationProperties.Name="Resize left and right panes"/>
+                          AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ResizePanesName}"/>
 
             <!-- Right pane: messages + body (body docked to bottom, hidden until Enter on a message) -->
             <Grid Grid.Column="2">
@@ -860,7 +861,7 @@
                              ScrollViewer.HorizontalScrollBarVisibility="Auto"
                              ScrollViewer.VerticalScrollBarVisibility="Disabled"
                              KeyboardNavigation.TabNavigation="Once"
-                             AutomationProperties.Name="Open message tabs"
+                             AutomationProperties.Name="{x:Static strings:Strings.MainWindow_OpenMessageTabsName}"
                              SelectionChanged="TabStrip_SelectionChanged"
                              PreviewKeyDown="TabStrip_PreviewKeyDown"
                              PreviewMouseDown="TabStrip_PreviewMouseDown"
@@ -894,8 +895,8 @@
                                             Click="TabCloseButton_Click"
                                             Tag="{Binding}"
                                             IsTabStop="False"
-                                            AutomationProperties.Name="Close this tab"
-                                            ToolTip="Close tab"
+                                            AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CloseThisTabName}"
+                                            ToolTip="{x:Static strings:Strings.MainWindow_CloseTabToolTip}"
                                             Visibility="{Binding CanClose, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 </StackPanel>
                             </DataTemplate>
@@ -916,23 +917,23 @@
                                      IsReadOnly="True" IsReadOnlyCaretVisible="True"
                                      BorderThickness="0" Background="Transparent"
                                      FontSize="{DynamicResource Theme.FontSizeBase}" FontWeight="SemiBold" TextWrapping="Wrap"
-                                     AutomationProperties.Name="Subject"/>
+                                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_SubjectName}"/>
                             <TextBox x:Name="FromField"
                                      Text="{Binding MessageDetail.From, FallbackValue='', Mode=OneWay}"
                                      IsReadOnly="True" IsReadOnlyCaretVisible="True"
                                      BorderThickness="0" Background="Transparent"
                                      Margin="0,2,0,0"
-                                     AutomationProperties.Name="From"/>
+                                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_From}"/>
                             <TextBox x:Name="ToField"
                                      Text="{Binding MessageDetail.To, FallbackValue='', Mode=OneWay}"
                                      IsReadOnly="True" IsReadOnlyCaretVisible="True"
                                      BorderThickness="0" Background="Transparent"
-                                     AutomationProperties.Name="To"/>
+                                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_To}"/>
                             <TextBox x:Name="CcField"
                                      Text="{Binding MessageDetail.Cc, FallbackValue='', Mode=OneWay}"
                                      IsReadOnly="True" IsReadOnlyCaretVisible="True"
                                      BorderThickness="0" Background="Transparent"
-                                     AutomationProperties.Name="Cc">
+                                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CcName}">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">
                                         <Style.Triggers>
@@ -950,7 +951,7 @@
                                      Text="{Binding MessageDetail.Date, StringFormat='{}{0:f}', FallbackValue='', Mode=OneWay}"
                                      IsReadOnly="True" IsReadOnlyCaretVisible="True"
                                      BorderThickness="0" Background="Transparent"
-                                     AutomationProperties.Name="Date"/>
+                                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_DateName}"/>
 
                             <!-- Attachments (visible when selected message has attachments) -->
                             <ListBox x:Name="ReadingPaneAttachmentList"
@@ -963,7 +964,7 @@
                                                   FallbackValue=Collapsed}"
                                      KeyboardNavigation.TabNavigation="Once"
                                      KeyboardNavigation.DirectionalNavigation="Contained"
-                                     AutomationProperties.Name="Attachments"
+                                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_AttachmentsName}"
                                      PreviewKeyDown="ReadingPaneAttachmentList_PreviewKeyDown"
                                      GotKeyboardFocus="ReadingPaneAttachmentList_GotKeyboardFocus">
                                 <ListBox.ItemContainerStyle>
@@ -978,15 +979,15 @@
                                 </ListBox.ItemTemplate>
                                 <ListBox.ContextMenu>
                                     <ContextMenu>
-                                        <MenuItem Header="_Save…"
+                                        <MenuItem Header="{x:Static strings:Strings.MainWindow_SaveEllipsis}"
                                                   Command="{Binding PlacementTarget.DataContext.SaveAttachmentCommand,
                                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
                                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                                        <MenuItem Header="Save _All…"
+                                        <MenuItem Header="{x:Static strings:Strings.MainWindow_SaveAllEllipsis}"
                                                   Command="{Binding PlacementTarget.DataContext.SaveAllAttachmentsCommand,
                                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
-                                        <MenuItem Header="_Open"
+                                        <MenuItem Header="{x:Static strings:Strings.MainWindow_Open}"
                                                   Command="{Binding PlacementTarget.DataContext.OpenAttachmentCommand,
                                                             RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                                                   CommandParameter="{Binding PlacementTarget.SelectedItem,
@@ -999,7 +1000,7 @@
                         </StackPanel>
                         <!-- WebView2: real browser, proper arrow-key caret nav, screen-reader virtual cursor -->
                         <wv2:WebView2 x:Name="MessageBody"
-                                      AutomationProperties.Name="Message body"
+                                      AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MessageBodyName}"
                                       KeyboardNavigation.IsTabStop="True"
                                       GotKeyboardFocus="MessageBody_GotKeyboardFocus"
                                       MinHeight="80"/>
@@ -1009,11 +1010,11 @@
                 <!-- Message list — fills all remaining space; body docked above takes its share -->
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top"
-                               Text="{Binding SelectedFolder.DisplayName, FallbackValue='No folder selected'}"
+                               Text="{Binding SelectedFolder.DisplayName, FallbackValue={x:Static strings:Strings.MainWindow_NoFolderSelected}}"
                                FontWeight="SemiBold" Padding="6,4"
                                Focusable="False"
                                Background="{DynamicResource Theme.ChromeBackground}"
-                               AutomationProperties.Name="Current folder"/>
+                               AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CurrentFolderName}"/>
 
                     <!-- Search bar — visible only while IsSearchActive -->
                     <Border DockPanel.Dock="Top"
@@ -1023,10 +1024,10 @@
                             Visibility="{Binding IsSearchActive, Converter={StaticResource BoolToVisibilityConverter}}">
                         <DockPanel>
                             <Button DockPanel.Dock="Right"
-                                    Content="Clear"
+                                    Content="{x:Static strings:Strings.MainWindow_ClearButton}"
                                     Command="{Binding ClearSearchCommand}"
-                                    AutomationProperties.Name="Clear search"
-                                    ToolTip="Clear search (Escape)"
+                                    AutomationProperties.Name="{x:Static strings:Strings.MainWindow_ClearSearchName}"
+                                    ToolTip="{x:Static strings:Strings.MainWindow_ClearSearchToolTip}"
                                     IsTabStop="True"/>
                             <TextBlock DockPanel.Dock="Right"
                                        VerticalAlignment="Center"
@@ -1046,14 +1047,14 @@
                             </TextBlock>
                             <TextBox x:Name="SearchBox"
                                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Search messages"
-                                     ToolTip="Search by sender, subject, or preview. Escape to clear."
+                                     AutomationProperties.Name="{x:Static strings:Strings.MainWindow_SearchMessagesName}"
+                                     ToolTip="{x:Static strings:Strings.MainWindow_SearchBoxToolTip}"
                                      PreviewKeyDown="SearchBox_PreviewKeyDown"/>
                         </DockPanel>
                     </Border>
 
                     <TextBlock DockPanel.Dock="Top"
-                               Text="No messages"
+                               Text="{x:Static strings:Strings.MainWindow_NoMessages}"
                                HorizontalAlignment="Center" Margin="0,20">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -1075,7 +1076,7 @@
                          list: Up/Down to browse, Enter to open the source invite, T to
                          filter to today, F5 to refresh, Escape to return to the folder tree. -->
                     <ListBox x:Name="CalendarList"
-                             AutomationProperties.Name="Calendar events"
+                             AutomationProperties.Name="{x:Static strings:Strings.MainWindow_CalendarEventsName}"
                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
                              ItemsSource="{Binding CalendarVm.Events}"
                              SelectedItem="{Binding CalendarVm.SelectedEvent, Mode=TwoWay}"
@@ -1106,7 +1107,7 @@
                     </ListBox>
 
                     <ListView x:Name="MessageList"
-                              AutomationProperties.Name="Messages"
+                              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MessagesName}"
                               ContextMenu="{StaticResource MessageContextMenu}"
                               ItemsSource="{Binding Messages}"
                               SelectedItem="{Binding SelectedMessage, Mode=TwoWay}"
@@ -1137,7 +1138,7 @@
                             <GridView>
                                 <GridViewColumn Width="{Binding ShowMessageStatus, Converter={StaticResource BoolToColumnWidthConverter}}">
                                     <GridViewColumn.Header>
-                                        <TextBlock Text="Status"
+                                        <TextBlock Text="{x:Static strings:Strings.MainWindow_Status}"
                                                    AutomationProperties.IsColumnHeader="True"
                                                    Visibility="{Binding DataContext.ShowMessageStatus,
                                                        RelativeSource={RelativeSource AncestorType=Window},
@@ -1157,7 +1158,7 @@
                                 </GridViewColumn>
                                 <GridViewColumn Width="180">
                                     <GridViewColumn.Header>
-                                        <GridViewColumnHeader Content="From"
+                                        <GridViewColumnHeader Content="{x:Static strings:Strings.MainWindow_From}"
                                                               AutomationProperties.IsColumnHeader="True"/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
@@ -1170,7 +1171,7 @@
                                 </GridViewColumn>
                                 <GridViewColumn Width="Auto">
                                     <GridViewColumn.Header>
-                                        <GridViewColumnHeader Content="Subject"
+                                        <GridViewColumnHeader Content="{x:Static strings:Strings.MainWindow_Subject}"
                                                               AutomationProperties.IsColumnHeader="True"/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
@@ -1183,7 +1184,7 @@
                                 </GridViewColumn>
                                 <GridViewColumn Width="80">
                                     <GridViewColumn.Header>
-                                        <GridViewColumnHeader Content="Date"
+                                        <GridViewColumnHeader Content="{x:Static strings:Strings.MainWindow_DateName}"
                                                               AutomationProperties.IsColumnHeader="True"/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
@@ -1195,7 +1196,7 @@
                                 <GridViewColumn Width="24">
                                     <GridViewColumn.Header>
                                         <TextBlock Text="&#x1F4CE;" FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                                   ToolTip="Has attachments"
+                                                   ToolTip="{x:Static strings:Strings.MainWindow_HasAttachmentsToolTip}"
                                                    AutomationProperties.IsColumnHeader="True"/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
@@ -1293,7 +1294,7 @@
 
                     <!-- Conversation tree view: one root node per subject group, children are individual messages. -->
                     <TreeView x:Name="ConversationTree"
-                              AutomationProperties.Name="Messages"
+                              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MessagesName}"
                               ItemsSource="{Binding Conversations}"
                               BorderThickness="0"
                               TabIndex="3"
@@ -1432,7 +1433,7 @@
 
                     <!-- From view: one root node per sender, children are individual messages. -->
                     <TreeView x:Name="SenderGroupTree"
-                              AutomationProperties.Name="Messages"
+                              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MessagesName}"
                               ItemsSource="{Binding SenderGroups}"
                               BorderThickness="0"
                               TabIndex="3"
@@ -1571,7 +1572,7 @@
 
                     <!-- To view: one root node per recipient, children are individual messages. -->
                     <TreeView x:Name="ToGroupTree"
-                              AutomationProperties.Name="Messages"
+                              AutomationProperties.Name="{x:Static strings:Strings.MainWindow_MessagesName}"
                               ItemsSource="{Binding ToGroups}"
                               BorderThickness="0"
                               TabIndex="3"
@@ -1759,7 +1760,7 @@
                         Style="{StaticResource StatusBarButtonStyle}"
                         Content="{Binding UpdateAvailableText, Mode=OneWay}"
                         Command="{Binding OpenUpdatePageCommand}"
-                        ToolTip="Press Enter to open the release page in your browser"/>
+                        ToolTip="{x:Static strings:Strings.MainWindow_UpdateStatusToolTip}"/>
             </StatusBarItem>
 
             <!-- Region 4: Rules status (clickable — opens Rules Manager) -->
@@ -1770,8 +1771,8 @@
                         Style="{StaticResource StatusBarButtonStyle}"
                         Content="{Binding RulesStatusText, Mode=OneWay}"
                         Click="RulesStatusButton_Click"
-                        AutomationProperties.Name="{Binding RulesStatusText, StringFormat='Rules — {0}'}"
-                        ToolTip="Open Rules Manager (Ctrl+Shift+L)"/>
+                        AutomationProperties.Name="{Binding RulesStatusText, StringFormat={x:Static strings:Strings.MainWindow_RulesStatusNameFormat}}"
+                        ToolTip="{x:Static strings:Strings.MainWindow_RulesStatusToolTip}"/>
             </StatusBarItem>
 
             <!-- Region 4: Sync progress (informational, visible only when busy) -->
@@ -1783,7 +1784,7 @@
                              Width="80" Height="14"
                              IsIndeterminate="True"
                              Focusable="True"
-                             AutomationProperties.Name="{Binding StatusText, StringFormat='Syncing — {0}'}"/>
+                             AutomationProperties.Name="{Binding StatusText, StringFormat={x:Static strings:Strings.MainWindow_SyncingStatusNameFormat}}"/>
             </StatusBarItem>
         </StatusBar>
 

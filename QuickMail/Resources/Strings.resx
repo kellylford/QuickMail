@@ -1,0 +1,3861 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format are:
+
+    - Portability, since this format is used in the resource files of .NET and
+      Windows applications.
+    - Ease of Parsing, since these files can be considered part of a build
+      process.
+    - Human readable text, since a text sensible to a human should be
+      easy to read and edit by hand as well.
+
+    Example:
+
+    ... ado.net/XML headers & schema ...
+    <resheader name="resmimetype">text/microsoft-resx</resheader>
+    <resheader name="version">2.0</resheader>
+    <resheader name="reader">System.Resources.ResXResourceReader, System.Windows.Forms, ...</resheader>
+    <resheader name="writer">System.Resources.ResXResourceWriter, System.Windows.Forms, ...</resheader>
+    <data name="Name1"><value>this is my long string</value><comment>this is a comment</comment></data>
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Settings_Language" xml:space="preserve">
+    <value>Application language</value>
+  </data>
+  <data name="Settings_Language_GroupHeader" xml:space="preserve">
+    <value>_Language</value>
+  </data>
+  <data name="Settings_Language_GroupAutomationName" xml:space="preserve">
+    <value>Language settings</value>
+  </data>
+  <data name="Settings_Language_FollowWindows" xml:space="preserve">
+    <value>Follow Windows language</value>
+  </data>
+  <data name="Settings_Language_RestartRequired" xml:space="preserve">
+    <value>Language set to {0}. Restart QuickMail to apply.</value>
+  </data>
+  <data name="Settings_Language_English" xml:space="preserve">
+    <value>English</value>
+  </data>
+  <data name="Settings_Language_Spanish" xml:space="preserve">
+    <value>Español (Spanish)</value>
+  </data>
+  <data name="Settings_Language_German" xml:space="preserve">
+    <value>Deutsch (German)</value>
+  </data>
+  <data name="Settings_Language_French" xml:space="preserve">
+    <value>Français (French)</value>
+  </data>
+  <data name="Cmd_Category_Mail" xml:space="preserve">
+    <value>Mail</value>
+  </data>
+  <data name="Cmd_Category_View" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="Cmd_Category_Account" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="Cmd_Category_Help" xml:space="preserve">
+    <value>Help</value>
+  </data>
+  <data name="Cmd_Mail_New_Title" xml:space="preserve">
+    <value>New Message</value>
+  </data>
+  <data name="Cmd_Mail_Reply_Title" xml:space="preserve">
+    <value>Reply</value>
+  </data>
+  <data name="Cmd_Mail_ReplyAll_Title" xml:space="preserve">
+    <value>Reply All</value>
+  </data>
+  <data name="Cmd_Mail_Forward_Title" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="Cmd_Mail_Delete_Title" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="Cmd_Mail_Refresh_Title" xml:space="preserve">
+    <value>Refresh</value>
+  </data>
+  <data name="Cmd_Mail_EmptyTrash_Title" xml:space="preserve">
+    <value>Empty Trash</value>
+  </data>
+  <data name="Cmd_View_ToggleConversation_Title" xml:space="preserve">
+    <value>Cycle View Mode</value>
+  </data>
+  <data name="Cmd_Account_Manage_Title" xml:space="preserve">
+    <value>Manage Accounts</value>
+  </data>
+  <data name="Cmd_Help_UserGuide_Title" xml:space="preserve">
+    <value>Open User Guide</value>
+  </data>
+  <data name="Cmd_View_Search_Title" xml:space="preserve">
+    <value>Search Messages…</value>
+  </data>
+  <data name="Cmd_View_FilterAll_Title" xml:space="preserve">
+    <value>Show All Messages</value>
+  </data>
+  <data name="Cmd_View_FilterUnread_Title" xml:space="preserve">
+    <value>Show Unread Only</value>
+  </data>
+  <data name="Cmd_View_FilterRead_Title" xml:space="preserve">
+    <value>Show Read Only</value>
+  </data>
+  <data name="Cmd_View_FilterWithAttachments_Title" xml:space="preserve">
+    <value>Show Messages with Attachments</value>
+  </data>
+  <data name="Cmd_View_FilterReplied_Title" xml:space="preserve">
+    <value>Show Replied Only</value>
+  </data>
+  <data name="Cmd_View_FilterForwarded_Title" xml:space="preserve">
+    <value>Show Forwarded Only</value>
+  </data>
+  <data name="Cmd_View_FilterToMe_Title" xml:space="preserve">
+    <value>Show Messages Addressed to Me</value>
+  </data>
+  <data name="Cmd_View_SortDateDesc_Title" xml:space="preserve">
+    <value>Sort: Newest First</value>
+  </data>
+  <data name="Cmd_View_SortDateAsc_Title" xml:space="preserve">
+    <value>Sort: Oldest First</value>
+  </data>
+  <data name="Cmd_View_SortAlphaAsc_Title" xml:space="preserve">
+    <value>Sort: A → Z</value>
+  </data>
+  <data name="Cmd_View_SortAlphaDesc_Title" xml:space="preserve">
+    <value>Sort: Z → A</value>
+  </data>
+  <data name="Cmd_View_SortCountDesc_Title" xml:space="preserve">
+    <value>Sort: Most Messages</value>
+  </data>
+  <data name="Cmd_View_SortCountAsc_Title" xml:space="preserve">
+    <value>Sort: Fewest Messages</value>
+  </data>
+  <data name="Cmd_View_SortFlaggedFirst_Title" xml:space="preserve">
+    <value>Sort: Flagged First</value>
+  </data>
+  <data name="Cmd_Mail_Rules_Title" xml:space="preserve">
+    <value>Manage Rules</value>
+  </data>
+  <data name="Cmd_View_Calendar_Title" xml:space="preserve">
+    <value>Calendar</value>
+  </data>
+  <data name="Cmd_Mail_CreateRuleFromMessage_Title" xml:space="preserve">
+    <value>Create Rule from Message</value>
+  </data>
+  <data name="Cmd_Mail_AcceptInvite_Title" xml:space="preserve">
+    <value>Accept Invitation</value>
+  </data>
+  <data name="Cmd_Mail_DeclineInvite_Title" xml:space="preserve">
+    <value>Decline Invitation</value>
+  </data>
+  <data name="Cmd_Mail_TentativeInvite_Title" xml:space="preserve">
+    <value>Tentatively Accept Invitation</value>
+  </data>
+  <data name="Cmd_Help_KeyboardTutorial_Title" xml:space="preserve">
+    <value>Keyboard Tutorial</value>
+  </data>
+  <data name="Cmd_Help_About_Title" xml:space="preserve">
+    <value>About QuickMail</value>
+  </data>
+  <data name="Cmd_Help_ReportBug_Title" xml:space="preserve">
+    <value>Report a Bug</value>
+  </data>
+  <data name="CommandPalette_Title" xml:space="preserve">
+    <value>Command Palette</value>
+  </data>
+  <data name="CommandPalette_CommandsListName" xml:space="preserve">
+    <value>Commands. Arrow keys to navigate, Enter to run, Escape to close.</value>
+  </data>
+  <data name="TabList_Title" xml:space="preserve">
+    <value>Open Tabs</value>
+  </data>
+  <data name="TabList_HeaderText" xml:space="preserve">
+    <value>Open tabs</value>
+  </data>
+  <data name="TabList_HeaderTextWithCount_One" xml:space="preserve">
+    <value>Open tabs ({0})</value>
+  </data>
+  <data name="TabList_HeaderTextWithCount_Other" xml:space="preserve">
+    <value>Open tabs ({0})</value>
+  </data>
+  <data name="TabList_TabListName" xml:space="preserve">
+    <value>Open tabs. Arrow keys to navigate, Enter to activate, Delete to close, Escape to cancel.</value>
+  </data>
+  <data name="TabList_CloseTabButtonName" xml:space="preserve">
+    <value>Close this tab</value>
+  </data>
+  <data name="TabList_CloseTabButtonToolTip" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="TemplatePicker_Title" xml:space="preserve">
+    <value>Insert Template</value>
+  </data>
+  <data name="TemplatePicker_SearchName" xml:space="preserve">
+    <value>Template search</value>
+  </data>
+  <data name="TemplatePicker_InsertButtonContent" xml:space="preserve">
+    <value>_Insert</value>
+  </data>
+  <data name="TemplatePicker_InsertButtonName" xml:space="preserve">
+    <value>Insert selected template</value>
+  </data>
+  <data name="TemplatePicker_CancelButtonContent" xml:space="preserve">
+    <value>_Cancel</value>
+  </data>
+  <data name="TemplatePicker_TemplatesListName" xml:space="preserve">
+    <value>Templates</value>
+  </data>
+  <data name="TemplatePicker_CancelButtonName" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Common_Cancel" xml:space="preserve">
+    <value>_Cancel</value>
+  </data>
+  <data name="Tutorial_KeyboardTutorialFallback" xml:space="preserve">
+    <value>Keyboard tutorial</value>
+  </data>
+  <data name="Tutorial_StepPrefix" xml:space="preserve">
+    <value>Step </value>
+  </data>
+  <data name="Tutorial_StepOfSeparator" xml:space="preserve">
+    <value> of </value>
+  </data>
+  <data name="Tutorial_PressAKeyFallback" xml:space="preserve">
+    <value>Press a key...</value>
+  </data>
+  <data name="Tutorial_EscapeToSkipHint" xml:space="preserve">
+    <value>Press Escape to skip the tutorial at any time.</value>
+  </data>
+  <data name="Tutorial_Announce_PressEscapeToSkipSuffix" xml:space="preserve">
+    <value> Press Escape to skip.</value>
+  </data>
+  <data name="Calendar_Announce_UnavailableOnline" xml:space="preserve">
+    <value>Calendar is unavailable in online mode. It requires the local message cache.</value>
+  </data>
+  <data name="Calendar_Announce_Refreshing" xml:space="preserve">
+    <value>Refreshing calendar.</value>
+  </data>
+  <data name="Calendar_Announce_Updated_One" xml:space="preserve">
+    <value>Calendar updated. {0} event.</value>
+  </data>
+  <data name="Calendar_Announce_Updated_Other" xml:space="preserve">
+    <value>Calendar updated. {0} events.</value>
+  </data>
+  <data name="Calendar_Announce_TodayFiltered_One" xml:space="preserve">
+    <value>Today. {0} event.</value>
+  </data>
+  <data name="Calendar_Announce_TodayFiltered_Other" xml:space="preserve">
+    <value>Today. {0} events.</value>
+  </data>
+  <data name="Calendar_Announce_AllEvents_One" xml:space="preserve">
+    <value>All events. {0} event.</value>
+  </data>
+  <data name="Calendar_Announce_AllEvents_Other" xml:space="preserve">
+    <value>All events. {0} events.</value>
+  </data>
+  <data name="Calendar_Announce_SourceMessageMissing" xml:space="preserve">
+    <value>The original invitation email is no longer in your local message cache.</value>
+  </data>
+  <data name="Calendar_Announce_OpeningMessage" xml:space="preserve">
+    <value>Opening message. {0}.</value>
+  </data>
+  <data name="Calendar_Announce_NoEvents" xml:space="preserve">
+    <value>Calendar. No events.</value>
+  </data>
+  <data name="Calendar_Announce_OpenHint_One" xml:space="preserve">
+    <value>Calendar. {0} upcoming event. Use Up and Down arrows to browse. Press Enter to open the invitation. Press T to filter to today. Press Escape to return to the folder list.</value>
+  </data>
+  <data name="Calendar_Announce_OpenHint_Other" xml:space="preserve">
+    <value>Calendar. {0} upcoming events. Use Up and Down arrows to browse. Press Enter to open the invitation. Press T to filter to today. Press Escape to return to the folder list.</value>
+  </data>
+  <data name="TokenizedAddressBox_Announce_AddressesSelected_One" xml:space="preserve">
+    <value>{0} address selected.</value>
+  </data>
+  <data name="TokenizedAddressBox_Announce_AddressesSelected_Other" xml:space="preserve">
+    <value>{0} addresses selected.</value>
+  </data>
+  <data name="KeyCapture_Title" xml:space="preserve">
+    <value>Assign Shortcut</value>
+  </data>
+  <data name="KeyCapture_DialogName" xml:space="preserve">
+    <value>Assign keyboard shortcut dialog</value>
+  </data>
+  <data name="KeyCapture_PressDesiredCombination" xml:space="preserve">
+    <value>Press your desired key combination</value>
+  </data>
+  <data name="KeyCapture_ModifierHint" xml:space="preserve">
+    <value>(with Ctrl, Shift, or Alt)</value>
+  </data>
+  <data name="KeyCapture_WaitingForInput" xml:space="preserve">
+    <value>(waiting for input...)</value>
+  </data>
+  <data name="KeyCapture_CapturedKeyCombination" xml:space="preserve">
+    <value>Captured key combination</value>
+  </data>
+  <data name="KeyCapture_AcceptShortcut" xml:space="preserve">
+    <value>Accept this shortcut</value>
+  </data>
+  <data name="KeyCapture_CaptureDifferentShortcut" xml:space="preserve">
+    <value>Capture a different shortcut</value>
+  </data>
+  <data name="KeyCapture_CancelClose" xml:space="preserve">
+    <value>Cancel and close without saving</value>
+  </data>
+  <data name="KeyCapture_CapturedShortcut" xml:space="preserve">
+    <value>Captured shortcut</value>
+  </data>
+  <data name="KeyCapture_Announce_ConflictWarning" xml:space="preserve">
+    <value>⚠ Already assigned to: {0}. Select OK to reassign, Change to pick another, or Cancel to keep the existing binding.</value>
+  </data>
+  <data name="KeyCapture_Announce_ListeningForNewShortcut" xml:space="preserve">
+    <value>Listening for a new shortcut.</value>
+  </data>
+  <data name="SpellCheck_Title" xml:space="preserve">
+    <value>Spelling</value>
+  </data>
+  <data name="SpellCheck_NotInDictionary" xml:space="preserve">
+    <value>Not in dictionary</value>
+  </data>
+  <data name="SpellCheck_NotInDictionaryLabel" xml:space="preserve">
+    <value>_Not in dictionary:</value>
+  </data>
+  <data name="SpellCheck_ChangeTo" xml:space="preserve">
+    <value>Change to</value>
+  </data>
+  <data name="SpellCheck_ChangeToLabel" xml:space="preserve">
+    <value>Change _to:</value>
+  </data>
+  <data name="SpellCheck_Suggestions" xml:space="preserve">
+    <value>Suggestions</value>
+  </data>
+  <data name="SpellCheck_SuggestionsLabel" xml:space="preserve">
+    <value>_Suggestions:</value>
+  </data>
+  <data name="SpellCheck_Change" xml:space="preserve">
+    <value>_Change</value>
+  </data>
+  <data name="SpellCheck_ChangeAll" xml:space="preserve">
+    <value>Change Al_l</value>
+  </data>
+  <data name="SpellCheck_Ignore" xml:space="preserve">
+    <value>_Ignore</value>
+  </data>
+  <data name="SpellCheck_IgnoreAll" xml:space="preserve">
+    <value>I_gnore All</value>
+  </data>
+  <data name="SpellCheck_AddToDictionary" xml:space="preserve">
+    <value>_Add to Dictionary</value>
+  </data>
+  <data name="SpellCheck_ReadInContext" xml:space="preserve">
+    <value>_Read in Context</value>
+  </data>
+  <data name="SpellCheck_Close" xml:space="preserve">
+    <value>Cl_ose</value>
+  </data>
+  <data name="SpellCheck_Announce_CheckingSource" xml:space="preserve">
+    <value>Checking {0}.</value>
+  </data>
+  <data name="Properties_CopyAllProperties" xml:space="preserve">
+    <value>Copy all properties</value>
+  </data>
+  <data name="Properties_Field" xml:space="preserve">
+    <value>Field</value>
+  </data>
+  <data name="Properties_Value" xml:space="preserve">
+    <value>Value</value>
+  </data>
+  <data name="Properties_RawHeaders" xml:space="preserve">
+    <value>Raw headers</value>
+  </data>
+  <data name="Properties_RawMessageHeaders" xml:space="preserve">
+    <value>Raw message headers</value>
+  </data>
+  <data name="Properties_CloseButtonName" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="Properties_Announce_CopyRowHint" xml:space="preserve">
+    <value>Press Enter or Ctrl+C to copy the selected row.</value>
+  </data>
+  <data name="Properties_Announce_RowsCopied_One" xml:space="preserve">
+    <value>{0} row copied</value>
+  </data>
+  <data name="Properties_Announce_RowsCopied_Other" xml:space="preserve">
+    <value>{0} rows copied</value>
+  </data>
+  <data name="GrabAddresses_Title" xml:space="preserve">
+    <value>Add to Address Book</value>
+  </data>
+  <data name="GrabAddresses_SelectAddressesPrompt" xml:space="preserve">
+    <value>Select addresses to add to your address book:</value>
+  </data>
+  <data name="GrabAddresses_AddressesFromMessage" xml:space="preserve">
+    <value>Addresses from message</value>
+  </data>
+  <data name="GrabAddresses_AddToGroup" xml:space="preserve">
+    <value>Add to group</value>
+  </data>
+  <data name="GrabAddresses_Group" xml:space="preserve">
+    <value>Group</value>
+  </data>
+  <data name="GrabAddresses_NewGroupNameLabel" xml:space="preserve">
+    <value>New group name:</value>
+  </data>
+  <data name="GrabAddresses_NewGroupName" xml:space="preserve">
+    <value>New group name</value>
+  </data>
+  <data name="GrabAddresses_SaveSelectedAddresses" xml:space="preserve">
+    <value>Save selected addresses</value>
+  </data>
+  <data name="GrabAddresses_Announce_EnterNewGroupName" xml:space="preserve">
+    <value>Enter a name for the new group.</value>
+  </data>
+  <data name="GrabAddresses_Announce_DuplicateGroupName" xml:space="preserve">
+    <value>A group named "{0}" already exists. Enter a different name, or pick the existing group from the list.</value>
+  </data>
+  <data name="GrabAddresses_Announce_SaveFailed" xml:space="preserve">
+    <value>Could not save addresses. See the log for details.</value>
+  </data>
+  <data name="Settings_DeleteLog_ConfirmMessage" xml:space="preserve">
+    <value>Delete the QuickMail log file? This cannot be undone.</value>
+  </data>
+  <data name="Settings_DeleteLog_ConfirmTitle" xml:space="preserve">
+    <value>Delete Log</value>
+  </data>
+  <data name="Settings_Announce_HotkeyAssigned" xml:space="preserve">
+    <value>{0} assigned to {1}</value>
+  </data>
+  <data name="ForwardAttachment_Title" xml:space="preserve">
+    <value>Include Attachments</value>
+  </data>
+  <data name="ForwardAttachment_Forward" xml:space="preserve">
+    <value>_Forward</value>
+  </data>
+  <data name="ForwardAttachment_Cancel" xml:space="preserve">
+    <value>_Cancel</value>
+  </data>
+  <data name="ForwardAttachment_PropertiesTitle" xml:space="preserve">
+    <value>Attachment Properties</value>
+  </data>
+  <data name="ForwardAttachment_PropertiesMessage" xml:space="preserve">
+    <value>File name: {0}
+Size: {1}
+Type: {2}</value>
+  </data>
+  <data name="FlagPicker_Title" xml:space="preserve">
+    <value>Select Flag</value>
+  </data>
+  <data name="FlagPicker_SelectFlag" xml:space="preserve">
+    <value>Select flag:</value>
+  </data>
+  <data name="FlagPicker_ClearFlag" xml:space="preserve">
+    <value>_Clear Flag</value>
+  </data>
+  <data name="FlagPicker_CancelButton" xml:space="preserve">
+    <value>Ca_ncel</value>
+  </data>
+  <data name="FlagPicker_Flags" xml:space="preserve">
+    <value>Flags</value>
+  </data>
+  <data name="InsertLink_Title" xml:space="preserve">
+    <value>Insert Link</value>
+  </data>
+  <data name="InsertLink_Url" xml:space="preserve">
+    <value>_URL:</value>
+  </data>
+  <data name="InsertLink_DisplayText" xml:space="preserve">
+    <value>_Display text:</value>
+  </data>
+  <data name="Common_OK" xml:space="preserve">
+    <value>_OK</value>
+  </data>
+  <data name="NewFolder_Title" xml:space="preserve">
+    <value>New Folder</value>
+  </data>
+  <data name="NewFolder_OK" xml:space="preserve">
+    <value>_OK</value>
+  </data>
+  <data name="NewFolder_Cancel" xml:space="preserve">
+    <value>_Cancel</value>
+  </data>
+  <data name="NewFolder_CreateFolder" xml:space="preserve">
+    <value>Create folder</value>
+  </data>
+  <data name="NewFolder_FolderName" xml:space="preserve">
+    <value>Folder name</value>
+  </data>
+  <data name="NewFolder_FolderNameHelpText" xml:space="preserve">
+    <value>Enter a name for the new folder</value>
+  </data>
+  <data name="NewFolder_ParentFolderFormat" xml:space="preserve">
+    <value>Parent folder: {0}</value>
+  </data>
+  <data name="NewFolder_CancelButtonName" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="About_Title" xml:space="preserve">
+    <value>About QuickMail</value>
+  </data>
+  <data name="About_Close" xml:space="preserve">
+    <value>_Close</value>
+  </data>
+  <data name="Common_Close" xml:space="preserve">
+    <value>C_lose</value>
+  </data>
+  <data name="About_CloseButtonName" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="About_AppName" xml:space="preserve">
+    <value>QuickMail</value>
+  </data>
+  <data name="About_ViewLicenseOnGitHub" xml:space="preserve">
+    <value>View MIT License on GitHub</value>
+  </data>
+  <data name="About_MitLicense" xml:space="preserve">
+    <value>MIT License</value>
+  </data>
+  <data name="FormattingList_Title" xml:space="preserve">
+    <value>Formatting</value>
+  </data>
+  <data name="FormattingList_Close" xml:space="preserve">
+    <value>_Close</value>
+  </data>
+  <data name="FormattingList_Formatting" xml:space="preserve">
+    <value>Formatting</value>
+  </data>
+  <data name="MarkdownPreview_MessagePreview" xml:space="preserve">
+    <value>Message preview</value>
+  </data>
+  <data name="MarkdownPreview_ComposePreviewTitle" xml:space="preserve">
+    <value>Compose — Preview — QuickMail</value>
+  </data>
+  <data name="MarkdownPreview_SubjectPreviewTitleFormat" xml:space="preserve">
+    <value>{0} — Preview — QuickMail</value>
+  </data>
+  <data name="MarkdownPreview_NoContentToPreview" xml:space="preserve">
+    <value>No content to preview.</value>
+  </data>
+  <data name="MarkdownPreview_PreviewHtmlTitle" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="MarkdownPreview_PreviewHtmlTitleWithSubjectFormat" xml:space="preserve">
+    <value>Preview — {0}</value>
+  </data>
+  <data name="Settings_Title" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="Settings_General_TabHeader" xml:space="preserve">
+    <value>_General</value>
+  </data>
+  <data name="Settings_General_TabAutomationName" xml:space="preserve">
+    <value>General settings</value>
+  </data>
+  <data name="Settings_MessageList_GroupHeader" xml:space="preserve">
+    <value>Message _List</value>
+  </data>
+  <data name="Settings_MessageList_GroupAutomationName" xml:space="preserve">
+    <value>Message list settings</value>
+  </data>
+  <data name="Settings_PreviewLines_Label" xml:space="preserve">
+    <value>Preview _lines:</value>
+  </data>
+  <data name="Settings_PreviewLines_Off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="Settings_PreviewLines_1" xml:space="preserve">
+    <value>1 line</value>
+  </data>
+  <data name="Settings_PreviewLines_2" xml:space="preserve">
+    <value>2 lines</value>
+  </data>
+  <data name="Settings_PreviewLines_3" xml:space="preserve">
+    <value>3 lines</value>
+  </data>
+  <data name="Settings_PreviewLines_4" xml:space="preserve">
+    <value>4 lines</value>
+  </data>
+  <data name="Settings_PreviewLines_5" xml:space="preserve">
+    <value>5 lines</value>
+  </data>
+  <data name="Settings_PreviewLines_Hint" xml:space="preserve">
+    <value>Takes effect after reopening a folder.</value>
+  </data>
+  <data name="Settings_ShowMessageStatus" xml:space="preserve">
+    <value>Show message _status column</value>
+  </data>
+  <data name="Settings_ShowMessageStatus_AutomationName" xml:space="preserve">
+    <value>Show message status column in message list</value>
+  </data>
+  <data name="Settings_View_GroupHeader" xml:space="preserve">
+    <value>_View</value>
+  </data>
+  <data name="Settings_View_GroupAutomationName" xml:space="preserve">
+    <value>View settings</value>
+  </data>
+  <data name="Settings_DisplayMode_Label" xml:space="preserve">
+    <value>Display mode:</value>
+  </data>
+  <data name="Settings_ViewMode_Messages" xml:space="preserve">
+    <value>Messages (flat list)</value>
+  </data>
+  <data name="Settings_ViewMode_Conversations" xml:space="preserve">
+    <value>Conversations (grouped by subject)</value>
+  </data>
+  <data name="Settings_ViewMode_BySender" xml:space="preserve">
+    <value>By Sender</value>
+  </data>
+  <data name="Settings_ViewMode_ByRecipient" xml:space="preserve">
+    <value>By Recipient</value>
+  </data>
+  <data name="Settings_Sync_GroupHeader" xml:space="preserve">
+    <value>_Sync</value>
+  </data>
+  <data name="Settings_Sync_GroupAutomationName" xml:space="preserve">
+    <value>Synchronization settings</value>
+  </data>
+  <data name="Settings_SyncRange_Label" xml:space="preserve">
+    <value>Sync _range:</value>
+  </data>
+  <data name="Settings_SyncRange_7Days" xml:space="preserve">
+    <value>7 days</value>
+  </data>
+  <data name="Settings_SyncRange_30Days" xml:space="preserve">
+    <value>30 days</value>
+  </data>
+  <data name="Settings_SyncRange_6Months" xml:space="preserve">
+    <value>6 months</value>
+  </data>
+  <data name="Settings_SyncRange_1Year" xml:space="preserve">
+    <value>1 year</value>
+  </data>
+  <data name="Settings_SyncRange_AllMail" xml:space="preserve">
+    <value>All mail</value>
+  </data>
+  <data name="Settings_InitialFetchCount_Label" xml:space="preserve">
+    <value>Initial fetch _count:</value>
+  </data>
+  <data name="Settings_InitialFetchCount_100" xml:space="preserve">
+    <value>100 messages</value>
+  </data>
+  <data name="Settings_InitialFetchCount_250" xml:space="preserve">
+    <value>250 messages</value>
+  </data>
+  <data name="Settings_InitialFetchCount_500" xml:space="preserve">
+    <value>500 messages</value>
+  </data>
+  <data name="Settings_InitialFetchCount_1000" xml:space="preserve">
+    <value>1,000 messages</value>
+  </data>
+  <data name="Settings_InitialFetchCount_All" xml:space="preserve">
+    <value>All messages</value>
+  </data>
+  <data name="Settings_MailActions_GroupHeader" xml:space="preserve">
+    <value>Mail _Actions</value>
+  </data>
+  <data name="Settings_MailActions_GroupAutomationName" xml:space="preserve">
+    <value>Mail action settings</value>
+  </data>
+  <data name="Settings_ConfirmEmptyTrash" xml:space="preserve">
+    <value>Confirm before emptying _trash</value>
+  </data>
+  <data name="Settings_ConfirmEmptyTrash_AutomationName" xml:space="preserve">
+    <value>Show a confirmation dialog before permanently deleting all messages in trash</value>
+  </data>
+  <data name="Settings_ConfirmEmptyTrash_Hint" xml:space="preserve">
+    <value>Recommended: emptying trash cannot be undone.</value>
+  </data>
+  <data name="Settings_Composing_GroupHeader" xml:space="preserve">
+    <value>Com_posing</value>
+  </data>
+  <data name="Settings_Composing_GroupAutomationName" xml:space="preserve">
+    <value>Composing settings</value>
+  </data>
+  <data name="Settings_AutoSaveDrafts" xml:space="preserve">
+    <value>Automatically save _drafts while composing</value>
+  </data>
+  <data name="Settings_AutoSaveDrafts_AutomationName" xml:space="preserve">
+    <value>Automatically save the message as a draft while composing</value>
+  </data>
+  <data name="Settings_AutoSaveDrafts_Hint" xml:space="preserve">
+    <value>Auto-save is quiet: the time of the last save shows in the compose status row. A failed save is announced once.</value>
+  </data>
+  <data name="Settings_AutoSaveInterval_Label" xml:space="preserve">
+    <value>Auto-save _interval:</value>
+  </data>
+  <data name="Settings_AutoSaveInterval_30Sec" xml:space="preserve">
+    <value>30 seconds</value>
+  </data>
+  <data name="Settings_AutoSaveInterval_1Min" xml:space="preserve">
+    <value>1 minute</value>
+  </data>
+  <data name="Settings_AutoSaveInterval_2Min" xml:space="preserve">
+    <value>2 minutes</value>
+  </data>
+  <data name="Settings_AutoSaveInterval_5Min" xml:space="preserve">
+    <value>5 minutes</value>
+  </data>
+  <data name="Settings_AutoSaveInterval_10Min" xml:space="preserve">
+    <value>10 minutes</value>
+  </data>
+  <data name="Settings_DefaultComposeMode_Label" xml:space="preserve">
+    <value>Default compose _mode:</value>
+  </data>
+  <data name="Settings_ComposeMode_PlainText" xml:space="preserve">
+    <value>Plain Text</value>
+  </data>
+  <data name="Settings_ComposeMode_Markdown" xml:space="preserve">
+    <value>Markdown</value>
+  </data>
+  <data name="Settings_ComposeMode_Html" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Settings_DefaultComposeMode_Hint" xml:space="preserve">
+    <value>Drafts and templates always reopen in plain text.</value>
+  </data>
+  <data name="Settings_ScreenReaderAnnouncements_GroupHeader" xml:space="preserve">
+    <value>Screen Reader _Announcements</value>
+  </data>
+  <data name="Settings_ScreenReaderAnnouncements_GroupAutomationName" xml:space="preserve">
+    <value>Screen reader announcement settings</value>
+  </data>
+  <data name="Settings_CustomAnnouncements" xml:space="preserve">
+    <value>Enable custom _announcements</value>
+  </data>
+  <data name="Settings_CustomAnnouncements_AutomationName" xml:space="preserve">
+    <value>Enable all custom screen reader announcements from QuickMail</value>
+  </data>
+  <data name="Settings_CustomAnnouncements_Hint" xml:space="preserve">
+    <value>When off, only native control announcements are spoken.</value>
+  </data>
+  <data name="Settings_AnnounceHints" xml:space="preserve">
+    <value>Announce _hints and instructions</value>
+  </data>
+  <data name="Settings_AnnounceHints_AutomationName" xml:space="preserve">
+    <value>Announce instructional hints such as how to use the search box</value>
+  </data>
+  <data name="Settings_AnnounceStatus" xml:space="preserve">
+    <value>Announce loading and sync _status</value>
+  </data>
+  <data name="Settings_AnnounceStatus_AutomationName" xml:space="preserve">
+    <value>Announce background loading and sync progress</value>
+  </data>
+  <data name="Settings_AnnounceResults" xml:space="preserve">
+    <value>Announce action _results</value>
+  </data>
+  <data name="Settings_AnnounceResults_AutomationName" xml:space="preserve">
+    <value>Announce outcomes such as search result counts and move confirmations</value>
+  </data>
+  <data name="Settings_AnnounceSpellingWhileTyping" xml:space="preserve">
+    <value>Announce spelling errors _when typing</value>
+  </data>
+  <data name="Settings_AnnounceSpellingWhileTyping_AutomationName" xml:space="preserve">
+    <value>Announce spelling errors when typing</value>
+  </data>
+  <data name="Settings_AnnounceSpellingWhileNavigating" xml:space="preserve">
+    <value>Announce spelling errors while _navigating</value>
+  </data>
+  <data name="Settings_AnnounceSpellingWhileNavigating_AutomationName" xml:space="preserve">
+    <value>Announce spelling errors when the caret moves into a misspelled word during navigation</value>
+  </data>
+  <data name="Settings_AnnounceSpellingWhileNavigating_HelpText" xml:space="preserve">
+    <value>Ctrl+F7 and Ctrl+Shift+F7 always announce spelling regardless of this setting</value>
+  </data>
+  <data name="Settings_AnnounceSpellingSuggestions" xml:space="preserve">
+    <value>Announce spelling _suggestions</value>
+  </data>
+  <data name="Settings_AnnounceSpellingSuggestions_AutomationName" xml:space="preserve">
+    <value>Announce spelling suggestions when a misspelling is announced</value>
+  </data>
+  <data name="Settings_SpellingSuggestionsVerbosity_Header" xml:space="preserve">
+    <value>Spelling Suggestions Verbosity</value>
+  </data>
+  <data name="Settings_VerbosityNumbersWithSuggestions" xml:space="preserve">
+    <value>_Numbers with suggestions</value>
+  </data>
+  <data name="Settings_VerbosityNumbersWithSuggestions_AutomationName" xml:space="preserve">
+    <value>Numbers with suggestions</value>
+  </data>
+  <data name="Settings_VerbosityNumbersWithSuggestions_HelpText" xml:space="preserve">
+    <value>Each suggestion is preceded by its number, for example: 1: the, 2: then, 3: them</value>
+  </data>
+  <data name="Settings_VerbosityJustSuggestions" xml:space="preserve">
+    <value>_Just suggestions</value>
+  </data>
+  <data name="Settings_VerbosityJustSuggestions_AutomationName" xml:space="preserve">
+    <value>Just suggestions</value>
+  </data>
+  <data name="Settings_VerbosityJustSuggestions_HelpText" xml:space="preserve">
+    <value>Suggestions are read without numbers, for example: the, then, them</value>
+  </data>
+  <data name="Settings_AnnounceFormattingWhileNavigating" xml:space="preserve">
+    <value>Announce _formatting while navigating in HTML compose</value>
+  </data>
+  <data name="Settings_AnnounceFormattingWhileNavigating_AutomationName" xml:space="preserve">
+    <value>Announce block type such as heading level when the caret moves to a different paragraph in HTML compose mode</value>
+  </data>
+  <data name="Settings_AnnounceFlagStatus" xml:space="preserve">
+    <value>Announce fla_g status</value>
+  </data>
+  <data name="Settings_AnnounceFlagStatus_AutomationName" xml:space="preserve">
+    <value>Announce flag status</value>
+  </data>
+  <data name="Settings_Advanced_TabHeader" xml:space="preserve">
+    <value>_Advanced</value>
+  </data>
+  <data name="Settings_Advanced_TabAutomationName" xml:space="preserve">
+    <value>Advanced settings</value>
+  </data>
+  <data name="Settings_Logging_GroupHeader" xml:space="preserve">
+    <value>QuickMail _Logging</value>
+  </data>
+  <data name="Settings_Logging_GroupAutomationName" xml:space="preserve">
+    <value>QuickMail logging settings</value>
+  </data>
+  <data name="Settings_EnableLogging" xml:space="preserve">
+    <value>Enable _logging</value>
+  </data>
+  <data name="Settings_EnableLogging_AutomationName" xml:space="preserve">
+    <value>Enable logging</value>
+  </data>
+  <data name="Settings_DeleteLog" xml:space="preserve">
+    <value>_Delete QuickMail log</value>
+  </data>
+  <data name="Settings_DeleteLog_AutomationName" xml:space="preserve">
+    <value>Delete QuickMail log</value>
+  </data>
+  <data name="Settings_LogFormat_GroupHeader" xml:space="preserve">
+    <value>_Log Format</value>
+  </data>
+  <data name="Settings_LogFormat_GroupAutomationName" xml:space="preserve">
+    <value>Log format settings</value>
+  </data>
+  <data name="Settings_LogFormat_ActionFirst" xml:space="preserve">
+    <value>_Action first (recommended)</value>
+  </data>
+  <data name="Settings_LogFormat_ActionFirst_AutomationName" xml:space="preserve">
+    <value>Action first</value>
+  </data>
+  <data name="Settings_LogFormat_ActionFirst_HelpText" xml:space="preserve">
+    <value>Message then timestamp — easier to scan since the log is already chronological.</value>
+  </data>
+  <data name="Settings_LogFormat_ActionFirst_Example" xml:space="preserve">
+    <value>Example: Sync completed: 42 messages  [2024-11-15 14:23:45.123]</value>
+  </data>
+  <data name="Settings_LogFormat_TimeFirst" xml:space="preserve">
+    <value>_Time first</value>
+  </data>
+  <data name="Settings_LogFormat_TimeFirst_AutomationName" xml:space="preserve">
+    <value>Time first</value>
+  </data>
+  <data name="Settings_LogFormat_TimeFirst_HelpText" xml:space="preserve">
+    <value>Timestamp then message — the original log format.</value>
+  </data>
+  <data name="Settings_LogFormat_TimeFirst_Example" xml:space="preserve">
+    <value>Example: 2024-11-15 14:23:45.123  Sync completed: 42 messages</value>
+  </data>
+  <data name="Settings_KeyboardShortcuts_TabHeader" xml:space="preserve">
+    <value>_Keyboard Shortcuts</value>
+  </data>
+  <data name="Settings_KeyboardShortcuts_TabAutomationName" xml:space="preserve">
+    <value>Keyboard shortcuts</value>
+  </data>
+  <data name="Settings_KeyboardShortcuts_HelperText" xml:space="preserve">
+    <value>Arrow to a command, then press Enter to assign a shortcut or Delete to restore the default.</value>
+  </data>
+  <data name="Settings_KeyboardShortcuts_ListAutomationName" xml:space="preserve">
+    <value>Keyboard shortcuts list</value>
+  </data>
+  <data name="Settings_KeyboardShortcuts_ColumnCategory" xml:space="preserve">
+    <value>Category</value>
+  </data>
+  <data name="Settings_KeyboardShortcuts_ColumnCommand" xml:space="preserve">
+    <value>Command</value>
+  </data>
+  <data name="Settings_KeyboardShortcuts_ColumnShortcut" xml:space="preserve">
+    <value>Shortcut</value>
+  </data>
+  <data name="Settings_SetShortcut" xml:space="preserve">
+    <value>Set Shortcut…</value>
+  </data>
+  <data name="Settings_SetShortcut_AutomationName" xml:space="preserve">
+    <value>Set shortcut for selected command</value>
+  </data>
+  <data name="Settings_RestoreDefault" xml:space="preserve">
+    <value>Restore Default</value>
+  </data>
+  <data name="Settings_RestoreDefault_AutomationName" xml:space="preserve">
+    <value>Restore default shortcut for selected command</value>
+  </data>
+  <data name="Settings_Windowing_TabHeader" xml:space="preserve">
+    <value>_Windowing</value>
+  </data>
+  <data name="Settings_Windowing_TabAutomationName" xml:space="preserve">
+    <value>Windowing settings</value>
+  </data>
+  <data name="Settings_MessageOpenMode_GroupHeader" xml:space="preserve">
+    <value>_Message Open Mode</value>
+  </data>
+  <data name="Settings_MessageOpenMode_GroupAutomationName" xml:space="preserve">
+    <value>Message open mode settings</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Description" xml:space="preserve">
+    <value>Choose where messages open when you press Enter or select one.</value>
+  </data>
+  <data name="Settings_MessageOpenMode_ReadingPane" xml:space="preserve">
+    <value>Reading _pane (default)</value>
+  </data>
+  <data name="Settings_MessageOpenMode_ReadingPane_AutomationName" xml:space="preserve">
+    <value>Reading pane</value>
+  </data>
+  <data name="Settings_MessageOpenMode_ReadingPane_HelpText" xml:space="preserve">
+    <value>Opens messages in the reading pane below the message list. This is the default behaviour.</value>
+  </data>
+  <data name="Settings_MessageOpenMode_ReadingPane_Hint" xml:space="preserve">
+    <value>Enter opens a message in the reading pane below the list.</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Tab" xml:space="preserve">
+    <value>_Tab</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Tab_AutomationName" xml:space="preserve">
+    <value>Tab</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Tab_HelpText" xml:space="preserve">
+    <value>Opens messages in a tab strip above the message list.</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Tab_Hint" xml:space="preserve">
+    <value>Enter opens a message as a new tab. Ctrl+Tab cycles tabs. Ctrl+W closes.</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Window" xml:space="preserve">
+    <value>_Window</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Window_AutomationName" xml:space="preserve">
+    <value>Window</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Window_HelpText" xml:space="preserve">
+    <value>Opens each message in its own window.</value>
+  </data>
+  <data name="Settings_MessageOpenMode_Window_Hint" xml:space="preserve">
+    <value>Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window.</value>
+  </data>
+  <data name="Settings_TabBehaviour_GroupHeader" xml:space="preserve">
+    <value>_Tab Behaviour</value>
+  </data>
+  <data name="Settings_TabBehaviour_GroupAutomationName" xml:space="preserve">
+    <value>Tab behaviour settings</value>
+  </data>
+  <data name="Settings_ConfirmCloseTabWithUnsaved" xml:space="preserve">
+    <value>_Confirm before closing a tab with unsaved changes</value>
+  </data>
+  <data name="Settings_ConfirmCloseTabWithUnsaved_AutomationName" xml:space="preserve">
+    <value>Show a confirmation dialog before closing a tab that has unsaved draft changes</value>
+  </data>
+  <data name="Settings_Appearance_TabHeader" xml:space="preserve">
+    <value>A_ppearance</value>
+  </data>
+  <data name="Settings_Appearance_TabAutomationName" xml:space="preserve">
+    <value>Appearance</value>
+  </data>
+  <data name="Settings_HighContrastActive_Notice" xml:space="preserve">
+    <value>Windows High Contrast is active; theme colors are supplied by Windows. Your theme choice below is saved and returns when High Contrast is turned off.</value>
+  </data>
+  <data name="Settings_Theme_GroupHeader" xml:space="preserve">
+    <value>_Theme</value>
+  </data>
+  <data name="Settings_Theme_GroupAutomationName" xml:space="preserve">
+    <value>Theme settings</value>
+  </data>
+  <data name="Settings_Theme_Label" xml:space="preserve">
+    <value>The_me:</value>
+  </data>
+  <data name="Settings_Theme_Hint" xml:space="preserve">
+    <value>System follows the Windows light or dark setting. Themes can be managed, shared, and imported from the Theme Manager (Command Palette: Manage Themes).</value>
+  </data>
+  <data name="Settings_Text_GroupHeader" xml:space="preserve">
+    <value>Te_xt</value>
+  </data>
+  <data name="Settings_Text_GroupAutomationName" xml:space="preserve">
+    <value>Text settings</value>
+  </data>
+  <data name="Settings_Font_Label" xml:space="preserve">
+    <value>_Font:</value>
+  </data>
+  <data name="Settings_TextSize_Label" xml:space="preserve">
+    <value>Text si_ze:</value>
+  </data>
+  <data name="Settings_TextSize_100" xml:space="preserve">
+    <value>100%</value>
+  </data>
+  <data name="Settings_TextSize_110" xml:space="preserve">
+    <value>110%</value>
+  </data>
+  <data name="Settings_TextSize_125" xml:space="preserve">
+    <value>125%</value>
+  </data>
+  <data name="Settings_TextSize_150" xml:space="preserve">
+    <value>150%</value>
+  </data>
+  <data name="Settings_TextSize_175" xml:space="preserve">
+    <value>175%</value>
+  </data>
+  <data name="Settings_TextSize_200" xml:space="preserve">
+    <value>200%</value>
+  </data>
+  <data name="Settings_Vision_GroupHeader" xml:space="preserve">
+    <value>_Vision</value>
+  </data>
+  <data name="Settings_Vision_GroupAutomationName" xml:space="preserve">
+    <value>Vision settings</value>
+  </data>
+  <data name="Settings_UnderlineLinks" xml:space="preserve">
+    <value>Always _underline links</value>
+  </data>
+  <data name="Settings_UnderlineLinks_AutomationName" xml:space="preserve">
+    <value>Always underline links</value>
+  </data>
+  <data name="Settings_ThickFocus" xml:space="preserve">
+    <value>Thicker keyboard focus in_dicators</value>
+  </data>
+  <data name="Settings_ThickFocus_AutomationName" xml:space="preserve">
+    <value>Thicker keyboard focus indicators</value>
+  </data>
+  <data name="Settings_ForceMessageTheme" xml:space="preserve">
+    <value>Apply theme colors to message c_ontent</value>
+  </data>
+  <data name="Settings_ForceMessageTheme_AutomationName" xml:space="preserve">
+    <value>Apply theme colors to message content</value>
+  </data>
+  <data name="Settings_ForceMessageTheme_Hint" xml:space="preserve">
+    <value>Overrides the colors and fonts chosen by a message's sender. Turn on when messages arrive with hard-to-read colors.</value>
+  </data>
+  <data name="Settings_Save_AutomationName" xml:space="preserve">
+    <value>Save settings</value>
+  </data>
+  <data name="Settings_Cancel_AutomationName" xml:space="preserve">
+    <value>Cancel and close without saving</value>
+  </data>
+  <data name="GroupManager_Title" xml:space="preserve">
+    <value>Group Manager</value>
+  </data>
+  <data name="GroupManager_GroupsHeading" xml:space="preserve">
+    <value>Groups</value>
+  </data>
+  <data name="GroupManager_NewGroupButton" xml:space="preserve">
+    <value>_New group</value>
+  </data>
+  <data name="GroupManager_NewGroup" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="GroupManager_NewGroupName" xml:space="preserve">
+    <value>New group name</value>
+  </data>
+  <data name="GroupManager_Groups" xml:space="preserve">
+    <value>Groups</value>
+  </data>
+  <data name="GroupManager_MembersOfFormat" xml:space="preserve">
+    <value>Members of {0}</value>
+  </data>
+  <data name="GroupManager_GroupMembers" xml:space="preserve">
+    <value>Group members</value>
+  </data>
+  <data name="GroupManager_NameColumn" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="GroupManager_EmailColumn" xml:space="preserve">
+    <value>Email</value>
+  </data>
+  <data name="GroupManager_AddMembersHeading" xml:space="preserve">
+    <value>Add members</value>
+  </data>
+  <data name="GroupManager_SearchContactsToAdd" xml:space="preserve">
+    <value>Search contacts to add</value>
+  </data>
+  <data name="GroupManager_ContactCandidates" xml:space="preserve">
+    <value>Contact candidates</value>
+  </data>
+  <data name="GroupManager_RenameButton" xml:space="preserve">
+    <value>_Rename</value>
+  </data>
+  <data name="GroupManager_RenameGroup" xml:space="preserve">
+    <value>Rename group</value>
+  </data>
+  <data name="GroupManager_DeleteButton" xml:space="preserve">
+    <value>_Delete</value>
+  </data>
+  <data name="GroupManager_DeleteGroup" xml:space="preserve">
+    <value>Delete group</value>
+  </data>
+  <data name="GroupManager_CloseGroupManager" xml:space="preserve">
+    <value>Close group manager</value>
+  </data>
+  <data name="ReportBug_Title" xml:space="preserve">
+    <value>Report a Bug - QuickMail</value>
+  </data>
+  <data name="ReportBug_SummaryLabel" xml:space="preserve">
+    <value>Summary:</value>
+  </data>
+  <data name="ReportBug_Summary" xml:space="preserve">
+    <value>Summary</value>
+  </data>
+  <data name="ReportBug_WhatHappenedLabel" xml:space="preserve">
+    <value>What happened:</value>
+  </data>
+  <data name="ReportBug_WhatHappened" xml:space="preserve">
+    <value>What happened</value>
+  </data>
+  <data name="ReportBug_WhatExpectedLabel" xml:space="preserve">
+    <value>What you expected:</value>
+  </data>
+  <data name="ReportBug_WhatExpected" xml:space="preserve">
+    <value>What you expected</value>
+  </data>
+  <data name="ReportBug_StepsToReproduceLabel" xml:space="preserve">
+    <value>Steps to reproduce:</value>
+  </data>
+  <data name="ReportBug_StepsToReproduce" xml:space="preserve">
+    <value>Steps to reproduce</value>
+  </data>
+  <data name="ReportBug_PreviewLabel" xml:space="preserve">
+    <value>Preview — exactly what will be sent:</value>
+  </data>
+  <data name="ReportBug_Preview" xml:space="preserve">
+    <value>Preview</value>
+  </data>
+  <data name="ReportBug_OpenIssueInBrowser" xml:space="preserve">
+    <value>Open issue in browser</value>
+  </data>
+  <data name="ReportBug_OpenIssueFormat" xml:space="preserve">
+    <value>Open issue: {0}</value>
+  </data>
+  <data name="ReportBug_SendButton" xml:space="preserve">
+    <value>_Send</value>
+  </data>
+  <data name="ReportBug_Send" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="ReportBug_CopyAndOpenButton" xml:space="preserve">
+    <value>_Copy report and open GitHub</value>
+  </data>
+  <data name="ReportBug_CopyReportAndOpenGitHub" xml:space="preserve">
+    <value>Copy report and open GitHub</value>
+  </data>
+  <data name="FolderPicker_Title" xml:space="preserve">
+    <value>Go to Folder</value>
+  </data>
+  <data name="FolderPicker_FolderSearch" xml:space="preserve">
+    <value>Folder search</value>
+  </data>
+  <data name="FolderPicker_OpenButton" xml:space="preserve">
+    <value>_Open</value>
+  </data>
+  <data name="FolderPicker_OpenSelectedFolder" xml:space="preserve">
+    <value>Open selected folder</value>
+  </data>
+  <data name="FolderPicker_CancelButton" xml:space="preserve">
+    <value>_Cancel</value>
+  </data>
+  <data name="FolderPicker_CancelButtonName" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="FolderPicker_Folders" xml:space="preserve">
+    <value>Folders</value>
+  </data>
+  <data name="Message_Menu_File" xml:space="preserve">
+    <value>_File</value>
+  </data>
+  <data name="Message_Menu_CloseWindow" xml:space="preserve">
+    <value>Close _Window</value>
+  </data>
+  <data name="Message_CloseWindow_Name" xml:space="preserve">
+    <value>Close Window</value>
+  </data>
+  <data name="Message_Menu_Message" xml:space="preserve">
+    <value>_Message</value>
+  </data>
+  <data name="Message_Menu_Reply" xml:space="preserve">
+    <value>_Reply</value>
+  </data>
+  <data name="Message_Reply_Name" xml:space="preserve">
+    <value>Reply</value>
+  </data>
+  <data name="Message_Menu_ReplyAll" xml:space="preserve">
+    <value>Reply _All</value>
+  </data>
+  <data name="Message_ReplyAll_Name" xml:space="preserve">
+    <value>Reply All</value>
+  </data>
+  <data name="Message_Menu_Forward" xml:space="preserve">
+    <value>_Forward</value>
+  </data>
+  <data name="Message_Forward_Name" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="Message_Menu_Delete" xml:space="preserve">
+    <value>_Delete</value>
+  </data>
+  <data name="Message_Menu_MarkAsRead" xml:space="preserve">
+    <value>_Mark as Read</value>
+  </data>
+  <data name="Message_MarkAsRead_Name" xml:space="preserve">
+    <value>Mark as Read</value>
+  </data>
+  <data name="Message_Menu_GrabAddresses" xml:space="preserve">
+    <value>_Grab Addresses from Message</value>
+  </data>
+  <data name="Message_GrabAddresses_Name" xml:space="preserve">
+    <value>Grab Addresses from Message</value>
+  </data>
+  <data name="Message_DeleteMessageName" xml:space="preserve">
+    <value>Delete message</value>
+  </data>
+  <data name="Message_Menu_Navigate" xml:space="preserve">
+    <value>_Navigate</value>
+  </data>
+  <data name="Message_Menu_PreviousMessage" xml:space="preserve">
+    <value>_Previous Message</value>
+  </data>
+  <data name="Message_PreviousMessage_Name" xml:space="preserve">
+    <value>Previous message</value>
+  </data>
+  <data name="Message_Menu_NextMessage" xml:space="preserve">
+    <value>_Next Message</value>
+  </data>
+  <data name="Message_NextMessage_Name" xml:space="preserve">
+    <value>Next message</value>
+  </data>
+  <data name="Message_Menu_MoveToMainWindow" xml:space="preserve">
+    <value>Move to _Main Window</value>
+  </data>
+  <data name="Message_MoveToMainWindow_Name" xml:space="preserve">
+    <value>Move to Main Window</value>
+  </data>
+  <data name="Message_Toolbar_Previous" xml:space="preserve">
+    <value>◀ Previous</value>
+  </data>
+  <data name="Message_Toolbar_Previous_ToolTip" xml:space="preserve">
+    <value>Previous message (Alt+Left)</value>
+  </data>
+  <data name="Message_Toolbar_Next" xml:space="preserve">
+    <value>Next ▶</value>
+  </data>
+  <data name="Message_Toolbar_Next_ToolTip" xml:space="preserve">
+    <value>Next message (Alt+Right)</value>
+  </data>
+  <data name="Message_Toolbar_Reply_ToolTip" xml:space="preserve">
+    <value>Reply (Ctrl+R)</value>
+  </data>
+  <data name="Message_Toolbar_ReplyAll_ToolTip" xml:space="preserve">
+    <value>Reply All (Ctrl+Shift+R)</value>
+  </data>
+  <data name="Message_Toolbar_Forward_ToolTip" xml:space="preserve">
+    <value>Forward (Ctrl+F)</value>
+  </data>
+  <data name="Message_Toolbar_Delete_ToolTip" xml:space="preserve">
+    <value>Delete (Delete)</value>
+  </data>
+  <data name="Message_MoveToMainWindowToolbar_Name" xml:space="preserve">
+    <value>Move this message to the main window as a tab</value>
+  </data>
+  <data name="Message_Status_Name" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="Message_Subject_Name" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Message_From_Name" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="Message_To_Name" xml:space="preserve">
+    <value>To</value>
+  </data>
+  <data name="Message_Cc_Name" xml:space="preserve">
+    <value>Cc</value>
+  </data>
+  <data name="Message_Date_Name" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="Message_Attachments_Name" xml:space="preserve">
+    <value>Attachments</value>
+  </data>
+  <data name="Message_Menu_SaveAttachment" xml:space="preserve">
+    <value>_Save…</value>
+  </data>
+  <data name="Message_Menu_SaveAllAttachments" xml:space="preserve">
+    <value>Save _All…</value>
+  </data>
+  <data name="Message_Menu_OpenAttachment" xml:space="preserve">
+    <value>_Open</value>
+  </data>
+  <data name="Message_Body_Name" xml:space="preserve">
+    <value>Message body</value>
+  </data>
+  <data name="Message_Loading" xml:space="preserve">
+    <value>Loading…</value>
+  </data>
+  <data name="Message_Body_WithSubject_Announce" xml:space="preserve">
+    <value>Message body. {0}</value>
+  </data>
+  <data name="Common_Delete" xml:space="preserve">
+    <value>_Delete</value>
+  </data>
+  <data name="Common_Save" xml:space="preserve">
+    <value>_Save</value>
+  </data>
+  <data name="AddAccount_Title" xml:space="preserve">
+    <value>Add Account</value>
+  </data>
+  <data name="AddAccount_AccountType" xml:space="preserve">
+    <value>Account _Type:</value>
+  </data>
+  <data name="AddAccount_AccountDetails" xml:space="preserve">
+    <value>Account Details</value>
+  </data>
+  <data name="AddAccount_AccountName" xml:space="preserve">
+    <value>Account _Name:</value>
+  </data>
+  <data name="AddAccount_DisplayName" xml:space="preserve">
+    <value>Sender _Display Name:</value>
+  </data>
+  <data name="AddAccount_Username" xml:space="preserve">
+    <value>_Email / Username:</value>
+  </data>
+  <data name="AddAccount_Authentication" xml:space="preserve">
+    <value>_Authentication:</value>
+  </data>
+  <data name="AddAccount_AuthenticationMethod_Name" xml:space="preserve">
+    <value>Authentication method</value>
+  </data>
+  <data name="AddAccount_Auth_Password" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="AddAccount_Auth_MicrosoftOAuth2" xml:space="preserve">
+    <value>Microsoft OAuth2 (Outlook.com)</value>
+  </data>
+  <data name="AddAccount_Auth_GoogleOAuth" xml:space="preserve">
+    <value>Google OAuth (Gmail)</value>
+  </data>
+  <data name="AddAccount_Password" xml:space="preserve">
+    <value>_Password:</value>
+  </data>
+  <data name="AddAccount_Password_HelpText" xml:space="preserve">
+    <value>Password is stored in Windows Credential Manager</value>
+  </data>
+  <data name="AddAccount_ICloudHint_Name" xml:space="preserve">
+    <value>iCloud requires an app-specific password, not your Apple ID password. Generate one at appleid.apple.com under Sign-In and Security, App-Specific Passwords.</value>
+  </data>
+  <data name="AddAccount_ICloudHint_Run1" xml:space="preserve">
+    <value>iCloud requires an app-specific password.</value>
+  </data>
+  <data name="AddAccount_ICloudHint_Run2" xml:space="preserve">
+    <value>Do not enter your Apple ID password. Generate one at</value>
+  </data>
+  <data name="AddAccount_ICloudHint_Run3" xml:space="preserve">
+    <value>appleid.apple.com</value>
+  </data>
+  <data name="AddAccount_ICloudHint_Run4" xml:space="preserve">
+    <value>under Sign-In &amp; Security → App-Specific Passwords.</value>
+  </data>
+  <data name="AddAccount_SignInMicrosoft" xml:space="preserve">
+    <value>Sign in with _Microsoft…</value>
+  </data>
+  <data name="AddAccount_SignInMicrosoft_Name" xml:space="preserve">
+    <value>Sign in with Microsoft account in browser</value>
+  </data>
+  <data name="AddAccount_SignInGoogle" xml:space="preserve">
+    <value>Sign in with _Google…</value>
+  </data>
+  <data name="AddAccount_SignInGoogle_Name" xml:space="preserve">
+    <value>Sign in with Google account in browser</value>
+  </data>
+  <data name="AddAccount_IncomingMail" xml:space="preserve">
+    <value>Incoming Mail (IMAP)</value>
+  </data>
+  <data name="AddAccount_ImapHost" xml:space="preserve">
+    <value>IMAP _Host:</value>
+  </data>
+  <data name="AddAccount_ImapPort" xml:space="preserve">
+    <value>IMAP _Port:</value>
+  </data>
+  <data name="AddAccount_ImapUseSsl" xml:space="preserve">
+    <value>Use _SSL (port 993)</value>
+  </data>
+  <data name="AddAccount_ImapUseSsl_Name" xml:space="preserve">
+    <value>IMAP use SSL</value>
+  </data>
+  <data name="AddAccount_ImapAcceptInvalidCert" xml:space="preserve">
+    <value>Accept _invalid certificates</value>
+  </data>
+  <data name="AddAccount_ImapAcceptInvalidCert_Name" xml:space="preserve">
+    <value>IMAP accept invalid SSL certificates</value>
+  </data>
+  <data name="AddAccount_OutgoingMail" xml:space="preserve">
+    <value>Outgoing Mail (SMTP)</value>
+  </data>
+  <data name="AddAccount_SmtpHost" xml:space="preserve">
+    <value>SMTP H_ost:</value>
+  </data>
+  <data name="AddAccount_SmtpPort" xml:space="preserve">
+    <value>SMTP Po_rt:</value>
+  </data>
+  <data name="AddAccount_SmtpUseSsl" xml:space="preserve">
+    <value>Implicit _SSL on connect (port 465; uncheck for STARTTLS on port 587)</value>
+  </data>
+  <data name="AddAccount_SmtpUseSsl_Name" xml:space="preserve">
+    <value>SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587.</value>
+  </data>
+  <data name="AddAccount_SmtpAcceptInvalidCert" xml:space="preserve">
+    <value>Accept invalid certi_ficates</value>
+  </data>
+  <data name="AddAccount_SmtpAcceptInvalidCert_Name" xml:space="preserve">
+    <value>SMTP accept invalid SSL certificates</value>
+  </data>
+  <data name="AddAccount_EmailSignature" xml:space="preserve">
+    <value>Email Signature</value>
+  </data>
+  <data name="AddAccount_Signature" xml:space="preserve">
+    <value>_Signature (plain text, appended to new messages):</value>
+  </data>
+  <data name="AddAccount_Signature_HelpText" xml:space="preserve">
+    <value>This text is automatically added to the end of new messages, replies, and forwards</value>
+  </data>
+  <data name="AddAccount_Status_Name" xml:space="preserve">
+    <value>Add account status</value>
+  </data>
+  <data name="AddAccount_Cancel_Name" xml:space="preserve">
+    <value>Cancel adding account</value>
+  </data>
+  <data name="AddAccount_TestConnection" xml:space="preserve">
+    <value>_Test Connection</value>
+  </data>
+  <data name="AddAccount_TestConnection_Name" xml:space="preserve">
+    <value>Test IMAP connection with current settings</value>
+  </data>
+  <data name="AddAccount_AddAccount" xml:space="preserve">
+    <value>_Add Account</value>
+  </data>
+  <data name="AddAccount_AddAccount_Name" xml:space="preserve">
+    <value>Add account</value>
+  </data>
+  <data name="AddAccount_BackendSelected_NoImapSmtp_Announce" xml:space="preserve">
+    <value>{0}. IMAP and SMTP settings are not required.</value>
+  </data>
+  <data name="AddAccount_BackendSelected_Announce" xml:space="preserve">
+    <value>{0}.</value>
+  </data>
+  <data name="ThemeManager_Title" xml:space="preserve">
+    <value>Theme Manager</value>
+  </data>
+  <data name="ThemeManager_Themes_Name" xml:space="preserve">
+    <value>Themes</value>
+  </data>
+  <data name="ThemeManager_Apply" xml:space="preserve">
+    <value>_Apply</value>
+  </data>
+  <data name="ThemeManager_Apply_Name" xml:space="preserve">
+    <value>Apply</value>
+  </data>
+  <data name="ThemeManager_Duplicate" xml:space="preserve">
+    <value>D_uplicate</value>
+  </data>
+  <data name="ThemeManager_Duplicate_Name" xml:space="preserve">
+    <value>Duplicate</value>
+  </data>
+  <data name="ThemeManager_Rename" xml:space="preserve">
+    <value>_Rename</value>
+  </data>
+  <data name="ThemeManager_Rename_Name" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="ThemeManager_Export" xml:space="preserve">
+    <value>_Export…</value>
+  </data>
+  <data name="ThemeManager_Export_Name" xml:space="preserve">
+    <value>Export</value>
+  </data>
+  <data name="ThemeManager_Import" xml:space="preserve">
+    <value>_Import…</value>
+  </data>
+  <data name="ThemeManager_Import_Name" xml:space="preserve">
+    <value>Import</value>
+  </data>
+  <data name="ThemeManager_OpenThemesFolder" xml:space="preserve">
+    <value>_Open themes folder</value>
+  </data>
+  <data name="ThemeManager_OpenThemesFolder_Name" xml:space="preserve">
+    <value>Open themes folder</value>
+  </data>
+  <data name="ThemeManager_ThemeDescription" xml:space="preserve">
+    <value>Theme description</value>
+  </data>
+  <data name="ThemeManager_Name" xml:space="preserve">
+    <value>_Name:</value>
+  </data>
+  <data name="ThemeManager_NameOK" xml:space="preserve">
+    <value>O_K</value>
+  </data>
+  <data name="ThemeManager_Close" xml:space="preserve">
+    <value>Clo_se</value>
+  </data>
+  <data name="ThemeManager_MessageBoxTitle" xml:space="preserve">
+    <value>Theme Manager</value>
+  </data>
+  <data name="ThemeManager_ExportDialog_Title" xml:space="preserve">
+    <value>Export Theme</value>
+  </data>
+  <data name="ThemeManager_ExportDialog_Filter" xml:space="preserve">
+    <value>QuickMail theme (*.quickmailtheme)|*.quickmailtheme|All files (*.*)|*.*</value>
+  </data>
+  <data name="ThemeManager_ImportDialog_Title" xml:space="preserve">
+    <value>Import Theme</value>
+  </data>
+  <data name="ThemeManager_ImportDialog_Filter" xml:space="preserve">
+    <value>QuickMail theme (*.quickmailtheme;*.json)|*.quickmailtheme;*.json|All files (*.*)|*.*</value>
+  </data>
+  <data name="ThemeManager_ThemeList_Announce_PressTabForActions" xml:space="preserve">
+    <value>Press Tab for actions on the selected theme.</value>
+  </data>
+  <data name="ThemeManager_DeleteButtonName" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="ThemeManager_ConfirmNameButtonName" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ThemeManager_CancelNameButtonName" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ThemeManager_CloseButtonName" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ViewManager_Title" xml:space="preserve">
+    <value>View Manager</value>
+  </data>
+  <data name="ViewManager_CurrentStateLabel" xml:space="preserve">
+    <value>Current state:</value>
+  </data>
+  <data name="ViewManager_SavedViewsHeading" xml:space="preserve">
+    <value>Saved Views</value>
+  </data>
+  <data name="ViewManager_EmptyStateHint" xml:space="preserve">
+    <value>Select a view from the list, or create a new one.</value>
+  </data>
+  <data name="ViewManager_CreateNewViewFromCurrentState" xml:space="preserve">
+    <value>Create New View from Current State</value>
+  </data>
+  <data name="ViewManager_KeyboardShortcutLabel" xml:space="preserve">
+    <value>Keyboard Shortcut</value>
+  </data>
+  <data name="ViewManager_SavedFoldersLabel" xml:space="preserve">
+    <value>Saved Folders</value>
+  </data>
+  <data name="ViewManager_SavedSettingsLabel" xml:space="preserve">
+    <value>Saved Settings</value>
+  </data>
+  <data name="ViewManager_SavedViewSettingsName" xml:space="preserve">
+    <value>Saved view settings</value>
+  </data>
+  <data name="ViewManager_ApplyViewButton" xml:space="preserve">
+    <value>_Apply View</value>
+  </data>
+  <data name="ViewManager_ApplyViewToolTip" xml:space="preserve">
+    <value>Activate this view and close the dialog</value>
+  </data>
+  <data name="ViewManager_ApplySelectedViewName" xml:space="preserve">
+    <value>Apply selected view</value>
+  </data>
+  <data name="ViewManager_EditButton" xml:space="preserve">
+    <value>_Edit</value>
+  </data>
+  <data name="ViewManager_EditToolTip" xml:space="preserve">
+    <value>Edit this view's name, shortcut, and options</value>
+  </data>
+  <data name="ViewManager_EditSelectedViewName" xml:space="preserve">
+    <value>Edit selected view</value>
+  </data>
+  <data name="ViewManager_DeleteButton" xml:space="preserve">
+    <value>_Delete</value>
+  </data>
+  <data name="ViewManager_DeleteToolTip" xml:space="preserve">
+    <value>Delete this view</value>
+  </data>
+  <data name="ViewManager_DeleteSelectedViewName" xml:space="preserve">
+    <value>Delete selected view</value>
+  </data>
+  <data name="ViewManager_SaveAsNewButton" xml:space="preserve">
+    <value>Save _As New</value>
+  </data>
+  <data name="ViewManager_SaveAsNewToolTip" xml:space="preserve">
+    <value>Create a new view from current app state</value>
+  </data>
+  <data name="ViewManager_SaveCurrentStateAsNewViewName" xml:space="preserve">
+    <value>Save current state as a new view</value>
+  </data>
+  <data name="ViewManager_AssignedShortcutName" xml:space="preserve">
+    <value>Assigned shortcut</value>
+  </data>
+  <data name="ViewManager_SetButton" xml:space="preserve">
+    <value>_Set…</value>
+  </data>
+  <data name="ViewManager_SetKeyboardShortcutName" xml:space="preserve">
+    <value>Set keyboard shortcut</value>
+  </data>
+  <data name="ViewManager_ClearButton" xml:space="preserve">
+    <value>C_lear</value>
+  </data>
+  <data name="ViewManager_ClearKeyboardShortcutName" xml:space="preserve">
+    <value>Clear keyboard shortcut</value>
+  </data>
+  <data name="ViewManager_KeyboardShortcutHint" xml:space="preserve">
+    <value>Also configurable in File → Settings → Keyboard Shortcuts.</value>
+  </data>
+  <data name="ViewManager_DayLimitHeading" xml:space="preserve">
+    <value>Day Limit</value>
+  </data>
+  <data name="ViewManager_ShowAllMessagesCheckbox" xml:space="preserve">
+    <value>Show _all messages (no day limit)</value>
+  </data>
+  <data name="ViewManager_ShowAllMessagesName" xml:space="preserve">
+    <value>Show all messages, no day limit</value>
+  </data>
+  <data name="ViewManager_DayLimitFieldName" xml:space="preserve">
+    <value>Day limit — number of days of mail to show</value>
+  </data>
+  <data name="ViewManager_DaysUnitLabel" xml:space="preserve">
+    <value>days</value>
+  </data>
+  <data name="ViewManager_OptionsHeading" xml:space="preserve">
+    <value>Options</value>
+  </data>
+  <data name="ViewManager_DefaultViewCheckbox" xml:space="preserve">
+    <value>_Default view (applied on startup)</value>
+  </data>
+  <data name="ViewManager_SetAsDefaultViewName" xml:space="preserve">
+    <value>Set as default view</value>
+  </data>
+  <data name="ViewManager_NameHeading" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="ViewManager_ViewNameFieldName" xml:space="preserve">
+    <value>View name</value>
+  </data>
+  <data name="ViewManager_SaveButton" xml:space="preserve">
+    <value>_Save</value>
+  </data>
+  <data name="ViewManager_SaveButtonToolTip" xml:space="preserve">
+    <value>Save current app state to this view</value>
+  </data>
+  <data name="ViewManager_SaveCurrentStateToSelectedViewName" xml:space="preserve">
+    <value>Save current state to selected view</value>
+  </data>
+  <data name="ViewManager_CancelButton" xml:space="preserve">
+    <value>C_ancel</value>
+  </data>
+  <data name="ViewManager_CancelEditingDiscardChangesName" xml:space="preserve">
+    <value>Cancel editing, discard changes</value>
+  </data>
+  <data name="ViewManager_SaveViewButton" xml:space="preserve">
+    <value>Save _View</value>
+  </data>
+  <data name="ViewManager_SaveViewAndCloseName" xml:space="preserve">
+    <value>Save view and close</value>
+  </data>
+  <data name="ViewManager_CloseButton" xml:space="preserve">
+    <value>_Close</value>
+  </data>
+  <data name="ViewManager_CloseViewManagerName" xml:space="preserve">
+    <value>Close View Manager</value>
+  </data>
+  <data name="ViewManager_SaveViewWindowTitle" xml:space="preserve">
+    <value>Save View</value>
+  </data>
+  <data name="ViewManager_FolderChangedTitle" xml:space="preserve">
+    <value>Folder Changed</value>
+  </data>
+  <data name="ViewManager_Announce_FolderConflictMessage" xml:space="preserve">
+    <value>The current folder ({0}) is not in this view's folder list ({1}).
+
+Yes = replace the existing folder(s) with {0}
+No  = add {0} alongside the existing folder(s)
+Cancel = do nothing</value>
+  </data>
+  <data name="RulesManager_Title" xml:space="preserve">
+    <value>Rules Manager</value>
+  </data>
+  <data name="RulesManager_NewRuleButton" xml:space="preserve">
+    <value>New Rule</value>
+  </data>
+  <data name="RulesManager_CreateNewRuleName" xml:space="preserve">
+    <value>Create new rule</value>
+  </data>
+  <data name="RulesManager_DeleteSelectedRuleName" xml:space="preserve">
+    <value>Delete selected rule</value>
+  </data>
+  <data name="RulesManager_RulesListName" xml:space="preserve">
+    <value>Rules list</value>
+  </data>
+  <data name="RulesManager_RuleNameHeading" xml:space="preserve">
+    <value>Rule Name</value>
+  </data>
+  <data name="RulesManager_RuleNameFieldName" xml:space="preserve">
+    <value>Rule name</value>
+  </data>
+  <data name="RulesManager_EnabledCheckbox" xml:space="preserve">
+    <value>Enabled</value>
+  </data>
+  <data name="RulesManager_RuleEnabledName" xml:space="preserve">
+    <value>Rule enabled</value>
+  </data>
+  <data name="RulesManager_ConditionsHeading" xml:space="preserve">
+    <value>Conditions</value>
+  </data>
+  <data name="RulesManager_AccountLabel" xml:space="preserve">
+    <value>Account</value>
+  </data>
+  <data name="RulesManager_AccountScopeName" xml:space="preserve">
+    <value>Account scope</value>
+  </data>
+  <data name="RulesManager_FromCheckbox" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="RulesManager_UseFromConditionName" xml:space="preserve">
+    <value>Use From condition</value>
+  </data>
+  <data name="RulesManager_FromContainsName" xml:space="preserve">
+    <value>From contains</value>
+  </data>
+  <data name="RulesManager_FromContainsHelpText" xml:space="preserve">
+    <value>e.g., manager@company.com or just company.com</value>
+  </data>
+  <data name="RulesManager_ToCheckbox" xml:space="preserve">
+    <value>To</value>
+  </data>
+  <data name="RulesManager_UseToConditionName" xml:space="preserve">
+    <value>Use To condition</value>
+  </data>
+  <data name="RulesManager_ToContainsName" xml:space="preserve">
+    <value>To contains</value>
+  </data>
+  <data name="RulesManager_ToContainsHelpText" xml:space="preserve">
+    <value>e.g., team@company.com</value>
+  </data>
+  <data name="RulesManager_SubjectCheckbox" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="RulesManager_UseSubjectConditionName" xml:space="preserve">
+    <value>Use Subject condition</value>
+  </data>
+  <data name="RulesManager_SubjectContainsName" xml:space="preserve">
+    <value>Subject contains</value>
+  </data>
+  <data name="RulesManager_SubjectContainsHelpText" xml:space="preserve">
+    <value>e.g., Weekly Report</value>
+  </data>
+  <data name="RulesManager_BodyCheckbox" xml:space="preserve">
+    <value>Body</value>
+  </data>
+  <data name="RulesManager_UseBodyConditionName" xml:space="preserve">
+    <value>Use Body condition</value>
+  </data>
+  <data name="RulesManager_BodyContainsName" xml:space="preserve">
+    <value>Body contains</value>
+  </data>
+  <data name="RulesManager_BodyContainsHelpText" xml:space="preserve">
+    <value>Text to search in message body preview</value>
+  </data>
+  <data name="RulesManager_HasAttachmentsCheckbox" xml:space="preserve">
+    <value>Has attachments</value>
+  </data>
+  <data name="RulesManager_MustHaveAttachmentsName" xml:space="preserve">
+    <value>Must have attachments</value>
+  </data>
+  <data name="RulesManager_ActionHeading" xml:space="preserve">
+    <value>Action</value>
+  </data>
+  <data name="RulesManager_RuleActionName" xml:space="preserve">
+    <value>Rule action</value>
+  </data>
+  <data name="RulesManager_TargetFolderLabel" xml:space="preserve">
+    <value>Target folder</value>
+  </data>
+  <data name="RulesManager_ChooseFolderPlaceholder" xml:space="preserve">
+    <value>Choose Folder…</value>
+  </data>
+  <data name="RulesManager_ChooseTargetFolderName" xml:space="preserve">
+    <value>Choose target folder</value>
+  </data>
+  <data name="RulesManager_TestRuleButton" xml:space="preserve">
+    <value>Test Rule</value>
+  </data>
+  <data name="RulesManager_TestRuleAgainstSelectedMessagesName" xml:space="preserve">
+    <value>Test rule against selected messages</value>
+  </data>
+  <data name="RulesManager_SaveRuleName" xml:space="preserve">
+    <value>Save rule</value>
+  </data>
+  <data name="RulesManager_CloseRulesManagerName" xml:space="preserve">
+    <value>Close rules manager</value>
+  </data>
+  <data name="RulesManager_ChooseTargetFolderTitle" xml:space="preserve">
+    <value>Choose Target Folder</value>
+  </data>
+  <data name="AccountManager_Title" xml:space="preserve">
+    <value>Manage Accounts</value>
+  </data>
+  <data name="AccountManager_AccountsHeading" xml:space="preserve">
+    <value>Accounts</value>
+  </data>
+  <data name="AccountManager_NewButton" xml:space="preserve">
+    <value>Ne_w</value>
+  </data>
+  <data name="AccountManager_AddNewAccountName" xml:space="preserve">
+    <value>Add new account</value>
+  </data>
+  <data name="AccountManager_DeleteButton" xml:space="preserve">
+    <value>_Delete</value>
+  </data>
+  <data name="AccountManager_DeleteSelectedAccountName" xml:space="preserve">
+    <value>Delete selected account</value>
+  </data>
+  <data name="AccountManager_SetDefaultButton" xml:space="preserve">
+    <value>Set _Default</value>
+  </data>
+  <data name="AccountManager_SetSelectedAccountAsDefaultName" xml:space="preserve">
+    <value>Set selected account as default for new messages</value>
+  </data>
+  <data name="AccountManager_AccountListName" xml:space="preserve">
+    <value>Account list</value>
+  </data>
+  <data name="AccountManager_DefaultSuffix" xml:space="preserve">
+    <value> - default</value>
+  </data>
+  <data name="AccountManager_AccountSettingsHeading" xml:space="preserve">
+    <value>Account Settings</value>
+  </data>
+  <data name="AccountManager_AccountNameLabel" xml:space="preserve">
+    <value>Account _Name:</value>
+  </data>
+  <data name="AccountManager_SenderDisplayNameLabel" xml:space="preserve">
+    <value>Sender _Display Name:</value>
+  </data>
+  <data name="AccountManager_EmailUsernameLabel" xml:space="preserve">
+    <value>_Email / Username:</value>
+  </data>
+  <data name="AccountManager_AuthenticationLabel" xml:space="preserve">
+    <value>_Authentication:</value>
+  </data>
+  <data name="AccountManager_AuthenticationMethodName" xml:space="preserve">
+    <value>Authentication method</value>
+  </data>
+  <data name="AccountManager_AuthOptionPassword" xml:space="preserve">
+    <value>Password</value>
+  </data>
+  <data name="AccountManager_AuthOptionMicrosoftOAuth" xml:space="preserve">
+    <value>Microsoft OAuth2 (Outlook.com)</value>
+  </data>
+  <data name="AccountManager_AuthOptionGoogleOAuth" xml:space="preserve">
+    <value>Google OAuth (Gmail)</value>
+  </data>
+  <data name="AccountManager_PasswordLabel" xml:space="preserve">
+    <value>_Password:</value>
+  </data>
+  <data name="AccountManager_PasswordHelpText" xml:space="preserve">
+    <value>Password is stored in Windows Credential Manager</value>
+  </data>
+  <data name="AccountManager_ICloudPasswordHintName" xml:space="preserve">
+    <value>iCloud requires an app-specific password, not your Apple ID password. Generate one at appleid.apple.com under Sign-In and Security, App-Specific Passwords.</value>
+  </data>
+  <data name="AccountManager_ICloudHintBold" xml:space="preserve">
+    <value>iCloud requires an app-specific password.</value>
+  </data>
+  <data name="AccountManager_ICloudHintBody" xml:space="preserve">
+    <value>Do not enter your Apple ID password. Generate one at</value>
+  </data>
+  <data name="AccountManager_ICloudHintUrl" xml:space="preserve">
+    <value>appleid.apple.com</value>
+  </data>
+  <data name="AccountManager_ICloudHintTail" xml:space="preserve">
+    <value>under Sign-In &amp; Security → App-Specific Passwords.</value>
+  </data>
+  <data name="AccountManager_SignInMicrosoftButton" xml:space="preserve">
+    <value>Sign in with _Microsoft…</value>
+  </data>
+  <data name="AccountManager_SignInMicrosoftName" xml:space="preserve">
+    <value>Sign in with Microsoft account in browser</value>
+  </data>
+  <data name="AccountManager_SignInGoogleButton" xml:space="preserve">
+    <value>Sign in with _Google…</value>
+  </data>
+  <data name="AccountManager_SignInGoogleName" xml:space="preserve">
+    <value>Sign in with Google account in browser</value>
+  </data>
+  <data name="AccountManager_IncomingMailImapHeading" xml:space="preserve">
+    <value>Incoming Mail (IMAP)</value>
+  </data>
+  <data name="AccountManager_ImapHostLabel" xml:space="preserve">
+    <value>IMAP _Host:</value>
+  </data>
+  <data name="AccountManager_ImapPortLabel" xml:space="preserve">
+    <value>IMAP _Port:</value>
+  </data>
+  <data name="AccountManager_ImapUseSslCheckbox" xml:space="preserve">
+    <value>Use _SSL (port 993)</value>
+  </data>
+  <data name="AccountManager_ImapUseSslName" xml:space="preserve">
+    <value>IMAP use SSL</value>
+  </data>
+  <data name="AccountManager_ImapAcceptInvalidCertCheckbox" xml:space="preserve">
+    <value>Accept _invalid certificates</value>
+  </data>
+  <data name="AccountManager_ImapAcceptInvalidCertName" xml:space="preserve">
+    <value>IMAP accept invalid SSL certificates</value>
+  </data>
+  <data name="AccountManager_OutgoingMailSmtpHeading" xml:space="preserve">
+    <value>Outgoing Mail (SMTP)</value>
+  </data>
+  <data name="AccountManager_SmtpHostLabel" xml:space="preserve">
+    <value>SMTP H_ost:</value>
+  </data>
+  <data name="AccountManager_SmtpPortLabel" xml:space="preserve">
+    <value>SMTP Po_rt:</value>
+  </data>
+  <data name="AccountManager_SmtpImplicitSslCheckbox" xml:space="preserve">
+    <value>Implicit _SSL on connect (port 465; uncheck for STARTTLS on port 587)</value>
+  </data>
+  <data name="AccountManager_SmtpImplicitSslName" xml:space="preserve">
+    <value>SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587.</value>
+  </data>
+  <data name="AccountManager_SmtpAcceptInvalidCertCheckbox" xml:space="preserve">
+    <value>Accept invalid certi_ficates</value>
+  </data>
+  <data name="AccountManager_SmtpAcceptInvalidCertName" xml:space="preserve">
+    <value>SMTP accept invalid SSL certificates</value>
+  </data>
+  <data name="AccountManager_EmailSignatureHeading" xml:space="preserve">
+    <value>Email Signature</value>
+  </data>
+  <data name="AccountManager_SignatureLabel" xml:space="preserve">
+    <value>_Signature (plain text, appended to new messages):</value>
+  </data>
+  <data name="AccountManager_SignatureHelpText" xml:space="preserve">
+    <value>This text is automatically added to the end of new messages, replies, and forwards</value>
+  </data>
+  <data name="AccountManager_CloseButton" xml:space="preserve">
+    <value>_Close</value>
+  </data>
+  <data name="AccountManager_CloseAccountManagerName" xml:space="preserve">
+    <value>Close account manager</value>
+  </data>
+  <data name="AccountManager_TestConnectionButton" xml:space="preserve">
+    <value>_Test Connection</value>
+  </data>
+  <data name="AccountManager_TestImapConnectionName" xml:space="preserve">
+    <value>Test IMAP connection with current settings</value>
+  </data>
+  <data name="AccountManager_SaveButton" xml:space="preserve">
+    <value>_Save</value>
+  </data>
+  <data name="AccountManager_SaveAccountSettingsName" xml:space="preserve">
+    <value>Save account settings</value>
+  </data>
+  <data name="AccountManager_StatusName" xml:space="preserve">
+    <value>Account manager status</value>
+  </data>
+  <data name="Compose_Menu_File" xml:space="preserve">
+    <value>_File</value>
+  </data>
+  <data name="Compose_Menu_Send" xml:space="preserve">
+    <value>_Send</value>
+  </data>
+  <data name="Compose_Menu_SaveDraft" xml:space="preserve">
+    <value>Save _Draft</value>
+  </data>
+  <data name="Compose_Menu_InsertTemplate" xml:space="preserve">
+    <value>_Insert Template…</value>
+  </data>
+  <data name="Compose_Menu_SaveAsTemplate" xml:space="preserve">
+    <value>Save as _Template</value>
+  </data>
+  <data name="Compose_Menu_AddAttachments" xml:space="preserve">
+    <value>_Add Attachments…</value>
+  </data>
+  <data name="Compose_Menu_Close" xml:space="preserve">
+    <value>_Close</value>
+  </data>
+  <data name="Compose_Menu_Edit" xml:space="preserve">
+    <value>_Edit</value>
+  </data>
+  <data name="Compose_Menu_Undo" xml:space="preserve">
+    <value>_Undo</value>
+  </data>
+  <data name="Compose_Menu_Redo" xml:space="preserve">
+    <value>_Redo</value>
+  </data>
+  <data name="Compose_Menu_Cut" xml:space="preserve">
+    <value>Cu_t</value>
+  </data>
+  <data name="Compose_Menu_Copy" xml:space="preserve">
+    <value>_Copy</value>
+  </data>
+  <data name="Compose_Menu_Paste" xml:space="preserve">
+    <value>_Paste</value>
+  </data>
+  <data name="Compose_Menu_SelectAll" xml:space="preserve">
+    <value>Select _All</value>
+  </data>
+  <data name="Compose_Menu_View" xml:space="preserve">
+    <value>_View</value>
+  </data>
+  <data name="Compose_Menu_PlainText" xml:space="preserve">
+    <value>_Plain Text</value>
+  </data>
+  <data name="Compose_Menu_Markdown" xml:space="preserve">
+    <value>_Markdown</value>
+  </data>
+  <data name="Compose_Menu_Html" xml:space="preserve">
+    <value>_HTML</value>
+  </data>
+  <data name="Compose_Menu_Preview" xml:space="preserve">
+    <value>Pre_view</value>
+  </data>
+  <data name="Compose_OpenPreview" xml:space="preserve">
+    <value>Open preview</value>
+  </data>
+  <data name="Compose_Menu_Format" xml:space="preserve">
+    <value>F_ormat</value>
+  </data>
+  <data name="Compose_Menu_Bold" xml:space="preserve">
+    <value>_Bold</value>
+  </data>
+  <data name="Compose_Menu_Italic" xml:space="preserve">
+    <value>_Italic</value>
+  </data>
+  <data name="Compose_Menu_Underline" xml:space="preserve">
+    <value>_Underline</value>
+  </data>
+  <data name="Compose_Menu_Strikethrough" xml:space="preserve">
+    <value>_Strikethrough</value>
+  </data>
+  <data name="Compose_Menu_Heading1" xml:space="preserve">
+    <value>Heading _1</value>
+  </data>
+  <data name="Compose_Menu_Heading2" xml:space="preserve">
+    <value>Heading _2</value>
+  </data>
+  <data name="Compose_Menu_Heading3" xml:space="preserve">
+    <value>Heading _3</value>
+  </data>
+  <data name="Compose_Menu_BulletList" xml:space="preserve">
+    <value>Bu_llet List</value>
+  </data>
+  <data name="Compose_Menu_NumberedList" xml:space="preserve">
+    <value>_Numbered List</value>
+  </data>
+  <data name="Compose_Menu_InsertLink" xml:space="preserve">
+    <value>Insert Lin_k…</value>
+  </data>
+  <data name="Compose_Menu_ClearFormatting" xml:space="preserve">
+    <value>_Clear Formatting</value>
+  </data>
+  <data name="Compose_Menu_AnnounceFormatting" xml:space="preserve">
+    <value>_Announce Formatting</value>
+  </data>
+  <data name="Compose_Menu_ShowFormatting" xml:space="preserve">
+    <value>Sho_w Formatting…</value>
+  </data>
+  <data name="Compose_Menu_Tools" xml:space="preserve">
+    <value>_Tools</value>
+  </data>
+  <data name="Compose_Menu_CheckSpelling" xml:space="preserve">
+    <value>Check _Spelling…</value>
+  </data>
+  <data name="Compose_Menu_NextMisspelling" xml:space="preserve">
+    <value>_Next Misspelling</value>
+  </data>
+  <data name="Compose_Menu_PreviousMisspelling" xml:space="preserve">
+    <value>Pre_vious Misspelling</value>
+  </data>
+  <data name="Compose_Menu_ToggleSpellingAnnouncements" xml:space="preserve">
+    <value>_Toggle Spelling Announcements</value>
+  </data>
+  <data name="Compose_Menu_AddressBook" xml:space="preserve">
+    <value>_Address Book…</value>
+  </data>
+  <data name="Compose_Menu_CheckAddresses" xml:space="preserve">
+    <value>Chec_k Addresses</value>
+  </data>
+  <data name="Compose_Menu_CommandPalette" xml:space="preserve">
+    <value>Command _Palette…</value>
+  </data>
+  <data name="Compose_Menu_Open" xml:space="preserve">
+    <value>_Open</value>
+  </data>
+  <data name="Compose_Menu_RemoveAttachment" xml:space="preserve">
+    <value>_Remove</value>
+  </data>
+  <data name="Compose_FormatName_Bold" xml:space="preserve">
+    <value>Bold</value>
+  </data>
+  <data name="Compose_FormatName_Italic" xml:space="preserve">
+    <value>Italic</value>
+  </data>
+  <data name="Compose_FormatName_Underline" xml:space="preserve">
+    <value>Underline</value>
+  </data>
+  <data name="Compose_FormatName_Strikethrough" xml:space="preserve">
+    <value>Strikethrough</value>
+  </data>
+  <data name="Compose_FormatName_Heading1" xml:space="preserve">
+    <value>Heading 1</value>
+  </data>
+  <data name="Compose_FormatName_Heading2" xml:space="preserve">
+    <value>Heading 2</value>
+  </data>
+  <data name="Compose_FormatName_Heading3" xml:space="preserve">
+    <value>Heading 3</value>
+  </data>
+  <data name="Compose_Tooltip_Bold" xml:space="preserve">
+    <value>Bold (Ctrl+B)</value>
+  </data>
+  <data name="Compose_Tooltip_Italic" xml:space="preserve">
+    <value>Italic (Ctrl+I)</value>
+  </data>
+  <data name="Compose_Tooltip_Underline" xml:space="preserve">
+    <value>Underline (Ctrl+U)</value>
+  </data>
+  <data name="Compose_Tooltip_Strikethrough" xml:space="preserve">
+    <value>Strikethrough (Ctrl+Shift+X)</value>
+  </data>
+  <data name="Compose_Tooltip_Heading1" xml:space="preserve">
+    <value>Heading 1 (Ctrl+Alt+1)</value>
+  </data>
+  <data name="Compose_Tooltip_Heading2" xml:space="preserve">
+    <value>Heading 2 (Ctrl+Alt+2)</value>
+  </data>
+  <data name="Compose_Tooltip_Heading3" xml:space="preserve">
+    <value>Heading 3 (Ctrl+Alt+3)</value>
+  </data>
+  <data name="Compose_BulletList" xml:space="preserve">
+    <value>Bullet list</value>
+  </data>
+  <data name="Compose_Tooltip_BulletList" xml:space="preserve">
+    <value>Bullet List (Ctrl+Shift+L)</value>
+  </data>
+  <data name="Compose_NumberedList" xml:space="preserve">
+    <value>Numbered list</value>
+  </data>
+  <data name="Compose_Tooltip_NumberedList" xml:space="preserve">
+    <value>Numbered List (Ctrl+Shift+N)</value>
+  </data>
+  <data name="Compose_InsertLink" xml:space="preserve">
+    <value>Insert link</value>
+  </data>
+  <data name="Compose_Tooltip_InsertLink" xml:space="preserve">
+    <value>Insert Link (Ctrl+L)</value>
+  </data>
+  <data name="Compose_ClearFormatting" xml:space="preserve">
+    <value>Clear formatting</value>
+  </data>
+  <data name="Compose_Tooltip_ClearFormatting" xml:space="preserve">
+    <value>Clear Formatting (Ctrl+Space)</value>
+  </data>
+  <data name="Compose_CancelButton" xml:space="preserve">
+    <value>_Cancel</value>
+  </data>
+  <data name="Compose_CancelAndCloseComposeWindow" xml:space="preserve">
+    <value>Cancel and close compose window</value>
+  </data>
+  <data name="Compose_SaveDraftButton" xml:space="preserve">
+    <value>Save Draft</value>
+  </data>
+  <data name="Compose_SaveAsDraft" xml:space="preserve">
+    <value>Save as draft</value>
+  </data>
+  <data name="Compose_SaveAsTemplateButton" xml:space="preserve">
+    <value>Save as Template</value>
+  </data>
+  <data name="Compose_SaveCurrentMessageAsTemplate" xml:space="preserve">
+    <value>Save current message as template</value>
+  </data>
+  <data name="Compose_InsertTemplateButton" xml:space="preserve">
+    <value>Insert Template…</value>
+  </data>
+  <data name="Compose_InsertASavedTemplate" xml:space="preserve">
+    <value>Insert a saved template</value>
+  </data>
+  <data name="Compose_SendButton" xml:space="preserve">
+    <value>Send</value>
+  </data>
+  <data name="Compose_SendMessage" xml:space="preserve">
+    <value>Send message</value>
+  </data>
+  <data name="Compose_ComposeMode" xml:space="preserve">
+    <value>Compose mode</value>
+  </data>
+  <data name="Compose_SendStatus" xml:space="preserve">
+    <value>Send status</value>
+  </data>
+  <data name="Compose_FromLabel" xml:space="preserve">
+    <value>Fro_m:</value>
+  </data>
+  <data name="Compose_FromAccount" xml:space="preserve">
+    <value>From account</value>
+  </data>
+  <data name="Compose_ChooseWhichAccountToSendFrom" xml:space="preserve">
+    <value>Choose which account to send from</value>
+  </data>
+  <data name="Compose_ToLabel" xml:space="preserve">
+    <value>To:</value>
+  </data>
+  <data name="Compose_AddressBoxHelpText" xml:space="preserve">
+    <value>Type an address and press comma, semicolon, or Tab to add it. Arrow keys navigate between addresses. Delete removes the focused address.</value>
+  </data>
+  <data name="Compose_CcLabel" xml:space="preserve">
+    <value>Cc:</value>
+  </data>
+  <data name="Compose_BccLabel" xml:space="preserve">
+    <value>Bcc:</value>
+  </data>
+  <data name="Compose_SubjectLabel" xml:space="preserve">
+    <value>S_ubject:</value>
+  </data>
+  <data name="Compose_Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="Compose_AddFilesButton" xml:space="preserve">
+    <value>Add Files…</value>
+  </data>
+  <data name="Compose_AddFileAttachments" xml:space="preserve">
+    <value>Add file attachments</value>
+  </data>
+  <data name="Compose_Attachments" xml:space="preserve">
+    <value>Attachments</value>
+  </data>
+  <data name="Compose_MessageBody" xml:space="preserve">
+    <value>Message body</value>
+  </data>
+  <data name="Compose_AddressSuggestions" xml:space="preserve">
+    <value>Address suggestions</value>
+  </data>
+  <data name="Compose_AddAttachmentsDialogTitle" xml:space="preserve">
+    <value>Add Attachments</value>
+  </data>
+  <data name="Compose_SaveDraftBeforeClosingMessage" xml:space="preserve">
+    <value>Do you want to save this message as a draft before closing?</value>
+  </data>
+  <data name="Compose_SaveDraftDialogTitle" xml:space="preserve">
+    <value>Save Draft?</value>
+  </data>
+  <data name="Compose_SpellingDialogTitle" xml:space="preserve">
+    <value>Spelling</value>
+  </data>
+  <data name="Compose_Announce_MemberCountGroupSuffix_One" xml:space="preserve">
+    <value>1 member — group</value>
+  </data>
+  <data name="Compose_Announce_MemberCountGroupSuffix_Other" xml:space="preserve">
+    <value>{0} members — group</value>
+  </data>
+  <data name="Compose_Announce_MemberCount_One" xml:space="preserve">
+    <value>1 member</value>
+  </data>
+  <data name="Compose_Announce_MemberCount_Other" xml:space="preserve">
+    <value>{0} members</value>
+  </data>
+  <data name="Compose_Announce_GroupMemberCountFormat" xml:space="preserve">
+    <value>{0}, group, {1}</value>
+  </data>
+  <data name="Compose_Announce_SuggestionCount_One" xml:space="preserve">
+    <value>1 suggestion</value>
+  </data>
+  <data name="Compose_Announce_SuggestionCount_Other" xml:space="preserve">
+    <value>{0} suggestions</value>
+  </data>
+  <data name="Compose_Announce_InsertedFromGroupFormat" xml:space="preserve">
+    <value>Inserted {0} from group '{1}'</value>
+  </data>
+  <data name="Compose_Announce_AddressCount_One" xml:space="preserve">
+    <value>1 address</value>
+  </data>
+  <data name="Compose_Announce_AddressCount_Other" xml:space="preserve">
+    <value>{0} addresses</value>
+  </data>
+  <data name="Compose_Announce_AlreadyInAddressBookFormat" xml:space="preserve">
+    <value>{0} is already in your address book.</value>
+  </data>
+  <data name="Compose_Announce_AddedToAddressBookFormat" xml:space="preserve">
+    <value>Added {0} to address book.</value>
+  </data>
+  <data name="Compose_Announce_NoAddressesToCheck" xml:space="preserve">
+    <value>No addresses to check.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedUnrecognized_One" xml:space="preserve">
+    <value>1 address checked. {1} unrecognized.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedUnrecognized_Other" xml:space="preserve">
+    <value>{0} addresses checked. {1} unrecognized.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedResolved_One" xml:space="preserve">
+    <value>1 address checked. {1} resolved from contacts.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedResolved_Other" xml:space="preserve">
+    <value>{0} addresses checked. {1} resolved from contacts.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedAllValid_One" xml:space="preserve">
+    <value>1 address checked. All valid.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedAllValid_Other" xml:space="preserve">
+    <value>{0} addresses checked. All valid.</value>
+  </data>
+  <data name="Compose_Announce_FilesAttached_One" xml:space="preserve">
+    <value>1 file attached</value>
+  </data>
+  <data name="Compose_Announce_FilesAttached_Other" xml:space="preserve">
+    <value>{0} files attached</value>
+  </data>
+  <data name="Compose_Announce_MisspellingFormat" xml:space="preserve">
+    <value>Misspelling: {0}.</value>
+  </data>
+  <data name="Compose_Announce_MisspellingWithSuggestionsFormat" xml:space="preserve">
+    <value>Misspelling: {0}. {1}.</value>
+  </data>
+  <data name="Compose_Announce_ReplacedWithFormat" xml:space="preserve">
+    <value>Replaced with {0}.</value>
+  </data>
+  <data name="Compose_Announce_NotAutoSavedYet" xml:space="preserve">
+    <value>Not auto-saved yet.</value>
+  </data>
+  <data name="Compose_Announce_StateOn" xml:space="preserve">
+    <value>on</value>
+  </data>
+  <data name="Compose_Announce_StateOff" xml:space="preserve">
+    <value>off</value>
+  </data>
+  <data name="Compose_Announce_StateMixed" xml:space="preserve">
+    <value>mixed</value>
+  </data>
+  <data name="Compose_Announce_SpellingAnnouncementsWhileNavigatingFormat" xml:space="preserve">
+    <value>Spelling announcements while navigating {0}.</value>
+  </data>
+  <data name="Compose_Announce_NoMisspellingsFound" xml:space="preserve">
+    <value>No misspellings found.</value>
+  </data>
+  <data name="Compose_Announce_ModeNameMarkdown" xml:space="preserve">
+    <value>Markdown</value>
+  </data>
+  <data name="Compose_Announce_ModeNameHtml" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Compose_Announce_ModeNamePlainText" xml:space="preserve">
+    <value>Plain Text</value>
+  </data>
+  <data name="Compose_Announce_SwitchedToModeFormat" xml:space="preserve">
+    <value>Switched to {0} mode.</value>
+  </data>
+  <data name="Compose_Announce_FormattingRequiresMarkdownOrHtml" xml:space="preserve">
+    <value>Formatting commands require Markdown or HTML mode.</value>
+  </data>
+  <data name="Compose_Announce_FormattingStateFormat" xml:space="preserve">
+    <value>{0} {1}</value>
+  </data>
+  <data name="Compose_Announce_BoldOn" xml:space="preserve">
+    <value>Bold on</value>
+  </data>
+  <data name="Compose_Announce_BoldOff" xml:space="preserve">
+    <value>Bold off</value>
+  </data>
+  <data name="Compose_Announce_ItalicOn" xml:space="preserve">
+    <value>Italic on</value>
+  </data>
+  <data name="Compose_Announce_ItalicOff" xml:space="preserve">
+    <value>Italic off</value>
+  </data>
+  <data name="Compose_Announce_UnderlineNotAvailableInMarkdown" xml:space="preserve">
+    <value>Underline is not available in Markdown. Use HTML mode for underline.</value>
+  </data>
+  <data name="Compose_Announce_UnderlineOn" xml:space="preserve">
+    <value>Underline on</value>
+  </data>
+  <data name="Compose_Announce_UnderlineOff" xml:space="preserve">
+    <value>Underline off</value>
+  </data>
+  <data name="Compose_Announce_StrikethroughOn" xml:space="preserve">
+    <value>Strikethrough on</value>
+  </data>
+  <data name="Compose_Announce_StrikethroughOff" xml:space="preserve">
+    <value>Strikethrough off</value>
+  </data>
+  <data name="Compose_Announce_HeadingLevelFormat" xml:space="preserve">
+    <value>Heading {0}</value>
+  </data>
+  <data name="Compose_Announce_NormalText" xml:space="preserve">
+    <value>Normal text</value>
+  </data>
+  <data name="Compose_Announce_Heading1" xml:space="preserve">
+    <value>Heading 1</value>
+  </data>
+  <data name="Compose_Announce_Heading2" xml:space="preserve">
+    <value>Heading 2</value>
+  </data>
+  <data name="Compose_Announce_Heading3" xml:space="preserve">
+    <value>Heading 3</value>
+  </data>
+  <data name="Compose_Announce_Heading4" xml:space="preserve">
+    <value>Heading 4</value>
+  </data>
+  <data name="Compose_Announce_Heading5" xml:space="preserve">
+    <value>Heading 5</value>
+  </data>
+  <data name="Compose_Announce_Heading6" xml:space="preserve">
+    <value>Heading 6</value>
+  </data>
+  <data name="Compose_Announce_Quote" xml:space="preserve">
+    <value>Quote</value>
+  </data>
+  <data name="Compose_Announce_CodeBlock" xml:space="preserve">
+    <value>Code block</value>
+  </data>
+  <data name="Compose_Announce_NumberedListItem" xml:space="preserve">
+    <value>Numbered list item</value>
+  </data>
+  <data name="Compose_Announce_BulletListItem" xml:space="preserve">
+    <value>Bullet list item</value>
+  </data>
+  <data name="Compose_Announce_ListItemLevelFormat" xml:space="preserve">
+    <value>{0}, level {1}</value>
+  </data>
+  <data name="Compose_Announce_LinkInserted" xml:space="preserve">
+    <value>Link inserted</value>
+  </data>
+  <data name="Compose_Announce_FormattingCleared" xml:space="preserve">
+    <value>Formatting cleared</value>
+  </data>
+  <data name="MainWindow_SenderGroupActions" xml:space="preserve">
+    <value>Sender group actions</value>
+  </data>
+  <data name="MainWindow_Reply" xml:space="preserve">
+    <value>_Reply</value>
+  </data>
+  <data name="MainWindow_ReplyName" xml:space="preserve">
+    <value>Reply</value>
+  </data>
+  <data name="MainWindow_ReplyAll" xml:space="preserve">
+    <value>Reply _All</value>
+  </data>
+  <data name="MainWindow_ReplyAllName" xml:space="preserve">
+    <value>Reply All</value>
+  </data>
+  <data name="MainWindow_Forward" xml:space="preserve">
+    <value>_Forward</value>
+  </data>
+  <data name="MainWindow_ForwardName" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="MainWindow_MoveToFolderEllipsis" xml:space="preserve">
+    <value>_Move to Folder…</value>
+  </data>
+  <data name="MainWindow_MoveSenderGroupToFolder" xml:space="preserve">
+    <value>Move Sender Group to Folder</value>
+  </data>
+  <data name="MainWindow_CopyToFolderEllipsis" xml:space="preserve">
+    <value>_Copy to Folder…</value>
+  </data>
+  <data name="MainWindow_CopySenderGroupToFolder" xml:space="preserve">
+    <value>Copy Sender Group to Folder</value>
+  </data>
+  <data name="MainWindow_DeleteAllFromSender" xml:space="preserve">
+    <value>_Delete All from Sender</value>
+  </data>
+  <data name="MainWindow_DeleteAllFromSenderName" xml:space="preserve">
+    <value>Delete All from Sender</value>
+  </data>
+  <data name="MainWindow_Flags" xml:space="preserve">
+    <value>Flag_s</value>
+  </data>
+  <data name="MainWindow_FlagsName" xml:space="preserve">
+    <value>Flags</value>
+  </data>
+  <data name="MainWindow_ExpandGroup" xml:space="preserve">
+    <value>E_xpand Group</value>
+  </data>
+  <data name="MainWindow_ExpandGroupName" xml:space="preserve">
+    <value>Expand Group</value>
+  </data>
+  <data name="MainWindow_CollapseGroup" xml:space="preserve">
+    <value>Colla_pse Group</value>
+  </data>
+  <data name="MainWindow_CollapseGroupName" xml:space="preserve">
+    <value>Collapse Group</value>
+  </data>
+  <data name="MainWindow_ExpandAllGroups" xml:space="preserve">
+    <value>_Expand All Groups</value>
+  </data>
+  <data name="MainWindow_ExpandAllGroupsName" xml:space="preserve">
+    <value>Expand All Groups</value>
+  </data>
+  <data name="MainWindow_CollapseAllGroups" xml:space="preserve">
+    <value>Collapse A_ll Groups</value>
+  </data>
+  <data name="MainWindow_CollapseAllGroupsName" xml:space="preserve">
+    <value>Collapse All Groups</value>
+  </data>
+  <data name="MainWindow_RecipientGroupActions" xml:space="preserve">
+    <value>Recipient group actions</value>
+  </data>
+  <data name="MainWindow_MoveRecipientGroupToFolder" xml:space="preserve">
+    <value>Move Recipient Group to Folder</value>
+  </data>
+  <data name="MainWindow_CopyRecipientGroupToFolder" xml:space="preserve">
+    <value>Copy Recipient Group to Folder</value>
+  </data>
+  <data name="MainWindow_DeleteAllToRecipient" xml:space="preserve">
+    <value>_Delete All to Recipient</value>
+  </data>
+  <data name="MainWindow_DeleteAllToRecipientName" xml:space="preserve">
+    <value>Delete All to Recipient</value>
+  </data>
+  <data name="MainWindow_ConversationActions" xml:space="preserve">
+    <value>Conversation actions</value>
+  </data>
+  <data name="MainWindow_MoveConversationToFolder" xml:space="preserve">
+    <value>Move Conversation to Folder</value>
+  </data>
+  <data name="MainWindow_CopyConversationToFolder" xml:space="preserve">
+    <value>Copy Conversation to Folder</value>
+  </data>
+  <data name="MainWindow_DeleteConversation" xml:space="preserve">
+    <value>_Delete Conversation</value>
+  </data>
+  <data name="MainWindow_DeleteConversationName" xml:space="preserve">
+    <value>Delete Conversation</value>
+  </data>
+  <data name="MainWindow_ExpandConversation" xml:space="preserve">
+    <value>E_xpand Conversation</value>
+  </data>
+  <data name="MainWindow_ExpandConversationName" xml:space="preserve">
+    <value>Expand Conversation</value>
+  </data>
+  <data name="MainWindow_CollapseConversation" xml:space="preserve">
+    <value>Colla_pse Conversation</value>
+  </data>
+  <data name="MainWindow_CollapseConversationName" xml:space="preserve">
+    <value>Collapse Conversation</value>
+  </data>
+  <data name="MainWindow_ExpandAllConversations" xml:space="preserve">
+    <value>_Expand All Conversations</value>
+  </data>
+  <data name="MainWindow_ExpandAllConversationsName" xml:space="preserve">
+    <value>Expand All Conversations</value>
+  </data>
+  <data name="MainWindow_CollapseAllConversations" xml:space="preserve">
+    <value>Collapse A_ll Conversations</value>
+  </data>
+  <data name="MainWindow_CollapseAllConversationsName" xml:space="preserve">
+    <value>Collapse All Conversations</value>
+  </data>
+  <data name="MainWindow_MessageActions" xml:space="preserve">
+    <value>Message actions</value>
+  </data>
+  <data name="MainWindow_MoveToFolderName" xml:space="preserve">
+    <value>Move to Folder</value>
+  </data>
+  <data name="MainWindow_CopyToFolderName" xml:space="preserve">
+    <value>Copy to Folder</value>
+  </data>
+  <data name="MainWindow_CreateRuleFromMessageEllipsis" xml:space="preserve">
+    <value>Create _Rule from Message…</value>
+  </data>
+  <data name="MainWindow_CreateRuleFromMessageName" xml:space="preserve">
+    <value>Create Rule from Message</value>
+  </data>
+  <data name="MainWindow_FolderActions" xml:space="preserve">
+    <value>Folder actions</value>
+  </data>
+  <data name="MainWindow_NewFolderEllipsis" xml:space="preserve">
+    <value>_New Folder…</value>
+  </data>
+  <data name="MainWindow_NewFolderName" xml:space="preserve">
+    <value>New Folder</value>
+  </data>
+  <data name="MainWindow_MoveFolderEllipsis" xml:space="preserve">
+    <value>_Move Folder…</value>
+  </data>
+  <data name="MainWindow_MoveFolderName" xml:space="preserve">
+    <value>Move Folder</value>
+  </data>
+  <data name="MainWindow_CopyFolderEllipsis" xml:space="preserve">
+    <value>_Copy Folder…</value>
+  </data>
+  <data name="MainWindow_CopyFolderName" xml:space="preserve">
+    <value>Copy Folder</value>
+  </data>
+  <data name="MainWindow_DeleteFolder" xml:space="preserve">
+    <value>_Delete Folder</value>
+  </data>
+  <data name="MainWindow_DeleteFolderName" xml:space="preserve">
+    <value>Delete Folder</value>
+  </data>
+  <data name="MainWindow_MainMenu" xml:space="preserve">
+    <value>Main menu</value>
+  </data>
+  <data name="MainWindow_File" xml:space="preserve">
+    <value>_File</value>
+  </data>
+  <data name="MainWindow_NewMessage" xml:space="preserve">
+    <value>_New Message</value>
+  </data>
+  <data name="MainWindow_ManageAccountsEllipsis" xml:space="preserve">
+    <value>_Manage Accounts…</value>
+  </data>
+  <data name="MainWindow_SettingsEllipsis" xml:space="preserve">
+    <value>S_ettings…</value>
+  </data>
+  <data name="MainWindow_Exit" xml:space="preserve">
+    <value>E_xit</value>
+  </data>
+  <data name="MainWindow_MessageMenu" xml:space="preserve">
+    <value>_Message</value>
+  </data>
+  <data name="MainWindow_EmptyTrash" xml:space="preserve">
+    <value>Empty _Trash</value>
+  </data>
+  <data name="MainWindow_EmptyTrashToolTip" xml:space="preserve">
+    <value>Empty Trash (Ctrl+Shift+E)</value>
+  </data>
+  <data name="MainWindow_GrabAddressesFromMessage" xml:space="preserve">
+    <value>Grab _Addresses from Message</value>
+  </data>
+  <data name="MainWindow_View" xml:space="preserve">
+    <value>_View</value>
+  </data>
+  <data name="MainWindow_Refresh" xml:space="preserve">
+    <value>_Refresh</value>
+  </data>
+  <data name="MainWindow_RefreshToolTip" xml:space="preserve">
+    <value>Refresh (F5)</value>
+  </data>
+  <data name="MainWindow_ViewMode" xml:space="preserve">
+    <value>View _Mode</value>
+  </data>
+  <data name="MainWindow_MessagesMode" xml:space="preserve">
+    <value>_Messages</value>
+  </data>
+  <data name="MainWindow_ConversationsMode" xml:space="preserve">
+    <value>_Conversations</value>
+  </data>
+  <data name="MainWindow_BySender" xml:space="preserve">
+    <value>By _Sender</value>
+  </data>
+  <data name="MainWindow_ByRecipient" xml:space="preserve">
+    <value>By _Recipient</value>
+  </data>
+  <data name="MainWindow_Filter" xml:space="preserve">
+    <value>F_ilter</value>
+  </data>
+  <data name="MainWindow_ShowAll" xml:space="preserve">
+    <value>S_how All</value>
+  </data>
+  <data name="MainWindow_Unread" xml:space="preserve">
+    <value>_Unread</value>
+  </data>
+  <data name="MainWindow_Read" xml:space="preserve">
+    <value>_Read</value>
+  </data>
+  <data name="MainWindow_WithAttachments" xml:space="preserve">
+    <value>With _Attachments</value>
+  </data>
+  <data name="MainWindow_Replied" xml:space="preserve">
+    <value>Re_plied</value>
+  </data>
+  <data name="MainWindow_Forwarded" xml:space="preserve">
+    <value>_Forwarded</value>
+  </data>
+  <data name="MainWindow_ToMe" xml:space="preserve">
+    <value>To _Me</value>
+  </data>
+  <data name="MainWindow_Flagged" xml:space="preserve">
+    <value>Fla_gged</value>
+  </data>
+  <data name="MainWindow_AllFlagged" xml:space="preserve">
+    <value>All Fla_gged</value>
+  </data>
+  <data name="MainWindow_Sort" xml:space="preserve">
+    <value>S_ort</value>
+  </data>
+  <data name="MainWindow_NewestFirst" xml:space="preserve">
+    <value>Newest _First</value>
+  </data>
+  <data name="MainWindow_OldestFirst" xml:space="preserve">
+    <value>_Oldest First</value>
+  </data>
+  <data name="MainWindow_AtoZ" xml:space="preserve">
+    <value>_A → Z</value>
+  </data>
+  <data name="MainWindow_ZtoA" xml:space="preserve">
+    <value>_Z → A</value>
+  </data>
+  <data name="MainWindow_FlaggedFirst" xml:space="preserve">
+    <value>Fla_gged First</value>
+  </data>
+  <data name="MainWindow_MostMessages" xml:space="preserve">
+    <value>_Most Messages</value>
+  </data>
+  <data name="MainWindow_FewestMessages" xml:space="preserve">
+    <value>_Fewest Messages</value>
+  </data>
+  <data name="MainWindow_Views" xml:space="preserve">
+    <value>_Views</value>
+  </data>
+  <data name="MainWindow_SaveViewEllipsis" xml:space="preserve">
+    <value>_Save View…</value>
+  </data>
+  <data name="MainWindow_SaveViewName" xml:space="preserve">
+    <value>Save current state as a view</value>
+  </data>
+  <data name="MainWindow_ManageViewsEllipsis" xml:space="preserve">
+    <value>_Manage Views…</value>
+  </data>
+  <data name="MainWindow_ManageViewsName" xml:space="preserve">
+    <value>Open View Manager</value>
+  </data>
+  <data name="MainWindow_ClearView" xml:space="preserve">
+    <value>_Clear View</value>
+  </data>
+  <data name="MainWindow_ClearViewName" xml:space="preserve">
+    <value>Deactivate the current view and return to folder navigation</value>
+  </data>
+  <data name="MainWindow_SyncRange" xml:space="preserve">
+    <value>_Sync Range</value>
+  </data>
+  <data name="MainWindow_Last7Days" xml:space="preserve">
+    <value>Last _7 Days</value>
+  </data>
+  <data name="MainWindow_Last30Days" xml:space="preserve">
+    <value>Last _30 Days</value>
+  </data>
+  <data name="MainWindow_Last6Months" xml:space="preserve">
+    <value>Last _6 Months</value>
+  </data>
+  <data name="MainWindow_Last1Year" xml:space="preserve">
+    <value>Last _1 Year</value>
+  </data>
+  <data name="MainWindow_Last6MonthsLong" xml:space="preserve">
+    <value>Last _6 Months (180 Days)</value>
+  </data>
+  <data name="MainWindow_Last1YearLong" xml:space="preserve">
+    <value>Last _1 Year (365 Days)</value>
+  </data>
+  <data name="MainWindow_AllMail" xml:space="preserve">
+    <value>_All Mail</value>
+  </data>
+  <data name="MainWindow_GoToFolderEllipsis" xml:space="preserve">
+    <value>Go to _Folder…</value>
+  </data>
+  <data name="MainWindow_SearchFoldersEllipsis" xml:space="preserve">
+    <value>_Search Folders…</value>
+  </data>
+  <data name="MainWindow_Tools" xml:space="preserve">
+    <value>_Tools</value>
+  </data>
+  <data name="MainWindow_ManageThemesEllipsis" xml:space="preserve">
+    <value>Manage _Themes…</value>
+  </data>
+  <data name="MainWindow_ManageThemesName" xml:space="preserve">
+    <value>Manage Themes</value>
+  </data>
+  <data name="MainWindow_NextTheme" xml:space="preserve">
+    <value>_Next Theme</value>
+  </data>
+  <data name="MainWindow_PreviousTheme" xml:space="preserve">
+    <value>Pre_vious Theme</value>
+  </data>
+  <data name="MainWindow_AddressBookEllipsis" xml:space="preserve">
+    <value>Address _Book…</value>
+  </data>
+  <data name="MainWindow_RulesEllipsis" xml:space="preserve">
+    <value>_Rules…</value>
+  </data>
+  <data name="MainWindow_ManageRulesName" xml:space="preserve">
+    <value>Manage Rules</value>
+  </data>
+  <data name="MainWindow_CommandPaletteEllipsis" xml:space="preserve">
+    <value>Command _Palette…</value>
+  </data>
+  <data name="MainWindow_Help" xml:space="preserve">
+    <value>_Help</value>
+  </data>
+  <data name="MainWindow_UserGuide" xml:space="preserve">
+    <value>User _Guide</value>
+  </data>
+  <data name="MainWindow_KeyboardTutorial" xml:space="preserve">
+    <value>_Keyboard Tutorial</value>
+  </data>
+  <data name="MainWindow_KeyboardTutorialName" xml:space="preserve">
+    <value>Keyboard Tutorial</value>
+  </data>
+  <data name="MainWindow_ReportABug" xml:space="preserve">
+    <value>_Report a Bug</value>
+  </data>
+  <data name="MainWindow_ReportABugName" xml:space="preserve">
+    <value>Report a Bug</value>
+  </data>
+  <data name="MainWindow_AboutQuickMail" xml:space="preserve">
+    <value>_About QuickMail</value>
+  </data>
+  <data name="MainWindow_AboutQuickMailName" xml:space="preserve">
+    <value>About QuickMail</value>
+  </data>
+  <data name="MainWindow_MainToolbar" xml:space="preserve">
+    <value>Main toolbar</value>
+  </data>
+  <data name="MainWindow_NewMessageName" xml:space="preserve">
+    <value>New Message</value>
+  </data>
+  <data name="MainWindow_NewMessageToolTip" xml:space="preserve">
+    <value>New Message (Ctrl+N)</value>
+  </data>
+  <data name="MainWindow_NewButton" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="MainWindow_ReplyToolTip" xml:space="preserve">
+    <value>Reply (Ctrl+R)</value>
+  </data>
+  <data name="MainWindow_ReplyAllToolTip" xml:space="preserve">
+    <value>Reply All (Ctrl+Shift+R)</value>
+  </data>
+  <data name="MainWindow_ForwardToolTip" xml:space="preserve">
+    <value>Forward (Ctrl+F)</value>
+  </data>
+  <data name="MainWindow_DeleteMessageName" xml:space="preserve">
+    <value>Delete message</value>
+  </data>
+  <data name="MainWindow_DeleteToolTip" xml:space="preserve">
+    <value>Delete (Del)</value>
+  </data>
+  <data name="MainWindow_SyncRangeName" xml:space="preserve">
+    <value>Sync range</value>
+  </data>
+  <data name="MainWindow_SyncRangeToolTip" xml:space="preserve">
+    <value>Choose how many days of mail to sync</value>
+  </data>
+  <data name="MainWindow_ViewModeName" xml:space="preserve">
+    <value>View mode</value>
+  </data>
+  <data name="MainWindow_ViewModeToolTip" xml:space="preserve">
+    <value>Select message view mode (Ctrl+Shift+V)</value>
+  </data>
+  <data name="MainWindow_From" xml:space="preserve">
+    <value>_From</value>
+  </data>
+  <data name="MainWindow_To" xml:space="preserve">
+    <value>_To</value>
+  </data>
+  <data name="MainWindow_ManageEmailAccountsName" xml:space="preserve">
+    <value>Manage email accounts</value>
+  </data>
+  <data name="MainWindow_Accounts" xml:space="preserve">
+    <value>Accounts</value>
+  </data>
+  <data name="MainWindow_ViewUserGuideName" xml:space="preserve">
+    <value>View User Guide</value>
+  </data>
+  <data name="MainWindow_ViewUserGuideToolTip" xml:space="preserve">
+    <value>View User Guide (F1)</value>
+  </data>
+  <data name="MainWindow_UserGuideButton" xml:space="preserve">
+    <value>User Guide</value>
+  </data>
+  <data name="MainWindow_EmailAccountsName" xml:space="preserve">
+    <value>Email accounts</value>
+  </data>
+  <data name="MainWindow_Folders" xml:space="preserve">
+    <value>Folders</value>
+  </data>
+  <data name="MainWindow_FolderListName" xml:space="preserve">
+    <value>Folder list</value>
+  </data>
+  <data name="MainWindow_ResizePanesName" xml:space="preserve">
+    <value>Resize left and right panes</value>
+  </data>
+  <data name="MainWindow_OpenMessageTabsName" xml:space="preserve">
+    <value>Open message tabs</value>
+  </data>
+  <data name="MainWindow_CloseThisTabName" xml:space="preserve">
+    <value>Close this tab</value>
+  </data>
+  <data name="MainWindow_CloseTabToolTip" xml:space="preserve">
+    <value>Close tab</value>
+  </data>
+  <data name="MainWindow_SubjectName" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="MainWindow_CcName" xml:space="preserve">
+    <value>Cc</value>
+  </data>
+  <data name="MainWindow_DateName" xml:space="preserve">
+    <value>Date</value>
+  </data>
+  <data name="MainWindow_AttachmentsName" xml:space="preserve">
+    <value>Attachments</value>
+  </data>
+  <data name="MainWindow_SaveEllipsis" xml:space="preserve">
+    <value>_Save…</value>
+  </data>
+  <data name="MainWindow_SaveAllEllipsis" xml:space="preserve">
+    <value>Save _All…</value>
+  </data>
+  <data name="MainWindow_Open" xml:space="preserve">
+    <value>_Open</value>
+  </data>
+  <data name="MainWindow_MessageBodyName" xml:space="preserve">
+    <value>Message body</value>
+  </data>
+  <data name="MainWindow_NoFolderSelected" xml:space="preserve">
+    <value>No folder selected</value>
+  </data>
+  <data name="MainWindow_CurrentFolderName" xml:space="preserve">
+    <value>Current folder</value>
+  </data>
+  <data name="MainWindow_ClearButton" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="MainWindow_ClearSearchName" xml:space="preserve">
+    <value>Clear search</value>
+  </data>
+  <data name="MainWindow_ClearSearchToolTip" xml:space="preserve">
+    <value>Clear search (Escape)</value>
+  </data>
+  <data name="MainWindow_SearchMessagesName" xml:space="preserve">
+    <value>Search messages</value>
+  </data>
+  <data name="MainWindow_SearchBoxToolTip" xml:space="preserve">
+    <value>Search by sender, subject, or preview. Escape to clear.</value>
+  </data>
+  <data name="MainWindow_NoMessages" xml:space="preserve">
+    <value>No messages</value>
+  </data>
+  <data name="MainWindow_CalendarEventsName" xml:space="preserve">
+    <value>Calendar events</value>
+  </data>
+  <data name="MainWindow_MessagesName" xml:space="preserve">
+    <value>Messages</value>
+  </data>
+  <data name="MainWindow_Status" xml:space="preserve">
+    <value>Status</value>
+  </data>
+  <data name="MainWindow_Subject" xml:space="preserve">
+    <value>Subject</value>
+  </data>
+  <data name="MainWindow_HasAttachmentsToolTip" xml:space="preserve">
+    <value>Has attachments</value>
+  </data>
+  <data name="MainWindow_AccountActions" xml:space="preserve">
+    <value>Account actions</value>
+  </data>
+  <data name="MainWindow_DeleteAccount" xml:space="preserve">
+    <value>_Delete Account</value>
+  </data>
+  <data name="MainWindow_DeleteAccountName" xml:space="preserve">
+    <value>Delete Account</value>
+  </data>
+  <data name="MainWindow_AccountSettingsEllipsis" xml:space="preserve">
+    <value>Account _Settings…</value>
+  </data>
+  <data name="MainWindow_AccountSettingsName" xml:space="preserve">
+    <value>Account Settings</value>
+  </data>
+  <data name="MainWindow_UpdateStatusToolTip" xml:space="preserve">
+    <value>Press Enter to open the release page in your browser</value>
+  </data>
+  <data name="MainWindow_RulesStatusNameFormat" xml:space="preserve">
+    <value>Rules — {0}</value>
+  </data>
+  <data name="MainWindow_RulesStatusToolTip" xml:space="preserve">
+    <value>Open Rules Manager (Ctrl+Shift+L)</value>
+  </data>
+  <data name="MainWindow_SyncingStatusNameFormat" xml:space="preserve">
+    <value>Syncing — {0}</value>
+  </data>
+  <data name="MainWindow_Announce_SearchBoxHint" xml:space="preserve">
+    <value>Search box. Type to filter messages.</value>
+  </data>
+  <data name="MainWindow_Announce_SearchCleared_One" xml:space="preserve">
+    <value>Search cleared. {0} message.</value>
+  </data>
+  <data name="MainWindow_Announce_SearchCleared_Other" xml:space="preserve">
+    <value>Search cleared. {0} messages.</value>
+  </data>
+  <data name="MainWindow_Announce_YouPressedTryAgain" xml:space="preserve">
+    <value>You pressed {0}. Try again.</value>
+  </data>
+  <data name="MainWindow_Announce_MessagesSelected_One" xml:space="preserve">
+    <value>{0} message selected.</value>
+  </data>
+  <data name="MainWindow_Announce_MessagesSelected_Other" xml:space="preserve">
+    <value>{0} messages selected.</value>
+  </data>
+  <data name="MainWindow_Announce_ThemeChangedTo" xml:space="preserve">
+    <value>Theme changed to {0}.</value>
+  </data>
+  <data name="MainWindow_Announce_HighContrastOn" xml:space="preserve">
+    <value>High contrast is on; colors are supplied by Windows.</value>
+  </data>
+  <data name="MainWindow_Announce_PressEscapeToReturnToMessageList" xml:space="preserve">
+    <value>Press Escape to return to message list.</value>
+  </data>
+  <data name="MainWindow_Announce_MessageBody" xml:space="preserve">
+    <value>Message body</value>
+  </data>
+  <data name="MainWindow_Announce_MessageBodyWithSubject" xml:space="preserve">
+    <value>Message body. {0}</value>
+  </data>
+  <data name="MainWindow_Announce_StatusBarPrefix" xml:space="preserve">
+    <value>Status bar: {0}</value>
+  </data>
+  <data name="MainWindow_Announce_CustomAnnouncementsOn" xml:space="preserve">
+    <value>Custom announcements on.</value>
+  </data>
+  <data name="MainWindow_Announce_CustomAnnouncementsOff" xml:space="preserve">
+    <value>Custom announcements off.</value>
+  </data>
+  <data name="MainWindow_Announce_TutorialComplete" xml:space="preserve">
+    <value>Tutorial complete. You can replay it anytime from the Help menu.</value>
+  </data>
+  <data name="MainWindow_Announce_TutorialCancelled" xml:space="preserve">
+    <value>Tutorial cancelled.</value>
+  </data>
+  <data name="MainWindow_Announce_TabStripHint" xml:space="preserve">
+    <value>Ctrl+Tab for next tab, Ctrl+Shift+Tab for previous, Ctrl+W to close.</value>
+  </data>
+  <data name="MainWindow_CmdCategory_View" xml:space="preserve">
+    <value>View</value>
+  </data>
+  <data name="MainWindow_CmdCategory_Contacts" xml:space="preserve">
+    <value>Contacts</value>
+  </data>
+  <data name="MainWindow_CmdCategory_Settings" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="MainWindow_CmdCategory_Mail" xml:space="preserve">
+    <value>Mail</value>
+  </data>
+  <data name="MainWindow_Cmd_FocusFolderTree" xml:space="preserve">
+    <value>Focus Folder Tree</value>
+  </data>
+  <data name="MainWindow_Cmd_GoToFolderEllipsis" xml:space="preserve">
+    <value>Go to Folder…</value>
+  </data>
+  <data name="MainWindow_Cmd_SearchFoldersEllipsis" xml:space="preserve">
+    <value>Search Folders…</value>
+  </data>
+  <data name="MainWindow_Cmd_OpenViewMenu" xml:space="preserve">
+    <value>Open View Menu</value>
+  </data>
+  <data name="MainWindow_Cmd_FocusStatusBar" xml:space="preserve">
+    <value>Focus Status Bar</value>
+  </data>
+  <data name="MainWindow_Cmd_ViewProperties" xml:space="preserve">
+    <value>View Properties</value>
+  </data>
+  <data name="MainWindow_Cmd_GrabAddressesFromMessage" xml:space="preserve">
+    <value>Grab Addresses from Message</value>
+  </data>
+  <data name="MainWindow_Cmd_AddressBook" xml:space="preserve">
+    <value>Address Book</value>
+  </data>
+  <data name="MainWindow_Cmd_ToggleCustomAnnouncements" xml:space="preserve">
+    <value>Toggle Custom Announcements</value>
+  </data>
+  <data name="MainWindow_Cmd_MarkAsRead" xml:space="preserve">
+    <value>Mark as Read</value>
+  </data>
+  <data name="MainWindow_Cmd_FirstMessageInGroup" xml:space="preserve">
+    <value>First Message in Group</value>
+  </data>
+  <data name="MainWindow_Cmd_LastMessageInGroup" xml:space="preserve">
+    <value>Last Message in Group</value>
+  </data>
+  <data name="MainWindow_Cmd_SelectAllMessages" xml:space="preserve">
+    <value>Select All Messages</value>
+  </data>
+  <data name="MainWindow_Cmd_ToggleFlag" xml:space="preserve">
+    <value>Toggle Flag</value>
+  </data>
+  <data name="MainWindow_Cmd_PickFlagEllipsis" xml:space="preserve">
+    <value>Pick Flag…</value>
+  </data>
+  <data name="MainWindow_Cmd_ManageFlagsEllipsis" xml:space="preserve">
+    <value>Manage Flags…</value>
+  </data>
+  <data name="MainWindow_Cmd_DeleteFolder" xml:space="preserve">
+    <value>Delete Folder</value>
+  </data>
+  <data name="MainWindow_Cmd_FocusAccountList" xml:space="preserve">
+    <value>Focus Account List</value>
+  </data>
+  <data name="MainWindow_Cmd_FocusMessageList" xml:space="preserve">
+    <value>Focus Message List</value>
+  </data>
+  <data name="MainWindow_Cmd_FocusTabStrip" xml:space="preserve">
+    <value>Focus Tab Strip</value>
+  </data>
+  <data name="MainWindow_Cmd_NextTab" xml:space="preserve">
+    <value>Next Tab</value>
+  </data>
+  <data name="MainWindow_Cmd_PreviousTab" xml:space="preserve">
+    <value>Previous Tab</value>
+  </data>
+  <data name="MainWindow_Cmd_CloseTab" xml:space="preserve">
+    <value>Close Tab</value>
+  </data>
+  <data name="MainWindow_Cmd_CloseMessage" xml:space="preserve">
+    <value>Close Message</value>
+  </data>
+  <data name="MainWindow_Cmd_CloseOtherTabs" xml:space="preserve">
+    <value>Close Other Tabs</value>
+  </data>
+  <data name="MainWindow_Cmd_TabListEllipsis" xml:space="preserve">
+    <value>Tab List…</value>
+  </data>
+  <data name="MainWindow_Cmd_MoveTabLeft" xml:space="preserve">
+    <value>Move Tab Left</value>
+  </data>
+  <data name="MainWindow_Cmd_MoveTabRight" xml:space="preserve">
+    <value>Move Tab Right</value>
+  </data>
+  <data name="MainWindow_Cmd_MoveTabToNewWindow" xml:space="preserve">
+    <value>Move Tab to New Window</value>
+  </data>
+  <data name="MainWindow_Cmd_OpenInNewTab" xml:space="preserve">
+    <value>Open in New Tab</value>
+  </data>
+  <data name="MainWindow_Cmd_OpenInNewWindow" xml:space="preserve">
+    <value>Open in New Window</value>
+  </data>
+  <data name="MainWindow_Cmd_MoveToFolderEllipsis" xml:space="preserve">
+    <value>Move to Folder…</value>
+  </data>
+  <data name="MainWindow_Cmd_CopyToFolderEllipsis" xml:space="preserve">
+    <value>Copy to Folder…</value>
+  </data>
+  <data name="MainWindow_Cmd_ToggleTodayFilter" xml:space="preserve">
+    <value>Toggle Today Filter</value>
+  </data>
+  <data name="MainWindow_Cmd_OpenCalendarEventSourceMessage" xml:space="preserve">
+    <value>Open Calendar Event Source Message</value>
+  </data>
+  <data name="AddressBook_Title" xml:space="preserve">
+    <value>Address Book</value>
+  </data>
+  <data name="AddressBook_ContactsTab" xml:space="preserve">
+    <value>Contacts</value>
+  </data>
+  <data name="AddressBook_SearchContacts" xml:space="preserve">
+    <value>Search contacts</value>
+  </data>
+  <data name="AddressBook_AddSelectedContactTo" xml:space="preserve">
+    <value>Add selected contact to:</value>
+  </data>
+  <data name="AddressBook_ToButton" xml:space="preserve">
+    <value>_To</value>
+  </data>
+  <data name="AddressBook_CcButton" xml:space="preserve">
+    <value>_Cc</value>
+  </data>
+  <data name="AddressBook_BccButton" xml:space="preserve">
+    <value>_Bcc</value>
+  </data>
+  <data name="AddressBook_AddToToField" xml:space="preserve">
+    <value>Add to To field</value>
+  </data>
+  <data name="AddressBook_AddToCcField" xml:space="preserve">
+    <value>Add to Cc field</value>
+  </data>
+  <data name="AddressBook_AddToBccField" xml:space="preserve">
+    <value>Add to Bcc field</value>
+  </data>
+  <data name="AddressBook_NameLabel" xml:space="preserve">
+    <value>_Name:</value>
+  </data>
+  <data name="AddressBook_EmailLabel" xml:space="preserve">
+    <value>_Email:</value>
+  </data>
+  <data name="AddressBook_ContactName" xml:space="preserve">
+    <value>Contact name</value>
+  </data>
+  <data name="AddressBook_ContactEmail" xml:space="preserve">
+    <value>Contact email</value>
+  </data>
+  <data name="AddressBook_AddButton" xml:space="preserve">
+    <value>_Add</value>
+  </data>
+  <data name="AddressBook_EditButton" xml:space="preserve">
+    <value>_Edit</value>
+  </data>
+  <data name="AddressBook_DeleteButton" xml:space="preserve">
+    <value>_Delete</value>
+  </data>
+  <data name="AddressBook_SaveButton" xml:space="preserve">
+    <value>_Save</value>
+  </data>
+  <data name="AddressBook_CancelEditButton" xml:space="preserve">
+    <value>C_ancel</value>
+  </data>
+  <data name="AddressBook_AddContact" xml:space="preserve">
+    <value>Add contact</value>
+  </data>
+  <data name="AddressBook_EditContact" xml:space="preserve">
+    <value>Edit contact</value>
+  </data>
+  <data name="AddressBook_DeleteSelectedContact" xml:space="preserve">
+    <value>Delete selected contact</value>
+  </data>
+  <data name="AddressBook_SaveContact" xml:space="preserve">
+    <value>Save contact</value>
+  </data>
+  <data name="AddressBook_CancelEdit" xml:space="preserve">
+    <value>Cancel edit</value>
+  </data>
+  <data name="AddressBook_CloseAddressBook" xml:space="preserve">
+    <value>Close address book</value>
+  </data>
+  <data name="AddressBook_AddToGroup" xml:space="preserve">
+    <value>Add to group</value>
+  </data>
+  <data name="AddressBook_GroupsTab" xml:space="preserve">
+    <value>Groups</value>
+  </data>
+  <data name="AddressBook_GroupsHeader" xml:space="preserve">
+    <value>Groups header</value>
+  </data>
+  <data name="AddressBook_MembersOfFormat" xml:space="preserve">
+    <value>Members of {0}</value>
+  </data>
+  <data name="AddressBook_GroupMemberListHeader" xml:space="preserve">
+    <value>Group member list header</value>
+  </data>
+  <data name="AddressBook_InsertAllInto" xml:space="preserve">
+    <value>Insert all into:</value>
+  </data>
+  <data name="AddressBook_AddAllGroupMembersToTo" xml:space="preserve">
+    <value>Add all group members to To</value>
+  </data>
+  <data name="AddressBook_AddAllGroupMembersToCc" xml:space="preserve">
+    <value>Add all group members to Cc</value>
+  </data>
+  <data name="AddressBook_AddAllGroupMembersToBcc" xml:space="preserve">
+    <value>Add all group members to Bcc</value>
+  </data>
+  <data name="AddressBook_GroupMembers" xml:space="preserve">
+    <value>Group members</value>
+  </data>
+  <data name="AddressBook_NameColonLabel" xml:space="preserve">
+    <value>Name:</value>
+  </data>
+  <data name="AddressBook_GroupName" xml:space="preserve">
+    <value>Group name</value>
+  </data>
+  <data name="AddressBook_NewButton" xml:space="preserve">
+    <value>_New</value>
+  </data>
+  <data name="AddressBook_RenameButton" xml:space="preserve">
+    <value>_Rename</value>
+  </data>
+  <data name="AddressBook_ManageButton" xml:space="preserve">
+    <value>_Manage…</value>
+  </data>
+  <data name="AddressBook_NewGroup" xml:space="preserve">
+    <value>New group</value>
+  </data>
+  <data name="AddressBook_RenameSelectedGroup" xml:space="preserve">
+    <value>Rename selected group</value>
+  </data>
+  <data name="AddressBook_DeleteSelectedGroup" xml:space="preserve">
+    <value>Delete selected group</value>
+  </data>
+  <data name="AddressBook_OpenGroupManager" xml:space="preserve">
+    <value>Open Group Manager</value>
+  </data>
+  <data name="AddressBook_NoGroupsCreateOne" xml:space="preserve">
+    <value>No groups — create one on the Groups tab</value>
+  </data>
+  <data name="AddressBook_AddToGroupNameFormat" xml:space="preserve">
+    <value>Add to "{0}"</value>
+  </data>
+  <data name="AddressBook_DeleteContactPromptSingular" xml:space="preserve">
+    <value>Delete {0}?</value>
+  </data>
+  <data name="AddressBook_DeleteContactPromptPlural" xml:space="preserve">
+    <value>Delete {0} contacts?</value>
+  </data>
+  <data name="AddressBook_ConfirmDeleteTitle" xml:space="preserve">
+    <value>Confirm Delete</value>
+  </data>
+  <data name="AddressBook_Announce_ContactsSelected_One" xml:space="preserve">
+    <value>{0} contact selected.</value>
+  </data>
+  <data name="AddressBook_Announce_ContactsSelected_Other" xml:space="preserve">
+    <value>{0} contacts selected.</value>
+  </data>
+  <data name="AddressBook_Announce_ContactsTab" xml:space="preserve">
+    <value>Contacts tab</value>
+  </data>
+  <data name="AddressBook_Announce_GroupsTab" xml:space="preserve">
+    <value>Groups tab</value>
+  </data>
+  <data name="AddressBook_Announce_TypeNewGroupName" xml:space="preserve">
+    <value>Type a new group name and press Enter. Press Escape to cancel.</value>
+  </data>
+  <data name="AddressBook_Announce_RenameGroupFormat" xml:space="preserve">
+    <value>Rename "{0}". Type a new name and press Enter. Press Escape to cancel.</value>
+  </data>
+  <data name="FlagManager_Title" xml:space="preserve">
+    <value>Flag Manager</value>
+  </data>
+  <data name="FlagManager_AddFlag" xml:space="preserve">
+    <value>Add Flag</value>
+  </data>
+  <data name="FlagManager_MoveUp" xml:space="preserve">
+    <value>Move Up</value>
+  </data>
+  <data name="FlagManager_MoveDown" xml:space="preserve">
+    <value>Move Down</value>
+  </data>
+  <data name="FlagManager_SetKDefault" xml:space="preserve">
+    <value>Set K Default</value>
+  </data>
+  <data name="FlagManager_SetKDefaultAutomation" xml:space="preserve">
+    <value>Set K default</value>
+  </data>
+  <data name="FlagManager_DeleteButtonName" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="FlagManager_Flags" xml:space="preserve">
+    <value>Flags</value>
+  </data>
+  <data name="FlagManager_NoFlagSelected" xml:space="preserve">
+    <value>No flag selected.</value>
+  </data>
+  <data name="FlagManager_NameSectionHeader" xml:space="preserve">
+    <value>Name</value>
+  </data>
+  <data name="FlagManager_Rename" xml:space="preserve">
+    <value>Rename</value>
+  </data>
+  <data name="FlagManager_FlagName" xml:space="preserve">
+    <value>Flag name</value>
+  </data>
+  <data name="FlagManager_ColorSectionHeader" xml:space="preserve">
+    <value>Color</value>
+  </data>
+  <data name="FlagManager_PresetColors" xml:space="preserve">
+    <value>Preset colors</value>
+  </data>
+  <data name="FlagManager_ColorRed" xml:space="preserve">
+    <value>Red</value>
+  </data>
+  <data name="FlagManager_ColorOrange" xml:space="preserve">
+    <value>Orange</value>
+  </data>
+  <data name="FlagManager_ColorAmber" xml:space="preserve">
+    <value>Amber</value>
+  </data>
+  <data name="FlagManager_ColorYellow" xml:space="preserve">
+    <value>Yellow</value>
+  </data>
+  <data name="FlagManager_ColorGreen" xml:space="preserve">
+    <value>Green</value>
+  </data>
+  <data name="FlagManager_ColorLime" xml:space="preserve">
+    <value>Lime</value>
+  </data>
+  <data name="FlagManager_ColorTeal" xml:space="preserve">
+    <value>Teal</value>
+  </data>
+  <data name="FlagManager_ColorCyan" xml:space="preserve">
+    <value>Cyan</value>
+  </data>
+  <data name="FlagManager_ColorBlue" xml:space="preserve">
+    <value>Blue</value>
+  </data>
+  <data name="FlagManager_ColorIndigo" xml:space="preserve">
+    <value>Indigo</value>
+  </data>
+  <data name="FlagManager_ColorViolet" xml:space="preserve">
+    <value>Violet</value>
+  </data>
+  <data name="FlagManager_ColorPink" xml:space="preserve">
+    <value>Pink</value>
+  </data>
+  <data name="MainWindow_MoveFolderToTitle" xml:space="preserve">
+    <value>Move Folder To</value>
+  </data>
+  <data name="MainWindow_CopyFolderToTitle" xml:space="preserve">
+    <value>Copy Folder To</value>
+  </data>
+  <data name="MainWindow_CopyToFolderTitle" xml:space="preserve">
+    <value>Copy to Folder</value>
+  </data>
+  <data name="MainWindow_MoveConversationToFolderTitle" xml:space="preserve">
+    <value>Move Conversation to Folder</value>
+  </data>
+  <data name="MainWindow_CopyConversationToFolderTitle" xml:space="preserve">
+    <value>Copy Conversation to Folder</value>
+  </data>
+  <data name="Compose_CmdCategory" xml:space="preserve">
+    <value>Compose</value>
+  </data>
+  <data name="Compose_Cmd_SendMessage" xml:space="preserve">
+    <value>Send Message</value>
+  </data>
+  <data name="Compose_Cmd_SaveDraft" xml:space="preserve">
+    <value>Save Draft</value>
+  </data>
+  <data name="Compose_Cmd_AddAttachments" xml:space="preserve">
+    <value>Add Attachments…</value>
+  </data>
+  <data name="Compose_Cmd_InsertTemplate" xml:space="preserve">
+    <value>Insert Template…</value>
+  </data>
+  <data name="Compose_Cmd_SaveAsTemplate" xml:space="preserve">
+    <value>Save as Template</value>
+  </data>
+  <data name="Compose_Cmd_CancelClose" xml:space="preserve">
+    <value>Cancel / Close</value>
+  </data>
+  <data name="Compose_Cmd_FocusMessageBody" xml:space="preserve">
+    <value>Focus Message Body</value>
+  </data>
+  <data name="Compose_Cmd_CheckAddresses" xml:space="preserve">
+    <value>Check Addresses</value>
+  </data>
+  <data name="Compose_Cmd_CheckSpelling" xml:space="preserve">
+    <value>Check Spelling…</value>
+  </data>
+  <data name="Compose_Cmd_NextMisspelling" xml:space="preserve">
+    <value>Next Misspelling</value>
+  </data>
+  <data name="Compose_Cmd_PreviousMisspelling" xml:space="preserve">
+    <value>Previous Misspelling</value>
+  </data>
+  <data name="Compose_Cmd_ToggleSpellingAnnouncements" xml:space="preserve">
+    <value>Toggle Spelling Announcements</value>
+  </data>
+  <data name="Compose_Cmd_RepeatSpellingAnnouncement" xml:space="preserve">
+    <value>Repeat Spelling Announcement</value>
+  </data>
+  <data name="Compose_Cmd_AddressBook" xml:space="preserve">
+    <value>Address Book</value>
+  </data>
+  <data name="Compose_Cmd_AnnounceLastAutoSave" xml:space="preserve">
+    <value>Announce Last Auto-Save</value>
+  </data>
+  <data name="Compose_Cmd_SwitchToPlainTextMode" xml:space="preserve">
+    <value>Switch to Plain Text Mode</value>
+  </data>
+  <data name="Compose_Cmd_SwitchToMarkdownMode" xml:space="preserve">
+    <value>Switch to Markdown Mode</value>
+  </data>
+  <data name="Compose_Cmd_SwitchToHtmlMode" xml:space="preserve">
+    <value>Switch to HTML Mode</value>
+  </data>
+  <data name="Compose_Cmd_Bold" xml:space="preserve">
+    <value>Bold</value>
+  </data>
+  <data name="Compose_Cmd_Italic" xml:space="preserve">
+    <value>Italic</value>
+  </data>
+  <data name="Compose_Cmd_Underline" xml:space="preserve">
+    <value>Underline</value>
+  </data>
+  <data name="Compose_Cmd_Strikethrough" xml:space="preserve">
+    <value>Strikethrough</value>
+  </data>
+  <data name="Compose_Cmd_Heading1" xml:space="preserve">
+    <value>Heading 1</value>
+  </data>
+  <data name="Compose_Cmd_Heading2" xml:space="preserve">
+    <value>Heading 2</value>
+  </data>
+  <data name="Compose_Cmd_Heading3" xml:space="preserve">
+    <value>Heading 3</value>
+  </data>
+  <data name="Compose_Cmd_BulletList" xml:space="preserve">
+    <value>Bullet List</value>
+  </data>
+  <data name="Compose_Cmd_NumberedList" xml:space="preserve">
+    <value>Numbered List</value>
+  </data>
+  <data name="Compose_Cmd_InsertLink" xml:space="preserve">
+    <value>Insert Link…</value>
+  </data>
+  <data name="Compose_Cmd_ClearFormatting" xml:space="preserve">
+    <value>Clear Formatting</value>
+  </data>
+  <data name="Compose_Cmd_AnnounceFormattingState" xml:space="preserve">
+    <value>Announce Formatting State</value>
+  </data>
+  <data name="Compose_Cmd_ShowFormatting" xml:space="preserve">
+    <value>Show Formatting…</value>
+  </data>
+  <data name="Compose_Cmd_OpenPreview" xml:space="preserve">
+    <value>Open Preview</value>
+  </data>
+  <data name="AddressBook_CmdCategory" xml:space="preserve">
+    <value>Contacts</value>
+  </data>
+  <data name="AddressBook_Cmd_AddContact" xml:space="preserve">
+    <value>Add Contact</value>
+  </data>
+  <data name="AddressBook_Cmd_EditContact" xml:space="preserve">
+    <value>Edit Contact</value>
+  </data>
+  <data name="AddressBook_Cmd_SaveContact" xml:space="preserve">
+    <value>Save Contact</value>
+  </data>
+  <data name="AddressBook_Cmd_CancelEdit" xml:space="preserve">
+    <value>Cancel Edit</value>
+  </data>
+  <data name="AddressBook_Cmd_NewGroup" xml:space="preserve">
+    <value>New Group</value>
+  </data>
+  <data name="AddressBook_Cmd_DeleteGroup" xml:space="preserve">
+    <value>Delete Group</value>
+  </data>
+  <data name="AddressBook_Cmd_RenameGroup" xml:space="preserve">
+    <value>Rename Group</value>
+  </data>
+  <data name="AddressBook_Cmd_FocusGroupsPane" xml:space="preserve">
+    <value>Focus Groups Pane</value>
+  </data>
+  <data name="AddressBook_Cmd_ManageGroups" xml:space="preserve">
+    <value>Manage Groups…</value>
+  </data>
+  <data name="FlagManager_CmdCategory" xml:space="preserve">
+    <value>Flag</value>
+  </data>
+  <data name="FlagManager_Cmd_AddFlag" xml:space="preserve">
+    <value>Add Flag</value>
+  </data>
+  <data name="FlagManager_Cmd_DeleteSelectedFlag" xml:space="preserve">
+    <value>Delete Selected Flag</value>
+  </data>
+  <data name="FlagManager_Cmd_RenameSelectedFlag" xml:space="preserve">
+    <value>Rename Selected Flag</value>
+  </data>
+  <data name="FlagManager_Cmd_MoveFlagUp" xml:space="preserve">
+    <value>Move Flag Up</value>
+  </data>
+  <data name="FlagManager_Cmd_MoveFlagDown" xml:space="preserve">
+    <value>Move Flag Down</value>
+  </data>
+  <data name="FlagManager_Cmd_SetAsKKeyDefault" xml:space="preserve">
+    <value>Set as K Key Default</value>
+  </data>
+  <data name="FlagManager_Cmd_Close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="FlagPicker_CmdCategory" xml:space="preserve">
+    <value>Flag</value>
+  </data>
+  <data name="FlagPicker_Cmd_ApplySelectedFlag" xml:space="preserve">
+    <value>Apply Selected Flag</value>
+  </data>
+  <data name="FlagPicker_Cmd_ClearFlag" xml:space="preserve">
+    <value>Clear Flag</value>
+  </data>
+  <data name="FlagPicker_Cmd_Cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="Compose_Title_Reply" xml:space="preserve">
+    <value>Reply</value>
+  </data>
+  <data name="Compose_Title_ReplyAll" xml:space="preserve">
+    <value>Reply All</value>
+  </data>
+  <data name="Compose_Title_Forward" xml:space="preserve">
+    <value>Forward</value>
+  </data>
+  <data name="Compose_Title_Draft" xml:space="preserve">
+    <value>Draft</value>
+  </data>
+  <data name="Compose_Title_EditTemplate" xml:space="preserve">
+    <value>Edit Template</value>
+  </data>
+  <data name="Compose_Title_NewMessage" xml:space="preserve">
+    <value>New Message</value>
+  </data>
+  <data name="Compose_ModeDisplay_Markdown" xml:space="preserve">
+    <value>Markdown</value>
+  </data>
+  <data name="Compose_ModeDisplay_Html" xml:space="preserve">
+    <value>HTML</value>
+  </data>
+  <data name="Compose_ModeDisplay_PlainText" xml:space="preserve">
+    <value>Plain Text</value>
+  </data>
+  <data name="Compose_ModeDisplay_Format" xml:space="preserve">
+    <value>Mode: {0}</value>
+  </data>
+  <data name="MainVM_FilterLabel_Unread" xml:space="preserve">
+    <value>Unread</value>
+  </data>
+  <data name="MainVM_FilterLabel_Read" xml:space="preserve">
+    <value>Read</value>
+  </data>
+  <data name="MainVM_FilterLabel_WithAttachments" xml:space="preserve">
+    <value>With Attachments</value>
+  </data>
+  <data name="MainVM_FilterLabel_Replied" xml:space="preserve">
+    <value>Replied</value>
+  </data>
+  <data name="MainVM_FilterLabel_Forwarded" xml:space="preserve">
+    <value>Forwarded</value>
+  </data>
+  <data name="MainVM_FilterLabel_ToMe" xml:space="preserve">
+    <value>To Me</value>
+  </data>
+  <data name="MainVM_FilterLabel_Flagged" xml:space="preserve">
+    <value>Flagged</value>
+  </data>
+  <data name="MainVM_SortLabel_OldestFirst" xml:space="preserve">
+    <value>Oldest First</value>
+  </data>
+  <data name="MainVM_SortLabel_AlphaAsc" xml:space="preserve">
+    <value>A → Z</value>
+  </data>
+  <data name="MainVM_SortLabel_AlphaDesc" xml:space="preserve">
+    <value>Z → A</value>
+  </data>
+  <data name="MainVM_SortLabel_MostMessages" xml:space="preserve">
+    <value>Most Messages</value>
+  </data>
+  <data name="MainVM_SortLabel_FewestMessages" xml:space="preserve">
+    <value>Fewest Messages</value>
+  </data>
+  <data name="MainVM_SortLabel_FlaggedFirst" xml:space="preserve">
+    <value>Flagged First</value>
+  </data>
+  <data name="MainVM_SyncRangeLabel_7Days" xml:space="preserve">
+    <value>Sync: 7 Days</value>
+  </data>
+  <data name="MainVM_SyncRangeLabel_30Days" xml:space="preserve">
+    <value>Sync: 30 Days</value>
+  </data>
+  <data name="MainVM_SyncRangeLabel_6Months" xml:space="preserve">
+    <value>Sync: 6 Months</value>
+  </data>
+  <data name="MainVM_SyncRangeLabel_1Year" xml:space="preserve">
+    <value>Sync: 1 Year</value>
+  </data>
+  <data name="MainVM_SyncRangeLabel_All" xml:space="preserve">
+    <value>Sync: All</value>
+  </data>
+  <data name="MainVM_ViewModeLabel_Conversations" xml:space="preserve">
+    <value>View: Conversations</value>
+  </data>
+  <data name="MainVM_ViewModeLabel_From" xml:space="preserve">
+    <value>View: From</value>
+  </data>
+  <data name="MainVM_ViewModeLabel_To" xml:space="preserve">
+    <value>View: To</value>
+  </data>
+  <data name="MainVM_ViewModeLabel_Messages" xml:space="preserve">
+    <value>View: Messages</value>
+  </data>
+  <data name="SpellCheck_Completion_NoMisspellingsFound" xml:space="preserve">
+    <value>The spelling check is complete. No misspellings were found.</value>
+  </data>
+  <data name="SpellCheck_Completion_NoChangesMade" xml:space="preserve">
+    <value>The spelling check is complete. No changes were made.</value>
+  </data>
+  <data name="SpellCheck_Completion_WordsChanged_One" xml:space="preserve">
+    <value>The spelling check is complete. {0} word changed.</value>
+  </data>
+  <data name="SpellCheck_Completion_WordsChanged_Other" xml:space="preserve">
+    <value>The spelling check is complete. {0} words changed.</value>
+  </data>
+  <data name="SpellCheck_CompletionAnnouncement_NoMisspellingsFound" xml:space="preserve">
+    <value>Spelling check complete. No misspellings found.</value>
+  </data>
+  <data name="SpellCheck_CompletionAnnouncement_NoChangesMade" xml:space="preserve">
+    <value>Spelling check complete. No changes made.</value>
+  </data>
+  <data name="SpellCheck_CompletionAnnouncement_WordsChanged_One" xml:space="preserve">
+    <value>Spelling check complete. {0} word changed.</value>
+  </data>
+  <data name="SpellCheck_CompletionAnnouncement_WordsChanged_Other" xml:space="preserve">
+    <value>Spelling check complete. {0} words changed.</value>
+  </data>
+  <data name="SpellCheck_Cancel_Canceled" xml:space="preserve">
+    <value>Spelling check canceled.</value>
+  </data>
+  <data name="SpellCheck_Cancel_ChangesKept_One" xml:space="preserve">
+    <value>Spelling check canceled. {0} change kept.</value>
+  </data>
+  <data name="SpellCheck_Cancel_ChangesKept_Other" xml:space="preserve">
+    <value>Spelling check canceled. {0} changes kept.</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_AllMail" xml:space="preserve">
+    <value>All Mail</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_AllInboxes" xml:space="preserve">
+    <value>All Inboxes</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_AllDrafts" xml:space="preserve">
+    <value>All Drafts</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_AllSent" xml:space="preserve">
+    <value>All Sent</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_AllTrash" xml:space="preserve">
+    <value>All Trash</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_AccountMail" xml:space="preserve">
+    <value>Account Mail</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_VirtualFolder" xml:space="preserve">
+    <value>Virtual folder</value>
+  </data>
+  <data name="ViewManager_ModeLabel_Conversations" xml:space="preserve">
+    <value>Conversations</value>
+  </data>
+  <data name="ViewManager_ModeLabel_From" xml:space="preserve">
+    <value>From</value>
+  </data>
+  <data name="ViewManager_ModeLabel_To" xml:space="preserve">
+    <value>To</value>
+  </data>
+  <data name="ViewManager_ModeLabel_Messages" xml:space="preserve">
+    <value>Messages</value>
+  </data>
+  <data name="ViewManager_FilterLabel_Unread" xml:space="preserve">
+    <value>Unread</value>
+  </data>
+  <data name="ViewManager_FilterLabel_Read" xml:space="preserve">
+    <value>Read</value>
+  </data>
+  <data name="ViewManager_FilterLabel_WithAttachments" xml:space="preserve">
+    <value>With Attachments</value>
+  </data>
+  <data name="ViewManager_FilterLabel_Replied" xml:space="preserve">
+    <value>Replied</value>
+  </data>
+  <data name="ViewManager_FilterLabel_Forwarded" xml:space="preserve">
+    <value>Forwarded</value>
+  </data>
+  <data name="ViewManager_FilterLabel_Flagged" xml:space="preserve">
+    <value>Flagged</value>
+  </data>
+  <data name="ViewManager_FilterLabel_All" xml:space="preserve">
+    <value>All</value>
+  </data>
+  <data name="ViewManager_SortLabel_OldestFirst" xml:space="preserve">
+    <value>Oldest First</value>
+  </data>
+  <data name="ViewManager_SortLabel_AlphaAsc" xml:space="preserve">
+    <value>A → Z</value>
+  </data>
+  <data name="ViewManager_SortLabel_AlphaDesc" xml:space="preserve">
+    <value>Z → A</value>
+  </data>
+  <data name="ViewManager_SortLabel_MostMessages" xml:space="preserve">
+    <value>Most Messages</value>
+  </data>
+  <data name="ViewManager_SortLabel_FewestMessages" xml:space="preserve">
+    <value>Fewest Messages</value>
+  </data>
+  <data name="ViewManager_SortLabel_NewestFirst" xml:space="preserve">
+    <value>Newest First</value>
+  </data>
+  <data name="TokenizedAddressBox_MenuItem_CopyAddress" xml:space="preserve">
+    <value>Copy _Address</value>
+  </data>
+  <data name="TokenizedAddressBox_MenuItem_AddToAddressBook" xml:space="preserve">
+    <value>Add to Address _Book</value>
+  </data>
+  <data name="TokenizedAddressBox_MenuItem_Remove" xml:space="preserve">
+    <value>_Remove</value>
+  </data>
+  <data name="TokenizedAddressBox_UnrecognizedPrefix" xml:space="preserve">
+    <value>Unrecognized: {0}</value>
+  </data>
+  <data name="MailMessageSummary_Status_Replied" xml:space="preserve">
+    <value>Replied</value>
+  </data>
+  <data name="MailMessageSummary_Status_Fwd" xml:space="preserve">
+    <value>Fwd</value>
+  </data>
+  <data name="MailMessageSummary_Status_New" xml:space="preserve">
+    <value>New</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Replied" xml:space="preserve">
+    <value>replied</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Forwarded" xml:space="preserve">
+    <value>forwarded</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Unread" xml:space="preserve">
+    <value>unread</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Read" xml:space="preserve">
+    <value>read</value>
+  </data>
+</root>

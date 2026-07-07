@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -67,7 +68,7 @@ public partial class CalendarViewModel : ObservableObject
         if (_onlineMode)
         {
             IsUnavailable = true;
-            Announce("Calendar is unavailable in online mode. It requires the local message cache.",
+            Announce(Strings.Calendar_Announce_UnavailableOnline,
                      AnnouncementCategory.Hint);
             return;
         }
@@ -83,10 +84,10 @@ public partial class CalendarViewModel : ObservableObject
     private async Task RefreshAsync()
     {
         if (_onlineMode) return;
-        Announce("Refreshing calendar.", AnnouncementCategory.Status);
+        Announce(Strings.Calendar_Announce_Refreshing, AnnouncementCategory.Status);
         await _calendarService.RefreshAsync();
         ApplyFilters();
-        Announce($"Calendar updated. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
+        Announce(StringsHelper.Count("Calendar_Announce_Updated", VisibleEvents.Count),
                  AnnouncementCategory.Result);
     }
 
@@ -97,10 +98,10 @@ public partial class CalendarViewModel : ObservableObject
         IsTodayFilter = !IsTodayFilter;
         ApplyFilters();
         if (IsTodayFilter)
-            Announce($"Today. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
+            Announce(StringsHelper.Count("Calendar_Announce_TodayFiltered", VisibleEvents.Count),
                      AnnouncementCategory.Result);
         else
-            Announce($"All events. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
+            Announce(StringsHelper.Count("Calendar_Announce_AllEvents", VisibleEvents.Count),
                      AnnouncementCategory.Result);
     }
 
@@ -111,11 +112,11 @@ public partial class CalendarViewModel : ObservableObject
         if (evt == null) return;
         if (string.IsNullOrEmpty(evt.SourceMessageId))
         {
-            Announce("The original invitation email is no longer in your local message cache.",
+            Announce(Strings.Calendar_Announce_SourceMessageMissing,
                      AnnouncementCategory.Result);
             return;
         }
-        Announce($"Opening message. {evt.Summary}.", AnnouncementCategory.Status);
+        Announce(string.Format(Strings.Calendar_Announce_OpeningMessage, evt.Summary), AnnouncementCategory.Status);
         OpenSourceMessageRequested?.Invoke(evt.AccountId, evt.SourceFolder, evt.SourceMessageId);
     }
 
@@ -166,13 +167,11 @@ public partial class CalendarViewModel : ObservableObject
         var count = VisibleEvents.Count;
         if (count == 0)
         {
-            Announce("Calendar. No events.", AnnouncementCategory.Status);
+            Announce(Strings.Calendar_Announce_NoEvents, AnnouncementCategory.Status);
         }
         else
         {
-            Announce($"Calendar. {count} upcoming event{(count == 1 ? "" : "s")}. " +
-                     "Use Up and Down arrows to browse. Press Enter to open the invitation. " +
-                     "Press T to filter to today. Press Escape to return to the folder list.",
+            Announce(StringsHelper.Count("Calendar_Announce_OpenHint", count),
                      AnnouncementCategory.Hint);
         }
     }

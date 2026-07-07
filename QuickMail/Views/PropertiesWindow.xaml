@@ -2,6 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:QuickMail.Views"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         Title="{Binding Title}"
         Width="520" Height="480"
         MinWidth="360" MinHeight="280"
@@ -27,12 +28,12 @@
                     MinWidth="90"
                     Margin="0,0,6,0"
                     Command="{Binding CopyAllCommand}"
-                    AutomationProperties.Name="Copy all properties"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.Properties_CopyAllProperties}"/>
             <Button Content="_Close"
                     TabIndex="91"
                     MinWidth="75"
                     IsCancel="True"
-                    AutomationProperties.Name="Close"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.Properties_CloseButtonName}"/>
         </StackPanel>
 
         <!-- Scrollable content -->
@@ -48,9 +49,9 @@
                           KeyDown="PropertyList_KeyDown">
                     <ListView.View>
                         <GridView>
-                            <GridViewColumn Header="Field" Width="140"
+                            <GridViewColumn Header="{x:Static strings:Strings.Properties_Field}" Width="140"
                                 DisplayMemberBinding="{Binding Label}"/>
-                            <GridViewColumn Header="Value" Width="300"
+                            <GridViewColumn Header="{x:Static strings:Strings.Properties_Value}" Width="300"
                                 DisplayMemberBinding="{Binding Value}"/>
                         </GridView>
                     </ListView.View>
@@ -70,10 +71,10 @@
                 </ListView>
 
                 <!-- Raw headers expander (message context only, hidden when RawHeaders is null) -->
-                <Expander Header="Raw headers"
+                <Expander Header="{x:Static strings:Strings.Properties_RawHeaders}"
                           Visibility="{Binding RawHeaders, Converter={StaticResource NullToCollapsed}}"
                           Margin="0,4,0,0"
-                          AutomationProperties.Name="Raw headers">
+                          AutomationProperties.Name="{x:Static strings:Strings.Properties_RawHeaders}">
                     <TextBox Text="{Binding RawHeaders, Mode=OneWay}"
                              IsReadOnly="True"
                              AcceptsReturn="True"
@@ -81,7 +82,7 @@
                              VerticalScrollBarVisibility="Auto"
                              MaxHeight="200"
                              FontFamily="{DynamicResource Theme.FontFamilyMono}"
-                             AutomationProperties.Name="Raw message headers"/>
+                             AutomationProperties.Name="{x:Static strings:Strings.Properties_RawMessageHeaders}"/>
                 </Expander>
 
             </StackPanel>

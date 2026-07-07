@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -36,7 +37,7 @@ public partial class PropertiesWindow : Window
     {
         PropertiesList.Focus();
         AccessibilityHelper.Announce(this,
-            "Press Enter or Ctrl+C to copy the selected row.",
+            Strings.Properties_Announce_CopyRowHint,
             category: AnnouncementCategory.Hint);
     }
 
@@ -59,7 +60,7 @@ public partial class PropertiesWindow : Window
                     selected.Select(r => r.IsHeader ? r.Label : $"{r.Label}: {r.Value}"));
                 Clipboard.SetText(text);
                 AccessibilityHelper.Announce(this,
-                    $"{selected.Count} rows copied",
+                    StringsHelper.Count("Properties_Announce_RowsCopied", selected.Count),
                     category: AnnouncementCategory.Result);
             }
 

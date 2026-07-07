@@ -2,7 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:QuickMail.Views"
-        Title="Rules Manager"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
+        Title="{x:Static strings:Strings.RulesManager_Title}"
         Width="750" Height="560"
         MinWidth="600" MinHeight="440"
         WindowStartupLocation="CenterOwner"
@@ -52,12 +53,12 @@
                 </Grid.RowDefinitions>
 
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
-                    <Button Content="New Rule" Command="{Binding NewRuleCommand}"
+                    <Button Content="{x:Static strings:Strings.RulesManager_NewRuleButton}" Command="{Binding NewRuleCommand}"
                             Width="80" Height="26" Margin="0,0,6,0"
-                            AutomationProperties.Name="Create new rule"/>
-                    <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
+                            AutomationProperties.Name="{x:Static strings:Strings.RulesManager_CreateNewRuleName}"/>
+                    <Button Content="{x:Static strings:Strings.Common_Delete}" Command="{Binding DeleteRuleCommand}"
                             Width="60" Height="26"
-                            AutomationProperties.Name="Delete selected rule"/>
+                            AutomationProperties.Name="{x:Static strings:Strings.RulesManager_DeleteSelectedRuleName}"/>
                 </StackPanel>
 
                 <ListBox Grid.Row="1"
@@ -65,7 +66,7 @@
                          ItemsSource="{Binding Rules}"
                          SelectedItem="{Binding SelectedRule}"
                          DisplayMemberPath="Name"
-                         AutomationProperties.Name="Rules list">
+                         AutomationProperties.Name="{x:Static strings:Strings.RulesManager_RulesListName}">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="6,4"/>
@@ -88,10 +89,10 @@
                           KeyboardNavigation.IsTabStop="False">
                 <StackPanel Margin="12,0,0,0">
                     <!-- Rule Name -->
-                    <TextBlock Text="Rule Name" FontWeight="SemiBold" Margin="0,8,0,2"/>
+                    <TextBlock Text="{x:Static strings:Strings.RulesManager_RuleNameHeading}" FontWeight="SemiBold" Margin="0,8,0,2"/>
                     <TextBox Text="{Binding SelectedRule.Name, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource RuleTextBox}"
-                             AutomationProperties.Name="Rule name"/>
+                             AutomationProperties.Name="{x:Static strings:Strings.RulesManager_RuleNameFieldName}"/>
                     <TextBlock Text="{Binding NameError}" Foreground="{DynamicResource Theme.Error}"
                                KeyboardNavigation.IsTabStop="False"
                                AutomationProperties.LiveSetting="Assertive">
@@ -110,74 +111,74 @@
                     </TextBlock>
 
                     <!-- Enabled -->
-                    <CheckBox Content="Enabled"
+                    <CheckBox Content="{x:Static strings:Strings.RulesManager_EnabledCheckbox}"
                               IsChecked="{Binding SelectedRule.IsEnabled}"
                               Style="{StaticResource RuleCheckBox}"
-                              AutomationProperties.Name="Rule enabled"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_RuleEnabledName}"/>
 
                     <!-- Conditions -->
-                    <TextBlock Text="Conditions" FontWeight="SemiBold" Margin="0,12,0,4"/>
+                    <TextBlock Text="{x:Static strings:Strings.RulesManager_ConditionsHeading}" FontWeight="SemiBold" Margin="0,12,0,4"/>
                     <Separator Margin="0,0,0,6"/>
 
-                    <TextBlock Text="Account"/>
+                    <TextBlock Text="{x:Static strings:Strings.RulesManager_AccountLabel}"/>
                     <ComboBox ItemsSource="{Binding AccountOptions}"
                               SelectedValue="{Binding SelectedRule.AccountId}"
                               SelectedValuePath="Id"
                               Style="{StaticResource RuleComboBox}"
-                              AutomationProperties.Name="Account scope"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_AccountScopeName}"/>
 
                     <!-- From condition -->
-                    <CheckBox Content="From"
+                    <CheckBox Content="{x:Static strings:Strings.RulesManager_FromCheckbox}"
                               IsChecked="{Binding IsFromEnabled}"
                               Style="{StaticResource RuleCheckBox}"
-                              AutomationProperties.Name="Use From condition"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_UseFromConditionName}"/>
                     <TextBox Text="{Binding SelectedRule.FromContains, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsFromEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsFromEnabled}"
-                             AutomationProperties.Name="From contains"
-                             AutomationProperties.HelpText="e.g., manager@company.com or just company.com"/>
+                             AutomationProperties.Name="{x:Static strings:Strings.RulesManager_FromContainsName}"
+                             AutomationProperties.HelpText="{x:Static strings:Strings.RulesManager_FromContainsHelpText}"/>
 
                     <!-- To condition -->
-                    <CheckBox Content="To"
+                    <CheckBox Content="{x:Static strings:Strings.RulesManager_ToCheckbox}"
                               IsChecked="{Binding IsToEnabled}"
                               Style="{StaticResource RuleCheckBox}"
-                              AutomationProperties.Name="Use To condition"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_UseToConditionName}"/>
                     <TextBox Text="{Binding SelectedRule.ToContains, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsToEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsToEnabled}"
-                             AutomationProperties.Name="To contains"
-                             AutomationProperties.HelpText="e.g., team@company.com"/>
+                             AutomationProperties.Name="{x:Static strings:Strings.RulesManager_ToContainsName}"
+                             AutomationProperties.HelpText="{x:Static strings:Strings.RulesManager_ToContainsHelpText}"/>
 
                     <!-- Subject condition -->
-                    <CheckBox Content="Subject"
+                    <CheckBox Content="{x:Static strings:Strings.RulesManager_SubjectCheckbox}"
                               IsChecked="{Binding IsSubjectEnabled}"
                               Style="{StaticResource RuleCheckBox}"
-                              AutomationProperties.Name="Use Subject condition"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_UseSubjectConditionName}"/>
                     <TextBox Text="{Binding SelectedRule.SubjectContains, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsSubjectEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsSubjectEnabled}"
-                             AutomationProperties.Name="Subject contains"
-                             AutomationProperties.HelpText="e.g., Weekly Report"/>
+                             AutomationProperties.Name="{x:Static strings:Strings.RulesManager_SubjectContainsName}"
+                             AutomationProperties.HelpText="{x:Static strings:Strings.RulesManager_SubjectContainsHelpText}"/>
 
                     <!-- Body condition -->
-                    <CheckBox Content="Body"
+                    <CheckBox Content="{x:Static strings:Strings.RulesManager_BodyCheckbox}"
                               IsChecked="{Binding IsBodyEnabled}"
                               Style="{StaticResource RuleCheckBox}"
-                              AutomationProperties.Name="Use Body condition"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_UseBodyConditionName}"/>
                     <TextBox Text="{Binding SelectedRule.BodyContains, UpdateSourceTrigger=PropertyChanged}"
                              Style="{StaticResource RuleTextBox}"
                              IsReadOnly="{Binding IsBodyEnabled, Converter={StaticResource InverseBoolConverter}, FallbackValue=True}"
                              IsTabStop="{Binding IsBodyEnabled}"
-                             AutomationProperties.Name="Body contains"
-                             AutomationProperties.HelpText="Text to search in message body preview"/>
+                             AutomationProperties.Name="{x:Static strings:Strings.RulesManager_BodyContainsName}"
+                             AutomationProperties.HelpText="{x:Static strings:Strings.RulesManager_BodyContainsHelpText}"/>
 
-                    <CheckBox Content="Has attachments"
+                    <CheckBox Content="{x:Static strings:Strings.RulesManager_HasAttachmentsCheckbox}"
                               IsChecked="{Binding SelectedRule.MustHaveAttachments}"
                               Style="{StaticResource RuleCheckBox}"
-                              AutomationProperties.Name="Must have attachments"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_MustHaveAttachmentsName}"/>
 
                     <TextBlock Text="{Binding ConditionsError}" Foreground="{DynamicResource Theme.Error}"
                                KeyboardNavigation.IsTabStop="False"
@@ -197,7 +198,7 @@
                     </TextBlock>
 
                     <!-- Action -->
-                    <TextBlock Text="Action" FontWeight="SemiBold" Margin="0,12,0,4"/>
+                    <TextBlock Text="{x:Static strings:Strings.RulesManager_ActionHeading}" FontWeight="SemiBold" Margin="0,12,0,4"/>
                     <Separator Margin="0,0,0,6"/>
 
                     <ComboBox ItemsSource="{Binding ActionOptions}"
@@ -205,15 +206,15 @@
                               SelectedValuePath="Action"
                               DisplayMemberPath="DisplayName"
                               Style="{StaticResource RuleComboBox}"
-                              AutomationProperties.Name="Rule action"/>
+                              AutomationProperties.Name="{x:Static strings:Strings.RulesManager_RuleActionName}"/>
 
                     <!-- Target folder -->
-                    <TextBlock Text="Target folder"/>
-                    <Button Content="{Binding SelectedRule.TargetFolder, TargetNullValue=Choose Folder…, FallbackValue=Choose Folder…}"
+                    <TextBlock Text="{x:Static strings:Strings.RulesManager_TargetFolderLabel}"/>
+                    <Button Content="{Binding SelectedRule.TargetFolder, TargetNullValue={x:Static strings:Strings.RulesManager_ChooseFolderPlaceholder}, FallbackValue={x:Static strings:Strings.RulesManager_ChooseFolderPlaceholder}}"
                             Command="{Binding PickFolderCommand}"
                             Width="140" Height="26" Margin="0,2,0,8"
                             HorizontalAlignment="Left"
-                            AutomationProperties.Name="Choose target folder"/>
+                            AutomationProperties.Name="{x:Static strings:Strings.RulesManager_ChooseTargetFolderName}"/>
                     <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
                                KeyboardNavigation.IsTabStop="False"
                                AutomationProperties.LiveSetting="Assertive">
@@ -233,16 +234,16 @@
 
                     <!-- Buttons -->
                     <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
-                        <Button Content="Test Rule" Command="{Binding TestRuleCommand}"
+                        <Button Content="{x:Static strings:Strings.RulesManager_TestRuleButton}" Command="{Binding TestRuleCommand}"
                                 Width="80" Height="26" Margin="0,0,8,0"
-                                AutomationProperties.Name="Test rule against selected messages"/>
-                        <Button Content="Save" Command="{Binding SaveRuleCommand}"
+                                AutomationProperties.Name="{x:Static strings:Strings.RulesManager_TestRuleAgainstSelectedMessagesName}"/>
+                        <Button Content="{x:Static strings:Strings.Common_Save}" Command="{Binding SaveRuleCommand}"
                                 Width="60" Height="26" Margin="0,0,8,0"
-                                AutomationProperties.Name="Save rule"
+                                AutomationProperties.Name="{x:Static strings:Strings.RulesManager_SaveRuleName}"
                                 IsDefault="True"/>
-                        <Button Content="Close" Command="{Binding CloseCommand}"
+                        <Button Content="{x:Static strings:Strings.Common_Close}" Command="{Binding CloseCommand}"
                                 Width="60" Height="26"
-                                AutomationProperties.Name="Close rules manager"
+                                AutomationProperties.Name="{x:Static strings:Strings.RulesManager_CloseRulesManagerName}"
                                 IsCancel="True"/>
                     </StackPanel>
                 </StackPanel>

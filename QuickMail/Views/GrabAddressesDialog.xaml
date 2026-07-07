@@ -3,8 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="Add to Address Book"
+        Title="{x:Static strings:Strings.GrabAddresses_Title}"
         Height="420" Width="420"
         MinHeight="300" MinWidth="320"
         WindowStartupLocation="CenterOwner"
@@ -26,14 +27,14 @@
 
         <!-- Header -->
         <TextBlock Grid.Row="0"
-                   Text="Select addresses to add to your address book:"
+                   Text="{x:Static strings:Strings.GrabAddresses_SelectAddressesPrompt}"
                    Margin="0,0,0,8"/>
 
         <!-- Address checklist -->
         <ScrollViewer Grid.Row="1"
                       VerticalScrollBarVisibility="Auto"
                       IsTabStop="False"
-                      AutomationProperties.Name="Addresses from message">
+                      AutomationProperties.Name="{x:Static strings:Strings.GrabAddresses_AddressesFromMessage}">
             <ItemsControl x:Name="AddressList"
                           KeyboardNavigation.TabNavigation="Once"
                           KeyboardNavigation.DirectionalNavigation="Contained"
@@ -53,16 +54,16 @@
         <!-- Group section -->
         <StackPanel Grid.Row="2" Margin="0,10,0,4">
             <CheckBox x:Name="AddToGroupCheckBox"
-                      Content="Add to group"
+                      Content="{x:Static strings:Strings.GrabAddresses_AddToGroup}"
                       Margin="0,0,0,6"/>
             <ComboBox x:Name="GroupComboBox"
-                      AutomationProperties.Name="Group"
+                      AutomationProperties.Name="{x:Static strings:Strings.GrabAddresses_Group}"
                       Margin="0,0,0,4"/>
             <TextBlock x:Name="NewGroupNameLabel"
-                       Text="New group name:"
+                       Text="{x:Static strings:Strings.GrabAddresses_NewGroupNameLabel}"
                        Margin="0,2,0,2"/>
             <TextBox x:Name="NewGroupNameBox"
-                     AutomationProperties.Name="New group name"
+                     AutomationProperties.Name="{x:Static strings:Strings.GrabAddresses_NewGroupName}"
                      MaxLength="100"/>
         </StackPanel>
 
@@ -72,12 +73,12 @@
                     HorizontalAlignment="Right"
                     Margin="0,10,0,0">
             <Button x:Name="SaveButton"
-                    Content="_Save"
+                    Content="{x:Static strings:Strings.Common_Save}"
                     IsDefault="True"
-                    AutomationProperties.Name="Save selected addresses"
+                    AutomationProperties.Name="{x:Static strings:Strings.GrabAddresses_SaveSelectedAddresses}"
                     MinWidth="80"
                     Click="Save_Click"/>
-            <Button Content="Cancel"
+            <Button Content="{x:Static strings:Strings.Common_Cancel}"
                     IsCancel="True"
                     MinWidth="80"
                     Margin="8,0,0,0"

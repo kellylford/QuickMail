@@ -4,13 +4,14 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:QuickMail.Views"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="Address Book"
+        Title="{x:Static strings:Strings.AddressBook_Title}"
         Height="520" Width="700"
         MinHeight="380" MinWidth="520"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
-        AutomationProperties.Name="Address Book"
+        AutomationProperties.Name="{x:Static strings:Strings.AddressBook_Title}"
         PreviewKeyDown="Window_PreviewKeyDown"
         Background="{DynamicResource Theme.WindowBackground}"
         Foreground="{DynamicResource Theme.TextPrimary}"
@@ -33,15 +34,15 @@
         <TabControl x:Name="MainTabs"
                     KeyboardNavigation.TabNavigation="Local"
                     TabIndex="0">
-            <TabItem Header="Contacts"
-                     AutomationProperties.Name="Contacts"
+            <TabItem Header="{x:Static strings:Strings.AddressBook_ContactsTab}"
+                     AutomationProperties.Name="{x:Static strings:Strings.AddressBook_ContactsTab}"
                      KeyboardNavigation.TabNavigation="Local">
                 <DockPanel Margin="0,6,0,0">
                     <!-- Search -->
                     <TextBox DockPanel.Dock="Top"
                              x:Name="SearchBox"
                              Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Search contacts"
+                             AutomationProperties.Name="{x:Static strings:Strings.AddressBook_SearchContacts}"
                              Margin="0,0,0,6"
                              TabIndex="0"/>
 
@@ -50,22 +51,22 @@
                                 Style="{StaticResource InsertRow}"
                                 Orientation="Horizontal"
                                 Margin="0,0,0,6">
-                        <TextBlock Text="Add selected contact to:"
+                        <TextBlock Text="{x:Static strings:Strings.AddressBook_AddSelectedContactTo}"
                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
-                        <Button Content="_To"
+                        <Button Content="{x:Static strings:Strings.AddressBook_ToButton}"
                                 Command="{Binding AddToToCommand}"
                                 IsEnabled="{Binding HasSelectedContact}"
-                                AutomationProperties.Name="Add to To field"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddToToField}"
                                 MinWidth="50" Margin="0,0,4,0" TabIndex="1"/>
-                        <Button Content="_Cc"
+                        <Button Content="{x:Static strings:Strings.AddressBook_CcButton}"
                                 Command="{Binding AddToCcCommand}"
                                 IsEnabled="{Binding HasSelectedContact}"
-                                AutomationProperties.Name="Add to Cc field"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddToCcField}"
                                 MinWidth="50" Margin="0,0,4,0" TabIndex="2"/>
-                        <Button Content="_Bcc"
+                        <Button Content="{x:Static strings:Strings.AddressBook_BccButton}"
                                 Command="{Binding AddToBccCommand}"
                                 IsEnabled="{Binding HasSelectedContact}"
-                                AutomationProperties.Name="Add to Bcc field"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddToBccField}"
                                 MinWidth="50" TabIndex="3"/>
                     </StackPanel>
 
@@ -88,20 +89,20 @@
 
                             <Label Grid.Column="0"
                                    x:Name="ContactNameLabel"
-                                   Content="_Name:"
+                                   Content="{x:Static strings:Strings.AddressBook_NameLabel}"
                                    Target="{Binding ElementName=ContactNameBox}"
                                    VerticalAlignment="Center"/>
                             <TextBox Grid.Column="1"
                                      x:Name="ContactNameBox"
                                      Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=ContactNameLabel}"
-                                     AutomationProperties.Name="Contact name"
+                                     AutomationProperties.Name="{x:Static strings:Strings.AddressBook_ContactName}"
                                      PreviewKeyDown="ContactFieldBox_PreviewKeyDown"
                                      Margin="4,0" TabIndex="5"/>
 
                             <Label Grid.Column="2"
                                    x:Name="ContactEmailLabel"
-                                   Content="_Email:"
+                                   Content="{x:Static strings:Strings.AddressBook_EmailLabel}"
                                    Target="{Binding ElementName=ContactEmailBox}"
                                    VerticalAlignment="Center"
                                    Margin="8,0,0,0"/>
@@ -109,7 +110,7 @@
                                      x:Name="ContactEmailBox"
                                      Text="{Binding EditEmail, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=ContactEmailLabel}"
-                                     AutomationProperties.Name="Contact email"
+                                     AutomationProperties.Name="{x:Static strings:Strings.AddressBook_ContactEmail}"
                                      PreviewKeyDown="ContactFieldBox_PreviewKeyDown"
                                      Margin="4,0" TabIndex="6"/>
                         </Grid>
@@ -119,23 +120,23 @@
                         <StackPanel Grid.Row="1" Orientation="Horizontal"
                                     Visibility="{Binding IsContactReadOnly, Converter={StaticResource BoolToVis}}"
                                     Margin="0,4,0,0">
-                            <Button Content="_Add"
+                            <Button Content="{x:Static strings:Strings.AddressBook_AddButton}"
                                     Command="{Binding BeginAddContactCommand}"
-                                    AutomationProperties.Name="Add contact"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="7"/>
-                            <Button Content="_Edit"
+                            <Button Content="{x:Static strings:Strings.AddressBook_EditButton}"
                                     Command="{Binding BeginEditContactCommand}"
-                                    AutomationProperties.Name="Edit contact"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_EditContact}"
                                     IsEnabled="{Binding CanEditContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="8"/>
-                            <Button Content="_Delete"
+                            <Button Content="{x:Static strings:Strings.AddressBook_DeleteButton}"
                                     Click="DeleteButton_Click"
-                                    AutomationProperties.Name="Delete selected contact"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_DeleteSelectedContact}"
                                     IsEnabled="{Binding CanDeleteContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
                             <Border Margin="0,0,4,0"/>
-                            <Button Content="Close"
-                                    AutomationProperties.Name="Close address book"
+                            <Button Content="{x:Static strings:Strings.Common_Close}"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_CloseAddressBook}"
                                     MinWidth="60" TabIndex="10"
                                     Click="Close_Click"/>
                         </StackPanel>
@@ -144,17 +145,17 @@
                         <StackPanel Grid.Row="1" Orientation="Horizontal"
                                     Visibility="{Binding IsEditingContact, Converter={StaticResource BoolToVis}}"
                                     Margin="0,4,0,0">
-                            <Button Content="_Save"
+                            <Button Content="{x:Static strings:Strings.AddressBook_SaveButton}"
                                     Command="{Binding SaveContactCommand}"
-                                    AutomationProperties.Name="Save contact"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_SaveContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="7"/>
-                            <Button Content="Cancel"
+                            <Button Content="{x:Static strings:Strings.AddressBook_CancelEditButton}"
                                     Command="{Binding CancelEditCommand}"
-                                    AutomationProperties.Name="Cancel edit"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_CancelEdit}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="8"/>
                             <Border Margin="0,0,4,0"/>
-                            <Button Content="Close"
-                                    AutomationProperties.Name="Close address book"
+                            <Button Content="{x:Static strings:Strings.Common_Close}"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_CloseAddressBook}"
                                     MinWidth="60" TabIndex="9"
                                     Click="Close_Click"/>
                         </StackPanel>
@@ -179,14 +180,14 @@
                     <ListView x:Name="ContactList"
                               ItemsSource="{Binding FilteredContacts}"
                               SelectedItem="{Binding SelectedContact}"
-                              AutomationProperties.Name="Contacts"
+                              AutomationProperties.Name="{x:Static strings:Strings.AddressBook_ContactsTab}"
                               TabIndex="4"
                               KeyboardNavigation.TabNavigation="Once"
                               KeyboardNavigation.DirectionalNavigation="Contained"
                               PreviewKeyDown="ContactList_PreviewKeyDown"
                               ContextMenuOpening="ContactList_ContextMenuOpening">
                         <ListView.ContextMenu>
-                            <ContextMenu AutomationProperties.Name="Add to group"/>
+                            <ContextMenu AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddToGroup}"/>
                         </ListView.ContextMenu>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
@@ -208,8 +209,8 @@
                 </DockPanel>
             </TabItem>
 
-            <TabItem Header="Groups"
-                     AutomationProperties.Name="Groups"
+            <TabItem Header="{x:Static strings:Strings.AddressBook_GroupsTab}"
+                     AutomationProperties.Name="{x:Static strings:Strings.AddressBook_GroupsTab}"
                      KeyboardNavigation.TabNavigation="Local">
                 <Grid Margin="0,6,0,0">
                     <Grid.RowDefinitions>
@@ -224,14 +225,14 @@
                     <!-- Left: groups list -->
                     <DockPanel Grid.Row="0" Grid.Column="0">
                         <TextBlock DockPanel.Dock="Top"
-                                   Text="Groups"
+                                   Text="{x:Static strings:Strings.AddressBook_GroupsTab}"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,3"
-                                   AutomationProperties.Name="Groups header"/>
+                                   AutomationProperties.Name="{x:Static strings:Strings.AddressBook_GroupsHeader}"/>
                         <ListView x:Name="GroupsList"
                                   ItemsSource="{Binding Groups}"
                                   SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
-                                  AutomationProperties.Name="Groups"
+                                  AutomationProperties.Name="{x:Static strings:Strings.AddressBook_GroupsTab}"
                                   TabIndex="20"
                                   KeyboardNavigation.TabNavigation="Once"
                                   PreviewKeyDown="GroupsList_PreviewKeyDown">
@@ -257,34 +258,34 @@
                     <!-- Right: members of selected group + insert buttons -->
                     <DockPanel Grid.Row="0" Grid.Column="1" Margin="8,0,0,0">
                         <TextBlock DockPanel.Dock="Top"
-                                   Text="{Binding SelectedGroup.Display, StringFormat='Members of {0}'}"
+                                   Text="{Binding SelectedGroup.Display, StringFormat={x:Static strings:Strings.AddressBook_MembersOfFormat}}"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,3"
-                                   AutomationProperties.Name="Group member list header"/>
+                                   AutomationProperties.Name="{x:Static strings:Strings.AddressBook_GroupMemberListHeader}"/>
                         <StackPanel DockPanel.Dock="Top"
                                     Style="{StaticResource InsertRow}"
                                     Orientation="Horizontal"
                                     Margin="0,0,0,4">
-                            <TextBlock Text="Insert all into:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                            <Button Content="_To"
+                            <TextBlock Text="{x:Static strings:Strings.AddressBook_InsertAllInto}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <Button Content="{x:Static strings:Strings.AddressBook_ToButton}"
                                     Command="{Binding AddGroupToToCommand}"
                                     IsEnabled="{Binding HasSelectedGroup}"
-                                    AutomationProperties.Name="Add all group members to To"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddAllGroupMembersToTo}"
                                     MinWidth="48" Margin="0,0,3,0"/>
-                            <Button Content="_Cc"
+                            <Button Content="{x:Static strings:Strings.AddressBook_CcButton}"
                                     Command="{Binding AddGroupToCcCommand}"
                                     IsEnabled="{Binding HasSelectedGroup}"
-                                    AutomationProperties.Name="Add all group members to Cc"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddAllGroupMembersToCc}"
                                     MinWidth="48" Margin="0,0,3,0"/>
-                            <Button Content="_Bcc"
+                            <Button Content="{x:Static strings:Strings.AddressBook_BccButton}"
                                     Command="{Binding AddGroupToBccCommand}"
                                     IsEnabled="{Binding HasSelectedGroup}"
-                                    AutomationProperties.Name="Add all group members to Bcc"
+                                    AutomationProperties.Name="{x:Static strings:Strings.AddressBook_AddAllGroupMembersToBcc}"
                                     MinWidth="48"/>
                         </StackPanel>
                         <ListView x:Name="GroupMembersList"
                                   ItemsSource="{Binding SelectedGroupMembers}"
-                                  AutomationProperties.Name="Group members"
+                                  AutomationProperties.Name="{x:Static strings:Strings.AddressBook_GroupMembers}"
                                   TabIndex="21"
                                   KeyboardNavigation.TabNavigation="Once"
                                   PreviewKeyDown="GroupMembersList_PreviewKeyDown">
@@ -330,12 +331,12 @@
                                    Visibility="Collapsed" Margin="0,0,0,6">
                             <Label DockPanel.Dock="Left"
                                    x:Name="GroupNameLabel"
-                                   Content="Name:"
+                                   Content="{x:Static strings:Strings.AddressBook_NameColonLabel}"
                                    Target="{Binding ElementName=NewGroupNameBox}"
                                    VerticalAlignment="Center"/>
                             <TextBox x:Name="NewGroupNameBox"
                                      Text="{Binding NewGroupName, UpdateSourceTrigger=PropertyChanged}"
-                                     AutomationProperties.Name="Group name"
+                                     AutomationProperties.Name="{x:Static strings:Strings.AddressBook_GroupName}"
                                      IsTabStop="False"
                                      Margin="4,0"
                                      PreviewKeyDown="NewGroupNameBox_PreviewKeyDown"/>
@@ -345,34 +346,34 @@
                              pushes Close to the right without wrapping in a DockPanel) -->
                         <Button Grid.Row="1" Grid.Column="0"
                                 x:Name="NewGroupButton"
-                                Content="_New"
-                                AutomationProperties.Name="New group"
+                                Content="{x:Static strings:Strings.AddressBook_NewButton}"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_NewGroup}"
                                 MinWidth="60" Margin="0,0,4,0" TabIndex="23"
                                 Click="NewGroupButton_Click"/>
                         <Button Grid.Row="1" Grid.Column="1"
                                 x:Name="RenameGroupButton"
-                                Content="_Rename"
+                                Content="{x:Static strings:Strings.AddressBook_RenameButton}"
                                 IsEnabled="{Binding HasSelectedGroup}"
-                                AutomationProperties.Name="Rename selected group"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_RenameSelectedGroup}"
                                 MinWidth="60" Margin="0,0,4,0" TabIndex="24"
                                 Click="RenameGroupButton_Click"/>
                         <Button Grid.Row="1" Grid.Column="2"
-                                Content="_Delete"
+                                Content="{x:Static strings:Strings.AddressBook_DeleteButton}"
                                 Command="{Binding DeleteGroupCommand}"
                                 IsEnabled="{Binding HasSelectedGroup}"
-                                AutomationProperties.Name="Delete selected group"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_DeleteSelectedGroup}"
                                 MinWidth="60" Margin="0,0,4,0" TabIndex="25"/>
                         <Button Grid.Row="1" Grid.Column="3"
                                 x:Name="ManageGroupsButton"
-                                Content="_Manage…"
-                                AutomationProperties.Name="Open Group Manager"
+                                Content="{x:Static strings:Strings.AddressBook_ManageButton}"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_OpenGroupManager}"
                                 MinWidth="70" Margin="0,0,4,0" TabIndex="26"
                                 Click="ManageGroupsButton_Click"/>
                         <!-- Col 4 (*) is empty — acts as spacer to right-align Close -->
                         <Button Grid.Row="1" Grid.Column="5"
-                                Content="Close"
+                                Content="{x:Static strings:Strings.Common_Close}"
                                 IsCancel="True"
-                                AutomationProperties.Name="Close address book"
+                                AutomationProperties.Name="{x:Static strings:Strings.AddressBook_CloseAddressBook}"
                                 MinWidth="60" TabIndex="27"
                                 Click="Close_Click"/>
                     </Grid>

@@ -3,13 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="View Manager"
+        Title="{x:Static strings:Strings.ViewManager_Title}"
         Height="520" Width="720"
         MinHeight="420" MinWidth="580"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        AutomationProperties.Name="View Manager"
+        AutomationProperties.Name="{x:Static strings:Strings.ViewManager_Title}"
         Background="{DynamicResource Theme.WindowBackground}"
         Foreground="{DynamicResource Theme.TextPrimary}"
         FontFamily="{DynamicResource Theme.FontFamily}"
@@ -50,7 +51,7 @@
         <Border Grid.Row="0" Background="{DynamicResource Theme.InfoBackground}" BorderBrush="{DynamicResource Theme.Info}"
                 BorderThickness="1" CornerRadius="3" Padding="10,7" Margin="0,0,0,10">
             <StackPanel Orientation="Horizontal">
-                <TextBlock Text="Current state: " FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock Text="{x:Static strings:Strings.ViewManager_CurrentStateLabel}" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding CurrentStateSummary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
             </StackPanel>
         </Border>
@@ -66,12 +67,12 @@
             <!-- Left: saved views list -->
             <DockPanel Grid.Column="0">
                 <TextBlock DockPanel.Dock="Top" Style="{StaticResource SectionLabel}"
-                           Text="Saved Views" Margin="0,0,0,4"/>
+                           Text="{x:Static strings:Strings.ViewManager_SavedViewsHeading}" Margin="0,0,0,4"/>
                 <ListBox x:Name="ViewsList"
                          ItemsSource="{Binding SavedViews}"
                          SelectedItem="{Binding SelectedView, Mode=TwoWay}"
                          DisplayMemberPath="Name"
-                         AutomationProperties.Name="Saved views"
+                         AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SavedViewsHeading}"
                          KeyboardNavigation.TabNavigation="Once"/>
             </DockPanel>
 
@@ -84,15 +85,15 @@
                 <StackPanel Margin="8,0,0,0">
 
                     <!-- ── Empty state: nothing selected ─────────────────────────── -->
-                    <TextBlock Text="Select a view from the list, or create a new one."
+                    <TextBlock Text="{x:Static strings:Strings.ViewManager_EmptyStateHint}"
                                Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,8,0,0"
                                Visibility="{Binding HasNoSelectedView, Converter={StaticResource BoolToVis}}"/>
                     <Button x:Name="CreateNewViewButton"
-                            Content="Create New View from Current State"
+                            Content="{x:Static strings:Strings.ViewManager_CreateNewViewFromCurrentState}"
                             Command="{Binding SaveAsNewCommand}"
                             HorizontalAlignment="Left"
                             Margin="0,10,0,0"
-                            AutomationProperties.Name="Create new view from current state"
+                            AutomationProperties.Name="{x:Static strings:Strings.ViewManager_CreateNewViewFromCurrentState}"
                             Visibility="{Binding HasNoSelectedView, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- ── Read-only state: view selected, not editing ────────────── -->
@@ -104,57 +105,57 @@
                                TextTrimming="CharacterEllipsis"
                                Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
 
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="Keyboard Shortcut"
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="{x:Static strings:Strings.ViewManager_KeyboardShortcutLabel}"
                                Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
                     <TextBlock Text="{Binding EditHotkey}"
                                Margin="0,0,0,6"
                                Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
 
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="Saved Folders"
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="{x:Static strings:Strings.ViewManager_SavedFoldersLabel}"
                                Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
                     <TextBox Style="{StaticResource ReadonlyField}"
                              Text="{Binding SelectedFoldersSummary, Mode=OneWay}"
-                             AutomationProperties.Name="Saved folders"
+                             AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SavedFoldersLabel}"
                              Margin="0,0,0,6"
                              Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
 
-                    <TextBlock Style="{StaticResource FieldLabel}" Text="Saved Settings"
+                    <TextBlock Style="{StaticResource FieldLabel}" Text="{x:Static strings:Strings.ViewManager_SavedSettingsLabel}"
                                Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
                     <TextBox Style="{StaticResource ReadonlyField}"
                              Text="{Binding SelectedModeSummary, Mode=OneWay}"
-                             AutomationProperties.Name="Saved view settings"
+                             AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SavedViewSettingsName}"
                              Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Edit + Delete action buttons -->
                     <StackPanel x:Name="ReadOnlyActionsPanel"
                                 Orientation="Horizontal" Margin="0,14,0,0"
                                 Visibility="{Binding ShowReadOnly, Converter={StaticResource BoolToVis}}">
-                        <Button Content="_Apply View"
+                        <Button Content="{x:Static strings:Strings.ViewManager_ApplyViewButton}"
                                 Command="{Binding ApplySelectedViewCommand}"
                                 MinWidth="90" Margin="0,0,8,0"
-                                ToolTip="Activate this view and close the dialog"
-                                AutomationProperties.Name="Apply selected view"/>
-                        <Button Content="_Edit"
+                                ToolTip="{x:Static strings:Strings.ViewManager_ApplyViewToolTip}"
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_ApplySelectedViewName}"/>
+                        <Button Content="{x:Static strings:Strings.ViewManager_EditButton}"
                                 Command="{Binding StartEditCommand}"
                                 MinWidth="70" Margin="0,0,8,0"
-                                ToolTip="Edit this view's name, shortcut, and options"
-                                AutomationProperties.Name="Edit selected view"/>
-                        <Button Content="_Delete"
+                                ToolTip="{x:Static strings:Strings.ViewManager_EditToolTip}"
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_EditSelectedViewName}"/>
+                        <Button Content="{x:Static strings:Strings.ViewManager_DeleteButton}"
                                 Command="{Binding DeleteCommand}"
                                 MinWidth="70" Margin="0,0,8,0"
-                                ToolTip="Delete this view"
-                                AutomationProperties.Name="Delete selected view"/>
-                        <Button Content="Save _As New"
+                                ToolTip="{x:Static strings:Strings.ViewManager_DeleteToolTip}"
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_DeleteSelectedViewName}"/>
+                        <Button Content="{x:Static strings:Strings.ViewManager_SaveAsNewButton}"
                                 Command="{Binding SaveAsNewCommand}"
                                 MinWidth="100"
-                                ToolTip="Create a new view from current app state"
-                                AutomationProperties.Name="Save current state as a new view"/>
+                                ToolTip="{x:Static strings:Strings.ViewManager_SaveAsNewToolTip}"
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SaveCurrentStateAsNewViewName}"/>
                     </StackPanel>
 
                     <!-- ── Edit state: view selected and editing ──────────────────── -->
 
                     <!-- Keyboard Shortcut (first focus target) -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Keyboard Shortcut"
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="{x:Static strings:Strings.ViewManager_KeyboardShortcutLabel}"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <Grid Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}">
                         <Grid.ColumnDefinitions>
@@ -166,30 +167,30 @@
                                  Text="{Binding EditHotkey, Mode=OneWay}"
                                  IsReadOnly="True" IsTabStop="False"
                                  Background="{DynamicResource Theme.SurfaceBackground}"
-                                 AutomationProperties.Name="Assigned shortcut"
+                                 AutomationProperties.Name="{x:Static strings:Strings.ViewManager_AssignedShortcutName}"
                                  Margin="0,0,4,0"/>
                         <Button x:Name="SetHotkeyButton"
                                 Grid.Column="1"
-                                Content="_Set…"
+                                Content="{x:Static strings:Strings.ViewManager_SetButton}"
                                 Command="{Binding RequestSetHotkeyCommand}"
                                 MinWidth="60" Margin="0,0,4,0"
-                                AutomationProperties.Name="Set keyboard shortcut"/>
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SetKeyboardShortcutName}"/>
                         <Button Grid.Column="2"
-                                Content="C_lear"
+                                Content="{x:Static strings:Strings.ViewManager_ClearButton}"
                                 Command="{Binding ClearHotkeyCommand}"
                                 MinWidth="60"
-                                AutomationProperties.Name="Clear keyboard shortcut"/>
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_ClearKeyboardShortcutName}"/>
                     </Grid>
-                    <TextBlock Text="Also configurable in File → Settings → Keyboard Shortcuts."
+                    <TextBlock Text="{x:Static strings:Strings.ViewManager_KeyboardShortcutHint}"
                                FontSize="{DynamicResource Theme.FontSizeSmall}" Foreground="{DynamicResource Theme.TextSecondary}" Margin="0,3,0,0"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Day Limit -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Day Limit"
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="{x:Static strings:Strings.ViewManager_DayLimitHeading}"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
-                    <CheckBox Content="Show _all messages (no day limit)"
+                    <CheckBox Content="{x:Static strings:Strings.ViewManager_ShowAllMessagesCheckbox}"
                               IsChecked="{Binding EditUnlimitedDays}"
-                              AutomationProperties.Name="Show all messages, no day limit"
+                              AutomationProperties.Name="{x:Static strings:Strings.ViewManager_ShowAllMessagesName}"
                               Margin="0,0,0,4"
                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <Grid Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}">
@@ -201,46 +202,46 @@
                                  Grid.Column="0"
                                  Text="{Binding EditDaysOfMail, UpdateSourceTrigger=PropertyChanged}"
                                  IsEnabled="{Binding IsDayLimitFieldEnabled}"
-                                 AutomationProperties.Name="Day limit — number of days of mail to show"
+                                 AutomationProperties.Name="{x:Static strings:Strings.ViewManager_DayLimitFieldName}"
                                  MaxLength="4"
                                  PreviewTextInput="DayLimitBox_PreviewTextInput"/>
                         <TextBlock Grid.Column="1" VerticalAlignment="Center" Margin="8,0,0,0"
                                    Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                   Text="days"/>
+                                   Text="{x:Static strings:Strings.ViewManager_DaysUnitLabel}"/>
                     </Grid>
 
                     <!-- Options -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Options"
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="{x:Static strings:Strings.ViewManager_OptionsHeading}"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
-                    <CheckBox Content="_Default view (applied on startup)"
+                    <CheckBox Content="{x:Static strings:Strings.ViewManager_DefaultViewCheckbox}"
                               IsChecked="{Binding EditIsDefault}"
-                              AutomationProperties.Name="Set as default view"
+                              AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SetAsDefaultViewName}"
                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Name (last before Save — shown after day limit so the suggestion already includes it) -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Name"
+                    <TextBlock Style="{StaticResource SectionLabel}" Text="{x:Static strings:Strings.ViewManager_NameHeading}"
                                Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
                     <TextBox x:Name="NameBox"
                              Text="{Binding EditName, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="View name"
+                             AutomationProperties.Name="{x:Static strings:Strings.ViewManager_ViewNameFieldName}"
                              MaxLength="120"
                              Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
 
                     <!-- Save / Cancel buttons -->
                     <StackPanel Orientation="Horizontal" Margin="0,14,0,0"
                                 Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}">
-                        <Button Content="_Save"
+                        <Button Content="{x:Static strings:Strings.ViewManager_SaveButton}"
                                 Command="{Binding SaveCommand}"
                                 IsEnabled="{Binding CanSave}"
                                 MinWidth="80" Margin="0,0,8,0"
-                                ToolTip="Save current app state to this view"
-                                AutomationProperties.Name="Save current state to selected view"/>
+                                ToolTip="{x:Static strings:Strings.ViewManager_SaveButtonToolTip}"
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SaveCurrentStateToSelectedViewName}"/>
                         <!-- Cancel is only shown in manage mode; create mode uses the dialog's Cancel button -->
-                        <Button Content="C_ancel"
+                        <Button Content="{x:Static strings:Strings.ViewManager_CancelButton}"
                                 Command="{Binding CancelEditCommand}"
                                 MinWidth="80"
                                 Visibility="{Binding IsManageMode, Converter={StaticResource BoolToVis}}"
-                                AutomationProperties.Name="Cancel editing, discard changes"/>
+                                AutomationProperties.Name="{x:Static strings:Strings.ViewManager_CancelEditingDiscardChangesName}"/>
                     </StackPanel>
 
                 </StackPanel>
@@ -252,19 +253,19 @@
                     HorizontalAlignment="Right" Margin="0,12,0,0">
             <!-- Visible only in create mode (opened via Save View…) -->
             <Button x:Name="SaveViewAndCloseButton"
-                    Content="Save _View"
+                    Content="{x:Static strings:Strings.ViewManager_SaveViewButton}"
                     IsEnabled="{Binding CanSave}"
                     MinWidth="90" Margin="0,0,8,0"
                     Visibility="Collapsed"
                     Click="SaveViewAndCloseButton_Click"
-                    AutomationProperties.Name="Save view and close"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.ViewManager_SaveViewAndCloseName}"/>
             <!-- Close in manage mode; Cancel in create mode (content set in code-behind) -->
             <Button x:Name="CloseButton"
-                    Content="_Close"
+                    Content="{x:Static strings:Strings.ViewManager_CloseButton}"
                     IsCancel="True"
                     MinWidth="80"
                     Click="CloseButton_Click"
-                    AutomationProperties.Name="Close View Manager"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.ViewManager_CloseViewManagerName}"/>
         </StackPanel>
     </Grid>
 </Window>

@@ -1,5 +1,6 @@
 using System;
 using CommunityToolkit.Mvvm.ComponentModel;
+using QuickMail.Resources;
 
 namespace QuickMail.Models;
 
@@ -82,9 +83,9 @@ public partial class MailMessageSummary : ObservableObject
         get
         {
             if (IsFlagged)   return FlagLabel;
-            if (IsReplied)   return "Replied";
-            if (IsForwarded) return "Fwd";
-            if (!IsRead)     return "New";
+            if (IsReplied)   return Strings.MailMessageSummary_Status_Replied;
+            if (IsForwarded) return Strings.MailMessageSummary_Status_Fwd;
+            if (!IsRead)     return Strings.MailMessageSummary_Status_New;
             return string.Empty;
         }
     }
@@ -98,10 +99,10 @@ public partial class MailMessageSummary : ObservableObject
     {
         get
         {
-            if (IsReplied)   return "replied";
-            if (IsForwarded) return "forwarded";
-            if (!IsRead)     return "unread";
-            return "read";
+            if (IsReplied)   return Strings.MailMessageSummary_ReadStatus_Replied;
+            if (IsForwarded) return Strings.MailMessageSummary_ReadStatus_Forwarded;
+            if (!IsRead)     return Strings.MailMessageSummary_ReadStatus_Unread;
+            return Strings.MailMessageSummary_ReadStatus_Read;
         }
     }
 
@@ -113,7 +114,7 @@ public partial class MailMessageSummary : ObservableObject
             var local = Date.ToLocalTime();
             if (local.Date == DateTimeOffset.Now.Date)
                 return local.ToString("h:mm") + (local.Hour < 12 ? "A" : "P");
-            return local.ToString("M/d/yyyy");
+            return local.ToString("d", System.Globalization.CultureInfo.CurrentCulture);
         }
     }
 }

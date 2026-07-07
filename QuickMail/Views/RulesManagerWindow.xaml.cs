@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -52,7 +53,7 @@ public partial class RulesManagerWindow : Window
         var picker = new FolderPickerWindow(
             _accounts,
             _cachedFolders,
-            title: "Choose Target Folder") { Owner = this };
+            title: Strings.RulesManager_ChooseTargetFolderTitle) { Owner = this };
 
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
         {

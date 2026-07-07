@@ -142,6 +142,15 @@ public class ConfigModel
     /// </summary>
     public bool EnableLogging { get; set; } = false;
 
+    // ── Localization ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// UI language as a BCP-47 culture tag (e.g. "es", "de", "fr"). Empty = follow the Windows
+    /// display language when a matching satellite assembly exists, else fall back to English.
+    /// Applied once at startup in App.OnStartup; changing it requires a restart.
+    /// </summary>
+    public string UILanguage { get; set; } = string.Empty;
+
     // ── Tutorial ──────────────────────────────────────────────────────────────────
 
     /// <summary>Show a confirmation dialog before emptying trash. Default on.</summary>

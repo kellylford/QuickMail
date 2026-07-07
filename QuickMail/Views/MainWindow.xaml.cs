@@ -19,6 +19,7 @@ using Microsoft.Web.WebView2.Core;
 using MimeKit;
 using QuickMail.Helpers;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -594,7 +595,7 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(() =>
         {
             SearchBox.Focus();
-            AccessibilityHelper.Announce(this, "Search box. Type to filter messages.", interrupt: true, category: AnnouncementCategory.Hint);
+            AccessibilityHelper.Announce(this, Strings.MainWindow_Announce_SearchBoxHint, interrupt: true, category: AnnouncementCategory.Hint);
         }, DispatcherPriority.Input);
     }
 
@@ -605,8 +606,7 @@ public partial class MainWindow : Window
             var count = _vm.Messages.Count;
             _vm.ClearSearchCommand.Execute(null);
             ReturnFocusToMessageList();
-            var word = count == 1 ? "message" : "messages";
-            AccessibilityHelper.Announce(this, $"Search cleared. {count} {word}.", interrupt: true, category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, StringsHelper.Count("MainWindow_Announce_SearchCleared", count), interrupt: true, category: AnnouncementCategory.Result);
             e.Handled = true;
         }
         else if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
@@ -634,31 +634,31 @@ public partial class MainWindow : Window
 
         // Register commands that require UI access (must run after InitializeComponent).
         _registry.Register(new CommandDefinition(
-            id: "view.focusFolders", category: "View", title: "Focus Folder Tree",
+            id: "view.focusFolders", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_FocusFolderTree,
             execute: FocusFolderTree,
             defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
-            id: "view.folderPicker", category: "View", title: "Go to Folder…",
+            id: "view.folderPicker", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_GoToFolderEllipsis,
             execute: OpenFolderPicker));
 
         _registry.Register(new CommandDefinition(
-            id: "view.searchFolders", category: "View", title: "Search Folders…",
+            id: "view.searchFolders", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_SearchFoldersEllipsis,
             execute: OpenFolderPicker,
             defaultKey: Key.F, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "view.openViewMenu", category: "View", title: "Open View Menu",
+            id: "view.openViewMenu", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_OpenViewMenu,
             execute: OpenViewMenu,
             defaultKey: Key.V, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "view.focusStatusBar", category: "View", title: "Focus Status Bar",
+            id: "view.focusStatusBar", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_FocusStatusBar,
             execute: FocusStatusBar,
             defaultKey: Key.D9, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
-            id: "view.showProperties", category: "View", title: "View Properties",
+            id: "view.showProperties", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_ViewProperties,
             execute: () =>
             {
                 // Attachment list: it sits outside MessageBody in the visual tree so
@@ -721,57 +721,57 @@ public partial class MainWindow : Window
                             || _vm.SelectedAccount != null));
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.grabAddresses", category: "Contacts", title: "Grab Addresses from Message",
+            id: "contacts.grabAddresses", category: Strings.MainWindow_CmdCategory_Contacts, title: Strings.MainWindow_Cmd_GrabAddressesFromMessage,
             execute: GrabAddressesFromMessage,
             defaultKey: Key.G, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.IsMessageOpen || _vm.IsMessageOpenInWindow));
 
         _registry.Register(new CommandDefinition(
-            id: "contacts.openAddressBook", category: "Contacts", title: "Address Book",
+            id: "contacts.openAddressBook", category: Strings.MainWindow_CmdCategory_Contacts, title: Strings.MainWindow_Cmd_AddressBook,
             execute: OpenAddressBook,
             defaultKey: Key.B, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "settings.toggleCustomAnnouncements", category: "Settings", title: "Toggle Custom Announcements",
+            id: "settings.toggleCustomAnnouncements", category: Strings.MainWindow_CmdCategory_Settings, title: Strings.MainWindow_Cmd_ToggleCustomAnnouncements,
             execute: ToggleCustomAnnouncements));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.markRead", category: "Mail", title: "Mark as Read",
+            id: "mail.markRead", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_MarkAsRead,
             execute: async () => await MarkReadCommand(),
             defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.jumpToFirstInGroup", category: "Mail", title: "First Message in Group",
+            id: "mail.jumpToFirstInGroup", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_FirstMessageInGroup,
             execute: JumpToFirstMessageInGroup,
             defaultKey: Key.OemComma, defaultModifiers: ModifierKeys.Shift,
             isAvailable: IsGroupedViewActive));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.jumpToLastInGroup", category: "Mail", title: "Last Message in Group",
+            id: "mail.jumpToLastInGroup", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_LastMessageInGroup,
             execute: JumpToLastMessageInGroup,
             defaultKey: Key.OemPeriod, defaultModifiers: ModifierKeys.Shift,
             isAvailable: IsGroupedViewActive));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.selectAll", category: "Mail", title: "Select All Messages",
+            id: "mail.selectAll", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_SelectAllMessages,
             execute: SelectAllMessages,
             defaultKey: Key.A, defaultModifiers: ModifierKeys.Control,
             isAvailable: IsMessageListFocused));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.toggleFlag", category: "Mail", title: "Toggle Flag",
+            id: "mail.toggleFlag", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_ToggleFlag,
             execute: async () => await ToggleFlagCommandAsync(),
             defaultKey: Key.K, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.HasSelectedMessage || IsGroupRowSelected()));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.pickFlag", category: "Mail", title: "Pick Flag…",
+            id: "mail.pickFlag", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_PickFlagEllipsis,
             execute: async () => await PickFlagCommandAsync(),
             defaultKey: Key.K, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.HasSelectedMessage));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.openFlagManager", category: "Mail", title: "Manage Flags…",
+            id: "mail.openFlagManager", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_ManageFlagsEllipsis,
             execute: OpenFlagManager));
 
         // Override the VM's mail.delete with one that deletes ALL selected messages.
@@ -782,7 +782,7 @@ public partial class MainWindow : Window
         // Also bypass when a group tree has focus: those trees have their own PreviewKeyDown
         // handlers that call LandOn* before deleting so focus lands on the next item correctly.
         _registry.Register(new CommandDefinition(
-            id: "mail.delete", category: "Mail", title: "Delete",
+            id: "mail.delete", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.Common_Delete,
             execute: () => _vm.DeleteMessageCommand.Execute(null),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.HasSelectedMessage
@@ -793,7 +793,7 @@ public partial class MainWindow : Window
         // Delete on a real folder in the folder tree deletes that folder (shares the Delete gesture
         // with mail.delete; the registry prefers whichever command is available for the focus).
         _registry.Register(new CommandDefinition(
-            id: "folder.delete", category: "Mail", title: "Delete Folder",
+            id: "folder.delete", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_DeleteFolder,
             execute: () => _ = DeleteSelectedFolderAsync(),
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             isAvailable: () => FolderList.IsKeyboardFocusWithin
@@ -801,12 +801,12 @@ public partial class MainWindow : Window
 
         // ── Pane navigation (Ctrl+Alt+1/2/3 — always work regardless of tab mode) ──
         _registry.Register(new CommandDefinition(
-            id: "view.focusAccounts", category: "View", title: "Focus Account List",
+            id: "view.focusAccounts", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_FocusAccountList,
             execute: () => AccountList.Focus(),
             defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt));
 
         _registry.Register(new CommandDefinition(
-            id: "view.focusMessages", category: "View", title: "Focus Message List",
+            id: "view.focusMessages", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_FocusMessageList,
             execute: () =>
             {
                 if (_vm.IsConversationsView)      ConversationTree.Focus();
@@ -817,79 +817,79 @@ public partial class MainWindow : Window
             defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt));
 
         _registry.Register(new CommandDefinition(
-            id: "view.focusTabs", category: "View", title: "Focus Tab Strip",
+            id: "view.focusTabs", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_FocusTabStrip,
             execute: () => { if (_vm.ShowTabStrip) TabStrip.Focus(); },
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.ShowTabStrip));
 
         // ── Tab & Window Management commands ─────────────────────────────────────
         _registry.Register(new CommandDefinition(
-            id: "tabs.next", category: "View", title: "Next Tab",
+            id: "tabs.next", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_NextTab,
             execute: () => _vm.ActivateNextTab(),
             defaultKey: Key.Tab, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => _vm.OpenTabs.Count > 1));
 
         _registry.Register(new CommandDefinition(
-            id: "tabs.previous", category: "View", title: "Previous Tab",
+            id: "tabs.previous", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_PreviousTab,
             execute: () => _vm.ActivatePrevTab(),
             defaultKey: Key.Tab, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.OpenTabs.Count > 1));
 
         _registry.Register(new CommandDefinition(
-            id: "tabs.close", category: "View", title: "Close Tab",
+            id: "tabs.close", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_CloseTab,
             execute: () => { if (_vm.ActiveTab != null) _vm.CloseTab(_vm.ActiveTab); },
             defaultKey: Key.W, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => _vm.ActiveTab is MessageTabViewModel));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.closeMessage", category: "Mail", title: "Close Message",
+            id: "mail.closeMessage", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_CloseMessage,
             execute: CloseReadingPane,
             defaultKey: Key.W, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => _vm.IsMessageOpen && _vm.MessageOpenMode == MessageOpenMode.ReadingPane));
 
         _registry.Register(new CommandDefinition(
-            id: "tabs.closeOthers", category: "View", title: "Close Other Tabs",
+            id: "tabs.closeOthers", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_CloseOtherTabs,
             execute: () => _vm.CloseAllOtherTabs(),
             isAvailable: () => _vm.OpenTabs.Count > 1));
 
         _registry.Register(new CommandDefinition(
-            id: "tabs.list", category: "View", title: "Tab List…",
+            id: "tabs.list", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_TabListEllipsis,
             execute: OpenTabList,
             defaultKey: Key.OemTilde, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.OpenTabs.Count > 0));
 
         _registry.Register(new CommandDefinition(
-            id: "tabs.moveLeft", category: "View", title: "Move Tab Left",
+            id: "tabs.moveLeft", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_MoveTabLeft,
             execute: () => _vm.MoveTabLeft(),
             isAvailable: () => _vm.ActiveTab != null && _vm.OpenTabs.Count > 1));
 
         _registry.Register(new CommandDefinition(
-            id: "tabs.moveRight", category: "View", title: "Move Tab Right",
+            id: "tabs.moveRight", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_MoveTabRight,
             execute: () => _vm.MoveTabRight(),
             isAvailable: () => _vm.ActiveTab != null && _vm.OpenTabs.Count > 1));
 
         _registry.Register(new CommandDefinition(
-            id: "tabs.promote", category: "View", title: "Move Tab to New Window",
+            id: "tabs.promote", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_MoveTabToNewWindow,
             execute: () => _vm.PromoteActiveTabToWindow(),
             isAvailable: () => _vm.ActiveTab != null));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.openInNewTab", category: "Mail", title: "Open in New Tab",
+            id: "mail.openInNewTab", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_OpenInNewTab,
             execute: () => { if (_vm.SelectedMessage != null) _vm.OpenMessageTab(_vm.SelectedMessage); },
             isAvailable: () => _vm.SelectedMessage != null));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.openInWindow", category: "Mail", title: "Open in New Window",
+            id: "mail.openInWindow", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_OpenInNewWindow,
             execute: () => { if (_vm.SelectedMessage != null) OpenMessageInNewWindow(_vm.SelectedMessage); },
             isAvailable: () => _vm.SelectedMessage != null));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.moveToFolder", category: "Mail", title: "Move to Folder…",
+            id: "mail.moveToFolder", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_MoveToFolderEllipsis,
             execute: async () => await MoveMessageToFolderAsync(),
             isAvailable: () => _vm.HasSelectedMessage));
 
         _registry.Register(new CommandDefinition(
-            id: "mail.copyToFolder", category: "Mail", title: "Copy to Folder…",
+            id: "mail.copyToFolder", category: Strings.MainWindow_CmdCategory_Mail, title: Strings.MainWindow_Cmd_CopyToFolderEllipsis,
             execute: async () => await CopyMessageToFolderAsync(),
             isAvailable: () => _vm.HasSelectedMessage));
 
@@ -901,13 +901,13 @@ public partial class MainWindow : Window
         // plain-key gestures don't hijack type-ahead or other keys if focus is elsewhere
         // (e.g. the folder tree) while the Calendar folder happens to remain selected.
         _registry.Register(new CommandDefinition(
-            id: "calendar.toggleTodayFilter", category: "View", title: "Toggle Today Filter",
+            id: "calendar.toggleTodayFilter", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_ToggleTodayFilter,
             execute: () => _vm.CalendarVm?.ToggleTodayFilterCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.None,
             isAvailable: () => CalendarList.IsKeyboardFocusWithin));
 
         _registry.Register(new CommandDefinition(
-            id: "calendar.openSourceMessage", category: "View", title: "Open Calendar Event Source Message",
+            id: "calendar.openSourceMessage", category: Strings.MainWindow_CmdCategory_View, title: Strings.MainWindow_Cmd_OpenCalendarEventSourceMessage,
             execute: () => _vm.CalendarVm?.OpenSourceMessageCommand.Execute(_vm.CalendarVm.SelectedEvent),
             defaultKey: Key.Return, defaultModifiers: ModifierKeys.None,
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
@@ -1047,7 +1047,7 @@ public partial class MainWindow : Window
             {
                 var pressed = FormatKeyGesture(key, modifiers);
                 AccessibilityHelper.Announce(this,
-                    $"You pressed {pressed}. Try again.",
+                    string.Format(Strings.MainWindow_Announce_YouPressedTryAgain, pressed),
                     interrupt: true, category: AnnouncementCategory.Result);
             }
             e.Handled = true;
@@ -1892,7 +1892,7 @@ public partial class MainWindow : Window
         var count = MessageList.SelectedItems.Count;
         LogService.Debug($"SelectAllMessages: items={MessageList.Items.Count} selected={count}");
         AccessibilityHelper.Announce(this,
-            $"{count} message{(count == 1 ? "" : "s")} selected.",
+            StringsHelper.Count("MainWindow_Announce_MessagesSelected", count),
             category: AnnouncementCategory.Result);
     }
 
@@ -1986,7 +1986,7 @@ public partial class MainWindow : Window
                 if (MessageList.ItemContainerGenerator.ContainerFromIndex(0) is ListViewItem container)
                     container.Focus();
             }, DispatcherPriority.Input);
-            AccessibilityHelper.Announce(this, "1 message selected.", category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, StringsHelper.Count("MainWindow_Announce_MessagesSelected", 1), category: AnnouncementCategory.Result);
             return;
         }
 
@@ -2006,7 +2006,7 @@ public partial class MainWindow : Window
 
         var count = MessageList.SelectedItems.Count;
         AccessibilityHelper.Announce(this,
-            $"{count} message{(count == 1 ? "" : "s")} selected.",
+            StringsHelper.Count("MainWindow_Announce_MessagesSelected", count),
             category: AnnouncementCategory.Result);
     }
 
@@ -2036,7 +2036,7 @@ public partial class MainWindow : Window
                 if (MessageList.ItemContainerGenerator.ContainerFromIndex(lastIndex) is ListViewItem container)
                     container.Focus();
             }, DispatcherPriority.Input);
-            AccessibilityHelper.Announce(this, "1 message selected.", category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, StringsHelper.Count("MainWindow_Announce_MessagesSelected", 1), category: AnnouncementCategory.Result);
             return;
         }
 
@@ -2056,7 +2056,7 @@ public partial class MainWindow : Window
 
         var count = MessageList.SelectedItems.Count;
         AccessibilityHelper.Announce(this,
-            $"{count} message{(count == 1 ? "" : "s")} selected.",
+            StringsHelper.Count("MainWindow_Announce_MessagesSelected", count),
             category: AnnouncementCategory.Result);
     }
 
@@ -2148,8 +2148,8 @@ public partial class MainWindow : Window
 
         var hc = _themeService.IsHighContrastActive;
         var text = hc && !_lastAnnouncedHighContrast
-            ? "High contrast is on; colors are supplied by Windows."
-            : $"Theme changed to {_themeService.ConfiguredThemeName}.";
+            ? Strings.MainWindow_Announce_HighContrastOn
+            : string.Format(Strings.MainWindow_Announce_ThemeChangedTo, _themeService.ConfiguredThemeName);
         _lastAnnouncedHighContrast = hc;
         AccessibilityHelper.Announce(this, text, category: AnnouncementCategory.Status);
 
@@ -2289,7 +2289,7 @@ public partial class MainWindow : Window
             if (!_vm.IsMessageOpen) return;
             FocusMessageBodyHost();
             AccessibilityHelper.Announce(this, focusLabel, interrupt: true, category: AnnouncementCategory.Result);
-            AccessibilityHelper.Announce(this, "Press Escape to return to message list.", interrupt: false, category: AnnouncementCategory.Hint);
+            AccessibilityHelper.Announce(this, Strings.MainWindow_Announce_PressEscapeToReturnToMessageList, interrupt: false, category: AnnouncementCategory.Hint);
         }, DispatcherPriority.Input);
     }
 
@@ -2332,13 +2332,13 @@ public partial class MainWindow : Window
     private static string MessageBodyFocusLabel(string? subject)
     {
         if (string.IsNullOrWhiteSpace(subject))
-            return "Message body";
+            return Strings.MainWindow_Announce_MessageBody;
 
         var trimmed = subject.Trim();
         if (trimmed.Length > 120)
             trimmed = trimmed[..120] + "...";
 
-        return $"Message body. {trimmed}";
+        return string.Format(Strings.MainWindow_Announce_MessageBodyWithSubject, trimmed);
     }
 
     /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
@@ -2575,7 +2575,7 @@ public partial class MainWindow : Window
     private void FocusStatusBar()
     {
         FocusStatusBarRegion(1);
-        AccessibilityHelper.Announce(this, $"Status bar: {_vm.StatusText}",
+        AccessibilityHelper.Announce(this, string.Format(Strings.MainWindow_Announce_StatusBarPrefix, _vm.StatusText),
             category: AnnouncementCategory.Result);
     }
 
@@ -2673,7 +2673,7 @@ public partial class MainWindow : Window
         var cfg = _configService.Load();
         cfg.CustomAnnouncements = !cfg.CustomAnnouncements;
         _configService.Save(cfg);
-        var msg = cfg.CustomAnnouncements ? "Custom announcements on." : "Custom announcements off.";
+        var msg = cfg.CustomAnnouncements ? Strings.MainWindow_Announce_CustomAnnouncementsOn : Strings.MainWindow_Announce_CustomAnnouncementsOff;
         AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result, force: true);
     }
 
@@ -2694,14 +2694,14 @@ public partial class MainWindow : Window
         var cfg = _configService.Load();
         cfg.TutorialCompleted = true;
         _configService.Save(cfg);
-        AccessibilityHelper.Announce(this, "Tutorial complete. You can replay it anytime from the Help menu.",
+        AccessibilityHelper.Announce(this, Strings.MainWindow_Announce_TutorialComplete,
             interrupt: true, category: AnnouncementCategory.Result);
     }
 
     private void OnTutorialCancelled()
     {
         CleanupTutorial();
-        AccessibilityHelper.Announce(this, "Tutorial cancelled.",
+        AccessibilityHelper.Announce(this, Strings.MainWindow_Announce_TutorialCancelled,
             interrupt: true, category: AnnouncementCategory.Result);
     }
 
@@ -4206,7 +4206,7 @@ public partial class MainWindow : Window
     {
         AccessibilityHelper.Announce(
             this,
-            "Ctrl+Tab for next tab, Ctrl+Shift+Tab for previous, Ctrl+W to close.",
+            Strings.MainWindow_Announce_TabStripHint,
             category: AnnouncementCategory.Hint);
     }
 
@@ -4247,7 +4247,7 @@ public partial class MainWindow : Window
         if (node?.Folder == null || node.IsHeader) return;
 
         if (_vm.CachedFolders.Count == 0) return;
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Folder To") { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: Strings.MainWindow_MoveFolderToTitle) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveFolderToAsync(node, picker.SelectedFolder);
@@ -4259,7 +4259,7 @@ public partial class MainWindow : Window
         if (node?.Folder == null || node.IsHeader) return;
 
         if (_vm.CachedFolders.Count == 0) return;
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Folder To") { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: Strings.MainWindow_CopyFolderToTitle) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.CopyFolderToAsync(node, picker.SelectedFolder);
@@ -4525,7 +4525,7 @@ public partial class MainWindow : Window
         var messages = GetSelectedMessages();
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder", useTreeView: true) { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: Strings.MainWindow_CopyToFolderTitle, useTreeView: true) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
@@ -4545,7 +4545,7 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var targetIdx = _vm.Conversations.IndexOf(group);
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Conversation to Folder", useTreeView: true) { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: Strings.MainWindow_MoveConversationToFolderTitle, useTreeView: true) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
@@ -4557,7 +4557,7 @@ public partial class MainWindow : Window
         if (ConversationTree.SelectedItem is not ConversationGroup group || group.Messages.Count == 0) return;
         if (_vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Conversation to Folder", useTreeView: true) { Owner = this };
+        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: Strings.MainWindow_CopyConversationToFolderTitle, useTreeView: true) { Owner = this };
         if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);

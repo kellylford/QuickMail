@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using MimeKit;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Views;
 
 namespace QuickMail.Controls;
@@ -253,7 +254,7 @@ public partial class TokenizedAddressBox : UserControl
     }
 
     private static string ChipAccessibleName(AddressChipModel chip) =>
-        chip.IsInvalid ? $"Unrecognized: {chip.FullAddress}" : chip.FullAddress;
+        chip.IsInvalid ? string.Format(Strings.TokenizedAddressBox_UnrecognizedPrefix, chip.FullAddress) : chip.FullAddress;
 
     private Button CreateChipButton(AddressChipModel chip, int index)
     {
@@ -339,7 +340,7 @@ public partial class TokenizedAddressBox : UserControl
             SetChipSelected(i, true);
         }
         AccessibilityHelper.Announce(this,
-            $"{_chips.Count} address{(_chips.Count == 1 ? "" : "es")} selected.",
+            StringsHelper.Count("TokenizedAddressBox_Announce_AddressesSelected", _chips.Count),
             category: AnnouncementCategory.Result);
     }
 
@@ -363,17 +364,17 @@ public partial class TokenizedAddressBox : UserControl
     {
         var menu = new ContextMenu();
 
-        var copy = new MenuItem { Header = "Copy _Address" };
+        var copy = new MenuItem { Header = Strings.TokenizedAddressBox_MenuItem_CopyAddress };
         copy.Click += (_, _) => Clipboard.SetText(chip.FullAddress);
 
-        var addToBook = new MenuItem { Header = "Add to Address _Book" };
+        var addToBook = new MenuItem { Header = Strings.TokenizedAddressBox_MenuItem_AddToAddressBook };
         addToBook.Click += async (_, _) =>
         {
             if (AddToContactsRequested != null)
                 await AddToContactsRequested(chip.DisplayName, chip.EmailAddress);
         };
 
-        var remove = new MenuItem { Header = "_Remove" };
+        var remove = new MenuItem { Header = Strings.TokenizedAddressBox_MenuItem_Remove };
         remove.Click += (_, _) => RemoveChipAt((int)btn.Tag);
 
         menu.Items.Add(copy);

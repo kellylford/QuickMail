@@ -8,6 +8,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -116,13 +117,13 @@ public partial class ViewManagerViewModel : ObservableObject
 
     private static string VirtualFolderDisplayName(string key) => key switch
     {
-        "AllMail"    => "All Mail",
-        "AllInboxes" => "All Inboxes",
-        "AllDrafts"  => "All Drafts",
-        "AllSent"    => "All Sent",
-        "AllTrash"   => "All Trash",
-        var k when k.StartsWith("AccountMail:", StringComparison.Ordinal) => "Account Mail",
-        _            => "Virtual folder",
+        "AllMail"    => Strings.ViewManager_VirtualFolder_AllMail,
+        "AllInboxes" => Strings.ViewManager_VirtualFolder_AllInboxes,
+        "AllDrafts"  => Strings.ViewManager_VirtualFolder_AllDrafts,
+        "AllSent"    => Strings.ViewManager_VirtualFolder_AllSent,
+        "AllTrash"   => Strings.ViewManager_VirtualFolder_AllTrash,
+        var k when k.StartsWith("AccountMail:", StringComparison.Ordinal) => Strings.ViewManager_VirtualFolder_AccountMail,
+        _            => Strings.ViewManager_VirtualFolder_VirtualFolder,
     };
 
     public string SelectedModeSummary
@@ -667,31 +668,31 @@ public partial class ViewManagerViewModel : ObservableObject
 
     private static string ModeLabel(string mode) => mode switch
     {
-        "conversations" => "Conversations",
-        "from"          => "From",
-        "to"            => "To",
-        _               => "Messages",
+        "conversations" => Strings.ViewManager_ModeLabel_Conversations,
+        "from"          => Strings.ViewManager_ModeLabel_From,
+        "to"            => Strings.ViewManager_ModeLabel_To,
+        _               => Strings.ViewManager_ModeLabel_Messages,
     };
 
     private static string FilterLabel(string filter) => filter switch
     {
-        "unread"      => "Unread",
-        "read"        => "Read",
-        "attachments" => "With Attachments",
-        "replied"     => "Replied",
-        "forwarded"   => "Forwarded",
-        "flagged"     => "Flagged",
-        _             => "All",
+        "unread"      => Strings.ViewManager_FilterLabel_Unread,
+        "read"        => Strings.ViewManager_FilterLabel_Read,
+        "attachments" => Strings.ViewManager_FilterLabel_WithAttachments,
+        "replied"     => Strings.ViewManager_FilterLabel_Replied,
+        "forwarded"   => Strings.ViewManager_FilterLabel_Forwarded,
+        "flagged"     => Strings.ViewManager_FilterLabel_Flagged,
+        _             => Strings.ViewManager_FilterLabel_All,
     };
 
     private static string SortLabel(string sort) => sort switch
     {
-        "dateAsc"   or nameof(MessageSort.DateAscending)   => "Oldest First",
-        "alphaAsc"  or nameof(MessageSort.AlphaAscending)  => "A → Z",
-        "alphaDesc" or nameof(MessageSort.AlphaDescending) => "Z → A",
-        "countDesc" or nameof(MessageSort.CountDescending) => "Most Messages",
-        "countAsc"  or nameof(MessageSort.CountAscending)  => "Fewest Messages",
-        _                                                   => "Newest First",
+        "dateAsc"   or nameof(MessageSort.DateAscending)   => Strings.ViewManager_SortLabel_OldestFirst,
+        "alphaAsc"  or nameof(MessageSort.AlphaAscending)  => Strings.ViewManager_SortLabel_AlphaAsc,
+        "alphaDesc" or nameof(MessageSort.AlphaDescending) => Strings.ViewManager_SortLabel_AlphaDesc,
+        "countDesc" or nameof(MessageSort.CountDescending) => Strings.ViewManager_SortLabel_MostMessages,
+        "countAsc"  or nameof(MessageSort.CountAscending)  => Strings.ViewManager_SortLabel_FewestMessages,
+        _                                                   => Strings.ViewManager_SortLabel_NewestFirst,
     };
 
     private static string FilterKey(MessageFilter f) => f switch
