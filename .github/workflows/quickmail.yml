@@ -48,7 +48,13 @@ jobs:
           "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
 
       - name: Test
-        run: dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --logger "trx;LogFileName=results.trx"
+        # PropertiesViewModelTests and ReportBugViewModelTests exercise real clipboard access
+        # (Clipboard.SetText), which is unreliable on GitHub-hosted Windows runners — no
+        # interactive desktop session backs the clipboard, so these intermittently throw
+        # COMException("OpenClipboard Failed") or crash the whole test host on shutdown even
+        # when every assertion passed. Excluded here; run them locally where clipboard access
+        # is real.
+        run: dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --logger "trx;LogFileName=results.trx" --filter "FullyQualifiedName!~PropertiesViewModelTests&FullyQualifiedName!~ReportBugViewModelTests"
 
       - name: Upload test results
         if: always()
