@@ -11,7 +11,7 @@ Two options are available for v0.8.0:
 
 Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
 
-This release introduces **theming and a visual design system**: light and dark themes, app-wide text scaling and font choice, vision-assist options, and a Theme Manager for creating, sharing, and hand-editing themes. See the [Themes section of the User Guide](https://kellylford.github.io/QuickMail/themes.html) for the full walkthrough. It also adds an always-available **Tools** menu and in-app **bug reporting** that doesn't require a GitHub account. QuickMail continues to work correctly out of the box with any screen reader — no custom scripting required — and steps fully aside for Windows High Contrast.
+This release introduces **theming and a visual design system**: light and dark themes, app-wide text scaling and font choice, and a Theme Manager for creating, sharing, and hand-editing themes. See the [Themes section of the User Guide](https://kellylford.github.io/QuickMail/themes.html) for the full walkthrough. It also adds an always-available **Tools** menu and in-app **bug reporting** that doesn't require a GitHub account. 
 
 ---
 
