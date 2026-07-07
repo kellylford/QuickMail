@@ -360,9 +360,6 @@
   <data name="KeyCapture_CaptureDifferentShortcut" xml:space="preserve">
     <value>Capture a different shortcut</value>
   </data>
-  <data name="KeyCapture_ChangeButtonContent" xml:space="preserve">
-    <value>C_hange</value>
-  </data>
   <data name="KeyCapture_CancelClose" xml:space="preserve">
     <value>Cancel and close without saving</value>
   </data>
@@ -422,9 +419,6 @@
   </data>
   <data name="Properties_CopyAllProperties" xml:space="preserve">
     <value>Copy all properties</value>
-  </data>
-  <data name="Properties_CopyAllButtonContent" xml:space="preserve">
-    <value>Copy _all</value>
   </data>
   <data name="Properties_Field" xml:space="preserve">
     <value>Field</value>
@@ -2202,17 +2196,11 @@ Cancel = do nothing</value>
   <data name="Compose_BulletList" xml:space="preserve">
     <value>Bullet list</value>
   </data>
-  <data name="Compose_BulletList_ButtonContent" xml:space="preserve">
-    <value>• List</value>
-  </data>
   <data name="Compose_Tooltip_BulletList" xml:space="preserve">
     <value>Bullet List (Ctrl+Shift+L)</value>
   </data>
   <data name="Compose_NumberedList" xml:space="preserve">
     <value>Numbered list</value>
-  </data>
-  <data name="Compose_NumberedList_ButtonContent" xml:space="preserve">
-    <value>1. List</value>
   </data>
   <data name="Compose_Tooltip_NumberedList" xml:space="preserve">
     <value>Numbered List (Ctrl+Shift+N)</value>
@@ -2220,17 +2208,11 @@ Cancel = do nothing</value>
   <data name="Compose_InsertLink" xml:space="preserve">
     <value>Insert link</value>
   </data>
-  <data name="Compose_InsertLink_ButtonContent" xml:space="preserve">
-    <value>Link</value>
-  </data>
   <data name="Compose_Tooltip_InsertLink" xml:space="preserve">
     <value>Insert Link (Ctrl+L)</value>
   </data>
   <data name="Compose_ClearFormatting" xml:space="preserve">
     <value>Clear formatting</value>
-  </data>
-  <data name="Compose_ClearFormatting_ButtonContent" xml:space="preserve">
-    <value>Clear</value>
   </data>
   <data name="Compose_Tooltip_ClearFormatting" xml:space="preserve">
     <value>Clear Formatting (Ctrl+Space)</value>

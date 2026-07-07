@@ -317,13 +317,11 @@ public static class Strings
     public static string Compose_Attachments => _resourceManager.GetString("Compose_Attachments", Culture) ?? string.Empty;
     public static string Compose_BccLabel => _resourceManager.GetString("Compose_BccLabel", Culture) ?? string.Empty;
     public static string Compose_BulletList => _resourceManager.GetString("Compose_BulletList", Culture) ?? string.Empty;
-    public static string Compose_BulletList_ButtonContent => _resourceManager.GetString("Compose_BulletList_ButtonContent", Culture) ?? string.Empty;
     public static string Compose_CancelAndCloseComposeWindow => _resourceManager.GetString("Compose_CancelAndCloseComposeWindow", Culture) ?? string.Empty;
     public static string Compose_CancelButton => _resourceManager.GetString("Compose_CancelButton", Culture) ?? string.Empty;
     public static string Compose_CcLabel => _resourceManager.GetString("Compose_CcLabel", Culture) ?? string.Empty;
     public static string Compose_ChooseWhichAccountToSendFrom => _resourceManager.GetString("Compose_ChooseWhichAccountToSendFrom", Culture) ?? string.Empty;
     public static string Compose_ClearFormatting => _resourceManager.GetString("Compose_ClearFormatting", Culture) ?? string.Empty;
-    public static string Compose_ClearFormatting_ButtonContent => _resourceManager.GetString("Compose_ClearFormatting_ButtonContent", Culture) ?? string.Empty;
     public static string Compose_Cmd_AddAttachments => _resourceManager.GetString("Compose_Cmd_AddAttachments", Culture) ?? string.Empty;
     public static string Compose_Cmd_AddressBook => _resourceManager.GetString("Compose_Cmd_AddressBook", Culture) ?? string.Empty;
     public static string Compose_Cmd_AnnounceFormattingState => _resourceManager.GetString("Compose_Cmd_AnnounceFormattingState", Culture) ?? string.Empty;
@@ -369,7 +367,6 @@ public static class Strings
     public static string Compose_FromLabel => _resourceManager.GetString("Compose_FromLabel", Culture) ?? string.Empty;
     public static string Compose_InsertASavedTemplate => _resourceManager.GetString("Compose_InsertASavedTemplate", Culture) ?? string.Empty;
     public static string Compose_InsertLink => _resourceManager.GetString("Compose_InsertLink", Culture) ?? string.Empty;
-    public static string Compose_InsertLink_ButtonContent => _resourceManager.GetString("Compose_InsertLink_ButtonContent", Culture) ?? string.Empty;
     public static string Compose_InsertTemplateButton => _resourceManager.GetString("Compose_InsertTemplateButton", Culture) ?? string.Empty;
     public static string Compose_Menu_AddAttachments => _resourceManager.GetString("Compose_Menu_AddAttachments", Culture) ?? string.Empty;
     public static string Compose_Menu_AddressBook => _resourceManager.GetString("Compose_Menu_AddressBook", Culture) ?? string.Empty;
@@ -420,7 +417,6 @@ public static class Strings
     public static string Compose_ModeDisplay_Markdown => _resourceManager.GetString("Compose_ModeDisplay_Markdown", Culture) ?? string.Empty;
     public static string Compose_ModeDisplay_PlainText => _resourceManager.GetString("Compose_ModeDisplay_PlainText", Culture) ?? string.Empty;
     public static string Compose_NumberedList => _resourceManager.GetString("Compose_NumberedList", Culture) ?? string.Empty;
-    public static string Compose_NumberedList_ButtonContent => _resourceManager.GetString("Compose_NumberedList_ButtonContent", Culture) ?? string.Empty;
     public static string Compose_OpenPreview => _resourceManager.GetString("Compose_OpenPreview", Culture) ?? string.Empty;
     public static string Compose_SaveAsDraft => _resourceManager.GetString("Compose_SaveAsDraft", Culture) ?? string.Empty;
     public static string Compose_SaveAsTemplateButton => _resourceManager.GetString("Compose_SaveAsTemplateButton", Culture) ?? string.Empty;
@@ -549,7 +545,6 @@ public static class Strings
     public static string KeyCapture_CaptureDifferentShortcut => _resourceManager.GetString("KeyCapture_CaptureDifferentShortcut", Culture) ?? string.Empty;
     public static string KeyCapture_CapturedKeyCombination => _resourceManager.GetString("KeyCapture_CapturedKeyCombination", Culture) ?? string.Empty;
     public static string KeyCapture_CapturedShortcut => _resourceManager.GetString("KeyCapture_CapturedShortcut", Culture) ?? string.Empty;
-    public static string KeyCapture_ChangeButtonContent => _resourceManager.GetString("KeyCapture_ChangeButtonContent", Culture) ?? string.Empty;
     public static string KeyCapture_DialogName => _resourceManager.GetString("KeyCapture_DialogName", Culture) ?? string.Empty;
     public static string KeyCapture_ModifierHint => _resourceManager.GetString("KeyCapture_ModifierHint", Culture) ?? string.Empty;
     public static string KeyCapture_PressDesiredCombination => _resourceManager.GetString("KeyCapture_PressDesiredCombination", Culture) ?? string.Empty;
@@ -890,7 +885,6 @@ public static class Strings
     public static string Properties_Announce_RowsCopied_One => _resourceManager.GetString("Properties_Announce_RowsCopied_One", Culture) ?? string.Empty;
     public static string Properties_Announce_RowsCopied_Other => _resourceManager.GetString("Properties_Announce_RowsCopied_Other", Culture) ?? string.Empty;
     public static string Properties_CloseButtonName => _resourceManager.GetString("Properties_CloseButtonName", Culture) ?? string.Empty;
-    public static string Properties_CopyAllButtonContent => _resourceManager.GetString("Properties_CopyAllButtonContent", Culture) ?? string.Empty;
     public static string Properties_CopyAllProperties => _resourceManager.GetString("Properties_CopyAllProperties", Culture) ?? string.Empty;
     public static string Properties_Field => _resourceManager.GetString("Properties_Field", Culture) ?? string.Empty;
     public static string Properties_RawHeaders => _resourceManager.GetString("Properties_RawHeaders", Culture) ?? string.Empty;
