@@ -105,6 +105,13 @@ If the test fails, the fix is almost always: add the key to `Strings.resx` (+ es
 least leave es/de/fr for later — `check-resx-keys.ps1` will report it as missing until you do)
 and reference it instead of the literal, per "Add a brand-new string" above.
 
+**Known limitation**: the code-behind check matches the literal call text `MessageBox.Show(`/
+`AccessibilityHelper.Announce(`, not the resolved method — a local wrapper method (e.g. a
+private `Announce(...)` helper that calls `AccessibilityHelper.Announce` internally) evades
+detection at its own call sites. Don't rely on this guard alone when adding a wrapper like that;
+route the text through `Strings.*`/`StringsHelper.Count` by inspection, the same as everywhere
+else.
+
 A small, explicitly reviewed allowlist exists in that test file for the rare deliberate
 exception — e.g. rich-text toolbar glyphs like "B"/"I"/"U" that are conventionally shown
 identically in every locale, or `App.xaml.cs` startup/crash paths that run before the user's

@@ -105,6 +105,15 @@ public class LocalizationRegressionGuardTests
 
     // ── C#: MessageBox.Show / AccessibilityHelper.Announce literal text ─────────
 
+    // Known limitation: this matches the literal call text, not the resolved method symbol, so a
+    // local wrapper around AccessibilityHelper.Announce (e.g. a private "Announce(...)" helper
+    // that itself calls AccessibilityHelper.Announce internally) evades detection at every one of
+    // its own call sites. MainViewModel.cs has exactly this wrapper and — as of this writing —
+    // real hardcoded literals passed through it; that is tracked as separate follow-up work, not
+    // fixed here, specifically to keep this guard's own tests green without scope creep into an
+    // unrelated large remediation. Closing this gap for real needs either naming every known
+    // wrapper here (fragile — the next wrapper added anywhere still evades it) or a proper Roslyn
+    // symbol-based analyzer; a string scanner cannot fully solve it.
     private static readonly string[] TextSinks = ["MessageBox.Show(", "AccessibilityHelper.Announce("];
 
     // StringsHelper.Count's first argument is a resx *key* (e.g. "MainWindow_Announce_MessagesSelected"),
