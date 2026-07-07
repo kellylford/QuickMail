@@ -267,17 +267,20 @@
   <data name="TemplatePicker_TemplatesListName" xml:space="preserve">
     <value>Vorlagen</value>
   </data>
-  <data name="Common_Cancel" xml:space="preserve">
+  <data name="TemplatePicker_CancelButtonName" xml:space="preserve">
     <value>Abbrechen</value>
+  </data>
+  <data name="Common_Cancel" xml:space="preserve">
+    <value>_Abbrechen</value>
   </data>
   <data name="Tutorial_KeyboardTutorialFallback" xml:space="preserve">
     <value>Tastatur-Tutorial</value>
   </data>
   <data name="Tutorial_StepPrefix" xml:space="preserve">
-    <value>Schritt</value>
+    <value>Schritt </value>
   </data>
   <data name="Tutorial_StepOfSeparator" xml:space="preserve">
-    <value> von</value>
+    <value> von </value>
   </data>
   <data name="Tutorial_PressAKeyFallback" xml:space="preserve">
     <value>Eine Taste drücken...</value>
@@ -429,6 +432,9 @@
   <data name="Properties_RawMessageHeaders" xml:space="preserve">
     <value>Rohe Nachrichtenkopfzeilen</value>
   </data>
+  <data name="Properties_CloseButtonName" xml:space="preserve">
+    <value>Schließen</value>
+  </data>
   <data name="Properties_Announce_CopyRowHint" xml:space="preserve">
     <value>Eingabetaste oder Strg+C drücken, um die ausgewählte Zeile zu kopieren.</value>
   </data>
@@ -506,6 +512,9 @@ Typ: {2}</value>
   <data name="FlagPicker_ClearFlag" xml:space="preserve">
     <value>Markierung _entfernen</value>
   </data>
+  <data name="FlagPicker_CancelButton" xml:space="preserve">
+    <value>_Abbrechen</value>
+  </data>
   <data name="FlagPicker_Flags" xml:space="preserve">
     <value>Markierungen</value>
   </data>
@@ -519,7 +528,7 @@ Typ: {2}</value>
     <value>An_zeigetext:</value>
   </data>
   <data name="Common_OK" xml:space="preserve">
-    <value>OK</value>
+    <value>_OK</value>
   </data>
   <data name="NewFolder_Title" xml:space="preserve">
     <value>Neuer Ordner</value>
@@ -542,6 +551,9 @@ Typ: {2}</value>
   <data name="NewFolder_ParentFolderFormat" xml:space="preserve">
     <value>Übergeordneter Ordner: {0}</value>
   </data>
+  <data name="NewFolder_CancelButtonName" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
   <data name="About_Title" xml:space="preserve">
     <value>Über QuickMail</value>
   </data>
@@ -549,10 +561,13 @@ Typ: {2}</value>
     <value>S_chließen</value>
   </data>
   <data name="Common_Close" xml:space="preserve">
-    <value>Schließen</value>
+    <value>Schl_ießen</value>
   </data>
   <data name="About_AppName" xml:space="preserve">
     <value>QuickMail</value>
+  </data>
+  <data name="About_CloseButtonName" xml:space="preserve">
+    <value>Schließen</value>
   </data>
   <data name="About_ViewLicenseOnGitHub" xml:space="preserve">
     <value>MIT-Lizenz auf GitHub ansehen</value>
@@ -1199,6 +1214,9 @@ Typ: {2}</value>
   <data name="FolderPicker_CancelButton" xml:space="preserve">
     <value>_Abbrechen</value>
   </data>
+  <data name="FolderPicker_CancelButtonName" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
   <data name="FolderPicker_Folders" xml:space="preserve">
     <value>Ordner</value>
   </data>
@@ -1246,6 +1264,9 @@ Typ: {2}</value>
   </data>
   <data name="Message_GrabAddresses_Name" xml:space="preserve">
     <value>Adressen aus Nachricht übernehmen</value>
+  </data>
+  <data name="Message_DeleteMessageName" xml:space="preserve">
+    <value>Nachricht löschen</value>
   </data>
   <data name="Message_Menu_Navigate" xml:space="preserve">
     <value>_Navigieren</value>
@@ -1335,10 +1356,10 @@ Typ: {2}</value>
     <value>Nachrichtentext. {0}</value>
   </data>
   <data name="Common_Delete" xml:space="preserve">
-    <value>Löschen</value>
+    <value>_Löschen</value>
   </data>
   <data name="Common_Save" xml:space="preserve">
-    <value>Speichern</value>
+    <value>_Speichern</value>
   </data>
   <data name="AddAccount_Title" xml:space="preserve">
     <value>Konto hinzufügen</value>
@@ -1552,6 +1573,18 @@ Typ: {2}</value>
   </data>
   <data name="ThemeManager_ThemeList_Announce_PressTabForActions" xml:space="preserve">
     <value>Tab drücken für Aktionen zum ausgewählten Design.</value>
+  </data>
+  <data name="ThemeManager_DeleteButtonName" xml:space="preserve">
+    <value>Löschen</value>
+  </data>
+  <data name="ThemeManager_ConfirmNameButtonName" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ThemeManager_CancelNameButtonName" xml:space="preserve">
+    <value>Abbrechen</value>
+  </data>
+  <data name="ThemeManager_CloseButtonName" xml:space="preserve">
+    <value>Schließen</value>
   </data>
   <data name="ViewManager_Title" xml:space="preserve">
     <value>Ansichtsverwaltung</value>
@@ -2313,20 +2346,23 @@ Abbrechen = nichts tun</value>
   <data name="Compose_Announce_NoAddressesToCheck" xml:space="preserve">
     <value>Keine Adressen zu prüfen.</value>
   </data>
-  <data name="Compose_Announce_AddressesCheckedPrefix_One" xml:space="preserve">
-    <value>1 Adresse geprüft.</value>
+  <data name="Compose_Announce_AddressesCheckedUnrecognized_One" xml:space="preserve">
+    <value>1 Adresse geprüft. {1} nicht erkannt.</value>
   </data>
-  <data name="Compose_Announce_AddressesCheckedPrefix_Other" xml:space="preserve">
-    <value>{0} Adressen geprüft.</value>
+  <data name="Compose_Announce_AddressesCheckedUnrecognized_Other" xml:space="preserve">
+    <value>{0} Adressen geprüft. {1} nicht erkannt.</value>
   </data>
-  <data name="Compose_Announce_UnrecognizedCountFormat" xml:space="preserve">
-    <value>{0} nicht erkannt.</value>
+  <data name="Compose_Announce_AddressesCheckedResolved_One" xml:space="preserve">
+    <value>1 Adresse geprüft. {1} aus Kontakten aufgelöst.</value>
   </data>
-  <data name="Compose_Announce_ResolvedFromContactsFormat" xml:space="preserve">
-    <value>{0} aus Kontakten aufgelöst.</value>
+  <data name="Compose_Announce_AddressesCheckedResolved_Other" xml:space="preserve">
+    <value>{0} Adressen geprüft. {1} aus Kontakten aufgelöst.</value>
   </data>
-  <data name="Compose_Announce_AllValid" xml:space="preserve">
-    <value>Alle gültig.</value>
+  <data name="Compose_Announce_AddressesCheckedAllValid_One" xml:space="preserve">
+    <value>1 Adresse geprüft. Alle gültig.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedAllValid_Other" xml:space="preserve">
+    <value>{0} Adressen geprüft. Alle gültig.</value>
   </data>
   <data name="Compose_Announce_FilesAttached_One" xml:space="preserve">
     <value>1 Datei angehängt</value>
@@ -3219,6 +3255,9 @@ Abbrechen = nichts tun</value>
   <data name="AddressBook_SaveButton" xml:space="preserve">
     <value>_Speichern</value>
   </data>
+  <data name="AddressBook_CancelEditButton" xml:space="preserve">
+    <value>Abbrec_hen</value>
+  </data>
   <data name="AddressBook_AddContact" xml:space="preserve">
     <value>Kontakt hinzufügen</value>
   </data>
@@ -3344,6 +3383,9 @@ Abbrechen = nichts tun</value>
   </data>
   <data name="FlagManager_SetKDefaultAutomation" xml:space="preserve">
     <value>K-Standard festlegen</value>
+  </data>
+  <data name="FlagManager_DeleteButtonName" xml:space="preserve">
+    <value>Löschen</value>
   </data>
   <data name="FlagManager_Flags" xml:space="preserve">
     <value>Markierungen</value>
@@ -3794,5 +3836,26 @@ Abbrechen = nichts tun</value>
   </data>
   <data name="TokenizedAddressBox_UnrecognizedPrefix" xml:space="preserve">
     <value>Nicht erkannt: {0}</value>
+  </data>
+  <data name="MailMessageSummary_Status_Replied" xml:space="preserve">
+    <value>Beantwortet</value>
+  </data>
+  <data name="MailMessageSummary_Status_Fwd" xml:space="preserve">
+    <value>WG</value>
+  </data>
+  <data name="MailMessageSummary_Status_New" xml:space="preserve">
+    <value>Neu</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Replied" xml:space="preserve">
+    <value>beantwortet</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Forwarded" xml:space="preserve">
+    <value>weitergeleitet</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Unread" xml:space="preserve">
+    <value>ungelesen</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Read" xml:space="preserve">
+    <value>gelesen</value>
   </data>
 </root>

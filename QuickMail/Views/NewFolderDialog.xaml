@@ -27,7 +27,7 @@
             <Button Content="{x:Static strings:Strings.NewFolder_Cancel}"
                     IsCancel="True"
                     MinWidth="75"
-                    AutomationProperties.Name="{x:Static strings:Strings.Common_Cancel}"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.NewFolder_CancelButtonName}"/>
         </StackPanel>
 
         <StackPanel>

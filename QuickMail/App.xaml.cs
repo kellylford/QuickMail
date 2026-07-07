@@ -252,8 +252,12 @@ public partial class App : Application
         culture = CultureInfo.InvariantCulture;
         if (string.IsNullOrWhiteSpace(tag)) return false;
 
+        // Exact match first (the common case: "es", or the OS's two-letter ISO code). The
+        // StartsWith fallback only matches a genuine regional culture tag like "es-MX" or
+        // "fr-CA" (hyphen boundary required) — never a bare prefix, so an unrelated value
+        // like a hand-edited "default" in config.ini can't accidentally match "de".
         var match = Array.Find(SupportedUiLanguages, l => l.Equals(tag, StringComparison.OrdinalIgnoreCase))
-            ?? Array.Find(SupportedUiLanguages, l => tag.StartsWith(l, StringComparison.OrdinalIgnoreCase));
+            ?? Array.Find(SupportedUiLanguages, l => tag.StartsWith(l + "-", StringComparison.OrdinalIgnoreCase));
         if (match is null) return false;
 
         culture = new CultureInfo(match);

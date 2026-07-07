@@ -21,7 +21,7 @@
                 MinWidth="75"
                 HorizontalAlignment="Right"
                 Margin="0,16,0,0"
-                AutomationProperties.Name="{x:Static strings:Strings.Common_Close}"/>
+                AutomationProperties.Name="{x:Static strings:Strings.About_CloseButtonName}"/>
 
         <StackPanel>
             <TextBlock Text="{x:Static strings:Strings.About_AppName}"

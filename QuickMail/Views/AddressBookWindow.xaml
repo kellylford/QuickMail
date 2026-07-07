@@ -149,7 +149,7 @@
                                     Command="{Binding SaveContactCommand}"
                                     AutomationProperties.Name="{x:Static strings:Strings.AddressBook_SaveContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="7"/>
-                            <Button Content="{x:Static strings:Strings.Common_Cancel}"
+                            <Button Content="{x:Static strings:Strings.AddressBook_CancelEditButton}"
                                     Command="{Binding CancelEditCommand}"
                                     AutomationProperties.Name="{x:Static strings:Strings.AddressBook_CancelEdit}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="8"/>

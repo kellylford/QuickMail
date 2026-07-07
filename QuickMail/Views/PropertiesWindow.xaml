@@ -33,7 +33,7 @@
                     TabIndex="91"
                     MinWidth="75"
                     IsCancel="True"
-                    AutomationProperties.Name="{x:Static strings:Strings.Common_Close}"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.Properties_CloseButtonName}"/>
         </StackPanel>
 
         <!-- Scrollable content -->

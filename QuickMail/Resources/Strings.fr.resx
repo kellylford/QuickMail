@@ -267,17 +267,20 @@
   <data name="TemplatePicker_TemplatesListName" xml:space="preserve">
     <value>Modèles</value>
   </data>
-  <data name="Common_Cancel" xml:space="preserve">
+  <data name="TemplatePicker_CancelButtonName" xml:space="preserve">
     <value>Annuler</value>
+  </data>
+  <data name="Common_Cancel" xml:space="preserve">
+    <value>_Annuler</value>
   </data>
   <data name="Tutorial_KeyboardTutorialFallback" xml:space="preserve">
     <value>Tutoriel clavier</value>
   </data>
   <data name="Tutorial_StepPrefix" xml:space="preserve">
-    <value>Étape</value>
+    <value>Étape </value>
   </data>
   <data name="Tutorial_StepOfSeparator" xml:space="preserve">
-    <value> sur</value>
+    <value> sur </value>
   </data>
   <data name="Tutorial_PressAKeyFallback" xml:space="preserve">
     <value>Appuyez sur une touche...</value>
@@ -429,6 +432,9 @@
   <data name="Properties_RawMessageHeaders" xml:space="preserve">
     <value>En-têtes bruts du message</value>
   </data>
+  <data name="Properties_CloseButtonName" xml:space="preserve">
+    <value>Fermer</value>
+  </data>
   <data name="Properties_Announce_CopyRowHint" xml:space="preserve">
     <value>Appuyez sur Entrée ou Ctrl+C pour copier la ligne sélectionnée.</value>
   </data>
@@ -506,6 +512,9 @@ Type : {2}</value>
   <data name="FlagPicker_ClearFlag" xml:space="preserve">
     <value>_Effacer le marqueur</value>
   </data>
+  <data name="FlagPicker_CancelButton" xml:space="preserve">
+    <value>_Annuler</value>
+  </data>
   <data name="FlagPicker_Flags" xml:space="preserve">
     <value>Marqueurs</value>
   </data>
@@ -519,7 +528,7 @@ Type : {2}</value>
     <value>_Texte affiché :</value>
   </data>
   <data name="Common_OK" xml:space="preserve">
-    <value>OK</value>
+    <value>_OK</value>
   </data>
   <data name="NewFolder_Title" xml:space="preserve">
     <value>Nouveau dossier</value>
@@ -542,6 +551,9 @@ Type : {2}</value>
   <data name="NewFolder_ParentFolderFormat" xml:space="preserve">
     <value>Dossier parent : {0}</value>
   </data>
+  <data name="NewFolder_CancelButtonName" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
   <data name="About_Title" xml:space="preserve">
     <value>À propos de QuickMail</value>
   </data>
@@ -549,10 +561,13 @@ Type : {2}</value>
     <value>_Fermer</value>
   </data>
   <data name="Common_Close" xml:space="preserve">
-    <value>Fermer</value>
+    <value>_Fermer</value>
   </data>
   <data name="About_AppName" xml:space="preserve">
     <value>QuickMail</value>
+  </data>
+  <data name="About_CloseButtonName" xml:space="preserve">
+    <value>Fermer</value>
   </data>
   <data name="About_ViewLicenseOnGitHub" xml:space="preserve">
     <value>Consulter la licence MIT sur GitHub</value>
@@ -1199,6 +1214,9 @@ Type : {2}</value>
   <data name="FolderPicker_CancelButton" xml:space="preserve">
     <value>A_nnuler</value>
   </data>
+  <data name="FolderPicker_CancelButtonName" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
   <data name="FolderPicker_Folders" xml:space="preserve">
     <value>Dossiers</value>
   </data>
@@ -1246,6 +1264,9 @@ Type : {2}</value>
   </data>
   <data name="Message_GrabAddresses_Name" xml:space="preserve">
     <value>Récupérer les adresses du message</value>
+  </data>
+  <data name="Message_DeleteMessageName" xml:space="preserve">
+    <value>Supprimer le message</value>
   </data>
   <data name="Message_Menu_Navigate" xml:space="preserve">
     <value>_Navigation</value>
@@ -1335,10 +1356,10 @@ Type : {2}</value>
     <value>Corps du message. {0}</value>
   </data>
   <data name="Common_Delete" xml:space="preserve">
-    <value>Supprimer</value>
+    <value>_Supprimer</value>
   </data>
   <data name="Common_Save" xml:space="preserve">
-    <value>Enregistrer</value>
+    <value>_Enregistrer</value>
   </data>
   <data name="AddAccount_Title" xml:space="preserve">
     <value>Ajouter un compte</value>
@@ -1552,6 +1573,18 @@ Type : {2}</value>
   </data>
   <data name="ThemeManager_ThemeList_Announce_PressTabForActions" xml:space="preserve">
     <value>Appuyez sur Tab pour accéder aux actions sur le thème sélectionné.</value>
+  </data>
+  <data name="ThemeManager_DeleteButtonName" xml:space="preserve">
+    <value>Supprimer</value>
+  </data>
+  <data name="ThemeManager_ConfirmNameButtonName" xml:space="preserve">
+    <value>OK</value>
+  </data>
+  <data name="ThemeManager_CancelNameButtonName" xml:space="preserve">
+    <value>Annuler</value>
+  </data>
+  <data name="ThemeManager_CloseButtonName" xml:space="preserve">
+    <value>Fermer</value>
   </data>
   <data name="ViewManager_Title" xml:space="preserve">
     <value>Gestionnaire d'affichages</value>
@@ -2313,20 +2346,23 @@ Annuler = ne rien faire</value>
   <data name="Compose_Announce_NoAddressesToCheck" xml:space="preserve">
     <value>Aucune adresse à vérifier.</value>
   </data>
-  <data name="Compose_Announce_AddressesCheckedPrefix_One" xml:space="preserve">
-    <value>1 adresse vérifiée.</value>
+  <data name="Compose_Announce_AddressesCheckedUnrecognized_One" xml:space="preserve">
+    <value>1 adresse vérifiée. {1} non reconnue(s).</value>
   </data>
-  <data name="Compose_Announce_AddressesCheckedPrefix_Other" xml:space="preserve">
-    <value>{0} adresses vérifiées.</value>
+  <data name="Compose_Announce_AddressesCheckedUnrecognized_Other" xml:space="preserve">
+    <value>{0} adresses vérifiées. {1} non reconnue(s).</value>
   </data>
-  <data name="Compose_Announce_UnrecognizedCountFormat" xml:space="preserve">
-    <value>{0} non reconnue(s).</value>
+  <data name="Compose_Announce_AddressesCheckedResolved_One" xml:space="preserve">
+    <value>1 adresse vérifiée. {1} résolue(s) à partir des contacts.</value>
   </data>
-  <data name="Compose_Announce_ResolvedFromContactsFormat" xml:space="preserve">
-    <value>{0} résolue(s) à partir des contacts.</value>
+  <data name="Compose_Announce_AddressesCheckedResolved_Other" xml:space="preserve">
+    <value>{0} adresses vérifiées. {1} résolue(s) à partir des contacts.</value>
   </data>
-  <data name="Compose_Announce_AllValid" xml:space="preserve">
-    <value>Toutes valides.</value>
+  <data name="Compose_Announce_AddressesCheckedAllValid_One" xml:space="preserve">
+    <value>1 adresse vérifiée. Toutes valides.</value>
+  </data>
+  <data name="Compose_Announce_AddressesCheckedAllValid_Other" xml:space="preserve">
+    <value>{0} adresses vérifiées. Toutes valides.</value>
   </data>
   <data name="Compose_Announce_FilesAttached_One" xml:space="preserve">
     <value>1 fichier joint</value>
@@ -3219,6 +3255,9 @@ Annuler = ne rien faire</value>
   <data name="AddressBook_SaveButton" xml:space="preserve">
     <value>_Enregistrer</value>
   </data>
+  <data name="AddressBook_CancelEditButton" xml:space="preserve">
+    <value>A_nnuler</value>
+  </data>
   <data name="AddressBook_AddContact" xml:space="preserve">
     <value>Ajouter un contact</value>
   </data>
@@ -3344,6 +3383,9 @@ Annuler = ne rien faire</value>
   </data>
   <data name="FlagManager_SetKDefaultAutomation" xml:space="preserve">
     <value>Définir comme K par défaut</value>
+  </data>
+  <data name="FlagManager_DeleteButtonName" xml:space="preserve">
+    <value>Supprimer</value>
   </data>
   <data name="FlagManager_Flags" xml:space="preserve">
     <value>Marqueurs</value>
@@ -3794,5 +3836,26 @@ Annuler = ne rien faire</value>
   </data>
   <data name="TokenizedAddressBox_UnrecognizedPrefix" xml:space="preserve">
     <value>Non reconnue : {0}</value>
+  </data>
+  <data name="MailMessageSummary_Status_Replied" xml:space="preserve">
+    <value>Répondu</value>
+  </data>
+  <data name="MailMessageSummary_Status_Fwd" xml:space="preserve">
+    <value>Tr.</value>
+  </data>
+  <data name="MailMessageSummary_Status_New" xml:space="preserve">
+    <value>Nouveau</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Replied" xml:space="preserve">
+    <value>répondu</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Forwarded" xml:space="preserve">
+    <value>transféré</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Unread" xml:space="preserve">
+    <value>non lu</value>
+  </data>
+  <data name="MailMessageSummary_ReadStatus_Read" xml:space="preserve">
+    <value>lu</value>
   </data>
 </root>

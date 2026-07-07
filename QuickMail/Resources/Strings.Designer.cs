@@ -21,6 +21,7 @@ public static class Strings
 
     public static string About_AppName => _resourceManager.GetString("About_AppName", Culture) ?? string.Empty;
     public static string About_Close => _resourceManager.GetString("About_Close", Culture) ?? string.Empty;
+    public static string About_CloseButtonName => _resourceManager.GetString("About_CloseButtonName", Culture) ?? string.Empty;
     public static string About_MitLicense => _resourceManager.GetString("About_MitLicense", Culture) ?? string.Empty;
     public static string About_Title => _resourceManager.GetString("About_Title", Culture) ?? string.Empty;
     public static string About_ViewLicenseOnGitHub => _resourceManager.GetString("About_ViewLicenseOnGitHub", Culture) ?? string.Empty;
@@ -144,6 +145,7 @@ public static class Strings
     public static string AddressBook_Announce_TypeNewGroupName => _resourceManager.GetString("AddressBook_Announce_TypeNewGroupName", Culture) ?? string.Empty;
     public static string AddressBook_BccButton => _resourceManager.GetString("AddressBook_BccButton", Culture) ?? string.Empty;
     public static string AddressBook_CancelEdit => _resourceManager.GetString("AddressBook_CancelEdit", Culture) ?? string.Empty;
+    public static string AddressBook_CancelEditButton => _resourceManager.GetString("AddressBook_CancelEditButton", Culture) ?? string.Empty;
     public static string AddressBook_CcButton => _resourceManager.GetString("AddressBook_CcButton", Culture) ?? string.Empty;
     public static string AddressBook_CloseAddressBook => _resourceManager.GetString("AddressBook_CloseAddressBook", Culture) ?? string.Empty;
     public static string AddressBook_Cmd_AddContact => _resourceManager.GetString("AddressBook_Cmd_AddContact", Culture) ?? string.Empty;
@@ -255,9 +257,12 @@ public static class Strings
     public static string Compose_Announce_AddedToAddressBookFormat => _resourceManager.GetString("Compose_Announce_AddedToAddressBookFormat", Culture) ?? string.Empty;
     public static string Compose_Announce_AddressCount_One => _resourceManager.GetString("Compose_Announce_AddressCount_One", Culture) ?? string.Empty;
     public static string Compose_Announce_AddressCount_Other => _resourceManager.GetString("Compose_Announce_AddressCount_Other", Culture) ?? string.Empty;
-    public static string Compose_Announce_AddressesCheckedPrefix_One => _resourceManager.GetString("Compose_Announce_AddressesCheckedPrefix_One", Culture) ?? string.Empty;
-    public static string Compose_Announce_AddressesCheckedPrefix_Other => _resourceManager.GetString("Compose_Announce_AddressesCheckedPrefix_Other", Culture) ?? string.Empty;
-    public static string Compose_Announce_AllValid => _resourceManager.GetString("Compose_Announce_AllValid", Culture) ?? string.Empty;
+    public static string Compose_Announce_AddressesCheckedAllValid_One => _resourceManager.GetString("Compose_Announce_AddressesCheckedAllValid_One", Culture) ?? string.Empty;
+    public static string Compose_Announce_AddressesCheckedAllValid_Other => _resourceManager.GetString("Compose_Announce_AddressesCheckedAllValid_Other", Culture) ?? string.Empty;
+    public static string Compose_Announce_AddressesCheckedResolved_One => _resourceManager.GetString("Compose_Announce_AddressesCheckedResolved_One", Culture) ?? string.Empty;
+    public static string Compose_Announce_AddressesCheckedResolved_Other => _resourceManager.GetString("Compose_Announce_AddressesCheckedResolved_Other", Culture) ?? string.Empty;
+    public static string Compose_Announce_AddressesCheckedUnrecognized_One => _resourceManager.GetString("Compose_Announce_AddressesCheckedUnrecognized_One", Culture) ?? string.Empty;
+    public static string Compose_Announce_AddressesCheckedUnrecognized_Other => _resourceManager.GetString("Compose_Announce_AddressesCheckedUnrecognized_Other", Culture) ?? string.Empty;
     public static string Compose_Announce_AlreadyInAddressBookFormat => _resourceManager.GetString("Compose_Announce_AlreadyInAddressBookFormat", Culture) ?? string.Empty;
     public static string Compose_Announce_BoldOff => _resourceManager.GetString("Compose_Announce_BoldOff", Culture) ?? string.Empty;
     public static string Compose_Announce_BoldOn => _resourceManager.GetString("Compose_Announce_BoldOn", Culture) ?? string.Empty;
@@ -297,7 +302,6 @@ public static class Strings
     public static string Compose_Announce_NumberedListItem => _resourceManager.GetString("Compose_Announce_NumberedListItem", Culture) ?? string.Empty;
     public static string Compose_Announce_Quote => _resourceManager.GetString("Compose_Announce_Quote", Culture) ?? string.Empty;
     public static string Compose_Announce_ReplacedWithFormat => _resourceManager.GetString("Compose_Announce_ReplacedWithFormat", Culture) ?? string.Empty;
-    public static string Compose_Announce_ResolvedFromContactsFormat => _resourceManager.GetString("Compose_Announce_ResolvedFromContactsFormat", Culture) ?? string.Empty;
     public static string Compose_Announce_SpellingAnnouncementsWhileNavigatingFormat => _resourceManager.GetString("Compose_Announce_SpellingAnnouncementsWhileNavigatingFormat", Culture) ?? string.Empty;
     public static string Compose_Announce_StateMixed => _resourceManager.GetString("Compose_Announce_StateMixed", Culture) ?? string.Empty;
     public static string Compose_Announce_StateOff => _resourceManager.GetString("Compose_Announce_StateOff", Culture) ?? string.Empty;
@@ -310,7 +314,6 @@ public static class Strings
     public static string Compose_Announce_UnderlineNotAvailableInMarkdown => _resourceManager.GetString("Compose_Announce_UnderlineNotAvailableInMarkdown", Culture) ?? string.Empty;
     public static string Compose_Announce_UnderlineOff => _resourceManager.GetString("Compose_Announce_UnderlineOff", Culture) ?? string.Empty;
     public static string Compose_Announce_UnderlineOn => _resourceManager.GetString("Compose_Announce_UnderlineOn", Culture) ?? string.Empty;
-    public static string Compose_Announce_UnrecognizedCountFormat => _resourceManager.GetString("Compose_Announce_UnrecognizedCountFormat", Culture) ?? string.Empty;
     public static string Compose_Attachments => _resourceManager.GetString("Compose_Attachments", Culture) ?? string.Empty;
     public static string Compose_BccLabel => _resourceManager.GetString("Compose_BccLabel", Culture) ?? string.Empty;
     public static string Compose_BulletList => _resourceManager.GetString("Compose_BulletList", Culture) ?? string.Empty;
@@ -467,6 +470,7 @@ public static class Strings
     public static string FlagManager_ColorTeal => _resourceManager.GetString("FlagManager_ColorTeal", Culture) ?? string.Empty;
     public static string FlagManager_ColorViolet => _resourceManager.GetString("FlagManager_ColorViolet", Culture) ?? string.Empty;
     public static string FlagManager_ColorYellow => _resourceManager.GetString("FlagManager_ColorYellow", Culture) ?? string.Empty;
+    public static string FlagManager_DeleteButtonName => _resourceManager.GetString("FlagManager_DeleteButtonName", Culture) ?? string.Empty;
     public static string FlagManager_FlagName => _resourceManager.GetString("FlagManager_FlagName", Culture) ?? string.Empty;
     public static string FlagManager_Flags => _resourceManager.GetString("FlagManager_Flags", Culture) ?? string.Empty;
     public static string FlagManager_MoveDown => _resourceManager.GetString("FlagManager_MoveDown", Culture) ?? string.Empty;
@@ -478,6 +482,7 @@ public static class Strings
     public static string FlagManager_SetKDefault => _resourceManager.GetString("FlagManager_SetKDefault", Culture) ?? string.Empty;
     public static string FlagManager_SetKDefaultAutomation => _resourceManager.GetString("FlagManager_SetKDefaultAutomation", Culture) ?? string.Empty;
     public static string FlagManager_Title => _resourceManager.GetString("FlagManager_Title", Culture) ?? string.Empty;
+    public static string FlagPicker_CancelButton => _resourceManager.GetString("FlagPicker_CancelButton", Culture) ?? string.Empty;
     public static string FlagPicker_ClearFlag => _resourceManager.GetString("FlagPicker_ClearFlag", Culture) ?? string.Empty;
     public static string FlagPicker_Cmd_ApplySelectedFlag => _resourceManager.GetString("FlagPicker_Cmd_ApplySelectedFlag", Culture) ?? string.Empty;
     public static string FlagPicker_Cmd_Cancel => _resourceManager.GetString("FlagPicker_Cmd_Cancel", Culture) ?? string.Empty;
@@ -487,6 +492,7 @@ public static class Strings
     public static string FlagPicker_SelectFlag => _resourceManager.GetString("FlagPicker_SelectFlag", Culture) ?? string.Empty;
     public static string FlagPicker_Title => _resourceManager.GetString("FlagPicker_Title", Culture) ?? string.Empty;
     public static string FolderPicker_CancelButton => _resourceManager.GetString("FolderPicker_CancelButton", Culture) ?? string.Empty;
+    public static string FolderPicker_CancelButtonName => _resourceManager.GetString("FolderPicker_CancelButtonName", Culture) ?? string.Empty;
     public static string FolderPicker_Folders => _resourceManager.GetString("FolderPicker_Folders", Culture) ?? string.Empty;
     public static string FolderPicker_FolderSearch => _resourceManager.GetString("FolderPicker_FolderSearch", Culture) ?? string.Empty;
     public static string FolderPicker_OpenButton => _resourceManager.GetString("FolderPicker_OpenButton", Culture) ?? string.Empty;
@@ -544,6 +550,13 @@ public static class Strings
     public static string KeyCapture_PressDesiredCombination => _resourceManager.GetString("KeyCapture_PressDesiredCombination", Culture) ?? string.Empty;
     public static string KeyCapture_Title => _resourceManager.GetString("KeyCapture_Title", Culture) ?? string.Empty;
     public static string KeyCapture_WaitingForInput => _resourceManager.GetString("KeyCapture_WaitingForInput", Culture) ?? string.Empty;
+    public static string MailMessageSummary_ReadStatus_Forwarded => _resourceManager.GetString("MailMessageSummary_ReadStatus_Forwarded", Culture) ?? string.Empty;
+    public static string MailMessageSummary_ReadStatus_Read => _resourceManager.GetString("MailMessageSummary_ReadStatus_Read", Culture) ?? string.Empty;
+    public static string MailMessageSummary_ReadStatus_Replied => _resourceManager.GetString("MailMessageSummary_ReadStatus_Replied", Culture) ?? string.Empty;
+    public static string MailMessageSummary_ReadStatus_Unread => _resourceManager.GetString("MailMessageSummary_ReadStatus_Unread", Culture) ?? string.Empty;
+    public static string MailMessageSummary_Status_Fwd => _resourceManager.GetString("MailMessageSummary_Status_Fwd", Culture) ?? string.Empty;
+    public static string MailMessageSummary_Status_New => _resourceManager.GetString("MailMessageSummary_Status_New", Culture) ?? string.Empty;
+    public static string MailMessageSummary_Status_Replied => _resourceManager.GetString("MailMessageSummary_Status_Replied", Culture) ?? string.Empty;
     public static string MainVM_FilterLabel_Flagged => _resourceManager.GetString("MainVM_FilterLabel_Flagged", Culture) ?? string.Empty;
     public static string MainVM_FilterLabel_Forwarded => _resourceManager.GetString("MainVM_FilterLabel_Forwarded", Culture) ?? string.Empty;
     public static string MainVM_FilterLabel_Read => _resourceManager.GetString("MainVM_FilterLabel_Read", Culture) ?? string.Empty;
@@ -821,6 +834,7 @@ public static class Strings
     public static string Message_Cc_Name => _resourceManager.GetString("Message_Cc_Name", Culture) ?? string.Empty;
     public static string Message_CloseWindow_Name => _resourceManager.GetString("Message_CloseWindow_Name", Culture) ?? string.Empty;
     public static string Message_Date_Name => _resourceManager.GetString("Message_Date_Name", Culture) ?? string.Empty;
+    public static string Message_DeleteMessageName => _resourceManager.GetString("Message_DeleteMessageName", Culture) ?? string.Empty;
     public static string Message_Forward_Name => _resourceManager.GetString("Message_Forward_Name", Culture) ?? string.Empty;
     public static string Message_From_Name => _resourceManager.GetString("Message_From_Name", Culture) ?? string.Empty;
     public static string Message_GrabAddresses_Name => _resourceManager.GetString("Message_GrabAddresses_Name", Culture) ?? string.Empty;
@@ -860,6 +874,7 @@ public static class Strings
     public static string Message_Toolbar_Reply_ToolTip => _resourceManager.GetString("Message_Toolbar_Reply_ToolTip", Culture) ?? string.Empty;
     public static string Message_Toolbar_ReplyAll_ToolTip => _resourceManager.GetString("Message_Toolbar_ReplyAll_ToolTip", Culture) ?? string.Empty;
     public static string NewFolder_Cancel => _resourceManager.GetString("NewFolder_Cancel", Culture) ?? string.Empty;
+    public static string NewFolder_CancelButtonName => _resourceManager.GetString("NewFolder_CancelButtonName", Culture) ?? string.Empty;
     public static string NewFolder_CreateFolder => _resourceManager.GetString("NewFolder_CreateFolder", Culture) ?? string.Empty;
     public static string NewFolder_FolderName => _resourceManager.GetString("NewFolder_FolderName", Culture) ?? string.Empty;
     public static string NewFolder_FolderNameHelpText => _resourceManager.GetString("NewFolder_FolderNameHelpText", Culture) ?? string.Empty;
@@ -869,6 +884,7 @@ public static class Strings
     public static string Properties_Announce_CopyRowHint => _resourceManager.GetString("Properties_Announce_CopyRowHint", Culture) ?? string.Empty;
     public static string Properties_Announce_RowsCopied_One => _resourceManager.GetString("Properties_Announce_RowsCopied_One", Culture) ?? string.Empty;
     public static string Properties_Announce_RowsCopied_Other => _resourceManager.GetString("Properties_Announce_RowsCopied_Other", Culture) ?? string.Empty;
+    public static string Properties_CloseButtonName => _resourceManager.GetString("Properties_CloseButtonName", Culture) ?? string.Empty;
     public static string Properties_CopyAllProperties => _resourceManager.GetString("Properties_CopyAllProperties", Culture) ?? string.Empty;
     public static string Properties_Field => _resourceManager.GetString("Properties_Field", Culture) ?? string.Empty;
     public static string Properties_RawHeaders => _resourceManager.GetString("Properties_RawHeaders", Culture) ?? string.Empty;
@@ -1141,6 +1157,7 @@ public static class Strings
     public static string TabList_TabListName => _resourceManager.GetString("TabList_TabListName", Culture) ?? string.Empty;
     public static string TabList_Title => _resourceManager.GetString("TabList_Title", Culture) ?? string.Empty;
     public static string TemplatePicker_CancelButtonContent => _resourceManager.GetString("TemplatePicker_CancelButtonContent", Culture) ?? string.Empty;
+    public static string TemplatePicker_CancelButtonName => _resourceManager.GetString("TemplatePicker_CancelButtonName", Culture) ?? string.Empty;
     public static string TemplatePicker_InsertButtonContent => _resourceManager.GetString("TemplatePicker_InsertButtonContent", Culture) ?? string.Empty;
     public static string TemplatePicker_InsertButtonName => _resourceManager.GetString("TemplatePicker_InsertButtonName", Culture) ?? string.Empty;
     public static string TemplatePicker_SearchName => _resourceManager.GetString("TemplatePicker_SearchName", Culture) ?? string.Empty;
@@ -1148,7 +1165,11 @@ public static class Strings
     public static string TemplatePicker_Title => _resourceManager.GetString("TemplatePicker_Title", Culture) ?? string.Empty;
     public static string ThemeManager_Apply => _resourceManager.GetString("ThemeManager_Apply", Culture) ?? string.Empty;
     public static string ThemeManager_Apply_Name => _resourceManager.GetString("ThemeManager_Apply_Name", Culture) ?? string.Empty;
+    public static string ThemeManager_CancelNameButtonName => _resourceManager.GetString("ThemeManager_CancelNameButtonName", Culture) ?? string.Empty;
     public static string ThemeManager_Close => _resourceManager.GetString("ThemeManager_Close", Culture) ?? string.Empty;
+    public static string ThemeManager_CloseButtonName => _resourceManager.GetString("ThemeManager_CloseButtonName", Culture) ?? string.Empty;
+    public static string ThemeManager_ConfirmNameButtonName => _resourceManager.GetString("ThemeManager_ConfirmNameButtonName", Culture) ?? string.Empty;
+    public static string ThemeManager_DeleteButtonName => _resourceManager.GetString("ThemeManager_DeleteButtonName", Culture) ?? string.Empty;
     public static string ThemeManager_Duplicate => _resourceManager.GetString("ThemeManager_Duplicate", Culture) ?? string.Empty;
     public static string ThemeManager_Duplicate_Name => _resourceManager.GetString("ThemeManager_Duplicate_Name", Culture) ?? string.Empty;
     public static string ThemeManager_Export => _resourceManager.GetString("ThemeManager_Export", Culture) ?? string.Empty;

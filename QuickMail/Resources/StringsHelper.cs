@@ -19,12 +19,34 @@ public static class StringsHelper
     /// </summary>
     public static string Count(string baseKey, int count)
     {
+        var format = ResolveCountFormat(baseKey, count);
+        return string.Format(CultureInfo.CurrentUICulture, format, count);
+    }
+
+    /// <summary>
+    /// Same plural resolution as <see cref="Count(string, int)"/>, but for a sentence that
+    /// composes the count with additional values (e.g. "{0} addresses checked. {1} unrecognized.").
+    /// <paramref name="count"/> is always {0}; <paramref name="additionalArgs"/> fill {1}, {2}, ...
+    /// Use this instead of concatenating a separately-pluralized count phrase with another
+    /// resource string — composing two independently-translated fragments with a hardcoded
+    /// separator assumes every language uses the same word order, which isn't guaranteed.
+    /// </summary>
+    public static string Count(string baseKey, int count, params object[] additionalArgs)
+    {
+        var format = ResolveCountFormat(baseKey, count);
+        var args = new object[additionalArgs.Length + 1];
+        args[0] = count;
+        additionalArgs.CopyTo(args, 1);
+        return string.Format(CultureInfo.CurrentUICulture, format, args);
+    }
+
+    private static string ResolveCountFormat(string baseKey, int count)
+    {
         var suffix = ResolvePluralSuffix(count, CultureInfo.CurrentUICulture);
         var key = baseKey + suffix;
-        var format = Strings.ResourceManager.GetString(key, CultureInfo.CurrentUICulture)
+        return Strings.ResourceManager.GetString(key, CultureInfo.CurrentUICulture)
             ?? Strings.ResourceManager.GetString(baseKey + "_Other", CultureInfo.CurrentUICulture)
             ?? key;
-        return string.Format(CultureInfo.CurrentUICulture, format, count);
     }
 
     /// <summary>

@@ -35,7 +35,7 @@
             <Button Content="{x:Static strings:Strings.FolderPicker_CancelButton}"
                     IsCancel="True"
                     MinWidth="75"
-                    AutomationProperties.Name="{x:Static strings:Strings.Common_Cancel}"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.FolderPicker_CancelButtonName}"/>
         </StackPanel>
 
         <ListBox x:Name="FolderListBox"

@@ -581,14 +581,13 @@ public partial class ComposeWindow : Window
             }
         }
 
-        var checkedPrefix = StringsHelper.Count("Compose_Announce_AddressesCheckedPrefix", total);
         string summary;
         if (invalid > 0)
-            summary = checkedPrefix + " " + string.Format(Strings.Compose_Announce_UnrecognizedCountFormat, invalid);
+            summary = StringsHelper.Count("Compose_Announce_AddressesCheckedUnrecognized", total, invalid);
         else if (resolved > 0)
-            summary = checkedPrefix + " " + string.Format(Strings.Compose_Announce_ResolvedFromContactsFormat, resolved);
+            summary = StringsHelper.Count("Compose_Announce_AddressesCheckedResolved", total, resolved);
         else
-            summary = checkedPrefix + " " + Strings.Compose_Announce_AllValid;
+            summary = StringsHelper.Count("Compose_Announce_AddressesCheckedAllValid", total);
 
         _vm.StatusText = summary;
         AccessibilityHelper.Announce(this, summary, category: AnnouncementCategory.Result);

@@ -65,5 +65,12 @@ if ($existing -ne $content) {
     Set-Content -Path $OutputPath -Value $content -NoNewline -Encoding utf8
     Write-Host "Generated $OutputPath ($($keys.Count) keys)"
 } else {
+    # Content is already correct, but MSBuild's Inputs/Outputs staleness check compares
+    # raw file timestamps — a git checkout/rebase/clone touches all files at nearly the
+    # same instant with no guaranteed relative ordering, so Strings.resx can end up
+    # "newer" than this file forever after even though nothing needs regenerating. Bump
+    # the timestamp forward so the next build's Inputs/Outputs check correctly sees this
+    # file as up to date and skips re-invoking this script entirely.
+    (Get-Item -Path $OutputPath).LastWriteTime = Get-Date
     Write-Host "Strings.Designer.cs up to date ($($keys.Count) keys)"
 }

@@ -33,7 +33,7 @@
             <Button x:Name="DeleteButton"
                     Content="{x:Static strings:Strings.Common_Delete}"
                     Command="{Binding DeleteFlagCommand}"
-                    AutomationProperties.Name="{x:Static strings:Strings.Common_Delete}"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.FlagManager_DeleteButtonName}"/>
             <Separator/>
             <Button x:Name="MoveUpButton"
                     Content="{x:Static strings:Strings.FlagManager_MoveUp}"

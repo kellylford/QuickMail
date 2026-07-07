@@ -35,7 +35,7 @@
                     Command="{Binding ClearFlagCommand}"
                     Width="80" Margin="0,0,4,0"/>
             <Button x:Name="CancelButton"
-                    Content="{x:Static strings:Strings.Common_Cancel}"
+                    Content="{x:Static strings:Strings.FlagPicker_CancelButton}"
                     IsCancel="True"
                     Width="64"/>
         </StackPanel>

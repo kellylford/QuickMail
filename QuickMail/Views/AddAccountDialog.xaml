@@ -94,10 +94,10 @@
                             Margin="0,6,0,0">
                         <TextBlock TextWrapping="Wrap"
                                    AutomationProperties.Name="{x:Static strings:Strings.AddAccount_ICloudHint_Name}">
-                            <Run FontWeight="SemiBold">{x:Static strings:Strings.AddAccount_ICloudHint_Run1}</Run>
-                            <Run>{x:Static strings:Strings.AddAccount_ICloudHint_Run2}</Run>
-                            <Run FontWeight="SemiBold">{x:Static strings:Strings.AddAccount_ICloudHint_Run3}</Run>
-                            <Run>{x:Static strings:Strings.AddAccount_ICloudHint_Run4}</Run>
+                            <Run FontWeight="SemiBold" Text="{x:Static strings:Strings.AddAccount_ICloudHint_Run1}"/>
+                            <Run Text="{x:Static strings:Strings.AddAccount_ICloudHint_Run2}"/>
+                            <Run FontWeight="SemiBold" Text="{x:Static strings:Strings.AddAccount_ICloudHint_Run3}"/>
+                            <Run Text="{x:Static strings:Strings.AddAccount_ICloudHint_Run4}"/>
                         </TextBlock>
                     </Border>
                 </StackPanel>
