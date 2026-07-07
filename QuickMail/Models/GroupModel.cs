@@ -56,4 +56,9 @@ public class GroupModel
             : MissingContactCount == 0
                 ? $"{Name}, {ResolvedMemberCount} member{(ResolvedMemberCount == 1 ? "" : "s")}"
                 : $"{Name}, {ResolvedMemberCount} member{(ResolvedMemberCount == 1 ? "" : "s")} ({MissingContactCount} missing)";
+
+    // A screen reader reads a data-bound Selector item's UIA Name from ToString()
+    // (DisplayMemberPath="Display" only sets the visual). Without this the Groups
+    // list announces "QuickMail.Models.GroupModel" for every row. See CLAUDE.md.
+    public override string ToString() => Display;
 }
