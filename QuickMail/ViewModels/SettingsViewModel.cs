@@ -5,7 +5,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -118,7 +117,7 @@ public partial class SettingsViewModel : ObservableObject
     // ── Appearance ─────────────────────────────────────────────────────────────────
 
     /// <summary>Sentinel shown in the font ComboBox for "use the theme's font".</summary>
-    public static string ThemeDefaultFontLabel => Strings.Settings_ThemeDefaultFontLabel;
+    public const string ThemeDefaultFontLabel = "(Theme default)";
 
     /// <summary>One row of the theme ComboBox — id + display name only, no UI types.</summary>
     public sealed record ThemeOption(string Id, string Name)
@@ -367,7 +366,7 @@ public partial class SettingsViewModel : ObservableObject
         {
             get
             {
-                var gesture = string.IsNullOrEmpty(ActiveGesture) ? Strings.Settings_Hotkey_NoShortcut : ActiveGesture;
+                var gesture = string.IsNullOrEmpty(ActiveGesture) ? "no shortcut" : ActiveGesture;
                 return $"{Title}, {Category}, {gesture}";
             }
         }

@@ -2,7 +2,6 @@ using System;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
-using QuickMail.Resources;
 
 namespace QuickMail.ViewModels;
 
@@ -42,45 +41,45 @@ public partial class TutorialViewModel : ObservableObject
     {
         Steps.Add(new TutorialStep
         {
-            InstructionText = Strings.Tutorial_Step_F6_Instruction,
+            InstructionText = "Press F6 to cycle focus through all panes.",
             ExpectedKey = Key.F6,
             ExpectedModifiers = ModifierKeys.None,
-            SuccessMessage = Strings.Tutorial_Step_F6_Success
+            SuccessMessage = "Correct! F6 cycles focus through all panes: toolbar, account list, folder tree, message list, reading pane, and status bar."
         });
         Steps.Add(new TutorialStep
         {
-            InstructionText = Strings.Tutorial_Step_Ctrl1_Instruction,
+            InstructionText = "Press Ctrl+1 to focus the account list.",
             ExpectedKey = Key.D1,
             ExpectedModifiers = ModifierKeys.Control,
-            SuccessMessage = Strings.Tutorial_Step_Ctrl1_Success
+            SuccessMessage = "Correct! Ctrl+1 moves focus to the account list."
         });
         Steps.Add(new TutorialStep
         {
-            InstructionText = Strings.Tutorial_Step_Ctrl2_Instruction,
+            InstructionText = "Press Ctrl+2 to focus the folder tree.",
             ExpectedKey = Key.D2,
             ExpectedModifiers = ModifierKeys.Control,
-            SuccessMessage = Strings.Tutorial_Step_Ctrl2_Success
+            SuccessMessage = "Correct! Ctrl+2 moves focus to the folder tree."
         });
         Steps.Add(new TutorialStep
         {
-            InstructionText = Strings.Tutorial_Step_Ctrl3_Instruction,
+            InstructionText = "Press Ctrl+3 to focus the message list.",
             ExpectedKey = Key.D3,
             ExpectedModifiers = ModifierKeys.Control,
-            SuccessMessage = Strings.Tutorial_Step_Ctrl3_Success
+            SuccessMessage = "Correct! Ctrl+3 moves focus to the message list."
         });
         Steps.Add(new TutorialStep
         {
-            InstructionText = Strings.Tutorial_Step_CommandPalette_Instruction,
+            InstructionText = "Press Ctrl+Shift+P to open the Command Palette.",
             ExpectedKey = Key.P,
             ExpectedModifiers = ModifierKeys.Control | ModifierKeys.Shift,
-            SuccessMessage = Strings.Tutorial_Step_CommandPalette_Success
+            SuccessMessage = "Correct! Ctrl+Shift+P opens the Command Palette where you can search for any command."
         });
         Steps.Add(new TutorialStep
         {
-            InstructionText = Strings.Tutorial_Step_Escape_Instruction,
+            InstructionText = "Press Escape to close the reading pane or dismiss dialogs.",
             ExpectedKey = Key.Escape,
             ExpectedModifiers = ModifierKeys.None,
-            SuccessMessage = Strings.Tutorial_Step_Escape_Success
+            SuccessMessage = "Correct! Escape returns focus to the message list from the reading pane."
         });
     }
 

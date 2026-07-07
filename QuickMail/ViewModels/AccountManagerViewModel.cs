@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -81,7 +80,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Accounts.Add(account);
         _accountService.SaveAccounts([.. Accounts]);
         SelectedAccount = account;
-        StatusText = Strings.AccountManager_Confirm_AccountAdded;
+        StatusText = "Account added.";
     }
 
     [RelayCommand]
@@ -107,7 +106,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             _credentials.SavePassword(SelectedAccount.Id, Password);
 
         _accountService.SaveAccounts([.. Accounts]);
-        StatusText = Strings.AccountManager_Confirm_AccountSaved;
+        StatusText = "Account saved.";
 
         // Force list item refresh
         var idx = Accounts.IndexOf(SelectedAccount);
@@ -134,7 +133,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         if (config.Accounts.Remove(account.Id))
             _configService.Save(config);
 
-        StatusText = Strings.AccountManager_Confirm_AccountDeletedCleaningUp;
+        StatusText = "Account deleted. Cleaning up…";
 
         try   { await _localStore.DeleteAccountDataAsync(account.Id); }
         catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to purge mail.db — {ex.Message}"); }
@@ -145,7 +144,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed OAuth sign-out — {ex.Message}"); }
         }
 
-        StatusText = Strings.AccountManager_Confirm_AccountDeleted;
+        StatusText = "Account deleted.";
     }
 
     [RelayCommand]
@@ -161,6 +160,6 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SelectedAccount = selectedId.HasValue
             ? Accounts.FirstOrDefault(a => a.Id == selectedId.Value)
             : null;
-        StatusText = string.Format(Strings.AccountManager_Confirm_SetAsDefaultFormat, account.AccountLabel);
+        StatusText = $"{account.AccountLabel} set as default.";
     }
 }

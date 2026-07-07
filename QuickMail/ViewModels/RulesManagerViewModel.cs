@@ -5,7 +5,6 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -49,7 +48,7 @@ public partial class RulesManagerViewModel : ObservableObject
         {
             Rules.Add(prefillTemplate);
             SelectedRule = prefillTemplate;
-            Announce(Strings.RulesManager_Hint_NewRuleFromMessage,
+            Announce("New rule created from message. Fill in the action and save.",
                 AnnouncementCategory.Hint);
         }
         else if (Rules.Count > 0)
@@ -67,17 +66,17 @@ public partial class RulesManagerViewModel : ObservableObject
 
     /// <summary>Account options for the ComboBox. First item is "All accounts" (null).</summary>
     public List<AccountOption> AccountOptions =>
-        new[] { new AccountOption { Id = null, DisplayName = Strings.RulesManager_Account_AllAccounts } }
+        new[] { new AccountOption { Id = null, DisplayName = "All accounts" } }
         .Concat(_accounts.Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel }))
         .ToList();
 
     /// <summary>Action options for the ComboBox.</summary>
     public static List<ActionOption> ActionOptions => new()
     {
-        new() { Action = RuleAction.MarkAsRead, DisplayName = Strings.RulesManager_Action_MarkAsRead },
-        new() { Action = RuleAction.MarkAsUnread, DisplayName = Strings.RulesManager_Action_MarkAsUnread },
-        new() { Action = RuleAction.MoveToFolder, DisplayName = Strings.RulesManager_Action_MoveToFolder },
-        new() { Action = RuleAction.Delete, DisplayName = Strings.RulesManager_Action_Delete },
+        new() { Action = RuleAction.MarkAsRead, DisplayName = "Mark as read" },
+        new() { Action = RuleAction.MarkAsUnread, DisplayName = "Mark as unread" },
+        new() { Action = RuleAction.MoveToFolder, DisplayName = "Move to folder" },
+        new() { Action = RuleAction.Delete, DisplayName = "Delete" },
     };
 
     public bool IsMoveToFolderSelected =>
@@ -142,10 +141,10 @@ public partial class RulesManagerViewModel : ObservableObject
     [RelayCommand]
     private void NewRule()
     {
-        var rule = new MailRule { Name = Strings.RulesManager_DefaultName_NewRule };
+        var rule = new MailRule { Name = "New rule" };
         Rules.Add(rule);
         SelectedRule = rule;
-        Announce(Strings.RulesManager_Hint_NewRuleCreated, AnnouncementCategory.Hint);
+        Announce("New rule created. Enter a name and conditions.", AnnouncementCategory.Hint);
     }
 
     [RelayCommand]
@@ -154,8 +153,8 @@ public partial class RulesManagerViewModel : ObservableObject
         if (SelectedRule == null) return;
 
         var confirmed = ConfirmDeleteRequested?.Invoke(
-            string.Format(Strings.RulesManager_Confirm_DeleteRuleMessage, SelectedRule.Name),
-            Strings.RulesManager_Confirm_DeleteRuleTitle) ?? false;
+            $"Delete rule '{SelectedRule.Name}'?",
+            "Delete Rule") ?? false;
 
         if (!confirmed) return;
 
@@ -163,7 +162,7 @@ public partial class RulesManagerViewModel : ObservableObject
         Rules.Remove(SelectedRule);
         _ruleService.SaveRules(Rules.ToList());
         SelectedRule = Rules.FirstOrDefault();
-        Announce(string.Format(Strings.RulesManager_Result_RuleDeleted, name), AnnouncementCategory.Result);
+        Announce($"Rule '{name}' deleted.", AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -174,8 +173,8 @@ public partial class RulesManagerViewModel : ObservableObject
         if (!Validate(SelectedRule)) return;
 
         _ruleService.SaveRules(Rules.ToList());
-        StatusText = string.Format(Strings.RulesManager_Result_RuleSaved, SelectedRule.Name);
-        Announce(string.Format(Strings.RulesManager_Result_RuleSaved, SelectedRule.Name), AnnouncementCategory.Result);
+        StatusText = $"Rule '{SelectedRule.Name}' saved.";
+        Announce($"Rule '{SelectedRule.Name}' saved.", AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -183,21 +182,21 @@ public partial class RulesManagerViewModel : ObservableObject
     {
         if (SelectedRule == null || _selectedMessagesForTest == null)
         {
-            StatusText = Strings.RulesManager_Status_NoMessagesToTest;
+            StatusText = "No messages available to test against.";
             return;
         }
 
         var messages = _selectedMessagesForTest.ToList();
         if (messages.Count == 0)
         {
-            StatusText = Strings.RulesManager_Status_NoMessagesSelected;
+            StatusText = "No messages selected in the main window.";
             return;
         }
 
         var matched = _ruleService.TestRule(SelectedRule, messages);
         StatusText = matched.Count == 0
-            ? string.Format(Strings.RulesManager_Result_TestMatchedNone, messages.Count)
-            : string.Format(Strings.RulesManager_Result_TestMatchedSome, matched.Count, messages.Count);
+            ? $"Rule would match 0 of {messages.Count} selected messages."
+            : $"Rule would match {matched.Count} of {messages.Count} selected messages.";
         Announce(StatusText, AnnouncementCategory.Result);
     }
 
@@ -227,13 +226,13 @@ public partial class RulesManagerViewModel : ObservableObject
 
         if (string.IsNullOrWhiteSpace(rule.Name))
         {
-            NameError = Strings.RulesManager_Error_NameRequired;
+            NameError = "Rule name is required.";
             valid = false;
         }
 
         if (rule.Action == RuleAction.MoveToFolder && string.IsNullOrWhiteSpace(rule.TargetFolder))
         {
-            FolderError = Strings.RulesManager_Error_TargetFolderRequired;
+            FolderError = "Target folder is required for Move to folder action.";
             valid = false;
         }
 
@@ -249,7 +248,7 @@ public partial class RulesManagerViewModel : ObservableObject
 
             if (!hasCondition)
             {
-                ConditionsError = Strings.RulesManager_Error_ConditionRequired;
+                ConditionsError = "At least one condition is required for Move and Delete actions.";
                 valid = false;
             }
         }

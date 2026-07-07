@@ -6,7 +6,6 @@ using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
-using QuickMail.Resources;
 
 namespace QuickMail.ViewModels;
 
@@ -52,7 +51,7 @@ public partial class PropertiesViewModel : ObservableObject
         if (row is null) return;
         var text = row.IsHeader ? row.Label : $"{row.Label}: {row.Value}";
         Clipboard.SetText(text);
-        AnnouncementRequested?.Invoke(string.Format(Strings.Properties_Announce_CopiedFormat, text), AnnouncementCategory.Result);
+        AnnouncementRequested?.Invoke($"Copied: {text}", AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -75,7 +74,7 @@ public partial class PropertiesViewModel : ObservableObject
             sb.AppendLine(RawHeaders);
         }
         Clipboard.SetText(sb.ToString());
-        AnnouncementRequested?.Invoke(Strings.Properties_Announce_AllPropertiesCopied, AnnouncementCategory.Result);
+        AnnouncementRequested?.Invoke("All properties copied", AnnouncementCategory.Result);
     }
 }
 

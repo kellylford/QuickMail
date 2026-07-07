@@ -6,7 +6,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -55,7 +54,7 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
     public bool CanSend => !IsSending;
 
     /// <summary>"Cancel" before a send succeeds, "Close" afterward — one button, state-reflecting label.</summary>
-    public string CancelButtonLabel => IsSent ? Strings.ReportBug_CloseButtonLabel : Strings.ReportBug_CancelButtonLabel;
+    public string CancelButtonLabel => IsSent ? "Close" : "Cancel";
 
     /// <summary>Exactly what will be submitted — shown read-only before the user sends.</summary>
     public string PreviewText => _bugReportService.BuildReportText(BuildModel());
@@ -87,7 +86,7 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(Summary))
         {
-            AnnouncementRequested?.Invoke(Strings.ReportBug_EnterSummaryBeforeSending, AnnouncementCategory.Result);
+            AnnouncementRequested?.Invoke("Enter a summary before sending.", AnnouncementCategory.Result);
             return;
         }
 
@@ -95,7 +94,7 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
         _sendCts = new CancellationTokenSource();
 
         IsSending     = true;
-        StatusMessage = Strings.ReportBug_Status_Sending;
+        StatusMessage = "Sending report…";
         AnnouncementRequested?.Invoke(StatusMessage, AnnouncementCategory.Status);
 
         var result = await _bugReportService.SubmitAsync(BuildModel(), _sendCts.Token);
@@ -106,13 +105,13 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
         {
             IsSent        = true;
             IssueUrl      = result.IssueUrl;
-            StatusMessage = string.Format(Strings.ReportBug_Status_SentFormat, result.IssueUrl);
+            StatusMessage = $"Report sent. Issue created: {result.IssueUrl}.";
             AnnouncementRequested?.Invoke(StatusMessage, AnnouncementCategory.Result);
             SendSucceeded?.Invoke(this, EventArgs.Empty);
         }
         else
         {
-            StatusMessage = Strings.ReportBug_Status_SendFailedReadyToCopy;
+            StatusMessage = "Could not send the report automatically. Your report is ready to copy.";
             AnnouncementRequested?.Invoke(StatusMessage, AnnouncementCategory.Result);
             SendFailed?.Invoke(this, EventArgs.Empty);
         }
@@ -123,13 +122,13 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(Summary))
         {
-            AnnouncementRequested?.Invoke(Strings.ReportBug_EnterSummaryBeforeSending, AnnouncementCategory.Result);
+            AnnouncementRequested?.Invoke("Enter a summary before sending.", AnnouncementCategory.Result);
             return;
         }
 
         var model = BuildModel();
         Clipboard.SetText($"{Summary}\n\n{_bugReportService.BuildReportText(model)}");
-        StatusMessage = Strings.ReportBug_Status_CopiedOpeningGitHub;
+        StatusMessage = "Report copied. Opening GitHub in your browser.";
         AnnouncementRequested?.Invoke(StatusMessage, AnnouncementCategory.Result);
         ExternalUriPolicy.TryOpenExternal(_bugReportService.BuildFallbackUrl(model));
     }

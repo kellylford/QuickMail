@@ -7,7 +7,6 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
 using QuickMail.Models;
-using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -169,7 +168,7 @@ public partial class AddressBookViewModel : ObservableObject
         ContactError       = string.Empty;
         IsEditingContact   = true;
         _contactEditMode   = ContactEditMode.Adding;
-        Announce(Strings.AddressBook_Announce_AddContact, AnnouncementCategory.Result);
+        Announce("Add contact", AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -180,7 +179,7 @@ public partial class AddressBookViewModel : ObservableObject
         IsEditingContact  = true;
         _contactEditMode  = ContactEditMode.Editing;
         ContactError      = string.Empty;
-        Announce(string.Format(Strings.AddressBook_Announce_EditContactFormat, c.DisplayName), AnnouncementCategory.Result);
+        Announce($"Edit {c.DisplayName}", AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -199,7 +198,7 @@ public partial class AddressBookViewModel : ObservableObject
             EditEmail = string.Empty;
         }
         ContactError = string.Empty;
-        Announce(Strings.AddressBook_Announce_EditCancelled, AnnouncementCategory.Result);
+        Announce("Edit cancelled", AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -227,7 +226,7 @@ public partial class AddressBookViewModel : ObservableObject
             var added = _allContacts.FirstOrDefault(c =>
                 c.EmailAddress.Equals(EditEmail.Trim(), StringComparison.OrdinalIgnoreCase));
             if (added is not null) SelectedContact = added;
-            Announce(string.Format(Strings.AddressBook_Announce_ContactAddedFormat, addedName), AnnouncementCategory.Result);
+            Announce($"{addedName} added", AnnouncementCategory.Result);
         }
         else if (_contactEditMode == ContactEditMode.Editing)
         {
@@ -239,7 +238,7 @@ public partial class AddressBookViewModel : ObservableObject
             if (!success)
             {
                 ContactError = "Email address is already used by another contact";
-                Announce(Strings.AddressBook_Announce_EmailAlreadyUsed, AnnouncementCategory.Result);
+                Announce("Email address is already used by another contact", AnnouncementCategory.Result);
                 return;
             }
 
@@ -249,7 +248,7 @@ public partial class AddressBookViewModel : ObservableObject
             await LoadAsync();
             // Restore selection by id
             SelectedContact = _allContacts.FirstOrDefault(c => c.Id == _editingContactId);
-            Announce(string.Format(Strings.AddressBook_Announce_ContactUpdatedFormat, updatedName), AnnouncementCategory.Result);
+            Announce($"{updatedName} updated", AnnouncementCategory.Result);
         }
     }
 
@@ -276,7 +275,7 @@ public partial class AddressBookViewModel : ObservableObject
         }
         catch (DuplicateGroupNameException)
         {
-            Announce(string.Format(Strings.AddressBook_Announce_GroupNameExistsFormat, name), AnnouncementCategory.Result);
+            Announce($"A group named '{name}' already exists. Choose a different name.", AnnouncementCategory.Result);
             return;
         }
         catch (ArgumentException)
@@ -291,7 +290,7 @@ public partial class AddressBookViewModel : ObservableObject
         var created = Groups.FirstOrDefault(g => g.Id == id);
         if (created is not null) SelectedGroup = created;
         Announce(
-            string.Format(Strings.AddressBook_Announce_GroupCreatedFormat, name),
+            $"Group '{name}' created",
             AnnouncementCategory.Result);
     }
 
@@ -313,7 +312,7 @@ public partial class AddressBookViewModel : ObservableObject
         await ReloadGroupsAsync();
         SelectedGroup = null;
         Announce(
-            string.Format(Strings.AddressBook_Announce_GroupDeletedFormat, deletedName),
+            $"Group '{deletedName}' deleted",
             AnnouncementCategory.Result);
     }
 
@@ -329,7 +328,7 @@ public partial class AddressBookViewModel : ObservableObject
         }
         catch (DuplicateGroupNameException)
         {
-            Announce(string.Format(Strings.AddressBook_Announce_GroupNameExistsFormat, newName), AnnouncementCategory.Result);
+            Announce($"A group named '{newName}' already exists. Choose a different name.", AnnouncementCategory.Result);
             return;
         }
         NewGroupName = string.Empty;
@@ -337,7 +336,7 @@ public partial class AddressBookViewModel : ObservableObject
         var renamed = Groups.FirstOrDefault(x => x.Id == g.Id);
         if (renamed is not null) SelectedGroup = renamed;
         Announce(
-            string.Format(Strings.AddressBook_Announce_GroupRenamedFormat, newName),
+            $"Renamed group to '{newName}'",
             AnnouncementCategory.Result);
     }
 
@@ -355,7 +354,7 @@ public partial class AddressBookViewModel : ObservableObject
             RebuildSelectedGroupMembers();
         }
         Announce(
-            string.Format(Strings.AddressBook_Announce_AddedContactToGroupFormat, c.Display, targetGroup.Name),
+            $"Added {c.Display} to {targetGroup.Name}",
             AnnouncementCategory.Result);
     }
 
@@ -369,7 +368,7 @@ public partial class AddressBookViewModel : ObservableObject
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
         RebuildSelectedGroupMembers();
         Announce(
-            string.Format(Strings.AddressBook_Announce_RemovedContactFromGroupFormat, contact.Display, g.Name),
+            $"Removed {contact.Display} from {g.Name}",
             AnnouncementCategory.Result);
     }
 
@@ -393,8 +392,8 @@ public partial class AddressBookViewModel : ObservableObject
         _ = _contactService.TouchGroupAsync(g.Id);
         Announce(
             ordered.Count == 1
-                ? string.Format(Strings.AddressBook_Announce_InsertedGroupAddresses_One, g.Name)
-                : string.Format(Strings.AddressBook_Announce_InsertedGroupAddresses_Other, ordered.Count, g.Name),
+                ? $"Inserted 1 address from group '{g.Name}'"
+                : $"Inserted {ordered.Count} addresses from group '{g.Name}'",
             AnnouncementCategory.Result);
     }
 
@@ -469,14 +468,9 @@ public partial class AddressBookViewModel : ObservableObject
 
         if (g.MissingContactCount > 0)
         {
-            var memberClause = g.ResolvedMemberCount == 1
-                ? string.Format(Strings.AddressBook_Announce_GroupMemberCount_One, g.Name, g.ResolvedMemberCount)
-                : string.Format(Strings.AddressBook_Announce_GroupMemberCount_Other, g.Name, g.ResolvedMemberCount);
-            var missingClause = g.MissingContactCount == 1
-                ? string.Format(Strings.AddressBook_Announce_MissingContacts_One, g.MissingContactCount)
-                : string.Format(Strings.AddressBook_Announce_MissingContacts_Other, g.MissingContactCount);
             Announce(
-                $"{memberClause} {missingClause}",
+                $"{g.Name}, {g.ResolvedMemberCount} member{(g.ResolvedMemberCount == 1 ? "" : "s")}. " +
+                $"{g.MissingContactCount} contact{(g.MissingContactCount == 1 ? " is" : "s are")} missing and were skipped.",
                 AnnouncementCategory.Status);
         }
     }
