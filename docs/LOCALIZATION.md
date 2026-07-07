@@ -20,7 +20,7 @@ see `docs/planning/localization-pm-dev-spec.md`.
 | `scripts/Generate-ResxDesigner.ps1` | Runs automatically as an MSBuild step before every compile; regenerates `Strings.Designer.cs` from `Strings.resx`. |
 | `scripts/check-resx-keys.ps1` | Run manually. Diffs each language file's key set against neutral and reports missing/extra keys. |
 
-All four `.resx` files currently carry the same 1235 real keys (`check-resx-keys.ps1` reports
+All four `.resx` files currently carry the same 1263 real keys (`check-resx-keys.ps1` reports
 "full parity" for all three languages as of this writing).
 
 ## Day-to-day tasks
@@ -87,6 +87,29 @@ to English at runtime, not a crash, but a signal that language isn't finished) a
 **extra** (present here but not in neutral — a stale/orphaned key, worth deleting). Run this
 before enabling a language in the picker, and again before any release where translations
 changed.
+
+### Enforcement: catching a new hardcoded string before it merges
+
+`QuickMail.Tests/LocalizationRegressionGuardTests.cs` runs as part of the normal
+`dotnet test` suite — the same command `build.bat` and CI already run on every PR — so a new
+hardcoded, untranslated string fails the build instead of quietly shipping English-only text.
+It checks two things:
+
+1. **View XAML** (`Views/`, `Controls/`, `Styles/`, `App.xaml`) — flags any `Content`, `Text`,
+   `Header`, `ToolTip`, `Title`, `AutomationProperties.Name`, or `AutomationProperties.HelpText`
+   set to a literal string instead of `{x:Static strings:Strings.*}`.
+2. **Code-behind** — flags any literal string (not `Strings.*`/`StringsHelper.Count(...)`)
+   passed to `MessageBox.Show(...)` or `AccessibilityHelper.Announce(...)`.
+
+If the test fails, the fix is almost always: add the key to `Strings.resx` (+ es/de/fr, or at
+least leave es/de/fr for later — `check-resx-keys.ps1` will report it as missing until you do)
+and reference it instead of the literal, per "Add a brand-new string" above.
+
+A small, explicitly reviewed allowlist exists in that test file for the rare deliberate
+exception — e.g. rich-text toolbar glyphs like "B"/"I"/"U" that are conventionally shown
+identically in every locale, or `App.xaml.cs` startup/crash paths that run before the user's
+language preference is even loaded from config. Extending the allowlist should be rare and
+each entry should say *why* right next to it, the same way the existing entries do.
 
 ## How the build works
 

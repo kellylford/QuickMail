@@ -163,20 +163,20 @@
                         AutomationProperties.AcceleratorKey="Ctrl+Alt+3"
                         ToolTip="{x:Static strings:Strings.Compose_Tooltip_Heading3}" Click="ToolbarHeading3_Click"/>
                 <Separator/>
-                <Button Content="• List" MinWidth="40"
+                <Button Content="{x:Static strings:Strings.Compose_BulletList_ButtonContent}" MinWidth="40"
                         AutomationProperties.Name="{x:Static strings:Strings.Compose_BulletList}"
                         AutomationProperties.AcceleratorKey="Ctrl+Shift+L"
                         ToolTip="{x:Static strings:Strings.Compose_Tooltip_BulletList}" Click="ToolbarBulletList_Click"/>
-                <Button Content="1. List" MinWidth="40"
+                <Button Content="{x:Static strings:Strings.Compose_NumberedList_ButtonContent}" MinWidth="40"
                         AutomationProperties.Name="{x:Static strings:Strings.Compose_NumberedList}"
                         AutomationProperties.AcceleratorKey="Ctrl+Shift+N"
                         ToolTip="{x:Static strings:Strings.Compose_Tooltip_NumberedList}" Click="ToolbarNumberedList_Click"/>
                 <Separator/>
-                <Button Content="Link" MinWidth="40"
+                <Button Content="{x:Static strings:Strings.Compose_InsertLink_ButtonContent}" MinWidth="40"
                         AutomationProperties.Name="{x:Static strings:Strings.Compose_InsertLink}"
                         AutomationProperties.AcceleratorKey="Ctrl+L"
                         ToolTip="{x:Static strings:Strings.Compose_Tooltip_InsertLink}" Click="ToolbarInsertLink_Click"/>
-                <Button Content="Clear" MinWidth="40"
+                <Button Content="{x:Static strings:Strings.Compose_ClearFormatting_ButtonContent}" MinWidth="40"
                         AutomationProperties.Name="{x:Static strings:Strings.Compose_ClearFormatting}"
                         AutomationProperties.AcceleratorKey="Ctrl+Space"
                         ToolTip="{x:Static strings:Strings.Compose_Tooltip_ClearFormatting}" Click="ToolbarClearFormatting_Click"/>

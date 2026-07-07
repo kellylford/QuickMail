@@ -23,13 +23,13 @@
         <!-- Bottom button row -->
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
                     HorizontalAlignment="Right" Margin="8">
-            <Button Content="Copy _all"
+            <Button Content="{x:Static strings:Strings.Properties_CopyAllButtonContent}"
                     TabIndex="90"
                     MinWidth="90"
                     Margin="0,0,6,0"
                     Command="{Binding CopyAllCommand}"
                     AutomationProperties.Name="{x:Static strings:Strings.Properties_CopyAllProperties}"/>
-            <Button Content="_Close"
+            <Button Content="{x:Static strings:Strings.Common_Close}"
                     TabIndex="91"
                     MinWidth="75"
                     IsCancel="True"
