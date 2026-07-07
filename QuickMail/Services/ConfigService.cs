@@ -510,7 +510,19 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Default is the built-in flag (00000000-0000-0000-0000-000000000001).");
         sb.AppendLine();
 
+        // ── Calendar ──────────────────────────────────────────────────────────────
+
+        sb.AppendLine($"ShowDeclinedEvents = {(config.ShowDeclinedEvents ? "on" : "off")}");
+        sb.AppendLine("# Whether declined calendar events appear in the calendar list.");
+        sb.AppendLine($"CalendarPaneOpen = {(config.CalendarPaneOpen ? "on" : "off")}");
+        sb.AppendLine("# Whether the calendar pane was open when the app last closed.");
+        sb.AppendLine();
+
         // ── [windowing] ──────────────────────────────────────────────────────────
+        // NOTE: ShowDeclinedEvents and CalendarPaneOpen above are parsed under the [global]
+        // section (see ParseFile) — they must stay above this header. They were previously
+        // written after it by mistake, so both settings were silently dropped back to their
+        // default (off) on the very next load, regardless of what the user configured.
 
         sb.AppendLine("[windowing]");
         sb.AppendLine();
@@ -529,14 +541,6 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ConfirmCloseTabWithUnsaved = {(config.Windowing.ConfirmCloseTabWithUnsaved ? "on" : "off")}");
         sb.AppendLine("# Confirm before closing a tab with unsaved changes.");
         sb.AppendLine("# Values: on, off.");
-        sb.AppendLine();
-
-        // ── Calendar ──────────────────────────────────────────────────────────────
-
-        sb.AppendLine($"ShowDeclinedEvents = {(config.ShowDeclinedEvents ? "on" : "off")}");
-        sb.AppendLine("# Whether declined calendar events appear in the calendar list.");
-        sb.AppendLine($"CalendarPaneOpen = {(config.CalendarPaneOpen ? "on" : "off")}");
-        sb.AppendLine("# Whether the calendar pane was open when the app last closed.");
         sb.AppendLine();
 
         // ── [account:guid] overrides ─────────────────────────────────────────────
