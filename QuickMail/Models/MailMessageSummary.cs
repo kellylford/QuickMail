@@ -113,7 +113,7 @@ public partial class MailMessageSummary : ObservableObject
             var local = Date.ToLocalTime();
             if (local.Date == DateTimeOffset.Now.Date)
                 return local.ToString("h:mm") + (local.Hour < 12 ? "A" : "P");
-            return local.ToString("M/d/yyyy");
+            return local.ToString("d", System.Globalization.CultureInfo.CurrentCulture);
         }
     }
 }

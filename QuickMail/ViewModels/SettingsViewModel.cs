@@ -166,6 +166,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _enableLogging;
 
+    /// <summary>UI language as a culture tag ("es", "de", "fr"), or empty to follow Windows.</summary>
+    [ObservableProperty]
+    private string _uiLanguage = string.Empty;
+
     public bool IsLogFormatActionFirst
     {
         get => LogFormat == "actionFirst";
@@ -244,6 +248,7 @@ public partial class SettingsViewModel : ObservableObject
         };
         LogFormat                        = cfg.LogFormat;
         EnableLogging                    = cfg.EnableLogging;
+        UiLanguage                       = cfg.UILanguage;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
             Models.MessageOpenMode.Tab    => "tab",
@@ -305,6 +310,7 @@ public partial class SettingsViewModel : ObservableObject
         };
         cfg.LogFormat                        = LogFormat;
         cfg.EnableLogging                    = EnableLogging;
+        cfg.UILanguage                       = UiLanguage;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {
             "tab"    => Models.MessageOpenMode.Tab,

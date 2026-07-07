@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Input;
+using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -71,7 +72,7 @@ public partial class ViewManagerWindow : Window
     private void OnLoadedCreateMode(object sender, RoutedEventArgs e)
     {
         // Retitle the window.
-        Title = "Save View";
+        Title = Strings.ViewManager_SaveViewWindowTitle;
 
         // Collapse the saved-views list and splitter so the editing panel fills the dialog.
         ListColumn.Width     = new System.Windows.GridLength(0);
@@ -79,7 +80,7 @@ public partial class ViewManagerWindow : Window
 
         // Swap the bottom button: show "Save View", change "Close" to "Cancel".
         SaveViewAndCloseButton.Visibility = Visibility.Visible;
-        CloseButton.Content = "Cancel";
+        CloseButton.Content = Strings.ViewManager_CancelButton;
 
         // Create a new view from the current app state and select it.
         // SaveAsNew() fires EditModeEntered, which schedules the NameBox focus via
@@ -149,12 +150,9 @@ public partial class ViewManagerWindow : Window
     private void OnFolderConflict(object? sender, FolderConflictEventArgs e)
     {
         var existing = string.Join(", ", e.ExistingFolders);
-        var msg = $"The current folder ({e.NewFolder}) is not in this view's folder list ({existing}).\n\n" +
-                  $"Yes = replace the existing folder(s) with {e.NewFolder}\n" +
-                  $"No  = add {e.NewFolder} alongside the existing folder(s)\n" +
-                  $"Cancel = do nothing";
+        var msg = string.Format(Strings.ViewManager_Announce_FolderConflictMessage, e.NewFolder, existing);
 
-        var result = MessageBox.Show(msg, "Folder Changed",
+        var result = MessageBox.Show(msg, Strings.ViewManager_FolderChangedTitle,
             MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
 
         var resolution = result switch

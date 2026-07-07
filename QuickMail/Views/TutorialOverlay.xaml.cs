@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -31,7 +32,7 @@ public partial class TutorialOverlay : UserControl
                 var step = vm.CurrentStep;
                 if (step != null)
                 {
-                    var text = step.InstructionText + " Press Escape to skip.";
+                    var text = step.InstructionText + Strings.Tutorial_Announce_PressEscapeToSkipSuffix;
                     AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Hint);
                 }
             }
@@ -43,7 +44,7 @@ public partial class TutorialOverlay : UserControl
     {
         if (_viewModel?.IsActive == true && _viewModel.CurrentStep != null)
         {
-            var text = _viewModel.CurrentStep.InstructionText + " Press Escape to skip.";
+            var text = _viewModel.CurrentStep.InstructionText + Strings.Tutorial_Announce_PressEscapeToSkipSuffix;
             AccessibilityHelper.Announce(this, text, interrupt: true, category: AnnouncementCategory.Hint);
         }
     }

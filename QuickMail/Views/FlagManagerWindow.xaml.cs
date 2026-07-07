@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -51,30 +52,30 @@ public partial class FlagManagerWindow : Window
     private void RegisterLocalCommands()
     {
         _localRegistry.Register(new CommandDefinition(
-            "flagmgr.add", "Flag", "Add Flag",
+            "flagmgr.add", Strings.FlagManager_CmdCategory, Strings.FlagManager_Cmd_AddFlag,
             () => _vm.AddFlagCommand.Execute(null)));
         _localRegistry.Register(new CommandDefinition(
-            "flagmgr.delete", "Flag", "Delete Selected Flag",
+            "flagmgr.delete", Strings.FlagManager_CmdCategory, Strings.FlagManager_Cmd_DeleteSelectedFlag,
             () => _vm.DeleteFlagCommand.Execute(null),
             isAvailable: () => _vm.CanDelete));
         _localRegistry.Register(new CommandDefinition(
-            "flagmgr.rename", "Flag", "Rename Selected Flag",
+            "flagmgr.rename", Strings.FlagManager_CmdCategory, Strings.FlagManager_Cmd_RenameSelectedFlag,
             () => _vm.BeginRenameCommand.Execute(null),
             isAvailable: () => _vm.HasSelection));
         _localRegistry.Register(new CommandDefinition(
-            "flagmgr.moveup", "Flag", "Move Flag Up",
+            "flagmgr.moveup", Strings.FlagManager_CmdCategory, Strings.FlagManager_Cmd_MoveFlagUp,
             () => _vm.MoveUpCommand.Execute(null),
             isAvailable: () => _vm.CanMoveUp));
         _localRegistry.Register(new CommandDefinition(
-            "flagmgr.movedown", "Flag", "Move Flag Down",
+            "flagmgr.movedown", Strings.FlagManager_CmdCategory, Strings.FlagManager_Cmd_MoveFlagDown,
             () => _vm.MoveDownCommand.Execute(null),
             isAvailable: () => _vm.CanMoveDown));
         _localRegistry.Register(new CommandDefinition(
-            "flagmgr.setdefault", "Flag", "Set as K Key Default",
+            "flagmgr.setdefault", Strings.FlagManager_CmdCategory, Strings.FlagManager_Cmd_SetAsKKeyDefault,
             () => _vm.SetAsKDefaultCommand.Execute(null),
             isAvailable: () => _vm.HasSelection));
         _localRegistry.Register(new CommandDefinition(
-            "flagmgr.close", "Flag", "Close",
+            "flagmgr.close", Strings.FlagManager_CmdCategory, Strings.FlagManager_Cmd_Close,
             () => Close()));
     }
 

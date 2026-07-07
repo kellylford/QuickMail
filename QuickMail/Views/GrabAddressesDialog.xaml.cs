@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.Views;
@@ -81,7 +82,7 @@ public partial class GrabAddressesDialog : Window
 
         if (pickedGroup?.IsCreateNew == true && string.IsNullOrWhiteSpace(NewGroupNameBox.Text))
         {
-            AccessibilityHelper.Announce(this, "Enter a name for the new group.", category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, Strings.GrabAddresses_Announce_EnterNewGroupName, category: AnnouncementCategory.Result);
             return;
         }
 
@@ -111,14 +112,14 @@ public partial class GrabAddressesDialog : Window
         catch (DuplicateGroupNameException)
         {
             AccessibilityHelper.Announce(this,
-                $"A group named \"{NewGroupNameBox.Text.Trim()}\" already exists. Enter a different name, or pick the existing group from the list.",
+                string.Format(Strings.GrabAddresses_Announce_DuplicateGroupName, NewGroupNameBox.Text.Trim()),
                 category: AnnouncementCategory.Result);
             return; // keep the dialog open so the user can correct the name
         }
         catch (Exception ex)
         {
             LogService.Log("GrabAddresses Save", ex);
-            AccessibilityHelper.Announce(this, "Could not save addresses. See the log for details.",
+            AccessibilityHelper.Announce(this, Strings.GrabAddresses_Announce_SaveFailed,
                 category: AnnouncementCategory.Result);
             return; // keep the dialog open so the user can retry
         }

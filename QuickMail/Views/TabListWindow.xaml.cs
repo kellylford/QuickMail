@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Input;
+using QuickMail.Resources;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -14,7 +15,7 @@ public partial class TabListWindow : Window
         InitializeComponent();
         TabList.ItemsSource = vm.OpenTabs;
         TabList.SelectedItem = vm.ActiveTab;
-        HeaderText.Text = $"Open tabs ({vm.OpenTabs.Count})";
+        HeaderText.Text = StringsHelper.Count("TabList_HeaderTextWithCount", vm.OpenTabs.Count);
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -69,7 +70,7 @@ public partial class TabListWindow : Window
         _vm.CloseTab(tab);
 
         // Update header
-        HeaderText.Text = $"Open tabs ({_vm.OpenTabs.Count})";
+        HeaderText.Text = StringsHelper.Count("TabList_HeaderTextWithCount", _vm.OpenTabs.Count);
 
         if (_vm.OpenTabs.Count == 0)
         {

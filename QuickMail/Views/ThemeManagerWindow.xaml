@@ -4,8 +4,9 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:QuickMail.Views"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="Theme Manager"
+        Title="{x:Static strings:Strings.ThemeManager_Title}"
         Height="620" Width="580"
         MinHeight="460" MinWidth="460"
         WindowStartupLocation="CenterOwner"
@@ -36,7 +37,7 @@
         <!-- Theme list — F6 stop 1 -->
         <ListBox x:Name="ThemesList"
                  Grid.Row="0" Grid.Column="0"
-                 AutomationProperties.Name="Themes"
+                 AutomationProperties.Name="{x:Static strings:Strings.ThemeManager_Themes_Name}"
                  ItemsSource="{Binding Themes}"
                  SelectedItem="{Binding SelectedTheme, Mode=TwoWay}"
                  GotKeyboardFocus="ThemesList_GotKeyboardFocus"
@@ -64,41 +65,41 @@
                     Grid.Row="0" Grid.Column="1"
                     Margin="10,0,0,0"
                     KeyboardNavigation.TabNavigation="Continue">
-            <Button Content="_Apply"
+            <Button Content="{x:Static strings:Strings.ThemeManager_Apply}"
                     Command="{Binding ApplyCommand}"
                     IsEnabled="{Binding CanApply}"
                     MinWidth="140" Margin="0,0,0,6"
-                    AutomationProperties.Name="Apply"/>
-            <Button Content="D_uplicate"
+                    AutomationProperties.Name="{x:Static strings:Strings.ThemeManager_Apply_Name}"/>
+            <Button Content="{x:Static strings:Strings.ThemeManager_Duplicate}"
                     Command="{Binding DuplicateCommand}"
                     IsEnabled="{Binding CanDuplicate}"
                     MinWidth="140" Margin="0,0,0,6"
-                    AutomationProperties.Name="Duplicate"/>
-            <Button Content="_Rename"
+                    AutomationProperties.Name="{x:Static strings:Strings.ThemeManager_Duplicate_Name}"/>
+            <Button Content="{x:Static strings:Strings.ThemeManager_Rename}"
                     Command="{Binding RenameCommand}"
                     IsEnabled="{Binding CanRename}"
                     MinWidth="140" Margin="0,0,0,6"
-                    AutomationProperties.Name="Rename"/>
-            <Button Content="_Delete"
+                    AutomationProperties.Name="{x:Static strings:Strings.ThemeManager_Rename_Name}"/>
+            <Button Content="{x:Static strings:Strings.Common_Delete}"
                     Command="{Binding DeleteCommand}"
                     IsEnabled="{Binding CanDelete}"
                     MinWidth="140" Margin="0,0,0,6"
-                    AutomationProperties.Name="Delete"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.Common_Delete}"/>
             <Button x:Name="ExportButton"
-                    Content="_Export…"
+                    Content="{x:Static strings:Strings.ThemeManager_Export}"
                     Command="{Binding ExportCommand}"
                     IsEnabled="{Binding CanExport}"
                     MinWidth="140" Margin="0,12,0,6"
-                    AutomationProperties.Name="Export"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.ThemeManager_Export_Name}"/>
             <Button x:Name="ImportButton"
-                    Content="_Import…"
+                    Content="{x:Static strings:Strings.ThemeManager_Import}"
                     Command="{Binding ImportCommand}"
                     MinWidth="140" Margin="0,0,0,6"
-                    AutomationProperties.Name="Import"/>
-            <Button Content="_Open themes folder"
+                    AutomationProperties.Name="{x:Static strings:Strings.ThemeManager_Import_Name}"/>
+            <Button Content="{x:Static strings:Strings.ThemeManager_OpenThemesFolder}"
                     Command="{Binding OpenThemesFolderCommand}"
                     MinWidth="140" Margin="0,12,0,0"
-                    AutomationProperties.Name="Open themes folder"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.ThemeManager_OpenThemesFolder_Name}"/>
         </StackPanel>
 
         <!-- Theme description — a read-only account of the selected theme's colors
@@ -106,7 +107,7 @@
              Read-only TextBox so a screen reader can arrow through the text. -->
         <Label x:Name="DescriptionLabel"
                Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-               Content="Theme description"
+               Content="{x:Static strings:Strings.ThemeManager_ThemeDescription}"
                Target="{Binding ElementName=DescriptionBox}"
                Margin="0,10,0,2"/>
         <TextBox x:Name="DescriptionBox"
@@ -132,7 +133,7 @@
                 Visibility="{Binding IsNamePanelOpen, Converter={StaticResource BoolToVis}}">
             <StackPanel Orientation="Horizontal">
                 <Label x:Name="NameLabel"
-                       Content="_Name:"
+                       Content="{x:Static strings:Strings.ThemeManager_Name}"
                        Target="{Binding ElementName=NameBox}"
                        VerticalAlignment="Center"/>
                 <TextBox x:Name="NameBox"
@@ -141,14 +142,14 @@
                          VerticalAlignment="Center"
                          AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"
                          KeyDown="NameBox_KeyDown"/>
-                <Button Content="O_K"
+                <Button Content="{x:Static strings:Strings.ThemeManager_NameOK}"
                         Command="{Binding ConfirmNameCommand}"
                         MinWidth="70" Margin="8,0,0,0"
-                        AutomationProperties.Name="OK"/>
-                <Button Content="_Cancel"
+                        AutomationProperties.Name="{x:Static strings:Strings.Common_OK}"/>
+                <Button Content="{x:Static strings:Strings.Common_Cancel}"
                         Command="{Binding CancelNameCommand}"
                         MinWidth="70" Margin="6,0,0,0"
-                        AutomationProperties.Name="Cancel"/>
+                        AutomationProperties.Name="{x:Static strings:Strings.Common_Cancel}"/>
             </StackPanel>
         </Border>
 
@@ -157,10 +158,10 @@
                     Orientation="Horizontal" HorizontalAlignment="Right"
                     Margin="0,10,0,0">
             <Button x:Name="CloseButton"
-                    Content="Clo_se"
+                    Content="{x:Static strings:Strings.ThemeManager_Close}"
                     Click="CloseButton_Click"
                     MinWidth="80"
-                    AutomationProperties.Name="Close"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.Common_Close}"/>
         </StackPanel>
     </Grid>
 </Window>

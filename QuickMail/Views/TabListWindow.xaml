@@ -3,8 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="Open Tabs"
+        Title="{x:Static strings:Strings.TabList_Title}"
         WindowStyle="None"
         ResizeMode="NoResize"
         AllowsTransparency="True"
@@ -29,7 +30,7 @@
         <DockPanel>
             <TextBlock DockPanel.Dock="Top"
                        x:Name="HeaderText"
-                       Text="Open tabs"
+                       Text="{x:Static strings:Strings.TabList_HeaderText}"
                        FontWeight="SemiBold"
                        Padding="10,8,10,4"
                        Foreground="{DynamicResource Theme.TextPrimary}"/>
@@ -40,7 +41,7 @@
                      BorderThickness="0"
                      Background="Transparent"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                     AutomationProperties.Name="Open tabs. Arrow keys to navigate, Enter to activate, Delete to close, Escape to cancel."
+                     AutomationProperties.Name="{x:Static strings:Strings.TabList_TabListName}"
                      MouseDoubleClick="TabList_MouseDoubleClick">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
@@ -68,8 +69,8 @@
                                     FontSize="{DynamicResource Theme.FontSizeSmall}"
                                     Tag="{Binding}"
                                     Click="CloseTabButton_Click"
-                                    AutomationProperties.Name="Close this tab"
-                                    ToolTip="Close tab"/>
+                                    AutomationProperties.Name="{x:Static strings:Strings.TabList_CloseTabButtonName}"
+                                    ToolTip="{x:Static strings:Strings.TabList_CloseTabButtonToolTip}"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>

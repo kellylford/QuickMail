@@ -3,8 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:strings="clr-namespace:QuickMail.Resources"
         mc:Ignorable="d"
-        Title="Settings"
+        Title="{x:Static strings:Strings.Settings_Title}"
         Height="560" Width="520"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
@@ -27,131 +28,154 @@
         <!-- Tabs -->
         <TabControl Grid.Row="0" Margin="0,0,0,10">
             <!-- General Settings Tab -->
-            <TabItem Header="_General" AutomationProperties.Name="General settings">
+            <TabItem Header="{x:Static strings:Strings.Settings_General_TabHeader}" AutomationProperties.Name="{x:Static strings:Strings.Settings_General_TabAutomationName}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10" >
                         <!-- Message List Group -->
-                        <GroupBox Header="Message _List" Padding="10" Margin="0,0,0,15" AutomationProperties.Name="Message list settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_MessageList_GroupHeader}" Padding="10" Margin="0,0,0,15" AutomationProperties.Name="{x:Static strings:Strings.Settings_MessageList_GroupAutomationName}">
                             <StackPanel>
                                 <!-- Preview Lines -->
                                 <StackPanel>
                                     <Label x:Name="PreviewLinesLabel"
-                                           Content="Preview _lines:"
+                                           Content="{x:Static strings:Strings.Settings_PreviewLines_Label}"
                                            Target="{Binding ElementName=PreviewLinesCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="PreviewLinesCombo"
                                               SelectedValue="{Binding PreviewLines, Mode=TwoWay}"
                                               SelectedValuePath="Tag"
                                               AutomationProperties.LabeledBy="{Binding ElementName=PreviewLinesLabel}">
-                                        <ComboBoxItem Tag="0" Content="Off"/>
-                                        <ComboBoxItem Tag="1" Content="1 line"/>
-                                        <ComboBoxItem Tag="2" Content="2 lines"/>
-                                        <ComboBoxItem Tag="3" Content="3 lines"/>
-                                        <ComboBoxItem Tag="4" Content="4 lines"/>
-                                        <ComboBoxItem Tag="5" Content="5 lines"/>
+                                        <ComboBoxItem Tag="0" Content="{x:Static strings:Strings.Settings_PreviewLines_Off}"/>
+                                        <ComboBoxItem Tag="1" Content="{x:Static strings:Strings.Settings_PreviewLines_1}"/>
+                                        <ComboBoxItem Tag="2" Content="{x:Static strings:Strings.Settings_PreviewLines_2}"/>
+                                        <ComboBoxItem Tag="3" Content="{x:Static strings:Strings.Settings_PreviewLines_3}"/>
+                                        <ComboBoxItem Tag="4" Content="{x:Static strings:Strings.Settings_PreviewLines_4}"/>
+                                        <ComboBoxItem Tag="5" Content="{x:Static strings:Strings.Settings_PreviewLines_5}"/>
                                     </ComboBox>
-                                    <TextBlock Text="Takes effect after reopening a folder."
+                                    <TextBlock Text="{x:Static strings:Strings.Settings_PreviewLines_Hint}"
                                                Foreground="{DynamicResource Theme.TextSecondary}"
                                                FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                Margin="0,4,0,0"/>
                                 </StackPanel>
 
                                 <!-- Show Message Status -->
-                                <CheckBox Content="Show message _status column"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_ShowMessageStatus}"
                                           IsChecked="{Binding ShowMessageStatus, Mode=TwoWay}"
                                           Margin="0,8,0,0"
-                                          AutomationProperties.Name="Show message status column in message list"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_ShowMessageStatus_AutomationName}"/>
                             </StackPanel>
                         </GroupBox>
 
                         <!-- View Group -->
-                        <GroupBox Header="_View" Padding="10" Margin="0,0,0,15" AutomationProperties.Name="View settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_View_GroupHeader}" Padding="10" Margin="0,0,0,15" AutomationProperties.Name="{x:Static strings:Strings.Settings_View_GroupAutomationName}">
                             <StackPanel>
                                 <!-- View Mode -->
                                 <StackPanel>
                                     <Label x:Name="ViewModeLabel"
-                                           Content="Display mode:"
+                                           Content="{x:Static strings:Strings.Settings_DisplayMode_Label}"
                                            Target="{Binding ElementName=ViewModeCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="ViewModeCombo"
                                               SelectedValue="{Binding ViewMode, Mode=TwoWay}"
                                               SelectedValuePath="Tag"
                                               AutomationProperties.LabeledBy="{Binding ElementName=ViewModeLabel}">
-                                        <ComboBoxItem Tag="messages" Content="Messages (flat list)"/>
-                                        <ComboBoxItem Tag="conversations" Content="Conversations (grouped by subject)"/>
-                                        <ComboBoxItem Tag="from" Content="By Sender"/>
-                                        <ComboBoxItem Tag="to" Content="By Recipient"/>
+                                        <ComboBoxItem Tag="messages" Content="{x:Static strings:Strings.Settings_ViewMode_Messages}"/>
+                                        <ComboBoxItem Tag="conversations" Content="{x:Static strings:Strings.Settings_ViewMode_Conversations}"/>
+                                        <ComboBoxItem Tag="from" Content="{x:Static strings:Strings.Settings_ViewMode_BySender}"/>
+                                        <ComboBoxItem Tag="to" Content="{x:Static strings:Strings.Settings_ViewMode_ByRecipient}"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Language Group -->
+                        <GroupBox Header="{x:Static strings:Strings.Settings_Language_GroupHeader}" Padding="10" Margin="0,0,0,15" AutomationProperties.Name="{x:Static strings:Strings.Settings_Language_GroupAutomationName}">
+                            <StackPanel>
+                                <StackPanel>
+                                    <Label x:Name="UILanguageLabel"
+                                           Content="{x:Static strings:Strings.Settings_Language}"
+                                           Target="{Binding ElementName=UILanguageCombo}"
+                                           FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="UILanguageCombo"
+                                              SelectedValue="{Binding UiLanguage, Mode=TwoWay}"
+                                              SelectedValuePath="Tag"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=UILanguageLabel}"
+                                              SelectionChanged="UILanguageCombo_SelectionChanged">
+                                        <ComboBoxItem Tag="" Content="{x:Static strings:Strings.Settings_Language_FollowWindows}"/>
+                                        <ComboBoxItem Tag="en" Content="{x:Static strings:Strings.Settings_Language_English}"/>
+                                        <ComboBoxItem Tag="es" Content="{x:Static strings:Strings.Settings_Language_Spanish}"/>
+                                        <ComboBoxItem Tag="de" Content="{x:Static strings:Strings.Settings_Language_German}"/>
+                                        <ComboBoxItem Tag="fr" Content="{x:Static strings:Strings.Settings_Language_French}"/>
                                     </ComboBox>
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
 
                         <!-- Sync Group -->
-                        <GroupBox Header="_Sync" Padding="10" AutomationProperties.Name="Synchronization settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_Sync_GroupHeader}" Padding="10" AutomationProperties.Name="{x:Static strings:Strings.Settings_Sync_GroupAutomationName}">
                             <StackPanel>
                                 <!-- Sync Days -->
                                 <StackPanel>
                                     <Label x:Name="SyncDaysLabel" Margin="0,0,0,0"
-                                           Content="Sync _range:"
+                                           Content="{x:Static strings:Strings.Settings_SyncRange_Label}"
                                            Target="{Binding ElementName=SyncDaysCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="SyncDaysCombo"
                                               SelectedValue="{Binding SyncDays, Mode=TwoWay}"
                                               SelectedValuePath="Tag"
                                               AutomationProperties.LabeledBy="{Binding ElementName=SyncDaysLabel}">
-                                        <ComboBoxItem Tag="7" Content="7 days"/>
-                                        <ComboBoxItem Tag="30" Content="30 days"/>
-                                        <ComboBoxItem Tag="180" Content="6 months"/>
-                                        <ComboBoxItem Tag="365" Content="1 year"/>
-                                        <ComboBoxItem Tag="0" Content="All mail"/>
+                                        <ComboBoxItem Tag="7" Content="{x:Static strings:Strings.Settings_SyncRange_7Days}"/>
+                                        <ComboBoxItem Tag="30" Content="{x:Static strings:Strings.Settings_SyncRange_30Days}"/>
+                                        <ComboBoxItem Tag="180" Content="{x:Static strings:Strings.Settings_SyncRange_6Months}"/>
+                                        <ComboBoxItem Tag="365" Content="{x:Static strings:Strings.Settings_SyncRange_1Year}"/>
+                                        <ComboBoxItem Tag="0" Content="{x:Static strings:Strings.Settings_SyncRange_AllMail}"/>
                                     </ComboBox>
                                 </StackPanel>
 
                                 <!-- Initial Sync Count -->
                                 <StackPanel Margin="0,8,0,0">
                                     <Label x:Name="InitialSyncLabel"
-                                           Content="Initial fetch _count:"
+                                           Content="{x:Static strings:Strings.Settings_InitialFetchCount_Label}"
                                            Target="{Binding ElementName=InitialSyncCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="InitialSyncCombo"
                                               SelectedValue="{Binding InitialSyncCount, Mode=TwoWay}"
                                               SelectedValuePath="Tag"
                                               AutomationProperties.LabeledBy="{Binding ElementName=InitialSyncLabel}">
-                                        <ComboBoxItem Tag="100" Content="100 messages"/>
-                                        <ComboBoxItem Tag="250" Content="250 messages"/>
-                                        <ComboBoxItem Tag="500" Content="500 messages"/>
-                                        <ComboBoxItem Tag="1000" Content="1,000 messages"/>
-                                        <ComboBoxItem Tag="0" Content="All messages"/>
+                                        <ComboBoxItem Tag="100" Content="{x:Static strings:Strings.Settings_InitialFetchCount_100}"/>
+                                        <ComboBoxItem Tag="250" Content="{x:Static strings:Strings.Settings_InitialFetchCount_250}"/>
+                                        <ComboBoxItem Tag="500" Content="{x:Static strings:Strings.Settings_InitialFetchCount_500}"/>
+                                        <ComboBoxItem Tag="1000" Content="{x:Static strings:Strings.Settings_InitialFetchCount_1000}"/>
+                                        <ComboBoxItem Tag="0" Content="{x:Static strings:Strings.Settings_InitialFetchCount_All}"/>
                                     </ComboBox>
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
 
                         <!-- Mail Actions Group -->
-                        <GroupBox Header="Mail _Actions" Padding="10" Margin="0,10,0,0"
-                                  AutomationProperties.Name="Mail action settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_MailActions_GroupHeader}" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_MailActions_GroupAutomationName}">
                             <StackPanel>
-                                <CheckBox Content="Confirm before emptying _trash"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_ConfirmEmptyTrash}"
                                           IsChecked="{Binding ConfirmEmptyTrash, Mode=TwoWay}"
-                                          AutomationProperties.Name="Show a confirmation dialog before permanently deleting all messages in trash"/>
-                                <TextBlock Text="Recommended: emptying trash cannot be undone."
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_ConfirmEmptyTrash_AutomationName}"/>
+                                <TextBlock Text="{x:Static strings:Strings.Settings_ConfirmEmptyTrash_Hint}"
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
                             </StackPanel>
                         </GroupBox>
 
                         <!-- Composing Group -->
-                        <GroupBox Header="Com_posing" Padding="10" Margin="0,10,0,0"
-                                  AutomationProperties.Name="Composing settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_Composing_GroupHeader}" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_Composing_GroupAutomationName}">
                             <StackPanel>
-                                <CheckBox Content="Automatically save _drafts while composing"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AutoSaveDrafts}"
                                           IsChecked="{Binding AutoSaveDrafts, Mode=TwoWay}"
-                                          AutomationProperties.Name="Automatically save the message as a draft while composing"/>
-                                <TextBlock Text="Auto-save is quiet: the time of the last save shows in the compose status row. A failed save is announced once."
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AutoSaveDrafts_AutomationName}"/>
+                                <TextBlock Text="{x:Static strings:Strings.Settings_AutoSaveDrafts_Hint}"
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
 
                                 <StackPanel Margin="0,0,0,8">
                                     <Label x:Name="AutoSaveIntervalLabel"
-                                           Content="Auto-save _interval:"
+                                           Content="{x:Static strings:Strings.Settings_AutoSaveInterval_Label}"
                                            Target="{Binding ElementName=AutoSaveIntervalCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="AutoSaveIntervalCombo"
@@ -159,103 +183,103 @@
                                               SelectedValuePath="Tag"
                                               IsEnabled="{Binding AutoSaveDrafts}"
                                               AutomationProperties.LabeledBy="{Binding ElementName=AutoSaveIntervalLabel}">
-                                        <ComboBoxItem Tag="30" Content="30 seconds"/>
-                                        <ComboBoxItem Tag="60" Content="1 minute"/>
-                                        <ComboBoxItem Tag="120" Content="2 minutes"/>
-                                        <ComboBoxItem Tag="300" Content="5 minutes"/>
-                                        <ComboBoxItem Tag="600" Content="10 minutes"/>
+                                        <ComboBoxItem Tag="30" Content="{x:Static strings:Strings.Settings_AutoSaveInterval_30Sec}"/>
+                                        <ComboBoxItem Tag="60" Content="{x:Static strings:Strings.Settings_AutoSaveInterval_1Min}"/>
+                                        <ComboBoxItem Tag="120" Content="{x:Static strings:Strings.Settings_AutoSaveInterval_2Min}"/>
+                                        <ComboBoxItem Tag="300" Content="{x:Static strings:Strings.Settings_AutoSaveInterval_5Min}"/>
+                                        <ComboBoxItem Tag="600" Content="{x:Static strings:Strings.Settings_AutoSaveInterval_10Min}"/>
                                     </ComboBox>
                                 </StackPanel>
 
                                 <StackPanel>
                                     <Label x:Name="DefaultComposeModeLabel"
-                                           Content="Default compose _mode:"
+                                           Content="{x:Static strings:Strings.Settings_DefaultComposeMode_Label}"
                                            Target="{Binding ElementName=DefaultComposeModeCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="DefaultComposeModeCombo"
                                               SelectedValue="{Binding DefaultComposeMode, Mode=TwoWay}"
                                               SelectedValuePath="Tag"
                                               AutomationProperties.LabeledBy="{Binding ElementName=DefaultComposeModeLabel}">
-                                        <ComboBoxItem Tag="plain" Content="Plain Text"/>
-                                        <ComboBoxItem Tag="markdown" Content="Markdown"/>
-                                        <ComboBoxItem Tag="html" Content="HTML"/>
+                                        <ComboBoxItem Tag="plain" Content="{x:Static strings:Strings.Settings_ComposeMode_PlainText}"/>
+                                        <ComboBoxItem Tag="markdown" Content="{x:Static strings:Strings.Settings_ComposeMode_Markdown}"/>
+                                        <ComboBoxItem Tag="html" Content="{x:Static strings:Strings.Settings_ComposeMode_Html}"/>
                                     </ComboBox>
-                                    <TextBlock Text="Drafts and templates always reopen in plain text."
+                                    <TextBlock Text="{x:Static strings:Strings.Settings_DefaultComposeMode_Hint}"
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0"/>
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
 
                         <!-- Screen Reader Announcements Group -->
-                        <GroupBox Header="Screen Reader _Announcements" Padding="10" Margin="0,10,0,0"
-                                  AutomationProperties.Name="Screen reader announcement settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_ScreenReaderAnnouncements_GroupHeader}" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_ScreenReaderAnnouncements_GroupAutomationName}">
                             <StackPanel>
-                                <CheckBox Content="Enable custom _announcements"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_CustomAnnouncements}"
                                           IsChecked="{Binding CustomAnnouncements, Mode=TwoWay}"
                                           FontWeight="SemiBold"
-                                          AutomationProperties.Name="Enable all custom screen reader announcements from QuickMail"/>
-                                <TextBlock Text="When off, only native control announcements are spoken."
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_CustomAnnouncements_AutomationName}"/>
+                                <TextBlock Text="{x:Static strings:Strings.Settings_CustomAnnouncements_Hint}"
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,2,0,8"/>
 
-                                <CheckBox Content="Announce _hints and instructions"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceHints}"
                                           IsChecked="{Binding AnnounceHints, Mode=TwoWay}"
                                           Margin="16,0,0,0"
-                                          AutomationProperties.Name="Announce instructional hints such as how to use the search box"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceHints_AutomationName}"/>
 
-                                <CheckBox Content="Announce loading and sync _status"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceStatus}"
                                           IsChecked="{Binding AnnounceStatus, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce background loading and sync progress"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceStatus_AutomationName}"/>
 
-                                <CheckBox Content="Announce action _results"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceResults}"
                                           IsChecked="{Binding AnnounceResults, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce outcomes such as search result counts and move confirmations"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceResults_AutomationName}"/>
 
-                                <CheckBox Content="Announce spelling errors _when typing"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceSpellingWhileTyping}"
                                           IsChecked="{Binding AnnounceSpellingWhileTyping, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when typing"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceSpellingWhileTyping_AutomationName}"/>
 
-                                <CheckBox Content="Announce spelling errors while _navigating"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceSpellingWhileNavigating}"
                                           IsChecked="{Binding AnnounceSpellingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling errors when the caret moves into a misspelled word during navigation"
-                                          AutomationProperties.HelpText="Ctrl+F7 and Ctrl+Shift+F7 always announce spelling regardless of this setting"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceSpellingWhileNavigating_AutomationName}"
+                                          AutomationProperties.HelpText="{x:Static strings:Strings.Settings_AnnounceSpellingWhileNavigating_HelpText}"/>
 
-                                <CheckBox Content="Announce spelling _suggestions"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceSpellingSuggestions}"
                                           IsChecked="{Binding AnnounceSpellingSuggestions, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce spelling suggestions when a misspelling is announced"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceSpellingSuggestions_AutomationName}"/>
 
-                                <TextBlock Text="Spelling Suggestions Verbosity"
+                                <TextBlock Text="{x:Static strings:Strings.Settings_SpellingSuggestionsVerbosity_Header}"
                                            Margin="32,6,0,2"/>
                                 <StackPanel KeyboardNavigation.TabNavigation="Once"
                                             KeyboardNavigation.DirectionalNavigation="Cycle"
                                             Margin="32,0,0,4">
-                                    <RadioButton Content="_Numbers with suggestions"
+                                    <RadioButton Content="{x:Static strings:Strings.Settings_VerbosityNumbersWithSuggestions}"
                                                  IsChecked="{Binding IsVerbosityNumbersWithSuggestions, Mode=TwoWay}"
                                                  GroupName="SpellingSuggestionsVerbosity"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Numbers with suggestions"
-                                                 AutomationProperties.HelpText="Each suggestion is preceded by its number, for example: 1: the, 2: then, 3: them"/>
-                                    <RadioButton Content="_Just suggestions"
+                                                 AutomationProperties.Name="{x:Static strings:Strings.Settings_VerbosityNumbersWithSuggestions_AutomationName}"
+                                                 AutomationProperties.HelpText="{x:Static strings:Strings.Settings_VerbosityNumbersWithSuggestions_HelpText}"/>
+                                    <RadioButton Content="{x:Static strings:Strings.Settings_VerbosityJustSuggestions}"
                                                  IsChecked="{Binding IsVerbosityJustSuggestions, Mode=TwoWay}"
                                                  GroupName="SpellingSuggestionsVerbosity"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Just suggestions"
-                                                 AutomationProperties.HelpText="Suggestions are read without numbers, for example: the, then, them"/>
+                                                 AutomationProperties.Name="{x:Static strings:Strings.Settings_VerbosityJustSuggestions_AutomationName}"
+                                                 AutomationProperties.HelpText="{x:Static strings:Strings.Settings_VerbosityJustSuggestions_HelpText}"/>
                                 </StackPanel>
 
-                                <CheckBox Content="Announce _formatting while navigating in HTML compose"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceFormattingWhileNavigating}"
                                           IsChecked="{Binding AnnounceFormattingWhileNavigating, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce block type such as heading level when the caret moves to a different paragraph in HTML compose mode"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceFormattingWhileNavigating_AutomationName}"/>
 
-                                <CheckBox Content="Announce fla_g status"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_AnnounceFlagStatus}"
                                           IsChecked="{Binding AnnounceFlagStatus, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce flag status"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_AnnounceFlagStatus_AutomationName}"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>
@@ -263,46 +287,46 @@
             </TabItem>
 
             <!-- Advanced Tab -->
-            <TabItem Header="_Advanced" AutomationProperties.Name="Advanced settings">
+            <TabItem Header="{x:Static strings:Strings.Settings_Advanced_TabHeader}" AutomationProperties.Name="{x:Static strings:Strings.Settings_Advanced_TabAutomationName}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
                         <!-- QuickMail Logging Group -->
-                        <GroupBox Header="QuickMail _Logging" Padding="10" Margin="0,0,0,15"
-                                  AutomationProperties.Name="QuickMail logging settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_Logging_GroupHeader}" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_Logging_GroupAutomationName}">
                             <StackPanel>
-                                <CheckBox Content="Enable _logging"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_EnableLogging}"
                                           IsChecked="{Binding EnableLogging, Mode=TwoWay}"
-                                          AutomationProperties.Name="Enable logging"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_EnableLogging_AutomationName}"/>
                                 <Button x:Name="DeleteLogButton"
-                                        Content="_Delete QuickMail log"
+                                        Content="{x:Static strings:Strings.Settings_DeleteLog}"
                                         HorizontalAlignment="Left"
                                         Margin="0,10,0,0"
                                         Click="DeleteLogButton_Click"
-                                        AutomationProperties.Name="Delete QuickMail log"/>
+                                        AutomationProperties.Name="{x:Static strings:Strings.Settings_DeleteLog_AutomationName}"/>
                             </StackPanel>
                         </GroupBox>
 
                         <!-- Log Format Group -->
-                        <GroupBox Header="_Log Format" Padding="10" Margin="0,0,0,15"
-                                  AutomationProperties.Name="Log format settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_LogFormat_GroupHeader}" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_LogFormat_GroupAutomationName}">
                             <StackPanel KeyboardNavigation.TabNavigation="Once"
                                         KeyboardNavigation.DirectionalNavigation="Cycle">
-                                <RadioButton Content="_Action first (recommended)"
+                                <RadioButton Content="{x:Static strings:Strings.Settings_LogFormat_ActionFirst}"
                                              IsChecked="{Binding IsLogFormatActionFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
                                              Checked="RadioButton_Checked"
-                                             AutomationProperties.Name="Action first"
-                                             AutomationProperties.HelpText="Message then timestamp — easier to scan since the log is already chronological."/>
-                                <TextBlock Text="Example: Sync completed: 42 messages  [2024-11-15 14:23:45.123]"
+                                             AutomationProperties.Name="{x:Static strings:Strings.Settings_LogFormat_ActionFirst_AutomationName}"
+                                             AutomationProperties.HelpText="{x:Static strings:Strings.Settings_LogFormat_ActionFirst_HelpText}"/>
+                                <TextBlock Text="{x:Static strings:Strings.Settings_LogFormat_ActionFirst_Example}"
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8"
                                            FontFamily="{DynamicResource Theme.FontFamilyMono}"/>
-                                <RadioButton Content="_Time first"
+                                <RadioButton Content="{x:Static strings:Strings.Settings_LogFormat_TimeFirst}"
                                              IsChecked="{Binding IsLogFormatTimeFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
                                              Checked="RadioButton_Checked"
-                                             AutomationProperties.Name="Time first"
-                                             AutomationProperties.HelpText="Timestamp then message — the original log format."/>
-                                <TextBlock Text="Example: 2024-11-15 14:23:45.123  Sync completed: 42 messages"
+                                             AutomationProperties.Name="{x:Static strings:Strings.Settings_LogFormat_TimeFirst_AutomationName}"
+                                             AutomationProperties.HelpText="{x:Static strings:Strings.Settings_LogFormat_TimeFirst_HelpText}"/>
+                                <TextBlock Text="{x:Static strings:Strings.Settings_LogFormat_TimeFirst_Example}"
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0"
                                            FontFamily="{DynamicResource Theme.FontFamilyMono}"/>
                             </StackPanel>
@@ -312,7 +336,7 @@
             </TabItem>
 
             <!-- Keyboard Shortcuts Tab -->
-            <TabItem Header="_Keyboard Shortcuts" AutomationProperties.Name="Keyboard shortcuts">
+            <TabItem Header="{x:Static strings:Strings.Settings_KeyboardShortcuts_TabHeader}" AutomationProperties.Name="{x:Static strings:Strings.Settings_KeyboardShortcuts_TabAutomationName}">
                 <Grid Margin="10">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -322,7 +346,7 @@
 
                     <!-- Helper text -->
                     <TextBlock Grid.Row="0"
-                               Text="Arrow to a command, then press Enter to assign a shortcut or Delete to restore the default."
+                               Text="{x:Static strings:Strings.Settings_KeyboardShortcuts_HelperText}"
                                TextWrapping="Wrap"
                                Margin="0,0,0,10"
                                Foreground="{DynamicResource Theme.TextSecondary}"/>
@@ -337,7 +361,7 @@
                               Margin="0,0,0,6"
                               KeyDown="HotkeyListView_KeyDown"
                               SelectionChanged="HotkeyListView_SelectionChanged"
-                              AutomationProperties.Name="Keyboard shortcuts list">
+                              AutomationProperties.Name="{x:Static strings:Strings.Settings_KeyboardShortcuts_ListAutomationName}">
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem">
                                 <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
@@ -345,9 +369,9 @@
                         </ListView.ItemContainerStyle>
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Header="Category" DisplayMemberBinding="{Binding Category}" Width="90"/>
-                                <GridViewColumn Header="Command" DisplayMemberBinding="{Binding Title}" Width="200"/>
-                                <GridViewColumn Header="Shortcut" DisplayMemberBinding="{Binding ActiveGesture}" Width="130"/>
+                                <GridViewColumn Header="{x:Static strings:Strings.Settings_KeyboardShortcuts_ColumnCategory}" DisplayMemberBinding="{Binding Category}" Width="90"/>
+                                <GridViewColumn Header="{x:Static strings:Strings.Settings_KeyboardShortcuts_ColumnCommand}" DisplayMemberBinding="{Binding Title}" Width="200"/>
+                                <GridViewColumn Header="{x:Static strings:Strings.Settings_KeyboardShortcuts_ColumnShortcut}" DisplayMemberBinding="{Binding ActiveGesture}" Width="130"/>
                             </GridView>
                         </ListView.View>
                     </ListView>
@@ -356,59 +380,59 @@
                     <StackPanel Grid.Row="2"
                                 Orientation="Horizontal">
                         <Button x:Name="SetShortcutButton"
-                                Content="Set Shortcut…"
+                                Content="{x:Static strings:Strings.Settings_SetShortcut}"
                                 Click="SetShortcutButton_Click"
                                 IsEnabled="False"
                                 Padding="6,3"
                                 Margin="0,0,8,0"
-                                AutomationProperties.Name="Set shortcut for selected command"/>
+                                AutomationProperties.Name="{x:Static strings:Strings.Settings_SetShortcut_AutomationName}"/>
                         <Button x:Name="RestoreDefaultButton"
-                                Content="Restore Default"
+                                Content="{x:Static strings:Strings.Settings_RestoreDefault}"
                                 Click="RestoreDefaultButton_Click"
                                 IsEnabled="False"
                                 Padding="6,3"
-                                AutomationProperties.Name="Restore default shortcut for selected command"/>
+                                AutomationProperties.Name="{x:Static strings:Strings.Settings_RestoreDefault_AutomationName}"/>
                     </StackPanel>
 
                 </Grid>
             </TabItem>
 
             <!-- Windowing Tab -->
-            <TabItem Header="_Windowing" AutomationProperties.Name="Windowing settings">
+            <TabItem Header="{x:Static strings:Strings.Settings_Windowing_TabHeader}" AutomationProperties.Name="{x:Static strings:Strings.Settings_Windowing_TabAutomationName}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
                         <!-- Message open mode -->
-                        <GroupBox Header="_Message Open Mode" Padding="10" Margin="0,0,0,15"
-                                  AutomationProperties.Name="Message open mode settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_MessageOpenMode_GroupHeader}" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_MessageOpenMode_GroupAutomationName}">
                             <StackPanel>
                                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
-                                           Text="Choose where messages open when you press Enter or select one."/>
+                                           Text="{x:Static strings:Strings.Settings_MessageOpenMode_Description}"/>
                                 <StackPanel KeyboardNavigation.TabNavigation="Once"
                                             KeyboardNavigation.DirectionalNavigation="Cycle">
-                                    <RadioButton Content="Reading _pane (default)"
+                                    <RadioButton Content="{x:Static strings:Strings.Settings_MessageOpenMode_ReadingPane}"
                                                  IsChecked="{Binding IsReadingPaneMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Reading pane"
-                                                 AutomationProperties.HelpText="Opens messages in the reading pane below the message list. This is the default behaviour."/>
-                                    <TextBlock Text="Enter opens a message in the reading pane below the list."
+                                                 AutomationProperties.Name="{x:Static strings:Strings.Settings_MessageOpenMode_ReadingPane_AutomationName}"
+                                                 AutomationProperties.HelpText="{x:Static strings:Strings.Settings_MessageOpenMode_ReadingPane_HelpText}"/>
+                                    <TextBlock Text="{x:Static strings:Strings.Settings_MessageOpenMode_ReadingPane_Hint}"
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8"/>
-                                    <RadioButton Content="_Tab"
+                                    <RadioButton Content="{x:Static strings:Strings.Settings_MessageOpenMode_Tab}"
                                                  IsChecked="{Binding IsTabMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Tab"
-                                                 AutomationProperties.HelpText="Opens messages in a tab strip above the message list."/>
-                                    <TextBlock Text="Enter opens a message as a new tab. Ctrl+Tab cycles tabs. Ctrl+W closes."
+                                                 AutomationProperties.Name="{x:Static strings:Strings.Settings_MessageOpenMode_Tab_AutomationName}"
+                                                 AutomationProperties.HelpText="{x:Static strings:Strings.Settings_MessageOpenMode_Tab_HelpText}"/>
+                                    <TextBlock Text="{x:Static strings:Strings.Settings_MessageOpenMode_Tab_Hint}"
                                                TextWrapping="Wrap"
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8"/>
-                                    <RadioButton Content="_Window"
+                                    <RadioButton Content="{x:Static strings:Strings.Settings_MessageOpenMode_Window}"
                                                  IsChecked="{Binding IsWindowMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
                                                  Checked="RadioButton_Checked"
-                                                 AutomationProperties.Name="Window"
-                                                 AutomationProperties.HelpText="Opens each message in its own window."/>
-                                    <TextBlock Text="Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window."
+                                                 AutomationProperties.Name="{x:Static strings:Strings.Settings_MessageOpenMode_Window_AutomationName}"
+                                                 AutomationProperties.HelpText="{x:Static strings:Strings.Settings_MessageOpenMode_Window_HelpText}"/>
+                                    <TextBlock Text="{x:Static strings:Strings.Settings_MessageOpenMode_Window_Hint}"
                                                TextWrapping="Wrap"
                                                Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0"/>
                                 </StackPanel>
@@ -416,33 +440,33 @@
                         </GroupBox>
 
                         <!-- Tab behaviour -->
-                        <GroupBox Header="_Tab Behaviour" Padding="10" Margin="0,0,0,0"
-                                  AutomationProperties.Name="Tab behaviour settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_TabBehaviour_GroupHeader}" Padding="10" Margin="0,0,0,0"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_TabBehaviour_GroupAutomationName}">
                             <StackPanel>
-                                <CheckBox Content="_Confirm before closing a tab with unsaved changes"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_ConfirmCloseTabWithUnsaved}"
                                           IsChecked="{Binding ConfirmCloseTabWithUnsaved, Mode=TwoWay}"
-                                          AutomationProperties.Name="Show a confirmation dialog before closing a tab that has unsaved draft changes"/>
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_ConfirmCloseTabWithUnsaved_AutomationName}"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
             <!-- Appearance Tab -->
-            <TabItem Header="A_ppearance" AutomationProperties.Name="Appearance">
+            <TabItem Header="{x:Static strings:Strings.Settings_Appearance_TabHeader}" AutomationProperties.Name="{x:Static strings:Strings.Settings_Appearance_TabAutomationName}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
                         <!-- High Contrast notice — visible only while Windows HC is active. -->
-                        <TextBlock Text="Windows High Contrast is active; theme colors are supplied by Windows. Your theme choice below is saved and returns when High Contrast is turned off."
+                        <TextBlock Text="{x:Static strings:Strings.Settings_HighContrastActive_Notice}"
                                    TextWrapping="Wrap"
                                    Margin="0,0,0,10"
                                    Visibility="{Binding IsHighContrastActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                         <!-- Theme Group -->
-                        <GroupBox Header="_Theme" Padding="10" Margin="0,0,0,15"
-                                  AutomationProperties.Name="Theme settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_Theme_GroupHeader}" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_Theme_GroupAutomationName}">
                             <StackPanel>
                                 <Label x:Name="ThemeLabel"
-                                       Content="The_me:"
+                                       Content="{x:Static strings:Strings.Settings_Theme_Label}"
                                        Target="{Binding ElementName=ThemeCombo}"
                                        FontWeight="SemiBold"/>
                                 <ComboBox x:Name="ThemeCombo"
@@ -451,7 +475,7 @@
                                           SelectedValuePath="Id"
                                           SelectedValue="{Binding AppearanceThemeId, Mode=TwoWay}"
                                           AutomationProperties.LabeledBy="{Binding ElementName=ThemeLabel}"/>
-                                <TextBlock Text="System follows the Windows light or dark setting. Themes can be managed, shared, and imported from the Theme Manager (Command Palette: Manage Themes)."
+                                <TextBlock Text="{x:Static strings:Strings.Settings_Theme_Hint}"
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource Theme.TextSecondary}"
                                            FontSize="{DynamicResource Theme.FontSizeSmall}"
@@ -460,11 +484,11 @@
                         </GroupBox>
 
                         <!-- Text Group -->
-                        <GroupBox Header="Te_xt" Padding="10" Margin="0,0,0,15"
-                                  AutomationProperties.Name="Text settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_Text_GroupHeader}" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_Text_GroupAutomationName}">
                             <StackPanel>
                                 <Label x:Name="FontLabel"
-                                       Content="_Font:"
+                                       Content="{x:Static strings:Strings.Settings_Font_Label}"
                                        Target="{Binding ElementName=FontCombo}"
                                        FontWeight="SemiBold"/>
                                 <ComboBox x:Name="FontCombo"
@@ -474,40 +498,40 @@
 
                                 <StackPanel Margin="0,8,0,0">
                                     <Label x:Name="TextSizeLabel"
-                                           Content="Text si_ze:"
+                                           Content="{x:Static strings:Strings.Settings_TextSize_Label}"
                                            Target="{Binding ElementName=TextSizeCombo}"
                                            FontWeight="SemiBold"/>
                                     <ComboBox x:Name="TextSizeCombo"
                                               SelectedValue="{Binding AppearanceTextScalePercent, Mode=TwoWay}"
                                               SelectedValuePath="Tag"
                                               AutomationProperties.LabeledBy="{Binding ElementName=TextSizeLabel}">
-                                        <ComboBoxItem Tag="100" Content="100%"/>
-                                        <ComboBoxItem Tag="110" Content="110%"/>
-                                        <ComboBoxItem Tag="125" Content="125%"/>
-                                        <ComboBoxItem Tag="150" Content="150%"/>
-                                        <ComboBoxItem Tag="175" Content="175%"/>
-                                        <ComboBoxItem Tag="200" Content="200%"/>
+                                        <ComboBoxItem Tag="100" Content="{x:Static strings:Strings.Settings_TextSize_100}"/>
+                                        <ComboBoxItem Tag="110" Content="{x:Static strings:Strings.Settings_TextSize_110}"/>
+                                        <ComboBoxItem Tag="125" Content="{x:Static strings:Strings.Settings_TextSize_125}"/>
+                                        <ComboBoxItem Tag="150" Content="{x:Static strings:Strings.Settings_TextSize_150}"/>
+                                        <ComboBoxItem Tag="175" Content="{x:Static strings:Strings.Settings_TextSize_175}"/>
+                                        <ComboBoxItem Tag="200" Content="{x:Static strings:Strings.Settings_TextSize_200}"/>
                                     </ComboBox>
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
 
                         <!-- Vision Group -->
-                        <GroupBox Header="_Vision" Padding="10"
-                                  AutomationProperties.Name="Vision settings">
+                        <GroupBox Header="{x:Static strings:Strings.Settings_Vision_GroupHeader}" Padding="10"
+                                  AutomationProperties.Name="{x:Static strings:Strings.Settings_Vision_GroupAutomationName}">
                             <StackPanel>
-                                <CheckBox Content="Always _underline links"
+                                <CheckBox Content="{x:Static strings:Strings.Settings_UnderlineLinks}"
                                           IsChecked="{Binding AppearanceUnderlineLinks, Mode=TwoWay}"
-                                          AutomationProperties.Name="Always underline links"/>
-                                <CheckBox Content="Thicker keyboard focus in_dicators"
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_UnderlineLinks_AutomationName}"/>
+                                <CheckBox Content="{x:Static strings:Strings.Settings_ThickFocus}"
                                           IsChecked="{Binding AppearanceThickFocus, Mode=TwoWay}"
                                           Margin="0,6,0,0"
-                                          AutomationProperties.Name="Thicker keyboard focus indicators"/>
-                                <CheckBox Content="Apply theme colors to message c_ontent"
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_ThickFocus_AutomationName}"/>
+                                <CheckBox Content="{x:Static strings:Strings.Settings_ForceMessageTheme}"
                                           IsChecked="{Binding AppearanceForceMessageTheme, Mode=TwoWay}"
                                           Margin="0,6,0,0"
-                                          AutomationProperties.Name="Apply theme colors to message content"/>
-                                <TextBlock Text="Overrides the colors and fonts chosen by a message's sender. Turn on when messages arrive with hard-to-read colors."
+                                          AutomationProperties.Name="{x:Static strings:Strings.Settings_ForceMessageTheme_AutomationName}"/>
+                                <TextBlock Text="{x:Static strings:Strings.Settings_ForceMessageTheme_Hint}"
                                            TextWrapping="Wrap"
                                            Foreground="{DynamicResource Theme.TextSecondary}"
                                            FontSize="{DynamicResource Theme.FontSizeSmall}"
@@ -525,15 +549,15 @@
                     HorizontalAlignment="Right"
                     >
             <Button x:Name="SaveButton"
-                    Content="_Save"
+                    Content="{x:Static strings:Strings.Common_Save}"
                     IsDefault="True"
                     Click="SaveButton_Click"
                     MinWidth="75"
-                    AutomationProperties.Name="Save settings"/>
-            <Button Content="_Cancel"
+                    AutomationProperties.Name="{x:Static strings:Strings.Settings_Save_AutomationName}"/>
+            <Button Content="{x:Static strings:Strings.Common_Cancel}"
                     IsCancel="True"
                     MinWidth="75"
-                    AutomationProperties.Name="Cancel and close without saving"/>
+                    AutomationProperties.Name="{x:Static strings:Strings.Settings_Cancel_AutomationName}"/>
         </StackPanel>
 
     </Grid>

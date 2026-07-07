@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -38,7 +39,7 @@ public partial class ThemeManagerWindow : Window
         vm.FocusListItemRequested += _ => Dispatcher.InvokeAsync(
             FocusSelectedListItem, DispatcherPriority.Input);
         vm.ErrorRequested += message =>
-            MessageBox.Show(this, message, "Theme Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(this, message, Strings.ThemeManager_MessageBoxTitle, MessageBoxButton.OK, MessageBoxImage.Warning);
         vm.ConfirmDeleteRequested = (message, title) =>
             MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning,
                 MessageBoxResult.No) == MessageBoxResult.Yes;
@@ -46,9 +47,9 @@ public partial class ThemeManagerWindow : Window
         {
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
-                Title    = "Export Theme",
+                Title    = Strings.ThemeManager_ExportDialog_Title,
                 FileName = suggestedName,
-                Filter   = "QuickMail theme (*.quickmailtheme)|*.quickmailtheme|All files (*.*)|*.*",
+                Filter   = Strings.ThemeManager_ExportDialog_Filter,
                 DefaultExt = ".quickmailtheme",
             };
             return dlg.ShowDialog(this) == true ? dlg.FileName : null;
@@ -57,8 +58,8 @@ public partial class ThemeManagerWindow : Window
         {
             var dlg = new Microsoft.Win32.OpenFileDialog
             {
-                Title  = "Import Theme",
-                Filter = "QuickMail theme (*.quickmailtheme;*.json)|*.quickmailtheme;*.json|All files (*.*)|*.*",
+                Title  = Strings.ThemeManager_ImportDialog_Title,
+                Filter = Strings.ThemeManager_ImportDialog_Filter,
             };
             return dlg.ShowDialog(this) == true ? dlg.FileName : null;
         };
@@ -107,7 +108,7 @@ public partial class ThemeManagerWindow : Window
     {
         if (_listHintAnnounced) return;
         _listHintAnnounced = true;
-        AccessibilityHelper.Announce(this, "Press Tab for actions on the selected theme.",
+        AccessibilityHelper.Announce(this, Strings.ThemeManager_ThemeList_Announce_PressTabForActions,
             category: Models.AnnouncementCategory.Hint);
     }
 

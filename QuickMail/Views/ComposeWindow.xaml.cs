@@ -16,6 +16,7 @@ using System.Windows.Threading;
 using QuickMail.Controls;
 using QuickMail.Helpers;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 using QuickMail.ViewModels;
 
@@ -39,12 +40,13 @@ internal sealed class AddressSuggestion
 
     /// <summary>Dimmed second line shown below the primary text.</summary>
     public string SecondaryText => IsGroup
-        ? $"{Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")} — group"
+        ? StringsHelper.Count("Compose_Announce_MemberCountGroupSuffix", Group!.ResolvedMemberCount)
         : Contact!.EmailAddress;
 
     /// <summary>Full accessible name read by the screen reader for the list item.</summary>
     public string Display => IsGroup
-        ? $"{Group!.Name}, group, {Group!.ResolvedMemberCount} member{(Group!.ResolvedMemberCount == 1 ? "" : "s")}"
+        ? string.Format(Strings.Compose_Announce_GroupMemberCountFormat, Group!.Name,
+            StringsHelper.Count("Compose_Announce_MemberCount", Group!.ResolvedMemberCount))
         : string.IsNullOrWhiteSpace(Contact!.DisplayName)
             ? Contact.EmailAddress
             : $"{Contact.DisplayName} {Contact.EmailAddress}";
@@ -156,7 +158,7 @@ public partial class ComposeWindow : Window
         // paths and the View owns the dialog.
         vm.OpenFilePathsRequested = () =>
         {
-            var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = "Add Attachments" };
+            var dlg = new Microsoft.Win32.OpenFileDialog { Multiselect = true, Title = Strings.Compose_AddAttachmentsDialogTitle };
             return dlg.ShowDialog(this) == true ? dlg.FileNames : null;
         };
 
@@ -217,8 +219,8 @@ public partial class ComposeWindow : Window
         ConfirmSaveOnClose = () =>
         {
             var r = MessageBox.Show(this,
-                "Do you want to save this message as a draft before closing?",
-                "Save Draft?",
+                Strings.Compose_SaveDraftBeforeClosingMessage,
+                Strings.Compose_SaveDraftDialogTitle,
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Question);
             return Task.FromResult<bool?>(r switch
@@ -292,7 +294,7 @@ public partial class ComposeWindow : Window
             AutoCompletePopup.IsOpen          = true;
 
             AccessibilityHelper.Announce(this,
-                combined.Count == 1 ? "1 suggestion" : $"{combined.Count} suggestions",
+                StringsHelper.Count("Compose_Announce_SuggestionCount", combined.Count),
                 category: AnnouncementCategory.Result);
         }
         catch (OperationCanceledException)
@@ -479,9 +481,8 @@ public partial class ComposeWindow : Window
         _ = _contactService.TouchGroupAsync(group.Id);
 
         AccessibilityHelper.Announce(this,
-            members.Count == 1
-                ? $"Inserted 1 address from group '{group.Name}'"
-                : $"Inserted {members.Count} addresses from group '{group.Name}'",
+            string.Format(Strings.Compose_Announce_InsertedFromGroupFormat,
+                StringsHelper.Count("Compose_Announce_AddressCount", members.Count), group.Name),
             category: AnnouncementCategory.Result);
     }
 
@@ -502,7 +503,7 @@ public partial class ComposeWindow : Window
             c.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase));
         if (dup != null)
         {
-            var msg = $"{email} is already in your address book.";
+            var msg = string.Format(Strings.Compose_Announce_AlreadyInAddressBookFormat, email);
             _vm.StatusText = msg;
             AccessibilityHelper.Announce(this, msg, category: AnnouncementCategory.Result);
         }
@@ -514,7 +515,7 @@ public partial class ComposeWindow : Window
                 EmailAddress = email
             });
             var label = string.IsNullOrWhiteSpace(displayName) ? email : $"{displayName} ({email})";
-            var msg = $"Added {label} to address book.";
+            var msg = string.Format(Strings.Compose_Announce_AddedToAddressBookFormat, label);
             _vm.StatusText = msg;
             AccessibilityHelper.Announce(this, msg, category: AnnouncementCategory.Result);
         }
@@ -527,7 +528,7 @@ public partial class ComposeWindow : Window
         int total = ToBox.GetChips().Count + CcBox.GetChips().Count + BccBox.GetChips().Count;
         if (total == 0)
         {
-            AccessibilityHelper.Announce(this, "No addresses to check.", category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, Strings.Compose_Announce_NoAddressesToCheck, category: AnnouncementCategory.Result);
             return;
         }
 
@@ -580,13 +581,14 @@ public partial class ComposeWindow : Window
             }
         }
 
+        var checkedPrefix = StringsHelper.Count("Compose_Announce_AddressesCheckedPrefix", total);
         string summary;
         if (invalid > 0)
-            summary = $"{total} address{(total == 1 ? "" : "es")} checked. {invalid} unrecognized.";
+            summary = checkedPrefix + " " + string.Format(Strings.Compose_Announce_UnrecognizedCountFormat, invalid);
         else if (resolved > 0)
-            summary = $"{total} address{(total == 1 ? "" : "es")} checked. {resolved} resolved from contacts.";
+            summary = checkedPrefix + " " + string.Format(Strings.Compose_Announce_ResolvedFromContactsFormat, resolved);
         else
-            summary = $"{total} address{(total == 1 ? "" : "es")} checked. All valid.";
+            summary = checkedPrefix + " " + Strings.Compose_Announce_AllValid;
 
         _vm.StatusText = summary;
         AccessibilityHelper.Announce(this, summary, category: AnnouncementCategory.Result);
@@ -681,7 +683,7 @@ public partial class ComposeWindow : Window
                 int added = _vm.Attachments.Count - before;
                 if (added > 0)
                     AccessibilityHelper.Announce(this,
-                        added == 1 ? "1 file attached" : $"{added} files attached",
+                        StringsHelper.Count("Compose_Announce_FilesAttached", added),
                         category: AnnouncementCategory.Result);
             }
         }
@@ -721,7 +723,7 @@ public partial class ComposeWindow : Window
                 int added = _vm.Attachments.Count - before;
                 if (added > 0)
                     AccessibilityHelper.Announce(this,
-                        added == 1 ? "1 file attached" : $"{added} files attached",
+                        StringsHelper.Count("Compose_Announce_FilesAttached", added),
                         category: AnnouncementCategory.Result);
             }
             e.Handled = true;
@@ -1009,11 +1011,11 @@ public partial class ComposeWindow : Window
     {
         var cfg = _configService.Load();
         if (!cfg.AnnounceSpellingSuggestions || suggestions.Count == 0)
-            return $"Misspelling: {word}.";
+            return string.Format(Strings.Compose_Announce_MisspellingFormat, word);
         if (cfg.SpellingSuggestionsVerbosity == "justSuggestions")
-            return $"Misspelling: {word}. {string.Join(", ", suggestions)}.";
+            return string.Format(Strings.Compose_Announce_MisspellingWithSuggestionsFormat, word, string.Join(", ", suggestions));
         var numbered = string.Join(", ", suggestions.Select((s, i) => $"{i + 1}: {s}"));
-        return $"Misspelling: {word}. {numbered}.";
+        return string.Format(Strings.Compose_Announce_MisspellingWithSuggestionsFormat, word, numbered);
     }
 
     private static bool IsTypingKey(Key key, ModifierKeys modifiers)
@@ -1074,7 +1076,7 @@ public partial class ComposeWindow : Window
                 _suppressSpellingAnnouncement = false;
 
                 BodyBox.Focus();
-                AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
+                AccessibilityHelper.Announce(this, string.Format(Strings.Compose_Announce_ReplacedWithFormat, replacement),
                     category: AnnouncementCategory.Result);
                 ClearSpellingContext();
                 e.Handled = true;
@@ -1148,7 +1150,7 @@ public partial class ComposeWindow : Window
                 RichBodyBox.Selection.Select(wordRange.End, wordRange.End);
                 _suppressFormattingAnnouncement = false;
 
-                AccessibilityHelper.Announce(this, $"Replaced with {replacement}.",
+                AccessibilityHelper.Announce(this, string.Format(Strings.Compose_Announce_ReplacedWithFormat, replacement),
                     category: AnnouncementCategory.Result);
                 ClearSpellingContext();
                 e.Handled = true;
@@ -1197,40 +1199,40 @@ public partial class ComposeWindow : Window
     private void RegisterComposeCommands()
     {
         _registry.Register(new CommandDefinition(
-            id: "compose.send", category: "Compose", title: "Send Message",
+            id: "compose.send", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_SendMessage,
             execute: () => { CommitAllAddressInputs(); _vm.SendCommand.Execute(null); },
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Alt));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.saveDraft", category: "Compose", title: "Save Draft",
+            id: "compose.saveDraft", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_SaveDraft,
             execute: () => _vm.SaveDraftCommand.Execute(null),
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.addAttachments", category: "Compose", title: "Add Attachments…",
+            id: "compose.addAttachments", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_AddAttachments,
             execute: () => _vm.AddAttachmentsCommand.Execute(null),
             defaultKey: Key.A, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.insertTemplate", category: "Compose", title: "Insert Template…",
+            id: "compose.insertTemplate", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_InsertTemplate,
             execute: () => _vm.InsertTemplateCommand.Execute(null)));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.saveAsTemplate", category: "Compose", title: "Save as Template",
+            id: "compose.saveAsTemplate", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_SaveAsTemplate,
             execute: () => _vm.SaveAsTemplateCommand.Execute(null)));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.cancel", category: "Compose", title: "Cancel / Close",
+            id: "compose.cancel", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_CancelClose,
             execute: () => _vm.CancelCommand.Execute(null),
             defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.focusBody", category: "Compose", title: "Focus Message Body",
+            id: "compose.focusBody", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_FocusMessageBody,
             execute: FocusActiveEditor,
             defaultKey: Key.Y, defaultModifiers: ModifierKeys.Alt));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.checkAddresses", category: "Compose", title: "Check Addresses",
+            id: "compose.checkAddresses", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_CheckAddresses,
             execute: CheckAddresses,
             defaultKey: Key.K, defaultModifiers: ModifierKeys.Control));
 
@@ -1238,43 +1240,43 @@ public partial class ComposeWindow : Window
         // inline navigation moved to Ctrl+F7 / Ctrl+Shift+F7. User overrides in
         // hotkeys.json take precedence over these defaults as always.
         _registry.Register(new CommandDefinition(
-            id: "compose.checkSpelling", category: "Compose", title: "Check Spelling…",
+            id: "compose.checkSpelling", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_CheckSpelling,
             execute: CheckSpelling,
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.IsSpellNavAvailable));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.nextMisspelling", category: "Compose", title: "Next Misspelling",
+            id: "compose.nextMisspelling", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_NextMisspelling,
             execute: () => NavigateSpellingError(forward: true),
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.Control));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.prevMisspelling", category: "Compose", title: "Previous Misspelling",
+            id: "compose.prevMisspelling", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_PreviousMisspelling,
             execute: () => NavigateSpellingError(forward: false),
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.toggleSpellingAnnouncements", category: "Compose",
-            title: "Toggle Spelling Announcements",
+            id: "compose.toggleSpellingAnnouncements", category: Strings.Compose_CmdCategory,
+            title: Strings.Compose_Cmd_ToggleSpellingAnnouncements,
             execute: ToggleSpellingAnnouncements));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.repeatSpelling", category: "Compose",
-            title: "Repeat Spelling Announcement",
+            id: "compose.repeatSpelling", category: Strings.Compose_CmdCategory,
+            title: Strings.Compose_Cmd_RepeatSpellingAnnouncement,
             execute: RepeatSpellingAnnouncement,
             defaultKey: Key.F7, defaultModifiers: ModifierKeys.Alt));
 
         RegisterRichComposeCommands();
 
         _registry.Register(new CommandDefinition(
-            id: "compose.openAddressBook", category: "Compose", title: "Address Book",
+            id: "compose.openAddressBook", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_AddressBook,
             execute: OpenAddressBook,
             defaultKey: Key.B, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.announceAutoSave", category: "Compose", title: "Announce Last Auto-Save",
+            id: "compose.announceAutoSave", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_AnnounceLastAutoSave,
             execute: () => AccessibilityHelper.Announce(this,
-                string.IsNullOrEmpty(_vm.AutoSaveText) ? "Not auto-saved yet." : _vm.AutoSaveText + ".",
+                string.IsNullOrEmpty(_vm.AutoSaveText) ? Strings.Compose_Announce_NotAutoSavedYet : _vm.AutoSaveText + ".",
                 category: AnnouncementCategory.Result)));
     }
 
@@ -1308,8 +1310,8 @@ public partial class ComposeWindow : Window
         var cfg = _configService.Load();
         cfg.AnnounceSpellingWhileNavigating = !cfg.AnnounceSpellingWhileNavigating;
         _configService.Save(cfg);
-        var state = cfg.AnnounceSpellingWhileNavigating ? "on" : "off";
-        AccessibilityHelper.Announce(this, $"Spelling announcements while navigating {state}.",
+        var state = cfg.AnnounceSpellingWhileNavigating ? Strings.Compose_Announce_StateOn : Strings.Compose_Announce_StateOff;
+        AccessibilityHelper.Announce(this, string.Format(Strings.Compose_Announce_SpellingAnnouncementsWhileNavigatingFormat, state),
             interrupt: true, category: AnnouncementCategory.Result, force: true);
     }
 
@@ -1436,7 +1438,7 @@ public partial class ComposeWindow : Window
         {
             AccessibilityHelper.Announce(this, vm.CompletionAnnouncement,
                 category: AnnouncementCategory.Result);
-            MessageBox.Show(this, vm.CompletionText, "Spelling",
+            MessageBox.Show(this, vm.CompletionText, Strings.Compose_SpellingDialogTitle,
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
         else
@@ -1502,7 +1504,7 @@ public partial class ComposeWindow : Window
         else
         {
             ClearSpellingContext();
-            AccessibilityHelper.Announce(this, "No misspellings found.",
+            AccessibilityHelper.Announce(this, Strings.Compose_Announce_NoMisspellingsFound,
                 category: AnnouncementCategory.Result);
         }
     }
@@ -1526,7 +1528,7 @@ public partial class ComposeWindow : Window
         else
         {
             ClearSpellingContext();
-            AccessibilityHelper.Announce(this, "No misspellings found.", category: AnnouncementCategory.Result);
+            AccessibilityHelper.Announce(this, Strings.Compose_Announce_NoMisspellingsFound, category: AnnouncementCategory.Result);
         }
     }
 
@@ -1663,11 +1665,11 @@ public partial class ComposeWindow : Window
 
         var name = mode switch
         {
-            ComposeMode.Markdown => "Markdown",
-            ComposeMode.Html     => "HTML",
-            _                    => "Plain Text",
+            ComposeMode.Markdown => Strings.Compose_Announce_ModeNameMarkdown,
+            ComposeMode.Html     => Strings.Compose_Announce_ModeNameHtml,
+            _                    => Strings.Compose_Announce_ModeNamePlainText,
         };
-        AccessibilityHelper.Announce(this, $"Switched to {name} mode.", category: AnnouncementCategory.Result);
+        AccessibilityHelper.Announce(this, string.Format(Strings.Compose_Announce_SwitchedToModeFormat, name), category: AnnouncementCategory.Result);
         _suppressFormattingAnnouncement = false;
     }
 
@@ -1709,7 +1711,7 @@ public partial class ComposeWindow : Window
     {
         if (_vm.CurrentMode == ComposeMode.PlainText)
             AccessibilityHelper.Announce(this,
-                "Formatting commands require Markdown or HTML mode.",
+                Strings.Compose_Announce_FormattingRequiresMarkdownOrHtml,
                 category: AnnouncementCategory.Hint);
     }
 
@@ -1745,100 +1747,100 @@ public partial class ComposeWindow : Window
         bool InRichMode() => _vm.CurrentMode != ComposeMode.PlainText;
 
         _registry.Register(new CommandDefinition(
-            id: "compose.setModePlain", category: "Compose", title: "Switch to Plain Text Mode",
+            id: "compose.setModePlain", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_SwitchToPlainTextMode,
             execute: () => _vm.SetMode(ComposeMode.PlainText),
             defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.setModeMarkdown", category: "Compose", title: "Switch to Markdown Mode",
+            id: "compose.setModeMarkdown", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_SwitchToMarkdownMode,
             execute: () => _vm.SetMode(ComposeMode.Markdown),
             defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.setModeHtml", category: "Compose", title: "Switch to HTML Mode",
+            id: "compose.setModeHtml", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_SwitchToHtmlMode,
             execute: () => _vm.SetMode(ComposeMode.Html),
             defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.toggleBold", category: "Compose", title: "Bold",
+            id: "compose.toggleBold", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_Bold,
             execute: ToggleBold,
             defaultKey: Key.B, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.toggleItalic", category: "Compose", title: "Italic",
+            id: "compose.toggleItalic", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_Italic,
             execute: ToggleItalic,
             defaultKey: Key.I, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.toggleUnderline", category: "Compose", title: "Underline",
+            id: "compose.toggleUnderline", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_Underline,
             execute: ToggleUnderline,
             defaultKey: Key.U, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.toggleStrikethrough", category: "Compose", title: "Strikethrough",
+            id: "compose.toggleStrikethrough", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_Strikethrough,
             execute: ToggleStrikethrough,
             defaultKey: Key.X, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.heading1", category: "Compose", title: "Heading 1",
+            id: "compose.heading1", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_Heading1,
             execute: () => ApplyHeading(1),
             defaultKey: Key.D1, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.heading2", category: "Compose", title: "Heading 2",
+            id: "compose.heading2", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_Heading2,
             execute: () => ApplyHeading(2),
             defaultKey: Key.D2, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.heading3", category: "Compose", title: "Heading 3",
+            id: "compose.heading3", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_Heading3,
             execute: () => ApplyHeading(3),
             defaultKey: Key.D3, defaultModifiers: ModifierKeys.Control | ModifierKeys.Alt,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.bulletList", category: "Compose", title: "Bullet List",
+            id: "compose.bulletList", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_BulletList,
             execute: () => ToggleList(ordered: false),
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.numberedList", category: "Compose", title: "Numbered List",
+            id: "compose.numberedList", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_NumberedList,
             execute: () => ToggleList(ordered: true),
             defaultKey: Key.N, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.insertLink", category: "Compose", title: "Insert Link…",
+            id: "compose.insertLink", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_InsertLink,
             execute: InsertLink,
             defaultKey: Key.L, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.clearFormatting", category: "Compose", title: "Clear Formatting",
+            id: "compose.clearFormatting", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_ClearFormatting,
             execute: ClearFormatting,
             defaultKey: Key.Space, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.queryFormatting", category: "Compose", title: "Announce Formatting State",
+            id: "compose.queryFormatting", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_AnnounceFormattingState,
             execute: AnnounceFormattingState,
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.showFormatting", category: "Compose", title: "Show Formatting…",
+            id: "compose.showFormatting", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_ShowFormatting,
             execute: ShowFormatting,
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: InRichMode));
 
         _registry.Register(new CommandDefinition(
-            id: "compose.openPreview", category: "Compose", title: "Open Preview",
+            id: "compose.openPreview", category: Strings.Compose_CmdCategory, title: Strings.Compose_Cmd_OpenPreview,
             execute: OpenPreview,
             defaultKey: Key.F8, defaultModifiers: ModifierKeys.None,
             isAvailable: () => _vm.IsPreviewAvailable));
@@ -1888,25 +1890,26 @@ public partial class ComposeWindow : Window
         var edit = MarkdownEditing.ToggleInline(
             BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength, marker);
         ApplyMarkdownEdit(edit);
-        AnnounceFormatting($"{name} {(edit.TurnedOn ? "on" : "off")}");
+        AnnounceFormatting(string.Format(Strings.Compose_Announce_FormattingStateFormat, name,
+            edit.TurnedOn ? Strings.Compose_Announce_StateOn : Strings.Compose_Announce_StateOff));
     }
 
     private void ToggleBold()
     {
-        if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("**", "Bold"); return; }
+        if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("**", Strings.Compose_FormatName_Bold); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleBold.Execute(null, RichBodyBox);
         var on = Equals(RichBodyBox.Selection.GetPropertyValue(TextElement.FontWeightProperty), FontWeights.Bold);
-        AnnounceFormatting(on ? "Bold on" : "Bold off");
+        AnnounceFormatting(on ? Strings.Compose_Announce_BoldOn : Strings.Compose_Announce_BoldOff);
     }
 
     private void ToggleItalic()
     {
-        if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("*", "Italic"); return; }
+        if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("*", Strings.Compose_FormatName_Italic); return; }
         EnsureRichEditorFocused();
         EditingCommands.ToggleItalic.Execute(null, RichBodyBox);
         var on = Equals(RichBodyBox.Selection.GetPropertyValue(TextElement.FontStyleProperty), FontStyles.Italic);
-        AnnounceFormatting(on ? "Italic on" : "Italic off");
+        AnnounceFormatting(on ? Strings.Compose_Announce_ItalicOn : Strings.Compose_Announce_ItalicOff);
     }
 
     private void ToggleUnderline()
@@ -1914,18 +1917,18 @@ public partial class ComposeWindow : Window
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
             // Markdown has no underline and the pipeline blocks raw HTML.
-            AnnounceFormatting("Underline is not available in Markdown. Use HTML mode for underline.");
+            AnnounceFormatting(Strings.Compose_Announce_UnderlineNotAvailableInMarkdown);
             return;
         }
         EnsureRichEditorFocused();
         EditingCommands.ToggleUnderline.Execute(null, RichBodyBox);
         var on = SelectionHasDecoration(TextDecorationLocation.Underline);
-        AnnounceFormatting(on ? "Underline on" : "Underline off");
+        AnnounceFormatting(on ? Strings.Compose_Announce_UnderlineOn : Strings.Compose_Announce_UnderlineOff);
     }
 
     private void ToggleStrikethrough()
     {
-        if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("~~", "Strikethrough"); return; }
+        if (_vm.CurrentMode == ComposeMode.Markdown) { ToggleMarkdownInline("~~", Strings.Compose_FormatName_Strikethrough); return; }
         EnsureRichEditorFocused();
         var selection = RichBodyBox.Selection;
         var current = selection.GetPropertyValue(Inline.TextDecorationsProperty) as TextDecorationCollection;
@@ -1940,7 +1943,7 @@ public partial class ComposeWindow : Window
             updated.Add(TextDecorations.Strikethrough[0]);
         }
         selection.ApplyPropertyValue(Inline.TextDecorationsProperty, updated);
-        AnnounceFormatting(has ? "Strikethrough off" : "Strikethrough on");
+        AnnounceFormatting(has ? Strings.Compose_Announce_StrikethroughOff : Strings.Compose_Announce_StrikethroughOn);
     }
 
     private bool SelectionHasDecoration(TextDecorationLocation location)
@@ -1956,7 +1959,7 @@ public partial class ComposeWindow : Window
         {
             var edit = MarkdownEditing.ToggleHeading(BodyBox.Text, BodyBox.CaretIndex, level);
             ApplyMarkdownEdit(edit);
-            AnnounceFormatting(edit.TurnedOn ? $"Heading {level}" : "Normal text");
+            AnnounceFormatting(edit.TurnedOn ? string.Format(Strings.Compose_Announce_HeadingLevelFormat, level) : Strings.Compose_Announce_NormalText);
             return;
         }
 
@@ -1983,7 +1986,7 @@ public partial class ComposeWindow : Window
             }
         }
 
-        AnnounceFormatting(turnOff ? "Normal text" : $"Heading {level}");
+        AnnounceFormatting(turnOff ? Strings.Compose_Announce_NormalText : string.Format(Strings.Compose_Announce_HeadingLevelFormat, level));
         _vm.MarkBodyDirty();
     }
 
@@ -2057,36 +2060,37 @@ public partial class ComposeWindow : Window
         {
             return tag switch
             {
-                "H1" => "Heading 1",
-                "H2" => "Heading 2",
-                "H3" => "Heading 3",
-                "H4" => "Heading 4",
-                "H5" => "Heading 5",
-                "H6" => "Heading 6",
-                "BLOCKQUOTE" => "Quote",
-                _ when RichTextDocumentConverter.IsPreTag(tag) => "Code block",
-                _ => "Normal text",
+                "H1" => Strings.Compose_Announce_Heading1,
+                "H2" => Strings.Compose_Announce_Heading2,
+                "H3" => Strings.Compose_Announce_Heading3,
+                "H4" => Strings.Compose_Announce_Heading4,
+                "H5" => Strings.Compose_Announce_Heading5,
+                "H6" => Strings.Compose_Announce_Heading6,
+                "BLOCKQUOTE" => Strings.Compose_Announce_Quote,
+                _ when RichTextDocumentConverter.IsPreTag(tag) => Strings.Compose_Announce_CodeBlock,
+                _ => Strings.Compose_Announce_NormalText,
             };
         }
         if (para?.Parent is ListItem item)
         {
             var kind = item.Parent is System.Windows.Documents.List { MarkerStyle: System.Windows.TextMarkerStyle.Decimal }
-                ? "Numbered list item" : "Bullet list item";
+                ? Strings.Compose_Announce_NumberedListItem : Strings.Compose_Announce_BulletListItem;
             var depth = ListDepthOf(para);
-            return depth > 1 ? $"{kind}, level {depth}" : kind;
+            return depth > 1 ? string.Format(Strings.Compose_Announce_ListItemLevelFormat, kind, depth) : kind;
         }
-        return "Normal text";
+        return Strings.Compose_Announce_NormalText;
     }
 
     private void ToggleList(bool ordered)
     {
-        var name = ordered ? "Numbered list" : "Bullet list";
+        var name = ordered ? Strings.Compose_NumberedList : Strings.Compose_BulletList;
         if (_vm.CurrentMode == ComposeMode.Markdown)
         {
             var edit = MarkdownEditing.ToggleListPrefix(
                 BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength, ordered);
             ApplyMarkdownEdit(edit);
-            AnnounceFormatting($"{name} {(edit.TurnedOn ? "on" : "off")}");
+            AnnounceFormatting(string.Format(Strings.Compose_Announce_FormattingStateFormat, name,
+                edit.TurnedOn ? Strings.Compose_Announce_StateOn : Strings.Compose_Announce_StateOff));
             return;
         }
 
@@ -2094,7 +2098,8 @@ public partial class ComposeWindow : Window
         var command = ordered ? EditingCommands.ToggleNumbering : EditingCommands.ToggleBullets;
         command.Execute(null, RichBodyBox);
         var inList = RichBodyBox.CaretPosition.Paragraph?.Parent is ListItem;
-        AnnounceFormatting($"{name} {(inList ? "on" : "off")}");
+        AnnounceFormatting(string.Format(Strings.Compose_Announce_FormattingStateFormat, name,
+            inList ? Strings.Compose_Announce_StateOn : Strings.Compose_Announce_StateOff));
     }
 
     private void InsertLink()
@@ -2116,7 +2121,7 @@ public partial class ComposeWindow : Window
                 BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength,
                 dialog.DisplayText, dialog.Url);
             ApplyMarkdownEdit(edit);
-            AnnounceFormatting("Link inserted");
+            AnnounceFormatting(Strings.Compose_Announce_LinkInserted);
             return;
         }
 
@@ -2131,7 +2136,7 @@ public partial class ComposeWindow : Window
 
         FocusActiveEditor();
         _vm.MarkBodyDirty();
-        AnnounceFormatting("Link inserted");
+        AnnounceFormatting(Strings.Compose_Announce_LinkInserted);
     }
 
     private void ClearFormatting()
@@ -2141,7 +2146,7 @@ public partial class ComposeWindow : Window
             var edit = MarkdownEditing.ClearFormatting(
                 BodyBox.Text, BodyBox.SelectionStart, BodyBox.SelectionLength);
             ApplyMarkdownEdit(edit);
-            AnnounceFormatting("Formatting cleared");
+            AnnounceFormatting(Strings.Compose_Announce_FormattingCleared);
             return;
         }
 
@@ -2159,7 +2164,7 @@ public partial class ComposeWindow : Window
             }
         }
         _vm.MarkBodyDirty();
-        AnnounceFormatting("Formatting cleared");
+        AnnounceFormatting(Strings.Compose_Announce_FormattingCleared);
     }
 
     /// <summary>
@@ -2175,12 +2180,13 @@ public partial class ComposeWindow : Window
         var selection = RichBodyBox.Selection;
 
         string StateOf(object value, object onValue) =>
-            value == DependencyProperty.UnsetValue ? "mixed" : Equals(value, onValue) ? "on" : "off";
+            value == DependencyProperty.UnsetValue ? Strings.Compose_Announce_StateMixed
+                : Equals(value, onValue) ? Strings.Compose_Announce_StateOn : Strings.Compose_Announce_StateOff;
 
         var bold   = StateOf(selection.GetPropertyValue(TextElement.FontWeightProperty), FontWeights.Bold);
         var italic = StateOf(selection.GetPropertyValue(TextElement.FontStyleProperty), FontStyles.Italic);
-        var underline = SelectionHasDecoration(TextDecorationLocation.Underline) ? "on" : "off";
-        var strike    = SelectionHasDecoration(TextDecorationLocation.Strikethrough) ? "on" : "off";
+        var underline = SelectionHasDecoration(TextDecorationLocation.Underline) ? Strings.Compose_Announce_StateOn : Strings.Compose_Announce_StateOff;
+        var strike    = SelectionHasDecoration(TextDecorationLocation.Strikethrough) ? Strings.Compose_Announce_StateOn : Strings.Compose_Announce_StateOff;
 
         var paragraph = selection.Start.Paragraph;
         var block = BlockTypeLabel(paragraph);
@@ -2188,10 +2194,10 @@ public partial class ComposeWindow : Window
         return
         [
             block,
-            $"Bold {bold}",
-            $"Italic {italic}",
-            $"Underline {underline}",
-            $"Strikethrough {strike}",
+            string.Format(Strings.Compose_Announce_FormattingStateFormat, Strings.Compose_FormatName_Bold, bold),
+            string.Format(Strings.Compose_Announce_FormattingStateFormat, Strings.Compose_FormatName_Italic, italic),
+            string.Format(Strings.Compose_Announce_FormattingStateFormat, Strings.Compose_FormatName_Underline, underline),
+            string.Format(Strings.Compose_Announce_FormattingStateFormat, Strings.Compose_FormatName_Strikethrough, strike),
         ];
     }
 

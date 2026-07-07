@@ -9,6 +9,7 @@
     <Version>0.8.0</Version>
     <AssemblyVersion>0.8.0</AssemblyVersion>
     <FileVersion>0.8.0</FileVersion>
+    <NeutralLanguage>en</NeutralLanguage>
     <!-- Keep the product/informational version clean digits. By default the SDK appends
          "+<git commit sha>" to AssemblyInformationalVersion, which is what File Explorer's
          Product version and screen readers report programmatically — so suppress it. -->
@@ -27,6 +28,26 @@
     <!-- Built-in themes ship inside the assembly; ThemeStore parses them with the same loader as user theme files. -->
     <EmbeddedResource Include="Themes\BuiltIn\*.json" />
   </ItemGroup>
+
+  <!-- Localization: per-language Strings.<culture>.resx files are satellite resources only
+       (no code generation) — only the neutral Strings.resx drives Strings.Designer.cs below. -->
+  <ItemGroup>
+    <EmbeddedResource Update="Resources\Strings.*.resx" Generator="" LastGenOutput="" />
+  </ItemGroup>
+
+  <!-- Strings.Designer.cs is not produced by plain `dotnet build` (that's a Visual Studio
+       single-file-generator feature); regenerate it from Strings.resx before every compile
+       so a deleted/typo'd key is a build error, not a silently stale accessor. -->
+  <Target Name="GenerateStringsDesigner" BeforeTargets="BeforeCompile;CoreCompile"
+          Inputs="Resources\Strings.resx;..\scripts\Generate-ResxDesigner.ps1" Outputs="Resources\Strings.Designer.cs">
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\scripts\Generate-ResxDesigner.ps1&quot; -ResxPath &quot;$(MSBuildProjectDirectory)\Resources\Strings.resx&quot; -OutputPath &quot;$(MSBuildProjectDirectory)\Resources\Strings.Designer.cs&quot;" />
+    <!-- Item globs are evaluated before targets run, so a freshly generated file isn't in
+         @(Compile) yet on the build that creates it. Add it explicitly; Exclude="@(Compile)"
+         prevents a duplicate entry on later builds once the SDK's own glob picks it up. -->
+    <ItemGroup>
+      <Compile Include="Resources\Strings.Designer.cs" Exclude="@(Compile)" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <PackageReference Include="AdysTech.CredentialManager" Version="3.1.0" />
