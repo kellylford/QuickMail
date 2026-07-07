@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -101,18 +102,18 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     private async Task SignInMicrosoftAsync()
     {
         IsBusy = true;
-        StatusText = "Opening browser for Microsoft sign-in…";
+        StatusText = Strings.AccountEditor_Status_OpeningBrowserMicrosoft;
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
             var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind };
             var result = await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
             Username = result.Username;
-            StatusText = $"Signed in as {result.Username}";
+            StatusText = string.Format(Strings.AccountEditor_Status_SignedInAsFormat, result.Username);
         }
         catch (Exception ex)
         {
-            StatusText = $"Sign-in failed: {ex.Message}";
+            StatusText = string.Format(Strings.AccountEditor_Status_SignInFailedFormat, ex.Message);
         }
         finally
         {
@@ -124,18 +125,18 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     private async Task SignInGoogleAsync()
     {
         IsBusy = true;
-        StatusText = "Opening browser for Google sign-in…";
+        StatusText = Strings.AccountEditor_Status_OpeningBrowserGoogle;
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
             var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Google, BackendKind = BackendKind.ImapSmtp };
             var result = await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
             Username = result.Username;
-            StatusText = $"Signed in as {result.Username}";
+            StatusText = string.Format(Strings.AccountEditor_Status_SignedInAsFormat, result.Username);
         }
         catch (Exception ex)
         {
-            StatusText = $"Sign-in failed: {ex.Message}";
+            StatusText = string.Format(Strings.AccountEditor_Status_SignInFailedFormat, ex.Message);
         }
         finally
         {
@@ -152,24 +153,24 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         {
             // A Graph account is verified by the OAuth sign-in itself (it acquires a Graph token and
             // populates the username from /me). There is no separate host/port to probe.
-            StatusText = "For Microsoft 365, use Sign in with Microsoft to verify access.";
+            StatusText = Strings.AccountEditor_Validate_UseMicrosoftSignIn;
             return;
         }
 
         if (IsGoogleOAuth)
         {
-            StatusText = "For Gmail, use Sign in with Google to verify access.";
+            StatusText = Strings.AccountEditor_Validate_UseGoogleSignIn;
             return;
         }
 
         if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(Username))
         {
-            StatusText = "Fill in IMAP host and username first.";
+            StatusText = Strings.AccountEditor_Validate_FillImapHostAndUsername;
             return;
         }
 
         IsBusy = true;
-        StatusText = "Testing connection…";
+        StatusText = Strings.AccountEditor_Status_TestingConnection;
         var testAccountId = Guid.NewGuid();
         try
         {
@@ -195,11 +196,11 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             var pwd = IsPasswordAuth ? Password : null;
             await MailService.ConnectAsync(testAccount, pwd, cts.Token);
             await MailService.DisconnectAsync(testAccountId, cts.Token);
-            StatusText = "Connection successful!";
+            StatusText = Strings.AccountEditor_Status_ConnectionSuccessful;
         }
         catch (Exception ex)
         {
-            StatusText = $"Connection failed: {ex.Message}";
+            StatusText = string.Format(Strings.AccountEditor_Status_ConnectionFailedFormat, ex.Message);
         }
         finally
         {

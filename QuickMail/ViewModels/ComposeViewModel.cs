@@ -196,30 +196,30 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         var account = SenderAccount;
         if (account == null)
         {
-            StatusText = "Please select a sender account.";
+            StatusText = Strings.Compose_Validate_NoSenderAccount;
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
-            StatusText = "Total attachment size exceeds 25 MB. Please remove some attachments.";
+            StatusText = Strings.Compose_Validate_AttachmentSizeExceeded;
             return;
         }
 
         IsBusy = true;
-        StatusText = "Saving draft…";
+        StatusText = Strings.Compose_Status_SavingDraft;
         try
         {
             await SaveDraftCoreAsync(account);
-            StatusText = "Draft saved.";
+            StatusText = Strings.Compose_Status_DraftSaved;
         }
         catch (DraftFolderMissingException)
         {
-            StatusText = "No Drafts folder found on this account.";
+            StatusText = Strings.Compose_Error_NoDraftsFolder;
         }
         catch (Exception ex)
         {
-            StatusText = $"Save draft failed: {ex.Message}";
+            StatusText = string.Format(Strings.Compose_Error_SaveDraftFailed, ex.Message);
         }
         finally
         {
@@ -293,17 +293,17 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         try
         {
             await SaveDraftCoreAsync(account, _autoSaveCts.Token);
-            AutoSaveText = $"Auto-saved {DateTime.Now:t}";
+            AutoSaveText = string.Format(Strings.Compose_Status_AutoSaved, DateTime.Now.ToString("t"));
             _autoSaveFailureAnnounced = false;
         }
         catch (Exception ex)
         {
             LogService.Log("AutoSaveAsync: draft auto-save failed", ex);
-            AutoSaveText = "Auto-save failed";
+            AutoSaveText = Strings.Compose_Status_AutoSaveFailed;
             if (!_autoSaveFailureAnnounced)
             {
                 _autoSaveFailureAnnounced = true;
-                AutoSaveFailed?.Invoke("Auto-save failed. Your draft is not saved to the server.");
+                AutoSaveFailed?.Invoke(Strings.Compose_Status_AutoSaveFailedAnnouncement);
             }
         }
         finally
@@ -329,39 +329,39 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(To))
         {
-            StatusText = "Please enter at least one recipient.";
+            StatusText = Strings.Compose_Validate_NoRecipient;
             return;
         }
 
         var account = SenderAccount;
         if (account == null)
         {
-            StatusText = "Please select a sender account.";
+            StatusText = Strings.Compose_Validate_NoSenderAccount;
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
-            StatusText = "Total attachment size exceeds 25 MB. Please remove some attachments.";
+            StatusText = Strings.Compose_Validate_AttachmentSizeExceeded;
             return;
         }
 
         var password = _credentials.GetPassword(account.Id);
         if (string.IsNullOrEmpty(password) && account.AuthType == Models.AuthType.Password)
         {
-            StatusText = "No password stored for this account.";
+            StatusText = Strings.Compose_Validate_NoStoredPassword;
             return;
         }
 
         IsBusy = true;
-        StatusText = "Sending…";
+        StatusText = Strings.Compose_Status_Sending;
         try
         {
             var compose = BuildComposeModel(account.Id);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await _smtp.SendAsync(compose, account, password, cts.Token);
-            StatusText = "Message sent.";
+            StatusText = Strings.Compose_Status_MessageSent;
             _isSent = true;
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
@@ -398,7 +398,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            StatusText = $"Send failed: {ex.Message}";
+            StatusText = string.Format(Strings.Compose_Error_SendFailed, ex.Message);
         }
         finally
         {
@@ -452,8 +452,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         if (newMode == ComposeMode.PlainText && HasFormattingWorthConfirming())
         {
             var confirmed = ConfirmationRequested?.Invoke(
-                "Formatting will be lost when switching to Plain Text. Continue?",
-                "Switch to Plain Text") ?? true;
+                Strings.Compose_Confirm_FormattingLostMessage,
+                Strings.Compose_Confirm_FormattingLostTitle) ?? true;
             if (!confirmed) return false;
         }
 
@@ -550,7 +550,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             InsertTextIntoEditorRequested?.Invoke(body);
         else
             Body += body;
-        StatusText = $"Template '{template.Title}' inserted.";
+        StatusText = string.Format(Strings.Compose_Status_TemplateInserted, template.Title);
     }
 
     [RelayCommand]
@@ -562,19 +562,19 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             : Body;
         if (string.IsNullOrWhiteSpace(templateBody))
         {
-            StatusText = "Nothing to save — body is empty.";
+            StatusText = Strings.Compose_Validate_EmptyBodyForTemplate;
             return;
         }
 
         var template = new MessageTemplate
         {
-            Title = Subject.Trim().Length > 0 ? Subject.Trim() : "Untitled",
+            Title = Subject.Trim().Length > 0 ? Subject.Trim() : Strings.Compose_Template_UntitledName,
             Subject = Subject,
             Body = templateBody
         };
 
         await _templateService.AddAsync(template);
-        StatusText = $"Template saved as '{template.Title}'.";
+        StatusText = string.Format(Strings.Compose_Status_TemplateSaved, template.Title);
     }
 
     /// <summary>
@@ -648,8 +648,8 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             // If the View hasn't wired a confirmation handler, treat that as deny so
             // we never silently open something potentially dangerous.
             var confirmed = ConfirmationRequested?.Invoke(
-                $"'{safeFileName}' is an executable file type. Opening it could be dangerous. Continue?",
-                "Security Warning") ?? false;
+                string.Format(Strings.Compose_Confirm_DangerousAttachmentMessage, safeFileName),
+                Strings.Compose_Confirm_DangerousAttachmentTitle) ?? false;
             if (!confirmed) return;
         }
 

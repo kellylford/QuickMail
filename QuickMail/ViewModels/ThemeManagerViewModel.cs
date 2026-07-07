@@ -5,6 +5,7 @@ using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -135,7 +136,7 @@ public partial class ThemeManagerViewModel : ObservableObject
         // must never be silent. Mirrors MainViewModel.ApplyThemeById. Focus stays put.
         if (_themeService.ResolvedTheme.Id == resolvedBefore)
             AnnouncementRequested?.Invoke(
-                $"Theme changed to {_themeService.ConfiguredThemeName}.", AnnouncementCategory.Status);
+                string.Format(Strings.ThemeManager_Announce_ThemeChangedFormat, _themeService.ConfiguredThemeName), AnnouncementCategory.Status);
     }
 
     [RelayCommand]
@@ -180,7 +181,7 @@ public partial class ThemeManagerViewModel : ObservableObject
                     copy.IsBuiltIn = false;
                     _themeService.SaveUserTheme(copy);
                     ReloadThemes(selectId: copy.Id);
-                    AnnouncementRequested?.Invoke($"Theme {name} created.", AnnouncementCategory.Result);
+                    AnnouncementRequested?.Invoke(string.Format(Strings.ThemeManager_Announce_ThemeCreatedFormat, name), AnnouncementCategory.Result);
                     FocusListItemRequested?.Invoke(copy.Id);
                     break;
                 }
@@ -190,7 +191,7 @@ public partial class ThemeManagerViewModel : ObservableObject
                     renamed.Name = name;
                     _themeService.SaveUserTheme(renamed);
                     ReloadThemes(selectId: renamed.Id);
-                    AnnouncementRequested?.Invoke($"Theme renamed to {name}.", AnnouncementCategory.Result);
+                    AnnouncementRequested?.Invoke(string.Format(Strings.ThemeManager_Announce_ThemeRenamedFormat, name), AnnouncementCategory.Result);
                     FocusListItemRequested?.Invoke(renamed.Id);
                     break;
                 }
@@ -242,7 +243,7 @@ public partial class ThemeManagerViewModel : ObservableObject
         // Land on the next item, or the previous when the deleted one was last.
         if (Themes.Count > 0)
             SelectedTheme = Themes[Math.Min(index, Themes.Count - 1)];
-        AnnouncementRequested?.Invoke("Theme deleted.", AnnouncementCategory.Result);
+        AnnouncementRequested?.Invoke(Strings.ThemeManager_Announce_ThemeDeleted, AnnouncementCategory.Result);
         if (SelectedTheme != null)
             FocusListItemRequested?.Invoke(SelectedTheme.Id);
     }
@@ -258,7 +259,7 @@ public partial class ThemeManagerViewModel : ObservableObject
         try
         {
             _themeService.ExportTheme(SelectedTheme.Id, path);
-            AnnouncementRequested?.Invoke("Theme exported.", AnnouncementCategory.Result);
+            AnnouncementRequested?.Invoke(Strings.ThemeManager_Announce_ThemeExported, AnnouncementCategory.Result);
         }
         catch (Exception ex)
         {
@@ -276,7 +277,7 @@ public partial class ThemeManagerViewModel : ObservableObject
         {
             var imported = _themeService.ImportTheme(path);
             ReloadThemes(selectId: imported.Id);
-            AnnouncementRequested?.Invoke($"Theme {imported.Name} imported.", AnnouncementCategory.Result);
+            AnnouncementRequested?.Invoke(string.Format(Strings.ThemeManager_Announce_ThemeImportedFormat, imported.Name), AnnouncementCategory.Result);
             FocusListItemRequested?.Invoke(imported.Id);
         }
         catch (ThemeFormatException ex)
