@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
+using QuickMail.Resources;
 using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
@@ -98,14 +99,14 @@ public partial class GroupManagerViewModel : ObservableObject
         }
         catch (DuplicateGroupNameException)
         {
-            Announce($"A group named '{newName}' already exists. Choose a different name.", AnnouncementCategory.Result);
+            Announce(string.Format(Strings.GroupManager_Announce_GroupNameExistsFormat, newName), AnnouncementCategory.Result);
             return;
         }
         catch (ArgumentException) { return; }
         NewName = string.Empty;
         await ReloadGroupsAsync();
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
-        Announce($"Renamed group to '{newName}'", AnnouncementCategory.Result);
+        Announce(string.Format(Strings.GroupManager_Announce_GroupRenamedFormat, newName), AnnouncementCategory.Result);
         GroupsChanged?.Invoke();
     }
 
@@ -125,7 +126,7 @@ public partial class GroupManagerViewModel : ObservableObject
         await _contactService.DeleteGroupAsync(g.Id);
         await ReloadGroupsAsync();
         SelectedGroup = null;
-        Announce("Group deleted", AnnouncementCategory.Result);
+        Announce(Strings.GroupManager_Announce_GroupDeleted, AnnouncementCategory.Result);
         GroupsChanged?.Invoke();
     }
 
@@ -136,7 +137,7 @@ public partial class GroupManagerViewModel : ObservableObject
         await _contactService.AddMemberAsync(g.Id, contact.Id);
         await ReloadGroupsAsync();
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
-        Announce($"Added {contact.Display} to {g.Name}", AnnouncementCategory.Result);
+        Announce(string.Format(Strings.GroupManager_Announce_AddedContactToGroupFormat, contact.Display, g.Name), AnnouncementCategory.Result);
         GroupsChanged?.Invoke();
     }
 
@@ -147,7 +148,7 @@ public partial class GroupManagerViewModel : ObservableObject
         await _contactService.RemoveMemberAsync(g.Id, contact.Id);
         await ReloadGroupsAsync();
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
-        Announce($"Removed {contact.Display} from {g.Name}", AnnouncementCategory.Result);
+        Announce(string.Format(Strings.GroupManager_Announce_RemovedContactFromGroupFormat, contact.Display, g.Name), AnnouncementCategory.Result);
         GroupsChanged?.Invoke();
     }
 
@@ -166,14 +167,14 @@ public partial class GroupManagerViewModel : ObservableObject
             await _contactService.RemoveMemberAsync(g.Id, contact.Id);
             await ReloadGroupsAsync();
             SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
-            Announce($"Removed {contact.Display} from {g.Name}", AnnouncementCategory.Result);
+            Announce(string.Format(Strings.GroupManager_Announce_RemovedContactFromGroupFormat, contact.Display, g.Name), AnnouncementCategory.Result);
         }
         else
         {
             await _contactService.AddMemberAsync(g.Id, contact.Id);
             await ReloadGroupsAsync();
             SelectedGroup = Groups.FirstOrDefault(x => x.Id == g.Id);
-            Announce($"Added {contact.Display} to {g.Name}", AnnouncementCategory.Result);
+            Announce(string.Format(Strings.GroupManager_Announce_AddedContactToGroupFormat, contact.Display, g.Name), AnnouncementCategory.Result);
         }
         GroupsChanged?.Invoke();
     }
@@ -187,14 +188,14 @@ public partial class GroupManagerViewModel : ObservableObject
         try { id = await _contactService.CreateGroupAsync(name); }
         catch (DuplicateGroupNameException)
         {
-            Announce($"A group named '{name}' already exists. Choose a different name.", AnnouncementCategory.Result);
+            Announce(string.Format(Strings.GroupManager_Announce_GroupNameExistsFormat, name), AnnouncementCategory.Result);
             return;
         }
         catch (ArgumentException) { return; }
         NewName = string.Empty;
         await ReloadGroupsAsync();
         SelectedGroup = Groups.FirstOrDefault(x => x.Id == id);
-        Announce($"Group '{name}' created", AnnouncementCategory.Result);
+        Announce(string.Format(Strings.GroupManager_Announce_GroupCreatedFormat, name), AnnouncementCategory.Result);
         GroupsChanged?.Invoke();
     }
 

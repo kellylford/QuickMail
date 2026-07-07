@@ -1,4 +1,5 @@
 using QuickMail.Models;
+using QuickMail.Resources;
 
 namespace QuickMail.ViewModels;
 
@@ -13,8 +14,8 @@ public sealed class MessageListTabViewModel : TabSessionViewModel
         : base(new TabSessionModel
         {
             Kind     = TabKind.MessageList,
-            Title    = "Messages",
-            Tooltip  = "Message list",
+            Title    = Strings.MessageListTab_DefaultTitle,
+            Tooltip  = Strings.MessageListTab_DefaultTooltip,
             CanClose = false,
         })
     {

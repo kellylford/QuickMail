@@ -3876,4 +3876,906 @@ Cancel = do nothing</value>
   <data name="MailMessageSummary_ReadStatus_Read" xml:space="preserve">
     <value>read</value>
   </data>
+  <data name="AccountEditor_Status_OpeningBrowserMicrosoft" xml:space="preserve">
+    <value>Opening browser for Microsoft sign-in…</value>
+  </data>
+  <data name="AccountEditor_Status_OpeningBrowserGoogle" xml:space="preserve">
+    <value>Opening browser for Google sign-in…</value>
+  </data>
+  <data name="AccountEditor_Status_SignedInAsFormat" xml:space="preserve">
+    <value>Signed in as {0}</value>
+  </data>
+  <data name="AccountEditor_Status_SignInFailedFormat" xml:space="preserve">
+    <value>Sign-in failed: {0}</value>
+  </data>
+  <data name="AccountEditor_Validate_UseMicrosoftSignIn" xml:space="preserve">
+    <value>For Microsoft 365, use Sign in with Microsoft to verify access.</value>
+  </data>
+  <data name="AccountEditor_Validate_UseGoogleSignIn" xml:space="preserve">
+    <value>For Gmail, use Sign in with Google to verify access.</value>
+  </data>
+  <data name="AccountEditor_Validate_FillImapHostAndUsername" xml:space="preserve">
+    <value>Fill in IMAP host and username first.</value>
+  </data>
+  <data name="AccountEditor_Status_TestingConnection" xml:space="preserve">
+    <value>Testing connection…</value>
+  </data>
+  <data name="AccountEditor_Status_ConnectionSuccessful" xml:space="preserve">
+    <value>Connection successful!</value>
+  </data>
+  <data name="AccountEditor_Status_ConnectionFailedFormat" xml:space="preserve">
+    <value>Connection failed: {0}</value>
+  </data>
+  <data name="AccountManager_Confirm_AccountAdded" xml:space="preserve">
+    <value>Account added.</value>
+  </data>
+  <data name="AccountManager_Confirm_AccountSaved" xml:space="preserve">
+    <value>Account saved.</value>
+  </data>
+  <data name="AccountManager_Confirm_AccountDeletedCleaningUp" xml:space="preserve">
+    <value>Account deleted. Cleaning up…</value>
+  </data>
+  <data name="AccountManager_Confirm_AccountDeleted" xml:space="preserve">
+    <value>Account deleted.</value>
+  </data>
+  <data name="AccountManager_Confirm_SetAsDefaultFormat" xml:space="preserve">
+    <value>{0} set as default.</value>
+  </data>
+  <data name="AddressBook_Announce_InsertedGroupAddresses_One" xml:space="preserve">
+    <value>Inserted 1 address from group '{0}'</value>
+  </data>
+  <data name="AddressBook_Announce_InsertedGroupAddresses_Other" xml:space="preserve">
+    <value>Inserted {0} addresses from group '{1}'</value>
+  </data>
+  <data name="AddressBook_Announce_GroupMemberCount_One" xml:space="preserve">
+    <value>{0}, {1} member.</value>
+  </data>
+  <data name="AddressBook_Announce_GroupMemberCount_Other" xml:space="preserve">
+    <value>{0}, {1} members.</value>
+  </data>
+  <data name="AddressBook_Announce_MissingContacts_One" xml:space="preserve">
+    <value>{0} contact is missing and was skipped.</value>
+  </data>
+  <data name="AddressBook_Announce_MissingContacts_Other" xml:space="preserve">
+    <value>{0} contacts are missing and were skipped.</value>
+  </data>
+  <data name="AddressBook_Announce_AddContact" xml:space="preserve">
+    <value>Add contact</value>
+  </data>
+  <data name="AddressBook_Announce_EditContactFormat" xml:space="preserve">
+    <value>Edit {0}</value>
+  </data>
+  <data name="AddressBook_Announce_EditCancelled" xml:space="preserve">
+    <value>Edit cancelled</value>
+  </data>
+  <data name="AddressBook_Announce_ContactAddedFormat" xml:space="preserve">
+    <value>{0} added</value>
+  </data>
+  <data name="AddressBook_Announce_EmailAlreadyUsed" xml:space="preserve">
+    <value>Email address is already used by another contact</value>
+  </data>
+  <data name="AddressBook_Announce_ContactUpdatedFormat" xml:space="preserve">
+    <value>{0} updated</value>
+  </data>
+  <data name="AddressBook_Announce_GroupNameExistsFormat" xml:space="preserve">
+    <value>A group named '{0}' already exists. Choose a different name.</value>
+  </data>
+  <data name="AddressBook_Announce_GroupCreatedFormat" xml:space="preserve">
+    <value>Group '{0}' created</value>
+  </data>
+  <data name="AddressBook_Announce_GroupDeletedFormat" xml:space="preserve">
+    <value>Group '{0}' deleted</value>
+  </data>
+  <data name="AddressBook_Announce_GroupRenamedFormat" xml:space="preserve">
+    <value>Renamed group to '{0}'</value>
+  </data>
+  <data name="AddressBook_Announce_AddedContactToGroupFormat" xml:space="preserve">
+    <value>Added {0} to {1}</value>
+  </data>
+  <data name="AddressBook_Announce_RemovedContactFromGroupFormat" xml:space="preserve">
+    <value>Removed {0} from {1}</value>
+  </data>
+  <data name="GroupManager_Announce_GroupNameExistsFormat" xml:space="preserve">
+    <value>A group named '{0}' already exists. Choose a different name.</value>
+  </data>
+  <data name="GroupManager_Announce_GroupRenamedFormat" xml:space="preserve">
+    <value>Renamed group to '{0}'</value>
+  </data>
+  <data name="GroupManager_Announce_GroupDeleted" xml:space="preserve">
+    <value>Group deleted</value>
+  </data>
+  <data name="GroupManager_Announce_AddedContactToGroupFormat" xml:space="preserve">
+    <value>Added {0} to {1}</value>
+  </data>
+  <data name="GroupManager_Announce_RemovedContactFromGroupFormat" xml:space="preserve">
+    <value>Removed {0} from {1}</value>
+  </data>
+  <data name="GroupManager_Announce_GroupCreatedFormat" xml:space="preserve">
+    <value>Group '{0}' created</value>
+  </data>
+  <data name="Properties_Announce_CopiedFormat" xml:space="preserve">
+    <value>Copied: {0}</value>
+  </data>
+  <data name="Properties_Announce_AllPropertiesCopied" xml:space="preserve">
+    <value>All properties copied</value>
+  </data>
+  <data name="ThemeManager_Announce_ThemeChangedFormat" xml:space="preserve">
+    <value>Theme changed to {0}.</value>
+  </data>
+  <data name="ThemeManager_Announce_ThemeCreatedFormat" xml:space="preserve">
+    <value>Theme {0} created.</value>
+  </data>
+  <data name="ThemeManager_Announce_ThemeRenamedFormat" xml:space="preserve">
+    <value>Theme renamed to {0}.</value>
+  </data>
+  <data name="ThemeManager_Announce_ThemeDeleted" xml:space="preserve">
+    <value>Theme deleted.</value>
+  </data>
+  <data name="ThemeManager_Announce_ThemeExported" xml:space="preserve">
+    <value>Theme exported.</value>
+  </data>
+  <data name="ThemeManager_Announce_ThemeImportedFormat" xml:space="preserve">
+    <value>Theme {0} imported.</value>
+  </data>
+  <data name="Compose_Validate_NoSenderAccount" xml:space="preserve">
+    <value>Please select a sender account.</value>
+  </data>
+  <data name="Compose_Validate_AttachmentSizeExceeded" xml:space="preserve">
+    <value>Total attachment size exceeds 25 MB. Please remove some attachments.</value>
+  </data>
+  <data name="Compose_Status_SavingDraft" xml:space="preserve">
+    <value>Saving draft…</value>
+  </data>
+  <data name="Compose_Status_DraftSaved" xml:space="preserve">
+    <value>Draft saved.</value>
+  </data>
+  <data name="Compose_Error_NoDraftsFolder" xml:space="preserve">
+    <value>No Drafts folder found on this account.</value>
+  </data>
+  <data name="Compose_Error_SaveDraftFailed" xml:space="preserve">
+    <value>Save draft failed: {0}</value>
+  </data>
+  <data name="Compose_Status_AutoSaved" xml:space="preserve">
+    <value>Auto-saved {0}</value>
+  </data>
+  <data name="Compose_Status_AutoSaveFailed" xml:space="preserve">
+    <value>Auto-save failed</value>
+  </data>
+  <data name="Compose_Status_AutoSaveFailedAnnouncement" xml:space="preserve">
+    <value>Auto-save failed. Your draft is not saved to the server.</value>
+  </data>
+  <data name="Compose_Validate_NoRecipient" xml:space="preserve">
+    <value>Please enter at least one recipient.</value>
+  </data>
+  <data name="Compose_Validate_NoStoredPassword" xml:space="preserve">
+    <value>No password stored for this account.</value>
+  </data>
+  <data name="Compose_Status_Sending" xml:space="preserve">
+    <value>Sending…</value>
+  </data>
+  <data name="Compose_Status_MessageSent" xml:space="preserve">
+    <value>Message sent.</value>
+  </data>
+  <data name="Compose_Error_SendFailed" xml:space="preserve">
+    <value>Send failed: {0}</value>
+  </data>
+  <data name="Compose_Confirm_FormattingLostMessage" xml:space="preserve">
+    <value>Formatting will be lost when switching to Plain Text. Continue?</value>
+  </data>
+  <data name="Compose_Confirm_FormattingLostTitle" xml:space="preserve">
+    <value>Switch to Plain Text</value>
+  </data>
+  <data name="Compose_Status_TemplateInserted" xml:space="preserve">
+    <value>Template '{0}' inserted.</value>
+  </data>
+  <data name="Compose_Validate_EmptyBodyForTemplate" xml:space="preserve">
+    <value>Nothing to save — body is empty.</value>
+  </data>
+  <data name="Compose_Template_UntitledName" xml:space="preserve">
+    <value>Untitled</value>
+  </data>
+  <data name="Compose_Status_TemplateSaved" xml:space="preserve">
+    <value>Template saved as '{0}'.</value>
+  </data>
+  <data name="Compose_Confirm_DangerousAttachmentMessage" xml:space="preserve">
+    <value>'{0}' is an executable file type. Opening it could be dangerous. Continue?</value>
+  </data>
+  <data name="Compose_Confirm_DangerousAttachmentTitle" xml:space="preserve">
+    <value>Security Warning</value>
+  </data>
+  <data name="MainVM_Announce_ClosedTabFormat_One" xml:space="preserve">
+    <value>Closed tab: {1}. {0} tab remaining.</value>
+  </data>
+  <data name="MainVM_Announce_ClosedTabFormat_Other" xml:space="preserve">
+    <value>Closed tab: {1}. {0} tabs remaining.</value>
+  </data>
+  <data name="MainVM_Announce_FlaggedCountFormat_One" xml:space="preserve">
+    <value>Flagged {0} message</value>
+  </data>
+  <data name="MainVM_Announce_FlaggedCountFormat_Other" xml:space="preserve">
+    <value>Flagged {0} messages</value>
+  </data>
+  <data name="MainVM_Announce_FlaggedCountWithNameFormat_One" xml:space="preserve">
+    <value>Flagged {0} message: {1}</value>
+  </data>
+  <data name="MainVM_Announce_FlaggedCountWithNameFormat_Other" xml:space="preserve">
+    <value>Flagged {0} messages: {1}</value>
+  </data>
+  <data name="MainVM_Announce_MessagesLoaded_One" xml:space="preserve">
+    <value>{0} message loaded.</value>
+  </data>
+  <data name="MainVM_Announce_MessagesLoaded_Other" xml:space="preserve">
+    <value>{0} messages loaded.</value>
+  </data>
+  <data name="MainVM_Announce_MessagesLoadedSoFar_One" xml:space="preserve">
+    <value>{0} message loaded so far.</value>
+  </data>
+  <data name="MainVM_Announce_MessagesLoadedSoFar_Other" xml:space="preserve">
+    <value>{0} messages loaded so far.</value>
+  </data>
+  <data name="MainVM_Announce_OpenedTabFormat_One" xml:space="preserve">
+    <value>Opened tab: {1}. {0} tab open.</value>
+  </data>
+  <data name="MainVM_Announce_OpenedTabFormat_Other" xml:space="preserve">
+    <value>Opened tab: {1}. {0} tabs open.</value>
+  </data>
+  <data name="MainVM_Announce_UnflaggedCountFormat_One" xml:space="preserve">
+    <value>Unflagged {0} message</value>
+  </data>
+  <data name="MainVM_Announce_UnflaggedCountFormat_Other" xml:space="preserve">
+    <value>Unflagged {0} messages</value>
+  </data>
+  <data name="MainVM_Confirm_EmptyTrashCountFormat_One" xml:space="preserve">
+    <value>This will permanently delete {0:N0} message from your trash. This cannot be undone.</value>
+  </data>
+  <data name="MainVM_Confirm_EmptyTrashCountFormat_Other" xml:space="preserve">
+    <value>This will permanently delete {0:N0} messages from your trash. This cannot be undone.</value>
+  </data>
+  <data name="MainVM_ConnectionStatus_AccountsConnected_One" xml:space="preserve">
+    <value>{0} account connected</value>
+  </data>
+  <data name="MainVM_ConnectionStatus_AccountsConnected_Other" xml:space="preserve">
+    <value>{0} accounts connected</value>
+  </data>
+  <data name="MainVM_Properties_SyncWindowLastDaysCount_One" xml:space="preserve">
+    <value>Last {0} day</value>
+  </data>
+  <data name="MainVM_Properties_SyncWindowLastDaysCount_Other" xml:space="preserve">
+    <value>Last {0} days</value>
+  </data>
+  <data name="MainVM_Search_MessagesFoundCount_One" xml:space="preserve">
+    <value>{0} message found</value>
+  </data>
+  <data name="MainVM_Search_MessagesFoundCount_Other" xml:space="preserve">
+    <value>{0} messages found</value>
+  </data>
+  <data name="MainVM_Status_AccountsConnectedProgressFormat_One" xml:space="preserve">
+    <value>{0} of {1} account connected.</value>
+  </data>
+  <data name="MainVM_Status_AccountsConnectedProgressFormat_Other" xml:space="preserve">
+    <value>{0} of {1} accounts connected.</value>
+  </data>
+  <data name="MainVM_Status_AttachmentsIncludedFormat_One" xml:space="preserve">
+    <value>{1} of {0} attachment included ({2} could not be downloaded).</value>
+  </data>
+  <data name="MainVM_Status_AttachmentsIncludedFormat_Other" xml:space="preserve">
+    <value>{1} of {0} attachments included ({2} could not be downloaded).</value>
+  </data>
+  <data name="MainVM_Status_AttachmentsReadyCount_One" xml:space="preserve">
+    <value>{0} attachment ready.</value>
+  </data>
+  <data name="MainVM_Status_AttachmentsReadyCount_Other" xml:space="preserve">
+    <value>{0} attachments ready.</value>
+  </data>
+  <data name="MainVM_Status_CachedCheckingForNewCount_One" xml:space="preserve">
+    <value>{0} cached message (checking for new…)</value>
+  </data>
+  <data name="MainVM_Status_CachedCheckingForNewCount_Other" xml:space="preserve">
+    <value>{0} cached messages (checking for new…)</value>
+  </data>
+  <data name="MainVM_Status_CachedSyncing_One" xml:space="preserve">
+    <value>{0} message (cached — syncing…)</value>
+  </data>
+  <data name="MainVM_Status_CachedSyncing_Other" xml:space="preserve">
+    <value>{0} messages (cached — syncing…)</value>
+  </data>
+  <data name="MainVM_Status_CheckingForNewCount_One" xml:space="preserve">
+    <value>{0} message (checking for new…)</value>
+  </data>
+  <data name="MainVM_Status_CheckingForNewCount_Other" xml:space="preserve">
+    <value>{0} messages (checking for new…)</value>
+  </data>
+  <data name="MainVM_Status_ConnectingToAccountsCount_One" xml:space="preserve">
+    <value>Connecting to {0} account…</value>
+  </data>
+  <data name="MainVM_Status_ConnectingToAccountsCount_Other" xml:space="preserve">
+    <value>Connecting to {0} accounts…</value>
+  </data>
+  <data name="MainVM_Status_CopiedToFolderFormat_One" xml:space="preserve">
+    <value>{0} message copied to {1}.</value>
+  </data>
+  <data name="MainVM_Status_CopiedToFolderFormat_Other" xml:space="preserve">
+    <value>{0} messages copied to {1}.</value>
+  </data>
+  <data name="MainVM_Status_CopyingCount_One" xml:space="preserve">
+    <value>Copying {0} message…</value>
+  </data>
+  <data name="MainVM_Status_CopyingCount_Other" xml:space="preserve">
+    <value>Copying {0} messages…</value>
+  </data>
+  <data name="MainVM_Status_DeletingCount_One" xml:space="preserve">
+    <value>Deleting {0} message…</value>
+  </data>
+  <data name="MainVM_Status_DeletingCount_Other" xml:space="preserve">
+    <value>Deleting {0} messages…</value>
+  </data>
+  <data name="MainVM_Status_DownloadingAttachmentProgress_One" xml:space="preserve">
+    <value>Downloading {1} of {0} attachment…</value>
+  </data>
+  <data name="MainVM_Status_DownloadingAttachmentProgress_Other" xml:space="preserve">
+    <value>Downloading {1} of {0} attachments…</value>
+  </data>
+  <data name="MainVM_Status_FlaggedMessagesCount_One" xml:space="preserve">
+    <value>{0} flagged message.</value>
+  </data>
+  <data name="MainVM_Status_FlaggedMessagesCount_Other" xml:space="preserve">
+    <value>{0} flagged messages.</value>
+  </data>
+  <data name="MainVM_Status_MarkedAsReadCount_One" xml:space="preserve">
+    <value>Marked {0} message as read.</value>
+  </data>
+  <data name="MainVM_Status_MarkedAsReadCount_Other" xml:space="preserve">
+    <value>Marked {0} messages as read.</value>
+  </data>
+  <data name="MainVM_Status_MessagesAcrossAccountsCount_One" xml:space="preserve">
+    <value>{0} message across all accounts.</value>
+  </data>
+  <data name="MainVM_Status_MessagesAcrossAccountsCount_Other" xml:space="preserve">
+    <value>{0} messages across all accounts.</value>
+  </data>
+  <data name="MainVM_Status_MessagesCount_One" xml:space="preserve">
+    <value>{0} message.</value>
+  </data>
+  <data name="MainVM_Status_MessagesCount_Other" xml:space="preserve">
+    <value>{0} messages.</value>
+  </data>
+  <data name="MainVM_Status_MessagesCountPlain_One" xml:space="preserve">
+    <value>{0} message</value>
+  </data>
+  <data name="MainVM_Status_MessagesCountPlain_Other" xml:space="preserve">
+    <value>{0} messages</value>
+  </data>
+  <data name="MainVM_Status_MessagesDeletedCount_One" xml:space="preserve">
+    <value>{0} message deleted.</value>
+  </data>
+  <data name="MainVM_Status_MessagesDeletedCount_Other" xml:space="preserve">
+    <value>{0} messages deleted.</value>
+  </data>
+  <data name="MainVM_Status_MessagesDeletedFolderEmptyCount_One" xml:space="preserve">
+    <value>{0} message deleted. Folder is now empty.</value>
+  </data>
+  <data name="MainVM_Status_MessagesDeletedFolderEmptyCount_Other" xml:space="preserve">
+    <value>{0} messages deleted. Folder is now empty.</value>
+  </data>
+  <data name="MainVM_Status_MessagesInFolderCount_One" xml:space="preserve">
+    <value>{0} message in {1}.</value>
+  </data>
+  <data name="MainVM_Status_MessagesInFolderCount_Other" xml:space="preserve">
+    <value>{0} messages in {1}.</value>
+  </data>
+  <data name="MainVM_Status_MessagesLoadedCount_One" xml:space="preserve">
+    <value>{0} message loaded.</value>
+  </data>
+  <data name="MainVM_Status_MessagesLoadedCount_Other" xml:space="preserve">
+    <value>{0} messages loaded.</value>
+  </data>
+  <data name="MainVM_Status_MovedToFolderFormat_One" xml:space="preserve">
+    <value>{0} message moved to {1}.</value>
+  </data>
+  <data name="MainVM_Status_MovedToFolderFormat_Other" xml:space="preserve">
+    <value>{0} messages moved to {1}.</value>
+  </data>
+  <data name="MainVM_Status_MovingCount_One" xml:space="preserve">
+    <value>Moving {0} message…</value>
+  </data>
+  <data name="MainVM_Status_MovingCount_Other" xml:space="preserve">
+    <value>Moving {0} messages…</value>
+  </data>
+  <data name="MainVM_Status_TrashMessagesDeletedCount_One" xml:space="preserve">
+    <value>1 message deleted from trash.</value>
+  </data>
+  <data name="MainVM_Status_TrashMessagesDeletedCount_Other" xml:space="preserve">
+    <value>{0} messages deleted from trash.</value>
+  </data>
+  <data name="MainVM_AccountMailFolderNameFormat" xml:space="preserve">
+    <value>All Mail — {0}</value>
+  </data>
+  <data name="MainVM_Announce_CalendarResponseFailedFormat" xml:space="preserve">
+    <value>Failed to send calendar response: {0}</value>
+  </data>
+  <data name="MainVM_Announce_CalendarResponseNoAccount" xml:space="preserve">
+    <value>Cannot send calendar response: account not found.</value>
+  </data>
+  <data name="MainVM_Announce_CalendarResponseSentFormat" xml:space="preserve">
+    <value>Calendar response sent: {0} — {1}.</value>
+  </data>
+  <data name="MainVM_Announce_FlaggedFallback" xml:space="preserve">
+    <value>Flagged</value>
+  </data>
+  <data name="MainVM_Announce_SyncComplete" xml:space="preserve">
+    <value>Sync complete.</value>
+  </data>
+  <data name="MainVM_Announce_ThemeChangedFormat" xml:space="preserve">
+    <value>Theme changed to {0}.</value>
+  </data>
+  <data name="MainVM_Announce_Unflagged" xml:space="preserve">
+    <value>Unflagged</value>
+  </data>
+  <data name="MainVM_Announce_UpdateAvailableFormat" xml:space="preserve">
+    <value>QuickMail update available: version {0}. Check the Help menu.</value>
+  </data>
+  <data name="MainVM_Calendar_AcceptButton" xml:space="preserve">
+    <value>Accept</value>
+  </data>
+  <data name="MainVM_Calendar_AcceptInvitationAriaLabel" xml:space="preserve">
+    <value>Accept invitation</value>
+  </data>
+  <data name="MainVM_Calendar_ActionAccepted" xml:space="preserve">
+    <value>accepted</value>
+  </data>
+  <data name="MainVM_Calendar_ActionDeclined" xml:space="preserve">
+    <value>declined</value>
+  </data>
+  <data name="MainVM_Calendar_ActionTentativelyAccepted" xml:space="preserve">
+    <value>tentatively accepted</value>
+  </data>
+  <data name="MainVM_Calendar_DeclineButton" xml:space="preserve">
+    <value>Decline</value>
+  </data>
+  <data name="MainVM_Calendar_DeclineInvitationAriaLabel" xml:space="preserve">
+    <value>Decline invitation</value>
+  </data>
+  <data name="MainVM_Calendar_EventCancelledByOrganizer" xml:space="preserve">
+    <value>This event has been cancelled by the organizer.</value>
+  </data>
+  <data name="MainVM_Calendar_InvitationFallbackSubject" xml:space="preserve">
+    <value>Calendar invitation</value>
+  </data>
+  <data name="MainVM_Calendar_TentativeButton" xml:space="preserve">
+    <value>Tentative</value>
+  </data>
+  <data name="MainVM_Calendar_TentativelyAcceptInvitationAriaLabel" xml:space="preserve">
+    <value>Tentatively accept invitation</value>
+  </data>
+  <data name="MainVM_Calendar_UntitledEvent" xml:space="preserve">
+    <value>calendar event</value>
+  </data>
+  <data name="MainVM_ChooseFolderToSaveAttachments" xml:space="preserve">
+    <value>Choose folder to save attachments</value>
+  </data>
+  <data name="MainVM_Command_ManageThemes" xml:space="preserve">
+    <value>Manage Themes</value>
+  </data>
+  <data name="MainVM_Command_NextTheme" xml:space="preserve">
+    <value>Next Theme</value>
+  </data>
+  <data name="MainVM_Command_PreviousTheme" xml:space="preserve">
+    <value>Previous Theme</value>
+  </data>
+  <data name="MainVM_Command_ThemeNameFormat" xml:space="preserve">
+    <value>Theme: {0}</value>
+  </data>
+  <data name="MainVM_Confirm_DeleteFolderMessageFormat" xml:space="preserve">
+    <value>Delete the folder '{0}' and move all its messages to Trash?</value>
+  </data>
+  <data name="MainVM_Confirm_DeleteFolderTitle" xml:space="preserve">
+    <value>Delete Folder</value>
+  </data>
+  <data name="MainVM_Confirm_EmptyTrashAllFormat" xml:space="preserve">
+    <value>This will permanently delete all messages in your trash. This cannot be undone.</value>
+  </data>
+  <data name="MainVM_Confirm_EmptyTrashTitle" xml:space="preserve">
+    <value>Empty Trash</value>
+  </data>
+  <data name="MainVM_Confirm_RemoveAccountMessageFormat" xml:space="preserve">
+    <value>Remove the account '{0}'? This only removes it from QuickMail — your mail on the server is not affected.</value>
+  </data>
+  <data name="MainVM_Confirm_RemoveAccountTitle" xml:space="preserve">
+    <value>Remove Account</value>
+  </data>
+  <data name="MainVM_Confirm_TurnOffInSettingsHint" xml:space="preserve">
+    <value>
+
+You can turn off this confirmation in Settings.</value>
+  </data>
+  <data name="MainVM_ConnectionStatus_Error" xml:space="preserve">
+    <value>Connection error</value>
+  </data>
+  <data name="MainVM_ConnectionStatus_Syncing" xml:space="preserve">
+    <value>Syncing…</value>
+  </data>
+  <data name="MainVM_FolderTree_ViewAllChildFormat" xml:space="preserve">
+    <value>{0} — All</value>
+  </data>
+  <data name="MainVM_FolderTree_ViewsGroupLabel" xml:space="preserve">
+    <value>Views</value>
+  </data>
+  <data name="MainVM_NoUpdatesAvailableFormat" xml:space="preserve">
+    <value>No updates available — running version {0}</value>
+  </data>
+  <data name="MainVM_Properties_SyncWindowAllMail" xml:space="preserve">
+    <value>All mail</value>
+  </data>
+  <data name="MainVM_Properties_UnknownAccount" xml:space="preserve">
+    <value>Unknown</value>
+  </data>
+  <data name="MainVM_Rules_NoActiveRules" xml:space="preserve">
+    <value>No active rules</value>
+  </data>
+  <data name="MainVM_Rules_NotYetRun" xml:space="preserve">
+    <value>not yet run</value>
+  </data>
+  <data name="MainVM_Rules_RuleForSenderFormat" xml:space="preserve">
+    <value>Rule for {0}</value>
+  </data>
+  <data name="MainVM_Rules_StatusFormat" xml:space="preserve">
+    <value>Rules: {0} active, {1} disabled — Last run: {2}</value>
+  </data>
+  <data name="MainVM_Rules_StatusWithMatchFormat" xml:space="preserve">
+    <value>Rules: {0} active, {1} disabled — Last run: {2} matched ({3})</value>
+  </data>
+  <data name="MainVM_Search_NoMessagesFound" xml:space="preserve">
+    <value>No messages found</value>
+  </data>
+  <data name="MainVM_Status_AccountRemovedCleaningUpFormat" xml:space="preserve">
+    <value>Account '{0}' removed. Cleaning up local data…</value>
+  </data>
+  <data name="MainVM_Status_AccountRemovedFormat" xml:space="preserve">
+    <value>Account '{0}' removed.</value>
+  </data>
+  <data name="MainVM_Status_AllAttachmentsSaved" xml:space="preserve">
+    <value>All attachments saved.</value>
+  </data>
+  <data name="MainVM_Status_AllMailLoadCancelled" xml:space="preserve">
+    <value>All Mail load cancelled.</value>
+  </data>
+  <data name="MainVM_Status_CheckingForNewMessages" xml:space="preserve">
+    <value>Checking for new messages…</value>
+  </data>
+  <data name="MainVM_Status_ConnectedPressEnterFormat" xml:space="preserve">
+    <value>Connected to {0}. Press Enter on a folder to load messages.</value>
+  </data>
+  <data name="MainVM_Status_Connecting" xml:space="preserve">
+    <value>Connecting…</value>
+  </data>
+  <data name="MainVM_Status_ConnectingAndSyncing" xml:space="preserve">
+    <value>Connecting and syncing…</value>
+  </data>
+  <data name="MainVM_Status_ConnectingToAccountFormat" xml:space="preserve">
+    <value>Connecting to {0}…</value>
+  </data>
+  <data name="MainVM_Status_ConnectionCancelled" xml:space="preserve">
+    <value>Connection cancelled.</value>
+  </data>
+  <data name="MainVM_Status_ConnectionFailedFormat" xml:space="preserve">
+    <value>Connection failed: {0}</value>
+  </data>
+  <data name="MainVM_Status_CopyingFolderFormat" xml:space="preserve">
+    <value>Copying folder '{0}'…</value>
+  </data>
+  <data name="MainVM_Status_CouldNotLoadFlaggedMessages" xml:space="preserve">
+    <value>Could not load flagged messages.</value>
+  </data>
+  <data name="MainVM_Status_CreatingFolderFormat" xml:space="preserve">
+    <value>Creating folder '{0}'…</value>
+  </data>
+  <data name="MainVM_Status_DeleteCancelled" xml:space="preserve">
+    <value>Delete cancelled.</value>
+  </data>
+  <data name="MainVM_Status_DeleteMayNotHaveCompleted" xml:space="preserve">
+    <value>Delete may not have completed — refreshing.</value>
+  </data>
+  <data name="MainVM_Status_DeletingFolderFormat" xml:space="preserve">
+    <value>Deleting folder '{0}'…</value>
+  </data>
+  <data name="MainVM_Status_DownloadFailedFormat" xml:space="preserve">
+    <value>Download failed: {0}</value>
+  </data>
+  <data name="MainVM_Status_DownloadingAttachmentFormat" xml:space="preserve">
+    <value>Downloading {0}…</value>
+  </data>
+  <data name="MainVM_Status_DraftLoadCancelled" xml:space="preserve">
+    <value>Draft load cancelled.</value>
+  </data>
+  <data name="MainVM_Status_EmptyTrashFailedFormat" xml:space="preserve">
+    <value>Empty trash failed: {0}</value>
+  </data>
+  <data name="MainVM_Status_EmptyTrashTimedOut" xml:space="preserve">
+    <value>Empty trash timed out.</value>
+  </data>
+  <data name="MainVM_Status_EmptyingTrash" xml:space="preserve">
+    <value>Emptying trash…</value>
+  </data>
+  <data name="MainVM_Status_FailedToCopyFolderFormat" xml:space="preserve">
+    <value>Failed to copy folder: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToCopyFormat" xml:space="preserve">
+    <value>Failed to copy: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToCreateFolderFormat" xml:space="preserve">
+    <value>Failed to create folder: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToDeleteFolderFormat" xml:space="preserve">
+    <value>Failed to delete folder: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToLoadAllMailFormat" xml:space="preserve">
+    <value>Failed to load All Mail: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToLoadFolderFormat" xml:space="preserve">
+    <value>Failed to load {0}: {1}</value>
+  </data>
+  <data name="MainVM_Status_FailedToLoadMessageFormat" xml:space="preserve">
+    <value>Failed to load message: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToLoadMessagesFormat" xml:space="preserve">
+    <value>Failed to load messages: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToMoveFolderFormat" xml:space="preserve">
+    <value>Failed to move folder: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToMoveFormat" xml:space="preserve">
+    <value>Failed to move: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToOpenDraftFormat" xml:space="preserve">
+    <value>Failed to open draft: {0}</value>
+  </data>
+  <data name="MainVM_Status_FailedToRefreshFoldersFormat" xml:space="preserve">
+    <value>Failed to refresh folders: {0}</value>
+  </data>
+  <data name="MainVM_Status_FlaggedMessagesLoadCancelled" xml:space="preserve">
+    <value>Flagged messages load cancelled.</value>
+  </data>
+  <data name="MainVM_Status_FolderCopiedFormat" xml:space="preserve">
+    <value>Folder '{0}' copied.</value>
+  </data>
+  <data name="MainVM_Status_FolderCreatedFormat" xml:space="preserve">
+    <value>Folder '{0}' created.</value>
+  </data>
+  <data name="MainVM_Status_FolderDeletedFormat" xml:space="preserve">
+    <value>Folder '{0}' deleted.</value>
+  </data>
+  <data name="MainVM_Status_FolderLoadCancelledFormat" xml:space="preserve">
+    <value>{0} load cancelled.</value>
+  </data>
+  <data name="MainVM_Status_FolderMovedFormat" xml:space="preserve">
+    <value>Folder '{0}' moved.</value>
+  </data>
+  <data name="MainVM_Status_InProgress" xml:space="preserve">
+    <value>In progress</value>
+  </data>
+  <data name="MainVM_Status_LoadingAllMail" xml:space="preserve">
+    <value>Loading All Mail…</value>
+  </data>
+  <data name="MainVM_Status_LoadingFlaggedMessages" xml:space="preserve">
+    <value>Loading flagged messages…</value>
+  </data>
+  <data name="MainVM_Status_LoadingFolderFormat" xml:space="preserve">
+    <value>Loading {0}…</value>
+  </data>
+  <data name="MainVM_Status_LoadingMessage" xml:space="preserve">
+    <value>Loading message…</value>
+  </data>
+  <data name="MainVM_Status_MessageListLoadCancelled" xml:space="preserve">
+    <value>Message list load cancelled.</value>
+  </data>
+  <data name="MainVM_Status_MessageLoadCancelled" xml:space="preserve">
+    <value>Message load cancelled.</value>
+  </data>
+  <data name="MainVM_Status_MessageLoaded" xml:space="preserve">
+    <value>Message loaded.</value>
+  </data>
+  <data name="MainVM_Status_MoveCancelled" xml:space="preserve">
+    <value>Move cancelled.</value>
+  </data>
+  <data name="MainVM_Status_MovingFolderFormat" xml:space="preserve">
+    <value>Moving folder '{0}'…</value>
+  </data>
+  <data name="MainVM_Status_NeverSynced" xml:space="preserve">
+    <value>Never synced</value>
+  </data>
+  <data name="MainVM_Status_NoAccountsConnected" xml:space="preserve">
+    <value>No accounts could be connected.</value>
+  </data>
+  <data name="MainVM_Status_NoFlaggedMessages" xml:space="preserve">
+    <value>No flagged messages.</value>
+  </data>
+  <data name="MainVM_Status_NoMessages" xml:space="preserve">
+    <value>No messages</value>
+  </data>
+  <data name="MainVM_Status_NoMessagesAcrossAccounts" xml:space="preserve">
+    <value>No messages across connected accounts.</value>
+  </data>
+  <data name="MainVM_Status_NoMessagesInFolderFormat" xml:space="preserve">
+    <value>No messages in {0}.</value>
+  </data>
+  <data name="MainVM_Status_NoPasswordStoredFormat" xml:space="preserve">
+    <value>No password stored for {0}.</value>
+  </data>
+  <data name="MainVM_Status_Offline" xml:space="preserve">
+    <value>Offline</value>
+  </data>
+  <data name="MainVM_Status_OnlineModeConnecting" xml:space="preserve">
+    <value>Online mode — connecting…</value>
+  </data>
+  <data name="MainVM_Status_OpeningDraft" xml:space="preserve">
+    <value>Opening draft…</value>
+  </data>
+  <data name="MainVM_Status_Ready" xml:space="preserve">
+    <value>Ready</value>
+  </data>
+  <data name="MainVM_Status_SaveAllFailedFormat" xml:space="preserve">
+    <value>Save all failed: {0}</value>
+  </data>
+  <data name="MainVM_Status_SavedAttachmentFormat" xml:space="preserve">
+    <value>Saved {0}.</value>
+  </data>
+  <data name="MainVM_Status_SavingAttachments" xml:space="preserve">
+    <value>Saving attachments…</value>
+  </data>
+  <data name="MainVM_Status_SyncErrorFormat" xml:space="preserve">
+    <value>Sync error: {0}</value>
+  </data>
+  <data name="MainVM_Status_SyncedAtFormat" xml:space="preserve">
+    <value>Synced {0:t}</value>
+  </data>
+  <data name="MainVM_Status_Syncing" xml:space="preserve">
+    <value>Syncing mail…</value>
+  </data>
+  <data name="MainVM_UpdateAvailableFormat" xml:space="preserve">
+    <value>Update available: v{0}</value>
+  </data>
+  <data name="MainVM_WindowTitle_SearchSuffixFormat" xml:space="preserve">
+    <value> — Search: {0}</value>
+  </data>
+  <data name="ReportBug_CancelButtonLabel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ReportBug_CloseButtonLabel" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ReportBug_EnterSummaryBeforeSending" xml:space="preserve">
+    <value>Enter a summary before sending.</value>
+  </data>
+  <data name="ReportBug_Status_Sending" xml:space="preserve">
+    <value>Sending report…</value>
+  </data>
+  <data name="ReportBug_Status_SentFormat" xml:space="preserve">
+    <value>Report sent. Issue created: {0}.</value>
+  </data>
+  <data name="ReportBug_Status_SendFailedReadyToCopy" xml:space="preserve">
+    <value>Could not send the report automatically. Your report is ready to copy.</value>
+  </data>
+  <data name="ReportBug_Status_CopiedOpeningGitHub" xml:space="preserve">
+    <value>Report copied. Opening GitHub in your browser.</value>
+  </data>
+  <data name="MessageListTab_DefaultTitle" xml:space="preserve">
+    <value>Messages</value>
+  </data>
+  <data name="MessageListTab_DefaultTooltip" xml:space="preserve">
+    <value>Message list</value>
+  </data>
+  <data name="Settings_ThemeDefaultFontLabel" xml:space="preserve">
+    <value>(Theme default)</value>
+  </data>
+  <data name="Settings_Hotkey_NoShortcut" xml:space="preserve">
+    <value>no shortcut</value>
+  </data>
+  <data name="RulesManager_Account_AllAccounts" xml:space="preserve">
+    <value>All accounts</value>
+  </data>
+  <data name="RulesManager_Action_MarkAsRead" xml:space="preserve">
+    <value>Mark as read</value>
+  </data>
+  <data name="RulesManager_Action_MarkAsUnread" xml:space="preserve">
+    <value>Mark as unread</value>
+  </data>
+  <data name="RulesManager_Action_MoveToFolder" xml:space="preserve">
+    <value>Move to folder</value>
+  </data>
+  <data name="RulesManager_Action_Delete" xml:space="preserve">
+    <value>Delete</value>
+  </data>
+  <data name="RulesManager_DefaultName_NewRule" xml:space="preserve">
+    <value>New rule</value>
+  </data>
+  <data name="RulesManager_Hint_NewRuleFromMessage" xml:space="preserve">
+    <value>New rule created from message. Fill in the action and save.</value>
+  </data>
+  <data name="RulesManager_Hint_NewRuleCreated" xml:space="preserve">
+    <value>New rule created. Enter a name and conditions.</value>
+  </data>
+  <data name="RulesManager_Confirm_DeleteRuleTitle" xml:space="preserve">
+    <value>Delete Rule</value>
+  </data>
+  <data name="RulesManager_Result_RuleDeleted" xml:space="preserve">
+    <value>Rule '{0}' deleted.</value>
+  </data>
+  <data name="RulesManager_Result_RuleSaved" xml:space="preserve">
+    <value>Rule '{0}' saved.</value>
+  </data>
+  <data name="RulesManager_Status_NoMessagesToTest" xml:space="preserve">
+    <value>No messages available to test against.</value>
+  </data>
+  <data name="RulesManager_Status_NoMessagesSelected" xml:space="preserve">
+    <value>No messages selected in the main window.</value>
+  </data>
+  <data name="RulesManager_Result_TestMatchedNone" xml:space="preserve">
+    <value>Rule would match 0 of {0} selected messages.</value>
+  </data>
+  <data name="RulesManager_Result_TestMatchedSome" xml:space="preserve">
+    <value>Rule would match {0} of {1} selected messages.</value>
+  </data>
+  <data name="RulesManager_Error_NameRequired" xml:space="preserve">
+    <value>Rule name is required.</value>
+  </data>
+  <data name="RulesManager_Error_TargetFolderRequired" xml:space="preserve">
+    <value>Target folder is required for Move to folder action.</value>
+  </data>
+  <data name="RulesManager_Error_ConditionRequired" xml:space="preserve">
+    <value>At least one condition is required for Move and Delete actions.</value>
+  </data>
+  <data name="Tutorial_Step_F6_Instruction" xml:space="preserve">
+    <value>Press F6 to cycle focus through all panes.</value>
+  </data>
+  <data name="Tutorial_Step_F6_Success" xml:space="preserve">
+    <value>Correct! F6 cycles focus through all panes: toolbar, account list, folder tree, message list, reading pane, and status bar.</value>
+  </data>
+  <data name="Tutorial_Step_Ctrl1_Instruction" xml:space="preserve">
+    <value>Press Ctrl+1 to focus the account list.</value>
+  </data>
+  <data name="Tutorial_Step_Ctrl1_Success" xml:space="preserve">
+    <value>Correct! Ctrl+1 moves focus to the account list.</value>
+  </data>
+  <data name="Tutorial_Step_Ctrl2_Instruction" xml:space="preserve">
+    <value>Press Ctrl+2 to focus the folder tree.</value>
+  </data>
+  <data name="Tutorial_Step_Ctrl2_Success" xml:space="preserve">
+    <value>Correct! Ctrl+2 moves focus to the folder tree.</value>
+  </data>
+  <data name="Tutorial_Step_Ctrl3_Instruction" xml:space="preserve">
+    <value>Press Ctrl+3 to focus the message list.</value>
+  </data>
+  <data name="Tutorial_Step_Ctrl3_Success" xml:space="preserve">
+    <value>Correct! Ctrl+3 moves focus to the message list.</value>
+  </data>
+  <data name="Tutorial_Step_CommandPalette_Instruction" xml:space="preserve">
+    <value>Press Ctrl+Shift+P to open the Command Palette.</value>
+  </data>
+  <data name="Tutorial_Step_CommandPalette_Success" xml:space="preserve">
+    <value>Correct! Ctrl+Shift+P opens the Command Palette where you can search for any command.</value>
+  </data>
+  <data name="Tutorial_Step_Escape_Instruction" xml:space="preserve">
+    <value>Press Escape to close the reading pane or dismiss dialogs.</value>
+  </data>
+  <data name="Tutorial_Step_Escape_Success" xml:space="preserve">
+    <value>Correct! Escape returns focus to the message list from the reading pane.</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_AllFlagged" xml:space="preserve">
+    <value>All Flagged</value>
+  </data>
+  <data name="ViewManager_VirtualFolder_Calendar" xml:space="preserve">
+    <value>Calendar</value>
+  </data>
+  <data name="RulesManager_Confirm_DeleteRuleMessage" xml:space="preserve">
+    <value>Delete rule '{0}'?</value>
+  </data>
+  <data name="MainVM_Announce_TabPositionFormat" xml:space="preserve">
+    <value>Tab {0} of {1}: {2}.</value>
+  </data>
+  <data name="MainVM_Announce_TabMovedToPositionFormat" xml:space="preserve">
+    <value>Tab moved to position {0}.</value>
+  </data>
+  <data name="MainVM_Announce_SyncedFoldersFormat" xml:space="preserve">
+    <value>Synced {0} of {1} folders.</value>
+  </data>
 </root>

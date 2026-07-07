@@ -132,43 +132,48 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // A-F are valid hex digits, and every virtual-folder name starts with "All…" or
     // "Account…", both beginning with A.
 
-    /// <summary>Child under the All Mail group: all non-excluded folders across all accounts.</summary>
-    public static readonly MailFolderModel AllMailFolder = new()
+    /// <summary>
+    /// Child under the All Mail group: all non-excluded folders across all accounts.
+    /// A property, not a frozen static field: DisplayName must resolve against the current
+    /// UI culture on every access, not bake in whatever culture happened to be active the
+    /// first time this type was touched.
+    /// </summary>
+    public static MailFolderModel AllMailFolder => new()
     {
         FullName    = "\u0000AllMail",
-        DisplayName = "All Mail"
+        DisplayName = Strings.ViewManager_VirtualFolder_AllMail
     };
-    public static readonly MailFolderModel AllInboxesFolder = new()
+    public static MailFolderModel AllInboxesFolder => new()
     {
         FullName    = "\u0000AllInboxes",
-        DisplayName = "All Inboxes"
+        DisplayName = Strings.ViewManager_VirtualFolder_AllInboxes
     };
-    public static readonly MailFolderModel AllDraftsFolder = new()
+    public static MailFolderModel AllDraftsFolder => new()
     {
         FullName    = "\u0000AllDrafts",
-        DisplayName = "All Drafts"
+        DisplayName = Strings.ViewManager_VirtualFolder_AllDrafts
     };
-    public static readonly MailFolderModel AllSentFolder = new()
+    public static MailFolderModel AllSentFolder => new()
     {
         FullName    = "\u0000AllSent",
-        DisplayName = "All Sent"
+        DisplayName = Strings.ViewManager_VirtualFolder_AllSent
     };
-    public static readonly MailFolderModel AllTrashFolder = new()
+    public static MailFolderModel AllTrashFolder => new()
     {
         FullName    = "\u0000AllTrash",
-        DisplayName = "All Trash"
+        DisplayName = Strings.ViewManager_VirtualFolder_AllTrash
     };
-    public static readonly MailFolderModel AllFlaggedFolder = new()
+    public static MailFolderModel AllFlaggedFolder => new()
     {
         FullName    = "\u0000AllFlagged",
-        DisplayName = "All Flagged"
+        DisplayName = Strings.ViewManager_VirtualFolder_AllFlagged
     };
 
     /// <summary>Virtual folder sentinel that opens the calendar event list.</summary>
-    public static readonly MailFolderModel CalendarFolder = new()
+    public static MailFolderModel CalendarFolder => new()
     {
         FullName    = "\u0000Calendar",
-        DisplayName = "Calendar"
+        DisplayName = Strings.ViewManager_VirtualFolder_Calendar
     };
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
@@ -205,7 +210,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public static MailFolderModel CreateAccountMailVirtualFolder(AccountModel account) => new()
     {
         FullName    = $"{AccountMailPrefix}{account.Id}",
-        DisplayName = $"All Mail \u2014 {account.AccountLabel}",
+        DisplayName = string.Format(Strings.MainVM_AccountMailFolderNameFormat, account.AccountLabel),
         AccountId   = account.Id,
     };
 
@@ -440,16 +445,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     };
 
     [ObservableProperty]
-    private string _statusText = "Ready";
+    private string _statusText = Strings.MainVM_Status_Ready;
 
     [ObservableProperty]
     private string _rulesStatusText = string.Empty;
 
     [ObservableProperty]
-    private string _connectionStatusText = "Offline";
+    private string _connectionStatusText = Strings.MainVM_Status_Offline;
 
     [ObservableProperty]
-    private string _lastSyncText = "Never synced";
+    private string _lastSyncText = Strings.MainVM_Status_NeverSynced;
 
     [ObservableProperty]
     private bool _isBusy;
@@ -463,8 +468,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private static readonly string CurrentVersion = Helpers.AppVersion.Display;
 
     // Resting state of the update entry: no newer release, so surface the running version instead
-    // (issue #169) so the Help menu always answers "what am I running?".
-    private static readonly string NoUpdateText = $"No updates available — running version {CurrentVersion}";
+    // (issue #169) so the Help menu always answers "what am I running?". A property, not a frozen
+    // static field: the format string must resolve against the *current* UI culture on every
+    // access, not bake in whatever culture happened to be active the first time this type was touched.
+    private static string NoUpdateText => string.Format(Strings.MainVM_NoUpdatesAvailableFormat, CurrentVersion);
 
     // Help-menu label for the update entry. Always shown so users know the check exists and is
     // available on demand; NoUpdateText is the resting state, replaced with the version
@@ -492,7 +499,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (ActiveView != null)
             {
                 var suffix = IsSearchActive && !string.IsNullOrWhiteSpace(SearchText)
-                    ? $" — Search: {SearchText}"
+                    ? string.Format(Strings.MainVM_WindowTitle_SearchSuffixFormat, SearchText)
                     : IsFilterActive
                     ? $" — {FilterLabel}"
                     : string.Empty;
@@ -507,7 +514,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ? SelectedFolder.DisplayName
                     : $"{SelectedFolder.DisplayName} - {accountLabel}";
                 var suffix = IsSearchActive && !string.IsNullOrWhiteSpace(SearchText)
-                    ? $" — Search: {SearchText}"
+                    ? string.Format(Strings.MainVM_WindowTitle_SearchSuffixFormat, SearchText)
                     : IsFilterActive
                     ? $" — {FilterLabel}"
                     : string.Empty;
@@ -580,7 +587,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ActiveTab = tab;
         OnPropertyChanged(nameof(ShowTabStrip));
         var msgTabCount = OpenTabs.OfType<MessageTabViewModel>().Count();
-        Announce($"Opened tab: {tab.Title}. {msgTabCount} tab{(msgTabCount == 1 ? "" : "s")} open.");
+        Announce(StringsHelper.Count("MainVM_Announce_OpenedTabFormat", msgTabCount, tab.Title));
     }
 
     public void CloseTab(TabSessionViewModel tab)
@@ -594,7 +601,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowTabStrip));
 
         var remaining = OpenTabs.OfType<MessageTabViewModel>().Count();
-        Announce($"Closed tab: {tab.Title}. {remaining} tab{(remaining == 1 ? "" : "s")} remaining.");
+        Announce(StringsHelper.Count("MainVM_Announce_ClosedTabFormat", remaining, tab.Title));
 
         if (ActiveTab == tab)
         {
@@ -621,7 +628,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var cur = ActiveTab as MessageTabViewModel;
         var idx = cur == null ? 0 : (messageTabs.IndexOf(cur) + 1) % messageTabs.Count;
         ActiveTab = messageTabs[idx];
-        Announce($"Tab {idx + 1} of {messageTabs.Count}: {ActiveTab.Title}.");
+        Announce(string.Format(Strings.MainVM_Announce_TabPositionFormat, idx + 1, messageTabs.Count, ActiveTab.Title));
     }
 
     public void ActivatePrevTab()
@@ -632,7 +639,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var idx = cur == null ? messageTabs.Count - 1
                               : (messageTabs.IndexOf(cur) - 1 + messageTabs.Count) % messageTabs.Count;
         ActiveTab = messageTabs[idx];
-        Announce($"Tab {idx + 1} of {messageTabs.Count}: {ActiveTab.Title}.");
+        Announce(string.Format(Strings.MainVM_Announce_TabPositionFormat, idx + 1, messageTabs.Count, ActiveTab.Title));
     }
 
     public void ActivateTabByIndex(int oneBasedIndex)
@@ -655,7 +662,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var minIdx = OpenTabs.OfType<MessageListTabViewModel>().Any() ? 1 : 0;
         if (idx <= minIdx) return;
         OpenTabs.Move(idx, idx - 1);
-        Announce($"Tab moved to position {idx}.");
+        Announce(string.Format(Strings.MainVM_Announce_TabMovedToPositionFormat, idx));
     }
 
     public void MoveTabRight()
@@ -664,7 +671,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var idx = OpenTabs.IndexOf(ActiveTab);
         if (idx < 0 || idx >= OpenTabs.Count - 1) return;
         OpenTabs.Move(idx, idx + 1);
-        Announce($"Tab moved to position {idx + 2}.");
+        Announce(string.Format(Strings.MainVM_Announce_TabMovedToPositionFormat, idx + 2));
     }
 
     public void CloseAllOtherTabs()
@@ -924,15 +931,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _commandRegistry.Unregister(id);
 
         _commandRegistry.Register(new CommandDefinition(
-            id: "theme.manager.open", category: "Settings", title: "Manage Themes",
+            id: "theme.manager.open", category: "Settings", title: Strings.MainVM_Command_ManageThemes,
             execute: () => ThemeManagerRequested?.Invoke(this, EventArgs.Empty)));
 
         _commandRegistry.Register(new CommandDefinition(
-            id: "theme.next", category: "Settings", title: "Next Theme",
+            id: "theme.next", category: "Settings", title: Strings.MainVM_Command_NextTheme,
             execute: () => CycleTheme(+1)));
 
         _commandRegistry.Register(new CommandDefinition(
-            id: "theme.previous", category: "Settings", title: "Previous Theme",
+            id: "theme.previous", category: "Settings", title: Strings.MainVM_Command_PreviousTheme,
             execute: () => CycleTheme(-1)));
 
         var cfg = _configService.Load();
@@ -949,7 +956,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _commandRegistry.Register(new CommandDefinition(
                 id: commandId,
                 category: "Settings",
-                title: $"Theme: {theme.Name}",
+                title: string.Format(Strings.MainVM_Command_ThemeNameFormat, theme.Name),
                 execute: () => ApplyThemeById(capturedId),
                 defaultKey: defaultKey,
                 defaultModifiers: defaultMods));
@@ -970,7 +977,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // cycling always reports the new theme. ConfiguredThemeName (not the
         // resolved name) so cycling to System announces "System", not "Parchment".
         if (_themeService.ResolvedTheme.Id == resolvedBefore)
-            Announce($"Theme changed to {_themeService.ConfiguredThemeName}.", AnnouncementCategory.Status);
+            Announce(string.Format(Strings.MainVM_Announce_ThemeChangedFormat, _themeService.ConfiguredThemeName), AnnouncementCategory.Status);
     }
 
     /// <summary>Steps to the next/previous theme in display order (System first, then built-ins, then user themes).</summary>
@@ -1108,7 +1115,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var expectedFolder = SelectedFolder;
         var loadVersion    = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
-        StatusText = $"Loading {view.Name}…";
+        StatusText = string.Format(Strings.MainVM_Status_LoadingFolderFormat, view.Name);
         IsBusy = true;
 
         _folderCts?.Cancel();
@@ -1132,8 +1139,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 await ResolveFlagNamesAsync(cached);
                 SetMessages(cached.OrderByDescending(m => m.Date));
                 StatusText = cached.Count > 0
-                    ? $"{cached.Count} cached messages (checking for new…)"
-                    : $"Loading {view.Name}…";
+                    ? StringsHelper.Count("MainVM_Status_CachedCheckingForNewCount", cached.Count)
+                    : string.Format(Strings.MainVM_Status_LoadingFolderFormat, view.Name);
                 IsBusy = false;
             }
 
@@ -1204,8 +1211,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             var count = Messages.Count;
             StatusText = count == 0
-                ? $"No messages in {view.Name}."
-                : $"{count} messages in {view.Name}.";
+                ? string.Format(Strings.MainVM_Status_NoMessagesInFolderFormat, view.Name)
+                : StringsHelper.Count("MainVM_Status_MessagesInFolderCount", count, view.Name);
 
             RebuildActiveGroupView();
 
@@ -1214,12 +1221,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = $"{view.Name} load cancelled.";
+                StatusText = string.Format(Strings.MainVM_Status_FolderLoadCancelledFormat, view.Name);
         }
         catch (Exception ex)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = $"Failed to load {view.Name}: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_FailedToLoadFolderFormat, view.Name, ex.Message);
             LogService.Log("FetchViewFolders", ex);
         }
         finally
@@ -1462,7 +1469,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task InitialLoadAsync()
     {
         SelectedFolder = AllMailFolder;
-        LastSyncText = "Never synced";  // Ensure sync time is visible in status bar
+        LastSyncText = Strings.MainVM_Status_NeverSynced;  // Ensure sync time is visible in status bar
         if (_flagService != null)
         {
             var defs = await _flagService.LoadFlagDefinitionsAsync();
@@ -1472,17 +1479,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         if (OnlineMode)
         {
-            StatusText = "Online mode — connecting…";
-            ConnectionStatusText = "Connecting…";
+            StatusText = Strings.MainVM_Status_OnlineModeConnecting;
+            ConnectionStatusText = Strings.MainVM_Status_Connecting;
             return;
         }
         var cached = await _localStore.LoadAllSummariesAsync();
         await ResolveFlagNamesAsync(cached);
         SetMessages(cached);
         StatusText = cached.Count > 0
-            ? $"{cached.Count} messages (cached — syncing…)"
-            : "Connecting and syncing…";
-        ConnectionStatusText = "Connecting…";
+            ? StringsHelper.Count("MainVM_Status_CachedSyncing", cached.Count)
+            : Strings.MainVM_Status_ConnectingAndSyncing;
+        ConnectionStatusText = Strings.MainVM_Status_Connecting;
         StartPrefetchTopOfFolder();
         RebuildFolderListFromCache();
     }
@@ -1536,12 +1543,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // announcements in addition to the explicit Announce() calls, creating duplicates.
                 if (done % 10 == 0 && done > lastAnnouncedAt)
                 {
-                    Announce($"Synced {done} of {total} folders.", AnnouncementCategory.Status);
+                    Announce(string.Format(Strings.MainVM_Announce_SyncedFoldersFormat, done, total), AnnouncementCategory.Status);
                     lastAnnouncedAt = done;
                 }
                 else if (done == total && done > lastAnnouncedAt)
                 {
-                    Announce($"Sync complete.", AnnouncementCategory.Status);
+                    Announce(Strings.MainVM_Announce_SyncComplete, AnnouncementCategory.Status);
                     lastAnnouncedAt = done;
                 }
             }
@@ -1571,12 +1578,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (defaultView != null)
             await ApplyViewAsync(defaultView);
 
-        StatusText = "Syncing mail…";
-        ConnectionStatusText = "Syncing…";
+        StatusText = Strings.MainVM_Status_Syncing;
+        ConnectionStatusText = Strings.MainVM_ConnectionStatus_Syncing;
         // If we've never synced before, show "In progress" instead of "Never synced"
         // to avoid the confusing impression that syncing will never happen
-        if (LastSyncText == "Never synced")
-            LastSyncText = "In progress";
+        if (LastSyncText == Strings.MainVM_Status_NeverSynced)
+            LastSyncText = Strings.MainVM_Status_InProgress;
         _suppressFolderSyncUpdates = true;
 
         // Start progress announcements for long syncs (10-second interval).
@@ -1593,10 +1600,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await RefreshAsync();
 
             var count = Messages.Count;
-            StatusText = $"{count} messages.";
-            LastSyncText = $"Synced {DateTime.Now:t}";
-            ConnectionStatusText = $"{Accounts.Count} account{(Accounts.Count == 1 ? "" : "s")} connected";
-            Announce($"{count} {(count == 1 ? "message" : "messages")} loaded.", AnnouncementCategory.Status);
+            StatusText = StringsHelper.Count("MainVM_Status_MessagesCount", count);
+            LastSyncText = string.Format(Strings.MainVM_Status_SyncedAtFormat, DateTime.Now);
+            ConnectionStatusText = StringsHelper.Count("MainVM_ConnectionStatus_AccountsConnected", Accounts.Count);
+            Announce(StringsHelper.Count("MainVM_Announce_MessagesLoaded", count), AnnouncementCategory.Status);
 
             // Start periodic NOOP heartbeat (10-minute interval) to keep connections alive
             // and detect mid-session drops on non-INBOX folders.
@@ -1606,11 +1613,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             LogService.Log("BackgroundSync", ex);
-            StatusText = $"Sync error: {ex.Message}";
-            Announce($"Sync error: {ex.Message}", AnnouncementCategory.Status);
+            StatusText = string.Format(Strings.MainVM_Status_SyncErrorFormat, ex.Message);
+            Announce(string.Format(Strings.MainVM_Status_SyncErrorFormat, ex.Message), AnnouncementCategory.Status);
             // Only set "Connection error" if no accounts connected at all.
             if (_cachedFolders.Count == 0)
-                ConnectionStatusText = "Connection error";
+                ConnectionStatusText = Strings.MainVM_ConnectionStatus_Error;
         }
         finally
         {
@@ -1628,7 +1635,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 await Task.Delay(10_000, ct);
                 var count = Messages.Count;
-                Announce($"{count} {(count == 1 ? "message" : "messages")} loaded so far.", AnnouncementCategory.Status);
+                Announce(StringsHelper.Count("MainVM_Announce_MessagesLoadedSoFar", count), AnnouncementCategory.Status);
             }
         }
         catch (OperationCanceledException) { }
@@ -1787,7 +1794,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             UpdateAccountCountsAfterInsert(toInsert);
 
             var n = Messages.Count;
-            StatusText = n == 0 ? "No messages" : $"{n} {(n == 1 ? "message" : "messages")}";
+            StatusText = n == 0 ? Strings.MainVM_Status_NoMessages : StringsHelper.Count("MainVM_Status_MessagesCountPlain", n);
         }
 
         // Debounced calendar harvest: re-harvest events 2s after the last sync event
@@ -1875,7 +1882,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         if (removed.Count > 0)
-            StatusText = $"{Messages.Count} messages";
+            StatusText = StringsHelper.Count("MainVM_Status_MessagesCountPlain", Messages.Count);
 
         RebuildActiveGroupView();
     }
@@ -1898,17 +1905,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (active == 0)
         {
-            RulesStatusText = "No active rules";
+            RulesStatusText = Strings.MainVM_Rules_NoActiveRules;
             return;
         }
 
         var timeStr = _lastRulesRunTime == default
-            ? "not yet run"
+            ? Strings.MainVM_Rules_NotYetRun
             : _lastRulesRunTime.ToString("h:mm tt");
 
         RulesStatusText = _lastRulesMatchCount > 0
-            ? $"Rules: {active} active, {disabled} disabled — Last run: {_lastRulesMatchCount} matched ({timeStr})"
-            : $"Rules: {active} active, {disabled} disabled — Last run: {timeStr}";
+            ? string.Format(Strings.MainVM_Rules_StatusWithMatchFormat, active, disabled, _lastRulesMatchCount, timeStr)
+            : string.Format(Strings.MainVM_Rules_StatusFormat, active, disabled, timeStr);
     }
 
     // Stores raw messages and applies all active filters.
@@ -1951,13 +1958,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // calling SetMessages, so this value is overwritten during loads and only
         // "sticks" for user-triggered changes (filter, search, sort).
         var n = Messages.Count;
-        StatusText = n == 0 ? "No messages" : $"{n} {(n == 1 ? "message" : "messages")}";
+        StatusText = n == 0 ? Strings.MainVM_Status_NoMessages : StringsHelper.Count("MainVM_Status_MessagesCountPlain", n);
 
         if (IsSearchActive && !string.IsNullOrWhiteSpace(SearchText))
         {
             SearchAnnouncement = n == 0
-                ? "No messages found"
-                : $"{n} {(n == 1 ? "message" : "messages")} found";
+                ? Strings.MainVM_Search_NoMessagesFound
+                : StringsHelper.Count("MainVM_Search_MessagesFoundCount", n);
         }
     }
 
@@ -2094,9 +2101,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (Accounts.Count == 0) return;
 
         StatusText = Accounts.Count == 1
-            ? $"Connecting to {Accounts[0].DisplayName}…"
-            : $"Connecting to {Accounts.Count} accounts…";
-        ConnectionStatusText = "Connecting…";
+            ? string.Format(Strings.MainVM_Status_ConnectingToAccountFormat, Accounts[0].DisplayName)
+            : StringsHelper.Count("MainVM_Status_ConnectingToAccountsCount", Accounts.Count);
+        ConnectionStatusText = Strings.MainVM_Status_Connecting;
         IsBusy = true;
 
         // Group by IMAP host: accounts sharing a server connect sequentially to stay under the
@@ -2125,11 +2132,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsBusy = false;
         RebuildFolderListFromCache();
         StatusText = _cachedFolders.Count > 0
-            ? $"{_cachedFolders.Count} of {Accounts.Count} account(s) connected."
-            : "No accounts could be connected.";
+            ? StringsHelper.Count("MainVM_Status_AccountsConnectedProgressFormat", _cachedFolders.Count, Accounts.Count)
+            : Strings.MainVM_Status_NoAccountsConnected;
         ConnectionStatusText = _cachedFolders.Count > 0
-            ? $"{_cachedFolders.Count} account(s) connected"
-            : "Offline";
+            ? StringsHelper.Count("MainVM_ConnectionStatus_AccountsConnected", _cachedFolders.Count)
+            : Strings.MainVM_Status_Offline;
     }
 
     /// <summary>
@@ -2319,7 +2326,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var viewsGroup = new FolderTreeNode
             {
                 IsHeader   = true,
-                Label      = "Views",
+                Label      = Strings.MainVM_FolderTree_ViewsGroupLabel,
                 IsExpanded = true,
             };
             foreach (var view in SavedViews)
@@ -2337,7 +2344,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     var allFolder = new MailFolderModel
                     {
                         FullName    = $"{ViewAllPrefix}{view.Id}",
-                        DisplayName = $"{view.Name} — All",
+                        DisplayName = string.Format(Strings.MainVM_FolderTree_ViewAllChildFormat, view.Name),
                     };
                     viewNode.Children.Add(new FolderTreeNode
                     {
@@ -2363,7 +2370,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var allMailGroup = new FolderTreeNode
         {
             IsHeader   = true,
-            Label      = "All Mail",
+            Label      = Strings.ViewManager_VirtualFolder_AllMail,
             IsExpanded = true,
         };
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllMailFolder,    Label = AllMailFolder.DisplayName });
@@ -2641,14 +2648,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (account == null) return;
         SelectedAccount = account;
-        StatusText = $"Connecting to {account.AccountLabel}…";
+        StatusText = string.Format(Strings.MainVM_Status_ConnectingToAccountFormat, account.AccountLabel);
         IsBusy = true;
         try
         {
             var password = _credentials.GetPassword(account.Id);
             if (string.IsNullOrEmpty(password))
             {
-                StatusText = $"No password stored for {account.AccountLabel}.";
+                StatusText = string.Format(Strings.MainVM_Status_NoPasswordStoredFormat, account.AccountLabel);
                 return;
             }
             _connectCts?.Cancel();
@@ -2658,16 +2665,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _cachedFolders[account.Id] = folderList;
             ApplyAccountStatus(account, folderList);
             RebuildFolderListFromCache();
-            StatusText = $"Connected to {account.AccountLabel}. Press Enter on a folder to load messages.";
+            StatusText = string.Format(Strings.MainVM_Status_ConnectedPressEnterFormat, account.AccountLabel);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Connection cancelled.";
+            StatusText = Strings.MainVM_Status_ConnectionCancelled;
         }
         catch (Exception ex)
         {
-            StatusText = $"Connection failed: {ex.Message}";
-            Announce($"Connection failed: {ex.Message}", AnnouncementCategory.Status);
+            StatusText = string.Format(Strings.MainVM_Status_ConnectionFailedFormat, ex.Message);
+            Announce(string.Format(Strings.MainVM_Status_ConnectionFailedFormat, ex.Message), AnnouncementCategory.Status);
             LogService.Log("SelectAccount", ex);
         }
         finally
@@ -2795,8 +2802,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
-                    ? $"{cached.Count} cached {(cached.Count == 1 ? "message" : "messages")} (checking for new…)"
-                    : $"Loading {folder.DisplayName}…";
+                    ? StringsHelper.Count("MainVM_Status_CachedCheckingForNewCount", cached.Count)
+                    : string.Format(Strings.MainVM_Status_LoadingFolderFormat, folder.DisplayName);
                 if (cached.Count > 0)
                 {
                     if (IsConversationsView)
@@ -2811,7 +2818,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (loadVersion == _folderLoadVersion)
             {
-                StatusText = "Message list load cancelled.";
+                StatusText = Strings.MainVM_Status_MessageListLoadCancelled;
                 IsBusy = false;
             }
         }
@@ -2819,7 +2826,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (loadVersion == _folderLoadVersion)
             {
-                StatusText = $"Failed to load messages: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_FailedToLoadMessagesFormat, ex.Message);
                 IsBusy = false;
             }
             LogService.Log("SelectFolder", ex);
@@ -2838,7 +2845,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
 
             SetMessages(list);
-            StatusText = list.Count == 0 ? "No messages" : $"{list.Count} messages loaded.";
+            StatusText = list.Count == 0 ? Strings.MainVM_Status_NoMessages : StringsHelper.Count("MainVM_Status_MessagesLoadedCount", list.Count);
             if (!OnlineMode)
                 _localStore.UpsertSummariesAsync(list).LogFaults("local store: upsert summaries");
 
@@ -2849,12 +2856,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
             if (version == _folderLoadVersion)
-                StatusText = "Message list load cancelled.";
+                StatusText = Strings.MainVM_Status_MessageListLoadCancelled;
         }
         catch (Exception ex)
         {
             if (version == _folderLoadVersion)
-                StatusText = $"Failed to load messages: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_FailedToLoadMessagesFormat, ex.Message);
             LogService.Log("RefreshFolderFromServer", ex);
         }
         finally
@@ -2876,7 +2883,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SelectedMessage = summary;
         MessageDetail   = null;
         IsMessageOpen   = false;
-        StatusText = "Loading message…";
+        StatusText = Strings.MainVM_Status_LoadingMessage;
         IsBusy = true;
         try
         {
@@ -2930,7 +2937,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
 
-            StatusText = "Message loaded.";
+            StatusText = Strings.MainVM_Status_MessageLoaded;
 
             if (!OnlineMode)
                 StartPrefetchAroundOpen(summary);
@@ -2938,12 +2945,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
             if (loadVersion == _messageLoadVersion)
-                StatusText = "Message load cancelled.";
+                StatusText = Strings.MainVM_Status_MessageLoadCancelled;
         }
         catch (Exception ex)
         {
             if (loadVersion == _messageLoadVersion)
-                StatusText = $"Failed to load message: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_FailedToLoadMessageFormat, ex.Message);
             LogService.Log("SelectMessage", ex);
         }
         finally
@@ -3110,7 +3117,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
-        StatusText = "Loading All Mail…";
+        StatusText = Strings.MainVM_Status_LoadingAllMail;
         IsBusy = true;
 
         _folderCts?.Cancel();
@@ -3131,8 +3138,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
-                    ? $"{cached.Count} messages (checking for new…)"
-                    : "Checking for new messages…";
+                    ? StringsHelper.Count("MainVM_Status_CheckingForNewCount", cached.Count)
+                    : Strings.MainVM_Status_CheckingForNewMessages;
                 IsBusy = false;
             }
             else
@@ -3174,8 +3181,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                 var totalCount = Messages.Count;
                 StatusText = totalCount == 0
-                    ? "No messages across connected accounts."
-                    : $"{totalCount} messages across all accounts.";
+                    ? Strings.MainVM_Status_NoMessagesAcrossAccounts
+                    : StringsHelper.Count("MainVM_Status_MessagesAcrossAccountsCount", totalCount);
 
                 RebuildActiveGroupView();
                 return;
@@ -3189,8 +3196,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 SetMessages(sorted);
                 var onlineCount = Messages.Count;
                 StatusText = onlineCount == 0
-                    ? "No messages across connected accounts."
-                    : $"{onlineCount} messages across all accounts.";
+                    ? Strings.MainVM_Status_NoMessagesAcrossAccounts
+                    : StringsHelper.Count("MainVM_Status_MessagesAcrossAccountsCount", onlineCount);
                 RebuildActiveGroupView();
                 return;
             }
@@ -3227,8 +3234,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             var count = Messages.Count;
             StatusText = count == 0
-                ? "No messages across connected accounts."
-                : $"{count} messages across all accounts.";
+                ? Strings.MainVM_Status_NoMessagesAcrossAccounts
+                : StringsHelper.Count("MainVM_Status_MessagesAcrossAccountsCount", count);
 
             RebuildActiveGroupView();
 
@@ -3237,12 +3244,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = "All Mail load cancelled.";
+                StatusText = Strings.MainVM_Status_AllMailLoadCancelled;
         }
         catch (Exception ex)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = $"Failed to load All Mail: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_FailedToLoadAllMailFormat, ex.Message);
             LogService.Log("FetchAllMail", ex);
         }
         finally
@@ -3323,10 +3330,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private Task FetchVirtualAsync(MailFolderModel folder)
     {
         if (folder.FullName == AllMailFolder.FullName)    return FetchAllMailAsync();
-        if (folder.FullName == AllInboxesFolder.FullName) return FetchVirtualFolderAsync(SpecialFolderKind.Inbox,  "All Inboxes");
-        if (folder.FullName == AllDraftsFolder.FullName)  return FetchVirtualFolderAsync(SpecialFolderKind.Drafts, "All Drafts");
-        if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   "All Sent");
-        if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
+        if (folder.FullName == AllInboxesFolder.FullName) return FetchVirtualFolderAsync(SpecialFolderKind.Inbox,  Strings.ViewManager_VirtualFolder_AllInboxes);
+        if (folder.FullName == AllDraftsFolder.FullName)  return FetchVirtualFolderAsync(SpecialFolderKind.Drafts, Strings.ViewManager_VirtualFolder_AllDrafts);
+        if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   Strings.ViewManager_VirtualFolder_AllSent);
+        if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  Strings.ViewManager_VirtualFolder_AllTrash);
         if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
 
@@ -3345,7 +3352,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         var expectedFolder = SelectedFolder;
         Messages.Clear();
-        StatusText = "Loading flagged messages…";
+        StatusText = Strings.MainVM_Status_LoadingFlaggedMessages;
         IsBusy = true;
 
         _folderCts?.Cancel();
@@ -3392,17 +3399,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var flagged = all.Where(m => m.IsFlagged).ToList();
             SetMessages(flagged.OrderByDescending(m => m.Date).ToList());
             var n = Messages.Count;
-            StatusText = n == 0 ? "No flagged messages." : $"{n} flagged {(n == 1 ? "message" : "messages")}.";
+            StatusText = n == 0 ? Strings.MainVM_Status_NoFlaggedMessages : StringsHelper.Count("MainVM_Status_FlaggedMessagesCount", n);
         }
         catch (OperationCanceledException)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = "Flagged messages load cancelled.";
+                StatusText = Strings.MainVM_Status_FlaggedMessagesLoadCancelled;
         }
         catch (Exception ex)
         {
             LogService.Log("FetchAllFlagged failed", ex);
-            StatusText = "Could not load flagged messages.";
+            StatusText = Strings.MainVM_Status_CouldNotLoadFlaggedMessages;
         }
         finally
         {
@@ -3425,7 +3432,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             message.FlagColorHex = def?.ColorHex;
             if (_announceFlagStatus)
             {
-                var text = wasFlagged ? "Unflagged" : $"{message.FlagName ?? "Flagged"}";
+                var text = wasFlagged ? Strings.MainVM_Announce_Unflagged : (message.FlagName ?? Strings.MainVM_Announce_FlaggedFallback);
                 Announce(text, AnnouncementCategory.Result);
             }
         }
@@ -3452,8 +3459,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (_announceFlagStatus)
             {
                 var text = anyFlagged
-                    ? $"Unflagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}"
-                    : $"Flagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}";
+                    ? StringsHelper.Count("MainVM_Announce_UnflaggedCountFormat", messages.Count)
+                    : StringsHelper.Count("MainVM_Announce_FlaggedCountFormat", messages.Count);
                 Announce(text, AnnouncementCategory.Result);
             }
         }
@@ -3473,7 +3480,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             message.FlagColorHex = def?.ColorHex;
             if (_announceFlagStatus)
             {
-                var text = flagId == null ? "Unflagged" : (message.FlagName ?? "Flagged");
+                var text = flagId == null ? Strings.MainVM_Announce_Unflagged : (message.FlagName ?? Strings.MainVM_Announce_FlaggedFallback);
                 Announce(text, AnnouncementCategory.Result);
             }
         }
@@ -3498,8 +3505,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (_announceFlagStatus)
             {
                 var text = flagId == null
-                    ? $"Unflagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}"
-                    : $"Flagged {messages.Count} {(messages.Count == 1 ? "message" : "messages")}: {def?.Name ?? "Flagged"}";
+                    ? StringsHelper.Count("MainVM_Announce_UnflaggedCountFormat", messages.Count)
+                    : StringsHelper.Count("MainVM_Announce_FlaggedCountWithNameFormat", messages.Count, def?.Name ?? Strings.MainVM_Announce_FlaggedFallback);
                 Announce(text, AnnouncementCategory.Result);
             }
         }
@@ -3559,7 +3566,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
-        StatusText = $"Loading {account.AccountLabel}…";
+        StatusText = string.Format(Strings.MainVM_Status_LoadingFolderFormat, account.AccountLabel);
         IsBusy = true;
 
         _folderCts?.Cancel();
@@ -3576,8 +3583,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 await ResolveFlagNamesAsync(cached);
                 SetMessages(cached);
                 StatusText = cached.Count > 0
-                    ? $"{cached.Count} messages (checking for new…)"
-                    : "Checking for new messages…";
+                    ? StringsHelper.Count("MainVM_Status_CheckingForNewCount", cached.Count)
+                    : Strings.MainVM_Status_CheckingForNewMessages;
                 IsBusy = false;
             }
 
@@ -3595,8 +3602,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 SetMessages(sorted);
                 var onlineCount = Messages.Count;
                 StatusText = onlineCount == 0
-                    ? $"No messages in {account.AccountLabel}."
-                    : $"{onlineCount} messages in {account.AccountLabel}.";
+                    ? string.Format(Strings.MainVM_Status_NoMessagesInFolderFormat, account.AccountLabel)
+                    : StringsHelper.Count("MainVM_Status_MessagesInFolderCount", onlineCount, account.AccountLabel);
                 RebuildActiveGroupView();
                 return;
             }
@@ -3631,20 +3638,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             var count = Messages.Count;
             StatusText = count == 0
-                ? $"No messages in {account.AccountLabel}."
-                : $"{count} messages in {account.AccountLabel}.";
+                ? string.Format(Strings.MainVM_Status_NoMessagesInFolderFormat, account.AccountLabel)
+                : StringsHelper.Count("MainVM_Status_MessagesInFolderCount", count, account.AccountLabel);
 
             RebuildActiveGroupView();
         }
         catch (OperationCanceledException)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = $"{account.AccountLabel} load cancelled.";
+                StatusText = string.Format(Strings.MainVM_Status_FolderLoadCancelledFormat, account.AccountLabel);
         }
         catch (Exception ex)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = $"Failed to load {account.AccountLabel}: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_FailedToLoadFolderFormat, account.AccountLabel, ex.Message);
             LogService.Log("FetchAccountAllMail", ex);
         }
         finally
@@ -3659,7 +3666,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
-        StatusText = $"Loading {displayName}…";
+        StatusText = string.Format(Strings.MainVM_Status_LoadingFolderFormat, displayName);
         IsBusy = true;
 
         _folderCts?.Cancel();
@@ -3684,21 +3691,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var sorted = all.OrderByDescending(m => m.Date).ToList();
             SetMessages(sorted);
             StatusText = sorted.Count == 0
-                ? $"No messages in {displayName}."
-                : $"{sorted.Count} messages in {displayName}.";
+                ? string.Format(Strings.MainVM_Status_NoMessagesInFolderFormat, displayName)
+                : StringsHelper.Count("MainVM_Status_MessagesInFolderCount", sorted.Count, displayName);
             if (!OnlineMode)
                 _localStore.UpsertSummariesAsync(sorted).LogFaults("local store: upsert summaries");
         }
         catch (OperationCanceledException)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = $"{displayName} load cancelled.";
+                StatusText = string.Format(Strings.MainVM_Status_FolderLoadCancelledFormat, displayName);
         }
         catch (Exception ex)
         {
             if (loadVersion == _folderLoadVersion)
-                StatusText = $"Failed to load {displayName}: {ex.Message}";
-            LogService.Log($"Fetch{displayName.Replace(" ", "")}", ex);
+                StatusText = string.Format(Strings.MainVM_Status_FailedToLoadFolderFormat, displayName, ex.Message);
+            LogService.Log($"Fetch{kind}", ex);
         }
         finally
         {
@@ -3753,8 +3760,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         foreach (var m in unread)
             m.IsRead = true;
 
-        var label = unread.Count == 1 ? "message" : $"{unread.Count} messages";
-        StatusText = $"Marked {label} as read.";
+        StatusText = StringsHelper.Count("MainVM_Status_MarkedAsReadCount", unread.Count);
 
         _localStore.UpdateIsReadBatchAsync(
                 unread.Select(m => (m.AccountId, m.FolderName, m.MessageId)), true)
@@ -3782,8 +3788,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (toDelete.Count == 0) return;
 
         var minIdx = toDelete.Min(m => Messages.IndexOf(m));
-        var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";
-        StatusText    = $"Deleting {label}…";
+        StatusText    = StringsHelper.Count("MainVM_Status_DeletingCount", toDelete.Count);
         IsBusy        = true;
         MessageDetail = null;
         IsMessageOpen = false;
@@ -3865,18 +3870,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             var count = toDelete.Count;
             StatusText = Messages.Count > 0
-                ? $"{count} {(count == 1 ? "message" : "messages")} deleted."
-                : $"{count} {(count == 1 ? "message" : "messages")} deleted. Folder is now empty.";
+                ? StringsHelper.Count("MainVM_Status_MessagesDeletedCount", count)
+                : StringsHelper.Count("MainVM_Status_MessagesDeletedFolderEmptyCount", count);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Delete cancelled.";
+            StatusText = Strings.MainVM_Status_DeleteCancelled;
         }
         catch (Exception ex)
         {
             // Honest uncertainty message — the delete may have partially or fully succeeded.
-            StatusText = "Delete may not have completed — refreshing.";
-            Announce("Delete may not have completed — refreshing.", AnnouncementCategory.Result);
+            StatusText = Strings.MainVM_Status_DeleteMayNotHaveCompleted;
+            Announce(Strings.MainVM_Status_DeleteMayNotHaveCompleted, AnnouncementCategory.Result);
             LogService.Log("DeleteMessages", ex);
 
             // Schedule targeted sync of affected folders to reconcile the UI with server state.
@@ -3974,14 +3979,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 : await _localStore.LoadDetailAsync(msg.AccountId, msg.FolderName, msg.MessageId);
 
             var accountName = Accounts.FirstOrDefault(a => a.Id == msg.AccountId)?.AccountLabel
-                              ?? "Unknown";
+                              ?? Strings.MainVM_Properties_UnknownAccount;
             var (title, sections) = MessagePropertiesBuilder.Build(msg, detail, accountName);
             PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
         }
         else if (paneIndex == 2 && (focusedFolder ?? SelectedFolder) is { } folder)
         {
             var accountName = Accounts.FirstOrDefault(a => a.Id == folder.AccountId)?.AccountLabel
-                              ?? "Unknown";
+                              ?? Strings.MainVM_Properties_UnknownAccount;
             var (title, sections) = FolderPropertiesBuilder.Build(folder, accountName);
             PropertiesRequested?.Invoke(new PropertiesViewModel(title, sections));
         }
@@ -4002,7 +4007,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     oldestCached = await _localStore.GetOldestMessageDateAsync(acct.Id);
 
                     var syncDays = _configService.Load().SyncDays;
-                    syncWindow = syncDays == 0 ? "All mail" : $"Last {syncDays} days";
+                    syncWindow = syncDays == 0 ? Strings.MainVM_Properties_SyncWindowAllMail : StringsHelper.Count("MainVM_Properties_SyncWindowLastDaysCount", syncDays);
                 }
                 catch (Exception ex)
                 {
@@ -4070,7 +4075,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     for (int i = 0; i < selected.Count; i++)
                     {
                         var att = selected[i];
-                        StatusText = $"Downloading {i + 1} of {total} attachment{(total == 1 ? "" : "s")}…";
+                        StatusText = StringsHelper.Count("MainVM_Status_DownloadingAttachmentProgress", total, i + 1);
                         Announce(StatusText, AnnouncementCategory.Status);
                         if (!att.IsLoaded && att.PartSpecifier != null)
                         {
@@ -4105,12 +4110,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                     if (failed > 0)
                     {
-                        StatusText = $"{downloaded} of {total} attachment{(total == 1 ? "" : "s")} included ({failed} could not be downloaded).";
+                        StatusText = StringsHelper.Count("MainVM_Status_AttachmentsIncludedFormat", total, downloaded, failed);
                         Announce(StatusText, AnnouncementCategory.Status);
                     }
                     else
                     {
-                        StatusText = $"{downloaded} attachment{(downloaded == 1 ? "" : "s")} ready.";
+                        StatusText = StringsHelper.Count("MainVM_Status_AttachmentsReadyCount", downloaded);
                         Announce(StatusText, AnnouncementCategory.Status);
                     }
 
@@ -4195,7 +4200,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var template = new MailRule
         {
-            Name = $"Rule for {source.From}",
+            Name = string.Format(Strings.MainVM_Rules_RuleForSenderFormat, source.From),
             FromContains = source.From,
             SubjectContains = string.IsNullOrWhiteSpace(source.Subject) ? null : source.Subject,
             AccountId = source.AccountId,
@@ -4217,7 +4222,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (summary == null || SelectedAccount == null) return;
 
         IsBusy = true;
-        StatusText = "Opening draft…";
+        StatusText = Strings.MainVM_Status_OpeningDraft;
         try
         {
             ReplaceCts(ref _messageLoadCts, out var ct);
@@ -4265,11 +4270,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Draft load cancelled.";
+            StatusText = Strings.MainVM_Status_DraftLoadCancelled;
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to open draft: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToOpenDraftFormat, ex.Message);
             LogService.Log("OpenDraft", ex);
         }
         finally
@@ -4305,18 +4310,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         .Sum(f => f.MessageCount));
 
             string countText = trashCount > 0
-                ? $"This will permanently delete {trashCount:N0} {(trashCount == 1 ? "message" : "messages")} from your trash. This cannot be undone."
-                : "This will permanently delete all messages in your trash. This cannot be undone.";
+                ? StringsHelper.Count("MainVM_Confirm_EmptyTrashCountFormat", trashCount)
+                : Strings.MainVM_Confirm_EmptyTrashAllFormat;
 
             if (!ConfirmationRequested(
-                    countText + "\n\nYou can turn off this confirmation in Settings.",
-                    "Empty Trash"))
+                    countText + Strings.MainVM_Confirm_TurnOffInSettingsHint,
+                    Strings.MainVM_Confirm_EmptyTrashTitle))
                 return;
         }
 
         LogService.Log($"EmptyTrash: viewingTrash={viewingTrash} folder='{SelectedFolder?.FullName}' accounts={accountsToEmpty.Count}");
 
-        StatusText = "Emptying trash…";
+        StatusText = Strings.MainVM_Status_EmptyingTrash;
         IsBusy = true;
         bool trashEmptied = false;
         try
@@ -4326,7 +4331,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var account in accountsToEmpty)
                 totalDeleted += await _imap.EmptyTrashAsync(account.Id, cts.Token);
 
-            var msg = totalDeleted == 1 ? "1 message deleted from trash." : $"{totalDeleted} messages deleted from trash.";
+            var msg = StringsHelper.Count("MainVM_Status_TrashMessagesDeletedCount", totalDeleted);
             StatusText = msg;
             Announce(msg);
             trashEmptied = true;
@@ -4334,7 +4339,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Empty trash timed out.";
+            StatusText = Strings.MainVM_Status_EmptyTrashTimedOut;
         }
         catch (Exception ex)
         {
@@ -4364,8 +4369,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // If not verified as empty, report the error
             if (!trashEmptied)
             {
-                StatusText = $"Empty trash failed: {ex.Message}";
-                Announce($"Empty trash failed: {ex.Message}", AnnouncementCategory.Result);
+                StatusText = string.Format(Strings.MainVM_Status_EmptyTrashFailedFormat, ex.Message);
+                Announce(string.Format(Strings.MainVM_Status_EmptyTrashFailedFormat, ex.Message), AnnouncementCategory.Result);
             }
         }
         finally
@@ -4444,8 +4449,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (account == null) return;
 
         if (ConfirmationRequested?.Invoke(
-            $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected.",
-            "Remove Account") != true) return;
+            string.Format(Strings.MainVM_Confirm_RemoveAccountMessageFormat, account.AccountLabel),
+            Strings.MainVM_Confirm_RemoveAccountTitle) != true) return;
 
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
@@ -4465,7 +4470,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (config.Accounts.Remove(account.Id))
             _configService.Save(config);
 
-        StatusText = $"Account '{account.AccountLabel}' removed. Cleaning up local data…";
+        StatusText = string.Format(Strings.MainVM_Status_AccountRemovedCleaningUpFormat, account.AccountLabel);
 
         try   { await _localStore.DeleteAccountDataAsync(account.Id); }
         catch (Exception ex) { LogService.Log($"DeleteAccount: failed to purge mail.db — {ex.Message}"); }
@@ -4476,8 +4481,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             catch (Exception ex) { LogService.Log($"DeleteAccount: failed OAuth sign-out — {ex.Message}"); }
         }
 
-        StatusText = $"Account '{account.AccountLabel}' removed.";
-        ConnectionStatusText = Accounts.Count == 0 ? "Offline" : $"{Accounts.Count} account(s) connected";
+        StatusText = string.Format(Strings.MainVM_Status_AccountRemovedFormat, account.AccountLabel);
+        ConnectionStatusText = Accounts.Count == 0 ? Strings.MainVM_Status_Offline : StringsHelper.Count("MainVM_ConnectionStatus_AccountsConnected", Accounts.Count);
     }
 
     [RelayCommand]
@@ -4507,7 +4512,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             LogService.Log("RefreshFolderList", ex);
-            StatusText = $"Failed to refresh folders: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToRefreshFoldersFormat, ex.Message);
         }
     }
 
@@ -4569,18 +4574,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>Creates a new folder under the given parent and refreshes the tree.</summary>
     public async Task CreateFolderAndRefreshAsync(Guid accountId, string? parentFolderName, string name)
     {
-        StatusText = $"Creating folder '{name}'…";
+        StatusText = string.Format(Strings.MainVM_Status_CreatingFolderFormat, name);
         IsBusy     = true;
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await _imap.CreateFolderAsync(accountId, parentFolderName, name, cts.Token);
             await RefreshFolderListAsync(accountId);
-            StatusText = $"Folder '{name}' created.";
+            StatusText = string.Format(Strings.MainVM_Status_FolderCreatedFormat, name);
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to create folder: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToCreateFolderFormat, ex.Message);
             LogService.Log("CreateFolder", ex);
         }
         finally { IsBusy = false; }
@@ -4590,7 +4595,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
-        StatusText = $"Moving folder '{node.Label}'…";
+        StatusText = string.Format(Strings.MainVM_Status_MovingFolderFormat, node.Label);
         IsBusy     = true;
         try
         {
@@ -4602,11 +4607,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 destination.FullName,
                 cts.Token);
             await RefreshFolderListAsync(node.Folder.AccountId);
-            StatusText = $"Folder '{node.Label}' moved.";
+            StatusText = string.Format(Strings.MainVM_Status_FolderMovedFormat, node.Label);
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to move folder: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToMoveFolderFormat, ex.Message);
             LogService.Log("MoveFolder", ex);
         }
         finally { IsBusy = false; }
@@ -4616,7 +4621,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
-        StatusText = $"Copying folder '{node.Label}'…";
+        StatusText = string.Format(Strings.MainVM_Status_CopyingFolderFormat, node.Label);
         IsBusy     = true;
         try
         {
@@ -4627,11 +4632,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 destination.FullName,
                 cts.Token);
             await RefreshFolderListAsync(node.Folder.AccountId);
-            StatusText = $"Folder '{node.Label}' copied.";
+            StatusText = string.Format(Strings.MainVM_Status_FolderCopiedFormat, node.Label);
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to copy folder: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToCopyFolderFormat, ex.Message);
             LogService.Log("CopyFolder", ex);
         }
         finally { IsBusy = false; }
@@ -4648,10 +4653,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (node.Folder == null || node.IsHeader) return false;
 
         if (ConfirmationRequested?.Invoke(
-            $"Delete the folder '{node.Label}' and move all its messages to Trash?",
-            "Delete Folder") != true) return false;
+            string.Format(Strings.MainVM_Confirm_DeleteFolderMessageFormat, node.Label),
+            Strings.MainVM_Confirm_DeleteFolderTitle) != true) return false;
 
-        StatusText = $"Deleting folder '{node.Label}'…";
+        StatusText = string.Format(Strings.MainVM_Status_DeletingFolderFormat, node.Label);
         IsBusy     = true;
         try
         {
@@ -4672,12 +4677,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // the View land focus on the neighbour (a full rebuild would collapse and reset focus).
             RemoveFolderFromCacheOptimistically(node.Folder.AccountId, node.Folder);
             RemoveNodeFromTree(node);
-            StatusText = $"Folder '{node.Label}' deleted.";
+            StatusText = string.Format(Strings.MainVM_Status_FolderDeletedFormat, node.Label);
             return true;
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to delete folder: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToDeleteFolderFormat, ex.Message);
             LogService.Log("DeleteFolder", ex);
             return false;
         }
@@ -4691,8 +4696,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (messages.Count == 0) return;
 
-        var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
-        StatusText = $"Moving {label}…";
+        StatusText = StringsHelper.Count("MainVM_Status_MovingCount", messages.Count);
         IsBusy     = true;
         try
         {
@@ -4715,16 +4719,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Was missing the To-view branch before §2.1; helper covers all three.
             RebuildActiveGroupView();
 
-            StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} moved to {destination.DisplayName}.";
+            StatusText = StringsHelper.Count("MainVM_Status_MovedToFolderFormat", messages.Count, destination.DisplayName);
             Announce(StatusText);
             // Conversations/From: LandOnX in the view handles focus after rebuild.
             if (ViewMode == ViewMode.Messages && Messages.Count > 0)
                 MessageListFocusRequested?.Invoke();
         }
-        catch (OperationCanceledException) { StatusText = "Move cancelled."; }
+        catch (OperationCanceledException) { StatusText = Strings.MainVM_Status_MoveCancelled; }
         catch (Exception ex)
         {
-            StatusText = $"Failed to move: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToMoveFormat, ex.Message);
             LogService.Log("MoveMessages", ex);
         }
         finally { IsBusy = false; }
@@ -4735,8 +4739,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (messages.Count == 0) return;
 
-        var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
-        StatusText = $"Copying {label}…";
+        StatusText = StringsHelper.Count("MainVM_Status_CopyingCount", messages.Count);
         IsBusy     = true;
         try
         {
@@ -4748,12 +4751,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     group.Select(m => m.MessageId).ToList(),
                     destination.FullName, cts.Token);
 
-            StatusText = $"{messages.Count} {(messages.Count == 1 ? "message" : "messages")} copied to {destination.DisplayName}.";
+            StatusText = StringsHelper.Count("MainVM_Status_CopiedToFolderFormat", messages.Count, destination.DisplayName);
             Announce(StatusText);
         }
         catch (Exception ex)
         {
-            StatusText = $"Failed to copy: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_FailedToCopyFormat, ex.Message);
             LogService.Log("CopyMessages", ex);
         }
         finally { IsBusy = false; }
@@ -5034,7 +5037,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (att.PartSpecifier == null) return;
             IsBusy = true;
-            StatusText = $"Downloading {att.FileName}…";
+            StatusText = string.Format(Strings.MainVM_Status_DownloadingAttachmentFormat, att.FileName);
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -5044,7 +5047,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                StatusText = $"Download failed: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_DownloadFailedFormat, ex.Message);
                 IsBusy = false;
                 return;
             }
@@ -5056,7 +5059,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var savePath = SaveFilePathRequested?.Invoke(AttachmentSafety.SanitizeFileName(att.FileName));
         if (savePath == null) return;
         await File.WriteAllBytesAsync(savePath, att.Content!);
-        StatusText = $"Saved {att.FileName}.";
+        StatusText = string.Format(Strings.MainVM_Status_SavedAttachmentFormat, att.FileName);
     }
 
     [RelayCommand]
@@ -5064,11 +5067,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (MessageDetail == null || MessageDetail.Attachments.Count == 0) return;
 
-        var folder = SaveFolderPathRequested?.Invoke("Choose folder to save attachments");
+        var folder = SaveFolderPathRequested?.Invoke(Strings.MainVM_ChooseFolderToSaveAttachments);
         if (folder == null) return;
 
         IsBusy = true;
-        StatusText = "Saving attachments…";
+        StatusText = Strings.MainVM_Status_SavingAttachments;
         try
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
@@ -5087,11 +5090,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     await File.WriteAllBytesAsync(Path.Combine(folder, safeFileName), att.Content);
                 }
             }
-            StatusText = "All attachments saved.";
+            StatusText = Strings.MainVM_Status_AllAttachmentsSaved;
         }
         catch (Exception ex)
         {
-            StatusText = $"Save all failed: {ex.Message}";
+            StatusText = string.Format(Strings.MainVM_Status_SaveAllFailedFormat, ex.Message);
             LogService.Log("SaveAllAttachments", ex);
         }
         finally { IsBusy = false; }
@@ -5106,7 +5109,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (att.PartSpecifier == null) return;
             IsBusy = true;
-            StatusText = $"Downloading {att.FileName}…";
+            StatusText = string.Format(Strings.MainVM_Status_DownloadingAttachmentFormat, att.FileName);
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -5116,7 +5119,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             catch (Exception ex)
             {
-                StatusText = $"Download failed: {ex.Message}";
+                StatusText = string.Format(Strings.MainVM_Status_DownloadFailedFormat, ex.Message);
                 IsBusy = false;
                 return;
             }
@@ -5130,8 +5133,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (AttachmentSafety.IsDangerousExtension(safeFileName))
         {
             if (ConfirmationRequested?.Invoke(
-                $"'{safeFileName}' is an executable file type. Opening it could be dangerous. Continue?",
-                "Security Warning") != true) return;
+                string.Format(Strings.Compose_Confirm_DangerousAttachmentMessage, safeFileName),
+                Strings.Compose_Confirm_DangerousAttachmentTitle) != true) return;
         }
 
         // Per-attachment subfolder so two messages with the same attachment name
@@ -5255,7 +5258,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var isCancel = string.Equals(invite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
         if (isCancel)
         {
-            sb.Append($"<div style=\"font-weight:bold;color:{Color("error", "#B3261E")};margin-bottom:8px;\">This event has been cancelled by the organizer.</div>");
+            sb.Append($"<div style=\"font-weight:bold;color:{Color("error", "#B3261E")};margin-bottom:8px;\">{System.Net.WebUtility.HtmlEncode(Strings.MainVM_Calendar_EventCancelledByOrganizer)}</div>");
         }
 
         if (!string.IsNullOrWhiteSpace(invite.Summary))
@@ -5318,11 +5321,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
 
             sb.Append("<div style=\"margin-top:8px;\">");
-            AppendButton("quickmail:ics-accept", "Accept invitation", "Accept",
+            AppendButton("quickmail:ics-accept", Strings.MainVM_Calendar_AcceptInvitationAriaLabel, Strings.MainVM_Calendar_AcceptButton,
                 Color("success", "#2E6B3E"), Color("successBackground", "#E9F3EC"));
-            AppendButton("quickmail:ics-tentative", "Tentatively accept invitation", "Tentative",
+            AppendButton("quickmail:ics-tentative", Strings.MainVM_Calendar_TentativelyAcceptInvitationAriaLabel, Strings.MainVM_Calendar_TentativeButton,
                 Color("warning", "#8A5A00"), Color("warningBackground", "#FBF3E2"));
-            AppendButton("quickmail:ics-decline", "Decline invitation", "Decline",
+            AppendButton("quickmail:ics-decline", Strings.MainVM_Calendar_DeclineInvitationAriaLabel, Strings.MainVM_Calendar_DeclineButton,
                 Color("error", "#B3261E"), Color("errorBackground", "#FBEAE9"), last: true);
             sb.Append("</div>");
         }
@@ -5334,19 +5337,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task AcceptInvite()
     {
-        await SendIcsReply("ACCEPTED", "accepted");
+        await SendIcsReply("ACCEPTED", Strings.MainVM_Calendar_ActionAccepted);
     }
 
     [RelayCommand]
     private async Task DeclineInvite()
     {
-        await SendIcsReply("DECLINED", "declined");
+        await SendIcsReply("DECLINED", Strings.MainVM_Calendar_ActionDeclined);
     }
 
     [RelayCommand]
     private async Task TentativeInvite()
     {
-        await SendIcsReply("TENTATIVE", "tentatively accepted");
+        await SendIcsReply("TENTATIVE", Strings.MainVM_Calendar_ActionTentativelyAccepted);
     }
 
     private async Task SendIcsReply(string partStat, string actionLabel)
@@ -5357,7 +5360,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var account = Accounts.FirstOrDefault(a => a.Id == MessageDetail!.AccountId);
         if (account == null)
         {
-            Announce($"Cannot send calendar response: account not found.", AnnouncementCategory.Result);
+            Announce(Strings.MainVM_Announce_CalendarResponseNoAccount, AnnouncementCategory.Result);
             return;
         }
 
@@ -5370,8 +5373,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var password = _credentials.GetPassword(account.Id);
             await _smtp.SendIcsReplyAsync(icsContent, account, password, invite.Organizer ?? "");
 
-            var eventTitle = invite.Summary ?? "calendar event";
-            Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
+            var eventTitle = invite.Summary ?? Strings.MainVM_Calendar_UntitledEvent;
+            Announce(string.Format(Strings.MainVM_Announce_CalendarResponseSentFormat, actionLabel, eventTitle), AnnouncementCategory.Result);
 
             // Update the calendar event's response status so the calendar pane reflects the reply.
             if (_calendarService != null && !string.IsNullOrEmpty(invite.Uid))
@@ -5416,7 +5419,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             LogService.Log($"SendIcsReply ({partStat})", ex);
-            Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
+            Announce(string.Format(Strings.MainVM_Announce_CalendarResponseFailedFormat, ex.Message), AnnouncementCategory.Result);
         }
     }
 
@@ -5455,7 +5458,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageId   = messageId,
             AccountId   = accountId,
             FolderName  = folder,
-            Subject     = "Calendar invitation", // fallback; replaced when detail loads
+            Subject     = Strings.MainVM_Calendar_InvitationFallbackSubject, // fallback; replaced when detail loads
         };
         SelectMessageCommand.Execute(summary);
     }
@@ -5513,11 +5516,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var info = await _updateCheckService.CheckForUpdateAsync(cts.Token);
             if (info is not null)
             {
-                UpdateAvailableText = $"Update available: v{info.Version}";
+                UpdateAvailableText = string.Format(Strings.MainVM_UpdateAvailableFormat, info.Version);
                 UpdateReleaseUrl    = info.HtmlUrl;
                 // Result, not Status: a one-time discovery outcome. Users who silence background
                 // Status chatter (the main reason that setting exists) must still hear this.
-                Announce($"QuickMail update available: version {info.Version}. Check the Help menu.", AnnouncementCategory.Result);
+                Announce(string.Format(Strings.MainVM_Announce_UpdateAvailableFormat, info.Version), AnnouncementCategory.Result);
             }
             else
             {
