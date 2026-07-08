@@ -5532,16 +5532,47 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // "No updates available" Help entry still takes users somewhere useful.
     private const string ReleasesPageUrl = "https://github.com/kellylford/QuickMail/releases";
 
+    // Version string of a found update (e.g. "0.8.1"); empty when up to date. Feeds the
+    // update dialog for self-updating (installed) copies.
+    private string _updateVersion = string.Empty;
+
+    /// <summary>
+    /// Raised for self-updating (installed) copies when the Help update entry is activated:
+    /// the View shows the QuickMail Update dialog (restart now / what's new / dismiss).
+    /// Portable copies never raise this — they open the release page instead, because
+    /// updating them really is a manual download.
+    /// </summary>
+    public event EventHandler<(string Version, string WhatsNewUrl)>? UpdateDialogRequested;
+
     [RelayCommand]
-#pragma warning disable CA1822 // instance required for RelayCommand integration with ObservableObject
     private void OpenUpdatePage()
-#pragma warning restore CA1822
     {
+        if (_updateCheckService?.SelfUpdatePending == true && !string.IsNullOrEmpty(_updateVersion))
+        {
+            // Installed copy: the update is already downloading/downloaded — sending the user
+            // to the release page would wrongly suggest a manual download is needed.
+            UpdateDialogRequested?.Invoke(this, (_updateVersion, UpdateReleaseUrl));
+            return;
+        }
+
         // The specific release when one was found; otherwise the general releases page.
         // UpdateReleaseUrl comes from the GitHub API response, so route it through the
         // external-URI allow-list like any other externally sourced link.
         var url = string.IsNullOrEmpty(UpdateReleaseUrl) ? ReleasesPageUrl : UpdateReleaseUrl;
         Helpers.ExternalUriPolicy.TryOpenExternal(url);
+    }
+
+    /// <summary>
+    /// Applies the downloaded update and restarts QuickMail. On success the process exits
+    /// inside this call. On failure the user hears why and the app keeps running (the update
+    /// still applies on a normal exit).
+    /// </summary>
+    public async Task RestartToUpdateAsync()
+    {
+        if (_updateCheckService is null) return;
+        var ok = await _updateCheckService.RestartToUpdateAsync();
+        if (!ok)
+            Announce("The update could not be applied right now. It will be installed the next time QuickMail starts.", AnnouncementCategory.Result);
     }
 
     // Startup check: silent when already up to date (announcing "no updates" on every launch
@@ -5557,6 +5588,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var info = await _updateCheckService.CheckForUpdateAsync(cts.Token);
             if (info is not null)
             {
+                _updateVersion      = info.Version;
                 UpdateAvailableText = $"Update available: v{info.Version}";
                 UpdateReleaseUrl    = info.HtmlUrl;
                 // Result, not Status: a one-time discovery outcome. Users who silence background
@@ -5565,6 +5597,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
+                _updateVersion      = string.Empty;
                 UpdateAvailableText = NoUpdateText;
                 UpdateReleaseUrl    = string.Empty;
             }

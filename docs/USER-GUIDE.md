@@ -147,11 +147,11 @@ Open **Settings → Keyboard** to reassign any shortcut to a different key. Type
 
 ### Checking for Updates
 
-QuickMail checks for a newer release in the background each time it starts. The top entry of the **Help** menu always shows the result: **"No updates available — running version X.Y.Z"** when you are current, or **"Update available: vX.Y.Z"** when a newer release exists. Activating the entry opens the QuickMail releases site in your browser. If an update is found, a spoken announcement follows a few seconds after launch; the background check itself is silent when you are already up to date.
+QuickMail checks for a newer release in the background each time it starts. The top entry of the **Help** menu always shows the result: **"No updates available — running version X.Y.Z"** when you are current, or **"Update available: vX.Y.Z"** when a newer release exists. If an update is found, a spoken announcement follows a few seconds after launch; the background check itself is silent when you are already up to date.
 
-**Installed copies update themselves.** If you installed QuickMail with the setup program, a found update is also downloaded quietly in the background and installed automatically the next time you exit and reopen QuickMail — no download page, no installer to run, no security warnings. Your accounts, settings, and mail are untouched by an update.
+**Installed copies update themselves.** If you installed QuickMail with the setup program, a found update is downloaded quietly in the background and installed automatically the next time you exit and reopen QuickMail — no download page, no installer to run, no security warnings. Activating the Help menu update entry opens a **QuickMail Update** dialog that says the new version will be installed on relaunch, with three choices: **Restart to Update** applies it immediately and reopens QuickMail; **See what's new** opens that version's release notes in your browser; **Exit** (or Escape) dismisses the dialog — the update still installs the next time you start QuickMail. Your accounts, settings, and mail are untouched by an update.
 
-**The portable exe does not update itself.** If you run the standalone `QuickMail.exe`, the Help menu entry still tells you when a new version exists, and updating remains a manual download of the new exe from the releases page.
+**The portable exe does not update itself.** If you run the standalone `QuickMail.exe`, the Help menu entry still tells you when a new version exists; activating it opens the releases page, and updating remains a manual download of the new exe.
 
 The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive walkthrough of core navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and Escape) for anyone new to the app.
 

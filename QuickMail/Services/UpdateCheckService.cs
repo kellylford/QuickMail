@@ -30,6 +30,14 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
     private readonly string? _feedOverride;
     private bool _disposed;
 
+    // Installed-path (Velopack) update state. Held so RestartToUpdateAsync can apply the
+    // update on demand, and so Dispose can arm apply-on-exit once the download finished.
+    private UpdateManager? _velopackManager;
+    private Velopack.UpdateInfo? _pendingUpdate;
+    private Task? _downloadTask;
+    private volatile bool _downloadCompleted;
+    private bool _restartRequested;
+
     public UpdateCheckService(string? updateFeedOverride = null)
     {
         _feedOverride = updateFeedOverride;
@@ -37,6 +45,8 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
         _http.DefaultRequestHeaders.UserAgent.Add(
             new ProductInfoHeaderValue("QuickMail", _currentVersion));
     }
+
+    public bool SelfUpdatePending => _pendingUpdate is not null;
 
     public async Task<Models.UpdateInfo?> CheckForUpdateAsync(CancellationToken cancellationToken = default)
     {
@@ -48,6 +58,31 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
             return await CheckViaVelopackAsync(mgr).ConfigureAwait(false);
 
         return await CheckViaGitHubApiAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<bool> RestartToUpdateAsync()
+    {
+        var mgr = _velopackManager;
+        var update = _pendingUpdate;
+        if (mgr is null || update is null) return false;
+        try
+        {
+            // The background download normally finished long ago; waiting covers the user
+            // racing to the Help menu on a slow connection.
+            if (_downloadTask is { } dl) await dl.ConfigureAwait(false);
+            if (!_downloadCompleted) return false;
+
+            _restartRequested = true;
+            // Preserve /debug, --profileDir, --updateFeed across the update-triggered relaunch.
+            mgr.ApplyUpdatesAndRestart(update, Environment.GetCommandLineArgs()[1..]);
+            return true; // not reached — ApplyUpdatesAndRestart exits the process
+        }
+        catch (Exception ex)
+        {
+            _restartRequested = false;
+            LogService.Log($"UpdateCheckService: restart to update failed: {ex.Message}");
+            return false;
+        }
     }
 
     private UpdateManager? CreateVelopackManager()
@@ -82,17 +117,20 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
                 return null;
 
             var version = update.TargetFullRelease.Version.ToString();
+            _velopackManager = mgr;
+            _pendingUpdate = update;
 
             // Download in the background on the service's lifetime token (not the caller's
-            // short check timeout — the package can be large). Once staged, Update.exe applies
-            // it after the app exits, so the next normal launch runs the new version. If the
-            // app exits mid-download, the next launch simply re-checks and resumes.
-            _ = Task.Run(async () =>
+            // short check timeout — the package can be large). The update is applied either
+            // when the user chooses "Restart to Update" (RestartToUpdateAsync) or, failing
+            // that, on app exit (Dispose arms Update.exe), so the next launch runs the new
+            // version. If the app exits mid-download, the next launch re-checks and resumes.
+            _downloadTask = Task.Run(async () =>
             {
                 try
                 {
                     await mgr.DownloadUpdatesAsync(update, cancelToken: _cts.Token).ConfigureAwait(false);
-                    mgr.WaitExitThenApplyUpdates(update, silent: true, restart: false);
+                    _downloadCompleted = true;
                     LogService.Log($"Update {version} downloaded; it will be applied when QuickMail exits.");
                 }
                 catch (Exception ex)
@@ -101,9 +139,8 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
                 }
             });
 
-            // Empty URL — the Help menu entry falls back to the releases page. The update
-            // itself needs no user action beyond an eventual restart.
-            return new Models.UpdateInfo(version, string.Empty);
+            // The release-tag page serves as the "what's new" link in the update dialog.
+            return new Models.UpdateInfo(version, $"{RepoUrl}/releases/tag/v{version}");
         }
         catch (Exception ex)
         {
@@ -145,6 +182,24 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+
+        // App is exiting: if a downloaded update was not applied via restart-to-update,
+        // arm Update.exe to apply it once this process ends, so the next launch runs the
+        // new version. Armed here — not right after the download — so this path and
+        // ApplyUpdatesAndRestart can never both spawn an applier.
+        if (_downloadCompleted && !_restartRequested &&
+            _velopackManager is { } mgr && _pendingUpdate is { } update)
+        {
+            try
+            {
+                mgr.WaitExitThenApplyUpdates(update, silent: true, restart: false);
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"UpdateCheckService: arming apply-on-exit failed: {ex.Message}");
+            }
+        }
+
         _cts.Cancel();   // signal any in-flight request before releasing the handle
         _cts.Dispose();
         _http.Dispose();

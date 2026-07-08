@@ -292,6 +292,14 @@ public partial class MainWindow : Window
         vm.RulesManagerRequested += (_, _) => OpenRulesManager();
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
+        vm.UpdateDialogRequested += (_, info) =>
+        {
+            var dialog = new UpdateDialog(info.Version, info.WhatsNewUrl, vm.RestartToUpdateAsync)
+            {
+                Owner = this,
+            };
+            dialog.ShowDialog();
+        };
         vm.DesktopShortcutOfferRequested += (_, _) =>
         {
             // Default is No, mirroring the old installer's unchecked desktop-icon option.
