@@ -16,14 +16,16 @@ public static class DesktopShortcut
 
     public static bool Exists() => File.Exists(ShortcutPath);
 
-    public static void Create()
+    /// <summary>Returns false when no shortcut was created (unknown process path, or the
+    /// WScript.Shell COM class is unavailable) so callers never report a false success.</summary>
+    public static bool Create()
     {
         var target = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(target)) return;
+        if (string.IsNullOrEmpty(target)) return false;
 
         // WScript.Shell is the only shell-link writer reachable without a COM interop assembly.
         var shellType = Type.GetTypeFromProgID("WScript.Shell");
-        if (shellType is null) return;
+        if (shellType is null) return false;
         dynamic shell = Activator.CreateInstance(shellType)!;
         try
         {
@@ -32,6 +34,7 @@ public static class DesktopShortcut
             link.WorkingDirectory = Path.GetDirectoryName(target);
             link.Description = "QuickMail";
             link.Save();
+            return true;
         }
         finally
         {

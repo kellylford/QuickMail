@@ -75,10 +75,10 @@ public partial class SettingsViewModel : ObservableObject
     private bool _confirmEmptyTrash;
 
     // Desktop shortcut: the .lnk on the desktop is the source of truth, not config —
-    // loaded from the filesystem and applied on save only when the user changed it.
+    // loaded from the filesystem and applied on save only when it differs from the file's
+    // current state (re-checked at save time; the file can change outside this dialog).
     [ObservableProperty]
     private bool _desktopShortcut;
-    private bool _desktopShortcutInitial;
 
     [ObservableProperty]
     private bool _autoUpdate;
@@ -247,7 +247,6 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
-        _desktopShortcutInitial          = DesktopShortcut;
         AutoUpdate                       = cfg.AutoUpdate;
         ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
@@ -313,17 +312,26 @@ public partial class SettingsViewModel : ObservableObject
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.AutoUpdate                       = AutoUpdate;
         cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;
-        if (DesktopShortcut != _desktopShortcutInitial)
+        if (DesktopShortcut != Helpers.DesktopShortcut.Exists())
         {
             try
             {
-                if (DesktopShortcut) Helpers.DesktopShortcut.Create();
-                else Helpers.DesktopShortcut.Delete();
-                _desktopShortcutInitial = DesktopShortcut;
+                if (DesktopShortcut)
+                {
+                    // Create() can decline silently; reflect reality in the checkbox so the
+                    // user sees the setting did not take rather than a phantom success.
+                    if (!Helpers.DesktopShortcut.Create())
+                        DesktopShortcut = false;
+                }
+                else
+                {
+                    Helpers.DesktopShortcut.Delete();
+                }
             }
             catch (Exception ex)
             {
                 LogService.Debug($"Desktop shortcut: {ex.Message}");
+                DesktopShortcut = Helpers.DesktopShortcut.Exists();
             }
         }
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;

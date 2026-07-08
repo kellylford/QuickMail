@@ -43,9 +43,14 @@ public partial class App : Application
     // pending — so the prompt runs in a detached PowerShell process that outlives the
     // uninstall. The default answer keeps everything; only an explicit Yes deletes the
     // default profile (%APPDATA%\QuickMail) and QuickMail entries in Windows Credential
-    // Manager. Custom --profileDir locations are never touched.
+    // Manager. Custom --profileDir locations are never touched. The whole mechanism is
+    // best-effort: on script-restricted machines (AppLocker, Constrained Language Mode)
+    // the prompt may never appear, in which case data is kept — the safe default.
+    // Diagnostics go to %TEMP%\quickmail-uninstall.log: LogService is not configured in
+    // the hook context (OnStartup never runs), so it cannot be used here.
     private static void LaunchUninstallDataPrompt()
     {
+        var diagLog = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log");
         try
         {
             var dataDir = System.IO.Path.Combine(
@@ -54,6 +59,8 @@ public partial class App : Application
 
             var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall-prompt.ps1");
             System.IO.File.WriteAllText(script, """
+                $log = Join-Path $env:TEMP 'quickmail-uninstall.log'
+                Add-Content -Path $log -Value "$(Get-Date -Format s) prompt script started"
                 Add-Type -AssemblyName System.Windows.Forms
                 $dir = Join-Path $env:APPDATA 'QuickMail'
                 if (-not (Test-Path $dir)) { exit }
@@ -66,11 +73,13 @@ public partial class App : Application
                     [System.Windows.Forms.MessageBoxButtons]::YesNo,
                     [System.Windows.Forms.MessageBoxIcon]::Question,
                     [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+                Add-Content -Path $log -Value "$(Get-Date -Format s) user answered: $r"
                 if ($r -eq [System.Windows.Forms.DialogResult]::Yes) {
                     Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
                     (cmdkey /list) | ForEach-Object {
                         if ($_ -match 'target=(QuickMail\S*)') { cmdkey /delete:$($Matches[1]) | Out-Null }
                     }
+                    Add-Content -Path $log -Value "$(Get-Date -Format s) data removal completed"
                 }
                 Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
                 """);
@@ -82,11 +91,15 @@ public partial class App : Application
                 UseShellExecute = false,
                 CreateNoWindow = true,
             });
+            System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook: prompt process launched\r\n");
         }
         catch (Exception ex)
         {
             // The uninstall itself must never fail or stall because of this prompt.
-            LogService.Debug($"Uninstall data prompt: {ex.Message}");
+#pragma warning disable RCS1075 // this IS the last-resort diagnostics writer — a failure to write the diagnostic has no further channel and must not escape into the uninstall hook
+            try { System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook failed: {ex}\r\n"); }
+            catch (Exception) { }
+#pragma warning restore RCS1075
         }
     }
 

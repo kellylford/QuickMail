@@ -3963,15 +3963,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (create)
         {
+            bool created;
             try
             {
-                Helpers.DesktopShortcut.Create();
-                Announce("Desktop shortcut added.");
+                created = Helpers.DesktopShortcut.Create();
             }
             catch (Exception ex)
             {
+                created = false;
                 LogService.Debug($"Desktop shortcut: {ex.Message}");
             }
+            // Create() can decline silently (no WScript.Shell class, unknown process path) —
+            // only report what actually happened, and point at the retry path on failure.
+            Announce(created
+                ? "Desktop shortcut added."
+                : "The desktop shortcut could not be created. You can try again from Settings, on the General page.");
         }
         var cfg = _configService.Load();
         cfg.DesktopShortcutPrompted = true;
@@ -5530,7 +5536,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // Releases landing page — used when no specific update is known so the always-present
     // "No updates available" Help entry still takes users somewhere useful.
-    private const string ReleasesPageUrl = "https://github.com/kellylford/QuickMail/releases";
+    private const string ReleasesPageUrl = UpdateCheckService.ReleasesPageUrl;
 
     // Version string of a found update (e.g. "0.8.1"); empty when up to date. Feeds the
     // update dialog for self-updating (installed) copies.
@@ -5552,12 +5558,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Detects that an update was applied since the previous run (recorded LastRunVersion
-    /// differs from the running version on an installed copy) and raises the
-    /// update-installed notice. Always records the running version, so the notice fires
-    /// once per update. Called once per launch by the View after the main window has loaded.
+    /// differs from the running version) and raises the update-installed notice. Both the
+    /// recording and the notice are installed-copies-only: a portable or dev run on the same
+    /// profile must neither trigger a phantom notice on the next installed launch nor leave
+    /// a record that suppresses/creates one. Called once per launch by the View after the
+    /// main window has loaded; <paramref name="dialogAllowed"/> is false on the no-account
+    /// startup path, where the version is stamped but no dialog may stack on onboarding.
     /// </summary>
-    public void MaybeShowUpdateInstalledNotice()
+    public void MaybeShowUpdateInstalledNotice(bool dialogAllowed = true)
     {
+        // Version hops outside a Velopack install are dev/portable swaps, not updates —
+        // don't record them either, or an installed↔portable alternation on the shared
+        // default profile announces updates that never happened.
+        if (!Helpers.VelopackRuntime.IsInstalled) return;
+
         var cfg = _configService.Load();
         if (cfg.LastRunVersion == CurrentVersion) return;
 
@@ -5565,15 +5579,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         cfg.LastRunVersion = CurrentVersion;
         _configService.Save(cfg);
 
+        if (!dialogAllowed) return;
         // No previous record: first run ever (or first run of a version that tracks this) —
         // nothing was "installed" from the user's point of view.
         if (string.IsNullOrEmpty(previous)) return;
-        // Version hops outside a Velopack install are dev/portable swaps, not updates.
-        if (!Helpers.VelopackRuntime.IsInstalled) return;
+        // Only a forward move is an update; a downgrade (rollback install) must not be
+        // announced as one. Unparseable records fail closed (no dialog).
+        if (!Version.TryParse(previous, out var prev) ||
+            !Version.TryParse(CurrentVersion, out var current) ||
+            current <= prev)
+            return;
         if (!cfg.ShowUpdateInstalledAlerts) return;
 
         UpdateInstalledDialogRequested?.Invoke(this,
-            (CurrentVersion, $"{ReleasesPageUrl}/tag/v{CurrentVersion}"));
+            (CurrentVersion, UpdateCheckService.ReleaseTagUrl(CurrentVersion)));
     }
 
     [RelayCommand]
@@ -5596,15 +5615,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Applies the downloaded update and restarts QuickMail. On success the process exits
-    /// inside this call. On failure the user hears why and the app keeps running (the update
-    /// still applies on a normal exit).
+    /// inside this call. On failure the user hears an accurate outcome and the app keeps
+    /// running; a cancellation (the update dialog was dismissed) is silent. The token lets
+    /// the dialog retract a restart that is waiting on a slow download.
     /// </summary>
-    public async Task RestartToUpdateAsync()
+    public async Task RestartToUpdateAsync(CancellationToken cancellationToken)
     {
         if (_updateCheckService is null) return;
-        var ok = await _updateCheckService.RestartToUpdateAsync();
-        if (!ok)
-            Announce("The update could not be applied right now. It will be installed the next time QuickMail starts.", AnnouncementCategory.Result);
+        var ok = await _updateCheckService.RestartToUpdateAsync(cancellationToken);
+        if (!ok && !cancellationToken.IsCancellationRequested)
+            // No promise of a next-start install: when the download failed, nothing is
+            // staged — the next launch re-checks and tries the download again.
+            Announce("The update could not be applied right now. QuickMail will try again the next time it starts.", AnnouncementCategory.Result);
     }
 
     // Startup check: silent when already up to date (announcing "no updates" on every launch

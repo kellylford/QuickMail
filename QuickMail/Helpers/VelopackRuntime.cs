@@ -20,7 +20,7 @@ public static class VelopackRuntime
             // The source is never contacted here; construction only inspects the local
             // install layout via IsInstalled.
             return new UpdateManager(
-                new GithubSource("https://github.com/kellylford/QuickMail", accessToken: null, prerelease: false))
+                new GithubSource(Services.UpdateCheckService.RepoUrl, accessToken: null, prerelease: false))
                 .IsInstalled;
         }
         catch (Exception)

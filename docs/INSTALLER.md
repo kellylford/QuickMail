@@ -44,7 +44,10 @@ The `vpk` CLI is a .NET global tool: `dotnet tool install -g vpk`.
   answer keeps everything; an explicit Yes deletes `%APPDATA%\QuickMail` **and** QuickMail
   entries in Windows Credential Manager (passwords `QuickMail:<id>`, tokens `QuickMail.*`).
   Custom `--profileDir` locations are never touched. Data survival on uninstall-without-Yes
-  matches the old Inno behavior.
+  matches the old Inno behavior. The prompt is **best-effort**: on script-restricted machines
+  (AppLocker, Constrained Language Mode) it may never appear, in which case data is simply
+  kept — the safe default. The hook and the prompt script log to
+  `%TEMP%\quickmail-uninstall.log` for diagnosis.
 - **WebView2 install-on-demand** is preserved via `--framework webview2` — setup installs the
   WebView2 Runtime when missing, same as the old Inno `Dependency_AddWebView2`.
 - **Version string must be SemVer.** `vpk pack --packVersion` rejects 4-part versions. The

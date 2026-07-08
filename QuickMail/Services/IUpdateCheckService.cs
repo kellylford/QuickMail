@@ -15,9 +15,11 @@ public interface IUpdateCheckService
     bool SelfUpdatePending { get; }
 
     /// <summary>
-    /// Waits for the pending update download to finish, then applies it and restarts the app
-    /// (the call does not return on success — the process exits). Returns false when there is
-    /// no pending self-update or applying failed; the failure is logged.
+    /// Waits for the pending update download to finish (retrying the download once if the
+    /// background attempt failed), then applies it and restarts the app (the call does not
+    /// return on success — the process exits). Returns false when there is no pending
+    /// self-update, the caller cancelled (e.g. the update dialog was dismissed), or applying
+    /// failed; failures are logged.
     /// </summary>
-    Task<bool> RestartToUpdateAsync();
+    Task<bool> RestartToUpdateAsync(CancellationToken cancellationToken = default);
 }

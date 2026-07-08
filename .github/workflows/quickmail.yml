@@ -77,17 +77,22 @@ jobs:
           retention-days: 7
 
       # The release tag is the single source of truth for the Velopack package version.
-      # It must be SemVer (vpk rejects 4-part versions) and must match the csproj
-      # <Version>, which drives the in-app version display and the portable-exe
-      # update comparison — a mismatch would make installs mis-report their version.
-      - name: Verify tag matches csproj version
+      # It must be SemVer (vpk rejects 4-part versions) and must match all three csproj
+      # version properties, which are set independently: <Version> feeds NuGet/display
+      # conventions, but <AssemblyVersion> is what Helpers/AppVersion.Display actually
+      # reads — it drives the About dialog, LastRunVersion tracking, and the portable-exe
+      # update comparison. A partial bump would ship an app that mis-reports its version
+      # and portable copies that perpetually announce the update they already have.
+      - name: Verify tag matches csproj versions
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $tag = '${{ github.ref_name }}'.TrimStart('v')
-          $csproj = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath '/Project/PropertyGroup/Version').Node.InnerText
-          if ($tag -ne $csproj) {
-            throw "Tag version '$tag' does not match csproj <Version> '$csproj'. Update the csproj or re-tag."
+          foreach ($prop in 'Version', 'AssemblyVersion', 'FileVersion') {
+            $value = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath "/Project/PropertyGroup/$prop").Node.InnerText
+            if ($tag -ne $value) {
+              throw "Tag version '$tag' does not match csproj <$prop> '$value'. Update the csproj or re-tag."
+            }
           }
 
       - name: Install vpk
@@ -126,12 +131,10 @@ jobs:
             --instWelcome installer/velopack/welcome.txt `
             --instLicense installer/velopack/license.txt `
             --instConclusion installer/velopack/conclusion.txt
-          # The download step above leaves the previous version's full .nupkg in this
-          # folder (delta input). Remove it so the release upload glob below ships only
-          # this version's packages — clients never fetch old assets from a new release.
-          Get-ChildItem installer/Output/Releases/*.nupkg |
-            Where-Object { $_.Name -notmatch [regex]::Escape("-$version-") } |
-            Remove-Item
+          # The previous version's full .nupkg (fetched above as the delta input) stays in
+          # the folder and is uploaded with the rest: vpk pack bakes an entry for every
+          # package it saw into RELEASES/releases.win.json, so deleting the file would
+          # publish feed metadata referencing an asset the release does not carry.
 
       # Create a GitHub Release when a version tag is pushed (e.g. v1.2.0)
       # Release notes are read from docs/release-notes-<tag>.md if present,
@@ -158,4 +161,8 @@ jobs:
             installer/Output/Releases/RELEASES
             installer/Output/Releases/releases.win.json
             installer/Output/Releases/assets.win.json
+          # Exact filenames above encode vpk's output naming; if a vpk upgrade renames an
+          # output, fail the release instead of silently publishing without the installer
+          # or the update feed (clients would then quietly stop seeing updates).
+          fail_on_unmatched_files: true
           body_path: docs/release-notes-${{ github.ref_name }}.md

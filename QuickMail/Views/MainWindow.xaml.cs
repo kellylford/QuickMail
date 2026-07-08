@@ -320,6 +320,8 @@ public partial class MainWindow : Window
                 "QuickMail",
                 MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
             vm.ApplyDesktopShortcutChoice(choice == MessageBoxResult.Yes);
+            // Same unreliable return-to-owner focus as the update dialogs below.
+            FocusActiveMessagePanel();
         };
         vm.AboutRequested += (_, _) => ShowAboutDialog();
         vm.ReportBugRequested += (_, _) => ShowReportBugWindow();
@@ -976,6 +978,10 @@ public partial class MainWindow : Window
         var firstAccount = _vm.Accounts.FirstOrDefault();
         if (firstAccount == null)
         {
+            // Stamp the running version even on the account-less path (dialog suppressed —
+            // the Account Manager is already up) so an update applied before the first
+            // account exists still gets its one installed notice later.
+            _vm.MaybeShowUpdateInstalledNotice(dialogAllowed: false);
             OpenAccountManager();
             return;
         }
@@ -991,8 +997,8 @@ public partial class MainWindow : Window
         _ = _vm.StartBackgroundSyncAsync();
 
         // One-time desktop shortcut offer for installed copies — after the window is up and
-        // the background sync has been kicked off, so the dialog neither delays startup nor
-        // strands focus (it returns to the message panel on close).
+        // the background sync has been kicked off, so the dialog does not delay startup;
+        // the offer handler restores focus to the message panel explicitly on close.
         _vm.MaybeOfferDesktopShortcut();
 
         // "QuickMail Update Installed" notice, once per applied update. After the shortcut
