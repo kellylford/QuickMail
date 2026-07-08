@@ -77,7 +77,7 @@ For the "default experience" scenario below, use a **fresh** (empty) profile dir
 With Parchment Dark active, exercise each retemplated control with the keyboard and confirm both behavior and speech are unchanged from the light theme:
 
 - **Menus** — open each main menu, arrow through items, check submenus (View → Filter, flag submenus), check a checkable item, activate one with an access key. Verify InputGestureText still reads, disabled items still announce as dimmed/unavailable, and Escape closes levels one at a time.
-- **Message list** — arrow through rows; verify selection is visible (tinted, not white-on-white), unread rows are SemiBold with a small accent bar at the left edge, flag color bars still show, and column headers render.
+- **Message list** — arrow through rows; verify the selected row is a solid accent-colored band with white text (unmistakable against neighboring rows), a thin divider separates adjacent rows, unread rows are SemiBold with a small accent bar at the left edge (the bar turns white on the selected row), flag color bars still show, and column headers render.
 - **Trees** — folder tree, conversations, by-sender: expand/collapse with Left/Right, verify the expander glyphs and selection visuals, and that announcements (level, expanded state, unread counts) are unchanged.
 - **Combo boxes** — in Settings: open with F4/Alt+Down, arrow, typeahead, Escape to close without committing.
 - **Check boxes / radio buttons** — Settings General tab: Space toggles, radio groups still one tab stop with arrow cycling.

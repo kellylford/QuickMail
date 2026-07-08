@@ -588,17 +588,19 @@ QuickMail ships with six themes. **System** follows Windows; the other five are 
 
 **System** — follows the Windows light or dark setting. Whichever it resolves to today, it currently displays the same colors as Parchment (below): an off-white background, very dark cool-gray text, and a dark muted-blue accent.
 
-**Parchment** (light, default) — an off-white background (Snow) with very dark cool-gray text and a dark muted-blue accent (Dark Slate Blue) used for buttons and the unread marker. Panels and toolbars use warm off-white tones (White Smoke, Linen); links are medium blue. This is QuickMail's standard light look.
+In every theme, the selected item in a list or tree is a solid band of the theme's accent color with white text, so the current message is unmistakable; supporting text (previews, timestamps, unread counts) is a step lighter than body text but kept clearly readable; and a thin divider separates message rows.
 
-**Parchment Dark** — the dark counterpart to Parchment: a very dark gray background with light gray text and a light muted-blue accent. Panels and toolbars use slightly lighter dark-gray tones for depth; links are light blue. Status colors (error, warning, success, information) are lightened versions of Parchment's, chosen for contrast against the dark background.
+**Parchment** (light, default) — an off-white background (Snow) with very dark cool-gray text and a dark muted-blue accent (Dark Slate Blue) used for buttons, the unread marker, and the selected item. Panels and toolbars use warm off-white tones (White Smoke, Linen); links are medium blue. This is QuickMail's standard light look.
 
-**Ember** — a warm light theme: a warm off-white background (Floral White) with very dark cool-gray text and a dark red accent (Sienna) in place of Parchment's blue. Selection highlights use a pale muted orange rather than blue. Links remain medium blue for consistency across themes.
+**Parchment Dark** — the dark counterpart to Parchment: a very dark gray background with light gray text and a light muted-blue accent. The selected item is a medium-blue band with white text. Panels and toolbars use slightly lighter dark-gray tones for depth; links are light blue. Status colors (error, warning, success, information) are lightened versions of Parchment's, chosen for contrast against the dark background.
 
-**Fjord** — a cool light theme: an off-white background with a faint cool cast (Ghost White) and a dark muted-cyan accent (Dark Slate Gray) in place of Parchment's blue. Selection highlights use a light cool gray-green.
+**Ember** — a warm light theme: a warm off-white background (Floral White) with very dark cool-gray text and a dark red accent (Sienna) in place of Parchment's blue. The selected item is a terracotta band with white text. Links remain medium blue for consistency across themes.
 
-**Heather** — a muted light theme: an off-white background (Ghost White) with a cool gray accent (Dim Gray) instead of a saturated color. Selection highlights use a light cool gray-lavender. This is the most subdued of the built-in themes.
+**Fjord** — a cool light theme: an off-white background with a faint cool cast (Ghost White) and a dark muted-cyan accent (Dark Slate Gray) in place of Parchment's blue. The selected item is a dark teal band with white text.
 
-The four light themes are close cousins. Ember, Fjord, and Heather each change only four colors from Parchment: the main window background tint, the accent color, the soft accent-fill color, and the selection highlight. Everything else — panels and toolbars, borders, body and secondary text, the medium-blue hyperlink color, the focus outline, and the four status colors (error, warning, success, information) — is inherited unchanged from Parchment. Parchment Dark is the only theme with a fully dark palette.
+**Heather** — a muted light theme: an off-white background (Ghost White) with a cool gray accent (Dim Gray) instead of a saturated color. The selected item is a plum-gray band with white text. This is the most subdued of the built-in themes.
+
+The four light themes are close cousins. Ember, Fjord, and Heather each change only four colors from Parchment: the main window background tint, the accent color, the soft accent-fill color, and the selection color (which matches the accent, so selection is where each theme's personality shows most). Everything else — panels and toolbars, borders, body and secondary text, the medium-blue hyperlink color, the focus outline, and the four status colors (error, warning, success, information) — is inherited unchanged from Parchment. Parchment Dark is the only theme with a fully dark palette.
 
 ---
 
