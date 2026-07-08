@@ -5544,6 +5544,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public event EventHandler<(string Version, string WhatsNewUrl)>? UpdateDialogRequested;
 
+    /// <summary>
+    /// Raised on the first launch after an update was applied: the View shows the
+    /// "QuickMail Update Installed" dialog. Gated by the ShowUpdateInstalledAlerts setting.
+    /// </summary>
+    public event EventHandler<(string Version, string WhatsNewUrl)>? UpdateInstalledDialogRequested;
+
+    /// <summary>
+    /// Detects that an update was applied since the previous run (recorded LastRunVersion
+    /// differs from the running version on an installed copy) and raises the
+    /// update-installed notice. Always records the running version, so the notice fires
+    /// once per update. Called once per launch by the View after the main window has loaded.
+    /// </summary>
+    public void MaybeShowUpdateInstalledNotice()
+    {
+        var cfg = _configService.Load();
+        if (cfg.LastRunVersion == CurrentVersion) return;
+
+        var previous = cfg.LastRunVersion;
+        cfg.LastRunVersion = CurrentVersion;
+        _configService.Save(cfg);
+
+        // No previous record: first run ever (or first run of a version that tracks this) —
+        // nothing was "installed" from the user's point of view.
+        if (string.IsNullOrEmpty(previous)) return;
+        // Version hops outside a Velopack install are dev/portable swaps, not updates.
+        if (!Helpers.VelopackRuntime.IsInstalled) return;
+        if (!cfg.ShowUpdateInstalledAlerts) return;
+
+        UpdateInstalledDialogRequested?.Invoke(this,
+            (CurrentVersion, $"{ReleasesPageUrl}/tag/v{CurrentVersion}"));
+    }
+
     [RelayCommand]
     private void OpenUpdatePage()
     {

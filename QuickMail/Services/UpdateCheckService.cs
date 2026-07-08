@@ -28,6 +28,8 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
     // Test/debug override (--updateFeed): a local folder or URL holding vpk pack output,
     // so the full download-and-apply cycle can be exercised without publishing a release.
     private readonly string? _feedOverride;
+    // Supplies the AutoUpdate setting; null (tests) behaves as AutoUpdate on.
+    private readonly IConfigService? _configService;
     private bool _disposed;
 
     // Installed-path (Velopack) update state. Held so RestartToUpdateAsync can apply the
@@ -38,8 +40,9 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
     private volatile bool _downloadCompleted;
     private bool _restartRequested;
 
-    public UpdateCheckService(string? updateFeedOverride = null)
+    public UpdateCheckService(IConfigService? configService = null, string? updateFeedOverride = null)
     {
+        _configService = configService;
         _feedOverride = updateFeedOverride;
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         _http.DefaultRequestHeaders.UserAgent.Add(
@@ -117,6 +120,18 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
                 return null;
 
             var version = update.TargetFullRelease.Version.ToString();
+            var whatsNewUrl = $"{RepoUrl}/releases/tag/v{version}";
+
+            // AutoUpdate off: notify-only. Report the update so the Help menu shows it, but
+            // stage nothing — SelfUpdatePending stays false, so activating the Help entry
+            // opens the release page (the pre-auto-update experience) instead of the
+            // restart-to-update dialog.
+            if (_configService?.Load().AutoUpdate == false)
+            {
+                LogService.Log($"Update {version} available; automatic updating is turned off.");
+                return new Models.UpdateInfo(version, whatsNewUrl);
+            }
+
             _velopackManager = mgr;
             _pendingUpdate = update;
 
@@ -140,7 +155,7 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
             });
 
             // The release-tag page serves as the "what's new" link in the update dialog.
-            return new Models.UpdateInfo(version, $"{RepoUrl}/releases/tag/v{version}");
+            return new Models.UpdateInfo(version, whatsNewUrl);
         }
         catch (Exception ex)
         {

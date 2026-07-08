@@ -300,6 +300,14 @@ public partial class MainWindow : Window
             };
             dialog.ShowDialog();
         };
+        vm.UpdateInstalledDialogRequested += (_, info) =>
+        {
+            var dialog = new UpdateInstalledDialog(info.Version, info.WhatsNewUrl)
+            {
+                Owner = this,
+            };
+            dialog.ShowDialog();
+        };
         vm.DesktopShortcutOfferRequested += (_, _) =>
         {
             // Default is No, mirroring the old installer's unchecked desktop-icon option.
@@ -982,6 +990,10 @@ public partial class MainWindow : Window
         // the background sync has been kicked off, so the dialog neither delays startup nor
         // strands focus (it returns to the message panel on close).
         _vm.MaybeOfferDesktopShortcut();
+
+        // "QuickMail Update Installed" notice, once per applied update. After the shortcut
+        // offer so a first-run-after-migration launch never stacks two dialogs.
+        _vm.MaybeShowUpdateInstalledNotice();
     }
 
     // WM_CONTEXTMENU hook: fires synchronously before DefWindowProc so we can ensure

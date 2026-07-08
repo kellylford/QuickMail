@@ -151,6 +151,10 @@ QuickMail checks for a newer release in the background each time it starts. The 
 
 **Installed copies update themselves.** If you installed QuickMail with the setup program, a found update is downloaded quietly in the background and installed automatically the next time you exit and reopen QuickMail — no download page, no installer to run, no security warnings. Activating the Help menu update entry opens a **QuickMail Update** dialog that says the new version will be installed on relaunch, with three choices: **Restart to Update** applies it immediately and reopens QuickMail; **See what's new** opens that version's release notes in your browser; **Exit** (or Escape) dismisses the dialog — the update still installs the next time you start QuickMail. Your accounts, settings, and mail are untouched by an update.
 
+After an update has been applied, the first launch of the new version shows a **QuickMail Update Installed** dialog confirming the version, with the same **See what's new** link and an **Exit** button (Escape also closes it).
+
+Two settings in **Settings → Advanced**, under **Updates**, control this behavior. **Download and install updates automatically** (on by default) — turn it off to go back to notification-only: the Help menu still reports new versions and takes you to the download page, but nothing installs itself; the change takes effect the next time QuickMail starts. **Show a message after an update has been installed** (on by default) — turn it off to skip the QuickMail Update Installed dialog.
+
 **The portable exe does not update itself.** If you run the standalone `QuickMail.exe`, the Help menu entry still tells you when a new version exists; activating it opens the releases page, and updating remains a manual download of the new exe.
 
 The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive walkthrough of core navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and Escape) for anyone new to the app.

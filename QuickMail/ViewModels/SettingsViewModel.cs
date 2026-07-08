@@ -80,6 +80,12 @@ public partial class SettingsViewModel : ObservableObject
     private bool _desktopShortcut;
     private bool _desktopShortcutInitial;
 
+    [ObservableProperty]
+    private bool _autoUpdate;
+
+    [ObservableProperty]
+    private bool _showUpdateInstalledAlerts;
+
     // ── Composing ──────────────────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -242,6 +248,8 @@ public partial class SettingsViewModel : ObservableObject
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
         _desktopShortcutInitial          = DesktopShortcut;
+        AutoUpdate                       = cfg.AutoUpdate;
+        ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         DefaultComposeMode = cfg.DefaultComposeMode switch
@@ -303,6 +311,8 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceFormattingWhileNavigating = AnnounceFormattingWhileNavigating;
         cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
+        cfg.AutoUpdate                       = AutoUpdate;
+        cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;
         if (DesktopShortcut != _desktopShortcutInitial)
         {
             try
