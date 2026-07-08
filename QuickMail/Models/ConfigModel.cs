@@ -150,6 +150,10 @@ public class ConfigModel
     /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
     public bool TutorialCompleted { get; set; } = false;
 
+    /// <summary>Whether the one-time desktop shortcut offer has been shown (installed copies only).
+    /// The shortcut itself is not stored here — the .lnk file on the desktop is the source of truth.</summary>
+    public bool DesktopShortcutPrompted { get; set; } = false;
+
     // ── Windowing (Phase 6) ───────────────────────────────────────────────────────
 
     /// <summary>Tab and window management preferences.</summary>

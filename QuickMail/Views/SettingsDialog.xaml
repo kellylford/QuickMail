@@ -139,6 +139,18 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Desktop Shortcut Group -->
+                        <GroupBox Header="Desktop Shortc_ut" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Desktop shortcut settings">
+                            <StackPanel>
+                                <CheckBox Content="Keep a QuickMail shortcut _on the desktop"
+                                          IsChecked="{Binding DesktopShortcut, Mode=TwoWay}"
+                                          AutomationProperties.Name="Desktop shortcut"/>
+                                <TextBlock Text="The Start Menu entry is always available; this adds or removes the desktop shortcut. Applied when settings are saved."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Composing Group -->
                         <GroupBox Header="Com_posing" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Composing settings">

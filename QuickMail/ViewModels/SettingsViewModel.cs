@@ -74,6 +74,12 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _confirmEmptyTrash;
 
+    // Desktop shortcut: the .lnk on the desktop is the source of truth, not config —
+    // loaded from the filesystem and applied on save only when the user changed it.
+    [ObservableProperty]
+    private bool _desktopShortcut;
+    private bool _desktopShortcutInitial;
+
     // ── Composing ──────────────────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -234,6 +240,8 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceFormattingWhileNavigating = cfg.AnnounceFormattingWhileNavigating;
         AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
+        DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
+        _desktopShortcutInitial          = DesktopShortcut;
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         DefaultComposeMode = cfg.DefaultComposeMode switch
@@ -295,6 +303,19 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceFormattingWhileNavigating = AnnounceFormattingWhileNavigating;
         cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
+        if (DesktopShortcut != _desktopShortcutInitial)
+        {
+            try
+            {
+                if (DesktopShortcut) Helpers.DesktopShortcut.Create();
+                else Helpers.DesktopShortcut.Delete();
+                _desktopShortcutInitial = DesktopShortcut;
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"Desktop shortcut: {ex.Message}");
+            }
+        }
         cfg.AutoSaveDrafts                   = AutoSaveDrafts;
         cfg.AutoSaveIntervalSeconds          = AutoSaveIntervalSeconds;
         cfg.DefaultComposeMode = DefaultComposeMode switch

@@ -253,6 +253,7 @@ public class ConfigService : IConfigService
                         break;
                     case "enablelogging": config.EnableLogging = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
+                    case "desktopshortcutprompted": config.DesktopShortcutPrompted = ParseBool(value); break;
                     case "defaultcomposemode":
                         config.DefaultComposeMode = value.ToLowerInvariant() switch
                         {
@@ -477,6 +478,11 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");
         sb.AppendLine("# Whether the first-run keyboard tutorial has been completed.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"DesktopShortcutPrompted = {(config.DesktopShortcutPrompted ? "on" : "off")}");
+        sb.AppendLine("# Whether the one-time desktop shortcut offer has been shown (installed copies only).");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 

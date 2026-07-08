@@ -4,7 +4,11 @@ QuickMail is packaged with [Velopack](https://velopack.io/). `build.bat installe
 `dotnet publish` then `vpk pack`, emitting `installer/Output/Releases/` (gitignored)
 containing:
 
-- `QuickMail-win-Setup.exe` — the user-facing installer
+- `QuickMail-win.msi` — **the user-facing installer**: a standard Windows Installer wizard
+  (WiX 5) with welcome, license acceptance, and conclusion pages fed from
+  `installer/velopack/*.txt` and the repo `LICENSE`
+- `QuickMail-win-Setup.exe` — Velopack's one-click installer (no wizard, no license page);
+  produced by `vpk pack` but **not shipped** — the MSI is the installer users download
 - `QuickMail-<version>-full.nupkg` — the full update package consumed by the in-app updater
 - `QuickMail-<version>-delta.nupkg` — binary delta from the previous release (generated only
   when the previous release's packages are present; CI fetches them with `vpk download github`
@@ -17,13 +21,32 @@ The `vpk` CLI is a .NET global tool: `dotnet tool install -g vpk`.
 
 ## Key facts
 
-- **Per-user install only.** Velopack installs to `%LocalAppData%\QuickMail\current\`, no
-  elevation prompt. There is no all-users install path.
+- **Per-user install only (deliberate).** The MSI is packed with `--instLocation PerUser`:
+  installs to `%LocalAppData%\QuickMail\current\`, no elevation prompt. Velopack supports
+  `--instLocation Either` (user chooses Program Files), but background updates from a
+  non-elevated process into Program Files are unverified — offering that choice could break
+  the silent-update guarantee, so it stays off until proven.
 - **Automatic updates.** The startup update check (`UpdateCheckService`) uses Velopack's
   `UpdateManager` with a GitHub Releases source when running from an installed copy. A found
   update is downloaded silently in the background and applied by `Update.exe` after the app
-  exits, so the next launch runs the new version. The portable exe falls back to the original
+  exits, so the next launch runs the new version. Updates work identically whether the MSI
+  or Setup.exe performed the original install. The portable exe falls back to the original
   GitHub API check, which can only notify.
+- **Desktop shortcut is the app's job, not the installer's.** `--shortcuts StartMenuRoot`
+  creates only the Start Menu entry. On first launch of an installed copy, QuickMail offers
+  to add a desktop shortcut (accessible in-app dialog, default No, asked once — recorded as
+  `DesktopShortcutPrompted` in config.ini); the choice stays editable in Settings → General.
+  The shortcut targets `%LocalAppData%\QuickMail\current\QuickMail.exe`, which is stable
+  across updates. See `Helpers/DesktopShortcut.cs`.
+- **Uninstall offers to remove user data.** Velopack's `OnBeforeUninstallFastCallback` (wired
+  in `App.xaml.cs Main`) launches a detached PowerShell prompt — detached because Update.exe
+  kills hook processes after 30 seconds, far too short to leave a question pending. Default
+  answer keeps everything; an explicit Yes deletes `%APPDATA%\QuickMail` **and** QuickMail
+  entries in Windows Credential Manager (passwords `QuickMail:<id>`, tokens `QuickMail.*`).
+  Custom `--profileDir` locations are never touched. Data survival on uninstall-without-Yes
+  matches the old Inno behavior.
+- **WebView2 install-on-demand** is preserved via `--framework webview2` — setup installs the
+  WebView2 Runtime when missing, same as the old Inno `Dependency_AddWebView2`.
 - **Version string must be SemVer.** `vpk pack --packVersion` rejects 4-part versions. The
   release tag is the source of truth in CI (stripped of the leading `v`) and must match the
   csproj `<Version>` — the workflow fails the release if they differ. A hotfix should use a
@@ -32,15 +55,6 @@ The `vpk` CLI is a .NET global tool: `dotnet tool install -g vpk`.
   `VelopackApp.Build().Run()`. That is why `App.xaml` compiles as `Page` and `App.xaml.cs`
   declares an explicit `Main` (see the csproj `StartupObject`). Removing or reordering that
   call breaks packaging.
-- **Shortcuts:** Start Menu only (`--shortcuts StartMenuRoot`), matching the previous
-  installer's default of no desktop shortcut.
-- **No WebView2 prerequisite check.** The old Inno Setup installer installed the WebView2
-  Runtime on demand; Velopack has no equivalent hook. WebView2 ships with Windows 11 and
-  current Windows 10. If this becomes a support issue, add a startup check with a download
-  link.
-- **User data is never touched.** The app installs to `%LocalAppData%\QuickMail`; user data
-  lives in `%APPDATA%\QuickMail` and Windows Credential Manager. Install, update, and
-  uninstall never touch either.
 - **Code signing** is not wired up yet. `vpk pack` supports Azure Trusted Signing via
   `--azureTrustedSignFile` when that work completes.
 
@@ -54,7 +68,7 @@ On a `v*` tag, `.github/workflows/quickmail.yml`:
    Allowed to fail (the first Velopack release has no prior packages).
 4. `vpk pack` — builds setup exe, full/delta packages, and feed metadata; then deletes the
    downloaded previous-version `.nupkg` so only current-version assets upload.
-5. `softprops/action-gh-release` uploads the portable `QuickMail.exe`, the setup exe, the
+5. `softprops/action-gh-release` uploads the portable `QuickMail.exe`, the MSI installer, the
    `.nupkg` packages, and the feed metadata files. The in-app updater reads these from the
    latest GitHub release.
 
@@ -66,8 +80,9 @@ download, apply on relaunch, delta packaging — can be verified offline:
 
 1. `build.bat installer` — packs the current csproj version (say `0.8.1`) into
    `installer\Output\Releases\`.
-2. Run `installer\Output\Releases\QuickMail-win-Setup.exe`. The app installs to
-   `%LocalAppData%\QuickMail` and launches.
+2. Run `installer\Output\Releases\QuickMail-win.msi`. Walk the wizard (welcome, license,
+   conclusion); the app installs to `%LocalAppData%\QuickMail`. First launch offers the
+   desktop shortcut.
 3. Bump `<Version>` in `QuickMail/QuickMail.csproj` (say `0.8.2`) and run
    `build.bat installer` again **without deleting the Releases folder** — because the
    previous full package is still there, this also exercises delta generation
@@ -95,7 +110,7 @@ Users on an Inno Setup install (v0.8.0 and earlier) need a one-time manual reins
 onto the auto-update track:
 
 1. Uninstall QuickMail via Settings → Apps, **declining** the offer to delete user data.
-2. Download and run `QuickMail-win-Setup.exe` from the releases page.
+2. Download and run `QuickMail-win.msi` from the releases page.
 3. Launch QuickMail — accounts, settings, and mail are exactly as they were.
 
 The retired Inno Setup script (`installer/quickmail.iss`, `installer/CodeDependencies.iss`,

@@ -107,14 +107,25 @@ jobs:
 
       # --shortcuts StartMenuRoot: Start Menu entry only, no desktop shortcut
       # (matches the previous installer's default).
+      # --msi builds the wizard installer (welcome, license acceptance, conclusion pages)
+      # that is the user-facing download; the one-click Setup.exe is also produced but
+      # intentionally not shipped. --instLocation PerUser keeps the install in
+      # %LocalAppData% so background updates never need elevation. vpk requires the
+      # license file to carry a .txt/.md/.rtf extension, hence the copy.
       - name: Pack Velopack release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         run: |
           $version = '${{ github.ref_name }}'.TrimStart('v')
+          Copy-Item LICENSE installer/velopack/license.txt
           vpk pack --packId QuickMail --packVersion $version --packDir publish `
             --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
-            --shortcuts StartMenuRoot --outputDir installer/Output/Releases
+            --shortcuts StartMenuRoot --outputDir installer/Output/Releases `
+            --framework webview2 `
+            --msi --instLocation PerUser `
+            --instWelcome installer/velopack/welcome.txt `
+            --instLicense installer/velopack/license.txt `
+            --instConclusion installer/velopack/conclusion.txt
           # The download step above leaves the previous version's full .nupkg in this
           # folder (delta input). Remove it so the release upload glob below ships only
           # this version's packages — clients never fetch old assets from a new release.
@@ -127,11 +138,14 @@ jobs:
       # otherwise GitHub auto-generates notes from commits.
       #
       # Uploaded assets serve two consumers:
-      #  - people: QuickMail-win-Setup.exe (installer) and QuickMail.exe (portable)
+      #  - people: QuickMail-win.msi (wizard installer with license acceptance) and
+      #    QuickMail.exe (portable)
       #  - the in-app updater: RELEASES, releases.win.json, assets.win.json, and the
       #    .nupkg packages (full + delta), which Velopack's GithubSource reads from the
-      #    latest release. QuickMail-win-Portable.zip is intentionally not shipped —
-      #    the raw single-file QuickMail.exe remains the portable download.
+      #    latest release.
+      # Intentionally not shipped: QuickMail-win-Setup.exe (one-click, no wizard/license)
+      # and QuickMail-win-Portable.zip (the raw single-file QuickMail.exe remains the
+      # portable download).
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
@@ -139,7 +153,7 @@ jobs:
           name: QuickMail ${{ github.ref_name }}
           files: |
             publish/QuickMail.exe
-            installer/Output/Releases/QuickMail-win-Setup.exe
+            installer/Output/Releases/QuickMail-win.msi
             installer/Output/Releases/*.nupkg
             installer/Output/Releases/RELEASES
             installer/Output/Releases/releases.win.json

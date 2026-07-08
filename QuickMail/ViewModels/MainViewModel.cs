@@ -3927,11 +3927,56 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? AboutRequested;
     public event EventHandler? ReportBugRequested;
 
+    // One-time first-run offer to add a desktop shortcut (installed copies only). The View
+    // shows the actual dialog and reports the answer back via ApplyDesktopShortcutChoice.
+    public event EventHandler? DesktopShortcutOfferRequested;
+
     /// <summary>
     /// Raised when a Properties dialog should be shown. The View subscribes and
     /// calls new PropertiesWindow(vm).ShowDialog().
     /// </summary>
     public event Action<PropertiesViewModel>? PropertiesRequested;
+
+    /// <summary>
+    /// Raises the desktop shortcut offer when it applies: running from a Velopack install,
+    /// never asked before, and no shortcut already present. Called once per launch by the
+    /// View after the main window has loaded.
+    /// </summary>
+    public void MaybeOfferDesktopShortcut()
+    {
+        if (!Helpers.VelopackRuntime.IsInstalled) return;
+        var cfg = _configService.Load();
+        if (cfg.DesktopShortcutPrompted) return;
+        if (Helpers.DesktopShortcut.Exists())
+        {
+            cfg.DesktopShortcutPrompted = true;
+            _configService.Save(cfg);
+            return;
+        }
+        DesktopShortcutOfferRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Records the user's answer to the desktop shortcut offer and applies it.
+    /// The offer is never repeated regardless of the answer; the choice stays editable
+    /// in Settings → General.</summary>
+    public void ApplyDesktopShortcutChoice(bool create)
+    {
+        if (create)
+        {
+            try
+            {
+                Helpers.DesktopShortcut.Create();
+                Announce("Desktop shortcut added.");
+            }
+            catch (Exception ex)
+            {
+                LogService.Debug($"Desktop shortcut: {ex.Message}");
+            }
+        }
+        var cfg = _configService.Load();
+        cfg.DesktopShortcutPrompted = true;
+        _configService.Save(cfg);
+    }
 
     private void Announce(string text, AnnouncementCategory category = AnnouncementCategory.Result)
     {

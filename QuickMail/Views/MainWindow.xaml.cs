@@ -292,6 +292,15 @@ public partial class MainWindow : Window
         vm.RulesManagerRequested += (_, _) => OpenRulesManager();
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
+        vm.DesktopShortcutOfferRequested += (_, _) =>
+        {
+            // Default is No, mirroring the old installer's unchecked desktop-icon option.
+            var choice = MessageBox.Show(this,
+                "Add a desktop shortcut for QuickMail?\n\nYou can change this anytime in Settings, on the General page.",
+                "QuickMail",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            vm.ApplyDesktopShortcutChoice(choice == MessageBoxResult.Yes);
+        };
         vm.AboutRequested += (_, _) => ShowAboutDialog();
         vm.ReportBugRequested += (_, _) => ShowReportBugWindow();
         vm.PropertiesRequested += propertiesVm =>
@@ -960,6 +969,11 @@ public partial class MainWindow : Window
 
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
+
+        // One-time desktop shortcut offer for installed copies — after the window is up and
+        // the background sync has been kicked off, so the dialog neither delays startup nor
+        // strands focus (it returns to the message panel on close).
+        _vm.MaybeOfferDesktopShortcut();
     }
 
     // WM_CONTEXTMENU hook: fires synchronously before DefWindowProc so we can ensure

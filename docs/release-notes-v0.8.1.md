@@ -14,7 +14,8 @@ manual reinstall:
 
 1. Uninstall your current QuickMail from **Settings → Apps**. When the uninstaller offers to
    delete user data, **choose No**.
-2. Download and run **QuickMail-win-Setup.exe** from this release page.
+2. Download and run **QuickMail-win.msi** from this release page. A standard setup wizard
+   walks through the license and installation.
 3. Start QuickMail. All your accounts, settings, contacts, rules, templates, saved views, and
    cached mail are exactly as you left them.
 
@@ -26,7 +27,10 @@ Notes on the new install:
 
 - QuickMail now installs per-user (no administrator prompt). The previous option to install
   for all users is gone.
-- A Start Menu entry is created; no desktop shortcut is added.
+- A Start Menu entry is created. The first time QuickMail starts, it asks whether to add a
+  desktop shortcut; the choice can be changed anytime in Settings → General.
+- Uninstalling now asks whether to also remove your data — and unlike before, choosing Yes
+  also clears QuickMail's saved passwords from Windows Credential Manager.
 
 ### Portable exe users
 

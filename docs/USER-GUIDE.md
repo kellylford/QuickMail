@@ -7,6 +7,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 ## Contents
 
 - [System Requirements](#system-requirements)
+- [Installing QuickMail](#installing-quickmail)
 - [Adding Accounts](#adding-accounts)
 - [Main Window](#main-window)
 - [Reading Mail](#reading-mail)
@@ -28,8 +29,24 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 ## System Requirements
 
 - Windows 10 (1703 or later) or Windows 11
-- Microsoft Edge WebView2 Runtime (included with Windows 11 and current Windows 10; available from Microsoft if missing)
+- Microsoft Edge WebView2 Runtime (the installer adds this automatically when missing; included with Windows 11 and current Windows 10)
 - An IMAP/SMTP email account (Gmail, Outlook.com, Microsoft 365, or any standard IMAP provider)
+
+---
+
+## Installing QuickMail
+
+Download **QuickMail-win.msi** from the releases page and run it. A standard setup wizard walks through a welcome page, the license agreement, and installation. QuickMail installs for the current user only — no administrator permission is needed — and adds a Start Menu entry.
+
+The first time an installed QuickMail starts, it asks whether to add a desktop shortcut. Either answer is remembered, and you can change it anytime in **Settings → General** under **Desktop Shortcut**.
+
+Once installed, QuickMail keeps itself up to date automatically: new versions download quietly in the background and are applied the next time you exit and reopen the app. See [Checking for Updates](#checking-for-updates).
+
+**Portable option:** `QuickMail.exe` on the same releases page is a single-file version that runs from anywhere with no installation. It does not update itself; the Help menu tells you when a new version is available to download.
+
+### Uninstalling
+
+Remove QuickMail from **Settings → Apps** as usual. After the app is removed, QuickMail asks whether to also delete your data — accounts, settings, contacts, rules, templates, saved views, cached mail, and saved passwords. Choose **No** (the default) to keep everything, so reinstalling later picks up exactly where you left off; choose **Yes** to remove it all.
 
 ---
 

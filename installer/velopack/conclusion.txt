@@ -1,0 +1,7 @@
+QuickMail has been installed.
+
+You can start QuickMail from the Start Menu. The first time it runs, QuickMail offers to add a desktop shortcut; you can change that choice anytime in Settings.
+
+On first launch, open Settings, then Accounts, to add your email account. Press F1 inside the app to open the user guide.
+
+QuickMail will keep itself up to date automatically from now on.

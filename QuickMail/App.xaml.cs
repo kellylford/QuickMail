@@ -29,11 +29,65 @@ public partial class App : Application
     [STAThread]
     public static void Main(string[] args)
     {
-        Velopack.VelopackApp.Build().Run();
+        Velopack.VelopackApp.Build()
+            .OnBeforeUninstallFastCallback(_ => LaunchUninstallDataPrompt())
+            .Run();
 
         var app = new App();
         app.InitializeComponent();
         app.Run();
+    }
+
+    // Uninstall-time offer to remove user data, mirroring the old installer's prompt.
+    // Update.exe kills hook processes after ~30 seconds — far too short to leave a question
+    // pending — so the prompt runs in a detached PowerShell process that outlives the
+    // uninstall. The default answer keeps everything; only an explicit Yes deletes the
+    // default profile (%APPDATA%\QuickMail) and QuickMail entries in Windows Credential
+    // Manager. Custom --profileDir locations are never touched.
+    private static void LaunchUninstallDataPrompt()
+    {
+        try
+        {
+            var dataDir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
+            if (!System.IO.Directory.Exists(dataDir)) return;
+
+            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall-prompt.ps1");
+            System.IO.File.WriteAllText(script, """
+                Add-Type -AssemblyName System.Windows.Forms
+                $dir = Join-Path $env:APPDATA 'QuickMail'
+                if (-not (Test-Path $dir)) { exit }
+                $msg = "QuickMail has been uninstalled.`n`n" +
+                       "Do you also want to remove your QuickMail data? This permanently deletes all accounts, settings, contacts, rules, templates, saved views, and cached mail stored under:`n$dir`n`n" +
+                       "It also removes QuickMail's saved passwords and sign-ins from Windows Credential Manager.`n`n" +
+                       "Choose No to keep everything, so a future install picks up exactly where you left off."
+                $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }
+                $r = [System.Windows.Forms.MessageBox]::Show($owner, $msg, 'QuickMail Uninstall',
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                    [System.Windows.Forms.MessageBoxIcon]::Question,
+                    [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+                if ($r -eq [System.Windows.Forms.DialogResult]::Yes) {
+                    Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+                    (cmdkey /list) | ForEach-Object {
+                        if ($_ -match 'target=(QuickMail\S*)') { cmdkey /delete:$($Matches[1]) | Out-Null }
+                    }
+                }
+                Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+                """);
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File \"{script}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            // The uninstall itself must never fail or stall because of this prompt.
+            LogService.Debug($"Uninstall data prompt: {ex.Message}");
+        }
     }
 
     protected override void OnStartup(StartupEventArgs e)
