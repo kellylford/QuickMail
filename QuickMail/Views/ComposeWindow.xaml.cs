@@ -1557,13 +1557,21 @@ public partial class ComposeWindow : Window
         _vm.LoadHtmlIntoEditorRequested += html =>
         {
             // Programmatic load is not a user edit — don't mark the draft dirty.
+            // finally: a stuck suppress flag would silently stop dirty-tracking
+            // for the window's lifetime.
             _suppressRichTextChanged = true;
             _suppressFormattingAnnouncement = true;
             _lastAnnouncedBlockType = null;
-            RichTextDocumentConverter.LoadInto(RichBodyBox, html);
-            RichBodyBox.CaretPosition = RichBodyBox.Document.ContentStart;
-            _suppressRichTextChanged = false;
-            _suppressFormattingAnnouncement = false;
+            try
+            {
+                RichTextDocumentConverter.LoadInto(RichBodyBox, html);
+                RichBodyBox.CaretPosition = RichBodyBox.Document.ContentStart;
+            }
+            finally
+            {
+                _suppressRichTextChanged = false;
+                _suppressFormattingAnnouncement = false;
+            }
         };
 
         _vm.InsertTextIntoEditorRequested += text =>
@@ -1622,9 +1630,15 @@ public partial class ComposeWindow : Window
         _suppressRichTextChanged = true;
         _suppressFormattingAnnouncement = true;
         _lastAnnouncedBlockType = null;
-        RichTextDocumentConverter.LoadInto(RichBodyBox, html);
-        _suppressRichTextChanged = false;
-        _suppressFormattingAnnouncement = false;
+        try
+        {
+            RichTextDocumentConverter.LoadInto(RichBodyBox, html);
+        }
+        finally
+        {
+            _suppressRichTextChanged = false;
+            _suppressFormattingAnnouncement = false;
+        }
 
         RichBodyBox.CaretPosition =
             RichBodyBox.Document.ContentStart.GetPositionAtOffset(caretOffset) ?? RichBodyBox.Document.ContentEnd;

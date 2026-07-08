@@ -97,11 +97,14 @@ public static class RichTextDocumentConverter
 
     /// <summary>
     /// Replaces the content of an existing document with the parsed HTML.
-    /// The editor must always load through this (never assign a new document to
-    /// <c>RichTextBox.Document</c>): the control's UIA automation peer binds to
-    /// the original document's text container at creation and never rebinds, so
+    /// Never assign a new document to <c>RichTextBox.Document</c> instead of
+    /// loading in place: the control's UIA automation peer binds to the
+    /// original document's text container at creation and never rebinds, so
     /// after a Document replacement screen readers permanently read the stale
-    /// (empty) document instead of what is on screen.
+    /// (empty) document instead of what is on screen. Call this overload
+    /// directly only for detached documents; a live editor must load through
+    /// <see cref="LoadInto(RichTextBox, string)"/> so the whole load is one
+    /// change block instead of one UIA event per block.
     /// </summary>
     public static void LoadInto(FlowDocument doc, string html)
     {
