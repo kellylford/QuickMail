@@ -5,7 +5,12 @@
 Starting with this release, QuickMail keeps itself up to date. When a newer version is
 available, the installed app downloads it quietly in the background and installs it the next
 time you exit and reopen QuickMail — no download page, no installer to run, no security
-warnings. The Help menu continues to show whether you are current.
+warnings. The Help menu continues to show whether you are current, offers a **Restart to
+Update** option when a new version is waiting, and the first start after an update confirms
+what was installed. You stay in control throughout: automatic updating and its notifications
+can each be turned off in **Settings → Advanced**, with manual updating always available. See
+the [Installing and Updating section of the User Guide](https://kellylford.github.io/QuickMail/installing-and-updating-quickmail.html)
+for the full walkthrough.
 
 ### One-time step for existing installed users
 
