@@ -28,7 +28,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 ## System Requirements
 
 - Windows 10 (1703 or later) or Windows 11
-- Microsoft Edge WebView2 Runtime (the installer checks for this automatically)
+- Microsoft Edge WebView2 Runtime (included with Windows 11 and current Windows 10; available from Microsoft if missing)
 - An IMAP/SMTP email account (Gmail, Outlook.com, Microsoft 365, or any standard IMAP provider)
 
 ---
@@ -130,7 +130,11 @@ Open **Settings → Keyboard** to reassign any shortcut to a different key. Type
 
 ### Checking for Updates
 
-QuickMail checks for a newer release in the background each time it starts. The top entry of the **Help** menu always shows the result: **"No updates available — running version X.Y.Z"** when you are current, or **"Update available: vX.Y.Z"** when a newer release exists. Activating the entry opens the matching page on the QuickMail releases site in your browser, so it is always useful — even when there is nothing new. If an update is found, a spoken announcement follows a few seconds after launch; the background check itself is silent when you are already up to date.
+QuickMail checks for a newer release in the background each time it starts. The top entry of the **Help** menu always shows the result: **"No updates available — running version X.Y.Z"** when you are current, or **"Update available: vX.Y.Z"** when a newer release exists. Activating the entry opens the QuickMail releases site in your browser. If an update is found, a spoken announcement follows a few seconds after launch; the background check itself is silent when you are already up to date.
+
+**Installed copies update themselves.** If you installed QuickMail with the setup program, a found update is also downloaded quietly in the background and installed automatically the next time you exit and reopen QuickMail — no download page, no installer to run, no security warnings. Your accounts, settings, and mail are untouched by an update.
+
+**The portable exe does not update itself.** If you run the standalone `QuickMail.exe`, the Help menu entry still tells you when a new version exists, and updating remains a manual download of the new exe from the releases page.
 
 The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive walkthrough of core navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and Escape) for anyone new to the app.
 

@@ -5,11 +5,14 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using QuickMail.Models;
+using Velopack;
+using Velopack.Sources;
 
 namespace QuickMail.Services;
 
 public class UpdateCheckService : IUpdateCheckService, IDisposable
 {
+    private const string RepoUrl = "https://github.com/kellylford/QuickMail";
     private const string ApiUrl = "https://api.github.com/repos/kellylford/QuickMail/releases/latest";
 
     // Reflection result is static for the lifetime of the app — compute once. Uses the shared
@@ -31,7 +34,72 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
             new ProductInfoHeaderValue("QuickMail", _currentVersion));
     }
 
-    public async Task<UpdateInfo?> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+    public async Task<Models.UpdateInfo?> CheckForUpdateAsync(CancellationToken cancellationToken = default)
+    {
+        // Velopack path only applies when running from a Velopack install
+        // (%LocalAppData%\QuickMail\current\). The portable exe and dev builds fall through
+        // to the GitHub API check below, which can only notify — not silently update.
+        var mgr = CreateVelopackManager();
+        if (mgr is not null)
+            return await CheckViaVelopackAsync(mgr).ConfigureAwait(false);
+
+        return await CheckViaGitHubApiAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static UpdateManager? CreateVelopackManager()
+    {
+        try
+        {
+            var mgr = new UpdateManager(new GithubSource(RepoUrl, accessToken: null, prerelease: false));
+            return mgr.IsInstalled ? mgr : null;
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"UpdateCheckService: Velopack manager unavailable: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task<Models.UpdateInfo?> CheckViaVelopackAsync(UpdateManager mgr)
+    {
+        try
+        {
+            var update = await mgr.CheckForUpdatesAsync().ConfigureAwait(false);
+            if (update is null)
+                return null;
+
+            var version = update.TargetFullRelease.Version.ToString();
+
+            // Download in the background on the service's lifetime token (not the caller's
+            // short check timeout — the package can be large). Once staged, Update.exe applies
+            // it after the app exits, so the next normal launch runs the new version. If the
+            // app exits mid-download, the next launch simply re-checks and resumes.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await mgr.DownloadUpdatesAsync(update, cancelToken: _cts.Token).ConfigureAwait(false);
+                    mgr.WaitExitThenApplyUpdates(update, silent: true, restart: false);
+                    LogService.Log($"Update {version} downloaded; it will be applied when QuickMail exits.");
+                }
+                catch (Exception ex)
+                {
+                    LogService.Debug($"UpdateCheckService: background download failed: {ex.Message}");
+                }
+            });
+
+            // Empty URL — the Help menu entry falls back to the releases page. The update
+            // itself needs no user action beyond an eventual restart.
+            return new Models.UpdateInfo(version, string.Empty);
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"UpdateCheckService: Velopack check failed: {ex.Message}");
+            return null;
+        }
+    }
+
+    private async Task<Models.UpdateInfo?> CheckViaGitHubApiAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -51,7 +119,7 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
                 !Version.TryParse(_currentVersion, out var current))
                 return null;
 
-            return remote > current ? new UpdateInfo(tag, url) : null;
+            return remote > current ? new Models.UpdateInfo(tag, url) : null;
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or OperationCanceledException or ObjectDisposedException)
         {

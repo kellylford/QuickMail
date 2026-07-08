@@ -23,6 +23,19 @@ public partial class App : Application
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
 
+    // Explicit entry point (App.xaml compiles as Page; see csproj StartupObject). Velopack must
+    // run before any WPF initialization: on install/update/uninstall its hooks handle the event
+    // and exit the process, and on a normal launch after an update it finalizes the new version.
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        Velopack.VelopackApp.Build().Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);

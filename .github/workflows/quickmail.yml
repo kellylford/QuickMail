@@ -76,18 +76,62 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Install Inno Setup
+      # The release tag is the single source of truth for the Velopack package version.
+      # It must be SemVer (vpk rejects 4-part versions) and must match the csproj
+      # <Version>, which drives the in-app version display and the portable-exe
+      # update comparison — a mismatch would make installs mis-report their version.
+      - name: Verify tag matches csproj version
         if: startsWith(github.ref, 'refs/tags/v')
-        run: choco install innosetup --no-progress
-
-      - name: Build installer
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\quickmail.iss'
         shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          $csproj = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath '/Project/PropertyGroup/Version').Node.InnerText
+          if ($tag -ne $csproj) {
+            throw "Tag version '$tag' does not match csproj <Version> '$csproj'. Update the csproj or re-tag."
+          }
+
+      - name: Install vpk
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: dotnet tool install -g vpk
+
+      # Fetch the previous release's Velopack assets so vpk pack can generate a delta
+      # package. If this step is skipped or fails, packing still succeeds but ships a
+      # full package only — updates work, just as larger downloads.
+      # continue-on-error covers the first Velopack release, where the latest GitHub
+      # release predates Velopack and has no assets for vpk to download.
+      - name: Download previous release for delta generation
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        shell: pwsh
+        run: vpk download github --repoUrl https://github.com/kellylford/QuickMail --token ${{ secrets.GITHUB_TOKEN }} --outputDir installer/Output/Releases
+
+      # --shortcuts StartMenuRoot: Start Menu entry only, no desktop shortcut
+      # (matches the previous installer's default).
+      - name: Pack Velopack release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          vpk pack --packId QuickMail --packVersion $version --packDir publish `
+            --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
+            --shortcuts StartMenuRoot --outputDir installer/Output/Releases
+          # The download step above leaves the previous version's full .nupkg in this
+          # folder (delta input). Remove it so the release upload glob below ships only
+          # this version's packages — clients never fetch old assets from a new release.
+          Get-ChildItem installer/Output/Releases/*.nupkg |
+            Where-Object { $_.Name -notmatch [regex]::Escape("-$version-") } |
+            Remove-Item
 
       # Create a GitHub Release when a version tag is pushed (e.g. v1.2.0)
       # Release notes are read from docs/release-notes-<tag>.md if present,
       # otherwise GitHub auto-generates notes from commits.
+      #
+      # Uploaded assets serve two consumers:
+      #  - people: QuickMail-win-Setup.exe (installer) and QuickMail.exe (portable)
+      #  - the in-app updater: RELEASES, releases.win.json, assets.win.json, and the
+      #    .nupkg packages (full + delta), which Velopack's GithubSource reads from the
+      #    latest release. QuickMail-win-Portable.zip is intentionally not shipped —
+      #    the raw single-file QuickMail.exe remains the portable download.
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
@@ -95,5 +139,9 @@ jobs:
           name: QuickMail ${{ github.ref_name }}
           files: |
             publish/QuickMail.exe
-            installer/Output/quickmail-v*-setup.exe
+            installer/Output/Releases/QuickMail-win-Setup.exe
+            installer/Output/Releases/*.nupkg
+            installer/Output/Releases/RELEASES
+            installer/Output/Releases/releases.win.json
+            installer/Output/Releases/assets.win.json
           body_path: docs/release-notes-${{ github.ref_name }}.md
