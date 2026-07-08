@@ -7,7 +7,7 @@
     "accent": "#5E566E",
     "windowBackground": "#FAF9FB",
     "accentSubtle": "#ECEAF1",
-    "selectionBackground": "#E2DFE9"
+    "selectionBackground": "#5E566E"
   },
   "typography": {
     "fontFamily": "Segoe UI",

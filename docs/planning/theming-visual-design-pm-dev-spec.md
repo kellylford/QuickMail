@@ -191,7 +191,16 @@ Pitfall rules (enforce in review): `DynamicResource` works on dependency propert
 
 ## Section 6: The "Quill" Visual Design
 
-Philosophy: warm off-whites instead of stark white; one muted steel-indigo accent; tinted (not saturated) selection; unread = SemiBold weight + a 3px accent bar at the row's left edge (weight is the primary cue, color the garnish); banners use the pale `*Background` tints with their dark text partners; the status bar sits on `ChromeBackground` with a 1px accent-tinted top border; hyperlinks always `Hyperlink`. Nothing else gets accent. That restraint *is* the elegance.
+Philosophy: warm off-whites instead of stark white; one muted steel-indigo accent; unread = SemiBold weight + a 3px accent bar at the row's left edge (weight is the primary cue, color the garnish); banners use the pale `*Background` tints with their dark text partners; the status bar sits on `ChromeBackground` with a 1px accent-tinted top border; hyperlinks always `Hyperlink`. Nothing else gets accent — except selection. That restraint *is* the elegance.
+
+> **Revision (2026-07, post visual review):** the original "tinted, not saturated" selection
+> (~1.15:1 against the list surface) proved indistinguishable from unselected rows in every
+> theme during independent visual review; secondary text and row separation were flagged as
+> too faint across the board. Selection is now accent-strength (`SelectionBackground` = the
+> theme accent in light themes) with `SelectionText` white, ≥ 3:1 against `SurfaceBackground`
+> — the one place each theme's accent does functional work. TextSecondary and the borders were
+> darkened (light) / lightened (dark) a step, and message-list rows carry a 1px `BorderSubtle`
+> bottom divider. The tables below reflect the revised values.
 
 ### Light — "Quill" (new default)
 
@@ -201,16 +210,16 @@ Philosophy: warm off-whites instead of stark white; one muted steel-indigo accen
 | SurfaceBackground | `#F5F3EF` | lists/panels |
 | ChromeBackground | `#EFEDE8` | toolbar/status bar |
 | InputBackground | `#FFFFFF` | fields pop slightly |
-| Border / BorderSubtle / InputBorder | `#D8D4CC` / `#E9E6E0` / `#B8B4AC` | |
+| Border / BorderSubtle / InputBorder | `#C9C4BA` / `#DEDAD1` / `#B8B4AC` | dividers perceivable in dense lists |
 | TextPrimary | `#1F2328` | 15.4:1 on window bg |
-| TextSecondary | `#5A6068` | 6.1:1 |
+| TextSecondary | `#495057` | 7.4:1 on surface |
 | TextDisabled | `#8A9099` | exempt from AA (disabled) |
 | Accent | `#3D5A80` | 6.8:1 — usable as text |
 | AccentSubtle | `#E7EDF4` | banner/hover tint |
 | TextOnAccent | `#FFFFFF` | |
 | Hyperlink | `#2A5D9E` | 5.9:1 |
-| SelectionBackground / SelectionText | `#D6E2F0` / `#1F2328` | tinted selection, dark text — calmer and higher-contrast than white-on-blue |
-| SelectionInactive | `#E6E7E9` | |
+| SelectionBackground / SelectionText | `#3D5A80` / `#FFFFFF` | accent-strength selection, 6.4:1 vs surface — the selected row is unmistakable |
+| SelectionInactive | `#D4D8DE` | quiet but perceivable (1.3:1 vs surface) |
 | FocusIndicator | `#1F2328` | high-visibility ring |
 | Error / ErrorBackground | `#B3261E` / `#FBEAE9` | 6.3:1 |
 | Warning / WarningBackground | `#8A5A00` / `#FBF3E2` | 5.4:1 |
@@ -219,19 +228,23 @@ Philosophy: warm off-whites instead of stark white; one muted steel-indigo accen
 
 ### Dark — "Quill Dark"
 
-WindowBackground `#1E2023`, Surface `#26292E`, Chrome `#2B2F34`, Input `#26292E`; Border `#3D4147` / Subtle `#33373C` / InputBorder `#4A4F56`; TextPrimary `#E8E6E3` (13.5:1), TextSecondary `#A8ACB3` (7.0:1), Disabled `#767B83`; Accent `#8FB0D9` (7.1:1), AccentSubtle `#2C3A4C`, TextOnAccent `#16202E`, Hyperlink `#8FB8E8`; Selection `#33465E` / `#E8E6E3`, SelectionInactive `#2E3238`; FocusIndicator `#E8E6E3`; Error `#F0857C`/`#3B2523`, Warning `#E0B45C`/`#3A3223`, Success `#87C795`/`#233A2A`, Info `#A3C4E8`/`#24303C`.
+WindowBackground `#1E2023`, Surface `#26292E`, Chrome `#2B2F34`, Input `#26292E`; Border `#4A4F56` / Subtle `#3B4046` / InputBorder `#5C6269`; TextPrimary `#E8E6E3` (13.5:1), TextSecondary `#B4B9C1` (7.4:1), Disabled `#767B83`; Accent `#8FB0D9` (7.1:1), AccentSubtle `#2C3A4C`, TextOnAccent `#16202E`, Hyperlink `#8FB8E8`; Selection `#4677B4` / `#FFFFFF` (3.2:1 vs surface, white text 4.6:1), SelectionInactive `#3C434C`; FocusIndicator `#E8E6E3`; Error `#F0857C`/`#3B2523`, Warning `#E0B45C`/`#3A3223`, Success `#87C795`/`#233A2A`, Info `#A3C4E8`/`#24303C`.
 
 ### Accent variants (sparse over Light, ~10 lines each)
 
-- **Ember** (warm): Accent `#8F4531` terracotta, WindowBackground `#FBF7F2`, AccentSubtle `#F5E9E3`, Selection `#F0DFD6`
-- **Fjord** (cool): Accent `#2E6462` teal, WindowBackground `#F8FAFA`, AccentSubtle `#E4EFEE`, Selection `#D8E8E7`
-- **Heather** (muted): Accent `#5E566E` plum-gray, WindowBackground `#FAF9FB`, AccentSubtle `#ECEAF1`, Selection `#E2DFE9`
+- **Ember** (warm): Accent `#8F4531` terracotta, WindowBackground `#FBF7F2`, AccentSubtle `#F5E9E3`, Selection `#8F4531` (= accent)
+- **Fjord** (cool): Accent `#2E6462` teal, WindowBackground `#F8FAFA`, AccentSubtle `#E4EFEE`, Selection `#2E6462` (= accent)
+- **Heather** (muted): Accent `#5E566E` plum-gray, WindowBackground `#FAF9FB`, AccentSubtle `#ECEAF1`, Selection `#5E566E` (= accent)
+
+Each variant's selection is its own accent, so the selected row is where the theme's personality shows — terracotta in Ember, teal in Fjord, plum in Heather (SelectionText `#FFFFFF` is inherited from the base).
 
 ### Contrast policy (enforced by unit test on every built-in)
 
 - Every text-role token ≥ 4.5:1 against every background it is declared against (TextSecondary included; TextDisabled exempt per WCAG, asserted ≥ 3:1).
 - Accent and FocusIndicator ≥ 3:1 as non-text indicators against Window/Surface backgrounds.
 - SelectionText ≥ 4.5:1 on SelectionBackground.
+- SelectionBackground ≥ 3:1 against SurfaceBackground (the selected row must be identifiable from its fill alone, not just the focus outline).
+- SelectionInactive ≥ 1.2:1 against SurfaceBackground, and TextPrimary ≥ 4.5:1 on SelectionInactive.
 - Each status color ≥ 4.5:1 on its own `*Background` and on WindowBackground.
 
 ## Section 7: Keyboard Walkthrough (Mandatory)

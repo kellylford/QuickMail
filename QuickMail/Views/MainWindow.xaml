@@ -731,7 +731,7 @@
                          AutomationProperties.Name on the container announces the full detail to screen
                          readers on focus, without requiring the user to hover over the tooltip. -->
                     <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                             <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
                             <Setter Property="Padding"                   Value="4,4,4,4"/>
                         </Style>
@@ -745,8 +745,10 @@
                                  read it once only. -->
                             <StackPanel>
                                 <local:AriaHiddenTextBlock Text="{Binding AccountLabel}"/>
+                                <!-- Opacity, not Theme.TextSecondary: inherits the container foreground,
+                                     so the line stays readable over the strong selection fill. -->
                                 <local:AriaHiddenTextBlock Text="{Binding StatusLabel}"
-                                                           Foreground="{DynamicResource Theme.TextSecondary}"
+                                                           Opacity="0.75"
                                                            FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                            Margin="0,1,0,0"/>
                             </StackPanel>
@@ -804,9 +806,10 @@
                                         </Style>
                                     </local:AriaHiddenTextBlock.Style>
                                 </local:AriaHiddenTextBlock>
-                                <!-- Unread badge: "(5)" — collapsed when empty -->
+                                <!-- Unread badge: "(5)" — collapsed when empty. Opacity, not
+                                     Theme.TextSecondary, so it follows the selection foreground. -->
                                 <local:AriaHiddenTextBlock Margin="4,0,0,0"
-                                                           Foreground="{DynamicResource Theme.TextSecondary}"
+                                                           Opacity="0.75"
                                                            FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                            Text="{Binding UnreadDisplay}">
                                     <local:AriaHiddenTextBlock.Style>
@@ -1099,7 +1102,7 @@
                             <DataTemplate>
                                 <StackPanel>
                                     <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding DisplayLine}" FontSize="{DynamicResource Theme.FontSizeSmall}" Foreground="{DynamicResource Theme.TextSecondary}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding DisplayLine}" FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -1253,7 +1256,11 @@
                                             <Border BorderBrush="{TemplateBinding BorderBrush}"
                                                     BorderThickness="{TemplateBinding BorderThickness}"
                                                     SnapsToDevicePixels="True">
-                                                <Border x:Name="rowBg" Background="Transparent" Padding="2,1">
+                                                <!-- 1px bottom border: row divider so adjacent rows
+                                                     stay distinguishable in dense lists. -->
+                                                <Border x:Name="rowBg" Background="Transparent" Padding="2,1"
+                                                        BorderBrush="{DynamicResource Theme.BorderSubtle}"
+                                                        BorderThickness="0,0,0,1">
                                                     <DockPanel>
                                                         <Rectangle x:Name="unreadBar" DockPanel.Dock="Left"
                                                                    Width="3" Margin="0,1,3,1"
@@ -1268,6 +1275,15 @@
                                                 <DataTrigger Binding="{Binding IsRead}" Value="False">
                                                     <Setter TargetName="unreadBar" Property="Visibility" Value="Visible"/>
                                                 </DataTrigger>
+                                                <!-- Selection fill is accent-strength, so an accent unread
+                                                     bar would vanish on the selected row — recolor it. -->
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding IsRead}" Value="False"/>
+                                                        <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter TargetName="unreadBar" Property="Fill" Value="{DynamicResource Theme.SelectionText}"/>
+                                                </MultiDataTrigger>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="rowBg" Property="Background" Value="{DynamicResource Theme.AccentSubtle}"/>
                                                 </Trigger>
@@ -1376,7 +1392,7 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                         <TextBlock Text="{Binding Preview}"
-                                                   FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.7"
+                                                   FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.75"
                                                    TextTrimming="CharacterEllipsis">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
@@ -1515,7 +1531,7 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                         <TextBlock Text="{Binding Preview}"
-                                                   FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.7"
+                                                   FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.75"
                                                    TextTrimming="CharacterEllipsis">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
@@ -1651,7 +1667,7 @@
                                             </TextBlock.Style>
                                         </TextBlock>
                                         <TextBlock Text="{Binding Preview}"
-                                                   FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.7"
+                                                   FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.75"
                                                    TextTrimming="CharacterEllipsis">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">

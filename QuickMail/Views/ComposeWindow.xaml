@@ -449,7 +449,7 @@
                          PreviewKeyDown="SuggestionList_PreviewKeyDown"
                          MouseLeftButtonUp="SuggestionList_MouseLeftButtonUp">
                     <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem">
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                             <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                             <Setter Property="Padding" Value="6,3"/>
                         </Style>
@@ -459,7 +459,7 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding PrimaryText}" FontWeight="SemiBold"/>
                                 <TextBlock Text="{Binding SecondaryText}"
-                                           Foreground="{DynamicResource Theme.TextSecondary}"
+                                           Opacity="0.75"
                                            FontSize="{DynamicResource Theme.FontSizeSmall}"/>
                             </StackPanel>
                         </DataTemplate>
