@@ -299,6 +299,9 @@ public partial class MainWindow : Window
                 Owner = this,
             };
             dialog.ShowDialog();
+            // Only reached when the dialog was dismissed (restart exits the process).
+            // WPF's return-to-owner focus is unreliable; land in the message list explicitly.
+            FocusActiveMessagePanel();
         };
         vm.UpdateInstalledDialogRequested += (_, info) =>
         {
@@ -307,6 +310,7 @@ public partial class MainWindow : Window
                 Owner = this,
             };
             dialog.ShowDialog();
+            FocusActiveMessagePanel();
         };
         vm.DesktopShortcutOfferRequested += (_, _) =>
         {
