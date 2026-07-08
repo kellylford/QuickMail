@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Installing and Updating QuickMail - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="system-requirements.html">Previous: System Requirements</a> | <a href="adding-accounts.html">Next: Adding Accounts</a></div>
+  <h1 id="installing-and-updating-quickmail">Installing and Updating
+QuickMail</h1>
+<p>QuickMail installs with a standard setup wizard and then keeps itself
+up to date. The guiding principle is that <strong>you are in
+control</strong>: the defaults are designed to keep you current with no
+effort, you are told when a new version has been installed, and every
+part of the automatic behavior can be turned off — QuickMail never stops
+you from updating manually instead.</p>
+<h3 id="installing-for-the-first-time">Installing for the first
+time</h3>
+<ol type="1">
+<li>Download <strong>QuickMail-win.msi</strong> from the <a
+href="https://github.com/kellylford/QuickMail/releases">releases
+page</a> and run it.</li>
+<li>The setup wizard walks through a welcome page, the license
+agreement, and installation. QuickMail installs for the current user
+only — no administrator permission is needed. If the WebView2 component
+QuickMail uses to display mail is missing from your PC, setup adds it
+automatically.</li>
+<li>A Start Menu entry is created. The first time QuickMail starts, it
+asks whether to also add a desktop shortcut — either answer is
+remembered, and you can change your mind anytime in <strong>Settings →
+General</strong> under <strong>Desktop Shortcut</strong>.</li>
+</ol>
+<h3 id="if-you-already-have-quickmail-installed">If you already have
+QuickMail installed</h3>
+<p>Versions before 0.8.1 used a different installer, so moving onto the
+self-updating track takes one manual step:</p>
+<ol type="1">
+<li>Uninstall your current QuickMail from <strong>Settings →
+Apps</strong>. When the uninstaller offers to delete your data, choose
+<strong>No</strong>.</li>
+<li>Download and run <strong>QuickMail-win.msi</strong> as described
+above.</li>
+<li>Start QuickMail. All of your accounts, settings, contacts, rules,
+templates, saved views, and cached mail are exactly as you left them —
+your data lives in a separate location the installer never touches, and
+passwords stay safely in Windows Credential Manager.</li>
+</ol>
+<p>This is a one-time step. From then on, updates arrive on their
+own.</p>
+<h3 id="how-updating-works">How updating works</h3>
+<p>Each time QuickMail starts, it quietly checks for a newer release in
+the background. The top entry of the <strong>Help</strong> menu always
+shows the result — <strong>“No updates available — running version
+X.Y.Z”</strong> or <strong>“Update available: vX.Y.Z”</strong> — so you
+can confirm where you stand at any moment.</p>
+<p>When an update is found, QuickMail announces it once, downloads it
+quietly in the background, and installs it automatically the next time
+you exit and reopen the app. There is no download page, no installer to
+run, and no security warning — and nothing interrupts what you are
+doing.</p>
+<p>If you would rather not wait for your next restart, activate the Help
+menu update entry. The <strong>QuickMail Update</strong> dialog offers
+three choices:</p>
+<ul>
+<li><strong>Restart to Update</strong> — applies the update immediately
+and reopens QuickMail.</li>
+<li><strong>See what’s new</strong> — opens that version’s release notes
+in your browser.</li>
+<li><strong>Exit</strong> (or Escape) — closes the dialog; the update
+still installs on your next normal restart.</li>
+</ul>
+<p>So you always know when a version change has happened, the first
+start after an update shows a <strong>QuickMail Update
+Installed</strong> dialog confirming the new version, with the same
+<strong>See what’s new</strong> link. Press <strong>Exit</strong> or
+Escape to dismiss it; it appears only once per update.</p>
+<p>An update never touches your mail, accounts, or settings.</p>
+<h3 id="staying-in-control">Staying in control</h3>
+<p>Two settings in <strong>Settings → Advanced</strong>, under
+<strong>Updates</strong>, put the whole mechanism under your
+control:</p>
+<ul>
+<li><strong>Download and install updates automatically</strong> — on by
+default. Turn it off and QuickMail returns to notification-only
+behavior: the Help menu still tells you when a new version exists and
+takes you to the download page, but nothing is downloaded or installed
+unless you do it yourself. The change takes effect the next time
+QuickMail starts, and you can turn it back on whenever you like.</li>
+<li><strong>Show a message after an update has been installed</strong> —
+on by default. Turn it off to skip the QuickMail Update Installed
+dialog; the Help menu entry still reflects your current version.</li>
+</ul>
+<h3 id="the-portable-version">The portable version</h3>
+<p><code>QuickMail.exe</code> on the same releases page is a single-file
+version that runs from anywhere with no installation — nothing is
+written to Program Files or the registry, and it never updates itself.
+The Help menu tells you when a new version is available; updating is a
+manual download of the new exe, replacing the old one. Your data is
+shared with an installed copy, so you can move between the two
+freely.</p>
+<h3 id="uninstalling">Uninstalling</h3>
+<p>Remove QuickMail from <strong>Settings → Apps</strong> as usual.
+After the app is removed, QuickMail asks whether to also delete your
+data — accounts, settings, contacts, rules, templates, saved views,
+cached mail, and saved passwords. Choose <strong>No</strong> (the
+default) to keep everything, so reinstalling later picks up exactly
+where you left off; choose <strong>Yes</strong> to remove it all.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="system-requirements.html">Previous: System Requirements</a> | <a href="adding-accounts.html">Next: Adding Accounts</a></div>
+</body>
+</html>

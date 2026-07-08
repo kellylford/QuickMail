@@ -258,6 +258,8 @@ required.</p>
 <h2 id="contents">Contents</h2>
 <ul>
 <li><a href="#system-requirements">System Requirements</a></li>
+<li><a href="#installing-and-updating-quickmail">Installing and Updating
+QuickMail</a></li>
 <li><a href="#adding-accounts">Adding Accounts</a></li>
 <li><a href="#main-window">Main Window</a></li>
 <li><a href="#reading-mail">Reading Mail</a></li>
@@ -280,11 +282,112 @@ Announcements</a></li>
 <h2 id="system-requirements">System Requirements</h2>
 <ul>
 <li>Windows 10 (1703 or later) or Windows 11</li>
-<li>Microsoft Edge WebView2 Runtime (the installer checks for this
-automatically)</li>
+<li>Microsoft Edge WebView2 Runtime (the installer adds this
+automatically when missing; included with Windows 11 and current Windows
+10)</li>
 <li>An IMAP/SMTP email account (Gmail, Outlook.com, Microsoft 365, or
 any standard IMAP provider)</li>
 </ul>
+<hr />
+<h2 id="installing-and-updating-quickmail">Installing and Updating
+QuickMail</h2>
+<p>QuickMail installs with a standard setup wizard and then keeps itself
+up to date. The guiding principle is that <strong>you are in
+control</strong>: the defaults are designed to keep you current with no
+effort, you are told when a new version has been installed, and every
+part of the automatic behavior can be turned off — QuickMail never stops
+you from updating manually instead.</p>
+<h3 id="installing-for-the-first-time">Installing for the first
+time</h3>
+<ol type="1">
+<li>Download <strong>QuickMail-win.msi</strong> from the <a
+href="https://github.com/kellylford/QuickMail/releases">releases
+page</a> and run it.</li>
+<li>The setup wizard walks through a welcome page, the license
+agreement, and installation. QuickMail installs for the current user
+only — no administrator permission is needed. If the WebView2 component
+QuickMail uses to display mail is missing from your PC, setup adds it
+automatically.</li>
+<li>A Start Menu entry is created. The first time QuickMail starts, it
+asks whether to also add a desktop shortcut — either answer is
+remembered, and you can change your mind anytime in <strong>Settings →
+General</strong> under <strong>Desktop Shortcut</strong>.</li>
+</ol>
+<h3 id="if-you-already-have-quickmail-installed">If you already have
+QuickMail installed</h3>
+<p>Versions before 0.8.1 used a different installer, so moving onto the
+self-updating track takes one manual step:</p>
+<ol type="1">
+<li>Uninstall your current QuickMail from <strong>Settings →
+Apps</strong>. When the uninstaller offers to delete your data, choose
+<strong>No</strong>.</li>
+<li>Download and run <strong>QuickMail-win.msi</strong> as described
+above.</li>
+<li>Start QuickMail. All of your accounts, settings, contacts, rules,
+templates, saved views, and cached mail are exactly as you left them —
+your data lives in a separate location the installer never touches, and
+passwords stay safely in Windows Credential Manager.</li>
+</ol>
+<p>This is a one-time step. From then on, updates arrive on their
+own.</p>
+<h3 id="how-updating-works">How updating works</h3>
+<p>Each time QuickMail starts, it quietly checks for a newer release in
+the background. The top entry of the <strong>Help</strong> menu always
+shows the result — <strong>“No updates available — running version
+X.Y.Z”</strong> or <strong>“Update available: vX.Y.Z”</strong> — so you
+can confirm where you stand at any moment.</p>
+<p>When an update is found, QuickMail announces it once, downloads it
+quietly in the background, and installs it automatically the next time
+you exit and reopen the app. There is no download page, no installer to
+run, and no security warning — and nothing interrupts what you are
+doing.</p>
+<p>If you would rather not wait for your next restart, activate the Help
+menu update entry. The <strong>QuickMail Update</strong> dialog offers
+three choices:</p>
+<ul>
+<li><strong>Restart to Update</strong> — applies the update immediately
+and reopens QuickMail.</li>
+<li><strong>See what’s new</strong> — opens that version’s release notes
+in your browser.</li>
+<li><strong>Exit</strong> (or Escape) — closes the dialog; the update
+still installs on your next normal restart.</li>
+</ul>
+<p>So you always know when a version change has happened, the first
+start after an update shows a <strong>QuickMail Update
+Installed</strong> dialog confirming the new version, with the same
+<strong>See what’s new</strong> link. Press <strong>Exit</strong> or
+Escape to dismiss it; it appears only once per update.</p>
+<p>An update never touches your mail, accounts, or settings.</p>
+<h3 id="staying-in-control">Staying in control</h3>
+<p>Two settings in <strong>Settings → Advanced</strong>, under
+<strong>Updates</strong>, put the whole mechanism under your
+control:</p>
+<ul>
+<li><strong>Download and install updates automatically</strong> — on by
+default. Turn it off and QuickMail returns to notification-only
+behavior: the Help menu still tells you when a new version exists and
+takes you to the download page, but nothing is downloaded or installed
+unless you do it yourself. The change takes effect the next time
+QuickMail starts, and you can turn it back on whenever you like.</li>
+<li><strong>Show a message after an update has been installed</strong> —
+on by default. Turn it off to skip the QuickMail Update Installed
+dialog; the Help menu entry still reflects your current version.</li>
+</ul>
+<h3 id="the-portable-version">The portable version</h3>
+<p><code>QuickMail.exe</code> on the same releases page is a single-file
+version that runs from anywhere with no installation — nothing is
+written to Program Files or the registry, and it never updates itself.
+The Help menu tells you when a new version is available; updating is a
+manual download of the new exe, replacing the old one. Your data is
+shared with an installed copy, so you can move between the two
+freely.</p>
+<h3 id="uninstalling">Uninstalling</h3>
+<p>Remove QuickMail from <strong>Settings → Apps</strong> as usual.
+After the app is removed, QuickMail asks whether to also delete your
+data — accounts, settings, contacts, rules, templates, saved views,
+cached mail, and saved passwords. Choose <strong>No</strong> (the
+default) to keep everything, so reinstalling later picks up exactly
+where you left off; choose <strong>Yes</strong> to remove it all.</p>
 <hr />
 <h2 id="adding-accounts">Adding Accounts</h2>
 <p>Open <strong>Settings → Accounts</strong> (<code>Ctrl+,</code> then
@@ -432,15 +535,35 @@ combination. Changes take effect immediately and survive restarts.</p>
 starts. The top entry of the <strong>Help</strong> menu always shows the
 result: <strong>“No updates available — running version X.Y.Z”</strong>
 when you are current, or <strong>“Update available: vX.Y.Z”</strong>
-when a newer release exists. Activating the entry opens the matching
-page on the QuickMail releases site in your browser, so it is always
-useful — even when there is nothing new. If an update is found, a spoken
+when a newer release exists. If an update is found, a spoken
 announcement follows a few seconds after launch; the background check
 itself is silent when you are already up to date.</p>
+<p>Installed copies download and install updates automatically, and both
+that behavior and its notifications are configurable — see <a
+href="#installing-and-updating-quickmail">Installing and Updating
+QuickMail</a> for the full walkthrough.</p>
+<p><strong>The portable exe does not update itself.</strong> If you run
+the standalone <code>QuickMail.exe</code>, the Help menu entry still
+tells you when a new version exists; activating it opens the releases
+page, and updating remains a manual download of the new exe.</p>
 <p>The <strong>Help</strong> menu also has a <strong>Keyboard
 Tutorial</strong> entry, a short interactive walkthrough of core
 navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and
 Escape) for anyone new to the app.</p>
+<h3 id="reporting-a-bug">Reporting a Bug</h3>
+<p>Choose <strong>Report a Bug</strong> from the <strong>Help</strong>
+menu (also available from the command palette) to open a report window
+without needing a GitHub account. Fill in a summary and, optionally,
+what happened, what you expected, and steps to reproduce; a
+<strong>Preview</strong> box below the fields always shows exactly what
+will be sent, built fresh from those fields. Press <strong>Send</strong>
+to submit — QuickMail creates the GitHub issue directly using its own
+limited-scope credential, and the window shows a link to the created
+issue. No log content is ever collected or sent.</p>
+<p>If sending fails, or you’d rather review the report yourself, choose
+<strong>Copy report and open GitHub</strong> instead: your report is
+copied to the clipboard and a pre-filled GitHub issue page opens in your
+browser, ready to paste and submit.</p>
 <hr />
 <h2 id="reading-mail">Reading Mail</h2>
 <h3 id="opening-a-message">Opening a Message</h3>
@@ -1278,38 +1401,45 @@ text, and so on).</p>
 Whichever it resolves to today, it currently displays the same colors as
 Parchment (below): an off-white background, very dark cool-gray text,
 and a dark muted-blue accent.</p>
+<p>In every theme, the selected item in a list or tree is a solid band
+of the theme’s accent color with white text, so the current message is
+unmistakable; supporting text (previews, timestamps, unread counts) is a
+step lighter than body text but kept clearly readable; and a thin
+divider separates message rows.</p>
 <p><strong>Parchment</strong> (light, default) — an off-white background
 (Snow) with very dark cool-gray text and a dark muted-blue accent (Dark
-Slate Blue) used for buttons and the unread marker. Panels and toolbars
-use warm off-white tones (White Smoke, Linen); links are medium blue.
-This is QuickMail’s standard light look.</p>
+Slate Blue) used for buttons, the unread marker, and the selected item.
+Panels and toolbars use warm off-white tones (White Smoke, Linen); links
+are medium blue. This is QuickMail’s standard light look.</p>
 <p><strong>Parchment Dark</strong> — the dark counterpart to Parchment:
 a very dark gray background with light gray text and a light muted-blue
-accent. Panels and toolbars use slightly lighter dark-gray tones for
-depth; links are light blue. Status colors (error, warning, success,
-information) are lightened versions of Parchment’s, chosen for contrast
-against the dark background.</p>
+accent. The selected item is a medium-blue band with white text. Panels
+and toolbars use slightly lighter dark-gray tones for depth; links are
+light blue. Status colors (error, warning, success, information) are
+lightened versions of Parchment’s, chosen for contrast against the dark
+background.</p>
 <p><strong>Ember</strong> — a warm light theme: a warm off-white
 background (Floral White) with very dark cool-gray text and a dark red
-accent (Sienna) in place of Parchment’s blue. Selection highlights use a
-pale muted orange rather than blue. Links remain medium blue for
+accent (Sienna) in place of Parchment’s blue. The selected item is a
+terracotta band with white text. Links remain medium blue for
 consistency across themes.</p>
 <p><strong>Fjord</strong> — a cool light theme: an off-white background
 with a faint cool cast (Ghost White) and a dark muted-cyan accent (Dark
-Slate Gray) in place of Parchment’s blue. Selection highlights use a
-light cool gray-green.</p>
+Slate Gray) in place of Parchment’s blue. The selected item is a dark
+teal band with white text.</p>
 <p><strong>Heather</strong> — a muted light theme: an off-white
 background (Ghost White) with a cool gray accent (Dim Gray) instead of a
-saturated color. Selection highlights use a light cool gray-lavender.
+saturated color. The selected item is a plum-gray band with white text.
 This is the most subdued of the built-in themes.</p>
 <p>The four light themes are close cousins. Ember, Fjord, and Heather
 each change only four colors from Parchment: the main window background
 tint, the accent color, the soft accent-fill color, and the selection
-highlight. Everything else — panels and toolbars, borders, body and
-secondary text, the medium-blue hyperlink color, the focus outline, and
-the four status colors (error, warning, success, information) — is
-inherited unchanged from Parchment. Parchment Dark is the only theme
-with a fully dark palette.</p>
+color (which matches the accent, so selection is where each theme’s
+personality shows most). Everything else — panels and toolbars, borders,
+body and secondary text, the medium-blue hyperlink color, the focus
+outline, and the four status colors (error, warning, success,
+information) — is inherited unchanged from Parchment. Parchment Dark is
+the only theme with a fully dark palette.</p>
 <hr />
 <h2 id="screen-reader-announcements-1">Screen Reader Announcements</h2>
 <p>QuickMail uses UIA Notification events (the correct API for desktop
@@ -1446,9 +1576,9 @@ box with any screen reader.</p>
 <p><strong>Move to Folder…</strong> and <strong>Copy to Folder…</strong>
 are available from the context menu (Shift+F10) or the command palette;
 they have no default keyboard shortcut. <strong>Manage Themes</strong>,
-<strong>Next Theme</strong>, and <strong>Previous Theme</strong> are
-likewise command-palette-only unless you assign a shortcut yourself in
-Settings → Keyboard.</p>
+<strong>Next Theme</strong>, <strong>Previous Theme</strong>, and
+<strong>Report a Bug</strong> are likewise command-palette-only unless
+you assign a shortcut yourself in Settings → Keyboard.</p>
 <p><strong>Calendar list</strong> (when the Calendar folder is
 selected): <code>T</code> filters to today’s events; <code>Enter</code>
 opens the source invitation email; <code>F5</code> refreshes; arrow keys

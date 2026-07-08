@@ -107,15 +107,35 @@ combination. Changes take effect immediately and survive restarts.</p>
 starts. The top entry of the <strong>Help</strong> menu always shows the
 result: <strong>“No updates available — running version X.Y.Z”</strong>
 when you are current, or <strong>“Update available: vX.Y.Z”</strong>
-when a newer release exists. Activating the entry opens the matching
-page on the QuickMail releases site in your browser, so it is always
-useful — even when there is nothing new. If an update is found, a spoken
+when a newer release exists. If an update is found, a spoken
 announcement follows a few seconds after launch; the background check
 itself is silent when you are already up to date.</p>
+<p>Installed copies download and install updates automatically, and both
+that behavior and its notifications are configurable — see <a
+href="#installing-and-updating-quickmail">Installing and Updating
+QuickMail</a> for the full walkthrough.</p>
+<p><strong>The portable exe does not update itself.</strong> If you run
+the standalone <code>QuickMail.exe</code>, the Help menu entry still
+tells you when a new version exists; activating it opens the releases
+page, and updating remains a manual download of the new exe.</p>
 <p>The <strong>Help</strong> menu also has a <strong>Keyboard
 Tutorial</strong> entry, a short interactive walkthrough of core
 navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and
 Escape) for anyone new to the app.</p>
+<h3 id="reporting-a-bug">Reporting a Bug</h3>
+<p>Choose <strong>Report a Bug</strong> from the <strong>Help</strong>
+menu (also available from the command palette) to open a report window
+without needing a GitHub account. Fill in a summary and, optionally,
+what happened, what you expected, and steps to reproduce; a
+<strong>Preview</strong> box below the fields always shows exactly what
+will be sent, built fresh from those fields. Press <strong>Send</strong>
+to submit — QuickMail creates the GitHub issue directly using its own
+limited-scope credential, and the window shows a link to the created
+issue. No log content is ever collected or sent.</p>
+<p>If sending fails, or you’d rather review the report yourself, choose
+<strong>Copy report and open GitHub</strong> instead: your report is
+copied to the clipboard and a pre-filled GitHub issue page opens in your
+browser, ready to paste and submit.</p>
 <hr />
 
   <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="adding-accounts.html">Previous: Adding Accounts</a> | <a href="reading-mail.html">Next: Reading Mail</a></div>
