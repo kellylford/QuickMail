@@ -52,6 +52,9 @@ public partial class App : Application
                 "  --online              Run in fully online mode: fetch everything live from\n" +
                 "                        IMAP on every folder selection. Nothing is read from\n" +
                 "                        or written to the local SQLite cache.\n\n" +
+                "  --updateFeed <path>   Check for updates in <path> (a folder or URL of\n" +
+                "                        Velopack packages) instead of GitHub Releases.\n" +
+                "                        For testing update delivery.\n\n" +
                 "  --help                Show this message and exit.\n\n" +
                 "  /debug                Write verbose debug output to quickmail.log.",
                 "QuickMail",
@@ -164,7 +167,7 @@ public partial class App : Application
             var calendarProvider = new LocalCacheCalendarProvider(localStore);
             var calendarService = new CalendarService(calendarProvider);
 
-            _updateCheckService = new UpdateCheckService();
+            _updateCheckService = new UpdateCheckService(ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
@@ -228,6 +231,21 @@ public partial class App : Application
                 if (arg.Equals(flag, StringComparison.OrdinalIgnoreCase))
                     return true;
         return false;
+    }
+
+    /// <summary>
+    /// Parses --updateFeed from args: a local folder or URL holding Velopack packages,
+    /// overriding the GitHub Releases source. Lets the full update cycle (check, download,
+    /// apply on relaunch) be tested against local vpk pack output without publishing.
+    /// </summary>
+    private static string? ParseUpdateFeed(string[] args)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--updateFeed", StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+        return null;
     }
 
     /// <summary>

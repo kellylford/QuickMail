@@ -22,7 +22,7 @@ Or directly: `dotnet run --project QuickMail`.
 
 The `installer` target requires the Velopack CLI (`dotnet tool install -g vpk`). See `docs/INSTALLER.md` for packaging and auto-update details. Packaging constraint: `App.xaml.cs` declares an explicit `Main` that must call `VelopackApp.Build().Run()` first — `vpk pack` verifies this via IL inspection and refuses to pack without it.
 
-Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing.
+Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` overrides the data directory (default `%APPDATA%\QuickMail`); useful for isolated testing. `--updateFeed <path>` points the update check at a local folder of `vpk pack` output instead of GitHub Releases (see `docs/INSTALLER.md` for the local update-cycle test procedure).
 
 ## Tests
 

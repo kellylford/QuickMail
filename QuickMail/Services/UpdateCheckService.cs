@@ -25,10 +25,14 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
     // is cooperatively cancelled (clean OperationCanceledException) rather than left to either
     // the 10s HttpClient timeout or an ObjectDisposedException from disposing _http mid-request.
     private readonly CancellationTokenSource _cts = new();
+    // Test/debug override (--updateFeed): a local folder or URL holding vpk pack output,
+    // so the full download-and-apply cycle can be exercised without publishing a release.
+    private readonly string? _feedOverride;
     private bool _disposed;
 
-    public UpdateCheckService()
+    public UpdateCheckService(string? updateFeedOverride = null)
     {
+        _feedOverride = updateFeedOverride;
         _http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         _http.DefaultRequestHeaders.UserAgent.Add(
             new ProductInfoHeaderValue("QuickMail", _currentVersion));
@@ -46,11 +50,20 @@ public class UpdateCheckService : IUpdateCheckService, IDisposable
         return await CheckViaGitHubApiAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static UpdateManager? CreateVelopackManager()
+    private UpdateManager? CreateVelopackManager()
     {
         try
         {
-            var mgr = new UpdateManager(new GithubSource(RepoUrl, accessToken: null, prerelease: false));
+            UpdateManager mgr;
+            if (_feedOverride is null)
+            {
+                mgr = new UpdateManager(new GithubSource(RepoUrl, accessToken: null, prerelease: false));
+            }
+            else
+            {
+                LogService.Log($"UpdateCheckService: using update feed override: {_feedOverride}");
+                mgr = new UpdateManager(_feedOverride);
+            }
             return mgr.IsInstalled ? mgr : null;
         }
         catch (Exception ex)

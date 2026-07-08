@@ -58,6 +58,37 @@ On a `v*` tag, `.github/workflows/quickmail.yml`:
    `.nupkg` packages, and the feed metadata files. The in-app updater reads these from the
    latest GitHub release.
 
+## Testing updates locally (no GitHub release needed)
+
+The `--updateFeed <path>` startup flag points the update check at a local folder of
+`vpk pack` output instead of GitHub Releases, so the complete cycle — check, background
+download, apply on relaunch, delta packaging — can be verified offline:
+
+1. `build.bat installer` — packs the current csproj version (say `0.8.1`) into
+   `installer\Output\Releases\`.
+2. Run `installer\Output\Releases\QuickMail-win-Setup.exe`. The app installs to
+   `%LocalAppData%\QuickMail` and launches.
+3. Bump `<Version>` in `QuickMail/QuickMail.csproj` (say `0.8.2`) and run
+   `build.bat installer` again **without deleting the Releases folder** — because the
+   previous full package is still there, this also exercises delta generation
+   (`QuickMail-0.8.2-delta.nupkg` appears).
+4. Launch the **installed** copy with the feed override:
+   `%LocalAppData%\QuickMail\current\QuickMail.exe --updateFeed <repo>\installer\Output\Releases`
+   The startup check finds 0.8.2, announces it, and downloads it in the background
+   (`quickmail.log` records "Update 0.8.2 downloaded; it will be applied when QuickMail
+   exits").
+5. Exit QuickMail. `Update.exe` applies the staged update.
+6. Relaunch (Start Menu or the same command). Help menu now reads "running version 0.8.2".
+
+Add `--profileDir <scratch>` to any of these launches to keep test runs away from real
+data. Uninstalling via Settings → Apps removes `%LocalAppData%\QuickMail` and shortcuts;
+revert the csproj version bump afterwards.
+
+The flag only overrides *where packages come from*; everything else (Velopack's installed
+detection, staging, `Update.exe` apply) runs exactly the production code path. What it
+cannot test: the GitHub Releases fetch itself (`GithubSource`) and the CI packing steps —
+those are exercised by the first real tagged release.
+
 ## Migrating from the Inno Setup installer
 
 Users on an Inno Setup install (v0.8.0 and earlier) need a one-time manual reinstall to get
