@@ -189,7 +189,7 @@
                             <ContextMenu AutomationProperties.Name="Add to group"/>
                         </ListView.ContextMenu>
                         <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                             </Style>
                         </ListView.ItemContainerStyle>
@@ -199,7 +199,7 @@
                                             AutomationProperties.Name="{Binding Display}">
                                     <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                     <TextBlock Text="  &lt;"/>
-                                    <TextBlock Text="{Binding EmailAddress}" Foreground="{DynamicResource Theme.TextSecondary}"/>
+                                    <TextBlock Text="{Binding EmailAddress}" Opacity="0.75"/>
                                     <TextBlock Text="&gt;"/>
                                 </StackPanel>
                             </DataTemplate>
@@ -236,7 +236,7 @@
                                   KeyboardNavigation.TabNavigation="Once"
                                   PreviewKeyDown="GroupsList_PreviewKeyDown">
                             <ListView.ItemContainerStyle>
-                                <Style TargetType="ListViewItem">
+                                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
@@ -247,7 +247,7 @@
                                         <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  "/>
                                         <TextBlock Text="{Binding Display, Converter={x:Static local:GroupSubtitleConverter.Instance}}"
-                                                   Foreground="{DynamicResource Theme.TextSecondary}"/>
+                                                   Opacity="0.75"/>
                                     </StackPanel>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -289,7 +289,7 @@
                                   KeyboardNavigation.TabNavigation="Once"
                                   PreviewKeyDown="GroupMembersList_PreviewKeyDown">
                             <ListView.ItemContainerStyle>
-                                <Style TargetType="ListViewItem">
+                                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                                 </Style>
                             </ListView.ItemContainerStyle>
@@ -299,7 +299,7 @@
                                                 AutomationProperties.Name="{Binding Display}">
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
                                         <TextBlock Text="  &lt;"/>
-                                        <TextBlock Text="{Binding EmailAddress}" Foreground="{DynamicResource Theme.TextSecondary}"/>
+                                        <TextBlock Text="{Binding EmailAddress}" Opacity="0.75"/>
                                         <TextBlock Text="&gt;"/>
                                     </StackPanel>
                                 </DataTemplate>

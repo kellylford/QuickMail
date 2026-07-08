@@ -52,7 +52,7 @@
                     <StackPanel>
                         <local:AriaHiddenTextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
                         <local:AriaHiddenTextBlock Text="{Binding DetailLabel}"
-                                                   Foreground="{DynamicResource Theme.TextSecondary}"
+                                                   Opacity="0.75"
                                                    FontSize="{DynamicResource Theme.FontSizeSmall}"/>
                     </StackPanel>
                 </DataTemplate>

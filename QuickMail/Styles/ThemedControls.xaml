@@ -49,6 +49,7 @@
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="border" Property="Background" Value="{DynamicResource Theme.SelectionBackground}"/>
+                            <Setter Property="Foreground" Value="{DynamicResource Theme.SelectionText}"/>
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
@@ -575,6 +576,7 @@
             </Trigger>
             <Trigger Property="IsSubmenuOpen" Value="True">
                 <Setter TargetName="border" Property="Background" Value="{DynamicResource Theme.SelectionBackground}"/>
+                <Setter Property="Foreground" Value="{DynamicResource Theme.SelectionText}"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
@@ -614,7 +616,7 @@
                 <ContentPresenter Grid.Column="1" ContentSource="Header"
                                   Margin="4,1" VerticalAlignment="Center"
                                   RecognizesAccessKey="True"/>
-                <TextBlock Grid.Column="2" Margin="16,1,4,1" VerticalAlignment="Center"
+                <TextBlock x:Name="gestureText" Grid.Column="2" Margin="16,1,4,1" VerticalAlignment="Center"
                            Text="{TemplateBinding InputGestureText}"
                            Foreground="{DynamicResource Theme.TextSecondary}"/>
             </Grid>
@@ -630,6 +632,7 @@
             <Trigger Property="IsHighlighted" Value="True">
                 <Setter TargetName="border" Property="Background" Value="{DynamicResource Theme.SelectionBackground}"/>
                 <Setter Property="Foreground" Value="{DynamicResource Theme.SelectionText}"/>
+                <Setter TargetName="gestureText" Property="Foreground" Value="{DynamicResource Theme.SelectionText}"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
@@ -650,7 +653,7 @@
                 <ContentPresenter Grid.Column="1" ContentSource="Header"
                                   Margin="4,1" VerticalAlignment="Center"
                                   RecognizesAccessKey="True"/>
-                <Path Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center"
+                <Path x:Name="submenuArrow" Grid.Column="3" HorizontalAlignment="Center" VerticalAlignment="Center"
                       Data="M 0,0 L 4,4 L 0,8"
                       Stroke="{DynamicResource Theme.TextSecondary}" StrokeThickness="1.5"/>
                 <Popup x:Name="PART_Popup"
@@ -683,6 +686,7 @@
             <Trigger Property="IsHighlighted" Value="True">
                 <Setter TargetName="border" Property="Background" Value="{DynamicResource Theme.SelectionBackground}"/>
                 <Setter Property="Foreground" Value="{DynamicResource Theme.SelectionText}"/>
+                <Setter TargetName="submenuArrow" Property="Stroke" Value="{DynamicResource Theme.SelectionText}"/>
             </Trigger>
             <Trigger Property="IsEnabled" Value="False">
                 <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>

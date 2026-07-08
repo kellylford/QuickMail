@@ -95,6 +95,25 @@ public class BuiltInThemeTests
         }
     }
 
+    /// <summary>
+    /// The selected row must be identifiable from its fill alone, not just the
+    /// focus outline: the original palettes shipped selection tints at ~1.15:1
+    /// against the list surface, which visual review found indistinguishable
+    /// from unselected rows in every theme.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BuiltInIds))]
+    public void ContrastPolicy_SelectionState_IsVisible(string id)
+    {
+        var t = ResolvedBuiltIns().First(x => x.Id == id);
+        // Active selection: a state indicator — non-text minimum of 3:1.
+        AssertContrast(t, "selectionBackground", "surfaceBackground", 3.0);
+        // Inactive selection stays deliberately quiet, but must not vanish,
+        // and primary text on it must stay AA-readable.
+        AssertContrast(t, "selectionInactive", "surfaceBackground", 1.2);
+        AssertContrast(t, "textPrimary", "selectionInactive", 4.5);
+    }
+
     [Theory]
     [MemberData(nameof(BuiltInIds))]
     public void ContrastPolicy_StatusColors_MeetAA(string id)
