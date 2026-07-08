@@ -415,6 +415,37 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _                           => string.Empty,
     };
 
+    /// <summary>
+    /// Snapshot of current UI state (theme, view, sort) for a bug report's Environment section.
+    /// Captured when the report window opens — see <see cref="Models.BugReportContext"/>.
+    /// </summary>
+    public Models.BugReportContext CaptureBugReportContext() => new()
+    {
+        Theme = _themeService?.ConfiguredThemeName ?? "Default",
+        View  = ActiveView?.Name is { Length: > 0 } viewName
+                    ? $"{viewName} ({ViewModeName})"
+                    : ViewModeName,
+        Sort  = ActiveSort switch
+        {
+            MessageSort.DateDescending  => "Newest First",
+            MessageSort.DateAscending   => "Oldest First",
+            MessageSort.AlphaAscending  => "A → Z",
+            MessageSort.AlphaDescending => "Z → A",
+            MessageSort.CountDescending => "Most Messages",
+            MessageSort.CountAscending  => "Fewest Messages",
+            MessageSort.FlaggedFirst    => "Flagged First",
+            _                           => ActiveSort.ToString(),
+        },
+    };
+
+    private string ViewModeName => ViewMode switch
+    {
+        ViewMode.Conversations => "Conversations",
+        ViewMode.From          => "From",
+        ViewMode.To            => "To",
+        _                      => "Messages",
+    };
+
     public bool IsSyncDays7   => _syncDays == 7;
     public bool IsSyncDays30  => _syncDays == 30;
     public bool IsSyncDays180 => _syncDays == 180;

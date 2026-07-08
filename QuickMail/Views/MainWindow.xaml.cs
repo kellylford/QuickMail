@@ -2777,7 +2777,8 @@ public partial class MainWindow : Window
         if (_bugReportService == null) return;
 
         var previousFocus = Keyboard.FocusedElement as IInputElement;
-        var window = new ReportBugWindow(_bugReportService) { Owner = this };
+        var context = _vm.CaptureBugReportContext();
+        var window = new ReportBugWindow(_bugReportService, context) { Owner = this };
         window.Closed += (_, _) => previousFocus?.Focus();
         window.Show();
     }

@@ -19,6 +19,7 @@ namespace QuickMail.ViewModels;
 public partial class ReportBugViewModel : ObservableObject, IDisposable
 {
     private readonly IBugReportService _bugReportService;
+    private readonly BugReportContext? _context;
     private CancellationTokenSource? _sendCts;
 
     [ObservableProperty]
@@ -68,9 +69,10 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
     /// <summary>Fired after a failed send — the View moves focus to the fallback button.</summary>
     public event EventHandler? SendFailed;
 
-    public ReportBugViewModel(IBugReportService bugReportService)
+    public ReportBugViewModel(IBugReportService bugReportService, BugReportContext? context = null)
     {
         _bugReportService = bugReportService;
+        _context = context;
     }
 
     private BugReportModel BuildModel() => new()
@@ -79,6 +81,7 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
         WhatHappened     = WhatHappened,
         WhatExpected     = WhatExpected,
         StepsToReproduce = StepsToReproduce,
+        Context          = _context,
     };
 
     [RelayCommand]

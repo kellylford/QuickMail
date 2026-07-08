@@ -185,4 +185,35 @@ public class BugReportServiceTests
         Assert.Contains("OS:", text);
         Assert.DoesNotContain("quickmail.log", text, StringComparison.OrdinalIgnoreCase);
     }
+
+    [Fact]
+    public void BuildReportText_IncludesThemeViewAndSort_WhenContextProvided()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+        var report = SampleReport();
+        report.Context = new BugReportContext
+        {
+            Theme = "Parchment",
+            View  = "Unread (Conversations)",
+            Sort  = "Newest First",
+        };
+
+        var text = service.BuildReportText(report);
+
+        Assert.Contains("Theme: Parchment", text);
+        Assert.Contains("View: Unread (Conversations)", text);
+        Assert.Contains("Sort: Newest First", text);
+    }
+
+    [Fact]
+    public void BuildReportText_OmitsContextLines_WhenNoContext()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+        var report = SampleReport();   // Context stays null
+
+        var text = service.BuildReportText(report);
+
+        Assert.DoesNotContain("Theme:", text);
+        Assert.DoesNotContain("Sort:", text);
+    }
 }

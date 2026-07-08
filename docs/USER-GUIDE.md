@@ -194,7 +194,9 @@ The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive wa
 
 ### Reporting a Bug
 
-Choose **Report a Bug** from the **Help** menu (also available from the command palette) to open a report window without needing a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce; a **Preview** box below the fields always shows exactly what will be sent, built fresh from those fields. Press **Send** to submit — QuickMail creates the GitHub issue directly using its own limited-scope credential, and the window shows a link to the created issue. No log content is ever collected or sent.
+Choose **Report a Bug** from the **Help** menu (also available from the command palette) to open a report window without needing a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce; a **Preview** box below the fields always shows exactly what will be sent, built fresh from those fields. Press **Send** to submit — QuickMail creates the GitHub issue directly using its own limited-scope credential, and the window shows a link to the created issue.
+
+Alongside what you type, the report includes a short **Environment** section so a maintainer can reproduce the problem in the right context. It currently lists the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view (the message grouping — Messages, Conversations, From, or To — and the saved view name if one is applied), and the current message sort order. No message content, email addresses, account settings, credentials, or log file content is ever collected or sent — and because the Preview shows the full report verbatim, you can always see exactly what is included before sending.
 
 If sending fails, or you'd rather review the report yourself, choose **Copy report and open GitHub** instead: your report is copied to the clipboard and a pre-filled GitHub issue page opens in your browser, ready to paste and submit.
 

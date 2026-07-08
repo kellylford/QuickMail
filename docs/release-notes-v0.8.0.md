@@ -111,7 +111,7 @@ When Windows High Contrast is on, QuickMail steps aside entirely — every color
 
 ## New: Report a Bug
 
-**Help → Report a Bug** opens a report window without requiring a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce — a **Preview** area always shows exactly what will be sent. QuickMail submits the report directly to GitHub Issues using its own narrowly-scoped, app-owned credential, and shows a link to the created issue on success. If sending isn't possible (no credential available, or the request fails), **Copy report and open GitHub** copies your report to the clipboard and opens a pre-filled issue page in your browser instead. By deliberate design, no log content is ever collected or sent — only what you type plus non-sensitive app/version metadata.
+**Help → Report a Bug** opens a report window without requiring a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce — a **Preview** area always shows exactly what will be sent. QuickMail submits the report directly to GitHub Issues using its own narrowly-scoped, app-owned credential, and shows a link to the created issue on success. If sending isn't possible (no credential available, or the request fails), **Copy report and open GitHub** copies your report to the clipboard and opens a pre-filled issue page in your browser instead. By deliberate design, the only things sent are what you type plus a short **Environment** section of non-sensitive details — currently the QuickMail version, your Windows version, the .NET runtime version, the active theme, the current view (message grouping, plus the saved view name if one is applied), and the message sort order. No message content, email addresses, account settings, credentials, or log file content is ever collected — and the Preview shows the whole report so you can confirm before sending.
 
 ---
 
@@ -157,7 +157,7 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 ### Bug reporting (issue #186)
 
 - `IBugReportService` submits directly to the GitHub Issues API using an app-owned, repo-scoped (`Issues:Write` only) token stored through the existing `ICredentialService` — no user GitHub sign-in. `BuildFallbackUrl` uses `Uri.EscapeDataString` (correct percent-encoding) and truncates the body so the pre-filled fallback URL can't exceed what `ShellExecute` will open; the full report is always available via the clipboard regardless.
-- `ReportBugViewModel` collects only what the user types plus non-sensitive app/version metadata — it never reads `quickmail.log`, an explicit product decision recorded in `docs/planning/bug-reporting-pm-dev-spec.md`, not an oversight.
+- `ReportBugViewModel` collects only what the user types plus a fixed Environment block (QuickMail version, Windows version, .NET runtime version, active theme, current view/grouping, and message sort — captured as a `BugReportContext` snapshot when the window opens). It never reads `quickmail.log`, an explicit product decision recorded in `docs/planning/bug-reporting-pm-dev-spec.md`, not an oversight.
 - `ReportBugWindow` is opened modeless (`.Show()`, not `.ShowDialog()`) per this codebase's modal-dialog rules, since it has editable text fields and can be opened over a window with a live WebView2 reading pane. Its event subscriptions use named handlers so `OnClosed` can unsubscribe all of them, preventing a Send still in flight from touching the window after it closes and is disposed.
 
 ### Version

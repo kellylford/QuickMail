@@ -22,9 +22,9 @@ public partial class ReportBugWindow : Window
     private readonly ReportBugViewModel _vm;
     private readonly CommandRegistry _registry = new();
 
-    public ReportBugWindow(IBugReportService bugReportService)
+    public ReportBugWindow(IBugReportService bugReportService, BugReportContext? context = null)
     {
-        _vm = new ReportBugViewModel(bugReportService);
+        _vm = new ReportBugViewModel(bugReportService, context);
         InitializeComponent();
         DataContext = _vm;
 

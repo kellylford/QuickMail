@@ -136,6 +136,13 @@ public partial class BugReportService : IBugReportService, IDisposable
         sb.AppendLine($"- OS: {Environment.OSVersion.VersionString}");
         sb.AppendLine($"- .NET runtime: {Environment.Version}");
 
+        if (report.Context is { } ctx)
+        {
+            sb.AppendLine($"- Theme: {ctx.Theme}");
+            sb.AppendLine($"- View: {ctx.View}");
+            sb.AppendLine($"- Sort: {ctx.Sort}");
+        }
+
         return sb.ToString();
     }
 
