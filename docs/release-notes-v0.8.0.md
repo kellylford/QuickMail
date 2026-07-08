@@ -6,12 +6,56 @@ Two options are available for v0.8.0:
 
 | Download | When to use |
 |----------|-------------|
-| **`quickmail-v0.8.0-setup.exe`** — Windows installer | Recommended for most users. Installs per-user with no elevation required, checks for the WebView2 Runtime, and registers an uninstaller. |
+| **`QuickMail-win.msi`** — Windows installer | Recommended for most users. A standard setup wizard with license agreement; installs per-user with no elevation required, adds the WebView2 Runtime if missing, and enables automatic updates. |
 | **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run. |
 
 Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
 
-This release introduces **theming and a visual design system**: light and dark themes, app-wide text scaling and font choice, and a Theme Manager for creating, sharing, and hand-editing themes. See the [Themes section of the User Guide](https://kellylford.github.io/QuickMail/themes.html) for the full walkthrough. It also adds an always-available **Tools** menu and in-app **bug reporting** that doesn't require a GitHub account. 
+This release introduces **theming and a visual design system**: light and dark themes, app-wide text scaling and font choice, and a Theme Manager for creating, sharing, and hand-editing themes. See the [Themes section of the User Guide](https://kellylford.github.io/QuickMail/themes.html) for the full walkthrough. It also introduces **automatic updates** — installed copies of QuickMail now keep themselves current, with you in control throughout. And it adds an always-available **Tools** menu and in-app **bug reporting** that doesn't require a GitHub account. 
+
+---
+
+## New: Automatic updates
+
+Starting with this release, QuickMail keeps itself up to date. When a newer version is
+available, the installed app downloads it quietly in the background and installs it the next
+time you exit and reopen QuickMail — no download page, no installer to run, no security
+warnings. The Help menu continues to show whether you are current, offers a **Restart to
+Update** option when a new version is waiting, and the first start after an update confirms
+what was installed. You stay in control throughout: automatic updating and its notifications
+can each be turned off in **Settings → Advanced**, with manual updating always available. See
+the [Installing and Updating section of the User Guide](https://kellylford.github.io/QuickMail/installing-and-updating-quickmail.html)
+for the full walkthrough.
+
+### One-time step for existing installed users
+
+This release uses a new installer, so getting onto the automatic-update track requires one
+manual reinstall:
+
+1. Uninstall your current QuickMail from **Settings → Apps**. When the uninstaller offers to
+   delete user data, **choose No**.
+2. Download and run **QuickMail-win.msi** from this release page. A standard setup wizard
+   walks through the license and installation.
+3. Start QuickMail. All your accounts, settings, contacts, rules, templates, saved views, and
+   cached mail are exactly as you left them.
+
+Your data is safe throughout: settings and mail live in a separate location the installer
+never touches, and passwords stay in Windows Credential Manager. After this one reinstall,
+all future updates are automatic.
+
+Notes on the new install:
+
+- QuickMail now installs per-user (no administrator prompt). The previous option to install
+  for all users is gone.
+- A Start Menu entry is created. The first time QuickMail starts, it asks whether to add a
+  desktop shortcut; the choice can be changed anytime in Settings → General.
+- Uninstalling now asks whether to also remove your data — and unlike before, choosing Yes
+  also clears QuickMail's saved passwords from Windows Credential Manager.
+
+### Portable exe users
+
+Nothing changes. `QuickMail.exe` remains a single-file download that you update manually;
+the Help menu still tells you when a new version is available.
 
 ---
 
@@ -73,6 +117,7 @@ When Windows High Contrast is on, QuickMail steps aside entirely — every color
 
 ## Accessibility
 
+- The update dialogs are small native dialogs: focus lands on the primary action, Escape always dismisses, and closing them returns focus to the message list. A found update is announced once; the background check itself is silent when you are already current.
 - Theme switching never moves focus, collapses trees, or clears selection; the only thing that re-renders is the open message.
 - Every custom announcement continues to respect your **Screen Reader Announcements** settings; theme and High Contrast changes are announced as **status**, and Theme Manager outcomes as **results**.
 - Every built-in theme meets the WCAG contrast policy (4.5:1 for text, 3:1 for indicators and status colors) — enforced automatically by a unit test, so a theme that would fail contrast cannot ship.
@@ -87,6 +132,15 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 ---
 
 ## Internal
+
+### Automatic updates (issue #156, PR #200)
+
+- [Velopack](https://velopack.io/) 1.2.0 replaces the Inno Setup installer. `App.xaml.cs` declares an explicit `Main` that runs `VelopackApp.Build().Run()` before WPF initializes — `vpk pack` verifies this via IL inspection and refuses to pack without it (`App.xaml` compiles as `Page`).
+- `UpdateCheckService` branches by runtime: installed copies use `UpdateManager` + `GithubSource` (silent background download; applied on exit, or immediately via the Restart to Update dialog, which is cancellable — dismissing the dialog retracts a restart waiting on a slow download); the portable exe keeps the original GitHub API notification-only check. The `AutoUpdate` setting switches installed copies to notification-only.
+- The shipped installer is the WiX 5 MSI (`vpk --msi`) with welcome/license/conclusion pages; Velopack's one-click `Setup.exe` and `-Portable.zip` are deliberately not published. `--framework webview2` preserves WebView2 install-on-demand; `--instLocation PerUser` keeps updates elevation-free (per-machine installs are deliberately unsupported).
+- Desktop shortcut is owned by the app (first-run offer + Settings → General checkbox, targeting the update-stable `current\QuickMail.exe` path); uninstall offers data removal via a detached prompt from `OnBeforeUninstallFastCallback` (hook processes are killed after 30 seconds), including Credential Manager cleanup, with diagnostics in `%TEMP%\quickmail-uninstall.log`.
+- Release workflow: the tag must equal the csproj `Version`, `AssemblyVersion`, and `FileVersion`; `vpk download github` enables delta packages from the second release onward; `fail_on_unmatched_files` fails the release if expected assets are missing. A `--updateFeed <path>` startup flag allows full offline update-cycle testing against local `vpk pack` output (see `docs/INSTALLER.md`).
+- An independent multi-angle review of the PR confirmed 10 findings, all fixed before merge — including a cancellable restart path, accurate failure messaging when a download fails, and elimination of a phantom "update installed" notice when portable and installed copies share a profile. Full test suite passing; complete update cycles verified live against a local feed.
 
 ### Theming system (issue #177, PR #179)
 

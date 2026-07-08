@@ -46,7 +46,7 @@ QuickMail installs with a standard setup wizard and then keeps itself up to date
 
 ### If you already have QuickMail installed
 
-Versions before 0.8.1 used a different installer, so moving onto the self-updating track takes one manual step:
+Versions before 0.8.0 used a different installer, so moving onto the self-updating track takes one manual step:
 
 1. Uninstall your current QuickMail from **Settings → Apps**. When the uninstaller offers to delete your data, choose **No**.
 2. Download and run **QuickMail-win.msi** as described above.

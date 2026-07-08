@@ -109,7 +109,7 @@ those are exercised by the first real tagged release.
 
 ## Migrating from the Inno Setup installer
 
-Users on an Inno Setup install (v0.8.0 and earlier) need a one-time manual reinstall to get
+Users on an Inno Setup install (v0.7.9.1 and earlier) need a one-time manual reinstall to get
 onto the auto-update track:
 
 1. Uninstall QuickMail via Settings → Apps, **declining** the offer to delete user data.
