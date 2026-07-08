@@ -2,12 +2,16 @@
 
 ## Status
 
-Spike validated, ready for implementation. Tracked in [#156](https://github.com/kellylford/QuickMail/issues/156). Supersedes [squirrel-auto-update-plan.md](squirrel-auto-update-plan.md) (on hold).
+**Implemented** (July 2026). Tracked in [#156](https://github.com/kellylford/QuickMail/issues/156). Supersedes [squirrel-auto-update-plan.md](squirrel-auto-update-plan.md).
 
-A hands-on spike on `worktree-velopack-auto-update` confirmed the two blockers that stalled the
-Clowd.Squirrel attempt are gone with Velopack, and packaging works end to end against QuickMail's
-actual self-contained single-file build. The spike branch is not merged — implementation continues
-from there once this plan is reviewed.
+The original spike branch (`worktree-velopack-auto-update`) was deleted before its code was
+merged, so Phases 1–4 were re-implemented from this document. Everything the spike validated
+reproduced cleanly: `vpk pack` (Velopack 1.2.0) succeeds against the real single-file publish
+output and verifies the entry point via IL inspection, and the full test suite passes with the
+in-app changes. See `docs/INSTALLER.md` for the as-built packaging and release flow. Items
+still pending live verification are the install/update-cycle checks in the Verification
+Checklist below (fresh install, migration from Inno Setup, update apply-on-relaunch,
+`--profileDir` across an update, delta generation on the second release).
 
 ## TL;DR
 

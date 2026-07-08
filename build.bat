@@ -36,22 +36,49 @@ if errorlevel 1 (
     exit /b 1
 )
 echo.
-echo Locating Inno Setup 6 compiler...
-set "ISCC="
-if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
-if not defined ISCC if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
-if not defined ISCC (
-    echo INSTALLER FAILED: Inno Setup 6 not found. Install it from https://jrsoftware.org/isdl.php
+echo Locating vpk (Velopack CLI)...
+where vpk >nul 2>nul
+if errorlevel 1 (
+    echo INSTALLER FAILED: vpk not found. Install it with: dotnet tool install -g vpk
     exit /b 1
 )
-echo Compiling installer with "%ISCC%"...
-"%ISCC%" installer\quickmail.iss
-if errorlevel 1 (
-    echo INSTALLER FAILED: Inno Setup compilation errors.
+echo Reading version from QuickMail\QuickMail.csproj...
+set "VERSION="
+for /f "usebackq delims=" %%v in (`powershell -NoProfile -Command "(Select-Xml -Path QuickMail\QuickMail.csproj -XPath '/Project/PropertyGroup/Version').Node.InnerText"`) do set "VERSION=%%v"
+if not defined VERSION (
+    echo INSTALLER FAILED: could not read ^<Version^> from QuickMail\QuickMail.csproj.
+    exit /b 1
+)
+echo Packing Velopack release v%VERSION%...
+:: --packVersion must be SemVer (3-part, or a prerelease tag like 0.8.1-1 for a hotfix);
+:: a 4-part version is rejected by vpk. --shortcuts StartMenuRoot matches the old Inno
+:: behavior (Start Menu always, no desktop shortcut by default).
+:: --msi builds the wizard installer (welcome, license acceptance, conclusion) that is the
+:: user-facing download; the one-click Setup.exe is also produced but not shipped.
+:: --instLocation PerUser keeps the install in %LocalAppData% so background updates never
+:: need elevation.
+:: Note: local packs are full-only. CI runs `vpk download github` first so packs there
+:: also produce a delta package against the previous release.
+:: vpk requires the license file to have a .txt/.md/.rtf extension; the repo's LICENSE
+:: has none, so copy it to a gitignored .txt alongside the other installer content.
+:: --framework webview2 restores the old installer's WebView2 install-on-demand.
+copy /y LICENSE installer\velopack\license.txt >nul
+vpk pack --packId QuickMail --packVersion %VERSION% --packDir publish ^
+  --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" ^
+  --shortcuts StartMenuRoot --outputDir installer\Output\Releases ^
+  --framework webview2 ^
+  --msi --instLocation PerUser ^
+  --instWelcome installer\velopack\welcome.txt ^
+  --instLicense installer\velopack\license.txt ^
+  --instConclusion installer\velopack\conclusion.txt
+:: vpk exits with -1 on fatal errors; `if errorlevel 1` is false for negative codes,
+:: so compare against 0 explicitly.
+if %errorlevel% neq 0 (
+    echo INSTALLER FAILED: vpk pack errors.
     exit /b 1
 )
 echo.
-echo Output: installer\Output\quickmail-v^<version^>-setup.exe
+echo Output: installer\Output\Releases\QuickMail-win-Setup.exe (plus update packages)
 goto end
 
 :clean

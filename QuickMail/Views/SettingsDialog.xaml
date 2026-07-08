@@ -139,6 +139,18 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Desktop Shortcut Group -->
+                        <GroupBox Header="Desktop Shortc_ut" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Desktop shortcut settings">
+                            <StackPanel>
+                                <CheckBox Content="Keep a QuickMail shortcut _on the desktop"
+                                          IsChecked="{Binding DesktopShortcut, Mode=TwoWay}"
+                                          AutomationProperties.Name="Desktop shortcut"/>
+                                <TextBlock Text="The Start Menu entry is always available; this adds or removes the desktop shortcut. Applied when settings are saved."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Composing Group -->
                         <GroupBox Header="Com_posing" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Composing settings">
@@ -266,6 +278,23 @@
             <TabItem Header="_Advanced" AutomationProperties.Name="Advanced settings">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">
+                        <!-- Updates Group -->
+                        <GroupBox Header="_Updates" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Update settings">
+                            <StackPanel>
+                                <CheckBox Content="Do_wnload and install updates automatically"
+                                          IsChecked="{Binding AutoUpdate, Mode=TwoWay}"
+                                          AutomationProperties.Name="Download and install updates automatically"/>
+                                <TextBlock Text="When off, the Help menu still reports available updates but nothing is downloaded or installed. Takes effect the next time QuickMail starts. Applies to installed copies; the portable exe never updates itself."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
+                                <CheckBox Content="Show a _message after an update has been installed"
+                                          IsChecked="{Binding ShowUpdateInstalledAlerts, Mode=TwoWay}"
+                                          AutomationProperties.Name="Show a message after an update has been installed"/>
+                                <TextBlock Text="Shows the QuickMail Update Installed dialog once, on the first start after an update."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- QuickMail Logging Group -->
                         <GroupBox Header="QuickMail _Logging" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="QuickMail logging settings">

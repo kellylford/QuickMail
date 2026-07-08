@@ -150,6 +150,25 @@ public class ConfigModel
     /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
     public bool TutorialCompleted { get; set; } = false;
 
+    /// <summary>Whether the one-time desktop shortcut offer has been shown (installed copies only).
+    /// The shortcut itself is not stored here — the .lnk file on the desktop is the source of truth.</summary>
+    public bool DesktopShortcutPrompted { get; set; } = false;
+
+    // ── Updates ───────────────────────────────────────────────────────────────────
+
+    /// <summary>Download and install updates automatically (installed copies). When off, the
+    /// Help menu still reports available updates but nothing is downloaded or installed.
+    /// Read at the startup check, so a change takes effect the next time QuickMail starts.</summary>
+    public bool AutoUpdate { get; set; } = true;
+
+    /// <summary>Show the "QuickMail Update Installed" dialog on the first launch after an
+    /// update has been applied.</summary>
+    public bool ShowUpdateInstalledAlerts { get; set; } = true;
+
+    /// <summary>The app version recorded on the previous run. A mismatch on an installed copy
+    /// means an update was applied since; used to trigger the update-installed dialog.</summary>
+    public string LastRunVersion { get; set; } = string.Empty;
+
     // ── Windowing (Phase 6) ───────────────────────────────────────────────────────
 
     /// <summary>Tab and window management preferences.</summary>

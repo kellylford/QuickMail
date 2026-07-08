@@ -253,6 +253,10 @@ public class ConfigService : IConfigService
                         break;
                     case "enablelogging": config.EnableLogging = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
+                    case "desktopshortcutprompted": config.DesktopShortcutPrompted = ParseBool(value); break;
+                    case "autoupdate":              config.AutoUpdate              = ParseBool(value); break;
+                    case "showupdateinstalledalerts": config.ShowUpdateInstalledAlerts = ParseBool(value); break;
+                    case "lastrunversion":          config.LastRunVersion          = value; break;
                     case "defaultcomposemode":
                         config.DefaultComposeMode = value.ToLowerInvariant() switch
                         {
@@ -478,6 +482,28 @@ public class ConfigService : IConfigService
         sb.AppendLine($"TutorialCompleted = {(config.TutorialCompleted ? "on" : "off")}");
         sb.AppendLine("# Whether the first-run keyboard tutorial has been completed.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"DesktopShortcutPrompted = {(config.DesktopShortcutPrompted ? "on" : "off")}");
+        sb.AppendLine("# Whether the one-time desktop shortcut offer has been shown (installed copies only).");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AutoUpdate = {(config.AutoUpdate ? "on" : "off")}");
+        sb.AppendLine("# Download and install updates automatically (installed copies).");
+        sb.AppendLine("# When off, the Help menu still reports available updates but nothing is");
+        sb.AppendLine("# downloaded or installed. Takes effect the next time QuickMail starts.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ShowUpdateInstalledAlerts = {(config.ShowUpdateInstalledAlerts ? "on" : "off")}");
+        sb.AppendLine("# Show a dialog on the first launch after an update has been installed.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"LastRunVersion = {config.LastRunVersion}");
+        sb.AppendLine("# The app version recorded on the previous run. Maintained automatically;");
+        sb.AppendLine("# used to detect that an update was applied.");
         sb.AppendLine();
 
         sb.AppendLine($"DefaultComposeMode = {config.DefaultComposeMode switch

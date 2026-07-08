@@ -1,0 +1,40 @@
+<Window x:Class="QuickMail.Views.UpdateInstalledDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="QuickMail Update Installed"
+        Height="180" Width="420"
+        MinHeight="160" MinWidth="340"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <DockPanel Margin="20">
+
+        <Button x:Name="ExitButton"
+                DockPanel.Dock="Bottom"
+                Content="E_xit"
+                IsCancel="True"
+                MinWidth="75"
+                HorizontalAlignment="Right"
+                Margin="0,16,0,0"
+                AutomationProperties.Name="Exit"/>
+
+        <StackPanel>
+            <TextBlock x:Name="MessageText"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,12"/>
+            <TextBlock>
+                <Hyperlink x:Name="WhatsNewLink"
+                           RequestNavigate="WhatsNewLink_RequestNavigate"
+                           AutomationProperties.Name="See what's new">
+                    See what's new
+                </Hyperlink>
+            </TextBlock>
+        </StackPanel>
+
+    </DockPanel>
+</Window>

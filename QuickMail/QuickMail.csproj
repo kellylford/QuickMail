@@ -9,6 +9,10 @@
     <Version>0.8.0</Version>
     <AssemblyVersion>0.8.0</AssemblyVersion>
     <FileVersion>0.8.0</FileVersion>
+    <!-- Velopack needs a hand-written Main that runs VelopackApp.Build().Run() before WPF
+         initializes (install/update/uninstall hooks run and may exit the process). App.xaml
+         therefore compiles as Page (no generated Main) and the entry point is declared here. -->
+    <StartupObject>QuickMail.App</StartupObject>
     <!-- Keep the product/informational version clean digits. By default the SDK appends
          "+<git commit sha>" to AssemblyInformationalVersion, which is what File Explorer's
          Product version and screen readers report programmatically — so suppress it. -->
@@ -22,6 +26,13 @@
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Compile App.xaml as Page instead of ApplicationDefinition so the SDK does not
+         generate a Main; the explicit Main in App.xaml.cs (see StartupObject) is used. -->
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Built-in themes ship inside the assembly; ThemeStore parses them with the same loader as user theme files. -->
@@ -43,6 +54,7 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
 </Project>

@@ -7,6 +7,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 ## Contents
 
 - [System Requirements](#system-requirements)
+- [Installing and Updating QuickMail](#installing-and-updating-quickmail)
 - [Adding Accounts](#adding-accounts)
 - [Main Window](#main-window)
 - [Reading Mail](#reading-mail)
@@ -28,8 +29,61 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 ## System Requirements
 
 - Windows 10 (1703 or later) or Windows 11
-- Microsoft Edge WebView2 Runtime (the installer checks for this automatically)
+- Microsoft Edge WebView2 Runtime (the installer adds this automatically when missing; included with Windows 11 and current Windows 10)
 - An IMAP/SMTP email account (Gmail, Outlook.com, Microsoft 365, or any standard IMAP provider)
+
+---
+
+## Installing and Updating QuickMail
+
+QuickMail installs with a standard setup wizard and then keeps itself up to date. The guiding principle is that **you are in control**: the defaults are designed to keep you current with no effort, you are told when a new version has been installed, and every part of the automatic behavior can be turned off — QuickMail never stops you from updating manually instead.
+
+### Installing for the first time
+
+1. Download **QuickMail-win.msi** from the [releases page](https://github.com/kellylford/QuickMail/releases) and run it.
+2. The setup wizard walks through a welcome page, the license agreement, and installation. QuickMail installs for the current user only — no administrator permission is needed. If the WebView2 component QuickMail uses to display mail is missing from your PC, setup adds it automatically.
+3. A Start Menu entry is created. The first time QuickMail starts, it asks whether to also add a desktop shortcut — either answer is remembered, and you can change your mind anytime in **Settings → General** under **Desktop Shortcut**.
+
+### If you already have QuickMail installed
+
+Versions before 0.8.1 used a different installer, so moving onto the self-updating track takes one manual step:
+
+1. Uninstall your current QuickMail from **Settings → Apps**. When the uninstaller offers to delete your data, choose **No**.
+2. Download and run **QuickMail-win.msi** as described above.
+3. Start QuickMail. All of your accounts, settings, contacts, rules, templates, saved views, and cached mail are exactly as you left them — your data lives in a separate location the installer never touches, and passwords stay safely in Windows Credential Manager.
+
+This is a one-time step. From then on, updates arrive on their own.
+
+### How updating works
+
+Each time QuickMail starts, it quietly checks for a newer release in the background. The top entry of the **Help** menu always shows the result — **"No updates available — running version X.Y.Z"** or **"Update available: vX.Y.Z"** — so you can confirm where you stand at any moment.
+
+When an update is found, QuickMail announces it once, downloads it quietly in the background, and installs it automatically the next time you exit and reopen the app. There is no download page, no installer to run, and no security warning — and nothing interrupts what you are doing.
+
+If you would rather not wait for your next restart, activate the Help menu update entry. The **QuickMail Update** dialog offers three choices:
+
+- **Restart to Update** — applies the update immediately and reopens QuickMail.
+- **See what's new** — opens that version's release notes in your browser.
+- **Exit** (or Escape) — closes the dialog; the update still installs on your next normal restart.
+
+So you always know when a version change has happened, the first start after an update shows a **QuickMail Update Installed** dialog confirming the new version, with the same **See what's new** link. Press **Exit** or Escape to dismiss it; it appears only once per update.
+
+An update never touches your mail, accounts, or settings.
+
+### Staying in control
+
+Two settings in **Settings → Advanced**, under **Updates**, put the whole mechanism under your control:
+
+- **Download and install updates automatically** — on by default. Turn it off and QuickMail returns to notification-only behavior: the Help menu still tells you when a new version exists and takes you to the download page, but nothing is downloaded or installed unless you do it yourself. The change takes effect the next time QuickMail starts, and you can turn it back on whenever you like.
+- **Show a message after an update has been installed** — on by default. Turn it off to skip the QuickMail Update Installed dialog; the Help menu entry still reflects your current version.
+
+### The portable version
+
+`QuickMail.exe` on the same releases page is a single-file version that runs from anywhere with no installation — nothing is written to Program Files or the registry, and it never updates itself. The Help menu tells you when a new version is available; updating is a manual download of the new exe, replacing the old one. Your data is shared with an installed copy, so you can move between the two freely.
+
+### Uninstalling
+
+Remove QuickMail from **Settings → Apps** as usual. After the app is removed, QuickMail asks whether to also delete your data — accounts, settings, contacts, rules, templates, saved views, cached mail, and saved passwords. Choose **No** (the default) to keep everything, so reinstalling later picks up exactly where you left off; choose **Yes** to remove it all.
 
 ---
 
@@ -130,7 +184,11 @@ Open **Settings → Keyboard** to reassign any shortcut to a different key. Type
 
 ### Checking for Updates
 
-QuickMail checks for a newer release in the background each time it starts. The top entry of the **Help** menu always shows the result: **"No updates available — running version X.Y.Z"** when you are current, or **"Update available: vX.Y.Z"** when a newer release exists. Activating the entry opens the matching page on the QuickMail releases site in your browser, so it is always useful — even when there is nothing new. If an update is found, a spoken announcement follows a few seconds after launch; the background check itself is silent when you are already up to date.
+QuickMail checks for a newer release in the background each time it starts. The top entry of the **Help** menu always shows the result: **"No updates available — running version X.Y.Z"** when you are current, or **"Update available: vX.Y.Z"** when a newer release exists. If an update is found, a spoken announcement follows a few seconds after launch; the background check itself is silent when you are already up to date.
+
+Installed copies download and install updates automatically, and both that behavior and its notifications are configurable — see [Installing and Updating QuickMail](#installing-and-updating-quickmail) for the full walkthrough.
+
+**The portable exe does not update itself.** If you run the standalone `QuickMail.exe`, the Help menu entry still tells you when a new version exists; activating it opens the releases page, and updating remains a manual download of the new exe.
 
 The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive walkthrough of core navigation (F6 pane cycling, Ctrl+1/2/3, the command palette, and Escape) for anyone new to the app.
 

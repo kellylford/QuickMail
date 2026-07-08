@@ -76,18 +76,79 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Install Inno Setup
+      # The release tag is the single source of truth for the Velopack package version.
+      # It must be SemVer (vpk rejects 4-part versions) and must match all three csproj
+      # version properties, which are set independently: <Version> feeds NuGet/display
+      # conventions, but <AssemblyVersion> is what Helpers/AppVersion.Display actually
+      # reads — it drives the About dialog, LastRunVersion tracking, and the portable-exe
+      # update comparison. A partial bump would ship an app that mis-reports its version
+      # and portable copies that perpetually announce the update they already have.
+      - name: Verify tag matches csproj versions
         if: startsWith(github.ref, 'refs/tags/v')
-        run: choco install innosetup --no-progress
-
-      - name: Build installer
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\quickmail.iss'
         shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'.TrimStart('v')
+          foreach ($prop in 'Version', 'AssemblyVersion', 'FileVersion') {
+            $value = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath "/Project/PropertyGroup/$prop").Node.InnerText
+            if ($tag -ne $value) {
+              throw "Tag version '$tag' does not match csproj <$prop> '$value'. Update the csproj or re-tag."
+            }
+          }
+
+      - name: Install vpk
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: dotnet tool install -g vpk
+
+      # Fetch the previous release's Velopack assets so vpk pack can generate a delta
+      # package. If this step is skipped or fails, packing still succeeds but ships a
+      # full package only — updates work, just as larger downloads.
+      # continue-on-error covers the first Velopack release, where the latest GitHub
+      # release predates Velopack and has no assets for vpk to download.
+      - name: Download previous release for delta generation
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        shell: pwsh
+        run: vpk download github --repoUrl https://github.com/kellylford/QuickMail --token ${{ secrets.GITHUB_TOKEN }} --outputDir installer/Output/Releases
+
+      # --shortcuts StartMenuRoot: Start Menu entry only, no desktop shortcut
+      # (matches the previous installer's default).
+      # --msi builds the wizard installer (welcome, license acceptance, conclusion pages)
+      # that is the user-facing download; the one-click Setup.exe is also produced but
+      # intentionally not shipped. --instLocation PerUser keeps the install in
+      # %LocalAppData% so background updates never need elevation. vpk requires the
+      # license file to carry a .txt/.md/.rtf extension, hence the copy.
+      - name: Pack Velopack release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          Copy-Item LICENSE installer/velopack/license.txt
+          vpk pack --packId QuickMail --packVersion $version --packDir publish `
+            --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
+            --shortcuts StartMenuRoot --outputDir installer/Output/Releases `
+            --framework webview2 `
+            --msi --instLocation PerUser `
+            --instWelcome installer/velopack/welcome.txt `
+            --instLicense installer/velopack/license.txt `
+            --instConclusion installer/velopack/conclusion.txt
+          # The previous version's full .nupkg (fetched above as the delta input) stays in
+          # the folder and is uploaded with the rest: vpk pack bakes an entry for every
+          # package it saw into RELEASES/releases.win.json, so deleting the file would
+          # publish feed metadata referencing an asset the release does not carry.
 
       # Create a GitHub Release when a version tag is pushed (e.g. v1.2.0)
       # Release notes are read from docs/release-notes-<tag>.md if present,
       # otherwise GitHub auto-generates notes from commits.
+      #
+      # Uploaded assets serve two consumers:
+      #  - people: QuickMail-win.msi (wizard installer with license acceptance) and
+      #    QuickMail.exe (portable)
+      #  - the in-app updater: RELEASES, releases.win.json, assets.win.json, and the
+      #    .nupkg packages (full + delta), which Velopack's GithubSource reads from the
+      #    latest release.
+      # Intentionally not shipped: QuickMail-win-Setup.exe (one-click, no wizard/license)
+      # and QuickMail-win-Portable.zip (the raw single-file QuickMail.exe remains the
+      # portable download).
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
@@ -95,5 +156,13 @@ jobs:
           name: QuickMail ${{ github.ref_name }}
           files: |
             publish/QuickMail.exe
-            installer/Output/quickmail-v*-setup.exe
+            installer/Output/Releases/QuickMail-win.msi
+            installer/Output/Releases/*.nupkg
+            installer/Output/Releases/RELEASES
+            installer/Output/Releases/releases.win.json
+            installer/Output/Releases/assets.win.json
+          # Exact filenames above encode vpk's output naming; if a vpk upgrade renames an
+          # output, fail the release instead of silently publishing without the installer
+          # or the update feed (clients would then quietly stop seeing updates).
+          fail_on_unmatched_files: true
           body_path: docs/release-notes-${{ github.ref_name }}.md

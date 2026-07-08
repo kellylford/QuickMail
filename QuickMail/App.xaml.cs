@@ -23,6 +23,86 @@ public partial class App : Application
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
 
+    // Explicit entry point (App.xaml compiles as Page; see csproj StartupObject). Velopack must
+    // run before any WPF initialization: on install/update/uninstall its hooks handle the event
+    // and exit the process, and on a normal launch after an update it finalizes the new version.
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        Velopack.VelopackApp.Build()
+            .OnBeforeUninstallFastCallback(_ => LaunchUninstallDataPrompt())
+            .Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
+
+    // Uninstall-time offer to remove user data, mirroring the old installer's prompt.
+    // Update.exe kills hook processes after ~30 seconds — far too short to leave a question
+    // pending — so the prompt runs in a detached PowerShell process that outlives the
+    // uninstall. The default answer keeps everything; only an explicit Yes deletes the
+    // default profile (%APPDATA%\QuickMail) and QuickMail entries in Windows Credential
+    // Manager. Custom --profileDir locations are never touched. The whole mechanism is
+    // best-effort: on script-restricted machines (AppLocker, Constrained Language Mode)
+    // the prompt may never appear, in which case data is kept — the safe default.
+    // Diagnostics go to %TEMP%\quickmail-uninstall.log: LogService is not configured in
+    // the hook context (OnStartup never runs), so it cannot be used here.
+    private static void LaunchUninstallDataPrompt()
+    {
+        var diagLog = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall.log");
+        try
+        {
+            var dataDir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "QuickMail");
+            if (!System.IO.Directory.Exists(dataDir)) return;
+
+            var script = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "quickmail-uninstall-prompt.ps1");
+            System.IO.File.WriteAllText(script, """
+                $log = Join-Path $env:TEMP 'quickmail-uninstall.log'
+                Add-Content -Path $log -Value "$(Get-Date -Format s) prompt script started"
+                Add-Type -AssemblyName System.Windows.Forms
+                $dir = Join-Path $env:APPDATA 'QuickMail'
+                if (-not (Test-Path $dir)) { exit }
+                $msg = "QuickMail has been uninstalled.`n`n" +
+                       "Do you also want to remove your QuickMail data? This permanently deletes all accounts, settings, contacts, rules, templates, saved views, and cached mail stored under:`n$dir`n`n" +
+                       "It also removes QuickMail's saved passwords and sign-ins from Windows Credential Manager.`n`n" +
+                       "Choose No to keep everything, so a future install picks up exactly where you left off."
+                $owner = New-Object System.Windows.Forms.Form -Property @{ TopMost = $true }
+                $r = [System.Windows.Forms.MessageBox]::Show($owner, $msg, 'QuickMail Uninstall',
+                    [System.Windows.Forms.MessageBoxButtons]::YesNo,
+                    [System.Windows.Forms.MessageBoxIcon]::Question,
+                    [System.Windows.Forms.MessageBoxDefaultButton]::Button2)
+                Add-Content -Path $log -Value "$(Get-Date -Format s) user answered: $r"
+                if ($r -eq [System.Windows.Forms.DialogResult]::Yes) {
+                    Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+                    (cmdkey /list) | ForEach-Object {
+                        if ($_ -match 'target=(QuickMail\S*)') { cmdkey /delete:$($Matches[1]) | Out-Null }
+                    }
+                    Add-Content -Path $log -Value "$(Get-Date -Format s) data removal completed"
+                }
+                Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+                """);
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = $"-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File \"{script}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            });
+            System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook: prompt process launched\r\n");
+        }
+        catch (Exception ex)
+        {
+            // The uninstall itself must never fail or stall because of this prompt.
+#pragma warning disable RCS1075 // this IS the last-resort diagnostics writer — a failure to write the diagnostic has no further channel and must not escape into the uninstall hook
+            try { System.IO.File.AppendAllText(diagLog, $"{DateTime.Now:s} uninstall hook failed: {ex}\r\n"); }
+            catch (Exception) { }
+#pragma warning restore RCS1075
+        }
+    }
+
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
@@ -39,6 +119,9 @@ public partial class App : Application
                 "  --online              Run in fully online mode: fetch everything live from\n" +
                 "                        IMAP on every folder selection. Nothing is read from\n" +
                 "                        or written to the local SQLite cache.\n\n" +
+                "  --updateFeed <path>   Check for updates in <path> (a folder or URL of\n" +
+                "                        Velopack packages) instead of GitHub Releases.\n" +
+                "                        For testing update delivery.\n\n" +
                 "  --help                Show this message and exit.\n\n" +
                 "  /debug                Write verbose debug output to quickmail.log.",
                 "QuickMail",
@@ -151,7 +234,7 @@ public partial class App : Application
             var calendarProvider = new LocalCacheCalendarProvider(localStore);
             var calendarService = new CalendarService(calendarProvider);
 
-            _updateCheckService = new UpdateCheckService();
+            _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
@@ -215,6 +298,21 @@ public partial class App : Application
                 if (arg.Equals(flag, StringComparison.OrdinalIgnoreCase))
                     return true;
         return false;
+    }
+
+    /// <summary>
+    /// Parses --updateFeed from args: a local folder or URL holding Velopack packages,
+    /// overriding the GitHub Releases source. Lets the full update cycle (check, download,
+    /// apply on relaunch) be tested against local vpk pack output without publishing.
+    /// </summary>
+    private static string? ParseUpdateFeed(string[] args)
+    {
+        for (int i = 0; i < args.Length - 1; i++)
+        {
+            if (string.Equals(args[i], "--updateFeed", StringComparison.OrdinalIgnoreCase))
+                return args[i + 1];
+        }
+        return null;
     }
 
     /// <summary>

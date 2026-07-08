@@ -292,6 +292,37 @@ public partial class MainWindow : Window
         vm.RulesManagerRequested += (_, _) => OpenRulesManager();
         vm.CreateRuleFromMessageRequested += (_, template) => OpenRulesManager(template);
         vm.TutorialRequested += (_, _) => ShowTutorial();
+        vm.UpdateDialogRequested += (_, info) =>
+        {
+            var dialog = new UpdateDialog(info.Version, info.WhatsNewUrl, vm.RestartToUpdateAsync)
+            {
+                Owner = this,
+            };
+            dialog.ShowDialog();
+            // Only reached when the dialog was dismissed (restart exits the process).
+            // WPF's return-to-owner focus is unreliable; land in the message list explicitly.
+            FocusActiveMessagePanel();
+        };
+        vm.UpdateInstalledDialogRequested += (_, info) =>
+        {
+            var dialog = new UpdateInstalledDialog(info.Version, info.WhatsNewUrl)
+            {
+                Owner = this,
+            };
+            dialog.ShowDialog();
+            FocusActiveMessagePanel();
+        };
+        vm.DesktopShortcutOfferRequested += (_, _) =>
+        {
+            // Default is No, mirroring the old installer's unchecked desktop-icon option.
+            var choice = MessageBox.Show(this,
+                "Add a desktop shortcut for QuickMail?\n\nYou can change this anytime in Settings, on the General page.",
+                "QuickMail",
+                MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+            vm.ApplyDesktopShortcutChoice(choice == MessageBoxResult.Yes);
+            // Same unreliable return-to-owner focus as the update dialogs below.
+            FocusActiveMessagePanel();
+        };
         vm.AboutRequested += (_, _) => ShowAboutDialog();
         vm.ReportBugRequested += (_, _) => ShowReportBugWindow();
         vm.PropertiesRequested += propertiesVm =>
@@ -947,6 +978,10 @@ public partial class MainWindow : Window
         var firstAccount = _vm.Accounts.FirstOrDefault();
         if (firstAccount == null)
         {
+            // Stamp the running version even on the account-less path (dialog suppressed —
+            // the Account Manager is already up) so an update applied before the first
+            // account exists still gets its one installed notice later.
+            _vm.MaybeShowUpdateInstalledNotice(dialogAllowed: false);
             OpenAccountManager();
             return;
         }
@@ -960,6 +995,15 @@ public partial class MainWindow : Window
 
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
+
+        // One-time desktop shortcut offer for installed copies — after the window is up and
+        // the background sync has been kicked off, so the dialog does not delay startup;
+        // the offer handler restores focus to the message panel explicitly on close.
+        _vm.MaybeOfferDesktopShortcut();
+
+        // "QuickMail Update Installed" notice, once per applied update. After the shortcut
+        // offer so a first-run-after-migration launch never stacks two dialogs.
+        _vm.MaybeShowUpdateInstalledNotice();
     }
 
     // WM_CONTEXTMENU hook: fires synchronously before DefWindowProc so we can ensure

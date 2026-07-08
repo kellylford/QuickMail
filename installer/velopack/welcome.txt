@@ -1,0 +1,5 @@
+Welcome to QuickMail Setup.
+
+QuickMail is a keyboard-first, accessible desktop email client for Windows. This wizard installs QuickMail for the current user; no administrator permission is needed.
+
+Once installed, QuickMail keeps itself up to date: new versions download in the background and are applied automatically the next time you start the app.
