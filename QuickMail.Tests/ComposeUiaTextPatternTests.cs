@@ -55,6 +55,58 @@ public class ComposeUiaTextPatternTests
     }
 
     [StaFact]
+    public void LoadInto_EditorOverload_BatchesLoadIntoOneChangeEvent()
+    {
+        // Issue #181: every change-block close on a live document raises a UIA
+        // text-changed event — a synchronous cross-process call to any
+        // listening screen reader, which can wedge the STA thread mid-load.
+        // TextChanged fires at the same change-block boundary, so it counts
+        // how many of those notifications a load produces.
+        var rtb = new RichTextBox();
+        var window = MakeHiddenWindow(rtb);
+        window.Show();
+        try
+        {
+            rtb.Document.Blocks.Clear();
+            rtb.Document.Blocks.Add(new Paragraph(new Run("original text")));
+
+            var peer = UIElementAutomationPeer.CreatePeerForElement(rtb);
+            var textProvider = peer.GetPattern(PatternInterface.Text) as ITextProvider;
+            Assert.NotNull(textProvider);
+
+            const string html = "<p>one</p><p>two</p><p>three</p><ul><li>four</li></ul>";
+
+            // The document-level overload closes a change block per mutation —
+            // this is the behavior the editor overload exists to avoid.
+            int unbatched = 0;
+            TextChangedEventHandler countUnbatched = (_, _) => unbatched++;
+            rtb.TextChanged += countUnbatched;
+            QuickMail.Helpers.RichTextDocumentConverter.LoadInto(rtb.Document, html);
+            rtb.TextChanged -= countUnbatched;
+            Assert.True(unbatched > 1,
+                $"expected one change event per block mutation without batching, got {unbatched}");
+
+            int batched = 0;
+            TextChangedEventHandler countBatched = (_, _) => batched++;
+            rtb.TextChanged += countBatched;
+            QuickMail.Helpers.RichTextDocumentConverter.LoadInto(rtb, html);
+            rtb.TextChanged -= countBatched;
+            Assert.Equal(1, batched);
+
+            // Batching must not break the in-place mutation guarantee: the
+            // peer created before the load still reads the new content.
+            var after = textProvider!.DocumentRange.GetText(-1);
+            Assert.Contains("one", after);
+            Assert.Contains("four", after);
+            Assert.DoesNotContain("original", after);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [StaFact]
     public void ComposeWindow_AllModes_ExposeBodyTextThroughUia()
     {
         var vm = new QuickMail.ViewModels.ComposeViewModel(

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Text;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Media;
 using QuickMail.Models;
@@ -110,6 +111,29 @@ public static class RichTextDocumentConverter
             doc.Blocks.Add(block);
         if (doc.Blocks.Count == 0)
             doc.Blocks.Add(new Paragraph());
+    }
+
+    /// <summary>
+    /// Loads HTML into a live editor's document inside a single change block.
+    /// Loads into an attached document must go through this overload: without
+    /// the outer change block, every Blocks mutation closes its own change
+    /// block and raises its own UIA text-changed event — a synchronous
+    /// cross-process call to any listening screen reader, per block added.
+    /// A long quoted reply body is hundreds of such round-trips, any one of
+    /// which can wedge the STA thread mid-load (issue #181). Batched, the
+    /// whole load raises exactly one event after the document is complete.
+    /// </summary>
+    public static void LoadInto(RichTextBox editor, string html)
+    {
+        editor.BeginChange();
+        try
+        {
+            LoadInto(editor.Document, html);
+        }
+        finally
+        {
+            editor.EndChange();
+        }
     }
 
     private static IEnumerable<Block> BuildBlocks(List<HtmlNode> nodes)

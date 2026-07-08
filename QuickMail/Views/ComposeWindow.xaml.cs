@@ -1560,7 +1560,7 @@ public partial class ComposeWindow : Window
             _suppressRichTextChanged = true;
             _suppressFormattingAnnouncement = true;
             _lastAnnouncedBlockType = null;
-            RichTextDocumentConverter.LoadInto(RichBodyBox.Document, html);
+            RichTextDocumentConverter.LoadInto(RichBodyBox, html);
             RichBodyBox.CaretPosition = RichBodyBox.Document.ContentStart;
             _suppressRichTextChanged = false;
             _suppressFormattingAnnouncement = false;
@@ -1622,7 +1622,7 @@ public partial class ComposeWindow : Window
         _suppressRichTextChanged = true;
         _suppressFormattingAnnouncement = true;
         _lastAnnouncedBlockType = null;
-        RichTextDocumentConverter.LoadInto(RichBodyBox.Document, html);
+        RichTextDocumentConverter.LoadInto(RichBodyBox, html);
         _suppressRichTextChanged = false;
         _suppressFormattingAnnouncement = false;
 
