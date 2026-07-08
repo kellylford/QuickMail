@@ -107,6 +107,45 @@ detection, staging, `Update.exe` apply) runs exactly the production code path. W
 cannot test: the GitHub Releases fetch itself (`GithubSource`) and the CI packing steps —
 those are exercised by the first real tagged release.
 
+## Testing the live GitHub update path (one-time, two real releases)
+
+The local `--updateFeed` cycle above proves everything except the one link that only runs in
+production: Velopack's `GithubSource` resolving the latest release and downloading its assets
+from GitHub. That link cannot be exercised until **two** published releases exist, because
+there is nothing for the first release to update *to*. Do this once — it proves the update
+channel for every future release. A broken updater is self-perpetuating (stranded clients
+cannot be auto-fixed), so verify it before you ever rely on it to ship an urgent fix.
+
+Run it on your own machine before trusting it broadly:
+
+1. **Publish the baseline (0.8.0).** Confirm the tag equals all three csproj version
+   properties, then push the tag: `git tag v0.8.0 && git push origin v0.8.0`. CI builds and
+   creates the release.
+2. **Verify the release assets by eye.** On the GitHub release page, confirm all four updater
+   files are attached: `QuickMail-0.8.0-full.nupkg`, `RELEASES`, `releases.win.json`,
+   `assets.win.json` (plus the `QuickMail-win.msi` and portable `QuickMail.exe`). A missing or
+   malformed feed is the most likely failure and the one that strands clients *silently*.
+3. **Install the baseline from the real release.** Download and run `QuickMail-win.msi` from
+   the release page (not a local build) so the installed copy is exactly what users get.
+4. **Publish an update (0.8.1).** Bump `<Version>`, `<AssemblyVersion>`, and `<FileVersion>`
+   in `QuickMail/QuickMail.csproj`, add `docs/release-notes-v0.8.1.md`, commit, then
+   `git tag v0.8.1 && git push origin v0.8.1`. The 0.8.1 release **must be a normal published
+   release, not a draft or prerelease** — the client runs `GithubSource(..., prerelease: false)`
+   and will not see a prerelease tag.
+5. **Watch the installed 0.8.0 update itself.** Launch the installed copy **with no
+   `--updateFeed` flag** (add `/debug` to get log detail). The startup check should find 0.8.1
+   and download it in the background — `quickmail.log` records
+   `Update 0.8.1 downloaded; it will be applied when QuickMail exits`. Exit, relaunch, and
+   confirm Help → About reads 0.8.1.
+6. **If nothing happens:** re-launch with `/debug` and read `quickmail.log`; failure reasons
+   are logged via `LogService.Debug`. Then recheck step 2 — a bad feed file is the usual cause.
+
+**Do not delete/reuse the test 0.8.1.** Deleting a published release your test machine already
+updated to leaves that machine pointing at gone assets, and reusing the `0.8.1` number later
+muddles the feed metadata and delta chain. Just keep 0.8.1 as a legitimate (even trivial)
+release and let your next work be 0.8.2. The first *delta* package is only exercised on the
+0.8.1 → 0.8.2 hop; the 0.8.0 → 0.8.1 update ships a full package, which is expected.
+
 ## Migrating from the Inno Setup installer
 
 Users on an Inno Setup install (v0.7.9.1 and earlier) need a one-time manual reinstall to get
