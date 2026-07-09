@@ -2232,28 +2232,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             password = _credentials.GetPassword(account.Id);
             if (string.IsNullOrEmpty(password)) return (account.Id, null);
         }
-        else if (account.AuthType is Models.AuthType.OAuth2Microsoft or Models.AuthType.OAuth2Google)
-        {
-            // Background connect must never open an interactive sign-in window: under the short
-            // per-attempt timeout below it would be torn down while the user is mid-sign-in (#206).
-            // Verify a token can be obtained SILENTLY; if the user must sign in, leave the account
-            // disconnected and let them start an (unbounded) sign-in explicitly by activating it.
-            try
-            {
-                using var silentCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                await _oauthService.EnsureSilentTokenAsync(account, silentCts.Token);
-            }
-            catch (InteractiveSignInRequiredException)
-            {
-                LogService.Log($"ConnectAll/{account.AccountLabel}: interactive sign-in required — leaving disconnected until the user signs in.");
-                return (account.Id, null);
-            }
-            catch
-            {
-                // Transient (e.g. network) failure of the silent check: fall through and let the
-                // connect loop retry. A non-UI error won't trigger an interactive window there.
-            }
-        }
+        var isOAuth = account.AuthType is Models.AuthType.OAuth2Microsoft or Models.AuthType.OAuth2Google;
 
         // Startup retry: up to 3 attempts with backoff (30s, 45s, 60s timeouts).
         for (int attempt = 1; attempt <= 3; attempt++)
@@ -2263,10 +2242,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // Timeouts increase per attempt: 30s, 45s, 60s
                 int connectTimeout = attempt switch { 1 => 30, 2 => 45, _ => 60 };
                 using var connectCts = new CancellationTokenSource(TimeSpan.FromSeconds(connectTimeout));
+
+                // Background connect must never open an interactive sign-in window: under this short
+                // per-attempt timeout it would be torn down while the user is mid-sign-in (#206). For
+                // OAuth accounts, obtain a token SILENTLY *first* — only reach ConnectAsync (whose own
+                // GetAccessTokenAsync would otherwise fall back to interactive) once a silent token is
+                // in hand, so the connect can never need a prompt. Doing this inside the loop means a
+                // transient silent-check failure retries with backoff like any other, while a genuine
+                // "interactive required" short-circuits immediately (caught below). If no silent token
+                // is available the account is left disconnected; the user starts an (unbounded)
+                // sign-in explicitly by activating it.
+                if (isOAuth)
+                    await _oauthService.EnsureSilentTokenAsync(account, connectCts.Token);
+
                 await _imap.ConnectAsync(account, password, connectCts.Token);
                 using var folderCts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
                 var folderList = await _imap.GetFoldersAsync(account.Id, folderCts.Token);
                 return (account.Id, folderList);
+            }
+            catch (InteractiveSignInRequiredException)
+            {
+                // No usable cached token: the account needs an interactive sign-in, which must not run
+                // here. Leave it disconnected (not retried — the state won't change on its own); the
+                // user starts sign-in by activating the account.
+                LogService.Log($"ConnectAll/{account.AccountLabel}: interactive sign-in required — leaving disconnected until the user signs in.");
+                return (account.Id, null);
             }
             catch (OperationCanceledException) when (attempt < 3)
             {

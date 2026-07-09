@@ -37,9 +37,11 @@ public class OAuthRouter : IOAuthService
 
     public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
     {
-        // Google's token flow is separate (system-browser AppFlow, not the embedded WebView), so the
-        // #206 background-window race doesn't apply the same way. Treat Google as a no-op here to keep
-        // its current behavior; the Microsoft path gets the real silent-only check.
+        // Google is KNOWINGLY UNPROTECTED here: its token flow uses the system browser (not the
+        // embedded WebView), so a background connect could still open a browser tab — but a tab is
+        // merely abandoned, not torn down mid-sign-in the way the embedded window is (#206). Treat
+        // Google as a no-op (background connect proceeds as before); only the Microsoft path gets the
+        // real silent-only check. Revisit if Google ever moves to an embedded/blocking sign-in.
         return account.AuthType == AuthType.OAuth2Google
             ? Task.CompletedTask
             : _microsoft.EnsureSilentTokenAsync(account, ct);
