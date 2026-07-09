@@ -9,6 +9,9 @@ using Xunit;
 
 namespace QuickMail.Tests;
 
+// WpfTests collection: these STA tests touch WPF/clipboard state; serialize them with the
+// other WPF/STA tests so no two STA window-owning threads run at once (issue #211).
+[Collection("WpfTests")]
 public class PropertiesViewModelTests
 {
     private static PropertiesViewModel Make(

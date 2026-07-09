@@ -19,6 +19,12 @@ namespace QuickMail.Tests;
 /// exactly that record bug; these tests lock the fix and cover every item type the app
 /// binds into a Selector so a new one can't silently reintroduce it.
 /// </summary>
+// Part of the WpfTests collection so it never runs concurrently with another WPF/STA test.
+// This class creates and Show()s a real Window on its own STA thread; running it in parallel
+// with the other STA tests means two STA threads can own live WPF windows at once, which is
+// the concurrency that produces the intermittent HwndSubclass teardown crash and focus-
+// navigation flakes (issue #211).
+[Collection("WpfTests")]
 public class SelectorItemAccessibilityTests
 {
     // End-to-end: the actual reported control. Reads the real UIA item peer names a

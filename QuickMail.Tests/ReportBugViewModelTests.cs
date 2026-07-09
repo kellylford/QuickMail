@@ -25,6 +25,9 @@ sealed class FakeBugReportService : IBugReportService
     public string BuildReportText(BugReportModel report) => $"BODY:{report.WhatHappened}";
 }
 
+// WpfTests collection: serialize with the other WPF/STA tests so no two STA window-owning
+// threads run concurrently (issue #211).
+[Collection("WpfTests")]
 public class ReportBugViewModelTests
 {
     private static ReportBugViewModel Make(out FakeBugReportService service)
