@@ -2232,6 +2232,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
             password = _credentials.GetPassword(account.Id);
             if (string.IsNullOrEmpty(password)) return (account.Id, null);
         }
+        else if (account.AuthType is Models.AuthType.OAuth2Microsoft or Models.AuthType.OAuth2Google)
+        {
+            // Background connect must never open an interactive sign-in window: under the short
+            // per-attempt timeout below it would be torn down while the user is mid-sign-in (#206).
+            // Verify a token can be obtained SILENTLY; if the user must sign in, leave the account
+            // disconnected and let them start an (unbounded) sign-in explicitly by activating it.
+            try
+            {
+                using var silentCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                await _oauthService.EnsureSilentTokenAsync(account, silentCts.Token);
+            }
+            catch (InteractiveSignInRequiredException)
+            {
+                LogService.Log($"ConnectAll/{account.AccountLabel}: interactive sign-in required — leaving disconnected until the user signs in.");
+                return (account.Id, null);
+            }
+            catch
+            {
+                // Transient (e.g. network) failure of the silent check: fall through and let the
+                // connect loop retry. A non-UI error won't trigger an interactive window there.
+            }
+        }
 
         // Startup retry: up to 3 attempts with backoff (30s, 45s, 60s timeouts).
         for (int attempt = 1; attempt <= 3; attempt++)

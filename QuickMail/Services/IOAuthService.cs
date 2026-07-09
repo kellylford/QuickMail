@@ -21,6 +21,15 @@ public interface IOAuthService
     Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default);
 
     /// <summary>
+    /// Verifies a token can be obtained <b>silently</b> (from the cache / refresh token) for this
+    /// account, without opening an interactive sign-in window. Throws
+    /// <see cref="InteractiveSignInRequiredException"/> if the user would have to sign in
+    /// interactively. Used by background connect to avoid popping a sign-in window under a short
+    /// timeout that would be torn down mid-sign-in (#206).
+    /// </summary>
+    Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default);
+
+    /// <summary>
     /// Forces a browser-based interactive sign-in and returns the token + the
     /// signed-in username (UPN) so the caller can populate the Username field.
     /// </summary>

@@ -35,6 +35,16 @@ public class OAuthRouter : IOAuthService
             : _microsoft.GetAccessTokenAsync(account, scopes, ct);
     }
 
+    public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
+    {
+        // Google's token flow is separate (system-browser AppFlow, not the embedded WebView), so the
+        // #206 background-window race doesn't apply the same way. Treat Google as a no-op here to keep
+        // its current behavior; the Microsoft path gets the real silent-only check.
+        return account.AuthType == AuthType.OAuth2Google
+            ? Task.CompletedTask
+            : _microsoft.EnsureSilentTokenAsync(account, ct);
+    }
+
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
     {
         return account.AuthType == AuthType.OAuth2Google
