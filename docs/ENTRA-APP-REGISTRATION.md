@@ -73,8 +73,9 @@ permission missing here can never be acquired at runtime, no matter what the cod
 | `IMAP.AccessAsUser.All` | IMAP access (XOAUTH2) |
 | `SMTP.Send` | SMTP send (XOAUTH2) |
 
-Plus `offline_access` (refresh tokens) — standard OIDC scope, explicitly included in the scope
-arrays in `OAuthService.cs`; no separate portal permission entry required.
+Plus `offline_access` (refresh tokens) — a standard OIDC scope that **MSAL adds automatically** for
+the public-client desktop flow, so refresh tokens still issue even though the code now requests only
+`.default` (verified live). It is not listed in `OAuthService.cs` and needs no separate portal entry.
 
 > Because the app requests `.default`, adding a permission is **entirely a registration action**:
 > declare it in this list **and** re-grant admin consent in each admin-consent tenant. There is no
