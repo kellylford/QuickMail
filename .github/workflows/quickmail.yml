@@ -48,13 +48,51 @@ jobs:
           "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
 
       - name: Test
+        shell: pwsh
         # PropertiesViewModelTests and ReportBugViewModelTests exercise real clipboard access
         # (Clipboard.SetText), which is unreliable on GitHub-hosted Windows runners — no
         # interactive desktop session backs the clipboard, so these intermittently throw
         # COMException("OpenClipboard Failed") or crash the whole test host on shutdown even
         # when every assertion passed. Excluded here; run them locally where clipboard access
         # is real.
-        run: dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --logger "trx;LogFileName=results.trx" --filter "FullyQualifiedName!~PropertiesViewModelTests&FullyQualifiedName!~ReportBugViewModelTests"
+        #
+        # Pass/fail is decided from the trx result counters, not the `dotnet test` exit code.
+        # WPF StaFact tests intermittently crash the xUnit host *after* every test has passed:
+        # a leftover window's HWND receives a message once its owning STA thread is gone, so
+        # MS.Win32.HwndSubclass.SubclassWndProc calls Thread.get_CurrentThread() and throws a
+        # NullReferenceException. xUnit reports this as a "catastrophic failure" and exits
+        # non-zero even though the trx records failed=0/error=0. That benign teardown crash must
+        # not fail the release, but a genuine test failure (failed>0, error>0, or no tests run)
+        # still must. Root-cause tracked in issue #211.
+        run: |
+          dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release `
+            --logger "trx;LogFileName=results.trx" `
+            --filter "FullyQualifiedName!~PropertiesViewModelTests&FullyQualifiedName!~ReportBugViewModelTests"
+          $testExit = $LASTEXITCODE
+          $trx = "QuickMail.Tests/TestResults/results.trx"
+          if (-not (Test-Path $trx)) {
+            Write-Error "No trx produced at $trx (dotnet test exit=$testExit); failing."
+            exit 1
+          }
+          [xml]$doc = Get-Content $trx
+          $c = $doc.TestRun.ResultSummary.Counters
+          $total  = [int]$c.total
+          $passed = [int]$c.passed
+          $failed = [int]$c.failed
+          $errors = [int]$c.error
+          Write-Host "trx counters: total=$total passed=$passed failed=$failed error=$errors (dotnet test exit=$testExit)"
+          if ($total -le 0) {
+            Write-Error "No tests were executed; failing."
+            exit 1
+          }
+          if ($failed -gt 0 -or $errors -gt 0) {
+            Write-Error "Real test failures detected: failed=$failed error=$errors."
+            exit 1
+          }
+          if ($testExit -ne 0) {
+            Write-Warning "dotnet test exited $testExit but all $passed tests passed (failed=0, error=0). Treating as the benign WPF STA test-host teardown crash (HwndSubclass.SubclassWndProc / Thread.get_CurrentThread NRE, issue #211)."
+          }
+          exit 0
 
       - name: Upload test results
         if: always()
