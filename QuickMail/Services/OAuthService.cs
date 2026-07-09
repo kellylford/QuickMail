@@ -15,29 +15,24 @@ public class OAuthService : IOAuthService
     private const string ClientId  = "bcdc84f1-d37c-4581-b14a-a01f7b3a1312";
     private const string Authority = "https://login.microsoftonline.com/common";
 
-    // Delegated scopes per backend. An account's BackendKind selects which set is requested.
+    // Per-resource `.default` scope. `.default` requests EXACTLY the delegated permissions declared
+    // on the app registration (docs/ENTRA-APP-REGISTRATION.md §3) — so the requested set always
+    // matches what admin consent grants, eliminating the requested-vs-declared mismatch that produced
+    // the "admin granted consent but the user is still prompted" loop. Design & rationale:
+    // docs/planning/oauth-default-scope-pm-dev-spec.md. Notes:
+    //  - `.default` is per-resource and cannot be combined with other scopes, hence one array each.
+    //  - MSAL adds openid/profile/offline_access automatically for the public-client desktop flow,
+    //    so refresh tokens still issue (verified live: silent re-acquisition works with `.default`).
+    //  - A new permission (e.g. MailboxSettings.ReadWrite for server rules) is now added by DECLARING
+    //    it on the app registration + re-granting consent — not by editing this list.
     public static readonly string[] ImapSmtpScopes =
     [
-        "https://outlook.office.com/IMAP.AccessAsUser.All",
-        "https://outlook.office.com/SMTP.Send",
-        "offline_access",
+        "https://outlook.office.com/.default",
     ];
 
     public static readonly string[] GraphMailScopes =
     [
-        "https://graph.microsoft.com/Mail.ReadWrite",
-        "https://graph.microsoft.com/Mail.Send",
-        // MailboxSettings.ReadWrite grants read AND write access to server-side Inbox rules
-        // (the Graph messageRule API: /me/mailFolders/inbox/messageRules). It is requested up
-        // front -- while the Graph backend is still behind its feature gate and no production
-        // account has consented yet -- so the permission set captured at the very first sign-in
-        // already includes it. That way users will NOT face a second consent prompt when the
-        // server-side rules manager ships. ReadWrite supersedes the read-only MailboxSettings.Read
-        // we previously requested. Rationale and feature design: docs/planning/server-rules-pm-dev-spec.md.
-        "https://graph.microsoft.com/MailboxSettings.ReadWrite",
-        "https://graph.microsoft.com/User.Read",
-        "https://graph.microsoft.com/User.ReadBasic.All",
-        "offline_access",
+        "https://graph.microsoft.com/.default",
     ];
 
     private static string[] DefaultScopesFor(AccountModel account)
