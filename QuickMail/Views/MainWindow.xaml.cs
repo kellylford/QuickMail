@@ -3820,13 +3820,33 @@ public partial class MainWindow : Window
 
     private void OpenComposeWindow(ComposeModel composeModel)
     {
-        var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
-        composeVm.Seed(composeModel);
-        var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
-        composeVm.CloseRequested += window.Close;
-        _openComposeWindows.Add(window);
-        window.Closed += (_, _) => _openComposeWindows.Remove(window);
-        window.Show();
+        // Open on a fresh dispatcher turn rather than inline (issue #181).
+        //
+        // This handler can be reached synchronously from inside the reading-pane
+        // WebView2's AcceleratorKeyPressed COM callback: focus is in the WebView2
+        // and the user presses a Reply / Reply-All / Forward shortcut, which the
+        // out-of-process browser marshals back into the STA UI thread. Building and
+        // Show()-ing the compose window inline would run Window.Show()'s first layout
+        // pass — which fires cross-process UIA property-changed events to a listening
+        // screen reader — while the UI thread is still servicing that inbound WebView2
+        // COM call. Issuing an outbound cross-apartment COM call while inside an inbound
+        // one re-enters the STA in a way that never unblocks (the captured hang: pumping
+        // wait in get_HostRawElementProvider under Window.Show, rooted in
+        // CoreWebView2Controller_AcceleratorKeyPressed).
+        //
+        // InvokeAsync at Input priority lets the WebView2 callback return and the inbound
+        // COM stack unwind first, so the window opens on a clean, non-re-entrant turn.
+        // Compose windows are modeless, so the one-turn delay is imperceptible.
+        Dispatcher.InvokeAsync(() =>
+        {
+            var composeVm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
+            composeVm.Seed(composeModel);
+            var window = new ComposeWindow(composeVm, _contactService, _templateService, _configService, _customDictionary, _themeService);
+            composeVm.CloseRequested += window.Close;
+            _openComposeWindows.Add(window);
+            window.Closed += (_, _) => _openComposeWindows.Remove(window);
+            window.Show();
+        }, DispatcherPriority.Input);
     }
 
     private Task<IReadOnlyList<AttachmentModel>?> ShowForwardAttachmentDialogAsync(IReadOnlyList<AttachmentModel> attachments)
