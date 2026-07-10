@@ -132,7 +132,10 @@ public sealed class GraphClient : IDisposable
         // Up to 3 attempts to ride out HTTP 429 throttling.
         for (int attempt = 0; ; attempt++)
         {
-            var token = await _oauth.GetAccessTokenAsync(account, OAuthService.GraphMailScopes, ct);
+            // Use the per-account default scopes (DefaultScopesFor): `.default` for work/school,
+            // explicit Mail.ReadWrite/etc. for personal Microsoft accounts (#217). Passing the static
+            // GraphMailScopes here would force `.default` on personal accounts, which is read-only.
+            var token = await _oauth.GetAccessTokenAsync(account, ct);
             using var req = new HttpRequestMessage(method, url);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             if (contentFactory != null)
