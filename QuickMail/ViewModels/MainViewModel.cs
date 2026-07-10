@@ -2675,8 +2675,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsBusy = true;
         try
         {
-            var password = _credentials.GetPassword(account.Id);
-            if (string.IsNullOrEmpty(password))
+            // Only Password accounts need a stored secret. OAuth/Graph accounts authenticate via
+            // the token cache (no password by design), so don't gate them on GetPassword — doing so
+            // reported "No password stored" and never attempted the OAuth reconnect.
+            var password = account.AuthType == AuthType.Password ? _credentials.GetPassword(account.Id) : null;
+            if (account.AuthType == AuthType.Password && string.IsNullOrEmpty(password))
             {
                 StatusText = $"No password stored for {account.AccountLabel}.";
                 return;
