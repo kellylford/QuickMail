@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Data.Sqlite;
+using QuickMail.Models;
 using QuickMail.Services;
 using Xunit;
 
@@ -115,7 +116,7 @@ public class LocalStoreServiceMigrationTests
     }
 
     [Fact]
-    public async Task Migration_FromV1_PreservesRowsAsTextIds()
+    public async Task Migration_FromV1_ConvertsIdsToText_AndClearsSummariesForMessageIdBackfill()
     {
         var dir = NewTempDir();
         var dbPath = Path.Combine(dir, "mail.db");
@@ -125,22 +126,23 @@ public class LocalStoreServiceMigrationTests
         var store = new LocalStoreService(new ProfileContext(dir));
         store.Initialize();
 
+        // The v5 migration purges MessageSummary so the next sync can backfill internet_message_id
+        // (issue #220 — needed to collapse Gmail's per-folder duplicate copies). Bodies in
+        // MessageDetail are untouched, and the next sync repopulates summaries.
         var loaded = await store.LoadAllSummariesAsync();
-        Assert.Equal(2, loaded.Count);
-        // CAST(unique_id AS TEXT) yields the plain decimal string — no zero padding.
-        Assert.Contains(loaded, m => m.MessageId == "5"  && m.Subject == "five");
-        Assert.Contains(loaded, m => m.MessageId == "42" && m.Subject == "forty-two");
+        Assert.Empty(loaded);
 
-        // The MessageDetail row survives the rebuild and is keyed by the text id.
+        // The MessageDetail row survives the v2 rebuild and the v5 summary purge, keyed by text id.
         var detail = await store.LoadDetailAsync(accountId, "Inbox", "42");
         Assert.NotNull(detail);
         Assert.Equal("42", detail!.MessageId);
         Assert.Equal("recipient@x.com", detail.To);
         Assert.Equal("body forty-two", detail.PlainTextBody);
 
-        // unique_id column is now TEXT on both tables.
+        // unique_id column is now TEXT on both tables; the new identity column exists.
         Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "unique_id"));
         Assert.Equal("TEXT", ColumnType(dbPath, "MessageDetail",  "unique_id"));
+        Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "internet_message_id"));
     }
 
     [Fact]
@@ -154,21 +156,27 @@ public class LocalStoreServiceMigrationTests
         store.Initialize();
 
         Assert.True(File.Exists(dbPath + ".pre-v2"), "pre-v2 backup should be created");
-        Assert.Equal(4, ReadUserVersion(dbPath));
+        Assert.Equal(5, ReadUserVersion(dbPath));
         Assert.True(TableExists(dbPath, "DeltaToken"), "DeltaToken table should exist after migration");
         Assert.True(TableExists(dbPath, "CalendarEvent"), "CalendarEvent table should exist after migration");
     }
 
     [Fact]
-    public async Task Migration_FromV1_GetMaxMessageKey_IsNumericMax()
+    public async Task GetMaxMessageKey_IsNumericMax()
     {
+        // Seeded via v1 then migrated (v5 clears summaries), so insert fresh rows post-migration
+        // and confirm the high-water-mark query is numeric, not lexicographic.
         var dir = NewTempDir();
-        var dbPath = Path.Combine(dir, "mail.db");
         var accountId = Guid.NewGuid();
-        SeedV1Database(dbPath, accountId);
 
         var store = new LocalStoreService(new ProfileContext(dir));
         store.Initialize();
+
+        await store.UpsertSummariesAsync(
+        [
+            MakeSummary(accountId, "5"),
+            MakeSummary(accountId, "42"),
+        ]);
 
         // 42 > 5 numerically; a lexicographic MAX would wrongly return "5".
         Assert.Equal("42", await store.GetMaxMessageKeyAsync(accountId, "Inbox"));
@@ -184,7 +192,7 @@ public class LocalStoreServiceMigrationTests
         store.Initialize();
 
         Assert.False(File.Exists(dbPath + ".pre-v2"), "fresh DB must not produce a backup");
-        Assert.Equal(4, ReadUserVersion(dbPath));
+        Assert.Equal(5, ReadUserVersion(dbPath));
         Assert.True(TableExists(dbPath, "DeltaToken"));
         Assert.True(TableExists(dbPath, "CalendarEvent"));
         Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "unique_id"));
@@ -211,6 +219,51 @@ public class LocalStoreServiceMigrationTests
         Assert.Single(loaded);
         Assert.Equal("1001", loaded[0].MessageId);
         Assert.Equal("1001", await store.GetMaxMessageKeyAsync(accountId, "Inbox"));
+    }
+
+    [Fact]
+    public async Task FreshDatabase_RoundTripsInternetMessageId()
+    {
+        var dir = NewTempDir();
+        var accountId = Guid.NewGuid();
+        var store = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+
+        await store.UpsertSummariesAsync([new QuickMail.Models.MailMessageSummary
+        {
+            MessageId         = "1001",
+            AccountId         = accountId,
+            FolderName        = "Inbox",
+            Subject           = "hello",
+            Date              = DateTimeOffset.UtcNow,
+            InternetMessageId = "<msg-abc@example.com>",
+        }]);
+
+        var loaded = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        Assert.Equal("<msg-abc@example.com>", Assert.Single(loaded).InternetMessageId);
+    }
+
+    [Fact]
+    public async Task Upsert_DoesNotWipeInternetMessageId_WhenIncomingIsEmpty()
+    {
+        // A later sync that lacks the Message-ID (e.g. a flag-only reconcile) must not clear a
+        // previously stored identity — the ON CONFLICT keeps the existing value when incoming is ''.
+        var dir = NewTempDir();
+        var accountId = Guid.NewGuid();
+        var store = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+
+        MailMessageSummary Row(string imid) => new()
+        {
+            MessageId = "7", AccountId = accountId, FolderName = "Inbox",
+            Subject = "s", Date = DateTimeOffset.UtcNow, InternetMessageId = imid,
+        };
+
+        await store.UpsertSummariesAsync([Row("<keep@example.com>")]);
+        await store.UpsertSummariesAsync([Row("")]);
+
+        var loaded = await store.LoadFolderSummariesAsync(accountId, "Inbox");
+        Assert.Equal("<keep@example.com>", Assert.Single(loaded).InternetMessageId);
     }
 
     // ── Phase 5: IMAP ↔ local flag reconciliation (§9.3) ─────────────────────

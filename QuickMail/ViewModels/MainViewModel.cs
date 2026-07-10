@@ -1208,13 +1208,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+            // A saved view can span folders (and Gmail copies), so key by global message identity
+            // to collapse duplicate copies against what is already shown (issue #220).
             var existingById = Messages
-                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
+                .ToDictionary(MessageDeduplicator.CollapseKeyFor, StringComparer.Ordinal);
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
-                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
+                var key = MessageDeduplicator.CollapseKeyFor(msg);
                 if (existingById.TryGetValue(key, out var prior))
                 {
                     ReconcileMessageState(prior, msg);
@@ -1752,10 +1754,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Build a lookup map once so dedupe and flag-reconciliation are both O(1) per incoming
         // item instead of O(n) scans — critical in All Mail views with thousands of messages.
-        var rawByKey = new Dictionary<(string, Guid, string), MailMessageSummary>(_rawMessages.Count);
+        // In aggregate/virtual views, key by the global message identity so an incoming copy from a
+        // different folder (e.g. the Gmail All Mail copy of an already-shown INBOX message) is
+        // recognized as a duplicate and skipped (issue #220). Real-folder views key by per-folder UID.
+        Func<MailMessageSummary, string> keyOf = IsVirtualFolder(selected)
+            ? MessageDeduplicator.CollapseKeyFor
+            : MessageDeduplicator.PerFolderKeyFor;
+        var rawByKey = new Dictionary<string, MailMessageSummary>(_rawMessages.Count);
         foreach (var e in _rawMessages)
-            rawByKey.TryAdd((e.MessageId, e.AccountId, e.FolderName), e);
-        var seen = new HashSet<(string, Guid, string)>(rawByKey.Keys);
+            rawByKey.TryAdd(keyOf(e), e);
+        var seen = new HashSet<string>(rawByKey.Keys);
 
         // Collect truly new messages; add them to _rawMessages immediately so the
         // search pool stays in sync with what the list will eventually show.
@@ -1769,13 +1777,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (msg.IsServerFlagged && msg.FlagId == null)
                 msg.FlagId = Models.FlagDefinition.BuiltInFlagId.ToString();
 
-            if (!seen.Add((msg.MessageId, msg.AccountId, msg.FolderName)))
+            var key = keyOf(msg);
+            if (!seen.Add(key))
             {
                 // Existing message: reconcile external flag change (§9.3).
                 // If the server now reports not-flagged but the in-memory message still has
                 // a flag set, another client cleared it — clear our local flag to match.
                 if (!msg.IsServerFlagged &&
-                    rawByKey.TryGetValue((msg.MessageId, msg.AccountId, msg.FolderName), out var existing) &&
+                    rawByKey.TryGetValue(key, out var existing) &&
                     existing.FlagId != null)
                 {
                     existing.FlagId = null;
@@ -1944,12 +1953,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Stores raw messages and applies all active filters.
     private void SetMessages(IEnumerable<MailMessageSummary> messages)
     {
-        _rawMessages = messages.ToList();
+        var list = messages as List<MailMessageSummary> ?? messages.ToList();
+        // Aggregate/virtual views union multiple folders, so one physical message can arrive as
+        // several per-folder copies (notably Gmail: INBOX + All Mail + labels). Collapse them to one
+        // representative here (issue #220). Single real-folder views show their own contents as-is.
+        if (IsVirtualFolder(SelectedFolder))
+            list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
+        _rawMessages = list;
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
         else
             foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, _previewLines);
         ApplyFiltersAndSearch();
+    }
+
+    /// <summary>
+    /// Resolves a message's source folder to its <see cref="SpecialFolderKind"/> from the cached
+    /// folder list, so the deduplicator can rank representative copies (e.g. prefer the Inbox copy
+    /// over a Gmail All Mail copy). Returns <see cref="SpecialFolderKind.None"/> for ordinary
+    /// folders/labels or when the folder is not in the cache.
+    /// </summary>
+    private SpecialFolderKind ResolveFolderKind(MailMessageSummary msg)
+    {
+        if (_cachedFolders.TryGetValue(msg.AccountId, out var folders))
+            foreach (var f in folders)
+                if (string.Equals(f.FullName, msg.FolderName, StringComparison.OrdinalIgnoreCase))
+                    return f.Kind;
+        return SpecialFolderKind.None;
     }
 
     // Re-applies the status filter and search text to _rawMessages.
@@ -3250,15 +3280,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            // All Mail unions every folder, so key by global message identity — a message's INBOX
+            // and Gmail All Mail/label copies collapse to the one already shown (issue #220).
             var existingById = Messages
-                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
+                .ToDictionary(MessageDeduplicator.CollapseKeyFor, StringComparer.Ordinal);
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                     return;
 
-                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
+                var key = MessageDeduplicator.CollapseKeyFor(msg);
                 if (existingById.TryGetValue(key, out var prior))
                 {
                     ReconcileMessageState(prior, msg);
@@ -3656,14 +3688,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            // Per-account All Mail unions the account's folders, so key by global message identity
+            // to collapse Gmail's per-folder duplicate copies against what is shown (issue #220).
             var existingById = Messages
-                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
+                .ToDictionary(MessageDeduplicator.CollapseKeyFor, StringComparer.Ordinal);
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
+                var key = MessageDeduplicator.CollapseKeyFor(msg);
                 if (existingById.TryGetValue(key, out var prior))
                 {
                     ReconcileMessageState(prior, msg);

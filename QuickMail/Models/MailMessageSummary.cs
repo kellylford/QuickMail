@@ -8,6 +8,15 @@ public partial class MailMessageSummary : ObservableObject
     public string MessageId { get; set; } = string.Empty;
     public Guid AccountId { get; set; }
     public string FolderName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The RFC 5322 Message-ID header, a stable identity for the *same physical message* across
+    /// every folder/label it appears in (unlike <see cref="MessageId"/>, which is a per-folder
+    /// IMAP UID). Used to collapse duplicate copies in aggregate views — Gmail exposes one message
+    /// in many IMAP folders (INBOX, All Mail, labels…), each with a different UID but the same
+    /// Message-ID. Empty when the server did not supply one; empty identities are never merged.
+    /// </summary>
+    public string InternetMessageId { get; set; } = string.Empty;
     public string From { get; set; } = string.Empty;
     public string To { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
