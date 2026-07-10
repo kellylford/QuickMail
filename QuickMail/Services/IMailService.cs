@@ -10,6 +10,15 @@ public interface IMailService : IDisposable
 {
     Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default);
     Task DisconnectAsync(Guid accountId, CancellationToken ct = default);
+
+    /// <summary>
+    /// True if the account currently has a live backend registration (Graph: a resolved account +
+    /// well-known-folder map; IMAP: a connection pool). Used to decide whether an account needs a
+    /// fresh <see cref="ConnectAsync"/> — e.g. after a mid-session re-consent that changed its
+    /// token/scopes (#219), so an account that's stale in the VM but unregistered in the backend is
+    /// reconnected without requiring an app restart.
+    /// </summary>
+    bool IsConnected(Guid accountId);
     Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default);
     Task<List<MailMessageSummary>> GetMessageSummariesAsync(
         Guid accountId, string folderName, int maxMessages, CancellationToken ct = default);

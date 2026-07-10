@@ -5297,12 +5297,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         LoadAccountList();
 
-        // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts).
-        // _cachedFolders is UI-thread-owned: snapshot the connected set here (still on the UI
-        // thread) and marshal every write back through _ui so the background loop never
-        // touches the dictionary directly.
-        var alreadyConnected = new HashSet<Guid>(_cachedFolders.Keys);
-        var accountsToConnect = Accounts.Where(a => !alreadyConnected.Contains(a.Id)).ToList();
+        // Reconnect any account that isn't truly connected in its backend, OR whose folders aren't
+        // cached in the VM (e.g. a newly added account). Checking the backend (_imap.IsConnected) —
+        // not just _cachedFolders — is what catches an account that was re-consented / re-authed
+        // mid-session: its VM state can look present while GraphMailService/ImapMailService dropped
+        // it, so folder ops fail "…is not connected" until an app restart (#219). Reconnecting it
+        // here fixes that without a restart. _cachedFolders is UI-thread-owned: read it on the UI
+        // thread and marshal every write back through _ui so the background loop never touches it.
+        var accountsToConnect = Accounts
+            .Where(a => !_imap.IsConnected(a.Id) || !_cachedFolders.ContainsKey(a.Id))
+            .ToList();
         _ = Task.Run(async () =>
         {
             foreach (var account in accountsToConnect)

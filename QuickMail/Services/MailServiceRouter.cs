@@ -54,6 +54,8 @@ public class MailServiceRouter : IMailService
     public Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
         => For(accountId).DisconnectAsync(accountId, ct);
 
+    public bool IsConnected(Guid accountId) => For(accountId).IsConnected(accountId);
+
     public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default)
         => For(accountId).GetFoldersAsync(accountId, ct);
 
