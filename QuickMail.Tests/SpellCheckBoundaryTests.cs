@@ -55,17 +55,33 @@ public class SpellCheckBoundaryTests
     }
 
     [StaFact]
-    public void QuoteBoundaryPointer_FindsBlockquoteBlock()
+    public void QuoteBoundaryPointer_FindsForwardHeaderParagraph_AboveBlockquote()
     {
+        // Mirrors the real forward structure: an nbsp spacer, the header paragraph, then the quoted
+        // body in a blockquote. The boundary must land on the header paragraph (above the quote).
         var doc = new FlowDocument();
-        doc.Blocks.Add(new Paragraph(new Run("My forwarded intro.")));
-        var quote = new Paragraph(new Run("Original quoted content")) { Tag = RichTextDocumentConverter.TagBlockquote };
-        doc.Blocks.Add(quote);
+        doc.Blocks.Add(new Paragraph(new Run(" ")));
+        var header = new Paragraph(new Run("---------- Forwarded message ----------\nFrom: Bob"));
+        doc.Blocks.Add(header);
+        doc.Blocks.Add(new Paragraph(new Run("Original quoted content")) { Tag = RichTextDocumentConverter.TagBlockquote });
 
         var ptr = SpellScan.QuoteBoundaryPointer(doc);
 
         Assert.NotNull(ptr);
-        Assert.Equal(0, ptr!.CompareTo(quote.ContentStart));
+        Assert.Equal(0, ptr!.CompareTo(header.ContentStart));
+    }
+
+    [StaFact]
+    public void QuoteBoundaryPointer_IgnoresLoneUserBlockquote()
+    {
+        // A blockquote the user inserts themselves (no reply/forward marker) must NOT be treated as
+        // the boundary — otherwise their text below it would be silently skipped.
+        var doc = new FlowDocument();
+        doc.Blocks.Add(new Paragraph(new Run("My own text.")));
+        doc.Blocks.Add(new Paragraph(new Run("A quote I pasted")) { Tag = RichTextDocumentConverter.TagBlockquote });
+        doc.Blocks.Add(new Paragraph(new Run("More of my text.")));
+
+        Assert.Null(SpellScan.QuoteBoundaryPointer(doc));
     }
 
     [StaFact]

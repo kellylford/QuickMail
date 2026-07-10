@@ -4,7 +4,6 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows.Controls;
 using System.Windows.Documents;
-using QuickMail.Helpers;
 using QuickMail.Services;
 
 namespace QuickMail.Views;
@@ -60,42 +59,51 @@ internal static class SpellScan
         return -1;
     }
 
-    // Marks the start of the quoted/forwarded original that Reply/Forward seeds below the user's
-    // own text — the reply attribution ("On <date>, <sender> wrote:") or the forward header
-    // ("---------- Forwarded message ----------"). Spell check stops here so it doesn't walk into
-    // the original message (issue #228). Matches QuickMail's own seeded markers (see
-    // ComposeViewModel.CreateReply / CreateForward); a line the user did not write.
-    private static readonly Regex QuoteMarker = new(
-        @"^(On .+ wrote:|-{3,}\s*Forwarded message\s*-{3,})\s*$",
-        RegexOptions.Multiline | RegexOptions.Compiled);
+    // Marks the start of the quoted/forwarded original that Reply/Forward seeds below the user's own
+    // text — the reply attribution ("On <date>, <sender> wrote:") or the forward header
+    // ("---------- Forwarded message ----------"). Spell check stops here so it doesn't walk into the
+    // original message (issue #228). See ComposeViewModel.CreateReply / CreateForward for the seeds.
+    //
+    // Plain text: the reply attribution must be immediately followed by a ">"-quoted line. That extra
+    // anchor keeps an ordinary user sentence that merely ends in "wrote:" from being mistaken for the
+    // boundary and silently truncating the user's own text.
+    private static readonly Regex PlainQuoteMarker = new(
+        @"(?m)(^On .+ wrote:\r?\n>)|(^-{3,}\s*Forwarded message\s*-{3,}\s*$)",
+        RegexOptions.Compiled);
+
+    // HTML: PlainTextToHtml collapses the attribution and its quoted lines into one paragraph, so we
+    // match the marker at the START of a paragraph's text. There is deliberately no "any blockquote"
+    // rule — a blockquote the user inserts themselves must not be treated as the boundary.
+    private static readonly Regex HtmlQuoteMarker = new(
+        @"^(On .+ wrote:|-{3,}\s*Forwarded message\s*-{3,})",
+        RegexOptions.Compiled);
 
     /// <summary>
     /// Character index at which the quoted/forwarded original begins in a plain-text body, or -1 if
-    /// the body has no such marker (a fresh compose, or bottom-posted content). Everything before it
-    /// is the user's own text.
+    /// the body has no such marker (a fresh, non-reply compose). Everything before it is the user's
+    /// own text. NOTE: an auto-appended signature sits BELOW the quote, so it falls outside this
+    /// boundary and is not checked on a reply/forward — a known limitation (issue #228).
     /// </summary>
     internal static int QuoteBoundaryIndex(string text)
     {
         if (string.IsNullOrEmpty(text)) return -1;
-        var m = QuoteMarker.Match(text);
+        var m = PlainQuoteMarker.Match(text);
         return m.Success ? m.Index : -1;
     }
 
     /// <summary>
     /// TextPointer at the start of the quoted/forwarded original in a rich (HTML) body — the first
-    /// block that is a blockquote or a paragraph holding the reply/forward marker line — or null if
-    /// none is present.
+    /// paragraph whose text begins with the reply/forward marker — or null if none is present.
+    /// Same signature caveat as <see cref="QuoteBoundaryIndex"/>.
     /// </summary>
     internal static TextPointer? QuoteBoundaryPointer(FlowDocument doc)
     {
         foreach (var block in doc.Blocks)
         {
-            if ((block.Tag as string) == RichTextDocumentConverter.TagBlockquote)
-                return block.ContentStart;
             if (block is Paragraph p)
             {
-                var line = new TextRange(p.ContentStart, p.ContentEnd).Text.Trim();
-                if (QuoteMarker.IsMatch(line)) return block.ContentStart;
+                var line = new TextRange(p.ContentStart, p.ContentEnd).Text.TrimStart();
+                if (HtmlQuoteMarker.IsMatch(line)) return block.ContentStart;
             }
         }
         return null;
@@ -142,7 +150,7 @@ internal static class SpellScan
 internal sealed class TextBoxSpellSource : ISpellCheckSource
 {
     private readonly TextBox _box;
-    private readonly int _scanEnd;  // exclusive upper bound; excludes quoted/forwarded text (#228)
+    private int _scanEnd;           // exclusive upper bound; excludes quoted/forwarded text (#228)
     private bool _started;
     private bool _wrapped;
     private int _scanIndex;
@@ -242,6 +250,8 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
         _scanIndex = _currentWordStart + replacement.Length;
         if (_wrapped && _currentWordStart < _startIndex)
             _startIndex += delta;   // keep the wrap boundary aligned after in-segment edits
+        if (_scanEnd != int.MaxValue && _currentWordStart < _scanEnd)
+            _scanEnd += delta;      // keep the quoted-region boundary aligned too (#228)
         _currentWordEnd = _currentWordStart + replacement.Length;
     }
 
