@@ -1528,31 +1528,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ReplaceCts(ref _bgSyncCts, out var ct);
 
         await ConnectAllAccountsAsync();
+
+        // Start the change-notifier watchers (Graph delta poll / IMAP IDLE) and the reachability
+        // handler for whatever connected, and refresh the status labels. Runs even when nothing
+        // connected yet; it is also invoked from the manual-activation and runtime-add paths, so an
+        // account that connects OUTSIDE this startup pipeline still gets polled for new mail.
+        WireUpWatchers();
+
+        // Nothing connected — skip the heavy full sync. Watchers/labels are already handled above, and
+        // WireUpWatchers will start the watcher once an account connects later.
         if (_cachedFolders.Count == 0) return;
 
         var accountList = Accounts.ToList();
-        _changeNotifier?.StartWatchers(accountList, ct);
-
-        // Subscribe to account reachability changes (watcher connection lost/restored).
-        // No announcement — this is internal bookkeeping. Stored in a field and unsubscribed first so
-        // repeated StartBackgroundSyncAsync calls don't stack handlers (each capturing a stale list).
-        // The event fires on the ThreadPool, so marshal the UI-touching work onto the UI thread.
-        if (_changeNotifier != null)
-        {
-            if (_onReachabilityChanged != null)
-                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
-
-            _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
-            {
-                var account = accountList.FirstOrDefault(a => a.Id == accountId);
-                if (account != null)
-                {
-                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                    ApplyAccountStatus(account, folders);
-                }
-            });
-            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
-        }
 
         // Subscribe to sync progress updates.
         // Announce every 10 folders to avoid excessive screen reader chatter.
@@ -1648,6 +1635,60 @@ public partial class MainViewModel : ObservableObject, IDisposable
             progressCts.Cancel();
             try { await progressTask.ConfigureAwait(false); } catch { }
         }
+    }
+
+    // Accounts whose change-notifier watchers are currently running, so WireUpWatchers only restarts
+    // them when the connected set actually changes (StartWatchers is a full stop-and-restart).
+    private HashSet<Guid> _watchedAccountIds = new();
+
+    /// <summary>
+    /// Ensures the change-notifier watchers (Graph delta poll / IMAP IDLE) are running for every
+    /// currently-connected account, the reachability handler is subscribed against the live account
+    /// list, and the connection/last-sync labels reflect reality. Idempotent and cheap — safe to call
+    /// after the startup connect, a manual sign-in/activation (<see cref="SelectAccountAsync"/>), or a
+    /// runtime account add (<see cref="RefreshAccountList"/>). Without this, an account that connects
+    /// outside the startup pipeline is never polled for new mail and the status bar stays stuck at
+    /// "Offline / Never synced".
+    /// </summary>
+    private void WireUpWatchers()
+    {
+        var connected    = Accounts.Where(a => _cachedFolders.ContainsKey(a.Id)).ToList();
+        var connectedIds = connected.Select(a => a.Id).ToHashSet();
+
+        // Only (re)start watchers when the connected set changed — StartWatchers stops and restarts
+        // every watcher, so calling it on each activation would thrash the poll loops for no reason.
+        if (_changeNotifier != null
+            && _bgSyncCts is { IsCancellationRequested: false }
+            && !connectedIds.SetEquals(_watchedAccountIds))
+        {
+            _changeNotifier.StartWatchers(connected, _bgSyncCts.Token);
+            _watchedAccountIds = connectedIds;
+
+            // (Re)subscribe the reachability handler. It resolves from the LIVE Accounts collection
+            // (not a snapshot), so it never goes stale (issue #126). Unsubscribe first so repeated
+            // calls don't stack handlers; it fires on the ThreadPool, so marshal UI work onto the UI thread.
+            if (_onReachabilityChanged != null)
+                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
+            _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
+            {
+                var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+                if (account != null)
+                {
+                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                    ApplyAccountStatus(account, folders);
+                }
+            });
+            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+        }
+
+        ConnectionStatusText = _cachedFolders.Count > 0
+            ? $"{_cachedFolders.Count} account{(_cachedFolders.Count == 1 ? "" : "s")} connected"
+            : "Offline";
+
+        // Don't leave the label stuck at its pre-sync defaults once an account is actually connected;
+        // the sync/poll paths (OnFolderSynced, StartBackgroundSyncAsync) keep it current from here.
+        if (_cachedFolders.Count > 0 && LastSyncText is "Never synced" or "In progress")
+            LastSyncText = $"Synced {DateTime.Now:t}";
     }
 
     private async Task AnnounceLoadingProgressAsync(CancellationToken ct)
@@ -2713,6 +2754,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _cachedFolders[account.Id] = folderList;
             ApplyAccountStatus(account, folderList);
             RebuildFolderListFromCache();
+            // Start this account's new-mail watcher and refresh the status labels — a manual
+            // sign-in/activation previously connected the account but never began polling it.
+            WireUpWatchers();
             StatusText = $"Connected to {account.AccountLabel}. Press Enter on a folder to load messages.";
         }
         catch (OperationCanceledException)
@@ -5253,26 +5297,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         LoadAccountList();
 
-        // After LoadAccountList creates a new Accounts collection, update the reachability handler so
-        // it resolves accounts from the fresh list rather than the stale one (fixes issue #126).
-        if (_changeNotifier != null)
-        {
-            if (_onReachabilityChanged != null)
-                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
-
-            var accountList = Accounts.ToList();
-            _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
-            {
-                var account = accountList.FirstOrDefault(a => a.Id == accountId);
-                if (account != null)
-                {
-                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                    ApplyAccountStatus(account, folders);
-                }
-            });
-            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
-        }
-
         // Reconnect any accounts that aren't already connected (e.g. newly added OAuth2 accounts).
         // _cachedFolders is UI-thread-owned: snapshot the connected set here (still on the UI
         // thread) and marshal every write back through _ui so the background loop never
@@ -5294,6 +5318,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     }
                 });
             }
+
+            // Start the delta-poll/IDLE watcher for any newly-connected account and refresh the status
+            // labels — previously a runtime-added account connected but was never polled for new mail.
+            // WireUpWatchers also (re)subscribes the reachability handler against the fresh, live
+            // account list, which is what the old inline block here did for issue #126.
+            _ui.Invoke(WireUpWatchers);
         });
     }
 
