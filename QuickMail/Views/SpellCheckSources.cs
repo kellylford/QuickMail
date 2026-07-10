@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Windows.Controls;
 using System.Windows.Documents;
+using QuickMail.Helpers;
 using QuickMail.Services;
 
 namespace QuickMail.Views;
@@ -58,6 +60,47 @@ internal static class SpellScan
         return -1;
     }
 
+    // Marks the start of the quoted/forwarded original that Reply/Forward seeds below the user's
+    // own text — the reply attribution ("On <date>, <sender> wrote:") or the forward header
+    // ("---------- Forwarded message ----------"). Spell check stops here so it doesn't walk into
+    // the original message (issue #228). Matches QuickMail's own seeded markers (see
+    // ComposeViewModel.CreateReply / CreateForward); a line the user did not write.
+    private static readonly Regex QuoteMarker = new(
+        @"^(On .+ wrote:|-{3,}\s*Forwarded message\s*-{3,})\s*$",
+        RegexOptions.Multiline | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Character index at which the quoted/forwarded original begins in a plain-text body, or -1 if
+    /// the body has no such marker (a fresh compose, or bottom-posted content). Everything before it
+    /// is the user's own text.
+    /// </summary>
+    internal static int QuoteBoundaryIndex(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return -1;
+        var m = QuoteMarker.Match(text);
+        return m.Success ? m.Index : -1;
+    }
+
+    /// <summary>
+    /// TextPointer at the start of the quoted/forwarded original in a rich (HTML) body — the first
+    /// block that is a blockquote or a paragraph holding the reply/forward marker line — or null if
+    /// none is present.
+    /// </summary>
+    internal static TextPointer? QuoteBoundaryPointer(FlowDocument doc)
+    {
+        foreach (var block in doc.Blocks)
+        {
+            if ((block.Tag as string) == RichTextDocumentConverter.TagBlockquote)
+                return block.ContentStart;
+            if (block is Paragraph p)
+            {
+                var line = new TextRange(p.ContentStart, p.ContentEnd).Text.Trim();
+                if (QuoteMarker.IsMatch(line)) return block.ContentStart;
+            }
+        }
+        return null;
+    }
+
     /// <summary>Expands <paramref name="index"/> to the whitespace-delimited word around it.</summary>
     internal static (int WordStart, int WordEnd) ExpandWord(string text, int index)
     {
@@ -99,6 +142,7 @@ internal static class SpellScan
 internal sealed class TextBoxSpellSource : ISpellCheckSource
 {
     private readonly TextBox _box;
+    private readonly int _scanEnd;  // exclusive upper bound; excludes quoted/forwarded text (#228)
     private bool _started;
     private bool _wrapped;
     private int _scanIndex;
@@ -108,10 +152,15 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
 
     public string DisplayName { get; }
 
-    public TextBoxSpellSource(TextBox box, string displayName)
+    /// <param name="scanEndExclusive">
+    /// Optional exclusive upper bound: the scan ignores errors at or beyond this index, used to keep
+    /// the body scan out of the quoted/forwarded original (issue #228). Null scans the whole box.
+    /// </param>
+    public TextBoxSpellSource(TextBox box, string displayName, int? scanEndExclusive = null)
     {
         _box = box;
         DisplayName = displayName;
+        _scanEnd = scanEndExclusive ?? int.MaxValue;
     }
 
     public SpellingErrorInfo? MoveToNextError()
@@ -120,14 +169,15 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
         if (!_started)
         {
             _started = true;
-            _startIndex = Math.Clamp(_box.CaretIndex, 0, text.Length);
+            _startIndex = Math.Clamp(_box.CaretIndex, 0, Math.Min(text.Length, _scanEnd));
             _scanIndex = _startIndex;
         }
 
         while (true)
         {
             text = _box.Text;
-            int limit = _wrapped ? Math.Min(_startIndex, text.Length) : text.Length;
+            int effLen = Math.Min(text.Length, _scanEnd);
+            int limit = _wrapped ? Math.Min(_startIndex, effLen) : effLen;
 
             if (text.Length > 0 && _scanIndex < limit)
             {
@@ -233,6 +283,7 @@ internal sealed class TextBoxSpellSource : ISpellCheckSource
 internal sealed class RichTextBoxSpellSource : ISpellCheckSource
 {
     private readonly RichTextBox _box;
+    private readonly TextPointer? _scanEnd;  // stop before quoted/forwarded text (#228)
     private bool _started;
     private bool _wrapped;
     private TextPointer? _scanPos;
@@ -241,10 +292,15 @@ internal sealed class RichTextBoxSpellSource : ISpellCheckSource
 
     public string DisplayName { get; }
 
-    public RichTextBoxSpellSource(RichTextBox box, string displayName)
+    /// <param name="scanEnd">
+    /// Optional stop position: errors at or beyond it are ignored, keeping the body scan out of the
+    /// quoted/forwarded original (issue #228). Null scans the whole document.
+    /// </param>
+    public RichTextBoxSpellSource(RichTextBox box, string displayName, TextPointer? scanEnd = null)
     {
         _box = box;
         DisplayName = displayName;
+        _scanEnd = scanEnd;
     }
 
     public SpellingErrorInfo? MoveToNextError()
@@ -253,6 +309,9 @@ internal sealed class RichTextBoxSpellSource : ISpellCheckSource
         {
             _started = true;
             _startPos = _box.CaretPosition;
+            // If the caret sits inside the quoted region, treat the region end as the session start
+            // so the wrap boundary stays within the user's own text.
+            if (_scanEnd != null && _startPos.CompareTo(_scanEnd) > 0) _startPos = _scanEnd;
             _scanPos = _startPos;
         }
 
@@ -265,7 +324,9 @@ internal sealed class RichTextBoxSpellSource : ISpellCheckSource
             if (errorPos != null)
             {
                 var range = _box.GetSpellingErrorRange(errorPos);
-                if (range != null)
+                // Ignore an error that starts at or beyond the quoted-region boundary — there are no
+                // more in-bounds errors ahead, so fall through to wrap/finish.
+                if (range != null && !(_scanEnd != null && range.Start.CompareTo(_scanEnd) >= 0))
                 {
                     // After wrapping, stop once the scan reaches the session start.
                     // Compare the error's END: a word straddling the start was

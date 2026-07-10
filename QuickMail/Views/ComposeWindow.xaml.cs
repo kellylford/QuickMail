@@ -1362,9 +1362,20 @@ public partial class ComposeWindow : Window
             return;
         }
 
-        var bodySource = _vm.CurrentMode == ComposeMode.Html
-            ? (ISpellCheckSource)new RichTextBoxSpellSource(RichBodyBox, "body")
-            : new TextBoxSpellSource(BodyBox, "body");
+        // Bound the body scan to the user's own text, stopping before the quoted/forwarded original
+        // that Reply/Forward seeds below it (issue #228). Recomputed each session from the live
+        // editor, so user edits above the quote don't invalidate it.
+        ISpellCheckSource bodySource;
+        if (_vm.CurrentMode == ComposeMode.Html)
+        {
+            var quoteStart = SpellScan.QuoteBoundaryPointer(RichBodyBox.Document);
+            bodySource = new RichTextBoxSpellSource(RichBodyBox, "body", quoteStart);
+        }
+        else
+        {
+            var quoteIdx = SpellScan.QuoteBoundaryIndex(BodyBox.Text);
+            bodySource = new TextBoxSpellSource(BodyBox, "body", quoteIdx >= 0 ? quoteIdx : null);
+        }
         var sources = new List<ISpellCheckSource>
         {
             bodySource,
