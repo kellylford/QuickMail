@@ -19,12 +19,16 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     public ObservableCollection<FolderTreeNode> Children { get; } = [];
 
     /// <summary>
-    /// Accessibility label used by AutomationProperties.Name on the TreeViewItem.
-    /// Contains only the folder name — the unread count is in ItemStatusLabel so it
-    /// is announced via a separate UIA property and cannot be doubled by JAWS reading
-    /// the same name through two automation peers.
+    /// Accessibility name announced by screen readers (AutomationProperties.Name).
+    /// Includes the unread count for real folders. This is deliberate and confirmed by real
+    /// screen-reader use: a count carried ONLY via AutomationProperties.ItemStatus is not reliably
+    /// announced, so folder counts go silent when the count is not in the Name (issue #227). The
+    /// visible label (<see cref="Label"/>) stays count-free — the count shows as the separate
+    /// <see cref="UnreadDisplay"/> badge — so the name and the visual do not double up.
+    /// Do not move the count back out of the Name without checking with a screen-reader user first.
     /// </summary>
-    public string AutomationName => Label;
+    public string AutomationName =>
+        Folder is { UnreadCount: > 0 } f ? $"{Label}, {f.UnreadCount} unread" : Label;
 
     /// <summary>
     /// UIA ItemStatus string used by AutomationProperties.ItemStatus on the TreeViewItem.
@@ -56,6 +60,20 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
             _isExpanded = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
         }
+    }
+
+    /// <summary>
+    /// Raises PropertyChanged for the unread-count-derived displays after the underlying
+    /// <see cref="MailFolderModel.UnreadCount"/> is updated in place. Lets the tree reflect a new
+    /// count (e.g. after mark-read or new mail) without rebuilding the tree — which would replace
+    /// node objects and reset keyboard focus within the TreeView (issue #227).
+    /// </summary>
+    public void NotifyUnreadChanged()
+    {
+        // AutomationName carries the count for screen readers, so it must refresh too.
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AutomationName)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ItemStatusLabel)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadDisplay)));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

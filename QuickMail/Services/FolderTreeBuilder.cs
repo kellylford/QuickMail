@@ -139,8 +139,12 @@ public static class FolderTreeBuilder
         }
     }
 
-    private static string BuildLabel(MailFolderModel f) =>
-        f.UnreadCount > 0 ? $"{f.DisplayName} ({f.UnreadCount} unread)" : f.DisplayName;
+    // Name only — no unread count. The count is surfaced separately via the UnreadDisplay badge
+    // (visual) and ItemStatusLabel (UIA ItemStatus), so baking it into the label/AutomationName here
+    // would both double-render it and, crucially, go stale when counts refresh in place without a
+    // tree rebuild (issue #227). Keeping the name count-free also avoids the double screen-reader
+    // announcement the split into two UIA properties was designed to prevent.
+    private static string BuildLabel(MailFolderModel f) => f.DisplayName;
 
     // Conventional mailbox order: Inbox, Drafts, Sent, Deleted, Junk, then everything else
     // alphabetically. INBOX is matched by name too — the IMAP inbox is the canonical "INBOX" and a

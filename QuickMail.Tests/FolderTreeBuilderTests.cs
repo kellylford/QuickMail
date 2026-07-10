@@ -35,6 +35,26 @@ public class FolderTreeBuilderTests
     }
 
     [Fact]
+    public void Build_VisibleLabelIsCountFree_ButAccessibleNameCarriesTheCount()
+    {
+        // Issue #227: the visible Label must stay count-free (the count shows as the UnreadDisplay
+        // badge) so it doesn't double up, but the accessible Name MUST carry the count — screen
+        // readers don't reliably announce it from ItemStatus alone.
+        var flat = new List<MailFolderModel>
+        {
+            new() { FullName = "INBOX", DisplayName = "Inbox", UnreadCount = 3 },
+        };
+
+        var inbox = Assert.Single(FolderTreeBuilder.Build(flat));
+
+        Assert.Equal("Inbox", inbox.Label);
+        Assert.DoesNotContain("unread", inbox.Label);
+        Assert.Equal("Inbox, 3 unread", inbox.AutomationName);
+        Assert.Equal("3 unread", inbox.ItemStatusLabel);
+        Assert.Equal("(3)", inbox.UnreadDisplay);
+    }
+
+    [Fact]
     public void Build_Graph_NestsByParentId()
     {
         // Graph: opaque ids, hierarchy via ParentId; top-level folders point at a parent ("root")
