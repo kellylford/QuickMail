@@ -40,3 +40,7 @@ startoffline.bat
 Tools/MailGenerator/credentials.ini
 /logs
 installer/velopack/license.txt
+
+# Test result artifacts
+*.trx
+QuickMail.Tests/TestResults/
