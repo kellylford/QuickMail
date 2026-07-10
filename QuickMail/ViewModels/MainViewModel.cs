@@ -4695,9 +4695,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void ScheduleFolderCountRefresh(Guid accountId)
     {
         if (accountId == Guid.Empty) return;
-        // Graph accounts get counts from a different path; STATUS sweeps are IMAP-specific.
+        // Only IMAP accounts get STATUS sweeps: skip unknown ids and Graph accounts (which get counts
+        // from a different path). Guarding null here avoids scheduling a doomed GetFoldersAsync.
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account is { BackendKind: not BackendKind.ImapSmtp }) return;
+        if (account is null || account.BackendKind != BackendKind.ImapSmtp) return;
 
         if (_folderCountCts.TryGetValue(accountId, out var old))
         {

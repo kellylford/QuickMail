@@ -35,6 +35,26 @@ public class FolderTreeBuilderTests
     }
 
     [Fact]
+    public void Build_Label_ExcludesUnreadCount()
+    {
+        // Regression (issue #227): the unread count must NOT be baked into the node Label /
+        // AutomationName. It is surfaced via the UnreadDisplay badge and ItemStatusLabel so it can
+        // refresh in place (no tree rebuild) and is not announced twice by a screen reader.
+        var flat = new List<MailFolderModel>
+        {
+            new() { FullName = "INBOX", DisplayName = "Inbox", UnreadCount = 3 },
+        };
+
+        var inbox = Assert.Single(FolderTreeBuilder.Build(flat));
+
+        Assert.Equal("Inbox", inbox.Label);
+        Assert.DoesNotContain("unread", inbox.Label);
+        // The count remains available for the visual badge and the UIA ItemStatus.
+        Assert.Equal("3 unread", inbox.ItemStatusLabel);
+        Assert.Equal("(3)", inbox.UnreadDisplay);
+    }
+
+    [Fact]
     public void Build_Graph_NestsByParentId()
     {
         // Graph: opaque ids, hierarchy via ParentId; top-level folders point at a parent ("root")
