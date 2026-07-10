@@ -23,18 +23,22 @@ public class FolderTreeNodeTests
         var node = NodeFor(3);
         Assert.Equal("3 unread", node.ItemStatusLabel);
         Assert.Equal("(3)", node.UnreadDisplay);
+        // The count must be in the accessible Name — screen readers don't reliably announce it
+        // from ItemStatus alone (issue #227).
+        Assert.Equal("Inbox, 3 unread", node.AutomationName);
     }
 
     [Fact]
-    public void ZeroUnread_ProducesEmptyDisplays()
+    public void ZeroUnread_ProducesEmptyDisplays_AndCountFreeName()
     {
         var node = NodeFor(0);
         Assert.Equal("", node.ItemStatusLabel);
         Assert.Equal("", node.UnreadDisplay);
+        Assert.Equal("Inbox", node.AutomationName);
     }
 
     [Fact]
-    public void NotifyUnreadChanged_RaisesPropertyChangedForBothDisplays()
+    public void NotifyUnreadChanged_RaisesPropertyChangedForCountDisplaysAndName()
     {
         var node = NodeFor(5);
         var changed = new List<string?>();
@@ -44,15 +48,18 @@ public class FolderTreeNodeTests
         node.Folder!.UnreadCount = 4;
         node.NotifyUnreadChanged();
 
+        // The accessible Name must refresh too — it carries the count for screen readers (#227).
+        Assert.Contains(nameof(FolderTreeNode.AutomationName), changed);
         Assert.Contains(nameof(FolderTreeNode.ItemStatusLabel), changed);
         Assert.Contains(nameof(FolderTreeNode.UnreadDisplay), changed);
-        // Displays now reflect the new count without any tree rebuild.
+        // All reflect the new count without any tree rebuild.
+        Assert.Equal("Inbox, 4 unread", node.AutomationName);
         Assert.Equal("4 unread", node.ItemStatusLabel);
         Assert.Equal("(4)", node.UnreadDisplay);
     }
 
     [Fact]
-    public void NotifyUnreadChanged_DoesNotRaiseForLabelOrExpansion()
+    public void NotifyUnreadChanged_DoesNotRaiseForExpansion()
     {
         var node = NodeFor(2);
         var changed = new List<string?>();
@@ -61,6 +68,5 @@ public class FolderTreeNodeTests
         node.NotifyUnreadChanged();
 
         Assert.DoesNotContain(nameof(FolderTreeNode.IsExpanded), changed);
-        Assert.DoesNotContain(nameof(FolderTreeNode.AutomationName), changed);
     }
 }

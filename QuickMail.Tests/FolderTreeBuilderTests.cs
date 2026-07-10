@@ -35,11 +35,11 @@ public class FolderTreeBuilderTests
     }
 
     [Fact]
-    public void Build_Label_ExcludesUnreadCount()
+    public void Build_VisibleLabelIsCountFree_ButAccessibleNameCarriesTheCount()
     {
-        // Regression (issue #227): the unread count must NOT be baked into the node Label /
-        // AutomationName. It is surfaced via the UnreadDisplay badge and ItemStatusLabel so it can
-        // refresh in place (no tree rebuild) and is not announced twice by a screen reader.
+        // Issue #227: the visible Label must stay count-free (the count shows as the UnreadDisplay
+        // badge) so it doesn't double up, but the accessible Name MUST carry the count — screen
+        // readers don't reliably announce it from ItemStatus alone.
         var flat = new List<MailFolderModel>
         {
             new() { FullName = "INBOX", DisplayName = "Inbox", UnreadCount = 3 },
@@ -49,7 +49,7 @@ public class FolderTreeBuilderTests
 
         Assert.Equal("Inbox", inbox.Label);
         Assert.DoesNotContain("unread", inbox.Label);
-        // The count remains available for the visual badge and the UIA ItemStatus.
+        Assert.Equal("Inbox, 3 unread", inbox.AutomationName);
         Assert.Equal("3 unread", inbox.ItemStatusLabel);
         Assert.Equal("(3)", inbox.UnreadDisplay);
     }
