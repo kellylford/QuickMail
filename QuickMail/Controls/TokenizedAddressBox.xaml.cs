@@ -23,6 +23,16 @@ public partial class TokenizedAddressBox : UserControl
     // own value and destroy the chips.
     private string _lastSerializedText = string.Empty;
 
+    // Guards CommitCurrentInput against re-entrancy. Assignments to InputBox.Text
+    // inside the commit raise TextChanged synchronously, and that handler auto-commits
+    // whenever the text still contains a comma or semicolon. Without this guard, text
+    // that parses to no routable address but keeps a delimiter (e.g. a pasted bare
+    // "Last, First" name) gets written back to the box, re-triggers the commit, and
+    // recurses without bound — overflowing the stack and crashing the process. The
+    // crash surfaced in the screen reader's in-process event-cache module because its
+    // hook rides every UIA event on the stack, but the runaway recursion is ours.
+    private bool _isCommitting;
+
     /// <summary>
     /// When true the LostKeyboardFocus handler will not auto-commit the input.
     /// Set by ComposeWindow while focus is in the autocomplete popup (which lives
@@ -193,39 +203,51 @@ public partial class TokenizedAddressBox : UserControl
 
     private void CommitCurrentInput()
     {
-        var raw = InputBox.Text.Trim().TrimEnd(',', ';').Trim();
-        if (string.IsNullOrEmpty(raw)) { InputBox.Text = string.Empty; return; }
-
-        // Clear first so UpdateAddressText called from AddChip excludes this raw text
-        InputBox.Text = string.Empty;
-
-        if (InternetAddressList.TryParse(raw, out var list))
+        // Re-entrancy guard: the InputBox.Text assignments below fire TextChanged
+        // synchronously, and that handler calls back here on comma/semicolon. If a
+        // re-entrant call slips through it would recurse without bound (see _isCommitting).
+        if (_isCommitting) return;
+        _isCommitting = true;
+        try
         {
-            bool added = false;
-            foreach (var addr in list.OfType<MailboxAddress>())
+            var raw = InputBox.Text.Trim().TrimEnd(',', ';').Trim();
+            if (string.IsNullOrEmpty(raw)) { InputBox.Text = string.Empty; return; }
+
+            // Clear first so UpdateAddressText called from AddChip excludes this raw text
+            InputBox.Text = string.Empty;
+
+            if (InternetAddressList.TryParse(raw, out var list))
             {
-                if (string.IsNullOrWhiteSpace(addr.Address)) continue;
-                if (!addr.Address.Contains('@')) continue;
-                AddChip(new AddressChipModel { DisplayName = addr.Name ?? string.Empty, EmailAddress = addr.Address });
-                added = true;
+                bool added = false;
+                foreach (var addr in list.OfType<MailboxAddress>())
+                {
+                    if (string.IsNullOrWhiteSpace(addr.Address)) continue;
+                    if (!addr.Address.Contains('@')) continue;
+                    AddChip(new AddressChipModel { DisplayName = addr.Name ?? string.Empty, EmailAddress = addr.Address });
+                    added = true;
+                }
+                if (!added)
+                {
+                    // MimeKit parsed it but produced no usable address — treat as bare email
+                    if (raw.Contains('@'))
+                        AddChip(new AddressChipModel { EmailAddress = raw });
+                    else
+                        InputBox.Text = raw; // return unrecognised text to the input box
+                }
             }
-            if (!added)
+            else if (raw.Contains('@'))
             {
-                // MimeKit parsed it but produced no usable address — treat as bare email
-                if (raw.Contains('@'))
-                    AddChip(new AddressChipModel { EmailAddress = raw });
-                else
-                    InputBox.Text = raw; // return unrecognised text to the input box
+                AddChip(new AddressChipModel { EmailAddress = raw });
+            }
+            else
+            {
+                // Not recognisable — return to the input box so the user can fix it
+                InputBox.Text = raw;
             }
         }
-        else if (raw.Contains('@'))
+        finally
         {
-            AddChip(new AddressChipModel { EmailAddress = raw });
-        }
-        else
-        {
-            // Not recognisable — return to the input box so the user can fix it
-            InputBox.Text = raw;
+            _isCommitting = false;
         }
     }
 
