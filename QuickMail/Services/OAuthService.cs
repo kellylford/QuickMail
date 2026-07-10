@@ -30,13 +30,51 @@ public class OAuthService : IOAuthService
         "https://outlook.office.com/.default",
     ];
 
+    // Work/school (AAD) Graph accounts: `.default` requests exactly the app-registration's declared
+    // permissions, which matches what admin consent grants (fixes the consent loop, #208).
     public static readonly string[] GraphMailScopes =
     [
         "https://graph.microsoft.com/.default",
     ];
 
+    // Personal Microsoft accounts (Outlook.com/Hotmail/Live): `.default` under-delivers for MSA,
+    // because personal accounts have no admin-consent model — `.default` returns only the permissions
+    // the user already consented to, which came back read-only (delete/move → 403 ErrorAccessDenied,
+    // #217). Request the explicit delegated mail scopes so the user is prompted to consent to read AND
+    // write. Org-only permissions (User.ReadBasic.All directory search, MailboxSettings.ReadWrite
+    // server rules) don't apply to personal accounts and are omitted.
+    public static readonly string[] GraphMailScopesPersonal =
+    [
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/Mail.Send",
+        "https://graph.microsoft.com/User.Read",
+    ];
+
+    // Well-known consumer domains, used only for the FIRST sign-in (before a token exists). Once an
+    // account has signed in, the authoritative signal is the MSAL account's tenant id
+    // (9188040d-6c67-4c5b-b112-36a304b66dad = the MSA "consumers" tenant) — a production version
+    // should prefer that. This heuristic covers the common personal-account domains.
+    private static readonly string[] PersonalMicrosoftDomains =
+    {
+        "outlook.com", "hotmail.com", "live.com", "msn.com", "passport.com", "windowslive.com",
+        "hotmail.co.uk", "live.co.uk", "outlook.jp", "outlook.de", "outlook.fr",
+    };
+
+    private static bool IsPersonalMicrosoftAccount(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return false;
+        var at = username.LastIndexOf('@');
+        if (at < 0 || at == username.Length - 1) return false;
+        return PersonalMicrosoftDomains.Contains(username[(at + 1)..].Trim().ToLowerInvariant());
+    }
+
     private static string[] DefaultScopesFor(AccountModel account)
-        => account.BackendKind == BackendKind.MicrosoftGraph ? GraphMailScopes : ImapSmtpScopes;
+    {
+        if (account.BackendKind != BackendKind.MicrosoftGraph)
+            return ImapSmtpScopes;
+        // Personal accounts need explicit scopes to obtain write access; work/school uses `.default`.
+        return IsPersonalMicrosoftAccount(account.Username) ? GraphMailScopesPersonal : GraphMailScopes;
+    }
 
     private readonly string _cacheDir;
     private const string CacheFileName = "msal.cache";
