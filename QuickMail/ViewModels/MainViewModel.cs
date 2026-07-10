@@ -81,6 +81,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DrainCts(ref _flagActionCts);
         DrainCts(ref _prefetchCts);
         DrainCts(ref _bgSyncCts);
+        foreach (var cts in _folderCountCts.Values)
+        {
+            try { cts.Cancel(); cts.Dispose(); } catch { /* best effort at shutdown */ }
+        }
+        _folderCountCts.Clear();
         _calendarHarvestTimer?.Dispose();
         _calendarHarvestTimer = null;
         GC.SuppressFinalize(this);
@@ -123,6 +128,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
     public IReadOnlyDictionary<Guid, List<MailFolderModel>> CachedFolders => _cachedFolders;
+
+    // Debounced folder-unread-count refresh (issue #227). Folder counts are server-authoritative
+    // (IMAP STATUS), which matters for Gmail where marking one message read propagates \Seen across
+    // every label/folder it belongs to. One pending refresh per account; a burst of mark-reads
+    // coalesces into a single STATUS sweep after a short quiet period.
+    private readonly Dictionary<Guid, CancellationTokenSource> _folderCountCts = new();
+    private static readonly TimeSpan FolderCountRefreshDelay = TimeSpan.FromSeconds(1);
 
     // ── Virtual folder sentinels ─────────────────────────────────────────────────
     // IMPORTANT: use \u0000 (Unicode escape, always exactly 4 hex digits) rather than
@@ -1624,6 +1636,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // RefreshAsync handles all virtual-folder and saved-view types correctly.
             await RefreshAsync();
 
+            // Refresh every account's folder unread counts to reflect reads/arrivals picked up
+            // during the sync (issue #227). Debounced, so this coalesces with any per-event refreshes.
+            foreach (var acct in accountList)
+                ScheduleFolderCountRefresh(acct.Id);
+
             var count = Messages.Count;
             StatusText = $"{count} messages.";
             LastSyncText = $"Synced {DateTime.Now:t}";
@@ -1850,6 +1867,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (inbox is null) return;
 
         LogService.Log($"IDLE: new mail detected for {account.AccountLabel} INBOX — syncing.");
+
+        // New mail changes server unread counts; refresh them (debounced, STATUS-authoritative).
+        ScheduleFolderCountRefresh(accountId);
 
         _ = Task.Run(async () =>
         {
@@ -3865,6 +3885,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 .LogFaults($"mark read batch ({group.Key.FolderName}, {uids.Count} messages)");
         }
 
+        // Refresh folder unread counts once the server has the reads (issue #227). Debounced and
+        // server-authoritative so Gmail's cross-label \Seen propagation is reflected in every folder.
+        foreach (var accountId in unread.Select(m => m.AccountId).Distinct())
+            ScheduleFolderCountRefresh(accountId);
+
         return Task.CompletedTask;
     }
 
@@ -4658,6 +4683,73 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LogService.Log("RefreshFolderList", ex);
             StatusText = $"Failed to refresh folders: {ex.Message}";
         }
+    }
+
+    /// <summary>
+    /// Schedules a debounced, server-authoritative refresh of the account's folder unread counts
+    /// (issue #227). Called after events that change unread state — mark-read, new mail, sync. A
+    /// pending refresh for the same account is cancelled and rescheduled, so a burst of mark-reads
+    /// costs one STATUS sweep. Unlike <see cref="RefreshFolderListAsync"/> this updates counts in
+    /// place and does not rebuild the tree, so folder-tree keyboard focus is preserved.
+    /// </summary>
+    private void ScheduleFolderCountRefresh(Guid accountId)
+    {
+        if (accountId == Guid.Empty) return;
+        // Graph accounts get counts from a different path; STATUS sweeps are IMAP-specific.
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is { BackendKind: not BackendKind.ImapSmtp }) return;
+
+        if (_folderCountCts.TryGetValue(accountId, out var old))
+        {
+            try { old.Cancel(); old.Dispose(); } catch { }
+        }
+        var cts = new CancellationTokenSource();
+        _folderCountCts[accountId] = cts;
+        _ = RefreshFolderCountsDebouncedAsync(accountId, cts.Token);
+    }
+
+    private async Task RefreshFolderCountsDebouncedAsync(Guid accountId, CancellationToken ct)
+    {
+        try { await Task.Delay(FolderCountRefreshDelay, ct); }
+        catch (OperationCanceledException) { return; }
+
+        try
+        {
+            var fresh = await _imap.GetFoldersAsync(accountId, ct);
+            if (ct.IsCancellationRequested) return;
+            _ui.Post(() => ApplyFolderCounts(accountId, fresh));
+        }
+        catch (OperationCanceledException) { /* superseded or shutting down — fine */ }
+        catch (Exception ex)
+        {
+            LogService.Log($"RefreshFolderCounts {accountId}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Applies freshly-queried unread counts onto the existing cached folder models and notifies
+    /// the corresponding tree nodes in place (no tree rebuild). Runs on the UI thread.
+    /// </summary>
+    private void ApplyFolderCounts(Guid accountId, List<MailFolderModel> fresh)
+    {
+        if (!_cachedFolders.TryGetValue(accountId, out var cached)) return;
+
+        var byName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in fresh) byName[f.FullName] = f.UnreadCount;
+
+        foreach (var c in cached)
+            if (byName.TryGetValue(c.FullName, out var unread))
+                c.UnreadCount = unread;
+
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account != null) account.TotalUnread = cached.Sum(f => f.UnreadCount);
+
+        // Refresh the count display on the existing nodes for this account — no rebuild, so the
+        // user's place in the folder tree is undisturbed.
+        if (FolderTree != null)
+            foreach (var n in FlattenAllNodes(FolderTree))
+                if (n.Folder is { } mf && mf.AccountId == accountId)
+                    n.NotifyUnreadChanged();
     }
 
     /// <summary>

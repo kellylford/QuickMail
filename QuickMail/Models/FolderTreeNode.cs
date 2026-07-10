@@ -58,5 +58,17 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
         }
     }
 
+    /// <summary>
+    /// Raises PropertyChanged for the unread-count-derived displays after the underlying
+    /// <see cref="MailFolderModel.UnreadCount"/> is updated in place. Lets the tree reflect a new
+    /// count (e.g. after mark-read or new mail) without rebuilding the tree — which would replace
+    /// node objects and reset keyboard focus within the TreeView (issue #227).
+    /// </summary>
+    public void NotifyUnreadChanged()
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ItemStatusLabel)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadDisplay)));
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 }
