@@ -2,7 +2,11 @@ using System;
 
 namespace QuickMail.Models;
 
-public enum SpecialFolderKind { None, Inbox, Sent, Drafts, Trash, Junk }
+// AllMail/Important/Starred are Gmail's virtual folders (\All, \Important, \Flagged). They mirror
+// content that also lives in real folders, so they are deprioritized when picking the representative
+// copy for a deduplicated aggregate view (see MessageDeduplicator). They are NOT excluded from sync —
+// [Gmail]/All Mail is the only home of archived mail, so excluding it would lose messages.
+public enum SpecialFolderKind { None, Inbox, Sent, Drafts, Trash, Junk, AllMail, Important, Starred }
 
 public class MailFolderModel
 {
