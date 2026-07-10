@@ -63,9 +63,15 @@ preserved. This change only alters *which account owns the submitting token.*
    - This matters because these issues are public; anyone reading them should immediately understand
      the account is automated.
 
-> **Policy note:** GitHub's Terms of Service explicitly permit "machine accounts" — one per human is
-> fine. A bot account tied to and controlled by you (the maintainer) for this purpose is within the
-> rules. Do not create *multiple* accounts to evade anything; that is what the ToS prohibits.
+> **Policy note:** GitHub's Terms of Service explicitly permit "machine accounts" and this exact
+> use. Per [Section B.3, Account Requirements](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service):
+> *"We do permit machine accounts: A machine account is an Account set up by an individual human who
+> accepts the Terms on behalf of the Account, provides a valid email address, and is responsible for
+> its actions,"* and *"You may maintain no more than one free machine account in addition to your
+> free Personal Account."* The one thing the same section forbids is *automated* signup —
+> *"Accounts registered by 'bots' or other automated methods are not permitted"* — which is why
+> Step 1 is done by hand and must not be scripted. A single machine account you create and control
+> for this purpose is squarely within the rules.
 
 ---
 
@@ -213,6 +219,7 @@ path, and trying to automate around GitHub's auth is out of scope and against th
 ## Related
 
 - [#222](https://github.com/kellylford/QuickMail/issues/222) — the issue this resolves
+- [GitHub Terms of Service, §B.3 Account Requirements](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service) — the policy permitting machine accounts
 - `docs/planning/bug-reporting-pm-dev-spec.md` — original feature spec (Decision A, §3.5 minimal scope)
 - `docs/BugReportService.Credentials.example` — the token file template
 - `QuickMail/Services/BugReportService.cs` — the submission code (unchanged by this setup)
