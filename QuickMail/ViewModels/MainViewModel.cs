@@ -1957,6 +1957,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Aggregate/virtual views union multiple folders, so one physical message can arrive as
         // several per-folder copies (notably Gmail: INBOX + All Mail + labels). Collapse them to one
         // representative here (issue #220). Single real-folder views show their own contents as-is.
+        // Note: on the very first cached load (InitialLoadAsync) _cachedFolders is not yet populated,
+        // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
+        // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
         if (IsVirtualFolder(SelectedFolder))
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
         _rawMessages = list;
@@ -2105,11 +2108,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RemoveVanishedMessages(IReadOnlyList<MailMessageSummary> newMessages)
     {
-        var fetchedKeys = new HashSet<(string, Guid, string)>();
+        // Key by global message identity, not per-folder UID: in a deduped aggregate view the shown
+        // row is one representative copy, but a sibling copy in another folder keeps the message
+        // present. Removing on the per-folder key alone would drop the representative when only its
+        // home-folder copy vanished (e.g. a Gmail message archived out of INBOX while its All Mail
+        // copy remains) — a message that merely moved, not deleted (issue #220). CollapseKeyFor
+        // falls back to the per-folder key for messages with no Message-ID, preserving old behavior.
+        var fetchedKeys = new HashSet<string>(StringComparer.Ordinal);
         var minDateByFolder = new Dictionary<(Guid, string), DateTimeOffset>();
         foreach (var m in newMessages)
         {
-            fetchedKeys.Add((m.MessageId, m.AccountId, m.FolderName));
+            fetchedKeys.Add(MessageDeduplicator.CollapseKeyFor(m));
             var fk = (m.AccountId, m.FolderName);
             if (!minDateByFolder.TryGetValue(fk, out var min) || m.Date < min)
                 minDateByFolder[fk] = m.Date;
@@ -2118,7 +2127,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var vanished = Messages.Where(m =>
             minDateByFolder.TryGetValue((m.AccountId, m.FolderName), out var min) &&
             m.Date >= min &&
-            !fetchedKeys.Contains((m.MessageId, m.AccountId, m.FolderName))).ToList();
+            !fetchedKeys.Contains(MessageDeduplicator.CollapseKeyFor(m))).ToList();
         if (vanished.Count == 0) return;
 
         // Mirror RemoveFromActiveViewAsync: remove from the backing _rawMessages too (else they

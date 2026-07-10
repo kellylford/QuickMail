@@ -86,8 +86,8 @@ public class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN calendar_ics TEXT DEFAULT NULL;");
         // Stable RFC 5322 Message-ID for collapsing duplicate copies across folders (issue #220).
         // Adds the column for DBs already past the v1→v2 rebuild; fresh/v1 DBs get it from the
-        // rebuild's schema below. The index is created after RunDataMigrations so the rebuild's
-        // DROP TABLE cannot lose it.
+        // rebuild's schema below. No index: deduplication runs in memory (MessageDeduplicator), so
+        // nothing queries this column — an index would only add upsert write cost.
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN internet_message_id TEXT NOT NULL DEFAULT '';");
 
         // CalendarEvent table (schema v4). Additive — no existing table touched.
@@ -115,10 +115,6 @@ public class LocalStoreService : ILocalStoreService
         cmd.ExecuteNonQuery();
 
         RunDataMigrations(conn);
-
-        // Created after migrations so the v1→v2 rebuild's DROP TABLE cannot remove it.
-        cmd.CommandText = "CREATE INDEX IF NOT EXISTS idx_summary_msgid ON MessageSummary(account_id, internet_message_id);";
-        cmd.ExecuteNonQuery();
     }
 
     // SQLite's PRAGMA user_version stores a single integer per database. We use it as a

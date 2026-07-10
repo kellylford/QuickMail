@@ -249,3 +249,19 @@ changes. Explicitly:
 4. **Storage duplication remains** after this fix (we still store one row per folder copy). If cache
    size becomes a concern, sync-trimming Gmail's `\Important`/`\Starred` (pure duplicate views that
    are never a message's sole home) is a safe, small optimization on top of this work.
+
+### Known limitations (accepted, from independent review)
+
+- **Reused Message-ID collapses distinct messages.** Dedup keys on `(account, normalized
+  Message-ID)`. If a misbehaving sender reuses one Message-ID for two genuinely different messages,
+  they collapse to one row in aggregate views (the hidden one still exists in its real folder — no
+  data loss). Accepted: RFC 5322 requires unique Message-IDs and Gmail's own X-GM-MSGID dedup is
+  equivalent, so this mirrors the server; keying additionally on Date/Subject was rejected because
+  those can differ between copies of the *same* message and would reintroduce duplicates. Documented
+  on `MessageDeduplicator.CollapseKeyFor`.
+- **First cached load uses neutral representative ranking.** `InitialLoadAsync` runs `SetMessages`
+  before `_cachedFolders` is populated, so the Inbox-preferred representative ranking is neutral for
+  that one render (collapse is still correct); it settles on the first real fetch. Commented at the
+  `SetMessages` dedup call.
+- Both `RemoveVanishedMessages` and all incremental merges are now Message-ID-aware, so archiving a
+  Gmail message out of INBOX no longer transiently drops its representative from the aggregate.

@@ -77,6 +77,14 @@ public static class MessageDeduplicator
     /// The global-identity key used to collapse copies across folders in an aggregate view:
     /// (account, normalized Message-ID). Messages with no Message-ID fall back to their unique
     /// per-folder key so they are never merged with anything.
+    ///
+    /// Deliberate assumption: within one account, a non-empty Message-ID identifies one message.
+    /// RFC 5322 requires Message-IDs to be globally unique, and Gmail's own dedup (X-GM-MSGID) is
+    /// equivalent — so this mirrors the server. A misbehaving sender that reuses a Message-ID for
+    /// two genuinely different messages would collapse them in aggregate views; the hidden one still
+    /// exists in its real folder (no data loss), and this is preferred over showing the far more
+    /// common Gmail label duplicates. Not keyed on Date/Subject on purpose: those can differ between
+    /// copies of the same message and would reintroduce duplicates.
     /// </summary>
     public static string CollapseKeyFor(MailMessageSummary msg)
     {
