@@ -4602,6 +4602,29 @@ public partial class MainWindow : Window
     private async void MessageContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
         => await CopyMessageToFolderAsync();
 
+    // Context-menu Delete must act on the whole selection, exactly like the Delete key and the
+    // Move/Copy context-menu items. Binding to the VM's DeleteMessageCommand deleted only
+    // SelectedMessage (a single item), which is why Ctrl+A then context-menu Delete removed just
+    // the focused message. GetSelectedMessages() returns every selected row in the flat list, or
+    // the single message node in a grouped tree.
+    private async void MessageContextMenu_Delete_Click(object sender, RoutedEventArgs e)
+    {
+        var messages = GetSelectedMessages();
+        if (messages.Count == 0) return;
+
+        await _vm.DeleteMessagesAsync(messages);
+
+        // Land focus the same way the Move context-menu handler does.
+        if (_vm.IsConversationsView)
+            LandOnConversationAfterRebuild(0);
+        else if (_vm.IsFromView)
+            LandOnSenderGroupAfterRebuild(0);
+        else if (_vm.IsToView)
+            LandOnToGroupAfterRebuild(0);
+        else
+            FocusMessageListFirstItem();
+    }
+
     // ── Conversation context menu handlers ───────────────────────────────────
 
     private async void ConversationContextMenu_MoveToFolder_Click(object sender, RoutedEventArgs e)
