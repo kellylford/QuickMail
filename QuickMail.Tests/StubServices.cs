@@ -15,6 +15,7 @@ namespace QuickMail.Tests;
 sealed class StubImapMailService : IMailService
 {
     public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => Task.CompletedTask;
+    public bool IsConnected(Guid accountId) => true;
     public Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
     public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(new List<MailFolderModel>());
     public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());

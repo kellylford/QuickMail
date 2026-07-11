@@ -72,6 +72,8 @@ public class GraphMailService : IMailService
         LogService.Log($"GraphMailService: connected for {account.AccountLabel} ({account.Username}).");
     }
 
+    public bool IsConnected(Guid accountId) => _accounts.ContainsKey(accountId);
+
     /// <summary>
     /// Resolves the stable IDs of the well-known folders (Inbox, Sent, Drafts, Deleted, Junk) by
     /// their Graph well-known names, so detection survives localized display names and user renames.

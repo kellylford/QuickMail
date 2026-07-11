@@ -96,6 +96,8 @@ public class ImapMailService : IMailService, IChangeNotifier
         }
     }
 
+    public bool IsConnected(Guid accountId) => _pools.ContainsKey(accountId);
+
     public async Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
     {
         if (_idleCts.TryRemove(accountId, out var watcherCts))

@@ -84,6 +84,7 @@ public class MailServiceRouterTests
 
         // Remaining members are unused by these tests.
         public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => Task.CompletedTask;
+        public bool IsConnected(Guid accountId) => true;
         public Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
         public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());
         public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());
