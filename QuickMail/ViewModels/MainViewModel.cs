@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -135,6 +136,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // coalesces into a single STATUS sweep after a short quiet period.
     private readonly Dictionary<Guid, CancellationTokenSource> _folderCountCts = new();
     private static readonly TimeSpan FolderCountRefreshDelay = TimeSpan.FromSeconds(1);
+    // Minimum spacing between STATUS sweeps for one account, so steady reading (each open marks a
+    // message read → one refresh request) doesn't fire a full folder STATUS sweep per message (#227).
+    private static readonly TimeSpan FolderCountMinInterval = TimeSpan.FromSeconds(6);
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFolderCountSweep = new();
 
     // ── Virtual folder sentinels ─────────────────────────────────────────────────
     // IMPORTANT: use \u0000 (Unicode escape, always exactly 4 hex digits) rather than
@@ -3912,11 +3917,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (toDelete.Count == 0) return;
 
-        // Deleting can change folder unread counts (an unread message leaves its folder); refresh
-        // them authoritatively. Debounced, so it settles after the move-to-trash lands (#227 follow-up).
-        foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
-            ScheduleFolderCountRefresh(acctId);
-
         var minIdx = toDelete.Min(m => Messages.IndexOf(m));
         var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";
         StatusText    = $"Deleting {label}…";
@@ -3998,6 +3998,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
+
+            // Now the server deletes have landed, refresh folder unread counts — but only if an
+            // unread message actually left a folder (deleting a read message changes no count).
+            // Scheduled here, not before the await, so the debounced STATUS sweep can't read a
+            // pre-delete count and clobber the optimistic decrement (#227 follow-up).
+            if (toDelete.Any(m => !m.IsRead))
+                foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
+                    ScheduleFolderCountRefresh(acctId);
 
             var count = toDelete.Count;
             StatusText = Messages.Count > 0
@@ -4724,12 +4732,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task RefreshFolderCountsDebouncedAsync(Guid accountId, CancellationToken ct)
     {
-        try { await Task.Delay(FolderCountRefreshDelay, ct); }
+        try
+        {
+            await Task.Delay(FolderCountRefreshDelay, ct);
+            // Throttle: keep at least FolderCountMinInterval between sweeps for this account.
+            if (_lastFolderCountSweep.TryGetValue(accountId, out var last))
+            {
+                var wait = FolderCountMinInterval - (DateTimeOffset.UtcNow - last);
+                if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
+            }
+        }
         catch (OperationCanceledException) { return; }
 
         try
         {
             var fresh = await _imap.GetFoldersAsync(accountId, ct);
+            _lastFolderCountSweep[accountId] = DateTimeOffset.UtcNow;
             if (ct.IsCancellationRequested) return;
             _ui.Post(() => ApplyFolderCounts(accountId, fresh));
         }
@@ -4964,6 +4982,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
+
+            // Moving an unread message changes both the source and destination folder counts; refresh
+            // after the server move lands (only when an unread message actually moved) (#227 follow-up).
+            if (messages.Any(m => !m.IsRead))
+                foreach (var acctId in messages.Select(m => m.AccountId).Distinct())
+                    ScheduleFolderCountRefresh(acctId);
 
             foreach (var msg in messages)
                 Messages.Remove(msg);
