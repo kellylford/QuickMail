@@ -29,6 +29,15 @@ public class MailFolderModel
     /// <summary>Identifies special-purpose folders for virtual aggregate views.</summary>
     public SpecialFolderKind Kind { get; set; }
 
+    /// <summary>
+    /// Gmail's virtual folders — All Mail, Important, Starred — whose IMAP unread counts overlap the
+    /// Inbox and labels and include old archived mail, so they don't mean "new mail." Their unread
+    /// count is hidden in the folder tree and excluded from the account unread total, otherwise the
+    /// tree shows a high count while the Inbox is empty and the account total double-counts (#227).
+    /// </summary>
+    public bool SuppressUnreadCount =>
+        Kind is SpecialFolderKind.AllMail or SpecialFolderKind.Important or SpecialFolderKind.Starred;
+
     /// <summary>Accessibility label: headers just show the name; folders include unread count.</summary>
     public string AutomationName =>
         IsHeader ? DisplayName

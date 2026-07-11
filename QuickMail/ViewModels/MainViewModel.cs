@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -135,6 +136,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // coalesces into a single STATUS sweep after a short quiet period.
     private readonly Dictionary<Guid, CancellationTokenSource> _folderCountCts = new();
     private static readonly TimeSpan FolderCountRefreshDelay = TimeSpan.FromSeconds(1);
+    // Minimum spacing between STATUS sweeps for one account, so steady reading (each open marks a
+    // message read → one refresh request) doesn't fire a full folder STATUS sweep per message (#227).
+    private static readonly TimeSpan FolderCountMinInterval = TimeSpan.FromSeconds(6);
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFolderCountSweep = new();
 
     // ── Virtual folder sentinels ─────────────────────────────────────────────────
     // IMPORTANT: use \u0000 (Unicode escape, always exactly 4 hex digits) rather than
@@ -2236,7 +2241,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         account.IsConnected = true;
-        account.TotalUnread = folders.Sum(f => f.UnreadCount);
+        // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
+        // Inbox and labels, so summing them double-counts and inflates the account total (#227).
+        account.TotalUnread = folders.Where(f => !f.SuppressUnreadCount).Sum(f => f.UnreadCount);
     }
 
     /// <summary>
@@ -3023,8 +3030,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageDetail = detail;
             // Window mode shows messages in standalone windows; never open the reading pane there.
             IsMessageOpen = MessageOpenMode != MessageOpenMode.Window;
+            var wasUnread = !summary.IsRead;
             summary.IsRead = true;
             summary.HasAttachments = detail.Attachments.Count > 0;
+            // Opening a message marks it read here (not via MarkMessagesReadAsync), so refresh the
+            // folder unread counts on this path too — otherwise they stay stale until the next
+            // manual refresh (issue #227 follow-up).
+            if (wasUnread)
+                ScheduleFolderCountRefresh(summary.AccountId);
             if (!OnlineMode)
             {
                 _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.MessageId, true)
@@ -3986,6 +3999,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
 
+            // Now the server deletes have landed, refresh folder unread counts — but only if an
+            // unread message actually left a folder (deleting a read message changes no count).
+            // Scheduled here, not before the await, so the debounced STATUS sweep can't read a
+            // pre-delete count and clobber the optimistic decrement (#227 follow-up).
+            if (toDelete.Any(m => !m.IsRead))
+                foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
+                    ScheduleFolderCountRefresh(acctId);
+
             var count = toDelete.Count;
             StatusText = Messages.Count > 0
                 ? $"{count} {(count == 1 ? "message" : "messages")} deleted."
@@ -4711,12 +4732,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task RefreshFolderCountsDebouncedAsync(Guid accountId, CancellationToken ct)
     {
-        try { await Task.Delay(FolderCountRefreshDelay, ct); }
+        try
+        {
+            await Task.Delay(FolderCountRefreshDelay, ct);
+            // Throttle: keep at least FolderCountMinInterval between sweeps for this account.
+            if (_lastFolderCountSweep.TryGetValue(accountId, out var last))
+            {
+                var wait = FolderCountMinInterval - (DateTimeOffset.UtcNow - last);
+                if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
+            }
+        }
         catch (OperationCanceledException) { return; }
 
         try
         {
             var fresh = await _imap.GetFoldersAsync(accountId, ct);
+            _lastFolderCountSweep[accountId] = DateTimeOffset.UtcNow;
             if (ct.IsCancellationRequested) return;
             _ui.Post(() => ApplyFolderCounts(accountId, fresh));
         }
@@ -4743,7 +4774,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 c.UnreadCount = unread;
 
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account != null) account.TotalUnread = cached.Sum(f => f.UnreadCount);
+        if (account != null)
+            account.TotalUnread = cached.Where(f => !f.SuppressUnreadCount).Sum(f => f.UnreadCount);
 
         // Refresh the count display on the existing nodes for this account — no rebuild, so the
         // user's place in the folder tree is undisturbed.
@@ -4950,6 +4982,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
+
+            // Moving an unread message changes both the source and destination folder counts; refresh
+            // after the server move lands (only when an unread message actually moved) (#227 follow-up).
+            if (messages.Any(m => !m.IsRead))
+                foreach (var acctId in messages.Select(m => m.AccountId).Distinct())
+                    ScheduleFolderCountRefresh(acctId);
 
             foreach (var msg in messages)
                 Messages.Remove(msg);
