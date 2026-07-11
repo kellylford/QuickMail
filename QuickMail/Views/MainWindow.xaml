@@ -198,7 +198,7 @@
             <Separator/>
             <MenuItem Header="_Delete"
                       AutomationProperties.Name="Delete"
-                      Command="{Binding DeleteMessageCommand}"/>
+                      Click="MessageContextMenu_Delete_Click"/>
             <Separator/>
             <MenuItem Header="Flag_s"
                       Tag="FlagsSubmenu"
