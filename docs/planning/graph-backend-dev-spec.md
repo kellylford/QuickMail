@@ -528,6 +528,14 @@ No code changes elsewhere in `AccountModel`. The new fields serialize/deserializ
 
 **Path:** `QuickMail/Services/OAuthService.cs`
 
+> **Superseded 2026-07-08 (scope *values* only):** the per-call overload and `DefaultScopesFor`
+> selection below are retained, but QuickMail now requests the **per-resource `.default` scope**
+> rather than an explicit list — `https://graph.microsoft.com/.default` (Graph) and
+> `https://outlook.office.com/.default` (IMAP/SMTP). The declared permission set moves to the app
+> registration (`docs/ENTRA-APP-REGISTRATION.md` §3), which becomes the source of truth. The
+> `MailboxSettings.Read` entry shown in the snippet was later superseded by `MailboxSettings.ReadWrite`
+> and is now subsumed by `.default`. Full rationale: `oauth-default-scope-pm-dev-spec.md`.
+
 Add a new overload that accepts scopes; keep existing overload for backward compatibility during refactor:
 
 ```csharp

@@ -376,6 +376,7 @@ public class GraphMailService : IMailService
         MessageId = m.Id,
         AccountId = accountId,
         FolderName = folderName,
+        InternetMessageId = m.InternetMessageId ?? string.Empty,
         From = m.From?.EmailAddress?.AsHeaderString() ?? string.Empty,
         To = JoinRecipients(m.ToRecipients),
         Subject = m.Subject ?? "(no subject)",

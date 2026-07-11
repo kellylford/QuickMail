@@ -49,9 +49,19 @@ above; the embedded view intercepts that navigation internally (no loopback list
 
 ## 3. API permissions (delegated, Microsoft Graph + Exchange Online)
 
-Adding a scope to `OAuthService.GraphMailScopes` / `ImapSmtpScopes` in code is **not sufficient** on
-its own. For tenants that require admin consent (see §4), each delegated permission must also be
-**declared here** or admin consent cannot grant it.
+QuickMail requests the **per-resource `.default` scope** at sign-in — `https://graph.microsoft.com/.default`
+for Graph accounts and `https://outlook.office.com/.default` for IMAP/SMTP-over-OAuth. `.default`
+asks for **exactly the delegated permissions declared here** — nothing more, no runtime incremental
+consent. **This list is therefore the complete definition of what QuickMail can request.** A
+permission missing here can never be acquired at runtime, no matter what the code does. See
+`docs/planning/oauth-default-scope-pm-dev-spec.md`.
+
+> **Exception — personal Microsoft accounts (Outlook.com/MSA).** `.default` is honored only through
+> the AAD admin-consent model, which consumer accounts don't have, so their `.default` token comes
+> back read-only (delete/move → 403). Personal accounts instead request the **explicit** scopes
+> `Mail.ReadWrite` / `Mail.Send` / `User.Read` (`OAuthService.GraphMailScopesPersonal`), so the user
+> is prompted to consent to write. The Graph permissions below still need to be declared here for
+> AAD; the personal-account path just requests them explicitly rather than via `.default`. See #217.
 
 **Microsoft Graph (delegated):**
 
@@ -70,12 +80,16 @@ its own. For tenants that require admin consent (see §4), each delegated permis
 | `IMAP.AccessAsUser.All` | IMAP access (XOAUTH2) |
 | `SMTP.Send` | SMTP send (XOAUTH2) |
 
-Plus `offline_access` (refresh tokens) — standard OIDC scope, explicitly included in the scope
-arrays in `OAuthService.cs`; no separate portal permission entry required.
+Plus `offline_access` (refresh tokens) — a standard OIDC scope that **MSAL adds automatically** for
+the public-client desktop flow, so refresh tokens still issue even though the code now requests only
+`.default` (verified live). It is not listed in `OAuthService.cs` and needs no separate portal entry.
 
-> When a new scope is added to the code (e.g. `MailboxSettings.ReadWrite` was added for server-side
-> rules), it must be added to this list **and** admin consent re-granted in each admin-consent tenant.
-> Missing this is the most common cause of a "prompted but cannot consent" dead end (§5).
+> Because the app requests `.default`, adding a permission is **entirely a registration action**:
+> declare it in this list **and** re-grant admin consent in each admin-consent tenant. There is no
+> code scope list to update and no runtime consent prompt — a permission the code needs but that is
+> not declared+granted here surfaces as a feature-level `403`, not a consent dialog (§5). Declaring
+> a new scope **before** GA (while no account has consented yet) means the first consent captures it
+> and no one is ever re-prompted.
 
 ---
 
@@ -98,15 +112,26 @@ a new scope, the admin must **re-grant** consent — "already shows consented" r
 ## 5. Troubleshooting
 
 ### "Prompted for consent, but there's no way to consent" (dead-end prompt)
-The tenant disables user consent **and** the build is requesting a scope that is not in the
-admin-consented set. Almost always this means a scope was added in code but not declared in §3 and/or
-admin consent was not re-granted afterward.
-**Fix:** declare the scope (§3) → re-grant admin consent (§4). Confirm on the consent screen which
-permission lacks prior approval — that's the missing one.
+The tenant disables user consent **and** at least one **declared** permission (§3) has not been
+admin-granted for the tenant. Because QuickMail requests `.default` (the whole declared set), sign-in
+requires the full set to be consented — so any un-granted declared permission blocks sign-in, not
+just a single feature.
+**Fix:** ensure every needed permission is declared (§3) → **grant admin consent for the whole set**
+(§4). After adding a new permission, the admin must **re-grant** (an existing grant reflects the
+*old* set). With `.default` this is purely a registration/consent action — there is no code scope
+list to change.
 
-Note: builds requesting only a subset of the consented scopes (e.g. `MailboxSettings.Read` when
-`ReadWrite` is consented) sign in silently — so the same account can work on one build and dead-end
-on another purely because of which scopes that build requests.
+Note: with `.default`, "same account works on one build but dead-ends on another because of which
+scopes the build requests" **no longer happens** — every build requests the same full declared set.
+A dead-end is always a registration/consent gap (a declared scope not yet granted), never a
+per-build scope difference.
+
+### Server-rules write fails with `403` even though sign-in worked
+A residual case under `.default`: the account's cached token predates a newly-declared scope, or the
+tenant granted only part of the declared set. **Fix:** confirm `MailboxSettings.ReadWrite` is
+declared (§3) and admin-granted (§4), then **sign in again** — a fresh `.default` acquisition
+refreshes the token to include it. QuickMail surfaces this as an admin-directed message, not an
+in-app re-consent (see `docs/planning/oauth-default-scope-pm-dev-spec.md` §5).
 
 ### Sign-in lands on an unreachable `http://localhost` page, then re-prompts
 A redirect-URI misconfiguration (§2): the loopback redirect is under the wrong platform, uses a

@@ -2,7 +2,11 @@ using System;
 
 namespace QuickMail.Models;
 
-public enum SpecialFolderKind { None, Inbox, Sent, Drafts, Trash, Junk }
+// AllMail/Important/Starred are Gmail's virtual folders (\All, \Important, \Flagged). They mirror
+// content that also lives in real folders, so they are deprioritized when picking the representative
+// copy for a deduplicated aggregate view (see MessageDeduplicator). They are NOT excluded from sync —
+// [Gmail]/All Mail is the only home of archived mail, so excluding it would lose messages.
+public enum SpecialFolderKind { None, Inbox, Sent, Drafts, Trash, Junk, AllMail, Important, Starred }
 
 public class MailFolderModel
 {
@@ -24,6 +28,15 @@ public class MailFolderModel
     public bool ExcludeFromAllMail { get; set; }
     /// <summary>Identifies special-purpose folders for virtual aggregate views.</summary>
     public SpecialFolderKind Kind { get; set; }
+
+    /// <summary>
+    /// Gmail's virtual folders — All Mail, Important, Starred — whose IMAP unread counts overlap the
+    /// Inbox and labels and include old archived mail, so they don't mean "new mail." Their unread
+    /// count is hidden in the folder tree and excluded from the account unread total, otherwise the
+    /// tree shows a high count while the Inbox is empty and the account total double-counts (#227).
+    /// </summary>
+    public bool SuppressUnreadCount =>
+        Kind is SpecialFolderKind.AllMail or SpecialFolderKind.Important or SpecialFolderKind.Starred;
 
     /// <summary>Accessibility label: headers just show the name; folders include unread count.</summary>
     public string AutomationName =>

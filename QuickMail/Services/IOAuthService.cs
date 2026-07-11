@@ -4,7 +4,13 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public record OAuthResult(string AccessToken, string Username);
+/// <param name="IsPersonalMicrosoftAccount">
+/// True when the signed-in account is a personal Microsoft account (its MSAL tenant is the well-known
+/// consumers tenant) — determined authoritatively from the token rather than the email domain. Drives
+/// the per-account scope selection for consumer accounts (#217/#233). Microsoft sign-in only; Google
+/// leaves it false.
+/// </param>
+public record OAuthResult(string AccessToken, string Username, bool IsPersonalMicrosoftAccount = false);
 
 public interface IOAuthService
 {

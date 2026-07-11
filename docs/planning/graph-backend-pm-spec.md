@@ -449,6 +449,12 @@ This diagram traces a single new message from arrival to UI render. **Both** bac
 
 ### 9.3 Authentication
 
+> **Superseded 2026-07-08 (scope values):** QuickMail now requests the per-resource `.default` scope
+> (`https://graph.microsoft.com/.default` for Graph, `https://outlook.office.com/.default` for
+> IMAP/SMTP) instead of the explicit scope lists shown below. The per-call machinery is unchanged;
+> the requested value and the source of truth (the app registration) are what changed. See
+> `oauth-default-scope-pm-dev-spec.md` and `docs/ENTRA-APP-REGISTRATION.md` §3.
+
 The MSAL infrastructure stays. `OAuthService.GetAccessTokenAsync` already handles silent-then-interactive with a DPAPI-encrypted cache.
 
 What changes: `OAuthService` accepts scopes per call instead of hardcoding the IMAP scopes. The caller passes the right scopes for the backend.
@@ -713,12 +719,19 @@ Reference for Phase 4-6 implementers. All endpoints are `https://graph.microsoft
 
 ## Appendix B: Scope comparison
 
-| Today (IMAP/OAuth) | Proposed (Graph) |
+> **Note (2026-07-08):** the table below lists the *delegated permissions* each backend uses. These
+> are now **declared on the app registration** and requested via the per-resource `.default` scope,
+> not sent as an explicit list. `MailboxSettings.Read` was later upgraded to
+> `MailboxSettings.ReadWrite` (server rules). See `oauth-default-scope-pm-dev-spec.md`.
+
+| Declared for IMAP/OAuth (Exchange Online) | Declared for Graph |
 |---|---|
 | `https://outlook.office.com/IMAP.AccessAsUser.All` | `https://graph.microsoft.com/Mail.ReadWrite` |
 | `https://outlook.office.com/SMTP.Send` | `https://graph.microsoft.com/Mail.Send` |
-| (none) | `https://graph.microsoft.com/MailboxSettings.Read` (used to discover well-known folder IDs) |
+| (none) | `https://graph.microsoft.com/MailboxSettings.ReadWrite` (folder IDs + server rules) |
+| — | `https://graph.microsoft.com/User.Read`, `User.ReadBasic.All` |
 | `offline_access` | `offline_access` |
+| requested as `outlook.office.com/.default` | requested as `graph.microsoft.com/.default` |
 
 ## Appendix C: Schema migration SQL
 

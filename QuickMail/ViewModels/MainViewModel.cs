@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -81,6 +82,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DrainCts(ref _flagActionCts);
         DrainCts(ref _prefetchCts);
         DrainCts(ref _bgSyncCts);
+        foreach (var cts in _folderCountCts.Values)
+        {
+            try { cts.Cancel(); cts.Dispose(); } catch { /* best effort at shutdown */ }
+        }
+        _folderCountCts.Clear();
         _calendarHarvestTimer?.Dispose();
         _calendarHarvestTimer = null;
         GC.SuppressFinalize(this);
@@ -123,6 +129,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Retains folder lists for every account that has been connected this session
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
     public IReadOnlyDictionary<Guid, List<MailFolderModel>> CachedFolders => _cachedFolders;
+
+    // Debounced folder-unread-count refresh (issue #227). Folder counts are server-authoritative
+    // (IMAP STATUS), which matters for Gmail where marking one message read propagates \Seen across
+    // every label/folder it belongs to. One pending refresh per account; a burst of mark-reads
+    // coalesces into a single STATUS sweep after a short quiet period.
+    private readonly Dictionary<Guid, CancellationTokenSource> _folderCountCts = new();
+    private static readonly TimeSpan FolderCountRefreshDelay = TimeSpan.FromSeconds(1);
+    // Minimum spacing between STATUS sweeps for one account, so steady reading (each open marks a
+    // message read → one refresh request) doesn't fire a full folder STATUS sweep per message (#227).
+    private static readonly TimeSpan FolderCountMinInterval = TimeSpan.FromSeconds(6);
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _lastFolderCountSweep = new();
 
     // ── Virtual folder sentinels ─────────────────────────────────────────────────
     // IMPORTANT: use \u0000 (Unicode escape, always exactly 4 hex digits) rather than
@@ -1208,13 +1225,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+            // A saved view can span folders (and Gmail copies), so key by global message identity
+            // to collapse duplicate copies against what is already shown (issue #220).
             var existingById = Messages
-                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
+                .ToDictionary(MessageDeduplicator.CollapseKeyFor, StringComparer.Ordinal);
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
-                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
+                var key = MessageDeduplicator.CollapseKeyFor(msg);
                 if (existingById.TryGetValue(key, out var prior))
                 {
                     ReconcileMessageState(prior, msg);
@@ -1609,6 +1628,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // RefreshAsync handles all virtual-folder and saved-view types correctly.
             await RefreshAsync();
 
+            // Refresh every account's folder unread counts to reflect reads/arrivals picked up
+            // during the sync (issue #227). Debounced, so this coalesces with any per-event refreshes.
+            foreach (var acct in accountList)
+                ScheduleFolderCountRefresh(acct.Id);
+
             var count = Messages.Count;
             StatusText = $"{count} messages.";
             LastSyncText = $"Synced {DateTime.Now:t}";
@@ -1637,9 +1661,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Accounts whose change-notifier watchers are currently running, so WireUpWatchers only restarts
-    // them when the connected set actually changes (StartWatchers is a full stop-and-restart).
-    private HashSet<Guid> _watchedAccountIds = new();
+    // Tracks the connected-account set the watchers were last started for, so WireUpWatchers only
+    // restarts them when the set actually changes (StartWatchers is a full stop-and-restart). Extracted
+    // into a small gate so the anti-thrash contract is unit-testable (WatcherStartGateTests).
+    private readonly WatcherStartGate _watcherGate = new();
 
     /// <summary>
     /// Ensures the change-notifier watchers (Graph delta poll / IMAP IDLE) are running for every
@@ -1657,28 +1682,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Only (re)start watchers when the connected set changed — StartWatchers stops and restarts
         // every watcher, so calling it on each activation would thrash the poll loops for no reason.
-        if (_changeNotifier != null
-            && _bgSyncCts is { IsCancellationRequested: false }
-            && !connectedIds.SetEquals(_watchedAccountIds))
+        if (_changeNotifier != null && _watcherGate.HasChanged(connectedIds))
         {
-            _changeNotifier.StartWatchers(connected, _bgSyncCts.Token);
-            _watchedAccountIds = connectedIds;
-
-            // (Re)subscribe the reachability handler. It resolves from the LIVE Accounts collection
-            // (not a snapshot), so it never goes stale (issue #126). Unsubscribe first so repeated
-            // calls don't stack handlers; it fires on the ThreadPool, so marshal UI work onto the UI thread.
-            if (_onReachabilityChanged != null)
-                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
-            _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
+            // Watchers run under the background-sync lifetime. In the normal launch order
+            // StartBackgroundSyncAsync runs first and creates _bgSyncCts; guard against a null/cancelled
+            // token so we never start watchers against a dead one. Log rather than skip silently — a
+            // silent skip would leave a connected account unpolled with no trace (#215 review). This is
+            // reachable only if a connect path (SelectAccountAsync / RefreshAccountList) somehow runs
+            // before the first StartBackgroundSyncAsync, which the normal startup sequence prevents.
+            if (_bgSyncCts is not { IsCancellationRequested: false })
             {
-                var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-                if (account != null)
+                LogService.Log("WireUpWatchers: connected set changed but the background-sync token is not " +
+                               "active; watchers not started (only expected if a connect path runs before " +
+                               "StartBackgroundSyncAsync).");
+            }
+            else
+            {
+                _changeNotifier.StartWatchers(connected, _bgSyncCts.Token);
+                _watcherGate.MarkStarted(connectedIds); // advance state only when watchers actually start
+
+                // (Re)subscribe the reachability handler. It resolves from the LIVE Accounts collection
+                // (not a snapshot), so it never goes stale (issue #126). Unsubscribe first so repeated
+                // calls don't stack handlers; it fires on the ThreadPool, so marshal UI work onto the UI thread.
+                if (_onReachabilityChanged != null)
+                    _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
+                _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
                 {
-                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                    ApplyAccountStatus(account, folders);
-                }
-            });
-            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+                    var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+                    if (account != null)
+                    {
+                        var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                        ApplyAccountStatus(account, folders);
+                    }
+                });
+                _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+            }
         }
 
         ConnectionStatusText = _cachedFolders.Count > 0
@@ -1793,10 +1831,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Build a lookup map once so dedupe and flag-reconciliation are both O(1) per incoming
         // item instead of O(n) scans — critical in All Mail views with thousands of messages.
-        var rawByKey = new Dictionary<(string, Guid, string), MailMessageSummary>(_rawMessages.Count);
+        // In aggregate/virtual views, key by the global message identity so an incoming copy from a
+        // different folder (e.g. the Gmail All Mail copy of an already-shown INBOX message) is
+        // recognized as a duplicate and skipped (issue #220). Real-folder views key by per-folder UID.
+        Func<MailMessageSummary, string> keyOf = IsVirtualFolder(selected)
+            ? MessageDeduplicator.CollapseKeyFor
+            : MessageDeduplicator.PerFolderKeyFor;
+        var rawByKey = new Dictionary<string, MailMessageSummary>(_rawMessages.Count);
         foreach (var e in _rawMessages)
-            rawByKey.TryAdd((e.MessageId, e.AccountId, e.FolderName), e);
-        var seen = new HashSet<(string, Guid, string)>(rawByKey.Keys);
+            rawByKey.TryAdd(keyOf(e), e);
+        var seen = new HashSet<string>(rawByKey.Keys);
 
         // Collect truly new messages; add them to _rawMessages immediately so the
         // search pool stays in sync with what the list will eventually show.
@@ -1810,13 +1854,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (msg.IsServerFlagged && msg.FlagId == null)
                 msg.FlagId = Models.FlagDefinition.BuiltInFlagId.ToString();
 
-            if (!seen.Add((msg.MessageId, msg.AccountId, msg.FolderName)))
+            var key = keyOf(msg);
+            if (!seen.Add(key))
             {
                 // Existing message: reconcile external flag change (§9.3).
                 // If the server now reports not-flagged but the in-memory message still has
                 // a flag set, another client cleared it — clear our local flag to match.
                 if (!msg.IsServerFlagged &&
-                    rawByKey.TryGetValue((msg.MessageId, msg.AccountId, msg.FolderName), out var existing) &&
+                    rawByKey.TryGetValue(key, out var existing) &&
                     existing.FlagId != null)
                 {
                     existing.FlagId = null;
@@ -1882,6 +1927,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (inbox is null) return;
 
         LogService.Log($"IDLE: new mail detected for {account.AccountLabel} INBOX — syncing.");
+
+        // New mail changes server unread counts; refresh them (debounced, STATUS-authoritative).
+        ScheduleFolderCountRefresh(accountId);
 
         _ = Task.Run(async () =>
         {
@@ -1985,12 +2033,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Stores raw messages and applies all active filters.
     private void SetMessages(IEnumerable<MailMessageSummary> messages)
     {
-        _rawMessages = messages.ToList();
+        var list = messages as List<MailMessageSummary> ?? messages.ToList();
+        // Aggregate/virtual views union multiple folders, so one physical message can arrive as
+        // several per-folder copies (notably Gmail: INBOX + All Mail + labels). Collapse them to one
+        // representative here (issue #220). Single real-folder views show their own contents as-is.
+        // Note: on the very first cached load (InitialLoadAsync) _cachedFolders is not yet populated,
+        // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
+        // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
+        if (IsVirtualFolder(SelectedFolder))
+            list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
+        _rawMessages = list;
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
         else
             foreach (var m in _rawMessages) m.Preview = TruncatePreview(m.Preview, _previewLines);
         ApplyFiltersAndSearch();
+    }
+
+    /// <summary>
+    /// Resolves a message's source folder to its <see cref="SpecialFolderKind"/> from the cached
+    /// folder list, so the deduplicator can rank representative copies (e.g. prefer the Inbox copy
+    /// over a Gmail All Mail copy). Returns <see cref="SpecialFolderKind.None"/> for ordinary
+    /// folders/labels or when the folder is not in the cache.
+    /// </summary>
+    private SpecialFolderKind ResolveFolderKind(MailMessageSummary msg)
+    {
+        if (_cachedFolders.TryGetValue(msg.AccountId, out var folders))
+            foreach (var f in folders)
+                if (string.Equals(f.FullName, msg.FolderName, StringComparison.OrdinalIgnoreCase))
+                    return f.Kind;
+        return SpecialFolderKind.None;
     }
 
     // Re-applies the status filter and search text to _rawMessages.
@@ -2116,11 +2188,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RemoveVanishedMessages(IReadOnlyList<MailMessageSummary> newMessages)
     {
-        var fetchedKeys = new HashSet<(string, Guid, string)>();
+        // Key by global message identity, not per-folder UID: in a deduped aggregate view the shown
+        // row is one representative copy, but a sibling copy in another folder keeps the message
+        // present. Removing on the per-folder key alone would drop the representative when only its
+        // home-folder copy vanished (e.g. a Gmail message archived out of INBOX while its All Mail
+        // copy remains) — a message that merely moved, not deleted (issue #220). CollapseKeyFor
+        // falls back to the per-folder key for messages with no Message-ID, preserving old behavior.
+        var fetchedKeys = new HashSet<string>(StringComparer.Ordinal);
         var minDateByFolder = new Dictionary<(Guid, string), DateTimeOffset>();
         foreach (var m in newMessages)
         {
-            fetchedKeys.Add((m.MessageId, m.AccountId, m.FolderName));
+            fetchedKeys.Add(MessageDeduplicator.CollapseKeyFor(m));
             var fk = (m.AccountId, m.FolderName);
             if (!minDateByFolder.TryGetValue(fk, out var min) || m.Date < min)
                 minDateByFolder[fk] = m.Date;
@@ -2129,7 +2207,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var vanished = Messages.Where(m =>
             minDateByFolder.TryGetValue((m.AccountId, m.FolderName), out var min) &&
             m.Date >= min &&
-            !fetchedKeys.Contains((m.MessageId, m.AccountId, m.FolderName))).ToList();
+            !fetchedKeys.Contains(MessageDeduplicator.CollapseKeyFor(m))).ToList();
         if (vanished.Count == 0) return;
 
         // Mirror RemoveFromActiveViewAsync: remove from the backing _rawMessages too (else they
@@ -2218,7 +2296,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         account.IsConnected = true;
-        account.TotalUnread = folders.Sum(f => f.UnreadCount);
+        // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
+        // Inbox and labels, so summing them double-counts and inflates the account total (#227).
+        account.TotalUnread = folders.Where(f => !f.SuppressUnreadCount).Sum(f => f.UnreadCount);
     }
 
     /// <summary>
@@ -3008,8 +3088,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageDetail = detail;
             // Window mode shows messages in standalone windows; never open the reading pane there.
             IsMessageOpen = MessageOpenMode != MessageOpenMode.Window;
+            var wasUnread = !summary.IsRead;
             summary.IsRead = true;
             summary.HasAttachments = detail.Attachments.Count > 0;
+            // Opening a message marks it read here (not via MarkMessagesReadAsync), so refresh the
+            // folder unread counts on this path too — otherwise they stay stale until the next
+            // manual refresh (issue #227 follow-up).
+            if (wasUnread)
+                ScheduleFolderCountRefresh(summary.AccountId);
             if (!OnlineMode)
             {
                 _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.MessageId, true)
@@ -3294,15 +3380,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            // All Mail unions every folder, so key by global message identity — a message's INBOX
+            // and Gmail All Mail/label copies collapse to the one already shown (issue #220).
             var existingById = Messages
-                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
+                .ToDictionary(MessageDeduplicator.CollapseKeyFor, StringComparer.Ordinal);
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                     return;
 
-                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
+                var key = MessageDeduplicator.CollapseKeyFor(msg);
                 if (existingById.TryGetValue(key, out var prior))
                 {
                     ReconcileMessageState(prior, msg);
@@ -3700,14 +3788,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return;
             }
 
+            // Per-account All Mail unions the account's folders, so key by global message identity
+            // to collapse Gmail's per-folder duplicate copies against what is shown (issue #220).
             var existingById = Messages
-                .ToDictionary(m => (m.MessageId, m.AccountId, m.FolderName));
+                .ToDictionary(MessageDeduplicator.CollapseKeyFor, StringComparer.Ordinal);
 
             foreach (var msg in newMessages.OrderByDescending(m => m.Date))
             {
                 if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
-                var key = (msg.MessageId, msg.AccountId, msg.FolderName);
+                var key = MessageDeduplicator.CollapseKeyFor(msg);
                 if (existingById.TryGetValue(key, out var prior))
                 {
                     ReconcileMessageState(prior, msg);
@@ -3866,6 +3956,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 .LogFaults($"mark read batch ({group.Key.FolderName}, {uids.Count} messages)");
         }
 
+        // Refresh folder unread counts once the server has the reads (issue #227). Debounced and
+        // server-authoritative so Gmail's cross-label \Seen propagation is reflected in every folder.
+        foreach (var accountId in unread.Select(m => m.AccountId).Distinct())
+            ScheduleFolderCountRefresh(accountId);
+
         return Task.CompletedTask;
     }
 
@@ -3961,6 +4056,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
+
+            // Now the server deletes have landed, refresh folder unread counts — but only if an
+            // unread message actually left a folder (deleting a read message changes no count).
+            // Scheduled here, not before the await, so the debounced STATUS sweep can't read a
+            // pre-delete count and clobber the optimistic decrement (#227 follow-up).
+            if (toDelete.Any(m => !m.IsRead))
+                foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
+                    ScheduleFolderCountRefresh(acctId);
 
             var count = toDelete.Count;
             StatusText = Messages.Count > 0
@@ -4662,6 +4765,85 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Schedules a debounced, server-authoritative refresh of the account's folder unread counts
+    /// (issue #227). Called after events that change unread state — mark-read, new mail, sync. A
+    /// pending refresh for the same account is cancelled and rescheduled, so a burst of mark-reads
+    /// costs one STATUS sweep. Unlike <see cref="RefreshFolderListAsync"/> this updates counts in
+    /// place and does not rebuild the tree, so folder-tree keyboard focus is preserved.
+    /// </summary>
+    private void ScheduleFolderCountRefresh(Guid accountId)
+    {
+        if (accountId == Guid.Empty) return;
+        // Only IMAP accounts get STATUS sweeps: skip unknown ids and Graph accounts (which get counts
+        // from a different path). Guarding null here avoids scheduling a doomed GetFoldersAsync.
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account is null || account.BackendKind != BackendKind.ImapSmtp) return;
+
+        if (_folderCountCts.TryGetValue(accountId, out var old))
+        {
+            try { old.Cancel(); old.Dispose(); } catch { }
+        }
+        var cts = new CancellationTokenSource();
+        _folderCountCts[accountId] = cts;
+        _ = RefreshFolderCountsDebouncedAsync(accountId, cts.Token);
+    }
+
+    private async Task RefreshFolderCountsDebouncedAsync(Guid accountId, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(FolderCountRefreshDelay, ct);
+            // Throttle: keep at least FolderCountMinInterval between sweeps for this account.
+            if (_lastFolderCountSweep.TryGetValue(accountId, out var last))
+            {
+                var wait = FolderCountMinInterval - (DateTimeOffset.UtcNow - last);
+                if (wait > TimeSpan.Zero) await Task.Delay(wait, ct);
+            }
+        }
+        catch (OperationCanceledException) { return; }
+
+        try
+        {
+            var fresh = await _imap.GetFoldersAsync(accountId, ct);
+            _lastFolderCountSweep[accountId] = DateTimeOffset.UtcNow;
+            if (ct.IsCancellationRequested) return;
+            _ui.Post(() => ApplyFolderCounts(accountId, fresh));
+        }
+        catch (OperationCanceledException) { /* superseded or shutting down — fine */ }
+        catch (Exception ex)
+        {
+            LogService.Log($"RefreshFolderCounts {accountId}", ex);
+        }
+    }
+
+    /// <summary>
+    /// Applies freshly-queried unread counts onto the existing cached folder models and notifies
+    /// the corresponding tree nodes in place (no tree rebuild). Runs on the UI thread.
+    /// </summary>
+    private void ApplyFolderCounts(Guid accountId, List<MailFolderModel> fresh)
+    {
+        if (!_cachedFolders.TryGetValue(accountId, out var cached)) return;
+
+        var byName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in fresh) byName[f.FullName] = f.UnreadCount;
+
+        foreach (var c in cached)
+            if (byName.TryGetValue(c.FullName, out var unread))
+                c.UnreadCount = unread;
+
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account != null)
+            account.TotalUnread = cached.Where(f => !f.SuppressUnreadCount).Sum(f => f.UnreadCount);
+
+        // Refresh the count display on the existing nodes for this account — no rebuild, so the
+        // user's place in the folder tree is undisturbed.
+        if (FolderTree != null)
+            foreach (var n in FlattenAllNodes(FolderTree))
+                if (n.Folder is { } mf && mf.AccountId == accountId)
+                    n.NotifyUnreadChanged();
+    }
+
+    /// <summary>
     /// Removes a folder and its descendants from the cached folder list so the tree reflects a
     /// delete immediately, without waiting on an eventually-consistent server re-fetch. Graph models
     /// children by <see cref="MailFolderModel.ParentId"/>; IMAP encodes them in the separator path.
@@ -4858,6 +5040,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (!OnlineMode)
                     await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
             }
+
+            // Moving an unread message changes both the source and destination folder counts; refresh
+            // after the server move lands (only when an unread message actually moved) (#227 follow-up).
+            if (messages.Any(m => !m.IsRead))
+                foreach (var acctId in messages.Select(m => m.AccountId).Distinct())
+                    ScheduleFolderCountRefresh(acctId);
 
             foreach (var msg in messages)
                 Messages.Remove(msg);

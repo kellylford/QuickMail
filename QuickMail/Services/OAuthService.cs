@@ -30,13 +30,59 @@ public class OAuthService : IOAuthService
         "https://outlook.office.com/.default",
     ];
 
+    // Work/school (AAD) Graph accounts: `.default` requests exactly the app-registration's declared
+    // permissions, which matches what admin consent grants (fixes the consent loop, #208).
     public static readonly string[] GraphMailScopes =
     [
         "https://graph.microsoft.com/.default",
     ];
 
-    private static string[] DefaultScopesFor(AccountModel account)
-        => account.BackendKind == BackendKind.MicrosoftGraph ? GraphMailScopes : ImapSmtpScopes;
+    // Personal Microsoft accounts (Outlook.com/Hotmail/Live): `.default` under-delivers for MSA,
+    // because personal accounts have no admin-consent model — `.default` returns only the permissions
+    // the user already consented to, which came back read-only (delete/move → 403 ErrorAccessDenied,
+    // #217). Request the explicit delegated mail scopes so the user is prompted to consent to read AND
+    // write. Org-only permissions (User.ReadBasic.All directory search, MailboxSettings.ReadWrite
+    // server rules) don't apply to personal accounts and are omitted.
+    public static readonly string[] GraphMailScopesPersonal =
+    [
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/Mail.Send",
+        "https://graph.microsoft.com/User.Read",
+    ];
+
+    // Authoritative "is this a personal Microsoft account" signal: every consumer account lives in the
+    // well-known MSA "consumers" tenant. Detected from the MSAL account at sign-in and persisted on
+    // AccountModel (#233), so it's correct even for personal accounts on custom/vanity domains.
+    internal const string MsaConsumersTenantId = "9188040d-6c67-4c5b-b112-36a304b66dad";
+
+    // FALLBACK only — the email-domain guess used before a token exists (very first sign-in) and for
+    // accounts added before tenant detection shipped. Covers the common personal-account domains; a
+    // personal account on a custom domain is missed here, which is exactly why the tenant id above is
+    // the authoritative source once available.
+    private static readonly string[] PersonalMicrosoftDomains =
+    {
+        "outlook.com", "hotmail.com", "live.com", "msn.com", "passport.com", "windowslive.com",
+        "hotmail.co.uk", "live.co.uk", "outlook.jp", "outlook.de", "outlook.fr",
+    };
+
+    private static bool IsPersonalMicrosoftDomain(string? username)
+    {
+        if (string.IsNullOrWhiteSpace(username)) return false;
+        var at = username.LastIndexOf('@');
+        if (at < 0 || at == username.Length - 1) return false;
+        return PersonalMicrosoftDomains.Contains(username[(at + 1)..].Trim().ToLowerInvariant());
+    }
+
+    internal static string[] DefaultScopesFor(AccountModel account)
+    {
+        if (account.BackendKind != BackendKind.MicrosoftGraph)
+            return ImapSmtpScopes;
+        // Personal accounts need explicit scopes to obtain write access; work/school uses `.default`.
+        // Prefer the persisted, tenant-derived flag; fall back to the email-domain guess only when the
+        // account hasn't been detected yet (first sign-in, or added before detection shipped).
+        var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
+        return isPersonal ? GraphMailScopesPersonal : GraphMailScopes;
+    }
 
     private readonly string _cacheDir;
     private const string CacheFileName = "msal.cache";
@@ -166,8 +212,14 @@ public class OAuthService : IOAuthService
             builder = builder.WithLoginHint(account.Username);
 
         var result = await builder.ExecuteAsync(ct);
-        LogService.Log($"OAuthService: interactive sign-in complete for {result.Account.Username}");
-        return new OAuthResult(result.AccessToken, result.Account.Username);
+        // Authoritative personal-vs-work detection from the token: personal Microsoft accounts sign in
+        // under the well-known MSA consumers tenant. The caller persists this on the account so scope
+        // selection is correct even for consumer accounts on custom domains (#233).
+        var isPersonal = string.Equals(result.Account?.HomeAccountId?.TenantId, MsaConsumersTenantId,
+            StringComparison.OrdinalIgnoreCase);
+        LogService.Log($"OAuthService: interactive sign-in complete for {result.Account.Username} " +
+                       $"(personal Microsoft account: {isPersonal}).");
+        return new OAuthResult(result.AccessToken, result.Account.Username, isPersonal);
     }
 
     public async Task SignOutAsync(AccountModel account)
