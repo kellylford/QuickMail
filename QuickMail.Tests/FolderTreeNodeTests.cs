@@ -59,6 +59,26 @@ public class FolderTreeNodeTests
     }
 
     [Fact]
+    public void GmailVirtualFolder_SuppressesUnreadCountEverywhere()
+    {
+        // All Mail / Important / Starred report counts that overlap the Inbox and include archived
+        // mail, so the count is hidden in the tree and left out of the accessible name (#227).
+        var node = new FolderTreeNode
+        {
+            Folder = new MailFolderModel
+            {
+                FullName = "[Gmail]/All Mail", DisplayName = "All Mail",
+                UnreadCount = 23, Kind = SpecialFolderKind.AllMail,
+            },
+            Label = "All Mail",
+        };
+
+        Assert.Equal("", node.ItemStatusLabel);
+        Assert.Equal("", node.UnreadDisplay);
+        Assert.Equal("All Mail", node.AutomationName);
+    }
+
+    [Fact]
     public void NotifyUnreadChanged_DoesNotRaiseForExpansion()
     {
         var node = NodeFor(2);

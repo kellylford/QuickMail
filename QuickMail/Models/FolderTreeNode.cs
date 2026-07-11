@@ -28,7 +28,11 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// Do not move the count back out of the Name without checking with a screen-reader user first.
     /// </summary>
     public string AutomationName =>
-        Folder is { UnreadCount: > 0 } f ? $"{Label}, {f.UnreadCount} unread" : Label;
+        ShowUnread ? $"{Label}, {Folder!.UnreadCount} unread" : Label;
+
+    // Gmail's All Mail / Important / Starred report unread counts that overlap the Inbox and include
+    // archived mail, so they're hidden here to avoid a misleading count (issue #227).
+    private bool ShowUnread => Folder is { UnreadCount: > 0, SuppressUnreadCount: false };
 
     /// <summary>
     /// UIA ItemStatus string used by AutomationProperties.ItemStatus on the TreeViewItem.
@@ -36,14 +40,14 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// Empty for folders with no unread messages and for header/group nodes.
     /// </summary>
     public string ItemStatusLabel =>
-        Folder is { UnreadCount: > 0 } ? $"{Folder.UnreadCount} unread" : string.Empty;
+        ShowUnread ? $"{Folder!.UnreadCount} unread" : string.Empty;
 
     /// <summary>
     /// Visual unread badge shown next to the folder label, e.g. "(5)".
     /// Empty string for folders with no unread messages and for header/group nodes.
     /// </summary>
     public string UnreadDisplay =>
-        Folder is { UnreadCount: > 0 } ? $"({Folder.UnreadCount})" : string.Empty;
+        ShowUnread ? $"({Folder!.UnreadCount})" : string.Empty;
 
     private bool _isExpanded;
 

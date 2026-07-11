@@ -2236,7 +2236,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         account.IsConnected = true;
-        account.TotalUnread = folders.Sum(f => f.UnreadCount);
+        // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
+        // Inbox and labels, so summing them double-counts and inflates the account total (#227).
+        account.TotalUnread = folders.Where(f => !f.SuppressUnreadCount).Sum(f => f.UnreadCount);
     }
 
     /// <summary>
@@ -3023,8 +3025,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageDetail = detail;
             // Window mode shows messages in standalone windows; never open the reading pane there.
             IsMessageOpen = MessageOpenMode != MessageOpenMode.Window;
+            var wasUnread = !summary.IsRead;
             summary.IsRead = true;
             summary.HasAttachments = detail.Attachments.Count > 0;
+            // Opening a message marks it read here (not via MarkMessagesReadAsync), so refresh the
+            // folder unread counts on this path too — otherwise they stay stale until the next
+            // manual refresh (issue #227 follow-up).
+            if (wasUnread)
+                ScheduleFolderCountRefresh(summary.AccountId);
             if (!OnlineMode)
             {
                 _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.MessageId, true)
@@ -3904,6 +3912,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (toDelete.Count == 0) return;
 
+        // Deleting can change folder unread counts (an unread message leaves its folder); refresh
+        // them authoritatively. Debounced, so it settles after the move-to-trash lands (#227 follow-up).
+        foreach (var acctId in toDelete.Select(m => m.AccountId).Distinct())
+            ScheduleFolderCountRefresh(acctId);
+
         var minIdx = toDelete.Min(m => Messages.IndexOf(m));
         var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";
         StatusText    = $"Deleting {label}…";
@@ -4743,7 +4756,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 c.UnreadCount = unread;
 
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account != null) account.TotalUnread = cached.Sum(f => f.UnreadCount);
+        if (account != null)
+            account.TotalUnread = cached.Where(f => !f.SuppressUnreadCount).Sum(f => f.UnreadCount);
 
         // Refresh the count display on the existing nodes for this account — no rebuild, so the
         // user's place in the folder tree is undisturbed.
