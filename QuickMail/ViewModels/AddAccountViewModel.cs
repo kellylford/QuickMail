@@ -120,6 +120,7 @@ public partial class AddAccountViewModel : AccountEditorViewModel
         Username = Username,
         AuthType = AuthType,
         BackendKind = BackendKind,
+        IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
         ImapHost = ImapHost,
         ImapPort = ImapPort,
         ImapUseSsl = ImapUseSsl,

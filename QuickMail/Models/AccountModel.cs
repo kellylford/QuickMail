@@ -17,6 +17,14 @@ public partial class AccountModel : ObservableObject
     /// <summary>Which protocol stack this account uses. Fixed at account creation.</summary>
     public BackendKind BackendKind { get; set; } = BackendKind.ImapSmtp;
 
+    /// <summary>
+    /// True if this is a personal Microsoft account (its MSAL tenant is the consumers tenant), null if
+    /// not yet detected. Set from the token at Microsoft sign-in and used to pick explicit Graph scopes
+    /// for consumer accounts — which is correct even on custom domains, where the email-domain guess
+    /// fails (#233). Null falls back to that domain guess.
+    /// </summary>
+    public bool? IsPersonalMicrosoftAccount { get; set; }
+
     /// <summary>Optional Azure AD tenant ID for Graph accounts. Null = "common" authority.</summary>
     public string? TenantId { get; set; }
 
