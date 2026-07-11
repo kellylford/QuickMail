@@ -68,7 +68,7 @@ public class OAuthService : IOAuthService
         return PersonalMicrosoftDomains.Contains(username[(at + 1)..].Trim().ToLowerInvariant());
     }
 
-    private static string[] DefaultScopesFor(AccountModel account)
+    internal static string[] DefaultScopesFor(AccountModel account)
     {
         if (account.BackendKind != BackendKind.MicrosoftGraph)
             return ImapSmtpScopes;
