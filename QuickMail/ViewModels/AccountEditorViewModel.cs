@@ -97,6 +97,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     partial void OnAuthTypeChanged(AuthType value) => OnAuthTypeChangedInternal(value);
 
+    /// <summary>
+    /// Detected from the token at Microsoft sign-in (null until signed in). Carried to
+    /// <see cref="AccountModel.IsPersonalMicrosoftAccount"/> by the derived VM's ToAccountModel so
+    /// scope selection is correct even for personal accounts on custom domains (#233).
+    /// </summary>
+    public bool? IsPersonalMicrosoftAccount { get; private set; }
+
     [RelayCommand]
     private async Task SignInMicrosoftAsync()
     {
@@ -108,6 +115,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind };
             var result = await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
             Username = result.Username;
+            IsPersonalMicrosoftAccount = result.IsPersonalMicrosoftAccount;
             StatusText = $"Signed in as {result.Username}";
         }
         catch (Exception ex)

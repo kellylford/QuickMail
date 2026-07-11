@@ -35,4 +35,31 @@ public class OAuthServiceScopeSelectionTests
         var account = new AccountModel { BackendKind = BackendKind.ImapSmtp, Username = "me@outlook.com" };
         Assert.Same(OAuthService.ImapSmtpScopes, OAuthService.DefaultScopesFor(account));
     }
+
+    [Fact]
+    public void CustomDomainPersonalAccount_StoredTenantFlagOverridesDomainGuess() // #233
+    {
+        // A personal Microsoft account on a custom/vanity domain: the email-domain guess would say
+        // "work" and break write, but the persisted tenant-derived flag makes it use explicit scopes.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph,
+            Username = "me@myvanitydomain.com",
+            IsPersonalMicrosoftAccount = true,
+        };
+        Assert.Same(OAuthService.GraphMailScopesPersonal, OAuthService.DefaultScopesFor(account));
+    }
+
+    [Fact]
+    public void WorkAccountOnPersonalLookingDomain_StoredFlagFalseUsesDefault()
+    {
+        // Flag explicitly false wins over a personal-looking domain → work/school (`.default`).
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph,
+            Username = "user@outlook.com",
+            IsPersonalMicrosoftAccount = false,
+        };
+        Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
+    }
 }
