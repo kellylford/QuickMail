@@ -71,16 +71,49 @@ Per Microsoft Learn (verified 2026-06):
 - **List / Get** message rules → `MailboxSettings.Read`
 - **Create / Update / Delete** message rules → `MailboxSettings.ReadWrite`
 
-**Current state:** `OAuthService.GraphMailScopes` requested `MailboxSettings.Read` before this work — **updated to `MailboxSettings.ReadWrite` by the scope-bump PR** (see §4 and §19; `QuickMail/Services/OAuthService.cs`). So **reading** server rules works with no change, and **writing** has the scope it needs once that PR merges.
+> **Updated 2026-07-08 — QuickMail now requests the per-resource `.default` scope.** Sign-in asks
+> for `https://graph.microsoft.com/.default`, i.e. **exactly the delegated permissions declared on
+> the app registration**. There is no runtime incremental/step-up consent. The permission set is
+> defined by the app registration, not by a code scope list. See
+> `oauth-default-scope-pm-dev-spec.md` for the full rationale (short version: in admin-consent
+> tenants a non-admin user can't self-heal a missing scope anyway, so an in-app "Reauthorize" flow
+> helps almost no one). The design below is restated to match.
 
-**Consequence:** Bumping the scope forces a **re-consent**. On the next interactive token acquisition, MSAL will prompt the user to grant the new permission. Existing Graph accounts will silently fail writes until they re-consent.
+**Current state:** `MailboxSettings.ReadWrite` (a superset of `MailboxSettings.Read`) is declared on
+the app registration (`docs/ENTRA-APP-REGISTRATION.md` §3). Under `.default`, once that declaration
+is in place and consent is granted, the token carries the write permission and both **reading** and
+**writing** server rules work.
+
+**Consequence:** Because `MailboxSettings.ReadWrite` is part of the declared set, `.default` requests
+it at **sign-in** — so it's consented (or refused) as part of the normal sign-in consent, not lazily
+at first write. In steady state a signed-in Graph account therefore already has the write scope and
+rules just work; a tenant that won't grant the full set gates **sign-in itself** (the same admin
+gate as core mail), not the rules feature specifically. A feature-level `403` is only a **residual**
+(a token cached before the scope was declared, or a partial tenant grant) — handled by Path E with
+an admin-directed message, never an in-app "Reauthorize." Full semantics:
+`oauth-default-scope-pm-dev-spec.md` §5.
 
 **Design decisions:**
-1. **Add `MailboxSettings.ReadWrite` to `GraphMailScopes` now, ahead of GA** (replacing `MailboxSettings.Read`, which it supersedes). **This is done — see the separate scope PR**, landed independently of the server-rules feature work.
-2. **Trigger re-consent gracefully.** When a write returns `403`/insufficient-scope, surface a clear, accessible message ("QuickMail needs additional permission to change server rules. Choose Reauthorize to grant it.") and route to the existing interactive sign-in. Never fail silently (CLAUDE.md: no silent empty state from caught exceptions). This is a **belt-and-suspenders** path: with decision (1) in place, accounts that consent after GA already have the scope and should never hit it.
-3. **Read-only fallback works without re-consent.** If an account somehow lacks the write scope, the manager still **lists** rules (read scope) and only the write actions prompt for the upgrade.
+1. **Declare `MailboxSettings.ReadWrite` on the app registration ahead of GA.** Because the Graph
+   backend is still feature-gated and no production account has consented yet, declaring the write
+   scope before the gate lifts means every user's *first* consent already includes it — no one ever
+   faces a second prompt for server rules. (This replaces the earlier "add it to the code scope
+   array" framing; under `.default` the registration is the source of truth.)
+2. **On `403`, show an actionable admin-directed message — not an in-app re-consent.** When a write
+   returns `403`/insufficient-scope, surface a clear, accessible message ("QuickMail can't change
+   server rules because your organization hasn't granted it permission. Ask your administrator to
+   grant it, then sign in again.") Never fail silently (CLAUDE.md: no silent empty state). An
+   in-app "Reauthorize" button is deliberately **not** offered: `.default` re-authorization cannot
+   grant a permission the tenant hasn't approved, and in admin-consent tenants the user isn't the
+   one who can approve it.
+3. **Read-only fallback still works.** If an account lacks the write permission, the manager still
+   **lists** rules (the granted read subset covers it) and only the write actions fail with the
+   admin-directed `403` message above.
 
-> **Decided (consent timing): capture up front, pre-GA.** Because the Graph backend is still behind a feature gate, **no production account has consented to any Graph scope yet**. Requesting `MailboxSettings.ReadWrite` *before* the gate is lifted means the permission set granted at every user's *first* sign-in already includes it — so no one ever sees a second consent prompt for the server-rules feature. This is strictly better than a lazy/on-first-write bump (which only helps once consent already exists) and is why the scope change ships separately and early, not with this feature.
+> **Decided (consent timing): capture up front, pre-GA.** With decision (1) — the write scope
+> declared on the registration before the feature gate lifts — every account's first `.default`
+> consent already carries it, so GA users never hit the `403` path at all. It exists only as a
+> safety net for a tenant whose admin somehow removed or never granted the declared scope.
 
 ---
 
@@ -122,7 +155,7 @@ All under the Inbox folder. `GraphClient` already implements every verb needed.
 - A Graph user can list, create, edit, toggle, reorder, and delete rules without leaving QuickMail, using only the keyboard.
 - A non-Graph (IMAP) account never sees the Server Rules entry point (the command's `isAvailable` returns false).
 - Every action is reachable from the window's command palette.
-- A write attempt without `MailboxSettings.ReadWrite` produces an actionable re-consent prompt, never a silent no-op.
+- A write attempt without `MailboxSettings.ReadWrite` produces an actionable, admin-directed message, never a silent no-op.
 
 ### 6.3 Common subset (editable in v1)
 
@@ -262,8 +295,8 @@ registry.Register(new CommandDefinition(
 2. **Reorder:** Move Up / Move Down change `sequence`; focus stays on the moved rule. Announce (Status): "Moved up. Now 2 of 5."
 3. **Delete:** Delete command → View shows a confirmation (modeless or a `MessageBox` from the View, never the VM). On confirm, rule removed; focus moves to the next rule (or the one above if last). Announce (Result): "Rule deleted."
 
-### Path E — re-consent
-1. User Saves a create/edit but the account lacks `MailboxSettings.ReadWrite`. Instead of failing, the View shows: "QuickMail needs permission to change server rules. Reauthorize?" On confirm, interactive sign-in runs; on success, the original action retries. Announce (Status): "Reauthorized." then (Result) "Rule created."
+### Path E — insufficient permission (admin-directed)
+1. User Saves a create/edit but the tenant hasn't granted `MailboxSettings.ReadWrite`. The save returns `403`. QuickMail does **not** blank the list or close the window; the View shows an admin-directed message and announces (Hint): "QuickMail can't change server rules because your organization hasn't granted it permission. Ask your administrator to grant it, then sign in again." Focus stays on the editor; Escape returns to the list, which still shows existing rules (reading works under the granted subset). After an admin grants the permission tenant-wide, the user signs in again and `.default` picks it up — the save then succeeds. (No in-app "Reauthorize" button: see §4.)
 
 ---
 
@@ -272,9 +305,9 @@ registry.Register(new CommandDefinition(
 - **F6 ring (within `ServerRulesWindow`):** list ⇄ account selector ⇄ summary region. (This is the window's own ring; it does not touch `MainWindow`'s `CycleFocusAsync`.)
 - **Commands added to `CommandRegistry`:** `mail.serverRules` (category Mail, no default key, `isAvailable` = has Graph account). Window-scoped actions live in the window's own palette, not the global registry.
 - **`AutomationProperties.Name` introduced:** "Server rules", "Rule name", "Conditions", "Actions", "Move to folder", "Account". (Short labels only.)
-- **`AccessibilityHelper.Announce` calls added:** open Hint; create/update/delete/toggle Results; reorder + reauthorize Status. Each gated by the matching user config (`AnnounceHints` / `AnnounceResults` / `AnnounceStatus`).
+- **`AccessibilityHelper.Announce` calls added:** open Hint; create/update/delete/toggle Results; reorder Status; the insufficient-permission `403` path is a Hint. Each gated by the matching user config (`AnnounceHints` / `AnnounceResults` / `AnnounceStatus`).
 - **VM state:** `MainViewModel` gains `OpenServerRulesCommand` + `ServerRulesRequested` event; no change to existing rule state.
-- **OAuth scope:** `GraphMailScopes` gains `MailboxSettings.ReadWrite` (supersedes `MailboxSettings.Read`).
+- **OAuth scope:** `MailboxSettings.ReadWrite` is declared on the app registration (source of truth); sign-in requests `https://graph.microsoft.com/.default`, so the token carries it once granted. See `oauth-default-scope-pm-dev-spec.md`.
 - **DI:** `IServerRuleService` / `GraphServerRuleService` constructed in `App.xaml.cs`, passed to `MainWindow` for window construction.
 
 ---
@@ -289,7 +322,7 @@ registry.Register(new CommandDefinition(
 | Rule deleted | "Rule deleted." | Result |
 | Enable/disable | "Rule disabled." | Result |
 | Reorder | "Moved up. Now 2 of 5." | Status |
-| Reauthorize done | "Reauthorized." | Status |
+| Write blocked (403) | "QuickMail can't change server rules because your organization hasn't granted it permission. Ask your administrator to grant it, then sign in again." | Hint |
 | Non-editable rule focused | "This rule can't be edited in QuickMail yet." | Hint |
 
 All via `AccessibilityHelper.Announce(text, category)` — never `RaiseNotificationEvent` directly.
@@ -301,7 +334,7 @@ All via `AccessibilityHelper.Announce(text, category)` — never `RaiseNotificat
 - **No Graph account:** entry point hidden (`isAvailable` false). If somehow reached, window shows "No Microsoft 365 account."
 - **`isReadOnly` rule:** Edit and Delete disabled; Toggle may also be disabled (read-only typically means immutable). Listed with a "read-only" marker.
 - **`hasError` rule:** listed with an "error" marker and a Hint explaining the rule is in an error state on the server; still deletable.
-- **Insufficient scope (403):** typed exception → re-consent flow (Path E). Never a silent catch.
+- **Insufficient scope (403):** typed exception → admin-directed message (Path E §4). Never a silent catch, never an in-app "Reauthorize" that can't succeed.
 - **Network/Graph failure:** surfaced as a visible status message, not a blank list (CLAUDE.md: no silent empty state).
 - **Folder IDs:** `moveToFolder`/`copyToFolder` use Graph folder IDs; the folder picker already yields these (`FullName`). Deleted-folder targets: show the raw ID with a "folder not found" note rather than crashing.
 - **`--online` mode:** unaffected — server rules never touch the local SQLite cache.
@@ -326,7 +359,7 @@ This is the single most important correctness decision; reviewers should confirm
 - **`IsFullyEditable` mapping tests:** a rule with an unsupported predicate is flagged view-only; a subset-only rule is editable.
 - **VM tests:** command availability (`isAvailable` with/without a Graph account), validation errors, confirmation/consent events raised (not `MessageBox` from the VM).
 - **XAML parse test** (`[StaFact]`) for the new windows; element-name tests use `as` + `Assert.NotNull`.
-- No live Graph in tests; a reviewer with an M365 account performs the manual keyboard walkthrough (Section 12) including a real re-consent.
+- No live Graph in tests; a reviewer with an M365 account performs the manual keyboard walkthrough (Section 12), including the admin-directed `403` path (Path E) if the write permission is ungranted.
 
 ---
 
@@ -338,7 +371,7 @@ This is the single most important correctness decision; reviewers should confirm
 - **Categories management** (`assignCategories`/`categories`) beyond display.
 - **Rules on folders other than Inbox** — the Graph API is Inbox-scoped; not expanding it.
 - **Importing/exporting rules, or syncing client rules ⇄ server rules** — explicitly not attempted.
-- **Lazy / on-first-write re-consent** — superseded. §4 adopted **up-front** consent via the scope-bump PR (captured pre-GA), so there is no re-consent migration to do and GA users won't face a re-prompt.
+- **Lazy / on-first-write re-consent, and any in-app "Reauthorize" self-heal** — superseded. §4 adopted **up-front** consent (the write scope declared on the app registration, captured pre-GA) plus per-resource `.default`, so there is no re-consent migration and no runtime consent negotiation; a missing permission is admin-directed, not self-healed. See `oauth-default-scope-pm-dev-spec.md`.
 - **Shared-mailbox rules** — deferred with the parked shared-mailbox spec (#31).
 
 ---

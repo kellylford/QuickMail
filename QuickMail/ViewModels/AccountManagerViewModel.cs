@@ -91,6 +91,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SelectedAccount.AccountName = AccountName;
         SelectedAccount.DisplayName = DisplayName;
         SelectedAccount.Username = Username;
+        // Backfill the personal-account flag when this edit re-authed (SignInMicrosoftAsync set it);
+        // leave it untouched otherwise so a plain field edit doesn't wipe a prior detection (#233).
+        if (IsPersonalMicrosoftAccount.HasValue)
+            SelectedAccount.IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount;
         SelectedAccount.AuthType = AuthType;
         SelectedAccount.ImapHost = ImapHost;
         SelectedAccount.ImapPort = ImapPort;

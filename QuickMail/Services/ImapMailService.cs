@@ -1275,6 +1275,9 @@ public class ImapMailService : IMailService, IChangeNotifier
             MessageId   = s.UniqueId.Id.ToString(CultureInfo.InvariantCulture),
             AccountId   = accountId,
             FolderName  = folderName,
+            // RFC 5322 Message-ID — stable across every folder/label a message appears in, so
+            // aggregate views can collapse Gmail's per-folder duplicate copies (issue #220).
+            InternetMessageId = s.Envelope?.MessageId ?? string.Empty,
             From        = FormatAddressListDisplay(s.Envelope?.From),
             To          = FormatAddressList(s.Envelope?.To),
             Subject     = s.Envelope?.Subject ?? "(no subject)",
@@ -1433,6 +1436,12 @@ public class ImapMailService : IMailService, IChangeNotifier
         if ((attrs & FolderAttributes.Junk)   != 0) return SpecialFolderKind.Junk;
         if ((attrs & FolderAttributes.Sent)   != 0) return SpecialFolderKind.Sent;
         if ((attrs & FolderAttributes.Drafts) != 0) return SpecialFolderKind.Drafts;
+        // Gmail virtual folders (\All, \Important, \Flagged). Recognized so the deduplicator can
+        // deprioritize them as the representative copy. Not excluded from sync — [Gmail]/All Mail
+        // is the sole home of archived mail.
+        if ((attrs & FolderAttributes.All)       != 0) return SpecialFolderKind.AllMail;
+        if ((attrs & FolderAttributes.Important) != 0) return SpecialFolderKind.Important;
+        if ((attrs & FolderAttributes.Flagged)   != 0) return SpecialFolderKind.Starred;
         // Name-based fallback for servers that don't advertise special-use attributes (e.g. Courier IMAP)
         var leaf = fullName.Split('/', '.').LastOrDefault() ?? fullName;
         if (leaf.Equals("Trash",  StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Trash;

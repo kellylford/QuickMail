@@ -84,6 +84,11 @@ public class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN attachments_json TEXT DEFAULT NULL;");
         RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN flag_id TEXT DEFAULT NULL;");
         RunMigration(conn, "ALTER TABLE MessageDetail ADD COLUMN calendar_ics TEXT DEFAULT NULL;");
+        // Stable RFC 5322 Message-ID for collapsing duplicate copies across folders (issue #220).
+        // Adds the column for DBs already past the v1→v2 rebuild; fresh/v1 DBs get it from the
+        // rebuild's schema below. No index: deduplication runs in memory (MessageDeduplicator), so
+        // nothing queries this column — an index would only add upsert write cost.
+        RunMigration(conn, "ALTER TABLE MessageSummary ADD COLUMN internet_message_id TEXT NOT NULL DEFAULT '';");
 
         // CalendarEvent table (schema v4). Additive — no existing table touched.
         cmd.CommandText = """
@@ -123,8 +128,12 @@ public class LocalStoreService : ILocalStoreService
     //   (no 3 → 4 data migration needed — CalendarEvent table + calendar_ics column
     //    added via CREATE TABLE IF NOT EXISTS / RunMigration; defaults are correct.
     //    Harvesting from existing calendar_ics rows happens on demand via CalendarService.RefreshAsync.)
-    // Add new migrations as: if (version < 4) { ...; }
-    private const int CurrentSchemaVersion = 4;
+    //   4 → 5   clear MessageSummary so the next sync backfills internet_message_id (issue #220
+    //           duplicate-collapse). The Message-ID can't be reconstructed from cached rows, and
+    //           the cache repopulates automatically on the next launch's sync. MessageDetail (bodies)
+    //           is left intact — same key, still valid.
+    // Add new migrations as: if (version < 5) { ...; }
+    private const int CurrentSchemaVersion = 5;
 
     private static void RunDataMigrations(SqliteConnection conn)
     {
@@ -173,12 +182,13 @@ public class LocalStoreService : ILocalStoreService
                     has_attachments INTEGER NOT NULL DEFAULT 0,
                     is_mailing_list INTEGER NOT NULL DEFAULT 0,
                     flag_id      TEXT    DEFAULT NULL,
+                    internet_message_id TEXT NOT NULL DEFAULT '',
                     PRIMARY KEY (unique_id, account_id, folder_name)
                 );
                 INSERT INTO MessageSummary_v2
                 SELECT CAST(unique_id AS TEXT), account_id, folder_name, from_disp, to_addr,
                        subject, date_ticks, is_read, preview_text, is_replied, is_forwarded,
-                       has_attachments, is_mailing_list, flag_id
+                       has_attachments, is_mailing_list, flag_id, internet_message_id
                 FROM MessageSummary;
                 DROP TABLE MessageSummary;
                 ALTER TABLE MessageSummary_v2 RENAME TO MessageSummary;
@@ -238,6 +248,15 @@ public class LocalStoreService : ILocalStoreService
             mlCmd.ExecuteNonQuery();
         }
 
+        if (version < 5)
+        {
+            // Purge cached summaries so the next sync repopulates internet_message_id, which
+            // aggregate views need to collapse Gmail's per-folder duplicate copies (issue #220).
+            using var clearCmd = conn.CreateCommand();
+            clearCmd.CommandText = "DELETE FROM MessageSummary;";
+            clearCmd.ExecuteNonQuery();
+        }
+
         SetUserVersion(conn, CurrentSchemaVersion);
     }
 
@@ -273,8 +292,8 @@ public class LocalStoreService : ILocalStoreService
         await using var tx = await conn.BeginTransactionAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = """
-            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id)
-            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id)
+            INSERT INTO MessageSummary(unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, is_mailing_list, flag_id, internet_message_id)
+            VALUES($uid, $aid, $fn, $from, $to, $subj, $dt, $read, $preview, $replied, $forwarded, $ml, $flag_id, $imid)
             ON CONFLICT(unique_id, account_id, folder_name) DO UPDATE SET
                 from_disp       = excluded.from_disp,
                 to_addr         = excluded.to_addr,
@@ -284,6 +303,7 @@ public class LocalStoreService : ILocalStoreService
                 is_replied      = excluded.is_replied,
                 is_forwarded    = excluded.is_forwarded,
                 is_mailing_list = excluded.is_mailing_list,
+                internet_message_id = CASE WHEN excluded.internet_message_id = '' THEN internet_message_id ELSE excluded.internet_message_id END,
                 preview_text    = CASE WHEN excluded.preview_text = '' THEN preview_text ELSE excluded.preview_text END,
                 flag_id         = CASE
                     WHEN excluded.flag_id IS NULL THEN NULL
@@ -308,6 +328,7 @@ public class LocalStoreService : ILocalStoreService
         var pForwarded = cmd.Parameters.Add("$forwarded", SqliteType.Integer);
         var pMl        = cmd.Parameters.Add("$ml",        SqliteType.Integer);
         var pFlagId    = cmd.Parameters.Add("$flag_id",   SqliteType.Text);
+        var pImid      = cmd.Parameters.Add("$imid",      SqliteType.Text);
 
         foreach (var s in summaries)
         {
@@ -326,6 +347,7 @@ public class LocalStoreService : ILocalStoreService
             pFlagId.Value    = s.IsServerFlagged
                 ? (object)FlagDefinition.BuiltInFlagId.ToString()
                 : DBNull.Value;
+            pImid.Value      = s.InternetMessageId ?? string.Empty;
             await cmd.ExecuteNonQueryAsync();
         }
         await tx.CommitAsync();
@@ -336,7 +358,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
             "FROM MessageSummary ORDER BY date_ticks DESC;";
         return await ReadSummariesAsync(cmd);
     }
@@ -346,7 +368,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
             "FROM MessageSummary WHERE account_id=$aid ORDER BY date_ticks DESC;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         return await ReadSummariesAsync(cmd);
@@ -357,7 +379,7 @@ public class LocalStoreService : ILocalStoreService
         await using var conn = await OpenAsync();
         await using var cmd = conn.CreateCommand();
         cmd.CommandText =
-            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id " +
+            "SELECT unique_id, account_id, folder_name, from_disp, to_addr, subject, date_ticks, is_read, preview_text, is_replied, is_forwarded, has_attachments, is_mailing_list, flag_id, internet_message_id " +
             "FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn ORDER BY date_ticks DESC" +
             (limit.HasValue ? " LIMIT $limit;" : ";");
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
@@ -711,6 +733,7 @@ public class LocalStoreService : ILocalStoreService
                 HasAttachments = r.GetInt64(11) != 0,
                 IsMailingList  = r.GetInt64(12) != 0,
                 FlagId         = r.IsDBNull(13) ? null : r.GetString(13),
+                InternetMessageId = r.IsDBNull(14) ? string.Empty : r.GetString(14),
             });
         }
         return list;

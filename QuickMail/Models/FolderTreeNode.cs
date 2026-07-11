@@ -19,12 +19,20 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     public ObservableCollection<FolderTreeNode> Children { get; } = [];
 
     /// <summary>
-    /// Accessibility label used by AutomationProperties.Name on the TreeViewItem.
-    /// Contains only the folder name — the unread count is in ItemStatusLabel so it
-    /// is announced via a separate UIA property and cannot be doubled by JAWS reading
-    /// the same name through two automation peers.
+    /// Accessibility name announced by screen readers (AutomationProperties.Name).
+    /// Includes the unread count for real folders. This is deliberate and confirmed by real
+    /// screen-reader use: a count carried ONLY via AutomationProperties.ItemStatus is not reliably
+    /// announced, so folder counts go silent when the count is not in the Name (issue #227). The
+    /// visible label (<see cref="Label"/>) stays count-free — the count shows as the separate
+    /// <see cref="UnreadDisplay"/> badge — so the name and the visual do not double up.
+    /// Do not move the count back out of the Name without checking with a screen-reader user first.
     /// </summary>
-    public string AutomationName => Label;
+    public string AutomationName =>
+        ShowUnread ? $"{Label}, {Folder!.UnreadCount} unread" : Label;
+
+    // Gmail's All Mail / Important / Starred report unread counts that overlap the Inbox and include
+    // archived mail, so they're hidden here to avoid a misleading count (issue #227).
+    private bool ShowUnread => Folder is { UnreadCount: > 0, SuppressUnreadCount: false };
 
     /// <summary>
     /// UIA ItemStatus string used by AutomationProperties.ItemStatus on the TreeViewItem.
@@ -32,14 +40,14 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// Empty for folders with no unread messages and for header/group nodes.
     /// </summary>
     public string ItemStatusLabel =>
-        Folder is { UnreadCount: > 0 } ? $"{Folder.UnreadCount} unread" : string.Empty;
+        ShowUnread ? $"{Folder!.UnreadCount} unread" : string.Empty;
 
     /// <summary>
     /// Visual unread badge shown next to the folder label, e.g. "(5)".
     /// Empty string for folders with no unread messages and for header/group nodes.
     /// </summary>
     public string UnreadDisplay =>
-        Folder is { UnreadCount: > 0 } ? $"({Folder.UnreadCount})" : string.Empty;
+        ShowUnread ? $"({Folder!.UnreadCount})" : string.Empty;
 
     private bool _isExpanded;
 
@@ -56,6 +64,20 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
             _isExpanded = value;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded)));
         }
+    }
+
+    /// <summary>
+    /// Raises PropertyChanged for the unread-count-derived displays after the underlying
+    /// <see cref="MailFolderModel.UnreadCount"/> is updated in place. Lets the tree reflect a new
+    /// count (e.g. after mark-read or new mail) without rebuilding the tree — which would replace
+    /// node objects and reset keyboard focus within the TreeView (issue #227).
+    /// </summary>
+    public void NotifyUnreadChanged()
+    {
+        // AutomationName carries the count for screen readers, so it must refresh too.
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AutomationName)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ItemStatusLabel)));
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(UnreadDisplay)));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
