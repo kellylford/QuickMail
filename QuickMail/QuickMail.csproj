@@ -57,4 +57,10 @@
     <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Expose internals to the test assembly so small pure helpers (e.g. WatcherStartGate) can be
+         unit-tested without widening the public API. -->
+    <InternalsVisibleTo Include="QuickMail.Tests" />
+  </ItemGroup>
+
 </Project>

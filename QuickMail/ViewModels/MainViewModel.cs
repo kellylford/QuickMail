@@ -1637,9 +1637,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    // Accounts whose change-notifier watchers are currently running, so WireUpWatchers only restarts
-    // them when the connected set actually changes (StartWatchers is a full stop-and-restart).
-    private HashSet<Guid> _watchedAccountIds = new();
+    // Tracks the connected-account set the watchers were last started for, so WireUpWatchers only
+    // restarts them when the set actually changes (StartWatchers is a full stop-and-restart). Extracted
+    // into a small gate so the anti-thrash contract is unit-testable (WatcherStartGateTests).
+    private readonly WatcherStartGate _watcherGate = new();
 
     /// <summary>
     /// Ensures the change-notifier watchers (Graph delta poll / IMAP IDLE) are running for every
@@ -1657,7 +1658,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Only (re)start watchers when the connected set changed — StartWatchers stops and restarts
         // every watcher, so calling it on each activation would thrash the poll loops for no reason.
-        if (_changeNotifier != null && !connectedIds.SetEquals(_watchedAccountIds))
+        if (_changeNotifier != null && _watcherGate.HasChanged(connectedIds))
         {
             // Watchers run under the background-sync lifetime. In the normal launch order
             // StartBackgroundSyncAsync runs first and creates _bgSyncCts; guard against a null/cancelled
@@ -1674,7 +1675,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             else
             {
                 _changeNotifier.StartWatchers(connected, _bgSyncCts.Token);
-                _watchedAccountIds = connectedIds;
+                _watcherGate.MarkStarted(connectedIds); // advance state only when watchers actually start
 
                 // (Re)subscribe the reachability handler. It resolves from the LIVE Accounts collection
                 // (not a snapshot), so it never goes stale (issue #126). Unsubscribe first so repeated
