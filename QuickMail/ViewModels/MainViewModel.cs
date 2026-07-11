@@ -1657,28 +1657,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Only (re)start watchers when the connected set changed — StartWatchers stops and restarts
         // every watcher, so calling it on each activation would thrash the poll loops for no reason.
-        if (_changeNotifier != null
-            && _bgSyncCts is { IsCancellationRequested: false }
-            && !connectedIds.SetEquals(_watchedAccountIds))
+        if (_changeNotifier != null && !connectedIds.SetEquals(_watchedAccountIds))
         {
-            _changeNotifier.StartWatchers(connected, _bgSyncCts.Token);
-            _watchedAccountIds = connectedIds;
-
-            // (Re)subscribe the reachability handler. It resolves from the LIVE Accounts collection
-            // (not a snapshot), so it never goes stale (issue #126). Unsubscribe first so repeated
-            // calls don't stack handlers; it fires on the ThreadPool, so marshal UI work onto the UI thread.
-            if (_onReachabilityChanged != null)
-                _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
-            _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
+            // Watchers run under the background-sync lifetime. In the normal launch order
+            // StartBackgroundSyncAsync runs first and creates _bgSyncCts; guard against a null/cancelled
+            // token so we never start watchers against a dead one. Log rather than skip silently — a
+            // silent skip would leave a connected account unpolled with no trace (#215 review). This is
+            // reachable only if a connect path (SelectAccountAsync / RefreshAccountList) somehow runs
+            // before the first StartBackgroundSyncAsync, which the normal startup sequence prevents.
+            if (_bgSyncCts is not { IsCancellationRequested: false })
             {
-                var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-                if (account != null)
+                LogService.Log("WireUpWatchers: connected set changed but the background-sync token is not " +
+                               "active; watchers not started (only expected if a connect path runs before " +
+                               "StartBackgroundSyncAsync).");
+            }
+            else
+            {
+                _changeNotifier.StartWatchers(connected, _bgSyncCts.Token);
+                _watchedAccountIds = connectedIds;
+
+                // (Re)subscribe the reachability handler. It resolves from the LIVE Accounts collection
+                // (not a snapshot), so it never goes stale (issue #126). Unsubscribe first so repeated
+                // calls don't stack handlers; it fires on the ThreadPool, so marshal UI work onto the UI thread.
+                if (_onReachabilityChanged != null)
+                    _changeNotifier.AccountReachabilityChanged -= _onReachabilityChanged;
+                _onReachabilityChanged = (accountId, isReachable) => _ui.Post(() =>
                 {
-                    var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                    ApplyAccountStatus(account, folders);
-                }
-            });
-            _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+                    var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+                    if (account != null)
+                    {
+                        var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
+                        ApplyAccountStatus(account, folders);
+                    }
+                });
+                _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
+            }
         }
 
         ConnectionStatusText = _cachedFolders.Count > 0
