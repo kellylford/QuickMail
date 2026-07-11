@@ -214,8 +214,10 @@ public class OAuthService : IOAuthService
         var result = await builder.ExecuteAsync(ct);
         // Authoritative personal-vs-work detection from the token: personal Microsoft accounts sign in
         // under the well-known MSA consumers tenant. The caller persists this on the account so scope
-        // selection is correct even for consumer accounts on custom domains (#233).
-        var isPersonal = string.Equals(result.Account?.HomeAccountId?.TenantId, MsaConsumersTenantId,
+        // selection is correct even for consumer accounts on custom domains (#233). Account is non-null
+        // after a successful interactive ExecuteAsync (same assumption as the Username deref below);
+        // HomeAccountId keeps its ?. defensively — a null tenant just resolves to "not personal".
+        var isPersonal = string.Equals(result.Account.HomeAccountId?.TenantId, MsaConsumersTenantId,
             StringComparison.OrdinalIgnoreCase);
         LogService.Log($"OAuthService: interactive sign-in complete for {result.Account.Username} " +
                        $"(personal Microsoft account: {isPersonal}).");

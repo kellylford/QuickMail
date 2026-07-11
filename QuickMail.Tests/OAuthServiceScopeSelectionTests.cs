@@ -62,4 +62,21 @@ public class OAuthServiceScopeSelectionTests
         };
         Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
     }
+
+    [Fact]
+    public void CustomDomainPersonalAccount_NotYetDetected_FallsBackToDefault_KnownMigrationGap()
+    {
+        // DELIBERATE, documented fallback (#234 review, concern 1): a personal account on a custom
+        // domain that hasn't been detected yet (added before tenant detection shipped, never re-authed)
+        // has a null flag → the email-domain guess says "work" → `.default`. Auto-heal is deferred; new
+        // accounts are detected at sign-in, so this only affects pre-detection accounts (near-zero while
+        // the Graph backend is feature-gated). Locked as a test so it reads as intended, not an oversight.
+        var account = new AccountModel
+        {
+            BackendKind = BackendKind.MicrosoftGraph,
+            Username = "me@myvanitydomain.com",
+            IsPersonalMicrosoftAccount = null,
+        };
+        Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
+    }
 }
