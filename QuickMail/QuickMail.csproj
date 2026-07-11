@@ -58,8 +58,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Expose internals to the test assembly so pure helpers (e.g. OAuthService.DefaultScopesFor)
-         can be unit-tested without widening the public API. -->
+    <!-- Expose internals to the test assembly so small pure helpers (e.g. WatcherStartGate,
+         OAuthService.DefaultScopesFor) can be unit-tested without widening the public API. -->
     <InternalsVisibleTo Include="QuickMail.Tests" />
   </ItemGroup>
 
