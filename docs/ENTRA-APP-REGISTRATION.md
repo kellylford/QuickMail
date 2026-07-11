@@ -56,6 +56,13 @@ consent. **This list is therefore the complete definition of what QuickMail can 
 permission missing here can never be acquired at runtime, no matter what the code does. See
 `docs/planning/oauth-default-scope-pm-dev-spec.md`.
 
+> **Exception — personal Microsoft accounts (Outlook.com/MSA).** `.default` is honored only through
+> the AAD admin-consent model, which consumer accounts don't have, so their `.default` token comes
+> back read-only (delete/move → 403). Personal accounts instead request the **explicit** scopes
+> `Mail.ReadWrite` / `Mail.Send` / `User.Read` (`OAuthService.GraphMailScopesPersonal`), so the user
+> is prompted to consent to write. The Graph permissions below still need to be declared here for
+> AAD; the personal-account path just requests them explicitly rather than via `.default`. See #217.
+
 **Microsoft Graph (delegated):**
 
 | Permission | Used for |

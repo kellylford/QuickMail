@@ -48,16 +48,26 @@ so "what the app asks for" and "what admin consent grants" are the same set.
 
 ## 3. Decision & rationale (pure `.default`)
 
-**Decision:** request `<resource>/.default` for every OAuth backend. Do **not** keep a runtime
-incremental-consent fallback for the elevated server-rules scope.
+**Decision:** request `<resource>/.default` for **work/school (AAD)** OAuth backends — Graph and
+IMAP/SMTP. Do **not** keep a runtime incremental-consent fallback for the elevated server-rules scope.
+
+> **Exception — personal Microsoft (MSA) accounts (added after live validation, #217/#218).**
+> `.default` is honored only through the AAD admin-consent model, which consumer accounts don't have,
+> so a personal account's `.default` token comes back **read-only** — delete/move/flag fail with
+> `403 ErrorAccessDenied`. Personal Microsoft accounts therefore request the **explicit** delegated
+> scopes `Mail.ReadWrite` / `Mail.Send` / `User.Read` (`OAuthService.GraphMailScopesPersonal`), so the
+> user is prompted to consent to write. `DefaultScopesFor` selects per account type. This is the one
+> place the "pure `.default` for every backend" framing does **not** hold — everything else in this
+> section describes the AAD path.
 
 **Why pure, not a `.default`-core + step-up-rules hybrid:**
 
 - **In-app self-heal is illusory for the users who hit the wall.** In an admin-consent tenant, a
   non-admin user cannot grant a missing scope no matter how it's requested — an "in-app
   Reauthorize" just re-throws the same admin-approval wall. Since most users are **not** tenant
-  admins, the hybrid's step-up self-heal helps only the minority in user-consent-permissive tenants
-  (and personal Microsoft accounts). It is not worth the extra token-management complexity.
+  admins, the hybrid's step-up self-heal helps only the minority in user-consent-permissive tenants.
+  (Personal Microsoft accounts are handled separately — see the MSA exception above; they get
+  explicit scopes, not step-up consent.) It is not worth the extra token-management complexity.
 - **Consistent with a decision already made.** `server-rules-pm-dev-spec.md` §4 already chose to
   **capture `MailboxSettings.ReadWrite` up front, pre-GA** (fold it into every user's first
   consent) and explicitly labeled the on-`403` reauthorize path as *belt-and-suspenders* behind
@@ -72,7 +82,9 @@ incremental-consent fallback for the elevated server-rules scope.
 1. **A new permission can no longer be introduced by a code change alone.** Adding any Graph
    permission requires **declaring it on the app registration and re-granting consent** before the
    token will carry it. There is no runtime prompt to fall back on.
-2. **Consent is all-or-nothing per resource.** Requesting `graph.microsoft.com/.default` means a
+2. **Consent is all-or-nothing per resource (AAD only).** This describes the **work/school** path;
+   it does not apply to personal Microsoft accounts, which use explicit scopes (see the MSA exception
+   above). Requesting `graph.microsoft.com/.default` means an AAD
    tenant consents to the **entire declared Graph permission set** — including
    `MailboxSettings.ReadWrite` — to use the Graph backend at all. The write scope rides in the
    single sign-in consent rather than a separate later prompt; that is exactly the up-front-capture
