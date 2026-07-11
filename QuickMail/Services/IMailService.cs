@@ -12,8 +12,8 @@ public interface IMailService : IDisposable
     Task DisconnectAsync(Guid accountId, CancellationToken ct = default);
 
     /// <summary>
-    /// True if the account currently has a live backend registration (Graph: a resolved account +
-    /// well-known-folder map; IMAP: a connection pool). Used to decide whether an account needs a
+    /// True if the account currently has a live backend registration (Graph: the resolved-account
+    /// registration; IMAP: a connection pool). Used to decide whether an account needs a
     /// fresh <see cref="ConnectAsync"/> — e.g. after a mid-session re-consent that changed its
     /// token/scopes (#219), so an account that's stale in the VM but unregistered in the backend is
     /// reconnected without requiring an app restart.

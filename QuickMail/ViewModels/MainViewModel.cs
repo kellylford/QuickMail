@@ -5293,6 +5293,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Process.Start(new ProcessStartInfo(tempPath) { UseShellExecute = true });
     }
 
+    /// <summary>
+    /// The accounts that need a (re)connect: those the backend doesn't have registered, OR whose
+    /// folders aren't cached in the VM. Checking the backend (not just cached folders) is what
+    /// re-registers an account dropped by a mid-session re-consent without an app restart (#219).
+    /// Pure/static so the reconnect condition is unit-testable independent of the async connect loop.
+    /// </summary>
+    internal static List<AccountModel> AccountsNeedingConnect(
+        IEnumerable<AccountModel> accounts,
+        Func<Guid, bool> isBackendConnected,
+        Func<Guid, bool> hasCachedFolders)
+        => accounts.Where(a => !isBackendConnected(a.Id) || !hasCachedFolders(a.Id)).ToList();
+
     public void RefreshAccountList()
     {
         LoadAccountList();
@@ -5304,9 +5316,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // it, so folder ops fail "…is not connected" until an app restart (#219). Reconnecting it
         // here fixes that without a restart. _cachedFolders is UI-thread-owned: read it on the UI
         // thread and marshal every write back through _ui so the background loop never touches it.
-        var accountsToConnect = Accounts
-            .Where(a => !_imap.IsConnected(a.Id) || !_cachedFolders.ContainsKey(a.Id))
-            .ToList();
+        var accountsToConnect = AccountsNeedingConnect(
+            Accounts, _imap.IsConnected, id => _cachedFolders.ContainsKey(id));
         _ = Task.Run(async () =>
         {
             foreach (var account in accountsToConnect)
