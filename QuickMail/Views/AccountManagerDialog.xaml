@@ -34,6 +34,7 @@
             <TextBlock DockPanel.Dock="Top" Text="Accounts" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
                 <Button Content="Ne_w"
+                        x:Name="NewButton"
                         Click="NewButton_Click"
                         AutomationProperties.Name="Add new account"
                         MinWidth="60" Margin="0,0,4,0"/>
