@@ -15,23 +15,27 @@ public class OAuthService : IOAuthService
     private const string ClientId  = "bcdc84f1-d37c-4581-b14a-a01f7b3a1312";
     private const string Authority = "https://login.microsoftonline.com/common";
 
-    // Per-resource `.default` scope. `.default` requests EXACTLY the delegated permissions declared
-    // on the app registration (docs/ENTRA-APP-REGISTRATION.md §3) — so the requested set always
-    // matches what admin consent grants, eliminating the requested-vs-declared mismatch that produced
-    // the "admin granted consent but the user is still prompted" loop. Design & rationale:
-    // docs/planning/oauth-default-scope-pm-dev-spec.md. Notes:
-    //  - `.default` is per-resource and cannot be combined with other scopes, hence one array each.
-    //  - MSAL adds openid/profile/offline_access automatically for the public-client desktop flow,
-    //    so refresh tokens still issue (verified live: silent re-acquisition works with `.default`).
-    //  - A new permission (e.g. MailboxSettings.ReadWrite for server rules) is now added by DECLARING
-    //    it on the app registration + re-granting consent — not by editing this list.
+    // IMAP/SMTP-over-OAuth (Exchange Online / Outlook.com). Uses EXPLICIT scopes, NOT `.default`:
+    // `.default` on `outlook.office.com` is invalid for personal Microsoft accounts — the resource
+    // isn't in the app's Required Resource Access for consumer sign-in and there's no admin-consent
+    // model — which broke personal-account sign-in on the IMAP path entirely (#239, sign-in error
+    // "scope … is not valid … refers to a resource which is not listed"). Explicit
+    // IMAP.AccessAsUser.All + SMTP.Send work for BOTH personal and work accounts, and the `.default`
+    // loop-avoidance benefit (#208) never applied here anyway: the IMAP resource only ever needs these
+    // two declared scopes, so there is no requested-vs-declared mismatch. MSAL adds
+    // openid/profile/offline_access automatically for the public-client flow, so refresh tokens issue.
     public static readonly string[] ImapSmtpScopes =
     [
-        "https://outlook.office.com/.default",
+        "https://outlook.office.com/IMAP.AccessAsUser.All",
+        "https://outlook.office.com/SMTP.Send",
     ];
 
-    // Work/school (AAD) Graph accounts: `.default` requests exactly the app-registration's declared
-    // permissions, which matches what admin consent grants (fixes the consent loop, #208).
+    // Work/school (AAD) Graph accounts: `.default` requests EXACTLY the app-registration's declared
+    // permissions, matching what admin consent grants — this is what fixed the requested-vs-declared
+    // mismatch that produced the "admin granted consent but the user is still prompted" loop (#208).
+    // `.default` is per-resource and cannot be combined with other scopes. Rationale:
+    // docs/planning/oauth-default-scope-pm-dev-spec.md. (Personal Graph accounts use
+    // GraphMailScopesPersonal below — `.default` under-delivers write for them, #217.)
     public static readonly string[] GraphMailScopes =
     [
         "https://graph.microsoft.com/.default",

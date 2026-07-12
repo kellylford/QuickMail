@@ -49,12 +49,16 @@ above; the embedded view intercepts that navigation internally (no loopback list
 
 ## 3. API permissions (delegated, Microsoft Graph + Exchange Online)
 
-QuickMail requests the **per-resource `.default` scope** at sign-in — `https://graph.microsoft.com/.default`
-for Graph accounts and `https://outlook.office.com/.default` for IMAP/SMTP-over-OAuth. `.default`
-asks for **exactly the delegated permissions declared here** — nothing more, no runtime incremental
-consent. **This list is therefore the complete definition of what QuickMail can request.** A
-permission missing here can never be acquired at runtime, no matter what the code does. See
+Only the **Graph** backend uses the per-resource **`.default` scope** at sign-in
+(`https://graph.microsoft.com/.default`), which asks for **exactly the delegated Graph permissions
+declared here** — nothing more, no runtime incremental consent. See
 `docs/planning/oauth-default-scope-pm-dev-spec.md`.
+
+The **IMAP/SMTP-over-OAuth** path requests **explicit** scopes (`IMAP.AccessAsUser.All` + `SMTP.Send`),
+**not** `.default` — `.default` on `outlook.office.com` is invalid for personal Microsoft accounts and
+broke consumer sign-in on the IMAP path entirely (#239). Explicit scopes work for personal and work
+accounts alike, and `.default` bought the IMAP path nothing (its resource only needs those two
+declared scopes). Both must still be declared here.
 
 > **Exception — personal Microsoft accounts (Outlook.com/MSA).** `.default` is honored only through
 > the AAD admin-consent model, which consumer accounts don't have, so their `.default` token comes
