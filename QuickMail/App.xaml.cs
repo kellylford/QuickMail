@@ -245,12 +245,12 @@ public partial class App : Application
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService);
 
-            // Clicking a new-mail toast brings QuickMail to the foreground. OnActivated may fire on
-            // a background thread, so marshal to the UI thread before touching the window.
-            _notificationService.Activated += () =>
-                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.RestoreAndActivate());
+            // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
+            // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
+            _notificationService.Activated += act =>
+                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.HandleNotificationActivation(act));
 
             mainWindow.Show();
         }

@@ -23,7 +23,31 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
     private readonly bool _osSupported;
     private bool _activationHooked;
 
-    public event Action? Activated;
+    // Activation can arrive on a cold start (a toast clicked while the app was closed relaunches it)
+    // before App has subscribed. Buffer the most recent one and flush it to the first subscriber so
+    // the click is never dropped in the startup window. Guarded because OnActivated fires on a
+    // background thread while the subscribe happens on the UI thread.
+    private readonly object _activationLock = new();
+    private Action<NotificationActivation>? _activated;
+    private NotificationActivation? _bufferedActivation;
+
+    public event Action<NotificationActivation>? Activated
+    {
+        add
+        {
+            NotificationActivation? replay = null;
+            lock (_activationLock)
+            {
+                _activated += value;
+                if (_bufferedActivation != null) { replay = _bufferedActivation; _bufferedActivation = null; }
+            }
+            if (replay != null) value?.Invoke(replay);
+        }
+        remove
+        {
+            lock (_activationLock) { _activated -= value; }
+        }
+    }
 
     public WindowsToastNotificationService()
     {
@@ -51,9 +75,12 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
 
         try
         {
+            // Carry the inbox folder so a click can open the exact message without re-resolving it.
+            var folder = newMessages[0].FolderName ?? string.Empty;
             var builder = new ToastContentBuilder()
                 .AddArgument("action", "openMail")
-                .AddArgument("accountId", accountId.ToString());
+                .AddArgument("accountId", accountId.ToString())
+                .AddArgument("folder", folder);
 
             if (newMessages.Count == 1)
             {
@@ -87,13 +114,65 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
         }
     }
 
+    public void ShowInfo(string title, string message)
+    {
+        if (!_osSupported) return;
+        try
+        {
+            new ToastContentBuilder()
+                .AddArgument("action", "info")
+                .AddText(title)
+                .AddText(message)
+                .Show();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("WindowsToastNotificationService: ShowInfo failed", ex);
+        }
+    }
+
     private void OnToastActivated(ToastNotificationActivatedEventArgsCompat e)
     {
-        // Fires on a background thread. Just surface the event; the subscriber marshals to the UI
-        // thread. Phase 1 ignores the arguments (click = bring the app forward); accountId/messageId
-        // are carried for a future "open the clicked message" enhancement.
-        try { Activated?.Invoke(); }
+        // Fires on a background thread. Parse the toast arguments into a NotificationActivation and
+        // surface it; the subscriber marshals to the UI thread. A missing/unparseable accountId
+        // yields Guid.Empty, which the handler treats as "just bring the app forward".
+        try
+        {
+            var act = ParseActivation(e.Argument);
+            if (act != null) DispatchActivation(act);
+        }
         catch (Exception ex) { LogService.Log("WindowsToastNotificationService: activation handler threw", ex); }
+    }
+
+    // Raises Activated, or buffers when no subscriber has attached yet (cold start still wiring up)
+    // so the click is delivered to the first subscriber instead of being dropped.
+    internal void DispatchActivation(NotificationActivation act)
+    {
+        Action<NotificationActivation>? handler;
+        lock (_activationLock)
+        {
+            handler = _activated;
+            if (handler == null) { _bufferedActivation = act; return; }
+        }
+        handler.Invoke(act);
+    }
+
+    /// <summary>
+    /// Parses a toast's argument string into a <see cref="NotificationActivation"/>, or null when it
+    /// is the "still running" info toast (which has no target and must not open a message). A missing
+    /// or unparseable accountId yields <see cref="Guid.Empty"/>, which the handler treats as
+    /// "just bring the app forward".
+    /// </summary>
+    internal static NotificationActivation? ParseActivation(string argument)
+    {
+        var args = ToastArguments.Parse(argument);
+
+        if (args.TryGetValue("action", out var action) && action == "info") return null;
+
+        Guid.TryParse(args.Get("accountId"), out var accountId);
+        var folder    = args.Contains("folder") ? args.Get("folder") : null;
+        var messageId = args.Contains("messageId") ? args.Get("messageId") : null;
+        return new NotificationActivation(accountId, folder, messageId);
     }
 
     // Toast tags/groups are limited to 64 chars and a restricted character set; a Guid string is

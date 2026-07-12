@@ -152,6 +152,17 @@ public class ConfigModel
     /// <summary>Show a Windows toast notification when new mail arrives in an inbox. Default on.</summary>
     public bool NotifyOnNewMail { get; set; } = true;
 
+    /// <summary>
+    /// When closing the main window, hide QuickMail to the notification area (system tray) instead
+    /// of exiting, so new-mail watchers keep running and notifications keep arriving. Default off
+    /// (existing behaviour: closing the window exits the app).
+    /// </summary>
+    public bool CloseToTray { get; set; } = false;
+
+    /// <summary>Whether the one-time "still running in the notification area" hint has been shown.
+    /// Maintained automatically the first time the window hides to the tray.</summary>
+    public bool TrayHintShown { get; set; } = false;
+
     /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
     public bool TutorialCompleted { get; set; } = false;
 

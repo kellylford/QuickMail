@@ -77,6 +77,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _notifyOnNewMail;
 
+    [ObservableProperty]
+    private bool _closeToTray;
+
     // Desktop shortcut: the .lnk on the desktop is the source of truth, not config —
     // loaded from the filesystem and applied on save only when it differs from the file's
     // current state (re-checked at save time; the file can change outside this dialog).
@@ -250,6 +253,7 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         NotifyOnNewMail                  = cfg.NotifyOnNewMail;
+        CloseToTray                      = cfg.CloseToTray;
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
         AutoUpdate                       = cfg.AutoUpdate;
         ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
@@ -315,6 +319,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
+        cfg.CloseToTray                      = CloseToTray;
         cfg.AutoUpdate                       = AutoUpdate;
         cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;
         if (DesktopShortcut != Helpers.DesktopShortcut.Exists())

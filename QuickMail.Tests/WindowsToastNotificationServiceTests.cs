@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Toolkit.Uwp.Notifications;
 using QuickMail.Models;
 using QuickMail.Services;
 using Xunit;
@@ -26,6 +27,80 @@ public class WindowsToastNotificationServiceTests
         using var svc = new WindowsToastNotificationService();
         svc.ShowNewMail("Account", Guid.NewGuid(), Array.Empty<MailMessageSummary>());
         // No exception = pass. An empty set must never attempt to build or show a toast.
+    }
+
+    [Fact]
+    public void ParseActivation_ExtractsAccountFolderAndMessage()
+    {
+        var accountId = Guid.NewGuid();
+        var arg = new ToastArguments()
+            .Add("action", "openMail")
+            .Add("accountId", accountId.ToString())
+            .Add("folder", "INBOX")
+            .Add("messageId", "42")
+            .ToString();
+
+        var act = WindowsToastNotificationService.ParseActivation(arg);
+
+        Assert.NotNull(act);
+        Assert.Equal(accountId, act!.AccountId);
+        Assert.Equal("INBOX", act.Folder);
+        Assert.Equal("42", act.MessageId);
+    }
+
+    [Fact]
+    public void ParseActivation_MultiMessageToast_HasNoMessageId()
+    {
+        var accountId = Guid.NewGuid();
+        var arg = new ToastArguments()
+            .Add("action", "openMail")
+            .Add("accountId", accountId.ToString())
+            .Add("folder", "INBOX")
+            .ToString();
+
+        var act = WindowsToastNotificationService.ParseActivation(arg);
+
+        Assert.NotNull(act);
+        Assert.Equal(accountId, act!.AccountId);
+        Assert.Null(act.MessageId); // no single target -> handler just foregrounds
+    }
+
+    [Fact]
+    public void ParseActivation_InfoToast_ReturnsNull()
+    {
+        var arg = new ToastArguments().Add("action", "info").ToString();
+        Assert.Null(WindowsToastNotificationService.ParseActivation(arg));
+    }
+
+    [Fact]
+    public void DispatchActivation_BuffersUntilFirstSubscriber_ThenReplays()
+    {
+        using var svc = new WindowsToastNotificationService();
+        var act = new NotificationActivation(Guid.NewGuid(), "INBOX", "7");
+
+        // Arrives before anyone subscribes (cold start) — must not be dropped.
+        svc.DispatchActivation(act);
+
+        NotificationActivation? received = null;
+        svc.Activated += a => received = a; // first subscriber gets the buffered activation
+
+        Assert.Same(act, received);
+    }
+
+    [Fact]
+    public void DispatchActivation_WithSubscriber_DeliversImmediately_AndOnce()
+    {
+        using var svc = new WindowsToastNotificationService();
+        var count = 0;
+        svc.Activated += _ => count++;
+
+        svc.DispatchActivation(new NotificationActivation(Guid.NewGuid(), "INBOX", "1"));
+        Assert.Equal(1, count);
+
+        // A late second subscriber must NOT receive the already-delivered activation.
+        NotificationActivation? late = null;
+        svc.Activated += a => late = a;
+        Assert.Null(late);
     }
 
     [Theory]

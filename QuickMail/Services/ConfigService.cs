@@ -249,6 +249,8 @@ public class ConfigService : IConfigService
                     case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
                     case "notifyonnewmail":      config.NotifyOnNewMail      = ParseBool(value); break;
+                    case "closetotray":          config.CloseToTray          = ParseBool(value); break;
+                    case "trayhintshown":        config.TrayHintShown        = ParseBool(value); break;
                     case "logformat":
                         config.LogFormat = string.Equals(value, "timefirst", StringComparison.OrdinalIgnoreCase) ? "timeFirst" : "actionFirst";
                         break;
@@ -470,6 +472,17 @@ public class ConfigService : IConfigService
         sb.AppendLine($"NotifyOnNewMail = {(config.NotifyOnNewMail ? "on" : "off")}");
         sb.AppendLine("# Show a Windows notification when new mail arrives in an inbox.");
         sb.AppendLine("# Notifications appear while QuickMail is running. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");
+        sb.AppendLine("# When you close the main window, keep QuickMail running in the notification");
+        sb.AppendLine("# area (system tray) instead of exiting, so new-mail notifications keep arriving.");
+        sb.AppendLine("# Restore it from the tray icon or a notification. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"TrayHintShown = {(config.TrayHintShown ? "on" : "off")}");
+        sb.AppendLine("# Whether the one-time 'still running in the notification area' hint has been");
+        sb.AppendLine("# shown. Maintained automatically. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"LogFormat = {config.LogFormat}");

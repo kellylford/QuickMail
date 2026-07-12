@@ -65,6 +65,21 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void CloseToTray_LoadsAndSaves()
+    {
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.False(vm.CloseToTray); // default off
+
+        vm.CloseToTray = true;
+        vm.SaveCommand.Execute(null);
+
+        Assert.True(configService.Load().CloseToTray);
+    }
+
+    [Fact]
     public void SaveWithHotkeys_PersistsHotkeysInConfig()
     {
         var configService = new StubConfigService();

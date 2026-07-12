@@ -5,6 +5,12 @@ using QuickMail.Models;
 namespace QuickMail.Services;
 
 /// <summary>
+/// Identifies what a clicked toast should open. <see cref="MessageId"/> is null for the
+/// "N new messages" toast (no single target — the handler just surfaces the account's inbox).
+/// </summary>
+public sealed record NotificationActivation(Guid AccountId, string? Folder, string? MessageId);
+
+/// <summary>
 /// Shows Windows toast (app) notifications. The single implementation
 /// (<see cref="WindowsToastNotificationService"/>) wraps the Windows Community Toolkit
 /// notification platform; a null service (tests, unsupported OS) means notifications are
@@ -26,8 +32,14 @@ public interface INotificationService
     void ShowNewMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages);
 
     /// <summary>
-    /// Raised when the user activates (clicks) a toast. May fire off the UI thread — the
-    /// handler must marshal to the UI thread before touching any window.
+    /// Show a one-off informational toast (e.g. the "still running in the notification area"
+    /// hint). Best-effort: never throws.
     /// </summary>
-    event Action? Activated;
+    void ShowInfo(string title, string message);
+
+    /// <summary>
+    /// Raised when the user activates (clicks) a toast, carrying the message to open. May fire
+    /// off the UI thread — the handler must marshal to the UI thread before touching any window.
+    /// </summary>
+    event Action<NotificationActivation>? Activated;
 }

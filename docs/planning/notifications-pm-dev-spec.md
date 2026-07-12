@@ -28,15 +28,12 @@ in-app announcement on top would double-speak.
 
 Issue #240 asks for three things: (1) toast on new mail, (2) minimize-to-tray on close, and
 (3) periodic background sync. Item (3) already exists (IDLE / delta poll). This spec is
-delivered in two phases:
+delivered in two phases, **both implemented in this PR**:
 
-- **Phase 1 (this PR): Windows toast notifications for new mail.** Works whenever QuickMail
-  is running (foreground, background, or minimized to the taskbar) — already the common case
-  for an email client.
-- **Phase 2 (deferred, spec'd below): Run in background / close to tray.** Lets QuickMail keep
-  running (and keep delivering notifications) after the window is closed. Larger surface —
-  adds a tray icon, a new interaction model, and its own accessibility requirements — so it
-  is intentionally split out.
+- **Phase 1: Windows toast notifications for new mail** — plus clicking a toast opens the
+  referenced message. Works whenever QuickMail is running (foreground, background, minimized).
+- **Phase 2: Run in background / close to tray.** Lets QuickMail keep running (and keep
+  delivering notifications) after the window is closed, restoring from the tray or a toast.
 
 ---
 
@@ -133,13 +130,30 @@ If any survive, `INotificationService.ShowNewMail` is called. The threshold + un
 combination means: no toast for startup backlog, no toast for mail read elsewhere, and no
 duplicate toast on repeated IDLE fires.
 
-### Activation
+### Activation — bring forward + open the clicked message
 
-`WindowsToastNotificationService.Activated` → `App` marshals to the UI thread and calls a new
-`MainWindow.RestoreAndActivate()` (restore if minimized, `Show()`, `Activate()`, foreground via
-`SetForegroundWindow`). Phase 1 click behaviour = **bring QuickMail to the foreground**.
-Opening the specific clicked message is deferred (see Out of scope) — the accountId/messageId
-are already in the toast args for when we add it.
+The toast carries `accountId`, `folder` (the inbox FullName), and — for a single-message toast —
+`messageId` in its arguments. `WindowsToastNotificationService.OnActivated` parses them (extracted
+to the testable `ParseActivation`) into a `NotificationActivation(accountId, folder, messageId?)`
+and raises `Activated`. `App` marshals to the UI thread and calls
+`MainWindow.HandleNotificationActivation(act)`, which:
+
+1. Restores + foregrounds the window (`RestoreAndActivate`: `Show()`, un-minimize, `Activate()`,
+   Win32 `SetForegroundWindow`) and hides the tray icon.
+2. Opens the referenced message via `OpenMessageByIdentityAsync(accountId, folder, messageId)` —
+   which mirrors the existing `OpenMessageFromListAsync` mode routing (ReadingPane / Tab / Window)
+   minus its drafts check. `SelectMessageAsync` fetches the detail by id (cache or IMAP), so the
+   message need not be in the currently-loaded list.
+
+The multi-message ("N new messages") toast has no `messageId`, so its click only brings the app
+forward.
+
+**Cold start.** Because Phase 2 keeps the app running, most activations are warm. But a toast can
+outlive the app in the Action Center; clicking it then **relaunches** QuickMail via the
+auto-registered COM activator, and `OnActivated` fires before accounts connect. `HandleNotificationActivation`
+stashes the activation and re-tries it when `MainViewModel.StartupConnectCompleted` fires (after
+the startup connect populates the account's folders — `IsAccountReady`), so the message opens once
+the account is reachable. If the account never connects, the app is simply left foregrounded.
 
 ### Configuration
 
@@ -162,8 +176,9 @@ New mail arrives (screen reader running), `NotifyOnNewMail` on:
    "QuickMail. Jane Smith. Subject: Lunch Thursday?" (content order is the platform's).
 4. The user presses **Win+Shift+V** to move focus to the most recent notification (standard
    Windows shortcut; not an app shortcut). The screen reader reads the toast.
-5. The user presses **Enter** to activate it → QuickMail restores and comes to the foreground;
-   focus lands in the main window. (Or **Delete**/dismiss to clear it, standard toast behaviour.)
+5. The user presses **Enter** to activate it → QuickMail restores and comes to the foreground and
+   **opens that message** in the user's configured mode (reading pane / tab / window). (Or
+   **Delete**/dismiss to clear it, standard toast behaviour.)
 6. If the user does nothing, the toast auto-dismisses to the notification center (Win+A), where
    it can be reviewed later — all standard OS behaviour QuickMail does not implement.
 
@@ -182,12 +197,15 @@ happens; nothing else changes.
   layering an in-app announcement (would double-speak).
 - **VM state properties:** none of the existing state flags (e.g. `IsMessageOpen`) change. New
   private VM state only: `_notifyThresholdUtc`, `_notifiedMessageKeys`, and the injected
-  `INotificationService? _notifications`.
+  `INotificationService? _notifications`. New VM public surface: `event ExitRequested` (Exit now
+  raises this instead of calling `Application.Current.Shutdown()` — the View shuts down, which also
+  removes a pre-existing MVVM violation), `event StartupConnectCompleted`, `bool IsAccountReady(id)`.
 - **Selector-bound item types:** none added (no new ComboBox/ListView item types), so no
   `SelectorItemAccessibilityTests` change.
 - **DI / lifecycle:** `WindowsToastNotificationService` constructed in `App.OnStartup`, passed to
-  `MainViewModel` (new optional ctor param `INotificationService? notificationService = null`,
-  so existing tests/construction are unaffected), `Activated` wired to `MainWindow.RestoreAndActivate`.
+  both `MainViewModel` and `MainWindow` (new optional ctor params, so existing tests/construction
+  are unaffected). `Activated` (now `Action<NotificationActivation>`) is wired to
+  `MainWindow.HandleNotificationActivation`; the service is disposed in `App.OnExit`.
 - **Interface change:** `ISyncService.SyncOneFolderAsync` / `SyncOneFolderOnlineAsync` return
   `Task<IReadOnlyList<MailMessageSummary>>`. The `SyncService` implementation and the test stub
   are updated; all existing callers ignore the return value, so behaviour is unchanged.
@@ -200,14 +218,14 @@ happens; nothing else changes.
   `INotificationService`): asserts startup backlog (Date < threshold) does not notify; already-
   read messages do not notify; a repeated IDLE fire for the same message notifies once; a fresh
   unread message notifies with the expected count.
-- `ConfigService`: round-trips `NotifyOnNewMail` (on/off, default on when absent).
-- `SettingsViewModel`: loads and saves `NotifyOnNewMail`.
+- `WindowsToastNotificationService.ParseActivation`: extracts accountId/folder/messageId from a
+  toast argument string; the multi-message toast has no messageId; the info toast returns null.
+- `WindowsToastNotificationService.SenderDisplayName`: strips the address, keeps the display name.
+- `ConfigService`: round-trips `NotifyOnNewMail`, `CloseToTray`, `TrayHintShown` (defaults on/off/off).
+- `SettingsViewModel`: loads and saves `NotifyOnNewMail` and `CloseToTray`.
 
 ## Out of scope (Phase 1)
 
-- **Opening the clicked message.** Click brings the app to the foreground; it does not navigate
-  to the specific message (that requires locating the message across folders/accounts and is
-  deferred; the args are already carried for a follow-up).
 - **Backdated delivery.** A message whose `Date` header predates app launch but is delivered
   after launch will not toast (excluded by the `Date >= threshold` gate). `MailMessageSummary`
   exposes only `Date` (sent), not the IMAP INTERNALDATE (received); using received date is a
@@ -225,34 +243,77 @@ happens; nothing else changes.
 
 ---
 
-# Phase 2 — Run in background / close to tray (deferred)
+# Phase 2 — Run in background / close to tray (implemented)
 
-Not implemented in this PR. Captured so the design is on record.
+When `CloseToTray` is on, closing the main window hides it to the notification area instead of
+exiting, so the IDLE/delta watchers keep running and toasts keep arriving. The window is restored
+from the tray icon or a notification; an explicit Exit truly quits.
 
-Goal: when enabled, closing the main window hides it to the system tray instead of exiting, so
-IDLE/delta watchers keep running and toasts keep arriving; the app is restored from the tray or
-a toast; an explicit Exit truly quits.
+## Design
 
-Sketch:
+- **Tray icon.** WPF has no native tray icon, so `<UseWindowsForms>true</UseWindowsForms>` is
+  enabled *only* for a `System.Windows.Forms.NotifyIcon`, wrapped by a small View-layer
+  `Views/TrayIconManager`. WinForms types are always fully qualified and its implicit global usings
+  (`System.Windows.Forms`, `System.Drawing`) are removed in the csproj so they can't collide with
+  the WPF `System.Windows(.Media)` type names used unqualified across the codebase. Icon = the
+  executable's own icon (`Icon.ExtractAssociatedIcon`, falling back to `SystemIcons.Application` —
+  the app ships no dedicated `.ico`); tooltip "QuickMail"; context menu **Open QuickMail** / **Exit
+  QuickMail**; double-click restores. The icon is created lazily on first hide and is visible only
+  while the window is hidden.
+- **Config.** `ConfigModel.CloseToTray` (bool, **default off** — preserves today's exit-on-close
+  behaviour for existing users) and `ConfigModel.TrayHintShown` (bool, internal one-time-hint
+  state). Both in `[global]`; parsed/written by `ConfigService`. Settings → General → Notifications
+  gains a checkbox "Keep running in the notification area when I close the window", bound to
+  `SettingsViewModel.CloseToTray`.
+- **Close handling.** `MainWindow.OnClosing`: if `CloseToTray` and not an explicit exit, cancel the
+  close, show the tray icon, and `Hide()`. Because the window is *hidden* (never closed) the process
+  stays alive under WPF's default `ShutdownMode=OnLastWindowClose` — no `ShutdownMode` change is
+  needed. An explicit exit sets `_explicitExit` first so `OnClosing` performs a real close.
+- **Exit paths.** `MainViewModel.Exit` now raises `ExitRequested` (instead of calling
+  `Application.Current.Shutdown()` — removing an MVVM violation); `MainWindow` handles it and the
+  tray **Exit** item via `RequestExit()`, which sets `_explicitExit` and calls
+  `Application.Current.Shutdown()`. `MainWindow.OnClosed` disposes the tray icon so it never lingers.
+- **One-time hint.** The first time the window hides to the tray, `INotificationService.ShowInfo`
+  shows a "QuickMail is still running in the notification area…" toast (announced natively by
+  screen readers, not baked into any control), then `TrayHintShown` is set so it never repeats.
+  Its click is ignored (`action=info` toast has no target).
 
-- Add `<UseWindowsForms>true</UseWindowsForms>` and a `System.Windows.Forms.NotifyIcon` managed
-  by a small View-layer `TrayIconManager` owned by `MainWindow` (or `App`). Icon = app icon,
-  tooltip "QuickMail", context menu **Open QuickMail** / **Exit**.
-- New `ConfigModel.CloseToTray` (bool, **default off** — preserves today's exit-on-close
-  behaviour for existing users). Settings → General → Notifications: "When I close the window,
-  keep QuickMail running in the notification area".
-- `MainWindow.OnClosing`: if `CloseToTray` and this is not an explicit exit, cancel the close and
-  `Hide()`. An explicit-exit flag (set by the tray **Exit** item and a File → Exit menu item)
-  bypasses the cancel and calls `Application.Current.Shutdown()`.
-- Tray restore reuses `RestoreAndActivate()` (added in Phase 1).
+## Keyboard walkthrough
 
-Phase 2 accessibility requirements (must be in its own spec before coding):
+Close-to-tray on, screen reader running:
 
-- The tray icon and its context menu must be keyboard reachable (Win+B → arrows → Menu/Enter is
-  the OS path) and each menu item needs a clear accessible name.
-- A keyboard-only way to exit must always exist independent of the mouse (File → Exit).
-- First time the window hides to tray, a one-time toast/hint ("QuickMail is still running in the
-  notification area") so the app doesn't silently vanish — delivered as a toast (native SR
-  announcement), not baked into any control name.
-- Decide `ShutdownMode` implications (WPF `OnLastWindowClose` vs `OnExplicitShutdown`) so hiding
-  the last window doesn't terminate the process.
+1. User presses **Alt+F4** (or File → Exit is *not* used). The window vanishes; a toast announces
+   "QuickMail is still running in the notification area…" (first time only). Focus returns to the
+   desktop/previous app — QuickMail is no longer in the Alt+Tab list.
+2. New mail arrives → a toast appears exactly as in Phase 1. **Enter** on it restores QuickMail to
+   the foreground and opens the message.
+3. To restore manually: **Win+B** moves focus to the notification area; the user arrows to the
+   QuickMail icon (announced "QuickMail"), presses **Enter** (or the **Menu** key → "Open
+   QuickMail") → the window returns to the foreground.
+4. To quit: from the tray icon, **Menu** key → arrow to "Exit QuickMail" → **Enter**; or, when the
+   window is open, **Alt** → File → **Exit** (`ExitCommand`). Either performs a real shutdown.
+
+With `CloseToTray` off (default): closing the window exits the app exactly as before; the tray icon
+is never created.
+
+## Infrastructure changes
+
+- **F6 ring:** unchanged (the tray icon is an OS surface, not an in-app pane).
+- **CommandRegistry:** no new command. Exit keeps its existing `ExitCommand`; close-to-tray is a
+  Settings checkbox, not a hotkey.
+- **`AutomationProperties.Name`:** one new checkbox, "Keep running in the notification area when I
+  close the window" (short label). Tray menu item labels ("Open QuickMail", "Exit QuickMail") are
+  WinForms `ToolStripMenuItem` text, exposed to UIA by WinForms.
+- **`AccessibilityHelper.Announce`:** none. The one-time hint is a native toast (`ShowInfo`).
+- **Build:** `UseWindowsForms=true`; implicit `System.Windows.Forms` / `System.Drawing` usings
+  removed. `MainWindow` gains an `INotificationService?` ctor param (for the hint).
+- **Lifecycle:** `TrayIconManager` (owns the `NotifyIcon`) is created lazily and disposed in
+  `MainWindow.OnClosed`.
+
+## Out of scope (Phase 2)
+
+- **Minimize-to-tray** (only *close* hides to tray; the minimize button still minimizes to the
+  taskbar).
+- **Persistent tray icon** while the window is open (the icon appears only while hidden).
+- **Launch-on-startup / start-hidden** and any autostart registration.
+- **Unread-count badge / dynamic tray tooltip** (tooltip is the static "QuickMail").

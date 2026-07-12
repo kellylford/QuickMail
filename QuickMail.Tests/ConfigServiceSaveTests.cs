@@ -66,6 +66,25 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void CloseToTray_DefaultsOff_AndRoundTrips()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        Assert.False(service.Load().CloseToTray);       // default off
+        Assert.False(service.Load().TrayHintShown);     // default off
+
+        var config = service.Load();
+        config.CloseToTray = true;
+        config.TrayHintShown = true;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.True(reloaded.CloseToTray);
+        Assert.True(reloaded.TrayHintShown);
+    }
+
+    [Fact]
     public void Save_LeavesNoTempFileBehind()
     {
         var profile = MakeTempProfile();
