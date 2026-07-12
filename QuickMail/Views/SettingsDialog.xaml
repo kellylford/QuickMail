@@ -139,6 +139,18 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Notifications Group -->
+                        <GroupBox Header="_Notifications" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Notification settings">
+                            <StackPanel>
+                                <CheckBox Content="Show a _notification when new mail arrives"
+                                          IsChecked="{Binding NotifyOnNewMail, Mode=TwoWay}"
+                                          AutomationProperties.Name="Show a notification when new mail arrives"/>
+                                <TextBlock Text="Windows shows a notification when new mail arrives in an inbox while QuickMail is running."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Desktop Shortcut Group -->
                         <GroupBox Header="Desktop Shortc_ut" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Desktop shortcut settings">

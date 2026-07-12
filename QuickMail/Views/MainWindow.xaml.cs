@@ -562,6 +562,35 @@ public partial class MainWindow : Window
             TryHandleMessageTreeTypeAhead);
     }
 
+    /// <summary>
+    /// Restores the window from minimized and brings it to the foreground. Called when the user
+    /// clicks a new-mail toast. WPF's <see cref="Window.Activate"/> alone does not reliably steal
+    /// foreground from another app, so the window handle is pushed forward via Win32 as well.
+    /// </summary>
+    public void RestoreAndActivate()
+    {
+        try
+        {
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero) NativeForeground.SetForegroundWindow(hwnd);
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"RestoreAndActivate: {ex.Message}");
+        }
+    }
+
+    private static class NativeForeground
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         foreach (var w in _openComposeWindows.ToList())

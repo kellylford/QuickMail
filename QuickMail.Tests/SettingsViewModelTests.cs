@@ -49,6 +49,22 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void NotifyOnNewMail_LoadsAndSaves()
+    {
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        // Default is on.
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.True(vm.NotifyOnNewMail);
+
+        vm.NotifyOnNewMail = false;
+        vm.SaveCommand.Execute(null);
+
+        Assert.False(configService.Load().NotifyOnNewMail);
+    }
+
+    [Fact]
     public void SaveWithHotkeys_PersistsHotkeysInConfig()
     {
         var configService = new StubConfigService();

@@ -248,6 +248,7 @@ public class ConfigService : IConfigService
                         break;
                     case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
+                    case "notifyonnewmail":      config.NotifyOnNewMail      = ParseBool(value); break;
                     case "logformat":
                         config.LogFormat = string.Equals(value, "timefirst", StringComparison.OrdinalIgnoreCase) ? "timeFirst" : "actionFirst";
                         break;
@@ -464,6 +465,11 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ConfirmEmptyTrash = {(config.ConfirmEmptyTrash ? "on" : "off")}");
         sb.AppendLine("# Show a confirmation dialog before permanently deleting all messages in trash.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"NotifyOnNewMail = {(config.NotifyOnNewMail ? "on" : "off")}");
+        sb.AppendLine("# Show a Windows notification when new mail arrives in an inbox.");
+        sb.AppendLine("# Notifications appear while QuickMail is running. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"LogFormat = {config.LogFormat}");

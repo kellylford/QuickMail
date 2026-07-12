@@ -39,15 +39,17 @@ public interface ISyncService
 
     /// <summary>
     /// Syncs a single folder for one account. Used by the IDLE watcher for targeted
-    /// inbox sync without a full account-wide sweep.
+    /// inbox sync without a full account-wide sweep. Returns the messages fetched this pass
+    /// (empty when none) so the caller can decide which are genuinely new for notification.
     /// </summary>
-    Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
+    Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
 
     /// <summary>
     /// Online-mode variant: fetches the most recent messages directly from IMAP without
     /// touching the local store, then fires <see cref="FolderSynced"/> so the UI updates.
+    /// Returns the messages fetched this pass (empty when none).
     /// </summary>
-    Task SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
+    Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
 
     /// <summary>
     /// Returns the UTC time of the last completed sync for the given account,

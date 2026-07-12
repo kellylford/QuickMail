@@ -49,6 +49,23 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void NotifyOnNewMail_DefaultsOn_AndRoundTrips()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        // Default is on when the key is absent from a fresh config.
+        Assert.True(service.Load().NotifyOnNewMail);
+
+        var config = service.Load();
+        config.NotifyOnNewMail = false;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.False(reloaded.NotifyOnNewMail);
+    }
+
+    [Fact]
     public void Save_LeavesNoTempFileBehind()
     {
         var profile = MakeTempProfile();

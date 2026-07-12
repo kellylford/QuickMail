@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using QuickMail.Models;
 using QuickMail.ViewModels;
 using Xunit;
@@ -52,12 +54,31 @@ public class SelectorItemAccessibilityTests
         {
             combo.IsDropDownOpen = true;
             combo.UpdateLayout();
+            DrainDispatcher(); // let item containers / peers realize before reading names
+
+            // GetChildren() also surfaces the ComboBox's editable/selection chrome peers (e.g. a
+            // TextBoxAutomationPeer with no name), and whether those are realized is load-dependent —
+            // in isolation only the item peers appear, but under CPU pressure from the parallel suite
+            // an empty-named TextBox peer is realized at index 0 too. Filter to the item peers (the
+            // elements a screen reader announces when navigating the list) so the assertion is stable
+            // and still catches a leaked type-name / record-dump ToString on any item.
             var names = (UIElementAutomationPeer.CreatePeerForElement(combo).GetChildren() ?? new List<AutomationPeer>())
+                .OfType<ListBoxItemAutomationPeer>()
                 .Select(p => p.GetName())
                 .ToList();
             Assert.Equal(new[] { "System", "Parchment", "Parchment Dark" }, names);
         }
         finally { window.Close(); }
+    }
+
+    // Pumps the STA dispatcher until all queued work down to SystemIdle priority (layout,
+    // container generation, peer realization) has run.
+    private static void DrainDispatcher()
+    {
+        var frame = new DispatcherFrame();
+        Dispatcher.CurrentDispatcher.BeginInvoke(
+            DispatcherPriority.SystemIdle, new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
     }
 
     // Cheap, fast guard on the item types themselves: their ToString() must be display

@@ -34,6 +34,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
     private readonly IUpdateCheckService? _updateCheckService;
+    // Windows toast notifications for new mail. Null in tests and when the OS/platform is
+    // unsupported. Calling into it is an OS side-effect a service owns, not a View-layer type,
+    // so it does not violate the no-UI-types-in-ViewModels rule.
+    private readonly INotificationService? _notifications;
+    // New-mail notification state (UI-thread-owned): threshold excludes the startup backlog;
+    // the key set de-dupes across repeated IDLE fires within the session.
+    private readonly DateTimeOffset _notifyThresholdUtc = DateTimeOffset.UtcNow;
+    private readonly HashSet<string> _notifiedMessageKeys = new();
     // Exposes hex strings only, so consuming it here does not violate the
     // no-UI-types-in-ViewModels rule. Null in tests that don't exercise theming.
     private readonly IThemeService? _themeService;
@@ -789,7 +797,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IChangeNotifier? changeNotifier = null,
         IUpdateCheckService? updateCheckService = null,
         IUiDispatcher? uiDispatcher = null,
-        IThemeService? themeService = null)
+        IThemeService? themeService = null,
+        INotificationService? notificationService = null)
     {
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
@@ -808,6 +817,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _calendarService      = calendarService;
         _updateCheckService   = updateCheckService;
         _themeService         = themeService;
+        _notifications        = notificationService;
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
@@ -1935,10 +1945,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             try
             {
-                if (OnlineMode)
-                    await _syncService.SyncOneFolderOnlineAsync(account, inbox, CancellationToken.None);
-                else
-                    await _syncService.SyncOneFolderAsync(account, inbox, CancellationToken.None);
+                var incoming = OnlineMode
+                    ? await _syncService.SyncOneFolderOnlineAsync(account, inbox, CancellationToken.None)
+                    : await _syncService.SyncOneFolderAsync(account, inbox, CancellationToken.None);
+
+                // Notify on the UI thread so the de-dupe set stays single-thread-owned.
+                if (incoming.Count > 0)
+                    _ui.Post(() => MaybeNotifyNewMail(account, incoming));
             }
             catch (Exception ex)
             {
@@ -1946,6 +1959,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         });
     });
+
+    // Shows a Windows toast for genuinely-new inbox mail. Runs on the UI thread (the caller posts
+    // it there) so _notifiedMessageKeys is single-thread-owned. Setting is re-read live so a
+    // Settings change takes effect without a restart.
+    private void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
+    {
+        if (_notifications is not { IsSupported: true }) return;
+        if (!_configService.Load().NotifyOnNewMail) return;
+
+        // Bound session memory: the set only holds keys of messages we've already notified for, but
+        // an always-on session could grow it without limit. Clearing risks at most a re-notify for a
+        // message still inside the last-50 IDLE fetch window whose Date is after launch — negligible.
+        if (_notifiedMessageKeys.Count > 10_000) _notifiedMessageKeys.Clear();
+
+        var fresh = Helpers.NewMailFilter.SelectNew(incoming, _notifyThresholdUtc, _notifiedMessageKeys);
+        if (fresh.Count == 0) return;
+
+        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
+    }
 
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
