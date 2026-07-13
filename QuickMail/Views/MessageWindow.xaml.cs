@@ -230,6 +230,16 @@ public partial class MessageWindow : Window
 
             _vm.MessageDetail = detail;
             await ShowMessageBodyAsync(detail);
+
+            // Opening a message in a standalone window must mark it read on the server, same as
+            // the reading pane and tabs do. Loading here is cache-first, so relying on the body
+            // fetch's \Seen side effect would leave prefetched (cache-hit) messages unread in
+            // other clients (issue #225). MarkReadCommand invokes MarkReadAction, which MainWindow
+            // wires to MainViewModel.MarkMessagesReadAsync — that updates the summary, the local
+            // store, and the server, and is a no-op when already read. Runs after the body is
+            // shown so a load failure never marks an unread message.
+            if (summary.IsRead == false)
+                _vm.MarkReadCommand.Execute(null);
         }
         catch (OperationCanceledException) { /* window closed mid-load — normal */ }
         catch (Exception ex)

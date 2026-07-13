@@ -3095,7 +3095,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // folder unread counts on this path too — otherwise they stay stale until the next
             // manual refresh (issue #227 follow-up).
             if (wasUnread)
+            {
                 ScheduleFolderCountRefresh(summary.AccountId);
+
+                // Mark read on the server explicitly rather than relying on the body fetch's
+                // \Seen side effect. In cached mode the detail is usually served from the local
+                // store — prefetched messages are cached without \Seen (PrefetchMessageDetailAsync
+                // uses markRead: false) — so GetMessageDetailAsync, the only thing that flags the
+                // server, never runs and the message stays unread in other clients (issue #225).
+                // AddFlags(\Seen) is idempotent, so re-flagging on the cache-miss path is harmless.
+                // Online mode already flagged it during the GetMessageDetailAsync fetch above.
+                if (!OnlineMode)
+                    _imap.MarkReadAsync(summary.AccountId, summary.FolderName, summary.MessageId)
+                        .LogFaults("mark read on open");
+            }
             if (!OnlineMode)
             {
                 _localStore.UpdateIsReadAsync(summary.AccountId, summary.FolderName, summary.MessageId, true)
