@@ -169,7 +169,9 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
 
         if (args.TryGetValue("action", out var action) && action == "info") return null;
 
-        Guid.TryParse(args.Get("accountId"), out var accountId);
+        // accountId is Guid.Empty when absent or unparseable, which the activation handler treats
+        // as "just bring the app forward". Discard the bool result explicitly (satisfies CA1806).
+        _ = Guid.TryParse(args.Get("accountId"), out var accountId);
         var folder    = args.Contains("folder") ? args.Get("folder") : null;
         var messageId = args.Contains("messageId") ? args.Get("messageId") : null;
         return new NotificationActivation(accountId, folder, messageId);
