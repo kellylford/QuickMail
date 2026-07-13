@@ -131,7 +131,17 @@ what happened, what you expected, and steps to reproduce; a
 will be sent, built fresh from those fields. Press <strong>Send</strong>
 to submit — QuickMail creates the GitHub issue directly using its own
 limited-scope credential, and the window shows a link to the created
-issue. No log content is ever collected or sent.</p>
+issue.</p>
+<p>Alongside what you type, the report includes a short
+<strong>Environment</strong> section so a maintainer can reproduce the
+problem in the right context. It currently lists the QuickMail version,
+your Windows version, the .NET runtime version, the active color theme,
+the current view (the message grouping — Messages, Conversations, From,
+or To — and the saved view name if one is applied), and the current
+message sort order. No message content, email addresses, account
+settings, credentials, or log file content is ever collected or sent —
+and because the Preview shows the full report verbatim, you can always
+see exactly what is included before sending.</p>
 <p>If sending fails, or you’d rather review the report yourself, choose
 <strong>Copy report and open GitHub</strong> instead: your report is
 copied to the clipboard and a pre-filled GitHub issue page opens in your
