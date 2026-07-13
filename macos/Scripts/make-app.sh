@@ -43,7 +43,21 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - "$APP"
+# Sign with a stable identity so Keychain access survives rebuilds.
+# Override with QM_SIGN_IDENTITY; falls back to ad-hoc if none found.
+IDENTITY="${QM_SIGN_IDENTITY:-}"
+if [[ -z "$IDENTITY" ]]; then
+    IDENTITY=$(security find-identity -v -p codesigning \
+        | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+fi
+if [[ -n "$IDENTITY" ]]; then
+    echo "Signing with: $IDENTITY"
+    codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+else
+    echo "No Developer ID identity found; ad-hoc signing (Keychain will re-prompt after each rebuild)"
+    codesign --force --sign - "$APP"
+fi
+codesign --verify --deep --strict "$APP" && echo "Signature verified"
 echo "Built $APP"
 
 if [[ "${1:-}" == "run" ]]; then

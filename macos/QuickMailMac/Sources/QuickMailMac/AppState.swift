@@ -24,6 +24,25 @@ final class AppState: ObservableObject {
     /// Drafts handed to compose windows, keyed by the window's value.
     @Published var composeDrafts: [UUID: ComposeDraft] = [:]
 
+    /// Bumped when focus should move into the message body (Enter on a message).
+    @Published var bodyFocusToken = 0
+    /// Bumped when focus should return to the message list (Escape in the body).
+    @Published var listFocusToken = 0
+
+    /// Enter on the message list: open the selected message (if not already
+    /// open) and move focus into the body so reading can start immediately.
+    func readSelectedMessage() {
+        guard let uid = selectedMessageUID else { return }
+        if currentDetail?.uid != uid {
+            openMessage(uid: uid)
+        }
+        bodyFocusToken += 1
+    }
+
+    func returnFocusToList() {
+        listFocusToken += 1
+    }
+
     // --profileDir <path> overrides the data directory, as on Windows.
     private let store: AccountStore = {
         let args = CommandLine.arguments
@@ -128,7 +147,17 @@ final class AppState: ObservableObject {
                     self.selectFolder(inbox.fullName)
                 }
             } catch {
-                self.report(error: error.localizedDescription)
+                // A missing password is fixable right here — open the editor
+                // for this account instead of a dead-end alert.
+                if case MailError.authenticationFailed(let message) = error,
+                   message.hasPrefix("No saved password") {
+                    self.editingAccount = account
+                    self.showAccountEditor = true
+                    self.statusText = "Enter the password for \(account.accountName)"
+                    Announcer.announce("Enter the password for \(account.accountName)")
+                } else {
+                    self.report(error: error.localizedDescription)
+                }
             }
         }
     }
@@ -139,7 +168,7 @@ final class AppState: ObservableObject {
             return existing
         }
         Log.debug("session: reading keychain password")
-        guard let password = await Self.lookupPassword(accountID: account.id) else {
+        guard let password = await Self.lookupPassword(accountID: account.id, host: account.imapHost) else {
             throw MailError.authenticationFailed("No saved password — edit the account to set one.")
         }
         Log.debug("session: got password, connecting")
@@ -157,17 +186,34 @@ final class AppState: ObservableObject {
     /// be able to freeze the UI thread.
     ///
     /// Dev override: when launched with --profileDir (isolated test profile),
-    /// the QM_DEV_PASSWORD environment variable supplies the password
-    /// directly, so automated smoke tests don't depend on Keychain ACLs.
-    private static func lookupPassword(accountID: UUID) async -> String? {
+    /// the QM_DEV_PASSWORD environment variable supplies the password —
+    /// but only for accounts pointing at a loopback server, so a real
+    /// account added during a dev run still uses its Keychain password.
+    private static func lookupPassword(accountID: UUID, host: String) async -> String? {
         if CommandLine.arguments.contains("--profileDir"),
+           ["127.0.0.1", "localhost", "::1"].contains(host.lowercased()),
            let dev = ProcessInfo.processInfo.environment["QM_DEV_PASSWORD"], !dev.isEmpty {
-            Log.debug("session: using QM_DEV_PASSWORD override (dev profile)")
+            Log.debug("session: using QM_DEV_PASSWORD override (dev profile, loopback host)")
             return dev
         }
-        return await Task.detached(priority: .userInitiated) {
-            Keychain.password(forAccountID: accountID)
-        }.value
+        // Race the read against a timeout: a Keychain authorization prompt
+        // that can't display (or a wedged securityd) must surface as an error,
+        // not an eternal "Connecting…".
+        return await withTaskGroup(of: String??.self) { group in
+            group.addTask {
+                Keychain.password(forAccountID: accountID)
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                return .some(nil)
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            if first == .some(nil) {
+                Log.debug("session: keychain read timed out")
+            }
+            return first ?? nil
+        }
     }
 
     // MARK: - Folders & messages
@@ -390,10 +436,6 @@ final class AppState: ObservableObject {
             completion("The sending account no longer exists.")
             return
         }
-        guard let password = Keychain.password(forAccountID: account.id) else {
-            completion("No saved password for \(account.accountName).")
-            return
-        }
         let message = OutgoingMessage(
             from: MailAddress(name: account.displayName, address: account.emailAddress),
             to: draft.to, cc: draft.cc,
@@ -404,6 +446,11 @@ final class AppState: ObservableObject {
         )
         status("Sending…")
         Task {
+            guard let password = await Self.lookupPassword(accountID: account.id, host: account.smtpHost) else {
+                self.status("Send failed")
+                completion("No saved password for \(account.accountName).")
+                return
+            }
             do {
                 let client = SMTPClient(host: account.smtpHost, port: account.smtpPort, useTLS: account.smtpUseSSL)
                 try await client.send(message: message, username: account.username, password: password)
@@ -441,9 +488,25 @@ final class AppState: ObservableObject {
 enum Log {
     static let enabled = CommandLine.arguments.contains { $0 == "/debug" || $0 == "--debug" }
 
+    private static let fileURL: URL = {
+        let dir = FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("QuickMail", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("quickmail.log")
+    }()
+
     static func debug(_ message: String) {
         guard enabled else { return }
-        FileHandle.standardError.write(Data("[quickmail] \(message)\n".utf8))
+        let line = "[quickmail] \(Date().formatted(date: .omitted, time: .standard)) \(message)\n"
+        FileHandle.standardError.write(Data(line.utf8))
+        if let handle = try? FileHandle(forWritingTo: fileURL) {
+            handle.seekToEndOfFile()
+            handle.write(Data(line.utf8))
+            try? handle.close()
+        } else {
+            try? Data(line.utf8).write(to: fileURL)
+        }
     }
 }
 

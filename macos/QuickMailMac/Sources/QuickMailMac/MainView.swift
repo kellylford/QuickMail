@@ -104,6 +104,7 @@ struct SidebarView: View {
 
 struct MessageListView: View {
     @EnvironmentObject var state: AppState
+    @FocusState private var listFocused: Bool
 
     var body: some View {
         Group {
@@ -120,6 +121,15 @@ struct MessageListView: View {
                         .tag(message.uid)
                 }
                 .accessibilityLabel("Messages")
+                .focused($listFocused)
+                .onKeyPress(.return) {
+                    guard state.selectedMessageUID != nil else { return .ignored }
+                    state.readSelectedMessage()
+                    return .handled
+                }
+                .onChange(of: state.listFocusToken) {
+                    listFocused = true
+                }
             }
         }
         .navigationTitle(state.selectedFolder?.displayName ?? "Messages")

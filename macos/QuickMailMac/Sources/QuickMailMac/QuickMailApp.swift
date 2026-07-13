@@ -13,6 +13,12 @@ struct QuickMailApp: App {
                 .onAppear { state.start() }
         }
         .commands {
+            CommandGroup(after: .appSettings) {
+                SettingsLink {
+                    Text("Manage Accounts…")
+                }
+                .keyboardShortcut(",", modifiers: [.command, .shift])
+            }
             CommandGroup(after: .newItem) {
                 Button("New Message") {
                     compose(.new)

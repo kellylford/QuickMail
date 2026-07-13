@@ -15,8 +15,12 @@ struct ReadingPaneView: View {
                     AttachmentBar(attachments: detail.attachments)
                     Divider()
                 }
-                SandboxedWebView(html: pageHTML(for: detail))
-                    .accessibilityLabel("Message body")
+                SandboxedWebView(
+                    html: pageHTML(for: detail),
+                    focusToken: state.bodyFocusToken,
+                    onEscape: { state.returnFocusToList() }
+                )
+                .accessibilityLabel("Message body")
             }
         } else if state.selectedMessageUID != nil {
             ProgressView("Loading message…")
@@ -107,6 +111,8 @@ struct AttachmentBar: View {
 /// opened in the default browser instead of navigating the pane.
 struct SandboxedWebView: NSViewRepresentable {
     let html: String
+    var focusToken: Int = 0
+    var onEscape: () -> Void = {}
 
     static let blockAllNetworkRules = """
     [{"trigger": {"url-filter": ".*"}, "action": {"type": "block"}}]
@@ -116,7 +122,10 @@ struct SandboxedWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.defaultWebpagePreferences.allowsContentJavaScript = false
         config.websiteDataStore = .nonPersistent()
-        let webView = WKWebView(frame: .zero, configuration: config)
+        let webView = EscapableWebView(frame: .zero, configuration: config)
+        webView.onEscape = { [weak coordinator = context.coordinator] in
+            coordinator?.onEscape()
+        }
         webView.navigationDelegate = context.coordinator
         webView.setValue(false, forKey: "drawsBackground")
         WKContentRuleListStore.default().compileContentRuleList(
@@ -131,9 +140,18 @@ struct SandboxedWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.onEscape = onEscape
         if context.coordinator.lastHTML != html {
             context.coordinator.lastHTML = html
             webView.loadHTMLString(html, baseURL: nil)
+        }
+        if focusToken != context.coordinator.lastFocusToken {
+            context.coordinator.lastFocusToken = focusToken
+            if webView.isLoading {
+                context.coordinator.wantsFocusAfterLoad = true
+            } else {
+                webView.window?.makeFirstResponder(webView)
+            }
         }
     }
 
@@ -143,6 +161,16 @@ struct SandboxedWebView: NSViewRepresentable {
 
     final class Coordinator: NSObject, WKNavigationDelegate {
         var lastHTML: String?
+        var lastFocusToken = 0
+        var wantsFocusAfterLoad = false
+        var onEscape: () -> Void = {}
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            if wantsFocusAfterLoad {
+                wantsFocusAfterLoad = false
+                webView.window?.makeFirstResponder(webView)
+            }
+        }
 
         func webView(
             _ webView: WKWebView,
@@ -163,5 +191,19 @@ struct SandboxedWebView: NSViewRepresentable {
             }
             decisionHandler(.allow)
         }
+    }
+}
+
+/// WKWebView that hands Escape back to the app (return focus to the list)
+/// instead of swallowing it.
+final class EscapableWebView: WKWebView {
+    var onEscape: () -> Void = {}
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape
+            onEscape()
+            return
+        }
+        super.keyDown(with: event)
     }
 }
