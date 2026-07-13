@@ -159,6 +159,24 @@ public class MessageBodyHtmlBuilderTests
     }
 
     [Fact]
+    public void BuildMessageHtml_ForcePlainText_NoBodyAtAll_EmptyFocusableBodyNoNote()
+    {
+        var detail = new QuickMail.Models.MailMessageDetail
+        {
+            Subject       = "Subj",
+            HtmlBody      = string.Empty,
+            PlainTextBody = string.Empty,
+        };
+
+        var html = MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss: null, forcePlainText: true);
+
+        // A focusable document is still produced (so the reading pane can receive focus),
+        // and with no HTML to derive from there is no "no plain-text version" note.
+        Assert.Contains("tabindex=\"0\"", html);
+        Assert.DoesNotContain("no plain-text version", html);
+    }
+
+    [Fact]
     public void BuildMessageHtml_ForcePlainTextFalse_MatchesDefault()
     {
         var detail = new QuickMail.Models.MailMessageDetail
