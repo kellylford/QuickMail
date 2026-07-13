@@ -61,6 +61,12 @@
                                           IsChecked="{Binding ShowMessageStatus, Mode=TwoWay}"
                                           Margin="0,8,0,0"
                                           AutomationProperties.Name="Show message status column in message list"/>
+
+                                <!-- Read as Plain Text (issue #34) -->
+                                <CheckBox Content="Read messages as _plain text"
+                                          IsChecked="{Binding ReadAsPlainText, Mode=TwoWay}"
+                                          Margin="0,8,0,0"
+                                          AutomationProperties.Name="Read messages as plain text"/>
                             </StackPanel>
                         </GroupBox>
 

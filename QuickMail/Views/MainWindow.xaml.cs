@@ -767,6 +767,11 @@ public partial class MainWindow : Window
             execute: ToggleCustomAnnouncements));
 
         _registry.Register(new CommandDefinition(
+            id: "view.togglePlainText", category: "View", title: "Toggle Plain Text View",
+            execute: TogglePlainTextView,
+            defaultKey: Key.H, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
             id: "mail.markRead", category: "Mail", title: "Mark as Read",
             execute: async () => await MarkReadCommand(),
             defaultKey: Key.Q, defaultModifiers: ModifierKeys.Control));
@@ -2232,7 +2237,8 @@ public partial class MainWindow : Window
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
         var detail   = _vm.MessageDetail;
         var themeCss = BuildReadingPaneThemeCss();
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss));
+        var plainText = _vm.ReadAsPlainText;
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText));
         if (renderVersion != _messageBodyRenderVersion) return;
 
         var eventCardHtml = _vm.BuildEventCardHtml();
@@ -2251,7 +2257,8 @@ public partial class MainWindow : Window
 
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
         var themeCss = BuildReadingPaneThemeCss();
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss));
+        var plainText = _vm.ReadAsPlainText;
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText));
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
@@ -2719,6 +2726,23 @@ public partial class MainWindow : Window
         _configService.Save(cfg);
         var msg = cfg.CustomAnnouncements ? "Custom announcements on." : "Custom announcements off.";
         AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result, force: true);
+    }
+
+    /// <summary>
+    /// Flips the sticky "read as plain text" preference (issue #34): persists it, updates the VM
+    /// (for the View-menu check state), re-renders the open message in place without moving focus,
+    /// and announces the new state. Works in reading-pane and tab modes (both use this window's
+    /// WebView2); the standalone MessageWindow has its own equivalent command.
+    /// </summary>
+    private void TogglePlainTextView()
+    {
+        var cfg = _configService.Load();
+        cfg.ReadAsPlainText = !cfg.ReadAsPlainText;
+        _configService.Save(cfg);
+        _vm.ReadAsPlainText = cfg.ReadAsPlainText;
+        _ = RerenderReadingPaneAsync();
+        var msg = cfg.ReadAsPlainText ? "Plain text view on." : "Plain text view off.";
+        AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result);
     }
 
     private void ShowTutorial()
@@ -4444,6 +4468,8 @@ public partial class MainWindow : Window
         win.ShowDialog();
     }
 
+    private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();
+
     private void MenuSettings_Click(object sender, RoutedEventArgs e)
     {
         // Font enumeration is a View-layer concern; the VM receives plain strings.
@@ -4460,6 +4486,11 @@ public partial class MainWindow : Window
             var cfg = _configService.Load();
             _vm.ApplySettings(cfg);
             _registry.ApplyUserOverrides(cfg.CustomHotkeys);
+            // The plain-text preference may have changed; re-render the open message so a
+            // Settings change takes effect live (focus is preserved). Theme changes already
+            // re-render via ThemeChanged; this covers the plain-text flag when the theme is
+            // unchanged. RerenderReadingPaneAsync no-ops when no message is open.
+            _ = RerenderReadingPaneAsync();
         }
     }
 

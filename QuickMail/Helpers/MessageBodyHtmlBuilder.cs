@@ -31,9 +31,24 @@ public static class MessageBodyHtmlBuilder
     /// variables are absent and the <c>var(--qm-*, fallback)</c> declarations
     /// resolve to their system-color fallbacks (the pre-theming behavior).
     /// </param>
-    public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null)
+    public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null, bool forcePlainText = false)
     {
         var htmlBody = detail.HtmlBody ?? string.Empty;
+
+        // Plain-text view (issue #34): the user asked to read this message as plain text.
+        // Render the sender's original text/plain part verbatim for maximum fidelity, and only
+        // when there is no plain-text part fall back to text extracted from the HTML (with a note
+        // so the user knows the text was derived, not original).
+        if (forcePlainText)
+        {
+            var hasPlain = !string.IsNullOrWhiteSpace(detail.PlainTextBody);
+            var plainText = hasPlain ? detail.PlainTextBody : HtmlToText(htmlBody);
+            var plainNote = !hasPlain && !string.IsNullOrWhiteSpace(htmlBody)
+                ? "This message has no plain-text version; showing text extracted from the HTML."
+                : null;
+            return BuildPlainTextHtmlDocument(detail.Subject, plainText, plainNote, themeCss);
+        }
+
         // Fail closed: if any stripping pass times out we cannot claim the HTML is
         // sanitized, so fall through to the plain-text (reader mode) rendering instead
         // of showing partially stripped markup.

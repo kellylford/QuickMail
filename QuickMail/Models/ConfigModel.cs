@@ -15,6 +15,14 @@ public class ConfigModel
     public bool ShowMessageStatus { get; set; } = true;
 
     /// <summary>
+    /// Read messages as plain text: render each message from its original text/plain part
+    /// (falling back to text extracted from the HTML when the sender sent no plain-text part)
+    /// instead of the HTML body. Sticky preference; applies to the reading pane, message tabs,
+    /// and the standalone message window. Default off (issue #34).
+    /// </summary>
+    public bool ReadAsPlainText { get; set; } = false;
+
+    /// <summary>
     /// How to display the message list.
     /// Values: "messages" (flat list), "conversations" (grouped by subject), "from" (grouped by sender).
     /// </summary>

@@ -115,4 +115,66 @@ public class MessageBodyHtmlBuilderTests
         Assert.Contains("Plain fallback text", html);
         Assert.Contains("simplified body", html);
     }
+
+    // ── Plain-text view (issue #34) ──────────────────────────────────────────────
+
+    [Fact]
+    public void BuildMessageHtml_ForcePlainText_UsesPlainTextPartVerbatim_NoNote()
+    {
+        var detail = new QuickMail.Models.MailMessageDetail
+        {
+            Subject       = "Subj",
+            HtmlBody      = "<html><body><p>HTML <b>version</b></p></body></html>",
+            PlainTextBody = "PLAIN-PART-MARKER line one\nline two",
+        };
+
+        var html = MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss: null, forcePlainText: true);
+
+        // The sender's plain-text part is shown verbatim (HTML-encoded), not the HTML body.
+        Assert.Contains("PLAIN-PART-MARKER line one", html);
+        Assert.Contains("line two", html);
+        Assert.DoesNotContain("<b>version</b>", html);
+        // A message that HAS a plain part gets no derivation note.
+        Assert.DoesNotContain("no plain-text version", html);
+        Assert.DoesNotContain("simplified body", html);
+    }
+
+    [Fact]
+    public void BuildMessageHtml_ForcePlainText_NoPlainPart_ExtractsHtmlWithNote()
+    {
+        var detail = new QuickMail.Models.MailMessageDetail
+        {
+            Subject       = "Subj",
+            HtmlBody      = "<html><body><p>Extracted <b>content</b> here</p></body></html>",
+            PlainTextBody = string.Empty,
+        };
+
+        var html = MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss: null, forcePlainText: true);
+
+        // Text is extracted from the HTML (tags stripped) and the derivation note is present.
+        Assert.Contains("Extracted", html);
+        Assert.Contains("content", html);
+        Assert.DoesNotContain("<b>content</b>", html);
+        Assert.Contains("no plain-text version", html);
+    }
+
+    [Fact]
+    public void BuildMessageHtml_ForcePlainTextFalse_MatchesDefault()
+    {
+        var detail = new QuickMail.Models.MailMessageDetail
+        {
+            Subject       = "Subj",
+            HtmlBody      = "<html><body><p>Hello world</p></body></html>",
+            PlainTextBody = "Hello world",
+        };
+
+        // The explicit forcePlainText:false call must produce identical output to the
+        // default two-arg call — i.e. the new parameter is inert when off.
+        var defaultHtml = MessageBodyHtmlBuilder.BuildMessageHtml(detail);
+        var explicitHtml = MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss: null, forcePlainText: false);
+
+        Assert.Equal(defaultHtml, explicitHtml);
+        // And the default still renders the HTML body (sanitized), not the plain-text path.
+        Assert.Contains("Content-Security-Policy", defaultHtml);
+    }
 }

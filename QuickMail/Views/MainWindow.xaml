@@ -338,6 +338,12 @@
                           Command="{Binding RefreshCommand}"
                           InputGestureText="F5"/>
                 <Separator/>
+                <MenuItem Header="_Plain Text View"
+                          IsCheckable="True"
+                          IsChecked="{Binding ReadAsPlainText, Mode=OneWay}"
+                          Click="MenuPlainText_Click"
+                          InputGestureText="Ctrl+Shift+H"/>
+                <Separator/>
                 <MenuItem Header="View _Mode">
                     <MenuItem Header="_Messages"
                               IsCheckable="True"
