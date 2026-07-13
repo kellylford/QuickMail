@@ -157,10 +157,11 @@ the account is reachable. If the account never connects, the app is simply left 
 
 ### Configuration
 
-New `ConfigModel.NotifyOnNewMail` (bool, **default on**). Consistent with the app's other
-opt-out defaults (AutoUpdate on, announcements on) and with the issue's intent. Parsed/written
-by `ConfigService` in the `[global]` section as `NotifyOnNewMail = on|off`, read live via
-`_configService.Load()` on each detection so a Settings change takes effect without restart.
+New `ConfigModel.NotifyOnNewMail` (bool, **default off — opt-in**). Notifications and
+run-in-background are both off by default so nothing about the app's behaviour changes until the
+user enables them in Settings. Parsed/written by `ConfigService` in the `[global]` section as
+`NotifyOnNewMail = on|off`, read live via `_configService.Load()` on each detection so a Settings
+change takes effect without restart.
 
 Settings UI: a new **Notifications** GroupBox on the **General** tab with one checkbox,
 "Show a _notification when new mail arrives", bound to `SettingsViewModel.NotifyOnNewMail`.
@@ -221,7 +222,7 @@ happens; nothing else changes.
 - `WindowsToastNotificationService.ParseActivation`: extracts accountId/folder/messageId from a
   toast argument string; the multi-message toast has no messageId; the info toast returns null.
 - `WindowsToastNotificationService.SenderDisplayName`: strips the address, keeps the display name.
-- `ConfigService`: round-trips `NotifyOnNewMail`, `CloseToTray`, `TrayHintShown` (defaults on/off/off).
+- `ConfigService`: round-trips `NotifyOnNewMail`, `CloseToTray`, `TrayHintShown` (all default off).
 - `SettingsViewModel`: loads and saves `NotifyOnNewMail` and `CloseToTray`.
 
 ## Out of scope (Phase 1)

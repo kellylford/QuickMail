@@ -54,14 +54,14 @@ public class SettingsViewModelTests
         var configService = new StubConfigService();
         var registry = new StubCommandRegistry();
 
-        // Default is on.
+        // Default is off (opt-in).
         var vm = new SettingsViewModel(configService, registry);
-        Assert.True(vm.NotifyOnNewMail);
+        Assert.False(vm.NotifyOnNewMail);
 
-        vm.NotifyOnNewMail = false;
+        vm.NotifyOnNewMail = true;
         vm.SaveCommand.Execute(null);
 
-        Assert.False(configService.Load().NotifyOnNewMail);
+        Assert.True(configService.Load().NotifyOnNewMail);
     }
 
     [Fact]

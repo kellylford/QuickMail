@@ -149,8 +149,9 @@ public class ConfigModel
 
     // ── Notifications ─────────────────────────────────────────────────────────────
 
-    /// <summary>Show a Windows toast notification when new mail arrives in an inbox. Default on.</summary>
-    public bool NotifyOnNewMail { get; set; } = true;
+    /// <summary>Show a Windows toast notification when new mail arrives in an inbox. Default off —
+    /// the user opts in from Settings.</summary>
+    public bool NotifyOnNewMail { get; set; } = false;
 
     /// <summary>
     /// When closing the main window, hide QuickMail to the notification area (system tray) instead
