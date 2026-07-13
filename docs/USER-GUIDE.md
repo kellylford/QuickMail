@@ -18,6 +18,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 - [Mail Rules](#mail-rules)
 - [Saved Views](#saved-views)
 - [Calendar](#calendar)
+- [Notifications](#notifications)
 - [Tools Menu](#tools-menu)
 - [Settings](#settings)
 - [Themes](#themes)
@@ -215,6 +216,21 @@ Press **Ctrl+Enter** to open a message in a new tab regardless of the Reading Mo
 The reading pane renders HTML messages with WebView2. Links open in your default browser. Images from remote sources are blocked by default.
 
 Press **F6** or **Shift+F6** to move between the reading pane and other panes.
+
+### Plain Text View
+
+Toggle a sticky preference to read all messages as plain text instead of HTML. When on, QuickMail renders each message from its original plain-text part (or from text extracted from the HTML if the sender included no plain-text part). This gives a cleaner, low-noise read — useful when you want a simpler layout, or when you want to inspect a suspicious message's raw text.
+
+Toggle plain text view three ways:
+
+| Method | How |
+|--------|-----|
+| **Command Palette** | Press `Ctrl+Shift+P`, type "Toggle Plain Text View", press Enter |
+| **View menu** | Open the **View** menu and activate the **Plain Text View** item (a checkable toggle) |
+| **Keyboard shortcut** | Press **Ctrl+Shift+H** |
+| **Settings** | Open Settings (Ctrl+,), navigate to the General tab, and check **Read messages as plain text** |
+
+The setting persists across app restarts and applies to the reading pane, message tabs, and standalone message windows. When a message has no plain-text part, QuickMail shows a note before the extracted text: "This message has no plain-text version; showing text extracted from the HTML."
 
 ### Message Windows
 
@@ -514,6 +530,35 @@ Open a meeting invitation email as you would any message. Below the invitation d
 
 ---
 
+## Notifications
+
+New-mail notifications and the option to keep QuickMail running in the notification area when you close the window are both **off by default**. To turn them on, go to **Settings → General → Notifications**.
+
+### Show a Notification When New Mail Arrives
+
+When this setting is on, QuickMail shows a Windows notification as new mail arrives in any inbox. The notification is announced by screen readers and appears in the Windows notification center (open it with **Win+A**; navigate to the most recent notification with **Win+Shift+V**). Pressing **Enter** on a notification brings QuickMail to the foreground and opens that message.
+
+If multiple messages arrive together, the notification shows a count ("5 new messages") and brings QuickMail to the foreground when activated. Single-message notifications show the sender's name and subject and open that message.
+
+Notifications require **Windows 10 1809 or later**.
+
+### Keep Running in the Notification Area When You Close the Window
+
+When this setting is on, closing the main window hides QuickMail to the notification area (system tray) instead of exiting, so it keeps running and new-mail notifications continue to arrive. To restore the window:
+
+- **From a notification:** press **Enter** on any new-mail notification.
+- **From the tray icon:** move focus to the notification area with **Win+B**, arrow to the QuickMail icon, and press **Enter** (or the **Menu** key, then arrow to **Open QuickMail** and press **Enter**).
+- **Double-activate the tray icon:** move focus to the notification area (**Win+B**) and double-activate QuickMail.
+
+To quit when this setting is on:
+
+- Use **File → Exit** from the app menu bar, or
+- From the tray icon, press the **Menu** key and arrow to **Exit QuickMail**.
+
+The first time you hide the window to the tray, a notification explains that QuickMail is still running — this message appears once only.
+
+---
+
 ## Tools Menu
 
 The **Tools** menu is always available from the main window menu bar and groups together the commands used less often than day-to-day mail actions:
@@ -536,6 +581,10 @@ Press **Ctrl+,** to open Settings.
 - **Mark messages read** — automatically on open, or manually only
 - **Default compose mode** — Plain Text, Markdown, or HTML
 - **Auto-save drafts** — on/off and interval
+- **Read messages as plain text** — when on, display all messages as plain text instead of HTML
+- **Notifications** — two checkboxes:
+  - **Show a notification when new mail arrives** — enable Windows notifications for new mail in inboxes (requires Windows 10 1809 or later)
+  - **Keep running in the notification area when I close the window** — closing the main window hides QuickMail to the tray instead of exiting
 
 ### Accounts
 
@@ -699,6 +748,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+S` | Search messages |
 | `Ctrl+Shift+F` | Search folders |
 | `Ctrl+Shift+V` | View menu |
+| `Ctrl+Shift+H` | Toggle Plain Text View |
 | `Ctrl+Shift+G` | Grab Addresses from Message |
 | `Ctrl+Shift+B` | Address Book |
 | `Ctrl+Shift+L` | Rules Manager |

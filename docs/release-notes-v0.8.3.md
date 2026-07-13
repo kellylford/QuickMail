@@ -11,7 +11,23 @@ Two options are available for v0.8.3:
 
 Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
 
-This is a **fixes release** on top of v0.8.2. It fixes messages sometimes staying unread in your other email clients after you had read them in QuickMail, and it puts the version number in the downloaded installer's filename. If you installed QuickMail from the MSI, this update is delivered automatically. Everything from v0.8.2, v0.8.1, and v0.8.0 — the Gmail duplicate fix, live folder unread counts, themes and the visual design system, automatic updates, the Tools menu, and in-app bug reporting — is included.
+This release adds **plain-text message reading** and **Windows notifications for new mail**, plus the option to **run in the background when you close the window**. It also fixes messages sometimes staying unread in your other email clients after you had read them in QuickMail, and puts the version number in the downloaded installer's filename. If you installed QuickMail from the MSI, this update is delivered automatically. Everything from v0.8.2, v0.8.1, and v0.8.0 — the Gmail duplicate fix, live folder unread counts, themes and the visual design system, automatic updates, the Tools menu, and in-app bug reporting — is included.
+
+---
+
+## New in 0.8.3
+
+### Plain Text View
+
+Read messages as plain text instead of HTML. Open **Settings → General** and check **Read messages as plain text**, or toggle it with **Ctrl+Shift+H** or the **View → Plain Text View** menu item. The preference is sticky: it persists across restarts and applies to the reading pane, message tabs, and standalone message windows. When plain-text view is on, QuickMail renders each message from its original plain-text part, falling back to text extracted from the HTML only when the sender included no plain-text part. Use it for a cleaner, low-noise read or to inspect a message's raw text for security checking.
+
+### Windows Notifications for New Mail
+
+Get a native Windows notification when new mail arrives in an inbox. Open **Settings → General → Notifications** and check **Show a notification when new mail arrives**. Notifications are announced by screen readers and appear in the Windows notification center. Activate a notification to bring QuickMail to the front and open that message. Requires Windows 10 1809 or later.
+
+### Run in the Background When You Close the Window
+
+Keep QuickMail running in the notification area when you close the main window, so new-mail notifications keep arriving. Open **Settings → General → Notifications** and check **Keep running in the notification area when I close the window**. The first time you close to the tray, a notification explains that QuickMail is still running. Restore the window from the tray icon, by double-activating the icon, or by activating a notification. Use **File → Exit** or the tray icon's **Exit QuickMail** to quit.
 
 ---
 
@@ -31,7 +47,9 @@ The downloaded Windows installer was always named `QuickMail-win.msi`, so once i
 
 ## Accessibility
 
-- No accessibility behavior changes in this release. The mark-as-read fix is a server-side correction; it does not change what is announced or where focus lands when you open a message.
+- **Plain Text View** provides a lower-noise reading option for users who prefer a simpler layout or want to inspect raw message text for security purposes.
+- **New-mail notifications** are delivered as native Windows notifications, which screen readers announce automatically. Notifications appear in the Windows notification center (Win+A) and can be navigated with Win+Shift+V. No custom in-app announcements are layered on top — the platform's native delivery is the accessibility mechanism.
+- The mark-as-read fix is a server-side correction; it does not change what is announced or where focus lands when you open a message.
 
 ---
 
@@ -52,6 +70,14 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 ### Versioned installer filename (issue #244)
 
 - `vpk pack` always emits the MSI as the version-less `QuickMail-win.msi`. The release workflow now renames the packed MSI to `QuickMail-<version>-win.msi` after packing and uploads that (glob still covered by `fail_on_unmatched_files`). Filename only; the MSI's internal `ProductVersion` is unchanged. Workflow-only change, no application code impact.
+
+### Plain Text View (issue #34)
+
+- Added a sticky "Plain Text View" preference, configurable via the View menu, a **Ctrl+Shift+H** hotkey, and a Settings checkbox. When on, messages render from their original `text/plain` MIME part (falling back to text extracted from HTML only when the sender provided no plain-text part). The setting persists across restarts and applies to all three reading surfaces (reading pane, tab, and standalone window). Default is off. Plain-text rendering reuses the existing `BuildPlainTextHtmlDocument` builder; a new optional `forcePlainText` parameter routes callers through the plain-text branch.
+
+### Windows Notifications for New Mail (issue #240)
+
+- Two new features enable Windows native notifications for new mail and background-running when the window is closed. Phase 1 adds `INotificationService` / `WindowsToastNotificationService` (requires Windows 10 1809+) and a `NotifyOnNewMail` config flag (opt-in, off by default). The service hooks into the existing `InboxNewMailDetected` event; a dedupe filter (by session start time, read status, and message key) prevents duplicate toasts. Activating a single-message toast opens that message; multi-message toasts bring the app forward. Phase 2 adds `CloseToTray` and `TrayHintShown` flags; when `CloseToTray` is on, closing the window hides it to the notification area (system tray) instead of exiting, so the IDLE/delta watchers keep running. Exit can be triggered explicitly via File → Exit or the tray icon's Exit menu item. Both features require explicit opt-in in **Settings → General → Notifications**.
 
 ### Not shipped in this build
 
