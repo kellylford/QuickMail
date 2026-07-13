@@ -145,6 +145,24 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Notifications Group -->
+                        <GroupBox Header="_Notifications" Padding="10" Margin="0,10,0,0"
+                                  AutomationProperties.Name="Notification settings">
+                            <StackPanel>
+                                <CheckBox Content="Show a _notification when new mail arrives"
+                                          IsChecked="{Binding NotifyOnNewMail, Mode=TwoWay}"
+                                          AutomationProperties.Name="Show a notification when new mail arrives"/>
+                                <TextBlock Text="Windows shows a notification when new mail arrives in an inbox while QuickMail is running."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
+
+                                <CheckBox Content="_Keep running in the notification area when I close the window"
+                                          IsChecked="{Binding CloseToTray, Mode=TwoWay}"
+                                          AutomationProperties.Name="Keep running in the notification area when I close the window"/>
+                                <TextBlock Text="Closing the window hides QuickMail to the notification area (system tray) instead of exiting, so notifications keep arriving. Restore it from the tray icon or a notification; use File then Exit, or the tray icon's Exit, to quit."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Desktop Shortcut Group -->
                         <GroupBox Header="Desktop Shortc_ut" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Desktop shortcut settings">

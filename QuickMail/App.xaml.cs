@@ -22,6 +22,7 @@ public partial class App : Application
     private UpdateCheckService? _updateCheckService;
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
+    private WindowsToastNotificationService? _notificationService;
 
     // Explicit entry point (App.xaml compiles as Page; see csproj StartupObject). Velopack must
     // run before any WPF initialization: on install/update/uninstall its hooks handle the event
@@ -236,14 +237,21 @@ public partial class App : Application
 
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
+            _notificationService = new WindowsToastNotificationService();
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
-                themeService: themeService);
+                themeService: themeService, notificationService: _notificationService);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService);
+
+            // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
+            // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
+            _notificationService.Activated += act =>
+                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.HandleNotificationActivation(act));
+
             mainWindow.Show();
         }
         catch (Exception ex)
@@ -268,6 +276,7 @@ public partial class App : Application
         _updateCheckService?.Dispose();
         _bugReportService?.Dispose();
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
+        _notificationService?.Dispose(); // unhooks the toast-activation static event
         base.OnExit(e);
     }
 

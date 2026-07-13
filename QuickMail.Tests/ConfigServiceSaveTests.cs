@@ -49,6 +49,42 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void NotifyOnNewMail_DefaultsOff_AndRoundTrips()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        // Default is off (opt-in) when the key is absent from a fresh config.
+        Assert.False(service.Load().NotifyOnNewMail);
+
+        var config = service.Load();
+        config.NotifyOnNewMail = true;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.True(reloaded.NotifyOnNewMail);
+    }
+
+    [Fact]
+    public void CloseToTray_DefaultsOff_AndRoundTrips()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        Assert.False(service.Load().CloseToTray);       // default off
+        Assert.False(service.Load().TrayHintShown);     // default off
+
+        var config = service.Load();
+        config.CloseToTray = true;
+        config.TrayHintShown = true;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.True(reloaded.CloseToTray);
+        Assert.True(reloaded.TrayHintShown);
+    }
+
+    [Fact]
     public void SaveThenLoad_RoundTripsReadAsPlainText()
     {
         // Issue #34: the sticky plain-text preference must survive a real INI write→read

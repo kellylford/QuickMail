@@ -34,6 +34,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
     private readonly IUpdateCheckService? _updateCheckService;
+    // Windows toast notifications for new mail. Null in tests and when the OS/platform is
+    // unsupported. Calling into it is an OS side-effect a service owns, not a View-layer type,
+    // so it does not violate the no-UI-types-in-ViewModels rule.
+    private readonly INotificationService? _notifications;
+    // New-mail notification state (UI-thread-owned): threshold excludes the startup backlog;
+    // the key set de-dupes across repeated IDLE fires within the session.
+    private readonly DateTimeOffset _notifyThresholdUtc = DateTimeOffset.UtcNow;
+    private readonly HashSet<string> _notifiedMessageKeys = new();
     // Exposes hex strings only, so consuming it here does not violate the
     // no-UI-types-in-ViewModels rule. Null in tests that don't exercise theming.
     private readonly IThemeService? _themeService;
@@ -797,7 +805,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IChangeNotifier? changeNotifier = null,
         IUpdateCheckService? updateCheckService = null,
         IUiDispatcher? uiDispatcher = null,
-        IThemeService? themeService = null)
+        IThemeService? themeService = null,
+        INotificationService? notificationService = null)
     {
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
@@ -816,6 +825,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _calendarService      = calendarService;
         _updateCheckService   = updateCheckService;
         _themeService         = themeService;
+        _notifications        = notificationService;
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
@@ -1564,6 +1574,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // account that connects OUTSIDE this startup pipeline still gets polled for new mail.
         WireUpWatchers();
 
+        // Signal that the startup connect finished so a notification click that cold-started the app
+        // (its account wasn't connected yet when the toast was activated) can now open its message.
+        StartupConnectCompleted?.Invoke();
+
         // Nothing connected — skip the heavy full sync. Watchers/labels are already handled above, and
         // WireUpWatchers will start the watcher once an account connects later.
         if (_cachedFolders.Count == 0) return;
@@ -1945,10 +1959,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             try
             {
-                if (OnlineMode)
-                    await _syncService.SyncOneFolderOnlineAsync(account, inbox, CancellationToken.None);
-                else
-                    await _syncService.SyncOneFolderAsync(account, inbox, CancellationToken.None);
+                var incoming = OnlineMode
+                    ? await _syncService.SyncOneFolderOnlineAsync(account, inbox, CancellationToken.None)
+                    : await _syncService.SyncOneFolderAsync(account, inbox, CancellationToken.None);
+
+                // Notify on the UI thread so the de-dupe set stays single-thread-owned.
+                if (incoming.Count > 0)
+                    _ui.Post(() => MaybeNotifyNewMail(account, incoming));
             }
             catch (Exception ex)
             {
@@ -1956,6 +1973,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         });
     });
+
+    // Shows a Windows toast for genuinely-new inbox mail. Runs on the UI thread (the caller posts
+    // it there) so _notifiedMessageKeys is single-thread-owned. Setting is re-read live so a
+    // Settings change takes effect without a restart.
+    private void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
+    {
+        if (_notifications is not { IsSupported: true }) return;
+        if (!_configService.Load().NotifyOnNewMail) return;
+
+        // Bound session memory: the set only holds keys of messages we've already notified for, but
+        // an always-on session could grow it without limit. Clearing risks at most a re-notify for a
+        // message still inside the last-50 IDLE fetch window whose Date is after launch — negligible.
+        if (_notifiedMessageKeys.Count > 10_000) _notifiedMessageKeys.Clear();
+
+        var fresh = Helpers.NewMailFilter.SelectNew(incoming, _notifyThresholdUtc, _notifiedMessageKeys);
+        if (fresh.Count == 0) return;
+
+        _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
+    }
 
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
@@ -4686,10 +4722,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ManageAccounts() => ManageAccountsRequested?.Invoke();
 
-#pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
+    /// <summary>Raised when the user chooses Exit. The View performs the actual shutdown so it can
+    /// first flag the close as an explicit exit (bypassing close-to-tray). Keeping the shutdown in
+    /// the View also honours the MVVM rule that VMs do not touch <c>Application</c>.</summary>
+    public event Action? ExitRequested;
+
+    /// <summary>Raised on the UI thread once the startup connect pass has completed. Lets a deferred
+    /// notification activation (cold start) open its message once the account is reachable.</summary>
+    public event Action? StartupConnectCompleted;
+
+    /// <summary>True when the account's folders are cached, i.e. it is connected and a message detail
+    /// fetch by id can succeed. Used to decide whether to open a toast's message now or defer it.</summary>
+    public bool IsAccountReady(Guid accountId) => _cachedFolders.ContainsKey(accountId);
+
     [RelayCommand]
-    private void Exit() => Application.Current.Shutdown();
-#pragma warning restore CA1822
+    private void Exit() => ExitRequested?.Invoke();
 
     // ── Account context menu commands ─────────────────────────────────────────
 
