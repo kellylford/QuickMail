@@ -49,7 +49,7 @@
     <PackageReference Include="Microsoft.Identity.Client" Version="4.85.2" />
     <PackageReference Include="Microsoft.Identity.Client.Desktop" Version="4.85.2" />
     <PackageReference Include="Microsoft.Identity.Client.Extensions.Msal" Version="4.85.2" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4078.44" />
     <PackageReference Include="Roslynator.Analyzers" Version="4.15.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
