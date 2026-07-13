@@ -22,7 +22,15 @@ internal sealed class TrayIconManager : IDisposable
             Icon    = LoadAppIcon(),
             Visible = false,
         };
-        // Double-clicking the icon is the conventional "restore" gesture.
+        // Restore on the primary activation: a single left-click, the keyboard Enter/Space default
+        // action (the shell surfaces it as a left MouseClick), and the traditional double-click.
+        // Right-click is left to the context menu below, so it never restores. Without the single
+        // MouseClick handler, keyboard users who focus the icon and press Enter got no response —
+        // only double-click worked.
+        _icon.MouseClick += (_, e) =>
+        {
+            if (e.Button == System.Windows.Forms.MouseButtons.Left) onOpen();
+        };
         _icon.DoubleClick += (_, _) => onOpen();
 
         var menu     = new System.Windows.Forms.ContextMenuStrip();
