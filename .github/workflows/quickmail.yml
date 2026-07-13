@@ -169,6 +169,12 @@ jobs:
             --instWelcome installer/velopack/welcome.txt `
             --instLicense installer/velopack/license.txt `
             --instConclusion installer/velopack/conclusion.txt
+          # vpk always emits the MSI as QuickMail-win.msi with no version in the name, so a
+          # downloaded installer is indistinguishable from any other version on disk. Rename
+          # it to carry the release version (e.g. QuickMail-0.8.2-win.msi) so users can tell
+          # versions apart in their Downloads folder. The version is only in the filename;
+          # the MSI's internal ProductVersion is unchanged (vpk set it from --packVersion).
+          Rename-Item installer/Output/Releases/QuickMail-win.msi "QuickMail-$version-win.msi"
           # The previous version's full .nupkg (fetched above as the delta input) stays in
           # the folder and is uploaded with the rest: vpk pack bakes an entry for every
           # package it saw into RELEASES/releases.win.json, so deleting the file would
@@ -179,8 +185,8 @@ jobs:
       # otherwise GitHub auto-generates notes from commits.
       #
       # Uploaded assets serve two consumers:
-      #  - people: QuickMail-win.msi (wizard installer with license acceptance) and
-      #    QuickMail.exe (portable)
+      #  - people: QuickMail-<version>-win.msi (wizard installer with license acceptance)
+      #    and QuickMail.exe (portable)
       #  - the in-app updater: RELEASES, releases.win.json, assets.win.json, and the
       #    .nupkg packages (full + delta), which Velopack's GithubSource reads from the
       #    latest release.
@@ -194,13 +200,14 @@ jobs:
           name: QuickMail ${{ github.ref_name }}
           files: |
             publish/QuickMail.exe
-            installer/Output/Releases/QuickMail-win.msi
+            installer/Output/Releases/QuickMail-*-win.msi
             installer/Output/Releases/*.nupkg
             installer/Output/Releases/RELEASES
             installer/Output/Releases/releases.win.json
             installer/Output/Releases/assets.win.json
-          # Exact filenames above encode vpk's output naming; if a vpk upgrade renames an
-          # output, fail the release instead of silently publishing without the installer
-          # or the update feed (clients would then quietly stop seeing updates).
+          # The paths above encode vpk's output naming (the MSI is renamed to add the
+          # version, hence the glob); if a vpk upgrade renames an output, fail the release
+          # instead of silently publishing without the installer or the update feed
+          # (clients would then quietly stop seeing updates).
           fail_on_unmatched_files: true
           body_path: docs/release-notes-${{ github.ref_name }}.md

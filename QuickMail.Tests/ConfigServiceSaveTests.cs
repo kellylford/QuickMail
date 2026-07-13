@@ -85,6 +85,22 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void SaveThenLoad_RoundTripsReadAsPlainText()
+    {
+        // Issue #34: the sticky plain-text preference must survive a real INI write→read
+        // (StubConfigService can't catch a mis-sectioned key like the calendar-settings bug above).
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.ReadAsPlainText = !config.ReadAsPlainText;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.Equal(config.ReadAsPlainText, reloaded.ReadAsPlainText);
+    }
+
+    [Fact]
     public void Save_LeavesNoTempFileBehind()
     {
         var profile = MakeTempProfile();

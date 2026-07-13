@@ -19,6 +19,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showMessageStatus;
 
+    /// <summary>Read messages as plain text instead of HTML (issue #34).</summary>
+    [ObservableProperty]
+    private bool _readAsPlainText;
+
     [ObservableProperty]
     private string _viewMode = "messages";
 
@@ -238,6 +242,7 @@ public partial class SettingsViewModel : ObservableObject
 
         PreviewLines = cfg.PreviewLines;
         ShowMessageStatus = cfg.ShowMessageStatus;
+        ReadAsPlainText = cfg.ReadAsPlainText;
         ViewMode = cfg.ViewMode;
         SyncDays = cfg.SyncDays;
         InitialSyncCount = cfg.InitialSyncCount;
@@ -304,6 +309,7 @@ public partial class SettingsViewModel : ObservableObject
 
         cfg.PreviewLines = PreviewLines;
         cfg.ShowMessageStatus = ShowMessageStatus;
+        cfg.ReadAsPlainText = ReadAsPlainText;
         cfg.ViewMode = ViewMode;
         cfg.SyncDays = SyncDays;
         cfg.InitialSyncCount = InitialSyncCount;

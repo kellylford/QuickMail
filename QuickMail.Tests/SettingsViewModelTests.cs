@@ -19,10 +19,28 @@ public class SettingsViewModelTests
 
         Assert.Equal(3, vm.PreviewLines);
         Assert.True(vm.ShowMessageStatus);
+        Assert.False(vm.ReadAsPlainText);
         Assert.Equal("messages", vm.ViewMode);
         Assert.Equal(30, vm.SyncDays);
         Assert.Equal(500, vm.InitialSyncCount);
         Assert.Empty(vm.HotkeyRows);
+    }
+
+    [Fact]
+    public void ReadAsPlainText_RoundTripsThroughConfig()
+    {
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        // Load reflects config.
+        configService.Save(new ConfigModel { ReadAsPlainText = true });
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.True(vm.ReadAsPlainText);
+
+        // Save writes it back.
+        vm.ReadAsPlainText = false;
+        vm.SaveCommand.Execute(null);
+        Assert.False(configService.Load().ReadAsPlainText);
     }
 
     [Fact]
