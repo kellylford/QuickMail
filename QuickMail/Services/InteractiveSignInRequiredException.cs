@@ -10,6 +10,7 @@ namespace QuickMail.Services;
 /// </summary>
 public sealed class InteractiveSignInRequiredException : Exception
 {
+    public InteractiveSignInRequiredException() { }
     public InteractiveSignInRequiredException(string message) : base(message) { }
     public InteractiveSignInRequiredException(string message, Exception inner) : base(message, inner) { }
 }
