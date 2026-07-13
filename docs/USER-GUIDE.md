@@ -536,7 +536,7 @@ New-mail notifications and the option to keep QuickMail running in the notificat
 
 ### Show a Notification When New Mail Arrives
 
-When this setting is on, QuickMail shows a Windows notification as new mail arrives in any inbox. The notification is announced by screen readers and appears in the Windows notification center (open it with **Win+A**; navigate to the most recent notification with **Win+Shift+V**). Pressing **Enter** on a notification brings QuickMail to the foreground and opens that message.
+When this setting is on, QuickMail shows a Windows notification as new mail arrives in any inbox. The notification is announced by screen readers and appears in the Windows notification center, which you open with **Win+N** on Windows 11 (or **Win+A** on Windows 10). Pressing **Enter** on a notification brings QuickMail to the foreground and opens that message.
 
 If multiple messages arrive together, the notification shows a count ("5 new messages") and brings QuickMail to the foreground when activated. Single-message notifications show the sender's name and subject and open that message.
 

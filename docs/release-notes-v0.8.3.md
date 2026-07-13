@@ -48,7 +48,7 @@ The downloaded Windows installer was always named `QuickMail-win.msi`, so once i
 ## Accessibility
 
 - **Plain Text View** provides a lower-noise reading option for users who prefer a simpler layout or want to inspect raw message text for security purposes.
-- **New-mail notifications** are delivered as native Windows notifications, which screen readers announce automatically. Notifications appear in the Windows notification center (Win+A) and can be navigated with Win+Shift+V. No custom in-app announcements are layered on top — the platform's native delivery is the accessibility mechanism.
+- **New-mail notifications** are delivered as native Windows notifications, which screen readers announce automatically. Notifications appear in the Windows notification center (open it with **Win+N** on Windows 11, or **Win+A** on Windows 10). No custom in-app announcements are layered on top — the platform's native delivery is the accessibility mechanism.
 - The mark-as-read fix is a server-side correction; it does not change what is announced or where focus lands when you open a message.
 
 ---
