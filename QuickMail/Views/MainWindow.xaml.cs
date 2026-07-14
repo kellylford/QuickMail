@@ -651,8 +651,9 @@ public partial class MainWindow : Window
         }
     }
 
-    // Invoked from the tray icon (double-click or the Open item), which fires on the UI thread.
-    private void RestoreFromTray()
+    // Invoked on the UI thread from the tray icon (activate or the Open item) and from App when
+    // a second launch of the same profile signals the running instance to come forward.
+    public void RestoreFromTray()
     {
         RestoreAndActivate();
         _trayIcon?.Hide(); // tray icon is only shown while the window is hidden
