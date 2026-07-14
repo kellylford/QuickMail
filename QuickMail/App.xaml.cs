@@ -22,6 +22,11 @@ public partial class App : Application
     private UpdateCheckService? _updateCheckService;
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
+    private WindowsToastNotificationService? _notificationService;
+
+    // Owned by Main (acquired before WPF starts, disposed after Run returns); OnStartup
+    // wires its activation signal to the main window.
+    private static SingleInstanceService? _singleInstance;
 
     // Explicit entry point (App.xaml compiles as Page; see csproj StartupObject). Velopack must
     // run before any WPF initialization: on install/update/uninstall its hooks handle the event
@@ -33,9 +38,23 @@ public partial class App : Application
             .OnBeforeUninstallFastCallback(_ => LaunchUninstallDataPrompt())
             .Run();
 
-        var app = new App();
-        app.InitializeComponent();
-        app.Run();
+        // One instance per profile (issue #240): with close-to-tray the process can be running
+        // with no visible window, and relaunching from the Start menu must restore that window
+        // rather than pile up processes sharing one SQLite store. When another instance owns
+        // this profile, TryAcquire has already signaled it to come to the foreground, so this
+        // launch simply ends. --help is exempt so usage is always available.
+        if (!IsHelpRequest(args))
+        {
+            _singleInstance = SingleInstanceService.TryAcquire(args);
+            if (_singleInstance is null) return;
+        }
+
+        using (_singleInstance)
+        {
+            var app = new App();
+            app.InitializeComponent();
+            app.Run();
+        }
     }
 
     // Uninstall-time offer to remove user data, mirroring the old installer's prompt.
@@ -236,15 +255,28 @@ public partial class App : Application
 
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
+            _notificationService = new WindowsToastNotificationService();
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
-                themeService: themeService);
+                themeService: themeService, notificationService: _notificationService);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService);
+
+            // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
+            // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
+            _notificationService.Activated += act =>
+                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.HandleNotificationActivation(act));
+
             mainWindow.Show();
+
+            // A second launch of the same profile signals this handle instead of starting
+            // another process; restore the window (and drop the tray icon) exactly as the
+            // tray icon's Open action would. The signal arrives on a thread-pool thread.
+            _singleInstance?.ListenForActivation(() =>
+                mainWindow.Dispatcher.BeginInvoke(() => mainWindow.RestoreFromTray()));
         }
         catch (Exception ex)
         {
@@ -268,6 +300,7 @@ public partial class App : Application
         _updateCheckService?.Dispose();
         _bugReportService?.Dispose();
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
+        _notificationService?.Dispose(); // unhooks the toast-activation static event
         base.OnExit(e);
     }
 

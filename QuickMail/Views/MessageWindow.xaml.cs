@@ -115,6 +115,11 @@ public partial class MessageWindow : Window
             defaultKey: Key.G, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _localRegistry.Register(new CommandDefinition(
+            id: "window.togglePlainText", category: "View", title: "Toggle Plain Text View",
+            execute: TogglePlainTextView,
+            defaultKey: Key.H, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _localRegistry.Register(new CommandDefinition(
             id: "window.previousMessage", category: "Mail", title: "Previous Message",
             execute: () => _vm.PreviousMessageCommand.Execute(null),
             isAvailable: () => _vm.CanNavigatePrevious));
@@ -230,6 +235,16 @@ public partial class MessageWindow : Window
 
             _vm.MessageDetail = detail;
             await ShowMessageBodyAsync(detail);
+
+            // Opening a message in a standalone window must mark it read on the server, same as
+            // the reading pane and tabs do. Loading here is cache-first, so relying on the body
+            // fetch's \Seen side effect would leave prefetched (cache-hit) messages unread in
+            // other clients (issue #225). MarkReadCommand invokes MarkReadAction, which MainWindow
+            // wires to MainViewModel.MarkMessagesReadAsync — that updates the summary, the local
+            // store, and the server, and is a no-op when already read. Runs after the body is
+            // shown so a load failure never marks an unread message.
+            if (summary.IsRead == false)
+                _vm.MarkReadCommand.Execute(null);
         }
         catch (OperationCanceledException) { /* window closed mid-load — normal */ }
         catch (Exception ex)
@@ -246,6 +261,9 @@ public partial class MessageWindow : Window
     private string? BuildThemeCss() =>
         _themeService?.BuildMessageCss(_configService?.Load().AppearanceForceMessageTheme ?? false);
 
+    /// <summary>The sticky "read as plain text" preference (issue #34), read live at render time.</summary>
+    private bool ReadAsPlainText() => _configService?.Load().ReadAsPlainText ?? false;
+
     /// <summary>Re-renders the open message with fresh theme CSS. Never moves focus.</summary>
     private void OnThemeChanged(object? sender, EventArgs e)
     {
@@ -254,11 +272,41 @@ public partial class MessageWindow : Window
         {
             if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
             var version = Interlocked.Increment(ref _renderVersion);
-            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss()));
+            var plainText = ReadAsPlainText();
+            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText));
             if (version != _renderVersion) return;
             try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
             MessageBody.CoreWebView2.NavigateToString(html);
         });
+    }
+
+    /// <summary>
+    /// Flips the sticky plain-text preference (issue #34) and re-renders this window's message
+    /// in place without moving focus. Shares <see cref="ConfigModel.ReadAsPlainText"/> with the
+    /// main window, so the choice sticks everywhere. Announces the new state.
+    /// </summary>
+    private void TogglePlainTextView()
+    {
+        if (_configService is null) return;
+        var cfg = _configService.Load();
+        cfg.ReadAsPlainText = !cfg.ReadAsPlainText;
+        _configService.Save(cfg);
+
+        _ = Dispatcher.InvokeAsync(async () =>
+        {
+            if (_webViewReady && _vm.MessageDetail is { } detail)
+            {
+                var version = Interlocked.Increment(ref _renderVersion);
+                var plainText = cfg.ReadAsPlainText;
+                var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText));
+                if (version != _renderVersion) return;
+                try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
+                MessageBody.CoreWebView2.NavigateToString(html);
+            }
+        });
+
+        var msg = cfg.ReadAsPlainText ? "Plain text view on." : "Plain text view off.";
+        AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result);
     }
 
     private void ApplyWebViewColorScheme()
@@ -283,7 +331,8 @@ public partial class MessageWindow : Window
         if (!_webViewReady) return;
 
         var version = Interlocked.Increment(ref _renderVersion);
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss()));
+        var plainText = ReadAsPlainText();
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText));
         if (version != _renderVersion) return;
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -466,6 +515,11 @@ public partial class MessageWindow : Window
         else if (key == Key.F6 && mod == ModifierKeys.Shift)
         {
             CycleFocus(false);
+            e.Handled = true;
+        }
+        else if (key == Key.H && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            TogglePlainTextView();
             e.Handled = true;
         }
         else if (key == Key.P && mod == (ModifierKeys.Control | ModifierKeys.Shift))

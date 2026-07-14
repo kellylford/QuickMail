@@ -174,6 +174,17 @@ public partial class MainWindow : Window
     private readonly ICustomDictionaryService? _customDictionary;
     private readonly IThemeService? _themeService;
     private readonly IBugReportService? _bugReportService;
+    private readonly INotificationService? _notificationService;
+
+    // ── Close-to-tray / run-in-background ──────────────────────────────────────
+    // Created lazily the first time the window hides to the tray; disposed in OnClosed.
+    private TrayIconManager? _trayIcon;
+    // Set when the user explicitly exits (File > Exit or the tray Exit item) so OnClosing does not
+    // divert the close into hide-to-tray.
+    private bool _explicitExit;
+    // A notification click whose target account was not connected yet (cold start); replayed once
+    // StartupConnectCompleted fires. Null when nothing is pending.
+    private Services.NotificationActivation? _pendingActivation;
 
     // Last High Contrast state announced, so an HC transition is announced once
     // with the HC wording and everything else as "Theme changed to …".
@@ -213,9 +224,11 @@ public partial class MainWindow : Window
         IFlagService? flagService = null,
         ICustomDictionaryService? customDictionary = null,
         IThemeService? themeService = null,
-        IBugReportService? bugReportService = null)
+        IBugReportService? bugReportService = null,
+        INotificationService? notificationService = null)
     {
         _vm = vm;
+        _notificationService = notificationService;
         _smtp = smtp;
         _accountService = accountService;
         _credentials = credentials;
@@ -247,6 +260,17 @@ public partial class MainWindow : Window
             vm.ThemeManagerRequested += (_, _) => OpenThemeManager();
         }
 
+        vm.ExitRequested += RequestExit;
+        vm.StartupConnectCompleted += () => Dispatcher.BeginInvoke(TryProcessPendingActivation);
+        // Windows logoff/shutdown must exit for real, not hide to tray (otherwise Windows shows the
+        // "app is preventing sign-out" screen and force-kills us, leaking the tray icon). Subscribe
+        // only when this ctor runs on the Application's own thread — SessionEnding's add accessor is
+        // thread-affine and throws otherwise (tests construct MainWindow off the shared Application's
+        // thread). CheckAccess() is itself safe to call cross-thread; in production the window is
+        // always created on the UI thread, so this is true.
+        var app = Application.Current;
+        if (app != null && app.CheckAccess())
+            app.SessionEnding += (_, _) => _explicitExit = true;
         vm.ComposeRequested += OpenComposeWindow;
         vm.SelectAttachmentsForForwardRequested += ShowForwardAttachmentDialogAsync;
         vm.ManageAccountsRequested += OpenAccountManager;
@@ -562,10 +586,166 @@ public partial class MainWindow : Window
             TryHandleMessageTreeTypeAhead);
     }
 
+    /// <summary>
+    /// Restores the window from minimized and brings it to the foreground. Called when the user
+    /// clicks a new-mail toast. WPF's <see cref="Window.Activate"/> alone does not reliably steal
+    /// foreground from another app, so the window handle is pushed forward via Win32 as well.
+    /// </summary>
+    public void RestoreAndActivate()
+    {
+        try
+        {
+            if (!IsVisible) Show();
+            if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+            Activate();
+
+            var hwnd = new WindowInteropHelper(this).Handle;
+            if (hwnd != IntPtr.Zero) NativeForeground.SetForegroundWindow(hwnd);
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"RestoreAndActivate: {ex.Message}");
+        }
+    }
+
+    private static class NativeForeground
+    {
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static extern bool SetForegroundWindow(IntPtr hWnd);
+    }
+
+    // ── Close-to-tray / run-in-background ──────────────────────────────────────
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // When close-to-tray is enabled, a normal window close hides to the notification area
+        // instead of exiting so the new-mail watchers keep running. An explicit exit (File > Exit
+        // or the tray Exit item) sets _explicitExit and falls through to a real close.
+        var cfg = _configService.Load();
+        if (cfg.CloseToTray && !_explicitExit)
+        {
+            e.Cancel = true;
+            HideToTray(cfg);
+            return;
+        }
+        base.OnClosing(e);
+    }
+
+    private void HideToTray(Models.ConfigModel cfg)
+    {
+        _trayIcon ??= new TrayIconManager(onOpen: RestoreFromTray, onExit: RequestExit);
+        _trayIcon.Show();
+        Hide();
+
+        // One-time hint so the app doesn't silently vanish. Delivered as a toast (announced natively
+        // by screen readers), not baked into any control.
+        if (!cfg.TrayHintShown)
+        {
+            _notificationService?.ShowInfo(
+                "QuickMail is still running",
+                "QuickMail is in the notification area. Open it from the tray icon or a new-mail " +
+                "notification, or right-click the tray icon and choose Exit to quit.");
+            cfg.TrayHintShown = true;
+            _configService.Save(cfg);
+        }
+    }
+
+    // Invoked on the UI thread from the tray icon (activate or the Open item) and from App when
+    // a second launch of the same profile signals the running instance to come forward.
+    public void RestoreFromTray()
+    {
+        RestoreAndActivate();
+        _trayIcon?.Hide(); // tray icon is only shown while the window is hidden
+    }
+
+    // Invoked from File > Exit (vm.ExitRequested) and the tray Exit item. Flags an explicit exit so
+    // OnClosing performs a real close, then shuts the app down.
+    private void RequestExit()
+    {
+        _explicitExit = true;
+        Application.Current.Shutdown();
+    }
+
+    /// <summary>
+    /// Handles a clicked new-mail toast: brings the window forward, then opens the message it
+    /// referenced (deferring until the account is connected if the click cold-started the app).
+    /// Called on the UI thread by App from <see cref="INotificationService.Activated"/>.
+    /// </summary>
+    public void HandleNotificationActivation(Services.NotificationActivation act)
+    {
+        RestoreFromTray();
+        _pendingActivation = act;
+        TryProcessPendingActivation();
+    }
+
+    private void TryProcessPendingActivation()
+    {
+        var act = _pendingActivation;
+        if (act is null) return;
+
+        // No single target (the "N new messages" toast) or malformed args: the window is already
+        // foregrounded, nothing more to open.
+        if (string.IsNullOrEmpty(act.MessageId) || string.IsNullOrEmpty(act.Folder) || act.AccountId == Guid.Empty)
+        {
+            _pendingActivation = null;
+            return;
+        }
+
+        // Cold start: the account isn't connected yet, so a detail fetch would fail. Keep it pending;
+        // StartupConnectCompleted re-runs this once the account is reachable.
+        if (!_vm.IsAccountReady(act.AccountId)) return;
+
+        _pendingActivation = null;
+        _ = OpenMessageByIdentityAsync(act.AccountId, act.Folder, act.MessageId);
+    }
+
+    /// <summary>
+    /// Opens a message identified by (account, folder, id) in the user's configured MessageOpenMode.
+    /// Mirrors <see cref="OpenMessageFromListAsync"/>'s mode routing but without its drafts check —
+    /// a notification always targets an inbox message. <see cref="MainViewModel.SelectMessageAsync"/>
+    /// fetches the detail by id (cache or IMAP), so the message need not be in the loaded list.
+    /// </summary>
+    private async Task OpenMessageByIdentityAsync(Guid accountId, string folder, string messageId)
+    {
+        // Prefer the real row from the loaded list when it's there: opening it then propagates
+        // read-state to the visible row (clears the unread styling) and gives Window-mode Prev/Next
+        // the correct surrounding list. Fall back to a stub when the message isn't currently loaded
+        // (a different folder is selected); SelectMessageAsync still fetches its detail by id.
+        var summary = _vm.Messages.FirstOrDefault(m =>
+                          m.AccountId == accountId &&
+                          string.Equals(m.FolderName, folder, StringComparison.OrdinalIgnoreCase) &&
+                          m.MessageId == messageId)
+                      ?? new MailMessageSummary
+                      {
+                          AccountId  = accountId,
+                          FolderName = folder,
+                          MessageId  = messageId,
+                      };
+
+        switch (_vm.MessageOpenMode)
+        {
+            case MessageOpenMode.Tab:
+                _vm.OpenMessageTab(summary);
+                break;
+
+            case MessageOpenMode.Window:
+                OpenMessageInNewWindow(summary);
+                break;
+
+            default: // ReadingPane
+                await _vm.SelectMessageCommand.ExecuteAsync(summary);
+                if (_vm.IsMessageOpen && _vm.MessageDetail != null)
+                    await ShowMessageBodyAsync(_vm.MessageDetail);
+                break;
+        }
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         foreach (var w in _openComposeWindows.ToList())
             w.Close();
+        _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
         _vm.Dispose();
@@ -765,6 +945,11 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "settings.toggleCustomAnnouncements", category: "Settings", title: "Toggle Custom Announcements",
             execute: ToggleCustomAnnouncements));
+
+        _registry.Register(new CommandDefinition(
+            id: "view.togglePlainText", category: "View", title: "Toggle Plain Text View",
+            execute: TogglePlainTextView,
+            defaultKey: Key.H, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         _registry.Register(new CommandDefinition(
             id: "mail.markRead", category: "Mail", title: "Mark as Read",
@@ -2232,7 +2417,8 @@ public partial class MainWindow : Window
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
         var detail   = _vm.MessageDetail;
         var themeCss = BuildReadingPaneThemeCss();
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss));
+        var plainText = _vm.ReadAsPlainText;
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText));
         if (renderVersion != _messageBodyRenderVersion) return;
 
         var eventCardHtml = _vm.BuildEventCardHtml();
@@ -2251,7 +2437,8 @@ public partial class MainWindow : Window
 
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
         var themeCss = BuildReadingPaneThemeCss();
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss));
+        var plainText = _vm.ReadAsPlainText;
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText));
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
@@ -2719,6 +2906,23 @@ public partial class MainWindow : Window
         _configService.Save(cfg);
         var msg = cfg.CustomAnnouncements ? "Custom announcements on." : "Custom announcements off.";
         AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result, force: true);
+    }
+
+    /// <summary>
+    /// Flips the sticky "read as plain text" preference (issue #34): persists it, updates the VM
+    /// (for the View-menu check state), re-renders the open message in place without moving focus,
+    /// and announces the new state. Works in reading-pane and tab modes (both use this window's
+    /// WebView2); the standalone MessageWindow has its own equivalent command.
+    /// </summary>
+    private void TogglePlainTextView()
+    {
+        var cfg = _configService.Load();
+        cfg.ReadAsPlainText = !cfg.ReadAsPlainText;
+        _configService.Save(cfg);
+        _vm.ReadAsPlainText = cfg.ReadAsPlainText;
+        _ = RerenderReadingPaneAsync();
+        var msg = cfg.ReadAsPlainText ? "Plain text view on." : "Plain text view off.";
+        AccessibilityHelper.Announce(this, msg, interrupt: true, category: AnnouncementCategory.Result);
     }
 
     private void ShowTutorial()
@@ -4444,6 +4648,8 @@ public partial class MainWindow : Window
         win.ShowDialog();
     }
 
+    private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();
+
     private void MenuSettings_Click(object sender, RoutedEventArgs e)
     {
         // Font enumeration is a View-layer concern; the VM receives plain strings.
@@ -4460,6 +4666,11 @@ public partial class MainWindow : Window
             var cfg = _configService.Load();
             _vm.ApplySettings(cfg);
             _registry.ApplyUserOverrides(cfg.CustomHotkeys);
+            // The plain-text preference may have changed; re-render the open message so a
+            // Settings change takes effect live (focus is preserved). Theme changes already
+            // re-render via ThemeChanged; this covers the plain-text flag when the theme is
+            // unchanged. RerenderReadingPaneAsync no-ops when no message is open.
+            _ = RerenderReadingPaneAsync();
         }
     }
 
@@ -4601,6 +4812,29 @@ public partial class MainWindow : Window
 
     private async void MessageContextMenu_CopyToFolder_Click(object sender, RoutedEventArgs e)
         => await CopyMessageToFolderAsync();
+
+    // Context-menu Delete must act on the whole selection, exactly like the Delete key and the
+    // Move/Copy context-menu items. Binding to the VM's DeleteMessageCommand deleted only
+    // SelectedMessage (a single item), which is why Ctrl+A then context-menu Delete removed just
+    // the focused message. GetSelectedMessages() returns every selected row in the flat list, or
+    // the single message node in a grouped tree.
+    private async void MessageContextMenu_Delete_Click(object sender, RoutedEventArgs e)
+    {
+        var messages = GetSelectedMessages();
+        if (messages.Count == 0) return;
+
+        await _vm.DeleteMessagesAsync(messages);
+
+        // Land focus the same way the Move context-menu handler does.
+        if (_vm.IsConversationsView)
+            LandOnConversationAfterRebuild(0);
+        else if (_vm.IsFromView)
+            LandOnSenderGroupAfterRebuild(0);
+        else if (_vm.IsToView)
+            LandOnToGroupAfterRebuild(0);
+        else
+            FocusMessageListFirstItem();
+    }
 
     // ── Conversation context menu handlers ───────────────────────────────────
 

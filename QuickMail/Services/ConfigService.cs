@@ -199,6 +199,9 @@ public class ConfigService : IConfigService
                     case "showmessagestatus":
                         config.ShowMessageStatus = ParseBool(value);
                         break;
+                    case "readasplaintext":
+                        config.ReadAsPlainText = ParseBool(value);
+                        break;
                     case "viewmode":
                         config.ViewMode = value.ToLowerInvariant() switch
                         {
@@ -248,6 +251,9 @@ public class ConfigService : IConfigService
                         break;
                     case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
+                    case "notifyonnewmail":      config.NotifyOnNewMail      = ParseBool(value); break;
+                    case "closetotray":          config.CloseToTray          = ParseBool(value); break;
+                    case "trayhintshown":        config.TrayHintShown        = ParseBool(value); break;
                     case "logformat":
                         config.LogFormat = string.Equals(value, "timefirst", StringComparison.OrdinalIgnoreCase) ? "timeFirst" : "actionFirst";
                         break;
@@ -353,6 +359,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Show a status column in the message list.");
         sb.AppendLine("# When on, the first column shows the message status: New, Replied, Fwd, or blank (read).");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ReadAsPlainText = {(config.ReadAsPlainText ? "on" : "off")}");
+        sb.AppendLine("# Read messages as plain text instead of HTML.");
+        sb.AppendLine("# When on, each message is rendered from its original plain-text part (or text");
+        sb.AppendLine("# extracted from the HTML when there is no plain-text part). Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"ViewMode = {config.ViewMode}");
@@ -464,6 +476,22 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ConfirmEmptyTrash = {(config.ConfirmEmptyTrash ? "on" : "off")}");
         sb.AppendLine("# Show a confirmation dialog before permanently deleting all messages in trash.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"NotifyOnNewMail = {(config.NotifyOnNewMail ? "on" : "off")}");
+        sb.AppendLine("# Show a Windows notification when new mail arrives in an inbox.");
+        sb.AppendLine("# Notifications appear while QuickMail is running. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");
+        sb.AppendLine("# When you close the main window, keep QuickMail running in the notification");
+        sb.AppendLine("# area (system tray) instead of exiting, so new-mail notifications keep arriving.");
+        sb.AppendLine("# Restore it from the tray icon or a notification. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"TrayHintShown = {(config.TrayHintShown ? "on" : "off")}");
+        sb.AppendLine("# Whether the one-time 'still running in the notification area' hint has been");
+        sb.AppendLine("# shown. Maintained automatically. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"LogFormat = {config.LogFormat}");

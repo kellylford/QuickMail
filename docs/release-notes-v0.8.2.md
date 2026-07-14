@@ -49,6 +49,10 @@ Several rough edges in reconnecting Google (OAuth) and Microsoft accounts are fi
 
 Pasting some comma-containing text into a To, Cc, or Bcc field could crash QuickMail. That path is fixed.
 
+### Deleting a whole selection from the context menu
+
+When several messages were selected — for example with Select All (Ctrl+A) or Shift+Arrow — choosing **Delete** from the right-click menu removed only the one message the cursor was on, leaving the rest of the selection in place. Delete from the context menu now removes every selected message, matching the Delete key and the Move to Folder / Copy to Folder menu commands.
+
 ---
 
 ## Accessibility
@@ -56,6 +60,7 @@ Pasting some comma-containing text into a To, Cc, or Bcc field could crash Quick
 - Folder unread counts are part of each folder's spoken name and update in place — no rebuilding of the folder list, so focus and your place in the tree are preserved when a count changes.
 - Deduplicating Gmail messages does not change focus behavior; the message list, conversation view, and sender/recipient groupings simply show each message once.
 - Spell check on a reply or forward no longer walks you through the quoted original's words.
+- Select All (Ctrl+A) followed by Delete from the message context menu now removes the entire announced selection, not just the focused message. Focus lands on the next message in place after the deletion.
 
 ---
 
@@ -92,6 +97,12 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 ### Address-field paste crash (issue #216)
 
 - Fixed a stack-overflow crash when pasting comma-containing text into an address (To/Cc/Bcc) field.
+
+### Bulk delete from the message context menu (issue #221, PR #237)
+
+- The message context menu's Delete item was bound to the VM's `DeleteMessageCommand`, which deletes only `SelectedMessage` (a single item), while the Delete key handler and the Move/Copy context-menu items already act on the full `MessageList.SelectedItems`. So Select All (Ctrl+A) followed by context-menu Delete removed just the focused message.
+- Fix: rebound the Delete `MenuItem` to a `MessageContextMenu_Delete_Click` handler that pulls the whole selection via the existing `GetSelectedMessages()` helper, deletes it through `DeleteMessagesAsync`, and lands focus the same way the Move handler does — `FocusMessageListFirstItem()` in the flat list, `LandOn*AfterRebuild(0)` in grouped views. Side benefit: grouped-view context-menu Delete now lands focus correctly, since the old command path never made the `LandOn*` calls and could strand focus there.
+- Independent review found no Critical/High/Medium issues; all four `MessageContextMenu` entry points (flat list plus Conversations/From/To message nodes) verified.
 
 ### Testing / process
 

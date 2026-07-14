@@ -137,7 +137,7 @@ public class SyncService : ISyncService
         }
     }
 
-    public async Task SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+    public async Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
     {
         // IDLE-triggered sync in non-online (SQLite cache) mode.
         //
@@ -159,9 +159,10 @@ public class SyncService : ISyncService
             await _store.UpsertSummariesAsync(incoming);
             await Application.Current.Dispatcher.InvokeAsync(() => FolderSynced?.Invoke(incoming));
         }
+        return incoming;
     }
 
-    public async Task SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+    public async Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
     {
         // Fetch the last 50 messages. OnFolderSynced deduplicates by UID so already-visible
         // messages are harmlessly skipped; only truly new arrivals are inserted.
@@ -172,6 +173,7 @@ public class SyncService : ISyncService
         {
             await Application.Current.Dispatcher.InvokeAsync(() => FolderSynced?.Invoke(incoming));
         }
+        return incoming;
     }
 
     private async Task<List<MailMessageSummary>> SyncFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)

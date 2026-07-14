@@ -15,6 +15,14 @@ public class ConfigModel
     public bool ShowMessageStatus { get; set; } = true;
 
     /// <summary>
+    /// Read messages as plain text: render each message from its original text/plain part
+    /// (falling back to text extracted from the HTML when the sender sent no plain-text part)
+    /// instead of the HTML body. Sticky preference; applies to the reading pane, message tabs,
+    /// and the standalone message window. Default off (issue #34).
+    /// </summary>
+    public bool ReadAsPlainText { get; set; } = false;
+
+    /// <summary>
     /// How to display the message list.
     /// Values: "messages" (flat list), "conversations" (grouped by subject), "from" (grouped by sender).
     /// </summary>
@@ -146,6 +154,23 @@ public class ConfigModel
 
     /// <summary>Show a confirmation dialog before emptying trash. Default on.</summary>
     public bool ConfirmEmptyTrash { get; set; } = true;
+
+    // ── Notifications ─────────────────────────────────────────────────────────────
+
+    /// <summary>Show a Windows toast notification when new mail arrives in an inbox. Default off —
+    /// the user opts in from Settings.</summary>
+    public bool NotifyOnNewMail { get; set; } = false;
+
+    /// <summary>
+    /// When closing the main window, hide QuickMail to the notification area (system tray) instead
+    /// of exiting, so new-mail watchers keep running and notifications keep arriving. Default off
+    /// (existing behaviour: closing the window exits the app).
+    /// </summary>
+    public bool CloseToTray { get; set; } = false;
+
+    /// <summary>Whether the one-time "still running in the notification area" hint has been shown.
+    /// Maintained automatically the first time the window hides to the tray.</summary>
+    public bool TrayHintShown { get; set; } = false;
 
     /// <summary>Whether the user has completed the first-run keyboard tutorial.</summary>
     public bool TutorialCompleted { get; set; } = false;

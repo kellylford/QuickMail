@@ -19,6 +19,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showMessageStatus;
 
+    /// <summary>Read messages as plain text instead of HTML (issue #34).</summary>
+    [ObservableProperty]
+    private bool _readAsPlainText;
+
     [ObservableProperty]
     private string _viewMode = "messages";
 
@@ -73,6 +77,12 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _confirmEmptyTrash;
+
+    [ObservableProperty]
+    private bool _notifyOnNewMail;
+
+    [ObservableProperty]
+    private bool _closeToTray;
 
     // Desktop shortcut: the .lnk on the desktop is the source of truth, not config —
     // loaded from the filesystem and applied on save only when it differs from the file's
@@ -232,6 +242,7 @@ public partial class SettingsViewModel : ObservableObject
 
         PreviewLines = cfg.PreviewLines;
         ShowMessageStatus = cfg.ShowMessageStatus;
+        ReadAsPlainText = cfg.ReadAsPlainText;
         ViewMode = cfg.ViewMode;
         SyncDays = cfg.SyncDays;
         InitialSyncCount = cfg.InitialSyncCount;
@@ -246,6 +257,8 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceFormattingWhileNavigating = cfg.AnnounceFormattingWhileNavigating;
         AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
+        NotifyOnNewMail                  = cfg.NotifyOnNewMail;
+        CloseToTray                      = cfg.CloseToTray;
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
         AutoUpdate                       = cfg.AutoUpdate;
         ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
@@ -296,6 +309,7 @@ public partial class SettingsViewModel : ObservableObject
 
         cfg.PreviewLines = PreviewLines;
         cfg.ShowMessageStatus = ShowMessageStatus;
+        cfg.ReadAsPlainText = ReadAsPlainText;
         cfg.ViewMode = ViewMode;
         cfg.SyncDays = SyncDays;
         cfg.InitialSyncCount = InitialSyncCount;
@@ -310,6 +324,8 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceFormattingWhileNavigating = AnnounceFormattingWhileNavigating;
         cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
+        cfg.NotifyOnNewMail                  = NotifyOnNewMail;
+        cfg.CloseToTray                      = CloseToTray;
         cfg.AutoUpdate                       = AutoUpdate;
         cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;
         if (DesktopShortcut != Helpers.DesktopShortcut.Exists())

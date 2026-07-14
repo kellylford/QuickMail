@@ -19,10 +19,28 @@ public class SettingsViewModelTests
 
         Assert.Equal(3, vm.PreviewLines);
         Assert.True(vm.ShowMessageStatus);
+        Assert.False(vm.ReadAsPlainText);
         Assert.Equal("messages", vm.ViewMode);
         Assert.Equal(30, vm.SyncDays);
         Assert.Equal(500, vm.InitialSyncCount);
         Assert.Empty(vm.HotkeyRows);
+    }
+
+    [Fact]
+    public void ReadAsPlainText_RoundTripsThroughConfig()
+    {
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        // Load reflects config.
+        configService.Save(new ConfigModel { ReadAsPlainText = true });
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.True(vm.ReadAsPlainText);
+
+        // Save writes it back.
+        vm.ReadAsPlainText = false;
+        vm.SaveCommand.Execute(null);
+        Assert.False(configService.Load().ReadAsPlainText);
     }
 
     [Fact]
@@ -46,6 +64,37 @@ public class SettingsViewModelTests
         Assert.Equal("conversations", loadedConfig.ViewMode);
         Assert.Equal(7, loadedConfig.SyncDays);
         Assert.Equal(100, loadedConfig.InitialSyncCount);
+    }
+
+    [Fact]
+    public void NotifyOnNewMail_LoadsAndSaves()
+    {
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        // Default is off (opt-in).
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.False(vm.NotifyOnNewMail);
+
+        vm.NotifyOnNewMail = true;
+        vm.SaveCommand.Execute(null);
+
+        Assert.True(configService.Load().NotifyOnNewMail);
+    }
+
+    [Fact]
+    public void CloseToTray_LoadsAndSaves()
+    {
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.False(vm.CloseToTray); // default off
+
+        vm.CloseToTray = true;
+        vm.SaveCommand.Execute(null);
+
+        Assert.True(configService.Load().CloseToTray);
     }
 
     [Fact]

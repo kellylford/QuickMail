@@ -24,7 +24,14 @@ public partial class AccountManagerDialog : Window
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
-        if (_vm.Accounts.Count == 0) return;
+        if (_vm.Accounts.Count == 0)
+        {
+            // First-run "new account" experience: there's no account row to land on, so put keyboard
+            // focus on the Add button — otherwise focus is left unset and the user has to hunt for it.
+            NewButton.Focus();
+            Keyboard.Focus(NewButton);
+            return;
+        }
 
         // Land keyboard focus on the FIRST account item (not the list container, which a screen
         // reader announces as "0 items"). Focusing the item container gives it keyboard focus
