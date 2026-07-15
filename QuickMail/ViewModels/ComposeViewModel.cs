@@ -713,8 +713,16 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             : $"Re: {detail.Subject}";
 
         var attribution = $"\n\nOn {detail.Date.ToLocalTime():f}, {detail.From} wrote:\n";
+
+        // Fall back to HTML→text conversion when the message has no plain-text part.
+        // HTML-only messages otherwise reply with an empty quote — the attribution
+        // line with nothing under it (issue #260).
+        var plainBody = string.IsNullOrEmpty(detail.PlainTextBody) && !string.IsNullOrEmpty(detail.HtmlBody)
+            ? HtmlStripper.ToPlainText(detail.HtmlBody)
+            : detail.PlainTextBody;
+
         var quoted = string.Join("\n", System.Array.ConvertAll(
-            detail.PlainTextBody.Split('\n'),
+            plainBody.Split('\n'),
             line => "> " + line));
 
         return new ComposeModel

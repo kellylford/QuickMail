@@ -92,6 +92,45 @@ public class ComposeViewModelReplyTests
         Assert.Contains("Meeting notes", model.HtmlBody);
     }
 
+    // ── CreateReply / CreateReplyAll body tests ─────────────────────────────────
+
+    [Fact]
+    public void CreateReply_HtmlOnlyMessage_QuotesHtmlContent()
+    {
+        // HTML-only message (no plain-text part) — the reply must still quote the
+        // original body, not just the attribution line (issue #260).
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "", htmlBody: "<p>Hello from HTML</p>");
+
+        var model = ComposeViewModel.CreateReply(detail, Guid.NewGuid());
+
+        Assert.Contains("Hello from HTML", model.Body);
+        Assert.Contains("> Hello from HTML", model.Body);
+    }
+
+    [Fact]
+    public void CreateReplyAll_HtmlOnlyMessage_QuotesHtmlContent()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "carol@example.com",
+            plainBody: "", htmlBody: "<p>Hello from HTML</p>");
+
+        var model = ComposeViewModel.CreateReplyAll(detail, Guid.NewGuid(), ownAddress: "me@example.com");
+
+        Assert.Contains("Hello from HTML", model.Body);
+    }
+
+    [Fact]
+    public void CreateReply_PlainMessage_QuotesPlainBody()
+    {
+        var detail = MakeDetail("alice@example.com", "bob@example.com", "",
+            plainBody: "Plain text body", htmlBody: "<p>ignored html</p>");
+
+        var model = ComposeViewModel.CreateReply(detail, Guid.NewGuid());
+
+        Assert.Contains("> Plain text body", model.Body);
+        Assert.DoesNotContain("ignored html", model.Body);
+    }
+
     // ── CreateReplyAll tests ────────────────────────────────────────────────────
 
     [Fact]
