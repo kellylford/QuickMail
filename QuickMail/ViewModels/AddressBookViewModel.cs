@@ -143,13 +143,6 @@ public partial class AddressBookViewModel : ObservableObject
             EditEmail    = value?.EmailAddress ?? string.Empty;
             ContactError = string.Empty;
         }
-
-        // Let a screen reader user know why Edit/Delete are unavailable on a synced contact.
-        if (value is { IsLocal: false })
-        {
-            var provider = value.Source == ContactSource.Google ? "Google" : "Outlook";
-            Announce($"Synced contact, read-only. Edit it in {provider}.", AnnouncementCategory.Hint);
-        }
     }
 
     // ── Group editing ────────────────────────────────────────────────────────
