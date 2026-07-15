@@ -332,6 +332,13 @@
                 </MenuItem>
             </MenuItem>
 
+            <!-- Folder -->
+            <MenuItem Header="Fol_der">
+                <MenuItem Header="_New Folder…"
+                          Click="MenuNewFolder_Click"
+                          AutomationProperties.Name="New Folder"/>
+            </MenuItem>
+
             <!-- View -->
             <MenuItem Header="_View">
                 <MenuItem Header="_Refresh"

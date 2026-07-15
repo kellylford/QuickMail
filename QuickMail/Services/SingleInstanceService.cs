@@ -60,6 +60,17 @@ public sealed class SingleInstanceService : IDisposable
             executeOnlyOnce: false);
     }
 
+    // Design note (issue #253): the activation signal is a bare auto-reset event that carries no
+    // payload — it tells the running instance "come to the foreground", nothing more. A second
+    // launch that arrives with toast-activation arguments (open a specific message) therefore
+    // brings the window forward but drops the account/folder/message deep-link. This is a
+    // deliberately accepted trade-off, not a bug: the case only occurs when the running instance's
+    // in-process toast COM registration has failed AND a stale toast survives to COM-launch a
+    // second exe — otherwise activation is delivered in-process and never reaches this path.
+    // Forwarding the payload would require real inter-process data transfer (e.g. a named pipe
+    // carrying the command line) on the single-instance/startup path, which this app has a history
+    // of hangs and zombie processes on; the low likelihood does not justify that added surface.
+    // If this is ever revisited, this method (and ActivateEventName) is the seam to extend.
     private static void SignalExistingInstance(string key)
     {
         try
