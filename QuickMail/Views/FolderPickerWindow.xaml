@@ -22,20 +22,32 @@
                  PreviewKeyDown="SearchBox_PreviewKeyDown"
                  AutomationProperties.Name="Folder search"/>
 
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal"
-                    HorizontalAlignment="Right" Margin="0,8,0,0">
-            <Button x:Name="OpenButton"
-                    Content="_Open"
-                    IsDefault="True"
-                    MinWidth="75"
-                    Margin="0,0,6,0"
-                    Click="OpenButton_Click"
-                    AutomationProperties.Name="Open selected folder"/>
-            <Button Content="_Cancel"
-                    IsCancel="True"
-                    MinWidth="75"
-                    AutomationProperties.Name="Cancel"/>
-        </StackPanel>
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <!-- No access-key underscore on the content: WPF activates a bare mnemonic letter
+                 without Alt when focus isn't in a text field, so "_New Folder" fired on plain "n"
+                 in the folder tree and stole the tree's type-ahead. Alt+N is wired explicitly in
+                 code-behind instead; the accessible name still reads "New Folder". -->
+            <Button x:Name="NewFolderButton"
+                    DockPanel.Dock="Left"
+                    Content="New Folder…"
+                    MinWidth="90"
+                    Visibility="Collapsed"
+                    Click="NewFolderButton_Click"
+                    AutomationProperties.Name="New Folder"/>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="OpenButton"
+                        Content="_Open"
+                        IsDefault="True"
+                        MinWidth="75"
+                        Margin="0,0,6,0"
+                        Click="OpenButton_Click"
+                        AutomationProperties.Name="Open selected folder"/>
+                <Button Content="_Cancel"
+                        IsCancel="True"
+                        MinWidth="75"
+                        AutomationProperties.Name="Cancel"/>
+            </StackPanel>
+        </DockPanel>
 
         <ListBox x:Name="FolderListBox"
                  AutomationProperties.Name="Folders"
@@ -85,6 +97,7 @@
                   AutomationProperties.Name="Folders"
                   BorderThickness="1"
                   KeyboardNavigation.TabNavigation="Once"
+                  TextSearch.TextPath="Label"
                   PreviewKeyDown="FolderTreeView_PreviewKeyDown"
                   MouseDoubleClick="FolderTreeView_MouseDoubleClick">
             <TreeView.Resources>

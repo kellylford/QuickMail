@@ -201,6 +201,11 @@ public partial class MainWindow : Window
     // closes. Independent (unowned) windows are not auto-closed by WPF on owner close.
     private readonly List<ComposeWindow> _openComposeWindows = new();
 
+    // Tracks open standalone message windows (MessageOpenMode = Window) for the same reason as
+    // compose windows: they are unowned, so WPF does not close them when the main window closes,
+    // and a surviving one keeps the process (and single-instance mutex) alive — see OnClosed (#252).
+    private readonly List<MessageWindow> _openMessageWindows = new();
+
     // ── Grouped-message tree controllers ──────────────────────────────────────
     private GroupedMessageTreeController? _convTreeController;
     private GroupedMessageTreeController? _senderTreeController;
@@ -745,6 +750,12 @@ public partial class MainWindow : Window
     {
         foreach (var w in _openComposeWindows.ToList())
             w.Close();
+        // Standalone message windows (MessageOpenMode = Window) are unowned, so WPF keeps the
+        // process alive after the main window closes if any remain open — a zombie that still
+        // holds the per-profile single-instance mutex and blocks relaunch (issue #252). Close
+        // them explicitly on a real main-window close, the same way compose windows are handled.
+        foreach (var w in _openMessageWindows.ToList())
+            w.Close();
         _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
@@ -974,11 +985,18 @@ public partial class MainWindow : Window
             defaultKey: Key.A, defaultModifiers: ModifierKeys.Control,
             isAvailable: IsMessageListFocused));
 
+        // Bare K only flags when the message area (flat list or a group tree) actually has
+        // keyboard focus. Without the focus gate, K fired on the selected message even while
+        // focus was in the folder tree — hijacking the tree's type-ahead (issue #255). Leaving
+        // the command unavailable keeps e.Handled false, so the focused control's own type-ahead
+        // (jump to a folder starting with "k") takes the key. Mirrors the calendar plain-key
+        // gestures above, which scope to CalendarList focus for the same reason.
         _registry.Register(new CommandDefinition(
             id: "mail.toggleFlag", category: "Mail", title: "Toggle Flag",
             execute: async () => await ToggleFlagCommandAsync(),
             defaultKey: Key.K, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => _vm.HasSelectedMessage || IsGroupRowSelected()));
+            isAvailable: () => IsMessageAreaFocused()
+                && (_vm.HasSelectedMessage || IsGroupRowSelected())));
 
         _registry.Register(new CommandDefinition(
             id: "mail.pickFlag", category: "Mail", title: "Pick Flag…",
@@ -1005,6 +1023,16 @@ public partial class MainWindow : Window
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()
                 && !FolderList.IsKeyboardFocusWithin)); // folder.delete owns Delete in the folder tree
+
+        // New Folder — creates a folder under the folder-tree selection (or the selected account's
+        // root when nothing folder-specific is selected). Registered so it appears in the Command
+        // Palette and keyboard customizations; before this the only entry point was the folder
+        // context menu, leaving folder creation undiscoverable (issue #250). No default key —
+        // users can bind one via keyboard customizations.
+        _registry.Register(new CommandDefinition(
+            id: "folder.new", category: "Mail", title: "New Folder…",
+            execute: () => _ = NewFolderFromSelectionAsync(),
+            isAvailable: () => _vm.Accounts.Count > 0));
 
         // Delete on a real folder in the folder tree deletes that folder (shares the Delete gesture
         // with mail.delete; the registry prefers whichever command is available for the focus).
@@ -1205,9 +1233,68 @@ public partial class MainWindow : Window
                            $"AttachListFocusWithin={ReadingPaneAttachmentList.IsKeyboardFocusWithin}, " +
                            $"AttachListFocused={ReferenceEquals(focused, ReadingPaneAttachmentList)}");
             if (focused == null)
+            {
                 FocusPanelSynchronously();
+
+                // On the very first Shift+F10 after launch, WebView2 still holds Win32 focus, so the
+                // .Focus() above only takes effect on a later dispatcher tick — too late for THIS
+                // message. WPF then has no focused element to route ContextMenuOpening from, falls
+                // through to DefWindowProc, and the Win32 system menu (Move/Size/Close) appears
+                // instead of our menu (issue #148, recurring). Swallow the message so that system
+                // menu can't show, and open the active panel's context menu once focus has settled.
+                // This branch is a no-op whenever .Focus() did establish focus synchronously, so it
+                // only ever affects the otherwise-broken first press.
+                if (Keyboard.FocusedElement == null)
+                {
+                    handled = true;
+                    Dispatcher.BeginInvoke(OpenActivePanelContextMenu, DispatcherPriority.Input);
+                }
+            }
         }
         return IntPtr.Zero;
+    }
+
+    // Opens the context menu for whichever message panel is active, placed on that panel. Used only
+    // as the deferred recovery when the first post-launch Shift+F10 arrived with no WPF focus (see
+    // OnWmContextMenu). By the time this runs, Win32 focus has settled onto the main window, so the
+    // panel's own selection-based menu resolves correctly.
+    private void OpenActivePanelContextMenu()
+    {
+        FocusPanelSynchronously();
+
+        ContextMenu? menu = null;
+        FrameworkElement? target = null;
+
+        if (_vm.IsConversationsView && ConversationTree.Items.Count > 0)
+        {
+            target = ConversationTree;
+            menu = ConversationTree.SelectedItem is ConversationGroup
+                ? (ContextMenu)FindResource("ConversationGroupContextMenu")
+                : (ContextMenu)FindResource("MessageContextMenu");
+        }
+        else if (_vm.IsFromView && SenderGroupTree.Items.Count > 0)
+        {
+            target = SenderGroupTree;
+            menu = SenderGroupTree.SelectedItem is SenderGroup
+                ? (ContextMenu)FindResource("SenderGroupContextMenu")
+                : (ContextMenu)FindResource("MessageContextMenu");
+        }
+        else if (_vm.IsToView && ToGroupTree.Items.Count > 0)
+        {
+            target = ToGroupTree;
+            menu = ToGroupTree.SelectedItem is SenderGroup
+                ? (ContextMenu)FindResource("ToGroupContextMenu")
+                : (ContextMenu)FindResource("MessageContextMenu");
+        }
+        else if (_vm.IsMessagesView && MessageList.Items.Count > 0)
+        {
+            target = MessageList;
+            menu = (ContextMenu)FindResource("MessageContextMenu");
+        }
+
+        if (menu == null || target == null) return;
+        menu.PlacementTarget = target;
+        menu.IsOpen = true;
     }
 
     // Synchronous panel focus — no Dispatcher.InvokeAsync — used from the Win32 hook
@@ -1300,7 +1387,13 @@ public partial class MainWindow : Window
             if (ReadingPaneAttachmentList.IsKeyboardFocusWithin)
                 return;
 
-            if (!IsMessageListFocused() && !IsGroupTreeFocused())
+            // Only supply a focus target when WPF has NONE (e.g. WebView2 stole Win32 focus at
+            // startup, leaving FocusedElement null). If focus is already in a real panel — the
+            // folder tree, the account list, a message panel — leave it so that panel's own
+            // context menu opens. Redirecting on any non-message focus wrongly replaced the folder
+            // tree's FolderContextMenu with the message menu (#255 follow-up: Shift+F10 on the
+            // folder list showed Reply/Reply All instead of New/Move/Delete Folder).
+            if (focused == null)
             {
                 if (_vm.IsConversationsView)      ConversationTree.Focus();
                 else if (_vm.IsFromView)           SenderGroupTree.Focus();
@@ -2144,6 +2237,11 @@ public partial class MainWindow : Window
                 || IsDescendantOf(ConversationTree, dep);
         return false;
     }
+
+    // True when keyboard focus is inside the message area — the flat message list or any of the
+    // grouped trees. Plain-key mail gestures (e.g. K to flag) gate on this so they don't fire
+    // while focus is elsewhere (folder tree, account list) and steal that control's type-ahead.
+    private bool IsMessageAreaFocused() => IsMessageListFocused() || IsGroupTreeFocused();
 
     private bool IsGroupRowSelected()
     {
@@ -3864,7 +3962,9 @@ public partial class MainWindow : Window
 
         var targetIdx = _vm.SenderGroups.IndexOf(group);
         var picker = BuildMessageFolderPicker(group.Messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
         LandOnSenderGroupAfterRebuild(targetIdx);
@@ -3876,7 +3976,9 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(group.Messages, "Copy to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
     }
@@ -4005,7 +4107,9 @@ public partial class MainWindow : Window
 
         var targetIdx = _vm.ToGroups.IndexOf(group);
         var picker = BuildMessageFolderPicker(group.Messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
         LandOnToGroupAfterRebuild(targetIdx);
@@ -4017,7 +4121,9 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(group.Messages, "Copy to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
     }
@@ -4236,6 +4342,7 @@ public partial class MainWindow : Window
         // WebView2 even after the user alt-tabs back to the main window. As an independent
         // window, the AT cleanly exits browse mode when focus leaves the message window.
         var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService, _configService);
+        _openMessageWindows.Add(win);
 
         // Wire mail action delegates so the window has full message operations.
         // Each delegate syncs MainViewModel selection to the window's current message
@@ -4307,8 +4414,8 @@ public partial class MainWindow : Window
         };
         win.Closed += (_, _) =>
         {
-            _vm.IsMessageOpenInWindow =
-                Application.Current.Windows.OfType<MessageWindow>().Any();
+            _openMessageWindows.Remove(win);
+            _vm.IsMessageOpenInWindow = _openMessageWindows.Count > 0;
 
             // Restore focus to the originating message list item (issue 46).
             Dispatcher.InvokeAsync(() =>
@@ -4320,7 +4427,7 @@ public partial class MainWindow : Window
         };
 
         // Offset from previous windows so they don't stack exactly.
-        var offset = Application.Current.Windows.OfType<MessageWindow>().Count() * 24;
+        var offset = _openMessageWindows.Count * 24;
         win.Left = Left + 60 + offset;
         win.Top  = Top  + 40 + offset;
 
@@ -4489,21 +4596,29 @@ public partial class MainWindow : Window
     }
 
     private async void FolderContextMenu_NewFolder_Click(object sender, RoutedEventArgs e)
-    {
-        var node = GetContextMenuFolderNode(sender);
-        if (node == null) return;
+        => await CreateFolderUnderNodeAsync(GetContextMenuFolderNode(sender));
 
-        // Determine the parent: if it's a header node (account), create at root; otherwise under the selected folder
-        var parentFolder = node.IsHeader ? null : node.Folder;
+    // Entry point for the New Folder command (menu / Command Palette / customizable hotkey).
+    // Uses the folder tree's current selection so the same "create under here" behaviour as the
+    // context menu is reachable without a mouse — the context menu was the only path before, which
+    // left folder creation undiscoverable for keyboard and screen-reader users (issue #250).
+    private async Task NewFolderFromSelectionAsync()
+        => await CreateFolderUnderNodeAsync(FolderList.SelectedItem as FolderTreeNode);
+
+    private async Task CreateFolderUnderNodeAsync(FolderTreeNode? node)
+    {
+        // Determine the parent: a header node (account) creates at root; a folder node creates
+        // beneath it. With no folder-tree selection, fall back to the selected account's root.
+        var parentFolder = node is { IsHeader: false } ? node.Folder : null;
         var accountId    = parentFolder?.AccountId
-                          ?? _vm.Accounts.FirstOrDefault(a => a.AccountLabel == node.Label)?.Id
+                          ?? (node != null ? _vm.Accounts.FirstOrDefault(a => a.AccountLabel == node.Label)?.Id : null)
                           ?? _vm.SelectedAccount?.Id;
         if (accountId == null || accountId == Guid.Empty) return;
 
         var dlg = new NewFolderDialog
         {
             Owner = this,
-            ParentFolderName = parentFolder?.DisplayName ?? node.Label
+            ParentFolderName = parentFolder?.DisplayName ?? node?.Label ?? string.Empty
         };
         if (dlg.ShowDialog() != true) return;
 
@@ -4517,7 +4632,9 @@ public partial class MainWindow : Window
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Folder To") { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveFolderToAsync(node, picker.SelectedFolder);
     }
@@ -4529,7 +4646,9 @@ public partial class MainWindow : Window
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Folder To") { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopyFolderToAsync(node, picker.SelectedFolder);
     }
@@ -4650,6 +4769,9 @@ public partial class MainWindow : Window
 
     private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();
 
+    private async void MenuNewFolder_Click(object sender, RoutedEventArgs e)
+        => await NewFolderFromSelectionAsync();
+
     private void MenuSettings_Click(object sender, RoutedEventArgs e)
     {
         // Font enumeration is a View-layer concern; the VM receives plain strings.
@@ -4753,7 +4875,9 @@ public partial class MainWindow : Window
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
 
@@ -4771,7 +4895,9 @@ public partial class MainWindow : Window
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(messages, "Copy to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
@@ -4782,7 +4908,9 @@ public partial class MainWindow : Window
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
 
@@ -4801,8 +4929,10 @@ public partial class MainWindow : Window
         var messages = GetSelectedMessages();
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder", useTreeView: true) { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var picker = BuildMessageFolderPicker(messages, "Copy to Folder");
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
@@ -4844,8 +4974,10 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var targetIdx = _vm.Conversations.IndexOf(group);
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Conversation to Folder", useTreeView: true) { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var picker = BuildMessageFolderPicker(group.Messages, "Move Conversation to Folder");
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
         LandOnConversationAfterRebuild(targetIdx);
@@ -4856,8 +4988,10 @@ public partial class MainWindow : Window
         if (ConversationTree.SelectedItem is not ConversationGroup group || group.Messages.Count == 0) return;
         if (_vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Conversation to Folder", useTreeView: true) { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var picker = BuildMessageFolderPicker(group.Messages, "Copy Conversation to Folder");
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
     }
@@ -4978,7 +5112,10 @@ public partial class MainWindow : Window
         var folders  = _vm.CachedFolders
                           .Where(kv => ids.Contains(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value);
-        return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true) { Owner = this };
+        return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true,
+            folderCreator: (accountId, parentFullName, name) =>
+                _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name))
+            { Owner = this };
     }
 
     private void RebuildViewsMenu()
