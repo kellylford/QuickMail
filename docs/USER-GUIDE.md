@@ -106,11 +106,15 @@ Press **Verify** to test the connection before saving.
 
 ### Microsoft Account (Outlook.com / Microsoft 365)
 
-Choose **Microsoft OAuth**. The server fields fill in automatically. Activate **Sign in with Microsoft** — your browser opens to a Microsoft sign-in page. Sign in and grant QuickMail permission, then close the browser window. Back in QuickMail, activate **Add Account**.
+Choose **Microsoft OAuth**. The server fields fill in automatically. Activate **Sign in with Microsoft** — your browser opens to a Microsoft sign-in page. Sign in and grant QuickMail permission, then close the browser window. Back in QuickMail, activate **Add Account**. Personal Microsoft accounts (Outlook.com, Hotmail, Live.com) and work or school accounts both sign in this way.
+
+To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
 ### Gmail (Google Account)
 
 Enter your Gmail address in the **Email / Username** field — QuickMail then automatically selects Google authentication for the account, so you do not need to set the authentication type yourself. Activate the **Sign in with Google** button; your browser opens to a Google sign-in page. Complete the sign-in, grant QuickMail permission to read and send mail, then close the browser window. Back in QuickMail, activate **Add Account**. Gmail's server settings fill in automatically.
+
+To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in — for Google this is folded into the same sign-in consent. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
 You may see a message that no password was saved for the account. This is expected with Google authentication — Gmail signs in through your Google account rather than a stored password, so there is no password to save. The Google sign-in itself is stored securely in Windows Credential Manager and refreshes automatically; you are not prompted to sign in again unless you revoke access from your Google account settings.
 
@@ -124,7 +128,7 @@ Enter your iCloud address (`@icloud.com`, `@me.com`, or `@mac.com`) in the **Ema
 
 ### Managing Accounts
 
-Open **Settings → Accounts** to rename, edit, or remove an account. Removing an account does not delete mail from the server. For OAuth accounts (Microsoft or Google), removing the account also clears the stored credential from Windows Credential Manager.
+Open **Settings → Accounts** to rename, edit, or remove an account. Removing an account does not delete mail from the server. For OAuth accounts (Microsoft or Google), removing the account also clears the stored credential from Windows Credential Manager. Editing a Microsoft or Google account is also where you turn **Sync contacts from this account** on or off after the fact; the change applies immediately.
 
 ---
 
@@ -150,9 +154,19 @@ You can also jump directly to any pane:
 
 Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date.
 
+### Creating Folders
+
+Create a new folder in any of these ways:
+
+- Choose **Folder → New Folder…** from the menu bar.
+- Open the Command Palette (**Ctrl+Shift+P**) and choose **New Folder…**. You can assign this command your own keyboard shortcut in [Keyboard Customization](#keyboard-customization).
+- Press **Shift+F10** on the folder tree and choose **New Folder** from its context menu.
+
+The new folder is created under the folder currently selected in the folder tree, or under the account root when a header or nothing is selected.
+
 ### Moving and Copying Messages
 
-Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy.
+Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy. If you need a destination that does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and move into it without leaving the dialog.
 
 ### Message List Views
 
@@ -419,7 +433,17 @@ When forwarding a message that has attachments, QuickMail opens an **Include Att
 
 Press **Ctrl+Shift+B** to open the address book.
 
-The address book lists everyone you have sent mail to or explicitly added. You can search by name or address, edit contact details, and organize contacts into groups.
+The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
+
+### Syncing Contacts from Your Accounts
+
+QuickMail can fill the address book from the contacts and prior recipients already stored in your Microsoft and Google accounts, so the people your account knows are available for autocomplete when you address a message.
+
+- **Turn it on per account.** When adding a Microsoft or Google account, check **Sync contacts from this account** in the Add Account dialog before you sign in. For an account you already have, open **Settings → Accounts**, edit the account, and check the same box — it takes effect immediately, with no separate Save step. Enabling sync asks your account for read-only access to your contacts (for Google this is part of the normal sign-in; for Microsoft it is granted right after sign-in).
+- **Synced contacts are read-only.** They come from the server into QuickMail only — QuickMail never writes changes back to your account. Synced people appear in the list but cannot be edited or deleted there. Contacts you added yourself stay fully editable, even if someone has the same address. Turning the switch off removes that account's synced contacts from QuickMail.
+- **Refreshing.** QuickMail refreshes synced contacts quietly in the background about twice a day. To pull the latest right away, use the **Sync Now** button in the address book, or the **Sync Contacts Now** command in the Command Palette.
+
+Contact sync is one-directional and read-only in this release: no changes are written back, and iCloud/CardDAV accounts are not yet supported.
 
 ### Groups
 
@@ -649,8 +673,9 @@ Control which categories of announcements QuickMail makes:
 | Announce flag status | Flag name prepended to message row when navigating the list |
 | Announce spelling suggestions | Suggestions included when a misspelling is announced |
 | Spelling Suggestions Verbosity | Numbers with suggestions (default) or just suggestions |
+| Show field labels in the contact list | When on, address-book rows speak field names ("Name … email … account …"); when off, they speak concise field data only |
 
-All settings default to on except **Announce flag status** and **Announce spelling while typing** (off by default). **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
+All settings default to on except **Announce flag status**, **Show field labels in the contact list**, and **Announce spelling while typing** (off by default). **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
 
 ---
 
