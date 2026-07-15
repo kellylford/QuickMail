@@ -57,6 +57,10 @@ public partial class FolderPickerWindow : Window
         InitializeComponent();
         Title = title;
 
+        // Alt+N → New Folder (see FolderPicker_PreviewKeyDown). Window-level so it fires from the
+        // tree, the buttons, or anywhere else in the picker.
+        PreviewKeyDown += FolderPicker_PreviewKeyDown;
+
         // The New Folder button is only meaningful when the caller supplied a way to create one.
         // Scoped to the tree view (the move/copy-message picker); the flat list has no in-place
         // repopulation path wired, so it never offers creation.
@@ -300,6 +304,22 @@ public partial class FolderPickerWindow : Window
         {
             e.Handled = true;
             Commit();
+        }
+    }
+
+    // Alt+N opens New Folder. Wired explicitly (rather than a button mnemonic) so a bare "n" in the
+    // folder tree stays available for type-ahead instead of triggering the button (see the XAML note
+    // on NewFolderButton). Handled window-wide so it works whatever picker control has focus.
+    private void FolderPicker_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // With Alt held, the character arrives as a System key; the real key is in SystemKey.
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        if (key == Key.N
+            && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
+            && NewFolderButton.Visibility == Visibility.Visible)
+        {
+            e.Handled = true;
+            NewFolderButton_Click(NewFolderButton, new RoutedEventArgs());
         }
     }
 

@@ -23,9 +23,13 @@
                  AutomationProperties.Name="Folder search"/>
 
         <DockPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <!-- No access-key underscore on the content: WPF activates a bare mnemonic letter
+                 without Alt when focus isn't in a text field, so "_New Folder" fired on plain "n"
+                 in the folder tree and stole the tree's type-ahead. Alt+N is wired explicitly in
+                 code-behind instead; the accessible name still reads "New Folder". -->
             <Button x:Name="NewFolderButton"
                     DockPanel.Dock="Left"
-                    Content="_New Folder…"
+                    Content="New Folder…"
                     MinWidth="90"
                     Visibility="Collapsed"
                     Click="NewFolderButton_Click"
@@ -93,6 +97,7 @@
                   AutomationProperties.Name="Folders"
                   BorderThickness="1"
                   KeyboardNavigation.TabNavigation="Once"
+                  TextSearch.TextPath="Label"
                   PreviewKeyDown="FolderTreeView_PreviewKeyDown"
                   MouseDoubleClick="FolderTreeView_MouseDoubleClick">
             <TreeView.Resources>

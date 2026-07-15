@@ -1233,9 +1233,68 @@ public partial class MainWindow : Window
                            $"AttachListFocusWithin={ReadingPaneAttachmentList.IsKeyboardFocusWithin}, " +
                            $"AttachListFocused={ReferenceEquals(focused, ReadingPaneAttachmentList)}");
             if (focused == null)
+            {
                 FocusPanelSynchronously();
+
+                // On the very first Shift+F10 after launch, WebView2 still holds Win32 focus, so the
+                // .Focus() above only takes effect on a later dispatcher tick — too late for THIS
+                // message. WPF then has no focused element to route ContextMenuOpening from, falls
+                // through to DefWindowProc, and the Win32 system menu (Move/Size/Close) appears
+                // instead of our menu (issue #148, recurring). Swallow the message so that system
+                // menu can't show, and open the active panel's context menu once focus has settled.
+                // This branch is a no-op whenever .Focus() did establish focus synchronously, so it
+                // only ever affects the otherwise-broken first press.
+                if (Keyboard.FocusedElement == null)
+                {
+                    handled = true;
+                    Dispatcher.BeginInvoke(OpenActivePanelContextMenu, DispatcherPriority.Input);
+                }
+            }
         }
         return IntPtr.Zero;
+    }
+
+    // Opens the context menu for whichever message panel is active, placed on that panel. Used only
+    // as the deferred recovery when the first post-launch Shift+F10 arrived with no WPF focus (see
+    // OnWmContextMenu). By the time this runs, Win32 focus has settled onto the main window, so the
+    // panel's own selection-based menu resolves correctly.
+    private void OpenActivePanelContextMenu()
+    {
+        FocusPanelSynchronously();
+
+        ContextMenu? menu = null;
+        FrameworkElement? target = null;
+
+        if (_vm.IsConversationsView && ConversationTree.Items.Count > 0)
+        {
+            target = ConversationTree;
+            menu = ConversationTree.SelectedItem is ConversationGroup
+                ? (ContextMenu)FindResource("ConversationGroupContextMenu")
+                : (ContextMenu)FindResource("MessageContextMenu");
+        }
+        else if (_vm.IsFromView && SenderGroupTree.Items.Count > 0)
+        {
+            target = SenderGroupTree;
+            menu = SenderGroupTree.SelectedItem is SenderGroup
+                ? (ContextMenu)FindResource("SenderGroupContextMenu")
+                : (ContextMenu)FindResource("MessageContextMenu");
+        }
+        else if (_vm.IsToView && ToGroupTree.Items.Count > 0)
+        {
+            target = ToGroupTree;
+            menu = ToGroupTree.SelectedItem is SenderGroup
+                ? (ContextMenu)FindResource("ToGroupContextMenu")
+                : (ContextMenu)FindResource("MessageContextMenu");
+        }
+        else if (_vm.IsMessagesView && MessageList.Items.Count > 0)
+        {
+            target = MessageList;
+            menu = (ContextMenu)FindResource("MessageContextMenu");
+        }
+
+        if (menu == null || target == null) return;
+        menu.PlacementTarget = target;
+        menu.IsOpen = true;
     }
 
     // Synchronous panel focus — no Dispatcher.InvokeAsync — used from the Win32 hook
@@ -1328,7 +1387,13 @@ public partial class MainWindow : Window
             if (ReadingPaneAttachmentList.IsKeyboardFocusWithin)
                 return;
 
-            if (!IsMessageListFocused() && !IsGroupTreeFocused())
+            // Only supply a focus target when WPF has NONE (e.g. WebView2 stole Win32 focus at
+            // startup, leaving FocusedElement null). If focus is already in a real panel — the
+            // folder tree, the account list, a message panel — leave it so that panel's own
+            // context menu opens. Redirecting on any non-message focus wrongly replaced the folder
+            // tree's FolderContextMenu with the message menu (#255 follow-up: Shift+F10 on the
+            // folder list showed Reply/Reply All instead of New/Move/Delete Folder).
+            if (focused == null)
             {
                 if (_vm.IsConversationsView)      ConversationTree.Focus();
                 else if (_vm.IsFromView)           SenderGroupTree.Focus();
