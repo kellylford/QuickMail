@@ -5146,10 +5146,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (messages.Count == 0) return;
 
-        // If the destination was just created inside the (now-closed) folder picker, bring the main
-        // folder tree up to date — deferred out of the picker's modal loop for re-entrancy safety.
-        CommitPendingFolderTreeRebuild();
-
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Moving {label}…";
         IsBusy     = true;
@@ -5199,10 +5195,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
-
-        // If the destination was just created inside the (now-closed) folder picker, bring the main
-        // folder tree up to date — deferred out of the picker's modal loop for re-entrancy safety.
-        CommitPendingFolderTreeRebuild();
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Copying {label}…";

@@ -3897,7 +3897,9 @@ public partial class MainWindow : Window
 
         var targetIdx = _vm.SenderGroups.IndexOf(group);
         var picker = BuildMessageFolderPicker(group.Messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
         LandOnSenderGroupAfterRebuild(targetIdx);
@@ -3909,7 +3911,9 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(group.Messages, "Copy to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
     }
@@ -4038,7 +4042,9 @@ public partial class MainWindow : Window
 
         var targetIdx = _vm.ToGroups.IndexOf(group);
         var picker = BuildMessageFolderPicker(group.Messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
         LandOnToGroupAfterRebuild(targetIdx);
@@ -4050,7 +4056,9 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(group.Messages, "Copy to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
     }
@@ -4559,7 +4567,9 @@ public partial class MainWindow : Window
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Folder To") { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveFolderToAsync(node, picker.SelectedFolder);
     }
@@ -4571,7 +4581,9 @@ public partial class MainWindow : Window
 
         if (_vm.CachedFolders.Count == 0) return;
         var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Folder To") { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopyFolderToAsync(node, picker.SelectedFolder);
     }
@@ -4798,7 +4810,9 @@ public partial class MainWindow : Window
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
 
@@ -4816,7 +4830,9 @@ public partial class MainWindow : Window
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(messages, "Copy to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
@@ -4827,7 +4843,9 @@ public partial class MainWindow : Window
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
         var picker = BuildMessageFolderPicker(messages, "Move to Folder");
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
 
@@ -4846,8 +4864,10 @@ public partial class MainWindow : Window
         var messages = GetSelectedMessages();
         if (messages.Count == 0 || _vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy to Folder", useTreeView: true) { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var picker = BuildMessageFolderPicker(messages, "Copy to Folder");
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(messages, picker.SelectedFolder);
     }
@@ -4889,8 +4909,10 @@ public partial class MainWindow : Window
         if (_vm.CachedFolders.Count == 0) return;
 
         var targetIdx = _vm.Conversations.IndexOf(group);
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Conversation to Folder", useTreeView: true) { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var picker = BuildMessageFolderPicker(group.Messages, "Move Conversation to Folder");
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.MoveSelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
         LandOnConversationAfterRebuild(targetIdx);
@@ -4901,8 +4923,10 @@ public partial class MainWindow : Window
         if (ConversationTree.SelectedItem is not ConversationGroup group || group.Messages.Count == 0) return;
         if (_vm.CachedFolders.Count == 0) return;
 
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Conversation to Folder", useTreeView: true) { Owner = this };
-        if (picker.ShowDialog() != true || picker.SelectedFolder == null) return;
+        var picker = BuildMessageFolderPicker(group.Messages, "Copy Conversation to Folder");
+        var pickerOpened = picker.ShowDialog();
+        _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
+        if (pickerOpened != true || picker.SelectedFolder == null) return;
 
         await _vm.CopySelectedMessagesToFolderAsync(group.Messages, picker.SelectedFolder);
     }
