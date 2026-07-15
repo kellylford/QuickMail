@@ -20,6 +20,14 @@ the request to the **per-resource `.default` scope**:
 resource** — no more, no less. The app registration (`docs/ENTRA-APP-REGISTRATION.md` §3) becomes
 the single source of truth for the permission set.
 
+> **Correction (post-ship, #239):** `.default` was over-applied to the **IMAP/SMTP** path. It is
+> invalid for personal Microsoft accounts on `outlook.office.com` (no admin-consent model → the
+> resource isn't in Required Resource Access for consumer sign-in), which broke consumer sign-in on
+> the IMAP path entirely. The IMAP/SMTP path now requests **explicit** scopes
+> (`IMAP.AccessAsUser.All` + `SMTP.Send`), which work for personal and work accounts alike; `.default`
+> bought it nothing (no undeclared-scope loop there). Everything below about `.default` applies to the
+> **Graph** path only.
+
 This is a **pure `.default`** decision: there is no runtime incremental/step-up consent for any
 Graph permission, including the server-rules write scope.
 

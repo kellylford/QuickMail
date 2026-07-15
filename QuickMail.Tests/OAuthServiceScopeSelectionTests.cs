@@ -79,4 +79,25 @@ public class OAuthServiceScopeSelectionTests
         };
         Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
     }
+
+    [Fact]
+    public void ImapScopes_AreExplicit_NotDefault() // #239
+    {
+        // `.default` on the IMAP resource is invalid for personal Microsoft accounts and blocked
+        // sign-in entirely (#239). The IMAP/SMTP path must request explicit scopes, which work for
+        // personal and work accounts alike (the IMAP path doesn't consult the personal/work flag).
+        Assert.Contains("https://outlook.office.com/IMAP.AccessAsUser.All", OAuthService.ImapSmtpScopes);
+        Assert.Contains("https://outlook.office.com/SMTP.Send", OAuthService.ImapSmtpScopes);
+        Assert.DoesNotContain("https://outlook.office.com/.default", OAuthService.ImapSmtpScopes);
+    }
+
+    [Theory]
+    [InlineData("me@outlook.com")]  // personal domain
+    [InlineData("me@outlook.cl")]   // custom-domain personal (the exact #239 reporter case)
+    [InlineData("user@contoso.com")] // work
+    public void ImapAccount_AlwaysGetsExplicitImapScopes_RegardlessOfType(string username)
+    {
+        var account = new AccountModel { BackendKind = BackendKind.ImapSmtp, Username = username };
+        Assert.Same(OAuthService.ImapSmtpScopes, OAuthService.DefaultScopesFor(account));
+    }
 }
