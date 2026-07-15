@@ -54,6 +54,16 @@ public class OAuthRouter : IOAuthService
             : _microsoft.SignInInteractiveAsync(account, ct);
     }
 
+    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
+    {
+        // Google's contact scopes are requested via a fresh interactive sign-in that widens the
+        // stored refresh token's grant; Microsoft's are requested by acquiring a token for the
+        // Graph contact scopes (silent if already consented, interactive otherwise).
+        return account.AuthType == AuthType.OAuth2Google
+            ? _google.AuthorizeContactsAsync(account.Username, ct)
+            : _microsoft.RequestContactsConsentAsync(account, ct);
+    }
+
     public Task SignOutAsync(AccountModel account)
     {
         return account.AuthType == AuthType.OAuth2Google

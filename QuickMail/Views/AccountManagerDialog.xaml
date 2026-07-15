@@ -228,6 +228,18 @@
                          VerticalScrollBarVisibility="Auto"
                          TabIndex="11"/>
 
+                <!-- Contact sync (issue #256) — shown only for OAuth accounts, the only backends
+                     with a contact API. Password/IMAP accounts see nothing here. -->
+                <StackPanel Visibility="{Binding CanSyncContacts, Converter={StaticResource BoolToVisibility}}">
+                    <Separator Margin="0,12,0,6"/>
+                    <TextBlock Text="Contacts" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <CheckBox Content="Sync _contacts from this account"
+                              IsChecked="{Binding SyncContacts}"
+                              AutomationProperties.Name="Sync contacts from this account"
+                              AutomationProperties.HelpText="Pulls this account's contacts and the people you've emailed into the address book. Enabling asks for a one-time read-only permission."
+                              Margin="0,0,0,4" TabIndex="12"/>
+                </StackPanel>
+
             </StackPanel>
         </ScrollViewer>
 

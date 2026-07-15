@@ -65,14 +65,16 @@ public class ContactService : IContactService, IDisposable
         await _loadLock.WaitAsync(ct);
         try
         {
-            return string.IsNullOrEmpty(q)
-                ? _contactsCache.OrderByDescending(c => c.LastUsedTicks).ToList()
+            // Dedup by email so a person present as both a local contact and a synced
+            // contact/prior-recipient (issue #256) shows once in autocomplete.
+            var source = string.IsNullOrEmpty(q)
+                ? _contactsCache.AsEnumerable()
                 : _contactsCache.Where(c =>
                     c.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                    c.EmailAddress.Contains(q, StringComparison.OrdinalIgnoreCase))
-                  .OrderByDescending(c => c.LastUsedTicks)
-                  .Take(10)
-                  .ToList();
+                    c.EmailAddress.Contains(q, StringComparison.OrdinalIgnoreCase));
+
+            var deduped = DedupByEmail(source).OrderByDescending(c => c.LastUsedTicks);
+            return string.IsNullOrEmpty(q) ? deduped.ToList() : deduped.Take(10).ToList();
         }
         finally
         {
@@ -86,13 +88,30 @@ public class ContactService : IContactService, IDisposable
         await _loadLock.WaitAsync();
         try
         {
-            return _contactsCache.OrderBy(c => c.DisplayName).ThenBy(c => c.EmailAddress).ToList();
+            return DedupByEmail(_contactsCache)
+                .OrderBy(c => c.DisplayName).ThenBy(c => c.EmailAddress).ToList();
         }
         finally
         {
             _loadLock.Release();
         }
     }
+
+    /// <summary>
+    /// Collapses contacts that share an email address (case-insensitive) to a single row,
+    /// preferring — in order — a local contact, then a saved server contact, then a prior
+    /// recipient. Among equal-rank duplicates the most-recently-used wins. The winner is the
+    /// original cache object (never mutated), so callers see one row per person without the
+    /// cache being altered.
+    /// </summary>
+    private static IEnumerable<ContactModel> DedupByEmail(IEnumerable<ContactModel> contacts)
+        => contacts
+            .GroupBy(c => c.EmailAddress.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.OrderBy(SourceRank).ThenByDescending(c => c.LastUsedTicks).First());
+
+    // Local user contacts outrank saved server contacts, which outrank prior recipients.
+    private static int SourceRank(ContactModel c)
+        => c.Source == ContactSource.Local ? 0 : (c.IsPriorRecipient ? 2 : 1);
 
     public async Task DeleteContactAsync(int id)
     {
@@ -139,6 +158,79 @@ public class ContactService : IContactService, IDisposable
             contact.LastUsedTicks = DateTimeOffset.UtcNow.UtcTicks;
             await SaveContactsAsyncLocked();
             return true;
+        }
+        finally
+        {
+            _loadLock.Release();
+        }
+    }
+
+    // ── Server contact sync (issue #256) ─────────────────────────────────────
+
+    public async Task ReplaceSyncedContactsAsync(Guid accountId, ContactSource source, IReadOnlyList<ContactModel> serverContacts)
+    {
+        await EnsureLoadedAsync();
+        await _loadLock.WaitAsync();
+        try
+        {
+            // Existing synced rows for exactly this (account, source), keyed by provider id so a
+            // contact edited server-side updates in place and keeps its local Id (and any group
+            // membership) rather than being deleted and re-added.
+            var existingBySourceId = _contactsCache
+                .Where(c => c.OwnerAccountId == accountId && c.Source == source && c.SourceId != null)
+                .ToDictionary(c => c.SourceId!, StringComparer.Ordinal);
+
+            var seenSourceIds = new HashSet<string>(StringComparer.Ordinal);
+            // Compute the next id once; recomputing Max() per new row would be O(n²).
+            var nextId = _contactsCache.Count > 0 ? _contactsCache.Max(c => c.Id) + 1 : 1;
+
+            foreach (var sc in serverContacts)
+            {
+                // Skip malformed provider rows: a contact with no id can't be diffed on the next
+                // sync, and one with no email is useless for addressing.
+                if (string.IsNullOrEmpty(sc.SourceId) || string.IsNullOrWhiteSpace(sc.EmailAddress))
+                    continue;
+
+                seenSourceIds.Add(sc.SourceId);
+                if (existingBySourceId.TryGetValue(sc.SourceId, out var existing))
+                {
+                    existing.DisplayName      = sc.DisplayName;
+                    existing.EmailAddress     = sc.EmailAddress;
+                    existing.LastUsedTicks    = sc.LastUsedTicks;
+                    existing.IsPriorRecipient = sc.IsPriorRecipient;
+                }
+                else
+                {
+                    sc.Id             = nextId++;
+                    sc.Source         = source;
+                    sc.OwnerAccountId = accountId;
+                    _contactsCache.Add(sc);
+                }
+            }
+
+            // Drop synced rows for this (account, source) the server no longer returns — this is how
+            // a contact deleted on the server disappears from QuickMail on the next sync.
+            _contactsCache.RemoveAll(c =>
+                c.OwnerAccountId == accountId && c.Source == source &&
+                (c.SourceId is null || !seenSourceIds.Contains(c.SourceId)));
+
+            await SaveContactsAsyncLocked();
+        }
+        finally
+        {
+            _loadLock.Release();
+        }
+    }
+
+    public async Task RemoveSyncedContactsAsync(Guid accountId)
+    {
+        await EnsureLoadedAsync();
+        await _loadLock.WaitAsync();
+        try
+        {
+            var removed = _contactsCache.RemoveAll(c => c.OwnerAccountId == accountId);
+            if (removed > 0)
+                await SaveContactsAsyncLocked();
         }
         finally
         {

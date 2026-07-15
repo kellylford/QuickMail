@@ -54,6 +54,17 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/User.Read",
     ];
 
+    // Read-only contact scopes for contact sync (issue #256). Explicit scopes (not `.default`) so
+    // they work for BOTH personal and work/school Microsoft accounts — the same reasoning as the
+    // personal-mail scopes above. Requested only when the user opts an account into contact sync.
+    // Contacts.Read → /me/contacts (saved contacts); People.Read → /me/people (relevance-ranked
+    // people the user has corresponded with, i.e. prior recipients).
+    public static readonly string[] GraphContactScopes =
+    [
+        "https://graph.microsoft.com/Contacts.Read",
+        "https://graph.microsoft.com/People.Read",
+    ];
+
     // Authoritative "is this a personal Microsoft account" signal: every consumer account lives in the
     // well-known MSA "consumers" tenant. Detected from the MSAL account at sign-in and persisted on
     // AccountModel (#233), so it's correct even for personal accounts on custom/vanity domains.
@@ -226,6 +237,16 @@ public class OAuthService : IOAuthService
         LogService.Log($"OAuthService: interactive sign-in complete for {result.Account.Username} " +
                        $"(personal Microsoft account: {isPersonal}).");
         return new OAuthResult(result.AccessToken, result.Account.Username, isPersonal);
+    }
+
+    public async Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
+    {
+        // Acquiring a token for the contact scopes is what drives consent: silent if the user has
+        // already granted them (cached refresh token covers them), interactive otherwise. The token
+        // itself is discarded here — GraphContactSource acquires its own when it fetches — but the
+        // grant now lives in the MSAL cache, so later silent acquisition (including background sync)
+        // succeeds without another prompt.
+        await GetAccessTokenAsync(account, GraphContactScopes, ct);
     }
 
     public async Task SignOutAsync(AccountModel account)

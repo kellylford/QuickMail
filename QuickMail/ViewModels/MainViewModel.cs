@@ -26,6 +26,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ILocalStoreService _localStore;
     private readonly IOAuthService _oauthService;
     private readonly ISyncService _syncService;
+    private readonly IContactSyncService? _contactSync;
     private readonly IConfigService _configService;
     private readonly IViewService _viewService;
     private readonly ICommandRegistry _commandRegistry;
@@ -806,7 +807,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IUpdateCheckService? updateCheckService = null,
         IUiDispatcher? uiDispatcher = null,
         IThemeService? themeService = null,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        IContactSyncService? contactSyncService = null)
     {
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
@@ -826,6 +828,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _updateCheckService   = updateCheckService;
         _themeService         = themeService;
         _notifications        = notificationService;
+        _contactSync          = contactSyncService;
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
@@ -1577,6 +1580,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Signal that the startup connect finished so a notification click that cold-started the app
         // (its account wasn't connected yet when the toast was activated) can now open its message.
         StartupConnectCompleted?.Invoke();
+
+        // Contact sync (issue #256): best-effort, fire-and-forget, after mail accounts have connected
+        // so their OAuth tokens are warm — contact-scope acquisition is then silent (no sign-in popup).
+        // Runs before the early-return paths below so it happens in every mode. Silent by design: it
+        // refreshes the address book in the background; the manual "Sync Contacts Now" command is the
+        // one that announces. A failure here is logged and never affects mail sync.
+        _contactSync?.SyncAllAsync(ct).LogFaults("startup contact sync");
 
         // Nothing connected — skip the heavy full sync. Watchers/labels are already handled above, and
         // WireUpWatchers will start the watcher once an account connects later.

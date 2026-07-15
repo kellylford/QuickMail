@@ -20,6 +20,26 @@ public interface IContactService
     /// </summary>
     Task<bool> UpdateContactAsync(int id, string displayName, string emailAddress);
 
+    // ── Server contact sync (issue #256) ─────────────────────────────────────
+
+    /// <summary>
+    /// Replaces the set of contacts synced from a given account+source with a fresh
+    /// server snapshot. Rows are matched by <see cref="ContactModel.SourceId"/> so a
+    /// contact updated on the server keeps its local <see cref="ContactModel.Id"/>
+    /// (preserving any group membership); rows no longer present on the server are
+    /// removed. Purely local contacts and contacts owned by other accounts or other
+    /// sources are never touched. This is the one-way (server → local) merge; QuickMail
+    /// never writes back.
+    /// </summary>
+    Task ReplaceSyncedContactsAsync(Guid accountId, ContactSource source, IReadOnlyList<ContactModel> serverContacts);
+
+    /// <summary>
+    /// Removes every contact synced from the given account (all sources), leaving local
+    /// contacts and other accounts' synced contacts intact. Called when the user disables
+    /// contact sync for an account or deletes the account.
+    /// </summary>
+    Task RemoveSyncedContactsAsync(Guid accountId);
+
     // ── Groups ───────────────────────────────────────────────────────────────
     // All group operations share the same _loadLock as contact operations so
     // the picker dialog can interleave reads and writes safely (see CLAUDE.md

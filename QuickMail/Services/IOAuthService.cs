@@ -41,5 +41,13 @@ public interface IOAuthService
     /// </summary>
     Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default);
 
+    /// <summary>
+    /// Ensures the account has consented to the read-only contact scopes needed for contact sync
+    /// (issue #256): Graph <c>Contacts.Read</c>/<c>People.Read</c> for Microsoft accounts, the
+    /// People API read scopes for Google. Silent when consent was already granted; otherwise opens
+    /// an interactive sign-in. Throws if the user declines. Call from a foreground user action only.
+    /// </summary>
+    Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default);
+
     Task SignOutAsync(AccountModel account);
 }

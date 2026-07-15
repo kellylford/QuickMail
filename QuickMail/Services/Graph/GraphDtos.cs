@@ -94,3 +94,27 @@ internal sealed class GraphFollowUpFlag
     /// <summary>Values: "notFlagged" | "flagged" | "complete".</summary>
     [JsonPropertyName("flagStatus")] public string FlagStatus { get; set; } = "notFlagged";
 }
+
+// ── Contact sync (issue #256) ────────────────────────────────────────────────
+
+/// <summary>A saved contact from <c>/me/contacts</c>.</summary>
+internal sealed class GraphContact
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+    [JsonPropertyName("emailAddresses")] public List<GraphEmailAddress>? EmailAddresses { get; set; }
+}
+
+/// <summary>A relevance-ranked person from <c>/me/people</c> (prior recipients).</summary>
+internal sealed class GraphPerson
+{
+    [JsonPropertyName("id")] public string? Id { get; set; }
+    [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+    [JsonPropertyName("scoredEmailAddresses")] public List<GraphScoredEmailAddress>? ScoredEmailAddresses { get; set; }
+}
+
+internal sealed class GraphScoredEmailAddress
+{
+    [JsonPropertyName("address")] public string? Address { get; set; }
+    [JsonPropertyName("relevanceScore")] public double RelevanceScore { get; set; }
+}

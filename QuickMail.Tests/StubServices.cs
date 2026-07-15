@@ -85,6 +85,7 @@ sealed class StubGoogleOAuthService : IGoogleOAuthService
 {
     public Task<string> GetAccessTokenAsync(string username, CancellationToken ct = default) => Task.FromResult(string.Empty);
     public Task<OAuthResult> SignInInteractiveAsync(string loginHint, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, loginHint));
+    public Task<OAuthResult> AuthorizeContactsAsync(string loginHint, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, loginHint));
     public Task SignOutAsync(string username) => Task.CompletedTask;
 }
 
@@ -94,6 +95,7 @@ sealed class StubOAuthService : IOAuthService
     public Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult(string.Empty);
     public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
+    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
     public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
 }
 
@@ -137,6 +139,8 @@ sealed class StubContactService : IContactService
     public Task<List<ContactModel>> LoadAllContactsAsync() => Task.FromResult(new List<ContactModel>());
     public Task DeleteContactAsync(int id) => Task.CompletedTask;
     public Task<bool> UpdateContactAsync(int id, string displayName, string emailAddress) => Task.FromResult(true);
+    public Task ReplaceSyncedContactsAsync(Guid accountId, ContactSource source, IReadOnlyList<ContactModel> serverContacts) => Task.CompletedTask;
+    public Task RemoveSyncedContactsAsync(Guid accountId) => Task.CompletedTask;
 
     // Groups — no-op stubs. Tests that need real group behaviour construct
     // a real ContactService pointed at a temp directory.
@@ -150,6 +154,14 @@ sealed class StubContactService : IContactService
     public Task TouchGroupAsync(int groupId) => Task.CompletedTask;
     public Task<List<GroupModel>> SearchGroupsAsync(string prefix, CancellationToken ct = default)
         => Task.FromResult(new List<GroupModel>());
+}
+
+sealed class StubContactSyncService : IContactSyncService
+{
+    public bool CanSync(AccountModel account) => false;
+    public Task<ContactSyncResult> SyncAccountAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(ContactSyncResult.None);
+    public Task<ContactSyncResult> SyncAllAsync(CancellationToken ct = default) => Task.FromResult(ContactSyncResult.None);
+    public Task RemoveAccountContactsAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
 }
 
 sealed class StubViewService : IViewService

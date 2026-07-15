@@ -14,6 +14,7 @@ public partial class App : Application
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
+    private GooglePeopleClient? _googlePeopleClient;
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
     private GraphChangeNotifier? _graphNotifier;
@@ -227,6 +228,13 @@ public partial class App : Application
             var ruleService = new RuleService(mailRouter, localStore, profile.ProfileDir);
             var syncService = new SyncService(mailRouter, localStore, configService, ruleService);
 
+            // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
+            // gets its own People API client (owns an HttpClient → disposed in OnExit).
+            var graphContactSource  = new GraphContactSource(graphBackend.Client);
+            _googlePeopleClient     = new GooglePeopleClient(googleOAuth);
+            var googleContactSource = new GoogleContactSource(_googlePeopleClient);
+            var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource);
+
             var startupCfg = configService.Load();
             Views.AccessibilityHelper.Configure(startupCfg);
             LogService.Format  = startupCfg.LogFormat;
@@ -259,11 +267,11 @@ public partial class App : Application
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
-                themeService: themeService, notificationService: _notificationService);
+                themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -295,6 +303,7 @@ public partial class App : Application
         _imapBackend?.Dispose();    // closes connection pools (StopWatchers already ran, and is idempotent)
         _graphBackend?.Dispose();   // releases GraphClient/HttpClient; after the notifiers, which poll through its client
         _graphSendMail?.Dispose();
+        _googlePeopleClient?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();
