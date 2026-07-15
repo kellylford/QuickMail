@@ -34,9 +34,12 @@ public sealed class GraphContactSource : IProviderContactSource
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // ── Saved contacts ──────────────────────────────────────────────────
+        // silentOnly: sync must never launch an interactive sign-in — the address book runs modal,
+        // where an embedded WebView2 could deadlock the UI thread. Consent is obtained up front when
+        // the user enables sync; if the grant later lapses, this throws and sync reports an error.
         var contacts = await _graph.GetAllPagesAsync<GraphContact>(
             account, "/me/contacts?$select=id,displayName,emailAddresses&$top=100",
-            OAuthService.GraphContactScopes, ct);
+            OAuthService.GraphContactScopes, silentOnly: true, ct);
 
         foreach (var c in contacts)
         {
@@ -55,7 +58,7 @@ public sealed class GraphContactSource : IProviderContactSource
         // ── Prior recipients (people the user has corresponded with) ─────────
         var people = await _graph.GetAllPagesAsync<GraphPerson>(
             account, "/me/people?$select=id,displayName,scoredEmailAddresses&$top=100",
-            OAuthService.GraphContactScopes, ct);
+            OAuthService.GraphContactScopes, silentOnly: true, ct);
 
         int priorAdded = 0;
         bool capped = false;

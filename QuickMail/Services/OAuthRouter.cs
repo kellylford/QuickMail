@@ -35,6 +35,16 @@ public class OAuthRouter : IOAuthService
             : _microsoft.GetAccessTokenAsync(account, scopes, ct);
     }
 
+    public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+    {
+        // Google's GetAccessTokenAsync is already silent-only — it refreshes the stored token or
+        // throws, and never opens a browser — so it doubles as the silent path here. Microsoft gets
+        // the real silent-only acquisition (no interactive fallback).
+        return account.AuthType == AuthType.OAuth2Google
+            ? _google.GetAccessTokenAsync(account.Username, ct)
+            : _microsoft.GetAccessTokenSilentAsync(account, scopes, ct);
+    }
+
     public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
     {
         // Google is KNOWINGLY UNPROTECTED here: its token flow uses the system browser (not the

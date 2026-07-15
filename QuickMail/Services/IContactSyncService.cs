@@ -34,6 +34,14 @@ public interface IContactSyncService
     /// <summary>Syncs every account with <see cref="AccountModel.SyncContacts"/> enabled and a contact source.</summary>
     Task<ContactSyncResult> SyncAllAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Like <see cref="SyncAllAsync"/> but throttled: does nothing if a sync ran less than
+    /// <paramref name="minInterval"/> ago. Used by the automatic background trigger, which fires on
+    /// every startup/reconnect/account-activation — without this it would re-fetch every account's
+    /// full contact list each time. The manual "Sync Contacts Now" path bypasses this and always runs.
+    /// </summary>
+    Task<ContactSyncResult> SyncAllDueAsync(TimeSpan minInterval, CancellationToken ct = default);
+
     /// <summary>Removes an account's synced contacts (on disable or account deletion).</summary>
     Task RemoveAccountContactsAsync(Guid accountId, CancellationToken ct = default);
 }

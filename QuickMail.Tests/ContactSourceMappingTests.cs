@@ -68,6 +68,34 @@ public class ContactSourceMappingTests
         Assert.Equal(ContactSource.Microsoft, source.Source);
     }
 
+    // OAuth stub whose INTERACTIVE token path throws — proving contact sync only ever uses the
+    // silent path (fix for review finding #1: no interactive sign-in inside the modal address book).
+    private sealed class SilentOnlyOAuth : IOAuthService
+    {
+        public Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(string.Empty);
+        public Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+            => throw new InvalidOperationException("interactive path must not be used by contact sync");
+        public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult("silent-token");
+        public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+        public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
+        public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+        public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Graph_UsesSilentTokenPath_NotInteractive()
+    {
+        var handler = new CannedHandler(
+            ("/me/contacts", """{"value":[{"id":"c1","displayName":"Alice","emailAddresses":[{"address":"alice@x.test"}]}]}"""),
+            ("/me/people", """{"value":[]}"""));
+        var source = new GraphContactSource(new GraphClient(new SilentOnlyOAuth(), new HttpClient(handler)));
+
+        // Would throw if the source used the interactive GetAccessTokenAsync(scopes) overload.
+        var result = await source.FetchAsync(MsAccount);
+
+        Assert.Single(result, c => c.EmailAddress == "alice@x.test");
+    }
+
     [Fact]
     public async Task Graph_SavedContactWinsOverSamePriorRecipient()
     {

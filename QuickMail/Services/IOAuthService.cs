@@ -27,6 +27,15 @@ public interface IOAuthService
     Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default);
 
     /// <summary>
+    /// Returns an access token for the given scope set using ONLY the silent (cached / refresh-token)
+    /// path — never opens an interactive sign-in window. Throws
+    /// <see cref="InteractiveSignInRequiredException"/> if a token can't be obtained silently. Used by
+    /// contact sync (issue #256) so a fetch can never launch an embedded WebView2 inside a modal
+    /// window's message loop (the address book runs modal), which risks a UI-thread deadlock.
+    /// </summary>
+    Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default);
+
+    /// <summary>
     /// Verifies a token can be obtained <b>silently</b> (from the cache / refresh token) for this
     /// account, without opening an interactive sign-in window. Throws
     /// <see cref="InteractiveSignInRequiredException"/> if the user would have to sign in

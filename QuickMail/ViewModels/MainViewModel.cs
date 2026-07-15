@@ -1583,10 +1583,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Contact sync (issue #256): best-effort, fire-and-forget, after mail accounts have connected
         // so their OAuth tokens are warm — contact-scope acquisition is then silent (no sign-in popup).
-        // Runs before the early-return paths below so it happens in every mode. Silent by design: it
-        // refreshes the address book in the background; the manual "Sync Contacts Now" command is the
-        // one that announces. A failure here is logged and never affects mail sync.
-        _contactSync?.SyncAllAsync(ct).LogFaults("startup contact sync");
+        // Runs before the early-return paths below so it happens in every mode. Throttled (12h): this
+        // method also runs on manual account activation and runtime add, so an unthrottled call would
+        // re-fetch every account's full contact list each time. Silent by design; the manual "Sync
+        // Contacts Now" command is the one that announces and bypasses the throttle. A failure here is
+        // logged and never affects mail sync.
+        _contactSync?.SyncAllDueAsync(TimeSpan.FromHours(12), ct).LogFaults("startup contact sync");
 
         // Nothing connected — skip the heavy full sync. Watchers/labels are already handled above, and
         // WireUpWatchers will start the watcher once an account connects later.

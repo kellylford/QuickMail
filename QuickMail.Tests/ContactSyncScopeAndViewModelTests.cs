@@ -55,6 +55,7 @@ public class AddressBookViewModelSyncTests
         public bool CanSync(AccountModel account) => true;
         public Task<ContactSyncResult> SyncAccountAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(ContactSyncResult.None);
         public Task<ContactSyncResult> SyncAllAsync(CancellationToken ct = default) { SyncAllCount++; return Task.FromResult(new ContactSyncResult(1, 3, null)); }
+        public Task<ContactSyncResult> SyncAllDueAsync(TimeSpan minInterval, CancellationToken ct = default) => SyncAllAsync(ct);
         public Task RemoveAccountContactsAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
     }
 

@@ -112,6 +112,23 @@ public class ContactSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncAccount_SignInRequired_ReturnsFriendlyMessage()
+    {
+        var (contacts, dir) = MakeContacts();
+        try
+        {
+            var ms = new FakeSource { Source = ContactSource.Microsoft, OnFetch = _ => throw new InteractiveSignInRequiredException("grant lapsed") };
+            var sut = new ContactSyncService(new FakeAccountService(), contacts, ms, new FakeSource { Source = ContactSource.Google });
+
+            var result = await sut.SyncAccountAsync(new AccountModel { AuthType = AuthType.OAuth2Microsoft, AccountName = "Work" });
+
+            Assert.Equal(0, result.AccountsSynced);
+            Assert.Contains("sign-in needed", result.Error);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
     public async Task SyncAll_OnlySyncsEnabledAndSupportedAccounts()
     {
         var (contacts, dir) = MakeContacts();
@@ -135,6 +152,48 @@ public class ContactSyncServiceTests
             Assert.Equal(1, result.AccountsSynced);
             Assert.Equal(1, ms.FetchCount);
             Assert.Equal(0, google.FetchCount);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task SyncAllDue_ThrottlesRepeatCallsWithinInterval()
+    {
+        var (contacts, dir) = MakeContacts();
+        try
+        {
+            var ms = new FakeSource { Source = ContactSource.Microsoft, OnFetch = _ => [Server("m1", "a@x.test")] };
+            var accts = new FakeAccountService
+            {
+                Accounts = [new AccountModel { AuthType = AuthType.OAuth2Microsoft, SyncContacts = true }],
+            };
+            var sut = new ContactSyncService(accts, contacts, ms, new FakeSource { Source = ContactSource.Google });
+
+            await sut.SyncAllDueAsync(TimeSpan.FromHours(12));
+            await sut.SyncAllDueAsync(TimeSpan.FromHours(12)); // within window → skipped
+
+            Assert.Equal(1, ms.FetchCount);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task SyncAllDue_ZeroInterval_AlwaysRuns()
+    {
+        var (contacts, dir) = MakeContacts();
+        try
+        {
+            var ms = new FakeSource { Source = ContactSource.Microsoft, OnFetch = _ => [Server("m1", "a@x.test")] };
+            var accts = new FakeAccountService
+            {
+                Accounts = [new AccountModel { AuthType = AuthType.OAuth2Microsoft, SyncContacts = true }],
+            };
+            var sut = new ContactSyncService(accts, contacts, ms, new FakeSource { Source = ContactSource.Google });
+
+            await sut.SyncAllDueAsync(TimeSpan.Zero);
+            await sut.SyncAllDueAsync(TimeSpan.Zero);
+
+            Assert.Equal(2, ms.FetchCount);
         }
         finally { Cleanup(dir); }
     }

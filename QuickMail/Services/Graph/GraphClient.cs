@@ -54,13 +54,22 @@ public sealed class GraphClient : IDisposable
     /// <c>People.Read</c> rather than the account's default mail scopes. A null <paramref name="scopes"/>
     /// uses the account's default scopes (identical to the two-argument overload).
     /// </summary>
-    public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, CancellationToken ct = default)
+    public Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, CancellationToken ct = default)
+        => GetAllPagesAsync<T>(account, path, scopes, silentOnly: false, ct);
+
+    /// <summary>
+    /// As the scope-aware overload, but when <paramref name="silentOnly"/> is true the bearer token
+    /// is acquired without any interactive fallback (issue #256): contact sync can run inside the
+    /// modal address book, where launching an embedded WebView2 sign-in could deadlock the UI thread.
+    /// A missing/expired grant surfaces as <see cref="InteractiveSignInRequiredException"/>.
+    /// </summary>
+    public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly, CancellationToken ct = default)
     {
         var all = new List<T>();
         string? next = path;
         while (!string.IsNullOrEmpty(next))
         {
-            using var resp = await SendAsync(account, HttpMethod.Get, next, null, scopes, ct);
+            using var resp = await SendAsync(account, HttpMethod.Get, next, null, scopes, silentOnly, ct);
             await EnsureSuccessAsync(resp, ct);
             var page = await resp.Content.ReadFromJsonAsync<GraphCollection<T>>(JsonOpts, ct);
             if (page?.Value != null) all.AddRange(page.Value);
@@ -135,10 +144,10 @@ public sealed class GraphClient : IDisposable
 
     private Task<HttpResponseMessage> SendAsync(
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, CancellationToken ct)
-        => SendAsync(account, method, pathOrUrl, contentFactory, null, ct);
+        => SendAsync(account, method, pathOrUrl, contentFactory, null, silentOnly: false, ct);
 
     private async Task<HttpResponseMessage> SendAsync(
-        AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, string[]? scopes, CancellationToken ct)
+        AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, string[]? scopes, bool silentOnly, CancellationToken ct)
     {
         var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : BaseUrl + pathOrUrl;
 
@@ -147,10 +156,13 @@ public sealed class GraphClient : IDisposable
         {
             // Default (scopes == null): per-account default scopes (DefaultScopesFor) — `.default` for
             // work/school, explicit Mail.ReadWrite/etc. for personal Microsoft accounts (#217). An
-            // explicit scope set is passed only by contact sync (Graph Contacts.Read/People.Read).
+            // explicit scope set is passed only by contact sync (Graph Contacts.Read/People.Read),
+            // which also asks for silent-only acquisition so it never opens an interactive window.
             var token = scopes is null
                 ? await _oauth.GetAccessTokenAsync(account, ct)
-                : await _oauth.GetAccessTokenAsync(account, scopes, ct);
+                : silentOnly
+                    ? await _oauth.GetAccessTokenSilentAsync(account, scopes, ct)
+                    : await _oauth.GetAccessTokenAsync(account, scopes, ct);
             using var req = new HttpRequestMessage(method, url);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             if (contentFactory != null)

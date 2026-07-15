@@ -186,6 +186,29 @@ public class OAuthService : IOAuthService
         return result.AccessToken;
     }
 
+    public async Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+    {
+        await EnsureTokenCacheAsync();
+        var msalAccounts = await _msal.GetAccountsAsync();
+        var msalAccount  = msalAccounts.FirstOrDefault(a =>
+            string.Equals(a.Username, account.Username, StringComparison.OrdinalIgnoreCase));
+
+        if (msalAccount is null)
+            throw new InteractiveSignInRequiredException($"No cached sign-in for {account.Username}.");
+
+        try
+        {
+            var silent = await _msal.AcquireTokenSilent(scopes, msalAccount).ExecuteAsync(ct);
+            return silent.AccessToken;
+        }
+        catch (MsalUiRequiredException ex)
+        {
+            // Deliberately do NOT fall back to interactive — the caller (contact sync) may be running
+            // inside a modal message loop where an embedded WebView2 sign-in can deadlock the UI thread.
+            throw new InteractiveSignInRequiredException($"Silent token unavailable for {account.Username}.", ex);
+        }
+    }
+
     public async Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
     {
         await EnsureTokenCacheAsync();
