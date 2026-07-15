@@ -89,6 +89,52 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         StatusText = string.Empty;
     }
 
+    /// <summary>
+    /// Applies a contact-sync toggle immediately (issue #256) — there is no Save step for it.
+    /// Enabling requests read-only contact consent, persists the flag, and pulls an initial snapshot;
+    /// disabling purges the account's synced contacts. On failure the checkbox is reverted. Called
+    /// from the checkbox's Click handler (Click fires only on real user interaction, never on the
+    /// programmatic assignment in <see cref="OnSelectedAccountChanged"/>). Returns without side
+    /// effects if there is no selected account. <paramref name="enabled"/> is the new checkbox state.
+    /// </summary>
+    public async Task SetContactSyncAsync(bool enabled)
+    {
+        if (SelectedAccount is not { } account) return;
+
+        try
+        {
+            if (enabled)
+            {
+                if (!CanSyncContacts) return; // box is hidden for these accounts; defensive
+                account.SyncContacts = true;
+                StatusText = "Requesting permission to read your contacts…";
+                await _oauth.RequestContactsConsentAsync(account);
+                _accountService.SaveAccounts([.. Accounts]);
+                // Pull an initial snapshot so contacts appear without waiting for the next launch.
+                _contactSync?.SyncAccountAsync(account).LogFaults("contact sync after enable");
+                StatusText = "Contact sync enabled — new contact data will be available in QuickMail.";
+            }
+            else
+            {
+                account.SyncContacts = false;
+                _accountService.SaveAccounts([.. Accounts]);
+                if (_contactSync != null)
+                    await _contactSync.RemoveAccountContactsAsync(account.Id);
+                StatusText = "Contact sync disabled.";
+            }
+        }
+        catch (Exception ex)
+        {
+            // Consent declined or failed — revert the checkbox and leave sync off so we don't retry
+            // against a missing grant.
+            account.SyncContacts = false;
+            SyncContacts = false;
+            _accountService.SaveAccounts([.. Accounts]);
+            StatusText = $"Contact sync not enabled: {ex.Message}";
+            LogService.Log($"AccountManager: contact-sync enable failed for {account.AccountLabel} — {ex.Message}");
+        }
+    }
+
     public AddAccountViewModel CreateAddAccountViewModel() => new(_featureGate, MailService, OAuthService);
 
     public void CommitNewAccount(AccountModel account, string password)
@@ -102,11 +148,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     }
 
     [RelayCommand]
-    private async Task SaveAccountAsync()
+    private void SaveAccount()
     {
         if (SelectedAccount == null) return;
         var account = SelectedAccount;
-        var wasSyncingContacts = account.SyncContacts;
 
         account.AccountName = AccountName;
         account.DisplayName = DisplayName;
@@ -125,25 +170,14 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         account.SmtpUseSsl = SmtpUseSsl;
         account.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
         account.Signature = Signature;
-        // Never enable sync for a backend without a contact API, even if the checkbox state is stale.
-        account.SyncContacts = SyncContacts && CanSyncContacts;
+        // SyncContacts is NOT touched here — the checkbox applies itself immediately via
+        // OnSyncContactsChanged (consent + persist), so Save never enables/disables it.
 
         if (AuthType == AuthType.Password && !string.IsNullOrEmpty(Password))
             _credentials.SavePassword(account.Id, Password);
 
-        // Contact-sync transitions (issue #256): enabling asks for read-only contact consent and
-        // pulls an initial snapshot; disabling purges the account's synced contacts. Both are
-        // best-effort and never block the account save.
-        StatusText = "Account saved.";
-        if (account.SyncContacts && !wasSyncingContacts)
-            await EnableContactSyncAsync(account);
-        else if (!account.SyncContacts && wasSyncingContacts && _contactSync != null)
-        {
-            await _contactSync.RemoveAccountContactsAsync(account.Id);
-            StatusText = "Account saved. Contact sync disabled.";
-        }
-
         _accountService.SaveAccounts([.. Accounts]);
+        StatusText = "Account saved.";
 
         // Force list item refresh
         var idx = Accounts.IndexOf(account);
@@ -152,26 +186,6 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             Accounts.RemoveAt(idx);
             Accounts.Insert(idx, account);
             SelectedAccount = Accounts[idx];
-        }
-    }
-
-    private async Task EnableContactSyncAsync(AccountModel account)
-    {
-        try
-        {
-            StatusText = "Requesting permission to read your contacts…";
-            await _oauth.RequestContactsConsentAsync(account);
-            // Pull an initial snapshot so contacts appear without waiting for the next launch.
-            _contactSync?.SyncAccountAsync(account).LogFaults("contact sync after enable");
-            StatusText = "Account saved. Contact sync enabled — new contact data will be available in QuickMail.";
-        }
-        catch (Exception ex)
-        {
-            // Consent declined or failed — leave sync off so we don't retry against a missing grant.
-            account.SyncContacts = false;
-            SyncContacts = false;
-            StatusText = $"Account saved. Contact sync not enabled: {ex.Message}";
-            LogService.Log($"AccountManager: contact-sync consent failed for {account.AccountLabel} — {ex.Message}");
         }
     }
 
