@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -26,6 +27,16 @@ public partial class FolderPickerWindow : Window
     private readonly MailFolderModel? _initialFolder;
     private readonly bool _useTreeView;
 
+    // When non-null, a "New Folder" button is shown and this callback creates the folder,
+    // refreshes the owning account, and returns that account's refreshed folder list so the
+    // picker can rebuild in place and select the new folder (issue #250, move/copy-message flow).
+    private readonly Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? _folderCreator;
+
+    // Retained for the tree view so it can be rebuilt after a folder is created. Not needed by the
+    // flat list, which reuses its own ObservableCollection (_items) directly.
+    private List<AccountModel>? _treeAccounts;
+    private Dictionary<Guid, List<MailFolderModel>>? _treeFolders;
+
     public MailFolderModel? SelectedFolder { get; private set; }
     public AccountModel? SelectedAccount { get; private set; }
 
@@ -36,13 +47,22 @@ public partial class FolderPickerWindow : Window
         string title = "Go to Folder",
         MailFolderModel? initialFolder = null,
         IReadOnlyDictionary<Guid, MailFolderModel>? accountMailFolders = null,
-        bool useTreeView = false)
+        bool useTreeView = false,
+        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null)
     {
         _initialFolder = initialFolder;
         _useTreeView = useTreeView;
+        _folderCreator = folderCreator;
 
         InitializeComponent();
         Title = title;
+
+        // The New Folder button is only meaningful when the caller supplied a way to create one.
+        // Scoped to the tree view (the move/copy-message picker); the flat list has no in-place
+        // repopulation path wired, so it never offers creation.
+        NewFolderButton.Visibility = folderCreator != null && useTreeView
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         if (_useTreeView)
         {
@@ -113,23 +133,35 @@ public partial class FolderPickerWindow : Window
         FolderListBox.Visibility = Visibility.Collapsed;
         FolderTreeView.Visibility = Visibility.Visible;
 
-        var roots = new List<FolderTreeNode>();
-        var accountList = accounts.ToList();
+        // Retain a private, mutable copy so RebuildTreeView can regenerate the tree after a folder
+        // is created without depending on the caller's snapshot (which may be a filtered copy).
+        _treeAccounts = accounts.ToList();
+        _treeFolders  = _treeAccounts
+            .Where(a => cachedFolders.ContainsKey(a.Id))
+            .ToDictionary(a => a.Id, a => cachedFolders[a.Id].ToList());
 
-        foreach (var account in accountList)
+        RebuildTreeView();
+
+        Loaded += (_, _) => Dispatcher.InvokeAsync(
+            () => FolderTreeView.Focus(), DispatcherPriority.Input);
+    }
+
+    private void RebuildTreeView()
+    {
+        if (_treeAccounts == null || _treeFolders == null) return;
+
+        var roots = new List<FolderTreeNode>();
+        foreach (var account in _treeAccounts)
         {
-            if (!cachedFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
+            if (!_treeFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
                 continue;
 
-            var nodes = FolderTreeBuilder.Build(folders, accountList.Count > 1 ? account : null);
+            var nodes = FolderTreeBuilder.Build(folders, _treeAccounts.Count > 1 ? account : null);
             ExpandAll(nodes);
             roots.AddRange(nodes);
         }
 
         FolderTreeView.ItemsSource = roots;
-
-        Loaded += (_, _) => Dispatcher.InvokeAsync(
-            () => FolderTreeView.Focus(), DispatcherPriority.Input);
     }
 
     private static void ExpandAll(IEnumerable<FolderTreeNode> nodes)
@@ -274,6 +306,145 @@ public partial class FolderPickerWindow : Window
     private void FolderTreeView_MouseDoubleClick(object sender, MouseButtonEventArgs e) => Commit();
 
     private void OpenButton_Click(object sender, RoutedEventArgs e) => Commit();
+
+    // Create a folder from within the picker (move/copy-message flow, tree view only). The parent
+    // is the currently selected folder, or the account root when a header / nothing is selected.
+    // After creation the tree is rebuilt from the refreshed folder list and the new folder selected
+    // so the user can immediately Open it as the move/copy destination.
+    private async void NewFolderButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_folderCreator == null || !_useTreeView || _treeFolders == null) return;
+        if (!TryResolveTreeCreateTarget(out var accountId, out var parentFullName, out var parentLabel))
+            return;
+
+        var dlg = new NewFolderDialog { Owner = this, ParentFolderName = parentLabel };
+        if (dlg.ShowDialog() != true) return;
+
+        var name = dlg.FolderName;
+        var updated = await _folderCreator(accountId, parentFullName, name);
+        if (updated == null) return; // failure is surfaced by the caller (main-window status text)
+
+        _treeFolders[accountId] = updated.ToList();
+        RebuildTreeView();
+
+        // Container generation for the freshly-assigned ItemsSource completes on a later dispatcher
+        // pass; select the new node once it exists so focus lands on it for the screen reader.
+        // Fire-and-forget: the selection is a UI side effect with nothing to await on.
+        _ = Dispatcher.InvokeAsync(
+            () => SelectCreatedTreeNode(accountId, parentFullName, name),
+            DispatcherPriority.Input);
+    }
+
+    private bool TryResolveTreeCreateTarget(out Guid accountId, out string? parentFullName, out string parentLabel)
+    {
+        accountId = Guid.Empty;
+        parentFullName = null;
+        parentLabel = string.Empty;
+
+        var node = FolderTreeView.SelectedItem as FolderTreeNode;
+
+        // A real folder is selected → create a subfolder beneath it.
+        if (node is { IsHeader: false, Folder: { } folder })
+        {
+            accountId = folder.AccountId;
+            parentFullName = folder.FullName;
+            parentLabel = folder.DisplayName;
+            return true;
+        }
+
+        // A header (account) node is selected → create at that account's root.
+        if (node is { IsHeader: true } && _treeAccounts != null)
+        {
+            var acct = _treeAccounts.FirstOrDefault(a => a.AccountLabel == node.Label);
+            if (acct != null)
+            {
+                accountId = acct.Id;
+                parentLabel = acct.AccountLabel;
+                return true;
+            }
+        }
+
+        // Nothing (usable) selected → fall back to the sole account's root. The move/copy-message
+        // picker is scoped to the accounts owning the messages, so this is unambiguous when there
+        // is only one. With several accounts and no folder selected we can't guess a destination.
+        if (_treeFolders != null && _treeFolders.Count == 1 && _treeAccounts != null)
+        {
+            var acct = _treeAccounts.FirstOrDefault(a => _treeFolders.ContainsKey(a.Id));
+            if (acct != null)
+            {
+                accountId = acct.Id;
+                parentLabel = acct.AccountLabel;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void SelectCreatedTreeNode(Guid accountId, string? parentFullName, string name)
+    {
+        if (FolderTreeView.ItemsSource is not IEnumerable<FolderTreeNode> roots) return;
+
+        // Siblings of the new folder: the parent's children, the account header's children, or the
+        // top level (single-account tree).
+        IEnumerable<FolderTreeNode> siblings;
+        if (parentFullName != null)
+        {
+            var parent = FindNodeByFolder(roots, accountId, parentFullName);
+            siblings = parent?.Children ?? roots;
+        }
+        else
+        {
+            var header = roots.FirstOrDefault(n => n.IsHeader &&
+                n.Children.Any(c => c.Folder?.AccountId == accountId));
+            siblings = header?.Children ?? roots;
+        }
+
+        var created = siblings.FirstOrDefault(n =>
+            !n.IsHeader && n.Folder?.AccountId == accountId &&
+            string.Equals(n.Folder?.DisplayName, name, StringComparison.OrdinalIgnoreCase));
+
+        var container = created != null ? ContainerFromNode(FolderTreeView, created) : null;
+        if (container != null)
+        {
+            container.IsSelected = true;
+            container.BringIntoView();
+            container.Focus();
+        }
+        else
+        {
+            FolderTreeView.Focus();
+        }
+    }
+
+    private static FolderTreeNode? FindNodeByFolder(
+        IEnumerable<FolderTreeNode> nodes, Guid accountId, string fullName)
+    {
+        foreach (var node in nodes)
+        {
+            if (!node.IsHeader && node.Folder?.AccountId == accountId &&
+                string.Equals(node.Folder?.FullName, fullName, StringComparison.Ordinal))
+                return node;
+
+            var found = FindNodeByFolder(node.Children, accountId, fullName);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    private static TreeViewItem? ContainerFromNode(ItemsControl parent, FolderTreeNode target)
+    {
+        for (int i = 0; i < parent.Items.Count; i++)
+        {
+            if (parent.ItemContainerGenerator.ContainerFromIndex(i) is not TreeViewItem tvi)
+                continue;
+            if (ReferenceEquals(parent.Items[i], target))
+                return tvi;
+            var found = ContainerFromNode(tvi, target);
+            if (found != null) return found;
+        }
+        return null;
+    }
 
     private void SelectFirstVisibleItem()
     {

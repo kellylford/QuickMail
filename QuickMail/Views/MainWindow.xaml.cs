@@ -5023,7 +5023,10 @@ public partial class MainWindow : Window
         var folders  = _vm.CachedFolders
                           .Where(kv => ids.Contains(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value);
-        return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true) { Owner = this };
+        return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true,
+            folderCreator: (accountId, parentFullName, name) =>
+                _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name))
+            { Owner = this };
     }
 
     private void RebuildViewsMenu()

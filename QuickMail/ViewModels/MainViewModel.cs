@@ -4988,6 +4988,59 @@ public partial class MainViewModel : ObservableObject, IDisposable
         finally { IsBusy = false; }
     }
 
+    // Set by CreateFolderReturningFoldersAsync (the folder-picker path) because that runs while the
+    // modal picker's message loop is active — rebuilding the main-window folder tree then is the
+    // documented re-entrancy crash (see CLAUDE.md "re-query the folder tree ... while the dialog's
+    // loop is still active"). The rebuild is deferred to CommitPendingFolderTreeRebuild(), called
+    // once the picker has closed.
+    private bool _folderTreeRebuildPending;
+
+    /// <summary>
+    /// Creates a folder for the folder picker (move/copy-message flow) and returns the owning
+    /// account's refreshed folder list so the picker — which holds a filtered copy of
+    /// <see cref="CachedFolders"/> — can rebuild its own tree in place and select the new folder.
+    /// Refreshes only the cache (not the main-window folder tree); that rebuild is deferred to
+    /// <see cref="CommitPendingFolderTreeRebuild"/> because this runs inside the picker's modal
+    /// loop. Returns null on failure.
+    /// </summary>
+    public async Task<IReadOnlyList<MailFolderModel>?> CreateFolderReturningFoldersAsync(
+        Guid accountId, string? parentFolderName, string name)
+    {
+        StatusText = $"Creating folder '{name}'…";
+        IsBusy     = true;
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await _imap.CreateFolderAsync(accountId, parentFolderName, name, cts.Token);
+            var folderList = await _imap.GetFoldersAsync(accountId, cts.Token);
+            _cachedFolders[accountId] = folderList;
+            var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+            if (account != null) ApplyAccountStatus(account, folderList);
+            _folderTreeRebuildPending = true;
+            StatusText = $"Folder '{name}' created.";
+            return folderList;
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Failed to create folder: {ex.Message}";
+            LogService.Log("CreateFolder", ex);
+            return null;
+        }
+        finally { IsBusy = false; }
+    }
+
+    /// <summary>
+    /// Rebuilds the main-window folder tree from cache if a folder was created via the picker while
+    /// a modal was open. Safe to call unconditionally; a no-op when nothing is pending. Callers must
+    /// invoke this only after the modal picker has closed (its message loop is dead).
+    /// </summary>
+    public void CommitPendingFolderTreeRebuild()
+    {
+        if (!_folderTreeRebuildPending) return;
+        _folderTreeRebuildPending = false;
+        RebuildFolderListFromCache();
+    }
+
     /// <summary>Moves a folder to a new parent (IMAP RENAME) and refreshes the tree.</summary>
     public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
@@ -5093,6 +5146,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (messages.Count == 0) return;
 
+        // If the destination was just created inside the (now-closed) folder picker, bring the main
+        // folder tree up to date — deferred out of the picker's modal loop for re-entrancy safety.
+        CommitPendingFolderTreeRebuild();
+
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Moving {label}…";
         IsBusy     = true;
@@ -5142,6 +5199,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
+
+        // If the destination was just created inside the (now-closed) folder picker, bring the main
+        // folder tree up to date — deferred out of the picker's modal loop for re-entrancy safety.
+        CommitPendingFolderTreeRebuild();
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Copying {label}…";
