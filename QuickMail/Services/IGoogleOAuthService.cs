@@ -18,5 +18,13 @@ public interface IGoogleOAuthService
     /// </summary>
     Task<OAuthResult> SignInInteractiveAsync(string loginHint, CancellationToken ct = default);
 
+    /// <summary>
+    /// Re-runs interactive sign-in requesting the mail scopes plus the read-only People API scopes
+    /// (contacts + other contacts) needed for contact sync (issue #256). Overwrites the stored
+    /// refresh token with one granted the wider scope set, so later <see cref="GetAccessTokenAsync"/>
+    /// tokens can call the People API. Used when the user opts a Google account into contact sync.
+    /// </summary>
+    Task<OAuthResult> AuthorizeContactsAsync(string loginHint, CancellationToken ct = default);
+
     Task SignOutAsync(string username);
 }

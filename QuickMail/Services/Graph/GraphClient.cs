@@ -45,13 +45,31 @@ public sealed class GraphClient : IDisposable
     }
 
     /// <summary>GET a collection, following <c>@odata.nextLink</c> until exhausted.</summary>
-    public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, CancellationToken ct = default)
+    public Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, CancellationToken ct = default)
+        => GetAllPagesAsync<T>(account, path, null, ct);
+
+    /// <summary>
+    /// GET a collection with an explicit token scope set, following <c>@odata.nextLink</c> until
+    /// exhausted. Used by contact sync (issue #256) to request Graph <c>Contacts.Read</c>/
+    /// <c>People.Read</c> rather than the account's default mail scopes. A null <paramref name="scopes"/>
+    /// uses the account's default scopes (identical to the two-argument overload).
+    /// </summary>
+    public Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, CancellationToken ct = default)
+        => GetAllPagesAsync<T>(account, path, scopes, silentOnly: false, ct);
+
+    /// <summary>
+    /// As the scope-aware overload, but when <paramref name="silentOnly"/> is true the bearer token
+    /// is acquired without any interactive fallback (issue #256): contact sync can run inside the
+    /// modal address book, where launching an embedded WebView2 sign-in could deadlock the UI thread.
+    /// A missing/expired grant surfaces as <see cref="InteractiveSignInRequiredException"/>.
+    /// </summary>
+    public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly, CancellationToken ct = default)
     {
         var all = new List<T>();
         string? next = path;
         while (!string.IsNullOrEmpty(next))
         {
-            using var resp = await SendAsync(account, HttpMethod.Get, next, null, ct);
+            using var resp = await SendAsync(account, HttpMethod.Get, next, null, scopes, silentOnly, ct);
             await EnsureSuccessAsync(resp, ct);
             var page = await resp.Content.ReadFromJsonAsync<GraphCollection<T>>(JsonOpts, ct);
             if (page?.Value != null) all.AddRange(page.Value);
@@ -124,18 +142,27 @@ public sealed class GraphClient : IDisposable
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }
 
-    private async Task<HttpResponseMessage> SendAsync(
+    private Task<HttpResponseMessage> SendAsync(
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, CancellationToken ct)
+        => SendAsync(account, method, pathOrUrl, contentFactory, null, silentOnly: false, ct);
+
+    private async Task<HttpResponseMessage> SendAsync(
+        AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, string[]? scopes, bool silentOnly, CancellationToken ct)
     {
         var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : BaseUrl + pathOrUrl;
 
         // Up to 3 attempts to ride out HTTP 429 throttling.
         for (int attempt = 0; ; attempt++)
         {
-            // Use the per-account default scopes (DefaultScopesFor): `.default` for work/school,
-            // explicit Mail.ReadWrite/etc. for personal Microsoft accounts (#217). Passing the static
-            // GraphMailScopes here would force `.default` on personal accounts, which is read-only.
-            var token = await _oauth.GetAccessTokenAsync(account, ct);
+            // Default (scopes == null): per-account default scopes (DefaultScopesFor) — `.default` for
+            // work/school, explicit Mail.ReadWrite/etc. for personal Microsoft accounts (#217). An
+            // explicit scope set is passed only by contact sync (Graph Contacts.Read/People.Read),
+            // which also asks for silent-only acquisition so it never opens an interactive window.
+            var token = scopes is null
+                ? await _oauth.GetAccessTokenAsync(account, ct)
+                : silentOnly
+                    ? await _oauth.GetAccessTokenSilentAsync(account, scopes, ct)
+                    : await _oauth.GetAccessTokenAsync(account, scopes, ct);
             using var req = new HttpRequestMessage(method, url);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             if (contentFactory != null)

@@ -68,4 +68,15 @@ public partial class AccountManagerDialog : Window
         DialogResult = true;
         Close();
     }
+
+    // The "Sync contacts" checkbox applies immediately (issue #256): checking it prompts for consent
+    // and pulls contacts; unchecking purges them. Click fires only on real user interaction, so
+    // switching accounts (which sets IsChecked programmatically) does not trigger this. async void is
+    // the sanctioned pattern for a fire-and-forget UI reaction in a View; the VM method handles its
+    // own errors.
+    private async void SyncContactsCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { IsChecked: { } isChecked })
+            await _vm.SetContactSyncAsync(isChecked);
+    }
 }

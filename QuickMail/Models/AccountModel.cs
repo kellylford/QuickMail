@@ -44,6 +44,14 @@ public partial class AccountModel : ObservableObject
     public bool IsDefault { get; set; } = false;
 
     /// <summary>
+    /// When true, QuickMail pulls this account's contacts and prior recipients from the mail
+    /// provider into the local address book (issue #256). Off by default; only meaningful for
+    /// OAuth accounts (Microsoft or Google), which are the only backends exposing a contact API.
+    /// Enabling it triggers a one-time consent for read-only contact scopes.
+    /// </summary>
+    public bool SyncContacts { get; set; } = false;
+
+    /// <summary>
     /// Plain-text signature appended to new messages and replies/forwards.
     /// Empty string means no signature. Stored in accounts.json.
     /// </summary>

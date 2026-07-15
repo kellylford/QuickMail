@@ -35,6 +35,16 @@ public class OAuthRouter : IOAuthService
             : _microsoft.GetAccessTokenAsync(account, scopes, ct);
     }
 
+    public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+    {
+        // Google's GetAccessTokenAsync is already silent-only — it refreshes the stored token or
+        // throws, and never opens a browser — so it doubles as the silent path here. Microsoft gets
+        // the real silent-only acquisition (no interactive fallback).
+        return account.AuthType == AuthType.OAuth2Google
+            ? _google.GetAccessTokenAsync(account.Username, ct)
+            : _microsoft.GetAccessTokenSilentAsync(account, scopes, ct);
+    }
+
     public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default)
     {
         // Google is KNOWINGLY UNPROTECTED here: its token flow uses the system browser (not the
@@ -52,6 +62,16 @@ public class OAuthRouter : IOAuthService
         return account.AuthType == AuthType.OAuth2Google
             ? _google.SignInInteractiveAsync(account.Username, ct)
             : _microsoft.SignInInteractiveAsync(account, ct);
+    }
+
+    public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
+    {
+        // Google's contact scopes are requested via a fresh interactive sign-in that widens the
+        // stored refresh token's grant; Microsoft's are requested by acquiring a token for the
+        // Graph contact scopes (silent if already consented, interactive otherwise).
+        return account.AuthType == AuthType.OAuth2Google
+            ? _google.AuthorizeContactsAsync(account.Username, ct)
+            : _microsoft.RequestContactsConsentAsync(account, ct);
     }
 
     public Task SignOutAsync(AccountModel account)

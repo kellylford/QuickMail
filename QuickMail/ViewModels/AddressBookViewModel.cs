@@ -19,6 +19,7 @@ namespace QuickMail.ViewModels;
 public partial class AddressBookViewModel : ObservableObject
 {
     private readonly IContactService _contactService;
+    private readonly IContactSyncService? _contactSync;
     private List<ContactModel> _allContacts = [];
 
     private Action<ContactModel>? _toInsertAction;
@@ -56,13 +57,17 @@ public partial class AddressBookViewModel : ObservableObject
         OnPropertyChanged(nameof(HasInsertActions));
     }
 
-    public AddressBookViewModel(IContactService contactService)
+    public AddressBookViewModel(IContactService contactService, IContactSyncService? contactSync = null)
     {
         _contactService = contactService;
+        _contactSync    = contactSync;
         // Exposed so dialogs (e.g. GroupManagerWindow) opened from this address book
         // can re-use the same IContactService instance.
         ContactService = contactService;
     }
+
+    /// <summary>True when contact sync is wired up, enabling the "Sync Contacts Now" affordance.</summary>
+    public bool CanSyncContacts => _contactSync != null;
 
     /// <summary>
     /// The IContactService the VM was constructed with. Exposed so dialogs opened
@@ -122,8 +127,10 @@ public partial class AddressBookViewModel : ObservableObject
     private int _editingContactId;
 
     public bool IsContactReadOnly => !IsEditingContact;
-    public bool CanEditContact    => HasSelectedContact && !IsEditingContact;
-    public bool CanDeleteContact  => HasSelectedContact && !IsEditingContact;
+    // Synced contacts (issue #256) are read-only: they're owned by the server, so Edit/Delete are
+    // disabled for them. A local contact with the same address can still be added and edited.
+    public bool CanEditContact    => HasSelectedContact && !IsEditingContact && SelectedContact!.IsLocal;
+    public bool CanDeleteContact  => HasSelectedContact && !IsEditingContact && SelectedContact!.IsLocal;
 
     [ObservableProperty]
     private string _contactError = string.Empty;
@@ -158,6 +165,21 @@ public partial class AddressBookViewModel : ObservableObject
         ApplyFilter(SearchText);
         await ReloadGroupsAsync();
         RebuildSelectedGroupMembers();
+    }
+
+    [RelayCommand]
+    private async Task SyncContactsNowAsync()
+    {
+        if (_contactSync is null) return;
+        Announce("Syncing contacts…", AnnouncementCategory.Status);
+        var result = await _contactSync.SyncAllAsync();
+        await LoadAsync();
+        var message = result.Error is not null
+            ? $"Contact sync failed: {result.Error}"
+            : result.AccountsSynced == 0
+                ? "No accounts are set up to sync contacts."
+                : $"Contacts synced, {result.ContactsFetched} total.";
+        Announce(message, AnnouncementCategory.Result);
     }
 
     [RelayCommand]

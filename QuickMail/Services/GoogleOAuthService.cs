@@ -20,6 +20,19 @@ public partial class GoogleOAuthService : IGoogleOAuthService
     // Gmail IMAP/SMTP access + openid/email so we can confirm the signed-in address from the id_token.
     private static readonly string[] Scopes = ["https://mail.google.com/", "openid", "email"];
 
+    // Read-only People API scopes for contact sync (issue #256): contacts.readonly → saved
+    // connections; contacts.other.readonly → "other contacts" (people emailed but not saved =
+    // prior recipients). These are Google "sensitive" scopes and require app verification.
+    // Requested only when the user opts a Google account into contact sync, combined with the
+    // mail scopes so the single stored refresh token continues to cover mail as well.
+    private static readonly string[] ContactsScopes =
+    [
+        "https://www.googleapis.com/auth/contacts.readonly",
+        "https://www.googleapis.com/auth/contacts.other.readonly",
+    ];
+
+    private static string[] MailAndContactsScopes => [.. Scopes, .. ContactsScopes];
+
     private static string TokenKey(string username)
         => $"QuickMail:GoogleToken:{username.ToLowerInvariant()}";
 
@@ -35,7 +48,7 @@ public partial class GoogleOAuthService : IGoogleOAuthService
         _credentialService = credentialService;
     }
 
-    private static GoogleAuthorizationCodeFlow CreateFlow(IDataStore? dataStore = null)
+    private static GoogleAuthorizationCodeFlow CreateFlow(string[] scopes, IDataStore? dataStore = null)
     {
         return new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
         {
@@ -44,7 +57,7 @@ public partial class GoogleOAuthService : IGoogleOAuthService
                 ClientId     = ClientId,
                 ClientSecret = ClientSecret,
             },
-            Scopes    = Scopes,
+            Scopes    = scopes,
             DataStore = dataStore ?? new NoOpDataStore(),
         });
     }
@@ -59,7 +72,7 @@ public partial class GoogleOAuthService : IGoogleOAuthService
             if (string.IsNullOrEmpty(refreshToken))
                 throw new InvalidOperationException($"No Google credentials stored for {username}. Sign in first.");
 
-            credential = new UserCredential(CreateFlow(new NoOpDataStore()), username, new TokenResponse
+            credential = new UserCredential(CreateFlow(Scopes, new NoOpDataStore()), username, new TokenResponse
             {
                 RefreshToken = refreshToken,
             });
@@ -70,10 +83,16 @@ public partial class GoogleOAuthService : IGoogleOAuthService
         return await credential.GetAccessTokenForRequestAsync(cancellationToken: ct);
     }
 
-    public async Task<OAuthResult> SignInInteractiveAsync(string loginHint, CancellationToken ct = default)
+    public Task<OAuthResult> SignInInteractiveAsync(string loginHint, CancellationToken ct = default)
+        => AuthorizeInteractiveAsync(loginHint, Scopes, ct);
+
+    public Task<OAuthResult> AuthorizeContactsAsync(string loginHint, CancellationToken ct = default)
+        => AuthorizeInteractiveAsync(loginHint, MailAndContactsScopes, ct);
+
+    private async Task<OAuthResult> AuthorizeInteractiveAsync(string loginHint, string[] scopes, CancellationToken ct)
     {
         // NoOpDataStore: we handle persistence ourselves via CredentialService / WCM.
-        var flow     = CreateFlow(new NoOpDataStore());
+        var flow     = CreateFlow(scopes, new NoOpDataStore());
         var receiver = new LocalServerCodeReceiver();
         var app      = new AuthorizationCodeInstalledApp(flow, receiver);
 
@@ -92,7 +111,7 @@ public partial class GoogleOAuthService : IGoogleOAuthService
 
         _cache[email.ToLowerInvariant()] = credential;
 
-        LogService.Log($"GoogleOAuthService: interactive sign-in complete for {email}");
+        LogService.Log($"GoogleOAuthService: interactive sign-in complete for {email} ({scopes.Length} scopes)");
         var accessToken = await credential.GetAccessTokenForRequestAsync(cancellationToken: ct);
         return new OAuthResult(accessToken, email);
     }

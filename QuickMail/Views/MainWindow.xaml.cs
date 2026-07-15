@@ -165,6 +165,7 @@ public partial class MainWindow : Window
     private static readonly TimeSpan WebViewNavigationTimeout = TimeSpan.FromSeconds(4);
 
     private readonly IContactService _contactService;
+    private readonly IContactSyncService? _contactSyncService;
     private readonly IConfigService _configService;
     private readonly ILocalStoreService _localStore;
     private readonly IViewService _viewService;
@@ -230,7 +231,8 @@ public partial class MainWindow : Window
         ICustomDictionaryService? customDictionary = null,
         IThemeService? themeService = null,
         IBugReportService? bugReportService = null,
-        INotificationService? notificationService = null)
+        INotificationService? notificationService = null,
+        IContactSyncService? contactSyncService = null)
     {
         _vm = vm;
         _notificationService = notificationService;
@@ -241,6 +243,7 @@ public partial class MainWindow : Window
         _oauth = oauth;
         _registry = registry;
         _contactService = contactService;
+        _contactSyncService = contactSyncService;
         _configService = configService;
         _localStore = localStore;
         _viewService = viewService;
@@ -952,6 +955,11 @@ public partial class MainWindow : Window
             id: "contacts.openAddressBook", category: "Contacts", title: "Address Book",
             execute: OpenAddressBook,
             defaultKey: Key.B, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
+            id: "contacts.syncNow", category: "Contacts", title: "Sync Contacts Now",
+            execute: SyncContactsNow,
+            isAvailable: () => _contactSyncService != null));
 
         _registry.Register(new CommandDefinition(
             id: "settings.toggleCustomAnnouncements", category: "Settings", title: "Toggle Custom Announcements",
@@ -4172,7 +4180,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManager()
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService);
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         if (dialog.ShowDialog() == true)
             _vm.RefreshAccountList();
@@ -4180,7 +4188,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManagerForAccount(AccountModel account)
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService);
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);
@@ -4737,9 +4745,32 @@ public partial class MainWindow : Window
     private void MenuAddressBook_Click(object sender, RoutedEventArgs e)
         => OpenAddressBook();
 
+    // Fire-and-forget contact sync from the command palette / Sync Contacts Now (issue #256).
+    // Announcements respect the user's Status/Result announcement settings.
+    private async void SyncContactsNow()
+    {
+        if (_contactSyncService is null) return;
+        AccessibilityHelper.Announce(this, "Syncing contacts…", category: AnnouncementCategory.Status);
+        try
+        {
+            var result = await _contactSyncService.SyncAllAsync();
+            var message = result.Error is not null
+                ? $"Contact sync failed: {result.Error}"
+                : result.AccountsSynced == 0
+                    ? "No accounts are set up to sync contacts."
+                    : $"Contacts synced, {result.ContactsFetched} total.";
+            AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("SyncContactsNow", ex);
+            AccessibilityHelper.Announce(this, $"Contact sync failed: {ex.Message}", category: AnnouncementCategory.Result);
+        }
+    }
+
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService);
+        var vm = new AddressBookViewModel(_contactService, _contactSyncService);
 
         // When the address book is opened standalone (not from a compose window) the
         // insert actions open a new compose window on demand.  All calls from a single

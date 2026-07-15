@@ -133,10 +133,15 @@
                                     AutomationProperties.Name="Delete selected contact"
                                     IsEnabled="{Binding CanDeleteContact}"
                                     MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
+                            <Button Content="Sync _Now"
+                                    Command="{Binding SyncContactsNowCommand}"
+                                    AutomationProperties.Name="Sync contacts now"
+                                    Visibility="{Binding CanSyncContacts, Converter={StaticResource BoolToVis}}"
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="10"/>
                             <Border Margin="0,0,4,0"/>
                             <Button Content="Close"
                                     AutomationProperties.Name="Close address book"
-                                    MinWidth="60" TabIndex="10"
+                                    MinWidth="60" TabIndex="11"
                                     Click="Close_Click"/>
                         </StackPanel>
 
