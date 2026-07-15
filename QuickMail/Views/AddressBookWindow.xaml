@@ -186,6 +186,7 @@
                               SelectedItem="{Binding SelectedContact}"
                               AutomationProperties.Name="Contacts"
                               TabIndex="4"
+                              Grid.IsSharedSizeScope="True"
                               KeyboardNavigation.TabNavigation="Once"
                               KeyboardNavigation.DirectionalNavigation="Contained"
                               PreviewKeyDown="ContactList_PreviewKeyDown"
@@ -200,13 +201,19 @@
                         </ListView.ItemContainerStyle>
                         <ListView.ItemTemplate>
                             <DataTemplate>
-                                <StackPanel Orientation="Horizontal"
-                                            AutomationProperties.Name="{Binding Display}">
-                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"/>
-                                    <TextBlock Text="  &lt;"/>
-                                    <TextBlock Text="{Binding EmailAddress}" Opacity="0.75"/>
-                                    <TextBlock Text="&gt;"/>
-                                </StackPanel>
+                                <!-- Name | Email | Account columns. The row's accessible name is the
+                                     composed field data (concise or labeled per setting), so a screen
+                                     reader hears one utterance rather than three cells. -->
+                                <Grid AutomationProperties.Name="{Binding AccessibleName}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" MinWidth="120" SharedSizeGroup="ContactNameCol"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto" SharedSizeGroup="ContactAccountCol"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding DisplayName}" FontWeight="SemiBold" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding EmailAddress}" Opacity="0.75" Margin="0,0,12,0"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding SourceLabel}" Opacity="0.6"/>
+                                </Grid>
                             </DataTemplate>
                         </ListView.ItemTemplate>
                     </ListView>

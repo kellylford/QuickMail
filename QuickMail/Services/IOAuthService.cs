@@ -51,6 +51,15 @@ public interface IOAuthService
     Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default);
 
     /// <summary>
+    /// Interactive sign-in that also requests the read-only contact scopes when the provider supports
+    /// folding them into the initial consent (issue #256). Google grants mail + contacts in a single
+    /// consent; Microsoft signs in for mail only here (its contact scopes are granted separately after
+    /// account creation, silent when the app registration already declares them). Used by the Add
+    /// Account flow when "sync contacts" is checked before sign-in, so there's one sign-in for Google.
+    /// </summary>
+    Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default);
+
+    /// <summary>
     /// Ensures the account has consented to the read-only contact scopes needed for contact sync
     /// (issue #256): Graph <c>Contacts.Read</c>/<c>People.Read</c> for Microsoft accounts, the
     /// People API read scopes for Google. Silent when consent was already granted; otherwise opens

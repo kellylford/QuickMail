@@ -1280,7 +1280,7 @@ public partial class ComposeWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService);
+        var vm = new AddressBookViewModel(_contactService, contactSync: null, accountService: null, configService: _configService);
         vm.SetInsertActions(
             toAction:  c => ToBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
             ccAction:  c => CcBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),

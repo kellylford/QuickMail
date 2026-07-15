@@ -38,7 +38,19 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsOAuth2))]
     [NotifyPropertyChangedFor(nameof(IsGoogleOAuth))]
     [NotifyPropertyChangedFor(nameof(AuthTypeIndex))]
+    [NotifyPropertyChangedFor(nameof(ShowContactSyncOption))]
     private AuthType _authType = AuthType.Password;
+
+    /// <summary>
+    /// Bound to the "Sync contacts from this account" checkbox (issue #256). In the Add Account
+    /// dialog it can be checked before sign-in so contact permission is requested as part of the same
+    /// sign-in (Google) or granted right after account creation (Microsoft).
+    /// </summary>
+    [ObservableProperty]
+    private bool _syncContacts;
+
+    /// <summary>Contact sync is only offered for OAuth accounts — the backends with a contact API.</summary>
+    public bool ShowContactSyncOption => IsOAuth2 || IsGoogleOAuth;
 
     /// <summary>True when the IMAP host matches iCloud — drives the app-specific password hint.</summary>
     public bool IsICloudAccount => ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
@@ -113,7 +125,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
             var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind };
-            var result = await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
+            var result = SyncContacts
+                ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, cts.Token)
+                : await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
             Username = result.Username;
             IsPersonalMicrosoftAccount = result.IsPersonalMicrosoftAccount;
             StatusText = $"Signed in as {result.Username}";
@@ -137,7 +151,10 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
             var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Google, BackendKind = BackendKind.ImapSmtp };
-            var result = await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
+            // When contact sync is requested, Google grants mail + contacts in this single consent.
+            var result = SyncContacts
+                ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, cts.Token)
+                : await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
             Username = result.Username;
             StatusText = $"Signed in as {result.Username}";
         }

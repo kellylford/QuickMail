@@ -46,6 +46,24 @@ public class ContactModel
     [JsonIgnore]
     public bool IsLocal => Source == ContactSource.Local;
 
+    // ── Display-only, stamped by the address book (issue #256) — not persisted ────
+
+    /// <summary>
+    /// Human label for where this contact came from, shown in the address book's Account column:
+    /// the owning account's name for synced contacts, "Local address book" for local ones. Stamped
+    /// by <c>AddressBookViewModel</c> on load; never serialized.
+    /// </summary>
+    [JsonIgnore]
+    public string SourceLabel { get; set; } = "Local address book";
+
+    /// <summary>
+    /// Composed accessible name for the contact row (name, email, source), honoring the
+    /// ContactListShowFieldLabels setting. Stamped by <c>AddressBookViewModel</c> on load; never
+    /// serialized. Falls back to <see cref="Display"/> when not stamped.
+    /// </summary>
+    [JsonIgnore]
+    public string AccessibleName { get; set; } = string.Empty;
+
     [JsonIgnore]
     public string Display => string.IsNullOrWhiteSpace(DisplayName)
         ? EmailAddress

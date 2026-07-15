@@ -245,6 +245,7 @@ public class ConfigService : IConfigService
                     case "announcespellingwhiletyping":      config.AnnounceSpellingWhileTyping      = ParseBool(value); break;
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
+                    case "contactlistshowfieldlabels":      config.ContactListShowFieldLabels      = ParseBool(value); break;
                     case "spellingsuggestionsverbosity":
                         config.SpellingSuggestionsVerbosity = string.Equals(value, "justSuggestions", StringComparison.OrdinalIgnoreCase)
                             ? "justSuggestions" : "numbersWithSuggestions";
@@ -434,6 +435,11 @@ public class ConfigService : IConfigService
         sb.AppendLine($"AnnounceHints = {(config.AnnounceHints ? "on" : "off")}");
         sb.AppendLine("# Announce instructional hints, e.g. how to use the search box.");
         sb.AppendLine("# Turn off once you are familiar with the interface. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ContactListShowFieldLabels = {(config.ContactListShowFieldLabels ? "on" : "off")}");
+        sb.AppendLine("# Address book: speak field labels (Name/email/account) in each contact row's");
+        sb.AppendLine("# accessible name. Off (default) speaks concise field data only. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceStatus = {(config.AnnounceStatus ? "on" : "off")}");

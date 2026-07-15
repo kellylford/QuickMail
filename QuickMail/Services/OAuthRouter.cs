@@ -64,6 +64,15 @@ public class OAuthRouter : IOAuthService
             : _microsoft.SignInInteractiveAsync(account, ct);
     }
 
+    public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default)
+    {
+        // Google folds mail + contacts into one consent; Microsoft signs in for mail and grants
+        // contacts separately after account creation.
+        return account.AuthType == AuthType.OAuth2Google
+            ? _google.AuthorizeContactsAsync(account.Username, ct)
+            : _microsoft.SignInInteractiveWithContactsAsync(account, ct);
+    }
+
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
     {
         // Google's contact scopes are requested via a fresh interactive sign-in that widens the
