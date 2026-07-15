@@ -67,6 +67,20 @@ all accounts in unified view</li>
 <h3 id="unified-inbox">Unified Inbox</h3>
 <p>Select <strong>All Inboxes</strong> at the top of the folder tree to
 see messages from all accounts merged into one list, sorted by date.</p>
+<h3 id="creating-folders">Creating Folders</h3>
+<p>Create a new folder in any of these ways:</p>
+<ul>
+<li>Choose <strong>Folder → New Folder…</strong> from the menu bar.</li>
+<li>Open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
+<strong>New Folder…</strong>. You can assign this command your own
+keyboard shortcut in <a href="#keyboard-customization">Keyboard
+Customization</a>.</li>
+<li>Press <strong>Shift+F10</strong> on the folder tree and choose
+<strong>New Folder</strong> from its context menu.</li>
+</ul>
+<p>The new folder is created under the folder currently selected in the
+folder tree, or under the account root when a header or nothing is
+selected.</p>
 <h3 id="moving-and-copying-messages">Moving and Copying Messages</h3>
 <p>Select one or more messages (or a sender/recipient group, or a
 conversation) and choose <strong>Move to Folder…</strong> or
@@ -75,7 +89,10 @@ the command palette. Both open a folder picker showing the same
 hierarchical tree used in the main folder panel — folders nested under
 their parent, with account names as headers when more than one account
 is present. Arrow through the tree and press Enter to complete the move
-or copy.</p>
+or copy. If you need a destination that does not exist yet, activate
+<strong>New Folder</strong> (or <strong>Alt+N</strong>) in the picker to
+create one under the selected folder and move into it without leaving
+the dialog.</p>
 <h3 id="message-list-views">Message List Views</h3>
 <p>Press <code>Ctrl+Shift+V</code> (or use the <strong>View</strong>
 menu) to switch how messages are grouped:</p>

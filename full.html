@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.3</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.32</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -413,7 +413,13 @@ saving.</p>
 automatically. Activate <strong>Sign in with Microsoft</strong> — your
 browser opens to a Microsoft sign-in page. Sign in and grant QuickMail
 permission, then close the browser window. Back in QuickMail, activate
-<strong>Add Account</strong>.</p>
+<strong>Add Account</strong>. Personal Microsoft accounts (Outlook.com,
+Hotmail, Live.com) and work or school accounts both sign in this
+way.</p>
+<p>To bring this account’s contacts into your address book, check
+<strong>Sync contacts from this account</strong> before signing in. See
+<a href="#syncing-contacts-from-your-accounts">Syncing Contacts from
+Your Accounts</a>.</p>
 <h3 id="gmail-google-account">Gmail (Google Account)</h3>
 <p>Enter your Gmail address in the <strong>Email / Username</strong>
 field — QuickMail then automatically selects Google authentication for
@@ -423,6 +429,11 @@ opens to a Google sign-in page. Complete the sign-in, grant QuickMail
 permission to read and send mail, then close the browser window. Back in
 QuickMail, activate <strong>Add Account</strong>. Gmail’s server
 settings fill in automatically.</p>
+<p>To bring this account’s contacts into your address book, check
+<strong>Sync contacts from this account</strong> before signing in — for
+Google this is folded into the same sign-in consent. See <a
+href="#syncing-contacts-from-your-accounts">Syncing Contacts from Your
+Accounts</a>.</p>
 <p>You may see a message that no password was saved for the account.
 This is expected with Google authentication — Gmail signs in through
 your Google account rather than a stored password, so there is no
@@ -453,7 +464,10 @@ an iCloud address.</p>
 <p>Open <strong>Settings → Accounts</strong> to rename, edit, or remove
 an account. Removing an account does not delete mail from the server.
 For OAuth accounts (Microsoft or Google), removing the account also
-clears the stored credential from Windows Credential Manager.</p>
+clears the stored credential from Windows Credential Manager. Editing a
+Microsoft or Google account is also where you turn <strong>Sync contacts
+from this account</strong> on or off after the fact; the change applies
+immediately.</p>
 <hr />
 <h2 id="main-window">Main Window</h2>
 <p>The main window has four panes reachable by pressing
@@ -496,6 +510,20 @@ all accounts in unified view</li>
 <h3 id="unified-inbox">Unified Inbox</h3>
 <p>Select <strong>All Inboxes</strong> at the top of the folder tree to
 see messages from all accounts merged into one list, sorted by date.</p>
+<h3 id="creating-folders">Creating Folders</h3>
+<p>Create a new folder in any of these ways:</p>
+<ul>
+<li>Choose <strong>Folder → New Folder…</strong> from the menu bar.</li>
+<li>Open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
+<strong>New Folder…</strong>. You can assign this command your own
+keyboard shortcut in <a href="#keyboard-customization">Keyboard
+Customization</a>.</li>
+<li>Press <strong>Shift+F10</strong> on the folder tree and choose
+<strong>New Folder</strong> from its context menu.</li>
+</ul>
+<p>The new folder is created under the folder currently selected in the
+folder tree, or under the account root when a header or nothing is
+selected.</p>
 <h3 id="moving-and-copying-messages">Moving and Copying Messages</h3>
 <p>Select one or more messages (or a sender/recipient group, or a
 conversation) and choose <strong>Move to Folder…</strong> or
@@ -504,7 +532,10 @@ the command palette. Both open a folder picker showing the same
 hierarchical tree used in the main folder panel — folders nested under
 their parent, with account names as headers when more than one account
 is present. Arrow through the tree and press Enter to complete the move
-or copy.</p>
+or copy. If you need a destination that does not exist yet, activate
+<strong>New Folder</strong> (or <strong>Alt+N</strong>) in the picker to
+create one under the selected folder and move into it without leaving
+the dialog.</p>
 <h3 id="message-list-views">Message List Views</h3>
 <p>Press <code>Ctrl+Shift+V</code> (or use the <strong>View</strong>
 menu) to switch how messages are grouped:</p>
@@ -1079,8 +1110,42 @@ files) or Cancel.</p>
 <h2 id="address-book">Address Book</h2>
 <p>Press <strong>Ctrl+Shift+B</strong> to open the address book.</p>
 <p>The address book lists everyone you have sent mail to or explicitly
-added. You can search by name or address, edit contact details, and
-organize contacts into groups.</p>
+added, plus — if you turn on contact sync — the contacts stored in your
+Microsoft and Google accounts. You can search by name or address, edit
+contact details, and organize contacts into groups. An
+<strong>Account</strong> column shows where each contact came from:
+<strong>Local address book</strong> for the ones you added yourself, or
+the account name for synced ones.</p>
+<h3 id="syncing-contacts-from-your-accounts">Syncing Contacts from Your
+Accounts</h3>
+<p>QuickMail can fill the address book from the contacts and prior
+recipients already stored in your Microsoft and Google accounts, so the
+people your account knows are available for autocomplete when you
+address a message.</p>
+<ul>
+<li><strong>Turn it on per account.</strong> When adding a Microsoft or
+Google account, check <strong>Sync contacts from this account</strong>
+in the Add Account dialog before you sign in. For an account you already
+have, open <strong>Settings → Accounts</strong>, edit the account, and
+check the same box — it takes effect immediately, with no separate Save
+step. Enabling sync asks your account for read-only access to your
+contacts (for Google this is part of the normal sign-in; for Microsoft
+it is granted right after sign-in).</li>
+<li><strong>Synced contacts are read-only.</strong> They come from the
+server into QuickMail only — QuickMail never writes changes back to your
+account. Synced people appear in the list but cannot be edited or
+deleted there. Contacts you added yourself stay fully editable, even if
+someone has the same address. Turning the switch off removes that
+account’s synced contacts from QuickMail.</li>
+<li><strong>Refreshing.</strong> QuickMail refreshes synced contacts
+quietly in the background about twice a day. To pull the latest right
+away, use the <strong>Sync Now</strong> button in the address book, or
+the <strong>Sync Contacts Now</strong> command in the Command
+Palette.</li>
+</ul>
+<p>Contact sync is one-directional and read-only in this release: no
+changes are written back, and iCloud/CardDAV accounts are not yet
+supported.</p>
 <h3 id="groups">Groups</h3>
 <p>Groups let you write to multiple people with a single address. Select
 a group in the address book and press Enter to expand it and see its
@@ -1421,11 +1486,17 @@ compose</td>
 <td>Spelling Suggestions Verbosity</td>
 <td>Numbers with suggestions (default) or just suggestions</td>
 </tr>
+<tr class="odd">
+<td>Show field labels in the contact list</td>
+<td>When on, address-book rows speak field names (“Name … email …
+account …”); when off, they speak concise field data only</td>
+</tr>
 </tbody>
 </table>
 <p>All settings default to on except <strong>Announce flag
-status</strong> and <strong>Announce spelling while typing</strong> (off
-by default). <strong>Spelling Suggestions Verbosity</strong> defaults to
+status</strong>, <strong>Show field labels in the contact list</strong>,
+and <strong>Announce spelling while typing</strong> (off by default).
+<strong>Spelling Suggestions Verbosity</strong> defaults to
 <strong>Numbers with suggestions</strong>. Turn off <strong>Custom
 Announcements</strong> to silence everything at once; turn it back on to
 restore your individual preferences.</p>
