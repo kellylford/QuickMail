@@ -4770,7 +4770,7 @@ public partial class MainWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService, _contactSyncService);
+        var vm = new AddressBookViewModel(_contactService, _contactSyncService, _accountService, _configService);
 
         // When the address book is opened standalone (not from a compose window) the
         // insert actions open a new compose window on demand.  All calls from a single
@@ -4781,6 +4781,11 @@ public partial class MainWindow : Window
         {
             if (pending?.IsLoaded == true) return pending;
             var cvm = new ComposeViewModel(_smtp, _accountService, _credentials, _imap, _templateService);
+            // Seed with an empty new-message model so the sender-account list is populated and the
+            // default account + signature are applied — same as the normal "New message" path. Without
+            // this the From picker is empty and the user can't choose who to send from (a pre-existing
+            // bug the address book exposes whenever To/Cc opens a compose window).
+            cvm.Seed(new ComposeModel());
             pending = new ComposeWindow(cvm, _contactService, _templateService, _configService, _customDictionary, _themeService);
             cvm.CloseRequested += pending.Close;
             var tracked = pending;

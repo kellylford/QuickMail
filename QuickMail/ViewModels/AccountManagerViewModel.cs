@@ -38,9 +38,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _contactSync != null &&
         SelectedAccount is { AuthType: AuthType.OAuth2Microsoft or AuthType.OAuth2Google };
 
-    /// <summary>Bound to the "Sync contacts from this account" checkbox; mirrors the selected account.</summary>
-    [ObservableProperty]
-    private bool _syncContacts;
+    // SyncContacts is inherited from AccountEditorViewModel (shared with the Add Account flow).
 
     public override bool ShowGoogleAuthOption => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
 
@@ -145,6 +143,30 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _accountService.SaveAccounts([.. Accounts]);
         SelectedAccount = account;
         StatusText = "Account added.";
+
+        // If the user checked "sync contacts" while adding the account (issue #256), finish enabling
+        // it: Google already granted contacts during sign-in, Microsoft needs the read-only contact
+        // scope granted now (silent when the app registration declares it). Then pull the first batch.
+        if (account.SyncContacts && _contactSync != null && _contactSync.CanSync(account))
+            _ = FinishNewAccountContactSyncAsync(account);
+    }
+
+    private async Task FinishNewAccountContactSyncAsync(AccountModel account)
+    {
+        try
+        {
+            if (account.AuthType == AuthType.OAuth2Microsoft)
+                await _oauth.RequestContactsConsentAsync(account);
+            _contactSync!.SyncAccountAsync(account).LogFaults("initial contact sync for new account");
+            StatusText = "Account added. Contact sync enabled — new contact data will be available in QuickMail.";
+        }
+        catch (Exception ex)
+        {
+            account.SyncContacts = false;
+            _accountService.SaveAccounts([.. Accounts]);
+            StatusText = $"Account added, but contact sync couldn't be enabled: {ex.Message}";
+            LogService.Log($"AccountManager: new-account contact sync failed for {account.AccountLabel} — {ex.Message}");
+        }
     }
 
     [RelayCommand]

@@ -20,6 +20,8 @@ public partial class AddressBookViewModel : ObservableObject
 {
     private readonly IContactService _contactService;
     private readonly IContactSyncService? _contactSync;
+    private readonly Dictionary<Guid, string> _accountLabels = [];
+    private readonly bool _showFieldLabels;
     private List<ContactModel> _allContacts = [];
 
     private Action<ContactModel>? _toInsertAction;
@@ -57,13 +59,25 @@ public partial class AddressBookViewModel : ObservableObject
         OnPropertyChanged(nameof(HasInsertActions));
     }
 
-    public AddressBookViewModel(IContactService contactService, IContactSyncService? contactSync = null)
+    public AddressBookViewModel(
+        IContactService contactService,
+        IContactSyncService? contactSync = null,
+        IAccountService? accountService = null,
+        IConfigService? configService = null)
     {
         _contactService = contactService;
         _contactSync    = contactSync;
         // Exposed so dialogs (e.g. GroupManagerWindow) opened from this address book
         // can re-use the same IContactService instance.
         ContactService = contactService;
+
+        // Map owning-account id → label so synced contacts can show which account they came from
+        // (issue #256). Resolved once at construction; the address book is short-lived/modal.
+        if (accountService != null)
+            foreach (var a in accountService.LoadAccounts())
+                _accountLabels[a.Id] = a.AccountLabel;
+
+        _showFieldLabels = configService?.Load().ContactListShowFieldLabels ?? false;
     }
 
     /// <summary>True when contact sync is wired up, enabling the "Sync Contacts Now" affordance.</summary>
@@ -162,9 +176,39 @@ public partial class AddressBookViewModel : ObservableObject
     public async Task LoadAsync()
     {
         _allContacts = await _contactService.LoadAllContactsAsync();
+        foreach (var c in _allContacts)
+            StampDisplay(c);
         ApplyFilter(SearchText);
         await ReloadGroupsAsync();
         RebuildSelectedGroupMembers();
+    }
+
+    /// <summary>
+    /// Stamps the Account-column label and the composed accessible name onto a contact row
+    /// (issue #256). Local contacts read as "Local address book"; synced contacts read as the
+    /// owning account's name. The accessible name is concise field data by default, or labeled
+    /// when the ContactListShowFieldLabels setting is on.
+    /// </summary>
+    private void StampDisplay(ContactModel c)
+    {
+        c.SourceLabel = c.IsLocal
+            ? "Local address book"
+            : (c.OwnerAccountId is { } id && _accountLabels.TryGetValue(id, out var label) ? label : "Synced contact");
+
+        var name  = c.DisplayName?.Trim() ?? string.Empty;
+        var email = c.EmailAddress;
+        if (_showFieldLabels)
+        {
+            c.AccessibleName = string.IsNullOrEmpty(name)
+                ? $"Email {email}, account {c.SourceLabel}"
+                : $"Name {name}, email {email}, account {c.SourceLabel}";
+        }
+        else
+        {
+            c.AccessibleName = string.IsNullOrEmpty(name)
+                ? $"{email}, {c.SourceLabel}"
+                : $"{name}, {email}, {c.SourceLabel}";
+        }
     }
 
     [RelayCommand]

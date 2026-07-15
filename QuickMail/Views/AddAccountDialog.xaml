@@ -102,6 +102,15 @@
                 </StackPanel>
 
                 <!-- Microsoft OAuth2 sign-in panel -->
+                <!-- Contact sync (issue #256) — check before signing in so the contact permission is
+                     part of the same consent. Shown for any OAuth account. -->
+                <CheckBox Content="Sync _contacts from this account"
+                          Visibility="{Binding ShowContactSyncOption, Converter={StaticResource BoolToVisibility}}"
+                          IsChecked="{Binding SyncContacts, Mode=TwoWay}"
+                          AutomationProperties.Name="Sync contacts from this account"
+                          AutomationProperties.HelpText="Check this before signing in to also grant read-only permission to read your contacts into the address book."
+                          Margin="0,8,0,0" TabIndex="4"/>
+
                 <StackPanel Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
                             Margin="0,4,0,0">
                     <Button Content="Sign in with _Microsoft…"

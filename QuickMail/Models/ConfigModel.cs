@@ -114,6 +114,13 @@ public class ConfigModel
     /// </summary>
     public bool AnnounceFlagStatus { get; set; } = true;
 
+    /// <summary>
+    /// When true, the address-book contact list speaks field labels in each row's accessible name
+    /// ("Name … email … account …"); when false (default) it speaks concise field data only
+    /// ("Kelly Ford, kelly@example.com, Local address book"), matching how the message list reads.
+    /// </summary>
+    public bool ContactListShowFieldLabels { get; set; } = false;
+
     // ── Flagging ──────────────────────────────────────────────────────────────────
 
     /// <summary>

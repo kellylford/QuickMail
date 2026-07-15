@@ -262,6 +262,13 @@ public class OAuthService : IOAuthService
         return new OAuthResult(result.AccessToken, result.Account.Username, isPersonal);
     }
 
+    public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default)
+        // Microsoft: sign in for mail only. Contact scopes can't be folded in here because `.default`
+        // (work/school) can't be combined with explicit scopes and personal-vs-work isn't known until
+        // the token comes back. They're granted right after account creation via
+        // RequestContactsConsentAsync — silent when the app registration declares Contacts.Read/People.Read.
+        => SignInInteractiveAsync(account, ct);
+
     public async Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default)
     {
         // Acquiring a token for the contact scopes is what drives consent: silent if the user has
