@@ -588,7 +588,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ReadingPaneVisible))]
+    [NotifyPropertyChangedFor(nameof(IsMessageListAreaVisible))]
     private TabSessionViewModel? _activeTab;
+
+    /// <summary>
+    /// True when the message-list area (flat list plus conversation and sender/recipient trees)
+    /// should occupy the content region. False only when a message tab is active in Tab mode —
+    /// then the message body fills the whole content region so the tab shows just the message,
+    /// rather than a copy of the message list with the body as a sliver below it.
+    /// </summary>
+    public bool IsMessageListAreaVisible =>
+        !(MessageOpenMode == MessageOpenMode.Tab && ActiveTab is MessageTabViewModel);
 
     /// <summary>
     /// True when a message is open in a standalone MessageWindow (Window mode).
@@ -676,6 +686,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ActiveTab = OpenTabs[Math.Min(idx, OpenTabs.Count - 1)];
             }
         }
+    }
+
+    /// <summary>
+    /// Activates the permanent message-list tab (Tab mode), revealing the message list while
+    /// leaving any open message tabs in the strip. Returns false when there is no message-list
+    /// tab (i.e. not in Tab mode).
+    /// </summary>
+    public bool ActivateMessageListTab()
+    {
+        var listTab = OpenTabs.OfType<MessageListTabViewModel>().FirstOrDefault();
+        if (listTab == null) return false;
+        ActiveTab = listTab;
+        return true;
     }
 
     public void ActivateNextTab()
@@ -1339,6 +1362,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var prevMode    = MessageOpenMode;
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
+        OnPropertyChanged(nameof(IsMessageListAreaVisible));
         if (prevMode != MessageOpenMode && MessageOpenMode != MessageOpenMode.ReadingPane)
         {
             // Switched away from Reading Pane — hide the inline reading pane.

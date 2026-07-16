@@ -414,3 +414,81 @@ public class MessageOpenModeTransitionTests
         Assert.False(vm.IsMessageOpen); // still false — not set by the transition
     }
 }
+
+// ── Tab-mode message-list visibility (issue #177 — Brian's "Tab opens a copy of the
+//    message list" report) ─────────────────────────────────────────────────────────
+// When a message is opened in a tab, it must fill the content region: the message list
+// collapses (IsMessageListAreaVisible == false) so the tab shows just the message, not a
+// copy of the list with the body as a sliver below it. Escape returns to the list tab.
+
+public class TabModeMessageListVisibilityTests
+{
+    private static MainViewModel MakeVm() =>
+        new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), new StubCommandRegistry(), new StubViewService(),
+            new StubRuleService(), new StubSmtpService());
+
+    private static MainViewModel TabModeVm()
+    {
+        var vm = MakeVm();
+        vm.ApplySettings(new ConfigModel
+        {
+            Windowing = new WindowingPreferences { MessageOpenMode = MessageOpenMode.Tab }
+        });
+        return vm;
+    }
+
+    private static MailMessageSummary Msg(string id) =>
+        new MailMessageSummary { MessageId = id, AccountId = Guid.NewGuid(), FolderName = "INBOX", Subject = id };
+
+    [Fact]
+    public void ReadingPaneMode_ListAreaAlwaysVisible_EvenWithMessageOpen()
+    {
+        var vm = MakeVm(); // defaults to ReadingPane
+        vm.IsMessageOpen = true;
+        Assert.True(vm.IsMessageListAreaVisible);
+    }
+
+    [Fact]
+    public void TabMode_ListTabActive_ListAreaVisible()
+    {
+        var vm = TabModeVm();
+        // EnsureMessageListTab (via ApplySettings) created the permanent list tab and made it active.
+        Assert.IsType<MessageListTabViewModel>(vm.ActiveTab);
+        Assert.True(vm.IsMessageListAreaVisible);
+    }
+
+    [Fact]
+    public void TabMode_MessageTabActive_ListAreaCollapsed()
+    {
+        var vm = TabModeVm();
+        vm.OpenMessageTab(Msg("1"));
+
+        Assert.IsType<MessageTabViewModel>(vm.ActiveTab);
+        Assert.False(vm.IsMessageListAreaVisible); // the message fills the pane; list is hidden
+    }
+
+    [Fact]
+    public void TabMode_ActivateMessageListTab_RevealsListAndKeepsMessageTabOpen()
+    {
+        var vm = TabModeVm();
+        vm.OpenMessageTab(Msg("1"));
+        Assert.False(vm.IsMessageListAreaVisible);
+
+        var switched = vm.ActivateMessageListTab();
+
+        Assert.True(switched);
+        Assert.IsType<MessageListTabViewModel>(vm.ActiveTab);
+        Assert.True(vm.IsMessageListAreaVisible);           // list reappears
+        Assert.Contains(vm.OpenTabs, t => t is MessageTabViewModel); // message tab still open
+    }
+
+    [Fact]
+    public void ReadingPaneMode_ActivateMessageListTab_ReturnsFalse()
+    {
+        var vm = MakeVm(); // ReadingPane — no message-list tab exists
+        Assert.False(vm.ActivateMessageListTab());
+    }
+}

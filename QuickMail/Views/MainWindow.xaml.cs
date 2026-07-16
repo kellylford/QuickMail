@@ -63,6 +63,27 @@ public class BoolToColumnWidthConverter : IValueConverter
 }
 
 /// <summary>
+/// Converts a bool to a GridLength using a "trueValue|falseValue" parameter, e.g. "*|0" or
+/// "Auto|*". Each token is parsed as a GridLength ("*", "Auto", "0", "2*", "200"). Used to swap
+/// the message-list and reading-pane row sizes so a message opened in a tab fills the content
+/// region instead of appearing as a sliver below the still-visible message list.
+/// </summary>
+public class BoolToGridLengthConverter : IValueConverter
+{
+    private static readonly GridLengthConverter _gridLength = new();
+
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        var parts = (parameter as string ?? "*|0").Split('|');
+        var token = value is true ? parts[0] : parts[^1];
+        return (GridLength)_gridLength.ConvertFromString(token)!;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
 /// Converts a string to Visibility: empty/null → Collapsed, non-empty → Visible.
 /// Used to hide the last sync time status bar item when there's no sync info to display.
 /// </summary>
@@ -1477,6 +1498,14 @@ public partial class MainWindow : Window
                     // Escape from the calendar list returns focus to the folder tree,
                     // matching the behaviour of Escape from the message list.
                     FocusFolderTree();
+                    e.Handled = true;
+                    return;
+                case Key.Escape when _vm.MessageOpenMode == MessageOpenMode.Tab
+                                     && _vm.ActiveTab is MessageTabViewModel:
+                    // In Tab mode the open message fills the pane. Escape returns to the
+                    // message-list tab (revealing the list) while leaving the message tab
+                    // open in the strip — it does not close the tab (that is Ctrl+W).
+                    _vm.ActivateMessageListTab();
                     e.Handled = true;
                     return;
                 case Key.Escape when _vm.IsMessageOpen:
@@ -3180,7 +3209,7 @@ public partial class MainWindow : Window
         // Build the ordered list of active pane indices.
         var panes = new System.Collections.Generic.List<int> { 0, 1, 2 };
         if (_vm.IsSearchActive) panes.Add(6); // search box between folder tree and message list
-        panes.Add(3);
+        if (_vm.IsMessageListAreaVisible) panes.Add(3); // skipped when a message tab fills the pane
         if (_vm.ShowTabStrip) panes.Add(7);   // tab strip between message list and reading pane
         if (_vm.IsMessageOpen && _webViewReady) panes.Add(4);
         panes.Add(5); // StatusBar always included
