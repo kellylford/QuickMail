@@ -20,6 +20,7 @@
         <BooleanToVisibilityConverter    x:Key="BoolToVisibilityConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
         <local:BoolToColumnWidthConverter       x:Key="BoolToColumnWidthConverter"/>
+        <local:BoolToGridLengthConverter        x:Key="BoolToGridLengthConverter"/>
         <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
         <local:StringToBrushConverter           x:Key="StringToBrushConverter"/>
         <local:MessageAccessibleNameConverter   x:Key="MessageAccessibleNameConverter"/>
@@ -919,8 +920,19 @@
                     </ListBox>
                 </Border>
 
+                <!-- Content region: the message-list area (row 0) and the reading/body pane (row 1).
+                     In Reading Pane mode the list fills and the body docks below as a resizable-height
+                     sliver. When a message is opened in a *tab* (Tab mode), IsMessageListAreaVisible
+                     becomes false: the list row collapses to 0 and the body row takes all the space, so
+                     the tab shows just the message rather than a copy of the list with a body sliver. -->
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="{Binding IsMessageListAreaVisible, Converter={StaticResource BoolToGridLengthConverter}, ConverterParameter='*|0'}"/>
+                        <RowDefinition Height="{Binding IsMessageListAreaVisible, Converter={StaticResource BoolToGridLengthConverter}, ConverterParameter='Auto|*'}"/>
+                    </Grid.RowDefinitions>
+
                 <!-- Body pane — hidden until IsMessageOpen; Escape returns to MessageList -->
-                <Border DockPanel.Dock="Bottom"
+                <Border Grid.Row="1"
                         BorderThickness="0,1,0,0"
                         BorderBrush="{DynamicResource Theme.Border}"
                         MinHeight="200"
@@ -1022,8 +1034,9 @@
                     </DockPanel>
                 </Border>
 
-                <!-- Message list — fills all remaining space; body docked above takes its share -->
-                <DockPanel>
+                <!-- Message list — fills row 0; collapses entirely when a message tab fills the pane -->
+                <DockPanel Grid.Row="0"
+                           Visibility="{Binding IsMessageListAreaVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                     <TextBlock DockPanel.Dock="Top"
                                Text="{Binding SelectedFolder.DisplayName, FallbackValue='No folder selected'}"
                                FontWeight="SemiBold" Padding="6,4"
@@ -1736,6 +1749,7 @@
 
                     </Grid>
                 </DockPanel>
+                </Grid>
 
             </DockPanel>
 
