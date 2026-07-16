@@ -334,6 +334,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>True when a message body has been loaded and the reading pane should be shown.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    [NotifyPropertyChangedFor(nameof(IsMessageListAreaVisible))]
     private bool _isMessageOpen;
 
 
@@ -593,12 +594,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// True when the message-list area (flat list plus conversation and sender/recipient trees)
-    /// should occupy the content region. False only when a message tab is active in Tab mode —
-    /// then the message body fills the whole content region so the tab shows just the message,
-    /// rather than a copy of the message list with the body as a sliver below it.
+    /// should occupy the content region. False only when a message tab is active in Tab mode and
+    /// its body is actually open — then the message fills the whole content region so the tab shows
+    /// just the message, rather than a copy of the message list with the body as a sliver below it.
+    /// The <see cref="IsMessageOpen"/> term matters: it keeps the list visible while the tab's
+    /// message is still loading, and leaves it visible if the load fails (MessageDetail stays null),
+    /// so a failed/slow open never blanks the whole pane.
     /// </summary>
     public bool IsMessageListAreaVisible =>
-        !(MessageOpenMode == MessageOpenMode.Tab && ActiveTab is MessageTabViewModel);
+        !(MessageOpenMode == MessageOpenMode.Tab && ActiveTab is MessageTabViewModel && IsMessageOpen);
 
     /// <summary>
     /// True when a message is open in a standalone MessageWindow (Window mode).

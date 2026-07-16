@@ -461,13 +461,25 @@ public class TabModeMessageListVisibilityTests
     }
 
     [Fact]
-    public void TabMode_MessageTabActive_ListAreaCollapsed()
+    public void TabMode_MessageTabActive_AndBodyOpen_ListAreaCollapsed()
     {
         var vm = TabModeVm();
         vm.OpenMessageTab(Msg("1"));
+        vm.IsMessageOpen = true; // the View sets this once the body has loaded
 
         Assert.IsType<MessageTabViewModel>(vm.ActiveTab);
         Assert.False(vm.IsMessageListAreaVisible); // the message fills the pane; list is hidden
+    }
+
+    [Fact]
+    public void TabMode_MessageTabActive_BeforeBodyLoads_ListStaysVisible()
+    {
+        var vm = TabModeVm();
+        vm.OpenMessageTab(Msg("1"));
+        // IsMessageOpen is still false (body not loaded, or the load failed) — the list must
+        // remain visible so the pane is never blank. Regression guard for the async/failed-load case.
+        Assert.False(vm.IsMessageOpen);
+        Assert.True(vm.IsMessageListAreaVisible);
     }
 
     [Fact]
@@ -475,6 +487,7 @@ public class TabModeMessageListVisibilityTests
     {
         var vm = TabModeVm();
         vm.OpenMessageTab(Msg("1"));
+        vm.IsMessageOpen = true;
         Assert.False(vm.IsMessageListAreaVisible);
 
         var switched = vm.ActivateMessageListTab();
@@ -483,6 +496,37 @@ public class TabModeMessageListVisibilityTests
         Assert.IsType<MessageListTabViewModel>(vm.ActiveTab);
         Assert.True(vm.IsMessageListAreaVisible);           // list reappears
         Assert.Contains(vm.OpenTabs, t => t is MessageTabViewModel); // message tab still open
+    }
+
+    [Fact]
+    public void TabMode_CloseActiveMessageTab_ReturnsToListAndRevealsListArea()
+    {
+        var vm = TabModeVm();
+        vm.OpenMessageTab(Msg("1"));
+        vm.IsMessageOpen = true;
+        Assert.False(vm.IsMessageListAreaVisible);
+
+        vm.CloseTab(vm.ActiveTab!);
+
+        Assert.IsType<MessageListTabViewModel>(vm.ActiveTab); // back on the list tab
+        Assert.False(vm.IsMessageOpen);                       // CloseTab clears it
+        Assert.True(vm.IsMessageListAreaVisible);             // list reappears
+    }
+
+    [Fact]
+    public void ApplySettings_TabToReadingPane_RestoresListArea()
+    {
+        var vm = TabModeVm();
+        vm.OpenMessageTab(Msg("1"));
+        vm.IsMessageOpen = true;
+        Assert.False(vm.IsMessageListAreaVisible);
+
+        vm.ApplySettings(new ConfigModel
+        {
+            Windowing = new WindowingPreferences { MessageOpenMode = MessageOpenMode.ReadingPane }
+        });
+
+        Assert.True(vm.IsMessageListAreaVisible); // tabs cleared, mode no longer Tab
     }
 
     [Fact]
