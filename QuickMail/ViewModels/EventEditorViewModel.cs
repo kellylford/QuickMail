@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
@@ -41,10 +42,23 @@ public partial class EventEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasRepeat))]
     [NotifyPropertyChangedFor(nameof(RepeatUnitLabel))]
+    [NotifyPropertyChangedFor(nameof(IsWeekly))]
     private int _repeatIndex;
 
     [ObservableProperty] private int _repeatInterval = 1;
     [ObservableProperty] private DateTime? _repeatUntil;
+
+    // Weekly only: which days the appointment repeats on. All unchecked = the start date's weekday.
+    [ObservableProperty] private bool _repeatOnSunday;
+    [ObservableProperty] private bool _repeatOnMonday;
+    [ObservableProperty] private bool _repeatOnTuesday;
+    [ObservableProperty] private bool _repeatOnWednesday;
+    [ObservableProperty] private bool _repeatOnThursday;
+    [ObservableProperty] private bool _repeatOnFriday;
+    [ObservableProperty] private bool _repeatOnSaturday;
+
+    /// <summary>True when Weekly is selected — the View shows the day-of-week checkboxes.</summary>
+    public bool IsWeekly => RepeatIndex == 2;
 
     /// <summary>False when the appointment is all-day — the View disables the time fields.</summary>
     public bool HasTimes => !IsAllDay;
@@ -109,6 +123,8 @@ public partial class EventEditorViewModel : ObservableObject
             };
             RepeatInterval = rule.Interval;
             RepeatUntil = rule.Until;
+            foreach (var day in rule.ByDay)
+                SetRepeatDay(day, true);
         }
     }
 
@@ -204,7 +220,7 @@ public partial class EventEditorViewModel : ObservableObject
                 error = "The repeat end date is before the start date.";
                 return false;
             }
-            rrule = new RecurrenceRule
+            var rule = new RecurrenceRule
             {
                 Frequency = RepeatIndex switch
                 {
@@ -215,7 +231,10 @@ public partial class EventEditorViewModel : ObservableObject
                 },
                 Interval = RepeatInterval,
                 Until = RepeatUntil,
-            }.ToRRule();
+            };
+            if (RepeatIndex == 2)
+                rule.ByDay.AddRange(CheckedRepeatDays());
+            rrule = rule.ToRRule();
         }
 
         evt = new CalendarEvent
@@ -249,6 +268,31 @@ public partial class EventEditorViewModel : ObservableObject
         }
         ok = false;
         return date.Date;
+    }
+
+    private void SetRepeatDay(DayOfWeek day, bool value)
+    {
+        switch (day)
+        {
+            case DayOfWeek.Sunday: RepeatOnSunday = value; break;
+            case DayOfWeek.Monday: RepeatOnMonday = value; break;
+            case DayOfWeek.Tuesday: RepeatOnTuesday = value; break;
+            case DayOfWeek.Wednesday: RepeatOnWednesday = value; break;
+            case DayOfWeek.Thursday: RepeatOnThursday = value; break;
+            case DayOfWeek.Friday: RepeatOnFriday = value; break;
+            case DayOfWeek.Saturday: RepeatOnSaturday = value; break;
+        }
+    }
+
+    private IEnumerable<DayOfWeek> CheckedRepeatDays()
+    {
+        if (RepeatOnSunday) yield return DayOfWeek.Sunday;
+        if (RepeatOnMonday) yield return DayOfWeek.Monday;
+        if (RepeatOnTuesday) yield return DayOfWeek.Tuesday;
+        if (RepeatOnWednesday) yield return DayOfWeek.Wednesday;
+        if (RepeatOnThursday) yield return DayOfWeek.Thursday;
+        if (RepeatOnFriday) yield return DayOfWeek.Friday;
+        if (RepeatOnSaturday) yield return DayOfWeek.Saturday;
     }
 
     private static DateTime RoundUpToQuarterHour(DateTime dt)

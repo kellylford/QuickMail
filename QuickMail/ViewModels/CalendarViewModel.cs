@@ -126,6 +126,26 @@ public partial class CalendarViewModel : ObservableObject
     [ObservableProperty]
     private bool _isUnavailable;
 
+    /// <summary>True while the calendar search box is shown. Bound to its visibility.</summary>
+    [ObservableProperty]
+    private bool _isSearchActive;
+
+    /// <summary>
+    /// Live filter text: matches summary, location, and notes (case-insensitive).
+    /// Empty = no filtering. Reapplies the list on every change.
+    /// </summary>
+    [ObservableProperty]
+    private string _searchText = string.Empty;
+
+    partial void OnSearchTextChanged(string value) => ApplyFilters();
+
+    /// <summary>Clears and hides search, restoring the unfiltered view.</summary>
+    public void ClearSearch()
+    {
+        SearchText = string.Empty;   // triggers ApplyFilters
+        IsSearchActive = false;
+    }
+
     public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents,
                              bool showFieldLabels = false)
     {
@@ -410,6 +430,17 @@ public partial class CalendarViewModel : ObservableObject
             {
                 result.Add(e); // Agenda, no today filter: every one-off event
             }
+        }
+
+        // Search filter — matches summary, location, or notes, case-insensitive.
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var q = SearchText.Trim();
+            result = result.Where(e =>
+                    e.Summary.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || e.Location.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || e.Description.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .ToList();
         }
 
         _filteredEvents = result.OrderBy(e => e.StartTimeTicks ?? long.MaxValue).ToList();

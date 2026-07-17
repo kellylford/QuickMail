@@ -156,6 +156,73 @@ public class EventEditorViewModelTests
     }
 
     [Fact]
+    public void Repeat_WeeklyWithDayPicker_BuildsByDay()
+    {
+        var vm = new EventEditorViewModel(new DateTime(2026, 7, 13, 9, 0, 0))
+        {
+            Title = "MWF workout",
+            StartDate = new DateTime(2026, 7, 13),
+            StartTime = "6:00 AM",
+            RepeatIndex = 2,          // Weekly
+            RepeatOnMonday = true,
+            RepeatOnWednesday = true,
+            RepeatOnFriday = true,
+        };
+        Assert.True(vm.IsWeekly);
+        Assert.True(vm.TryBuildEvent(out var evt, out _));
+        Assert.Contains("BYDAY=MO,WE,FR", evt.RecurrenceRule);
+    }
+
+    [Fact]
+    public void Repeat_WeeklyNoDaysChecked_OmitsByDay()
+    {
+        var vm = new EventEditorViewModel(DateTime.Now)
+        {
+            Title = "Simple weekly",
+            StartDate = DateTime.Today,
+            StartTime = "9:00 AM",
+            RepeatIndex = 2,
+        };
+        Assert.True(vm.TryBuildEvent(out var evt, out _));
+        Assert.DoesNotContain("BYDAY", evt.RecurrenceRule); // engine falls back to start weekday
+    }
+
+    [Fact]
+    public void Repeat_DayCheckboxesIgnored_WhenNotWeekly()
+    {
+        var vm = new EventEditorViewModel(DateTime.Now)
+        {
+            Title = "Daily thing",
+            StartDate = DateTime.Today,
+            StartTime = "9:00 AM",
+            RepeatIndex = 1,          // Daily
+            RepeatOnMonday = true,    // leftover check must not leak into the rule
+        };
+        Assert.True(vm.TryBuildEvent(out var evt, out _));
+        Assert.DoesNotContain("BYDAY", evt.RecurrenceRule);
+    }
+
+    [Fact]
+    public void EditWeeklyWithByDay_PopulatesDayCheckboxes()
+    {
+        var master = new CalendarEvent
+        {
+            Uid = "local-mwf",
+            AccountId = CalendarEvent.LocalAccountId,
+            Summary = "Workout",
+            StartTimeTicks = new DateTime(2026, 7, 13, 6, 0, 0).ToUniversalTime().Ticks,
+            RecurrenceRule = "FREQ=WEEKLY;BYDAY=MO,WE,FR",
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        var vm = new EventEditorViewModel(master);
+        Assert.True(vm.RepeatOnMonday);
+        Assert.True(vm.RepeatOnWednesday);
+        Assert.True(vm.RepeatOnFriday);
+        Assert.False(vm.RepeatOnTuesday);
+        Assert.False(vm.RepeatOnSunday);
+    }
+
+    [Fact]
     public void Repeat_UntilBeforeStart_FailsValidation()
     {
         var vm = new EventEditorViewModel(DateTime.Now)

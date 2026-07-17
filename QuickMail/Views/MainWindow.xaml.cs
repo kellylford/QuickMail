@@ -1214,6 +1214,12 @@ public partial class MainWindow : Window
             execute: () => _vm.CalendarVm?.ExportEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
 
+        _registry.Register(new CommandDefinition(
+            id: "calendar.search", category: "Calendar", title: "Search Appointments",
+            execute: OpenCalendarSearch,
+            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin || CalendarSearchBox.IsKeyboardFocusWithin));
+
         // ── Calendar views + period navigation (Calendar category) ──
         _registry.Register(new CommandDefinition(
             id: "calendar.viewAgenda", category: "Calendar", title: "Agenda View",
@@ -1549,6 +1555,15 @@ public partial class MainWindow : Window
                 case Key.F6:
                     e.Handled = true;
                     await CycleFocusAsync(true);
+                    return;
+                case Key.Escape when _vm.IsCalendarView && CalendarList.IsKeyboardFocusWithin
+                                     && _vm.CalendarVm?.IsSearchActive == true:
+                    // A search is active: first Escape clears it and stays in the list.
+                    _vm.CalendarVm.ClearSearch();
+                    AccessibilityHelper.Announce(this,
+                        $"Search cleared. {_vm.CalendarVm.VisibleEvents.Count} appointment{(_vm.CalendarVm.VisibleEvents.Count == 1 ? "" : "s")}.",
+                        interrupt: true, category: AnnouncementCategory.Result);
+                    e.Handled = true;
                     return;
                 case Key.Escape when _vm.IsCalendarView && CalendarList.IsKeyboardFocusWithin:
                     // Escape from the calendar list returns focus to the folder tree,
@@ -2191,6 +2206,69 @@ public partial class MainWindow : Window
             Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
         };
         editor.Show();
+    }
+
+    // ── Calendar search (Ctrl+F while the calendar list has focus) ──
+
+    private System.Windows.Threading.DispatcherTimer? _calSearchAnnounceTimer;
+
+    private void OpenCalendarSearch()
+    {
+        if (_vm.CalendarVm == null) return;
+        _vm.CalendarVm.IsSearchActive = true;
+
+        // Debounced live count so the screen reader isn't chattering on every keystroke.
+        if (_calSearchAnnounceTimer == null)
+        {
+            _calSearchAnnounceTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(600),
+            };
+            _calSearchAnnounceTimer.Tick += (_, _) =>
+            {
+                _calSearchAnnounceTimer!.Stop();
+                var n = _vm.CalendarVm?.VisibleEvents.Count ?? 0;
+                AccessibilityHelper.Announce(this, $"{n} appointment{(n == 1 ? "" : "s")}.",
+                    interrupt: true, category: AnnouncementCategory.Result);
+            };
+            _vm.CalendarVm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(CalendarViewModel.SearchText)
+                    && _vm.CalendarVm!.IsSearchActive)
+                {
+                    _calSearchAnnounceTimer!.Stop();
+                    _calSearchAnnounceTimer.Start();
+                }
+            };
+        }
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            CalendarSearchBox.Focus();
+            AccessibilityHelper.Announce(this, "Search appointments. Type to filter.",
+                interrupt: true, category: AnnouncementCategory.Hint);
+        }, DispatcherPriority.Input);
+    }
+
+    private void CalendarSearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_vm.CalendarVm == null) return;
+        if (e.Key == Key.Escape)
+        {
+            _calSearchAnnounceTimer?.Stop();
+            _vm.CalendarVm.ClearSearch();
+            var n = _vm.CalendarVm.VisibleEvents.Count;
+            FocusCalendarList();
+            AccessibilityHelper.Announce(this, $"Search cleared. {n} appointment{(n == 1 ? "" : "s")}.",
+                interrupt: true, category: AnnouncementCategory.Result);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
+        {
+            // Into the (filtered) list; search stays active so Escape there can clear it later.
+            FocusCalendarList();
+            e.Handled = true;
+        }
     }
 
     /// <summary>Shows a Save dialog and writes the exported .ics file (View concern).</summary>

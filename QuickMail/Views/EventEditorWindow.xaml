@@ -28,6 +28,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -111,12 +112,35 @@
             </StackPanel>
         </StackPanel>
 
+        <!-- Weekly day picker — visible only when Repeat = Weekly. All unchecked = start day. -->
+        <TextBlock Grid.Row="5" Grid.Column="0" Text="On days:" Margin="0,0,8,10" VerticalAlignment="Center"
+                   Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"/>
+        <WrapPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,10"
+                   Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"
+                   KeyboardNavigation.TabNavigation="Continue"
+                   KeyboardNavigation.DirectionalNavigation="Contained">
+            <CheckBox Content="Sun" AutomationProperties.Name="Sunday"
+                      IsChecked="{Binding RepeatOnSunday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Mon" AutomationProperties.Name="Monday"
+                      IsChecked="{Binding RepeatOnMonday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Tue" AutomationProperties.Name="Tuesday"
+                      IsChecked="{Binding RepeatOnTuesday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Wed" AutomationProperties.Name="Wednesday"
+                      IsChecked="{Binding RepeatOnWednesday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Thu" AutomationProperties.Name="Thursday"
+                      IsChecked="{Binding RepeatOnThursday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Fri" AutomationProperties.Name="Friday"
+                      IsChecked="{Binding RepeatOnFriday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Sat" AutomationProperties.Name="Saturday"
+                      IsChecked="{Binding RepeatOnSaturday}" Margin="0,0,8,4"/>
+        </WrapPanel>
+
         <!-- Notes label -->
-        <TextBlock Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="4"
+        <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="4"
                    Text="Notes:" Margin="0,0,0,4"/>
 
         <!-- Notes body -->
-        <TextBox   Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="4"
+        <TextBox   Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="4"
                    x:Name="NotesBox"
                    AutomationProperties.Name="Notes"
                    Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
@@ -125,7 +149,7 @@
                    MinHeight="80" Margin="0,0,0,10"/>
 
         <!-- Buttons -->
-        <StackPanel Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="4"
+        <StackPanel Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="4"
                     Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SaveButton"
                     Content="_Save"

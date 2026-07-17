@@ -1171,11 +1171,18 @@
                                     MinWidth="32" Click="CalendarNext_Click"/>
                         </StackPanel>
 
-                        <!-- Period label + item toolbar -->
+                        <!-- Period label + search + item toolbar -->
                         <DockPanel Grid.Row="1" Margin="6,4" LastChildFill="False">
                             <TextBlock DockPanel.Dock="Left"
                                        Text="{Binding CalendarVm.PeriodLabel}"
                                        FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <TextBox x:Name="CalendarSearchBox"
+                                     DockPanel.Dock="Left"
+                                     AutomationProperties.Name="Search appointments"
+                                     Text="{Binding CalendarVm.SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     Visibility="{Binding CalendarVm.IsSearchActive, Converter={StaticResource BoolToVisibilityConverter}}"
+                                     MinWidth="160" Margin="12,0,0,0" VerticalAlignment="Center"
+                                     PreviewKeyDown="CalendarSearchBox_PreviewKeyDown"/>
                             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
                                         KeyboardNavigation.TabNavigation="Continue"
                                         KeyboardNavigation.DirectionalNavigation="Contained">

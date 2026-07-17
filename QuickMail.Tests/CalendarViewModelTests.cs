@@ -202,6 +202,50 @@ public class CalendarViewModelTests
         Assert.Contains("Week of", vm.PeriodLabel);
     }
 
+    [Fact]
+    public async Task SearchText_FiltersAcrossSummaryLocationAndNotes()
+    {
+        var events = new List<CalendarEvent>
+        {
+            MakeEvent("e1", DateTime.Today.AddHours(9)),
+            MakeEvent("e2", DateTime.Today.AddHours(10)),
+            MakeEvent("e3", DateTime.Today.AddHours(11)),
+        };
+        events[0].Summary = "Dentist visit";
+        events[1].Location = "Dentist office downtown";
+        events[2].Description = "Ask the dentist about crowns";
+        events.Add(MakeEvent("e4", DateTime.Today.AddHours(12))); // no match
+
+        var vm = MakeVm(events);
+        await vm.LoadAsync();
+        Assert.Equal(4, vm.VisibleEvents.Count);
+
+        vm.SearchText = "dentist";
+        Assert.Equal(3, vm.VisibleEvents.Count);
+
+        vm.ClearSearch();
+        Assert.Equal(4, vm.VisibleEvents.Count);
+        Assert.False(vm.IsSearchActive);
+        Assert.Equal(string.Empty, vm.SearchText);
+    }
+
+    [Fact]
+    public async Task SearchText_CombinesWithDayView()
+    {
+        var today = DateTime.Today;
+        var e1 = MakeEvent("t1", today.AddHours(9));  e1.Summary = "Budget review";
+        var e2 = MakeEvent("t2", today.AddHours(10)); e2.Summary = "Lunch";
+        var e3 = MakeEvent("m1", today.AddDays(1).AddHours(9)); e3.Summary = "Budget kickoff"; // tomorrow
+
+        var vm = MakeVm(new List<CalendarEvent> { e1, e2, e3 });
+        await vm.LoadAsync();
+        vm.ShowDayCommand.Execute(null);   // today only
+        vm.SearchText = "budget";
+
+        Assert.Single(vm.VisibleEvents);   // tomorrow's budget event is outside the day window
+        Assert.Equal("t1", vm.VisibleEvents[0].Uid);
+    }
+
     private static CalendarEvent MakeRecurring(string uid, DateTime start, string rrule)
         => new()
         {
