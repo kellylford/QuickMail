@@ -1909,6 +1909,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Collect truly new messages; add them to _rawMessages immediately so the
         // search pool stays in sync with what the list will eventually show.
         var toInsert = new List<MailMessageSummary>();
+        // Existing messages whose read-state was reconciled from the server (#269). Their filter
+        // membership may have changed (e.g. now-read messages must leave the Unread view), so their
+        // presence in the visible list is reconciled after the loop.
+        var readReconciled = new List<MailMessageSummary>();
         foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
             // Reconcile server-flagged state for new incoming messages: a message with
@@ -1921,14 +1925,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var key = keyOf(msg);
             if (!seen.Add(key))
             {
-                // Existing message: reconcile external flag change (§9.3).
-                // If the server now reports not-flagged but the in-memory message still has
-                // a flag set, another client cleared it — clear our local flag to match.
-                if (!msg.IsServerFlagged &&
-                    rawByKey.TryGetValue(key, out var existing) &&
-                    existing.FlagId != null)
+                // Existing message: reconcile external state changes made by another client.
+                if (rawByKey.TryGetValue(key, out var existing))
                 {
-                    existing.FlagId = null;
+                    // Read/unread (#269): a message read (or marked unread) elsewhere — e.g. Gmail
+                    // web — must not keep showing the stale state here. IsRead is observable, so this
+                    // refreshes the row; folder unread counts reconcile via the debounced,
+                    // STATUS-authoritative refresh already scheduled on the sync path.
+                    if (existing.IsRead != msg.IsRead)
+                    {
+                        existing.IsRead = msg.IsRead;
+                        readReconciled.Add(existing); // its filter membership may have changed
+                    }
+
+                    // Flag clear (§9.3): server now reports not-flagged but we still show a flag —
+                    // another client cleared it, so clear our local flag to match.
+                    if (!msg.IsServerFlagged && existing.FlagId != null)
+                        existing.FlagId = null;
                 }
                 continue;
             }
@@ -1955,6 +1968,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             foreach (var msg in toInsert)
                 InsertMessageSorted(msg);
+
+            // #269: reconcile the visible list for messages whose read-state changed externally. A
+            // now-read message must leave the Unread view; a now-unread one must (re)appear if it
+            // matches. Done inside the batch so it costs one Reset, not one event per change.
+            foreach (var m in readReconciled)
+            {
+                var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
+                    && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
+                var isShown = Messages.Contains(m);
+                if (shouldShow && !isShown)
+                    InsertMessageSorted(m);
+                else if (!shouldShow && isShown)
+                    Messages.Remove(m);
+            }
         }
         // If WPF cleared SelectedMessage during the Reset but the message is still in
         // the list, restore it so the reading pane header and command guards stay correct.
@@ -2028,6 +2055,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_notifiedMessageKeys.Count > 10_000) _notifiedMessageKeys.Clear();
 
         var fresh = Helpers.NewMailFilter.SelectNew(incoming, _notifyThresholdUtc, _notifiedMessageKeys);
+
+        // #270 instrumentation: the user reports an inflated count that re-notifies every ~30 min
+        // (the IDLE reconnect cadence). Log enough to tell whether the SAME message re-notifies each
+        // cycle (dedup key not matching / session reset) or a genuinely new one arrives. UIDs are the
+        // dedup key input, so logging them pins which mechanism is at play. Debug-only (Advanced log).
+        LogService.Debug(
+            $"NewMail notify [{account.AccountLabel}]: incoming={incoming.Count} " +
+            $"unread={incoming.Count(m => !m.IsRead)} fresh={fresh.Count} " +
+            $"notifiedSetSize={_notifiedMessageKeys.Count} threshold={_notifyThresholdUtc:o} " +
+            $"freshUids=[{string.Join(",", fresh.Select(m => m.MessageId))}]");
+
         if (fresh.Count == 0) return;
 
         _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
