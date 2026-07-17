@@ -8,7 +8,8 @@ namespace QuickMail.ViewModels;
 
 /// <summary>
 /// One entry in the appointment editor's "Calendar" save-target picker: the local calendar
-/// (<see cref="CalendarEvent.LocalAccountId"/>) or a Graph-backed account's calendar.
+/// (<see cref="CalendarEvent.LocalAccountId"/>) or a server-backed (Microsoft or Google)
+/// account's calendar.
 /// </summary>
 public sealed record CalendarSaveTarget(string Label, Guid AccountId);
 
@@ -31,8 +32,8 @@ public partial class EventEditorViewModel : ObservableObject
 
     /// <summary>
     /// Labels for the "Calendar" save-target picker. Index 0 is always the local calendar;
-    /// the rest are Graph-backed accounts. Plain strings so the ComboBox items announce
-    /// correctly (Selector accessibility rule).
+    /// the rest are server-backed (Microsoft or Google) accounts. Plain strings so the ComboBox
+    /// items announce correctly (Selector accessibility rule).
     /// </summary>
     public IReadOnlyList<string> SaveTargetLabels { get; }
 
@@ -143,7 +144,7 @@ public partial class EventEditorViewModel : ObservableObject
 
     /// <summary>
     /// Creates an editor for a new appointment defaulting to the given start (usually now,
-    /// rounded). <paramref name="accountTargets"/> lists the Graph-backed accounts the
+    /// rounded). <paramref name="accountTargets"/> lists the server-backed accounts the
     /// appointment may alternatively be saved to; the local calendar is always offered first
     /// and is the default.
     /// </summary>
@@ -330,7 +331,7 @@ public partial class EventEditorViewModel : ObservableObject
             rrule = rule.ToRRule();
         }
 
-        // v1 Graph push handles single events only — a repeating appointment must stay local.
+        // v1 calendar push handles single events only — a repeating appointment must stay local.
         var targetAccountId = IsEdit ? CalendarEvent.LocalAccountId : SelectedTargetAccountId;
         if (targetAccountId != CalendarEvent.LocalAccountId && rrule != null)
         {

@@ -22,7 +22,7 @@ namespace QuickMail.Services;
 /// <see cref="GraphClient"/> (the same client the Graph mail backend and contact sync use).
 /// </para>
 /// <para>
-/// Google path (read-down v1): <c>GET calendars/primary/events?singleEvents=true</c> via
+/// Google path: <c>GET calendars/primary/events?singleEvents=true</c> via
 /// <see cref="GoogleCalendarClient"/> — the same server-expanded-occurrence model, keyed by
 /// <see cref="AuthType.OAuth2Google"/> (a Gmail account is IMAP + Google OAuth, so the identity
 /// provider, not the mail backend, is what makes calendar sync possible — mirrors contact sync).
@@ -405,12 +405,18 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         return evt;
     }
 
-    // ── Microsoft create push ────────────────────────────────────────────────────
+    // ── Create/edit/delete push (Microsoft + Google) ─────────────────────────────
+    // Each public method dispatches on the account: Google-signed-in accounts push to the Google
+    // Calendar API, everything else takes the Graph path. Both providers reject recurring events
+    // BEFORE any network call (v1 pushes single events only) and store the SERVER's returned copy
+    // with is_graph set, so the row shows immediately and survives the next replace-slice sync.
 
     public async Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
     {
         if (evt.IsRecurring)
-            throw new NotSupportedException("v1 Graph push handles single events only.");
+            throw new NotSupportedException("v1 calendar push handles single events only.");
+        if (IsGoogleEligible(account))
+            return await CreateGoogleEventAsync(account, evt, ct);
 
         var body = BuildCreateBody(evt);
 
@@ -432,7 +438,9 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     public async Task<CalendarEvent> UpdateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
     {
         if (evt.IsRecurring)
-            throw new NotSupportedException("v1 Graph push handles single events only.");
+            throw new NotSupportedException("v1 calendar push handles single events only.");
+        if (IsGoogleEligible(account))
+            return await UpdateGoogleEventAsync(account, evt, ct);
 
         var body = BuildCreateBody(evt); // PATCH accepts the same shape; omitted fields are unchanged
         var updated = await _graph.PatchReadAsync<GraphCalendarEvent>(
@@ -448,11 +456,79 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 
     public async Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
     {
+        if (IsGoogleEligible(account))
+        {
+            await _google!.DeleteEventAsync(account.Username, evt.Uid, ct);
+            await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
+            LogService.Log($"CalendarSync: deleted Google event on {account.AccountLabel} ({evt.Uid}).");
+            return;
+        }
+
         await _graph.DeleteAsync(account, $"/me/events/{Uri.EscapeDataString(evt.Uid)}",
             OAuthService.GraphCalendarScopes, silentOnly: true, ct);
         await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
         LogService.Log($"GraphCalendarSync: deleted event on {account.AccountLabel} ({evt.Uid}).");
     }
+
+    // ── Google write path ────────────────────────────────────────────────────────
+
+    private async Task<CalendarEvent> CreateGoogleEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
+    {
+        var created = await _google!.CreateEventAsync(account.Username, BuildGoogleWriteBody(evt), ct);
+        var mapped = MapGoogleEvent(created, account.Id);
+        await _store.UpsertCalendarEventAsync(mapped);
+        LogService.Log($"CalendarSync: created Google event on {account.AccountLabel} ({mapped.Uid}).");
+        return mapped;
+    }
+
+    private async Task<CalendarEvent> UpdateGoogleEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
+    {
+        var updated = await _google!.UpdateEventAsync(account.Username, evt.Uid, BuildGoogleWriteBody(evt), ct);
+        var mapped = MapGoogleEvent(updated, account.Id);
+        await _store.UpsertCalendarEventAsync(mapped);
+        LogService.Log($"CalendarSync: updated Google event on {account.AccountLabel} ({mapped.Uid}).");
+        return mapped;
+    }
+
+    /// <summary>
+    /// Builds the Google create/patch body for a local event about to be pushed — the Google
+    /// counterpart of <see cref="BuildCreateBody"/>. Timed events send RFC3339 UTC stamps;
+    /// all-day events send date-only boundaries with Google's EXCLUSIVE end date (local rows
+    /// store all-day as local midnight .. 23:59:59 of the last day, so end = the day AFTER the
+    /// last day). Blank description/location are omitted, mirroring the Graph body.
+    /// </summary>
+    internal static GoogleEventWriteBody BuildGoogleWriteBody(CalendarEvent evt)
+    {
+        GoogleEventTime start, end;
+        if (evt.IsAllDay)
+        {
+            var startDay = (evt.StartTime ?? DateTime.Today).Date;
+            var lastDay  = (evt.EndTime ?? startDay).Date;
+            if (lastDay < startDay) lastDay = startDay;
+            start = new GoogleEventTime { Date = startDay.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) };
+            end   = new GoogleEventTime { Date = lastDay.AddDays(1).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) };
+        }
+        else
+        {
+            var startTicks = evt.StartTimeTicks ?? DateTime.UtcNow.Ticks;
+            var endTicks   = evt.EndTimeTicks ?? startTicks + TimeSpan.FromMinutes(30).Ticks;
+            start = new GoogleEventTime { DateTime = Rfc3339Utc(startTicks) };
+            end   = new GoogleEventTime { DateTime = Rfc3339Utc(endTicks) };
+        }
+
+        return new GoogleEventWriteBody
+        {
+            Summary     = evt.Summary,
+            Description = string.IsNullOrWhiteSpace(evt.Description) ? null : evt.Description,
+            Location    = string.IsNullOrWhiteSpace(evt.Location) ? null : evt.Location,
+            Start       = start,
+            End         = end,
+        };
+    }
+
+    private static string Rfc3339Utc(long utcTicks)
+        => new DateTime(utcTicks, DateTimeKind.Utc)
+            .ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
     /// <summary>Builds the <c>POST /me/events</c> body for a local event about to be pushed.</summary>
     internal static GraphCreateEventBody BuildCreateBody(CalendarEvent evt)

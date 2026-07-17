@@ -255,6 +255,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return Guid.TryParse(tail, out var id) ? id : null;
     }
 
+    /// <summary>
+    /// True for accounts with a server calendar the app can push appointments to: Microsoft
+    /// (Graph backend) and Google-signed-in accounts (keyed by auth type — Gmail mail is IMAP).
+    /// Plain IMAP/password accounts have no server calendar. Mirrors the sync service's
+    /// per-provider eligibility.
+    /// </summary>
+    internal static bool IsCalendarPushAccount(AccountModel a)
+        => a.BackendKind == BackendKind.MicrosoftGraph || a.AuthType == AuthType.OAuth2Google;
+
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
 
@@ -937,12 +946,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_calendarService != null)
         {
             // The accounts provider is deferred (evaluated when the editor opens) because the
-            // account list loads after this constructor; only Graph-backed accounts have a
-            // Microsoft calendar to save to.
+            // account list loads after this constructor. Server calendars the app can write to:
+            // Microsoft (Graph backend) accounts and Google-signed-in accounts (Gmail mail is
+            // IMAP — the identity provider, not the mail backend, is what makes calendar push
+            // possible, mirroring calendar sync eligibility). Plain IMAP/password accounts have
+            // no server calendar and are excluded.
             CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents,
                                                cfg.CalendarListShowFieldLabels,
                                                _graphCalendarSync,
-                                               () => Accounts.Where(a => a.BackendKind == BackendKind.MicrosoftGraph).ToList());
+                                               () => Accounts.Where(IsCalendarPushAccount).ToList());
             RemindersEnabled = cfg.CalendarReminders;
             ReminderLeadMinutes = cfg.CalendarReminderMinutes;
             StartReminderTimer();

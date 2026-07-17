@@ -32,18 +32,21 @@ public interface IGraphCalendarSyncService
     Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default);
 
     /// <summary>
-    /// Creates a single (non-repeating) event on the account's primary Microsoft calendar
-    /// (<c>POST /me/events</c>) and upserts the server's copy into the local store with
-    /// <c>is_graph</c> set, so it appears immediately and survives the next replace-slice sync.
+    /// Creates a single (non-repeating) event on the account's primary calendar — Microsoft
+    /// (<c>POST /me/events</c>) or Google (<c>POST calendars/primary/events</c>), dispatched on
+    /// the account — and upserts the server's copy into the local store with <c>is_graph</c> set,
+    /// so it appears immediately and survives the next replace-slice sync.
     /// Unlike <see cref="SyncAllAsync"/>, this THROWS on failure — the caller decides the
     /// fallback (e.g. save locally instead). Returns the locally-stored row (Uid = the
     /// server-assigned event id).
     /// </summary>
     Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
 
-    /// <summary>PATCHes an existing server event and upserts the server's returned copy locally.</summary>
+    /// <summary>PATCHes an existing server event (Microsoft or Google, dispatched on the account)
+    /// and upserts the server's returned copy locally.</summary>
     Task<CalendarEvent> UpdateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
 
-    /// <summary>DELETEs a server event and removes the local row.</summary>
+    /// <summary>DELETEs a server event (Microsoft or Google, dispatched on the account) and
+    /// removes the local row.</summary>
     Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
 }

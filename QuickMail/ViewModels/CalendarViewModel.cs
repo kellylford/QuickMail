@@ -24,9 +24,10 @@ public partial class CalendarViewModel : ObservableObject
     private readonly bool _showDeclinedEvents;
     private bool _showFieldLabels;
 
-    // Graph create push (save-target picker). Both optional: null in tests and when the app has
-    // no Graph accounts — the editor then offers only the local calendar. The provider is a
-    // deferred lookup because the account list loads after this VM is constructed.
+    // Server calendar push (save-target picker + edit/delete write-back). Both optional: null in
+    // tests and when the app has no server-backed (Microsoft or Google) accounts — the editor then
+    // offers only the local calendar. The provider is a deferred lookup because the account list
+    // loads after this VM is constructed.
     private readonly IGraphCalendarSyncService? _graphSync;
     private readonly Func<IReadOnlyList<AccountModel>>? _graphAccountsProvider;
 
@@ -339,7 +340,8 @@ public partial class CalendarViewModel : ObservableObject
     {
         if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
 
-        // Save targets: the local calendar (always, default) plus each Graph-backed account.
+        // Save targets: the local calendar (always, default) plus each server-backed account
+        // (Microsoft or Google — whatever the provider supplies).
         var accountTargets = (_graphAccountsProvider?.Invoke() ?? [])
             .Select(a => new CalendarSaveTarget(a.AccountLabel, a.Id))
             .ToList();
@@ -349,9 +351,9 @@ public partial class CalendarViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Persists a NEW appointment to its chosen calendar: local save, or a Graph create push for
-    /// an account target. A failed push falls back to a local save so the user's data is never
-    /// lost, announced as such.
+    /// Persists a NEW appointment to its chosen calendar: local save, or a server create push
+    /// (Microsoft or Google) for an account target. A failed push falls back to a local save so
+    /// the user's data is never lost, announced as such.
     /// </summary>
     internal async Task SaveNewEventAsync(CalendarEvent evt)
     {
@@ -400,9 +402,10 @@ public partial class CalendarViewModel : ObservableObject
         if (evt == null) return;
         if (!evt.IsUserCreated)
         {
-            // Microsoft-synced single events are editable (write-back); everything else server-side
-            // (Google rows, recurring server occurrences, harvested invites) stays read-only.
-            var pushAccount = GraphAccountFor(evt);
+            // Server-synced single events on a Microsoft or Google account are editable
+            // (write-back); everything else server-side (CalDAV rows, recurring server
+            // occurrences, harvested invites) stays read-only.
+            var pushAccount = ServerAccountFor(evt);
             if (pushAccount != null)
             {
                 if (evt.IsRecurring)
@@ -460,7 +463,7 @@ public partial class CalendarViewModel : ObservableObject
         if (evt == null) return;
         if (!evt.IsUserCreated)
         {
-            var pushAccount = GraphAccountFor(evt);
+            var pushAccount = ServerAccountFor(evt);
             if (pushAccount != null && !evt.IsRecurring)
             {
                 var serverTarget = evt;
@@ -488,15 +491,15 @@ public partial class CalendarViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The Graph-backed account a server-synced row can write back to, or null when the row is
-    /// not writable from here (local rows, Google rows, no sync service wired).
+    /// The server-backed account (Microsoft or Google) a synced row can write back to, or null
+    /// when the row is not writable from here (local rows, CalDAV rows, no sync service wired).
     /// </summary>
-    private AccountModel? GraphAccountFor(CalendarEvent evt)
+    private AccountModel? ServerAccountFor(CalendarEvent evt)
         => evt.IsGraph && _graphSync != null
             ? _graphAccountsProvider?.Invoke().FirstOrDefault(a => a.Id == evt.AccountId)
             : null;
 
-    /// <summary>Pushes an edit of a Microsoft-synced event to the server; local state only changes on success.</summary>
+    /// <summary>Pushes an edit of a server-synced event to its calendar; local state only changes on success.</summary>
     private async Task ServerUpdateAsync(AccountModel account, CalendarEvent original, CalendarEvent edited)
     {
         try
@@ -519,7 +522,7 @@ public partial class CalendarViewModel : ObservableObject
         ListFocusRequested?.Invoke();
     }
 
-    /// <summary>Deletes a Microsoft-synced event on the server; local state only changes on success.</summary>
+    /// <summary>Deletes a server-synced event on its calendar; local state only changes on success.</summary>
     private async Task ServerDeleteAsync(AccountModel account, CalendarEvent evt)
     {
         try

@@ -12,18 +12,27 @@ using System.Threading.Tasks;
 namespace QuickMail.Services;
 
 /// <summary>
-/// Minimal client for the Google Calendar v3 REST API (calendar sync read-down v1), mirroring
+/// Minimal client for the Google Calendar v3 REST API, mirroring
 /// <see cref="GooglePeopleClient"/>'s shape: a raw <see cref="HttpClient"/> that attaches the
 /// bearer token per request and follows <c>nextPageToken</c> until the collection is exhausted.
-/// Only the one read endpoint v1 needs is exposed: the primary calendar's events, with
-/// <c>singleEvents=true</c> so recurring series arrive as server-expanded occurrences (each with
-/// its own id) — no local RRULE handling, matching the Graph calendarView approach. A raw
+/// Read path: the primary calendar's events, with <c>singleEvents=true</c> so recurring series
+/// arrive as server-expanded occurrences (each with its own id) — no local RRULE handling,
+/// matching the Graph calendarView approach. Write path: create/patch/delete of single events on
+/// the primary calendar (the Google counterpart of the Graph <c>/me/events</c> push). A raw
 /// HttpClient keeps the published binary small; no new NuGet dependency.
 /// </summary>
 public sealed class GoogleCalendarClient : IDisposable
 {
     private const string BaseUrl = "https://www.googleapis.com/calendar/v3";
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+
+    // Write bodies omit null fields entirely: Google PATCH treats an explicit null as "clear this
+    // field", while an omitted field is left unchanged — mirroring the Graph body-builder's
+    // omit-when-blank posture.
+    private static readonly JsonSerializerOptions WriteJsonOpts = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
 
     private readonly IGoogleOAuthService _oauth;
     private readonly HttpClient _http;
@@ -74,6 +83,56 @@ public sealed class GoogleCalendarClient : IDisposable
         while (!string.IsNullOrEmpty(pageToken));
 
         return all;
+    }
+
+    // ── Write path (single events on the primary calendar) ──────────────────────
+
+    /// <summary>Creates an event (<c>POST calendars/primary/events</c>) and returns the server's copy.</summary>
+    internal Task<GoogleCalendarEvent> CreateEventAsync(
+        string username, GoogleEventWriteBody body, CancellationToken ct = default)
+        => SendWriteAsync(username, HttpMethod.Post, "calendars/primary/events", body, ct);
+
+    /// <summary>Patches an event (<c>PATCH calendars/primary/events/{id}</c>) and returns the server's copy.
+    /// Omitted (null) body fields are left unchanged on the server.</summary>
+    internal Task<GoogleCalendarEvent> UpdateEventAsync(
+        string username, string eventId, GoogleEventWriteBody body, CancellationToken ct = default)
+        => SendWriteAsync(username, HttpMethod.Patch,
+                          $"calendars/primary/events/{Uri.EscapeDataString(eventId)}", body, ct);
+
+    /// <summary>Deletes an event (<c>DELETE calendars/primary/events/{id}</c>).</summary>
+    internal async Task DeleteEventAsync(string username, string eventId, CancellationToken ct = default)
+    {
+        var token = await _oauth.GetAccessTokenAsync(username, ct);
+        using var req = new HttpRequestMessage(
+            HttpMethod.Delete, $"{BaseUrl}/calendars/primary/events/{Uri.EscapeDataString(eventId)}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            var respBody = await resp.Content.ReadAsStringAsync(ct);
+            throw new HttpRequestException(
+                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}");
+        }
+    }
+
+    /// <summary>Shared POST/PATCH plumbing: bearer auth (as in the read path), JSON body, JSON response.</summary>
+    private async Task<GoogleCalendarEvent> SendWriteAsync(
+        string username, HttpMethod method, string path, GoogleEventWriteBody body, CancellationToken ct)
+    {
+        var token = await _oauth.GetAccessTokenAsync(username, ct);
+        using var req = new HttpRequestMessage(method, $"{BaseUrl}/{path}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        req.Content = JsonContent.Create(body, options: WriteJsonOpts);
+
+        using var resp = await _http.SendAsync(req, ct);
+        var respBody = await resp.Content.ReadAsStringAsync(ct);
+        if (!resp.IsSuccessStatusCode)
+            throw new HttpRequestException(
+                $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(respBody, 500)}");
+
+        return JsonSerializer.Deserialize<GoogleCalendarEvent>(respBody, JsonOpts)
+            ?? throw new InvalidOperationException("Calendar API returned no event body.");
     }
 
     private static string Rfc3339(DateTime utc)
@@ -128,4 +187,19 @@ internal sealed class GoogleEventAttendee
     [JsonPropertyName("self")]           public bool Self { get; set; }
     /// <summary>"needsAction" | "declined" | "tentative" | "accepted".</summary>
     [JsonPropertyName("responseStatus")] public string? ResponseStatus { get; set; }
+}
+
+/// <summary>
+/// Request body for creating/patching an event — the Google counterpart of
+/// <c>GraphCreateEventBody</c>. Timed events carry RFC3339 UTC <c>start.dateTime</c>/<c>end.dateTime</c>
+/// stamps; all-day events carry date-only <c>start.date</c>/<c>end.date</c> with Google's EXCLUSIVE
+/// end date. Null fields are omitted from the serialized JSON (PATCH leaves them unchanged).
+/// </summary>
+internal sealed class GoogleEventWriteBody
+{
+    [JsonPropertyName("summary")]     public string? Summary { get; set; }
+    [JsonPropertyName("description")] public string? Description { get; set; }
+    [JsonPropertyName("location")]    public string? Location { get; set; }
+    [JsonPropertyName("start")]       public GoogleEventTime? Start { get; set; }
+    [JsonPropertyName("end")]         public GoogleEventTime? End { get; set; }
 }

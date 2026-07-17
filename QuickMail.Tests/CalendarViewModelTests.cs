@@ -746,6 +746,39 @@ public class CalendarViewModelTests
         return (vm, store, sync, account);
     }
 
+    [Fact]
+    public void IsCalendarPushAccount_CoversGraphAndGoogle()
+    {
+        Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { BackendKind = BackendKind.MicrosoftGraph }));
+        Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.OAuth2Google }));
+        Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.Password }));
+    }
+
+    [Fact]
+    public async Task GoogleAccount_EditRoutesThroughServerPush()
+    {
+        // A Google account in the push-accounts list: routing must treat it like Microsoft.
+        var account = new AccountModel { Id = Guid.NewGuid(), AuthType = AuthType.OAuth2Google, Username = "k@gmail.com" };
+        var store = new StubCalendarService();
+        var sync = new StubGraphCalendarSyncService();
+        var vm = new CalendarViewModel(store, onlineMode: false, showDeclinedEvents: false,
+                                       showFieldLabels: false, graphSync: sync,
+                                       graphAccountsProvider: () => new[] { account });
+        var row = MakeGraphRow(account.Id, "goog-rw-1");
+        store.StoredEvents.Add(row);
+        await vm.LoadAsync();
+
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.EditEventCommand.Execute(row);
+
+        Assert.NotNull(editor);                       // editable, not read-only
+        editor!.Title = "Moved on Google";
+        editor.SaveCommand.Execute(null);
+        Assert.Single(sync.UpdatedEvents);
+        Assert.Equal(account.Id, sync.UpdatedEvents[0].AccountId);
+    }
+
     private static CalendarEvent MakeGraphRow(Guid accountId, string uid = "srv-1") => new()
     {
         Uid = uid, AccountId = accountId, IsGraph = true, Summary = "Server event",
