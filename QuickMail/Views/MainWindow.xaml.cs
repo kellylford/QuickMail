@@ -842,6 +842,13 @@ public partial class MainWindow : Window
 
     private void OpenSearch()
     {
+        // Ctrl+Shift+S is the one search gesture app-wide: in the calendar it opens
+        // appointment search; everywhere else, the message search box.
+        if (_vm.IsCalendarView)
+        {
+            OpenCalendarSearch();
+            return;
+        }
         _vm.IsSearchActive = true;
         Dispatcher.InvokeAsync(() =>
         {
@@ -1215,11 +1222,12 @@ public partial class MainWindow : Window
             execute: () => _vm.CalendarVm?.ExportEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
 
+        // No default key: Ctrl+Shift+S (view.search) routes here while the calendar is open,
+        // so search is ONE gesture app-wide. Palette entry + rebindable id kept.
         _registry.Register(new CommandDefinition(
             id: "calendar.search", category: "Calendar", title: "Search Appointments",
             execute: OpenCalendarSearch,
-            defaultKey: Key.F, defaultModifiers: ModifierKeys.Control,
-            isAvailable: () => CalendarPaneFocused || CalendarSearchBox.IsKeyboardFocusWithin));
+            isAvailable: () => _vm.IsCalendarView));
 
         // ── Calendar views + period navigation (Calendar category) ──
         _registry.Register(new CommandDefinition(

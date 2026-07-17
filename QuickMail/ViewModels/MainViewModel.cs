@@ -1501,7 +1501,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         registry.Register(new CommandDefinition(
             id: "view.search", category: "View", title: "Search Messages…",
-            execute: () => { IsSearchActive = true; SearchRequested?.Invoke(this, EventArgs.Empty); },
+            execute: () =>
+            {
+                // Context-aware: in the calendar this routes to appointment search (the View
+                // checks IsCalendarView); only mail search uses the mail search box state.
+                if (!IsCalendarView) IsSearchActive = true;
+                SearchRequested?.Invoke(this, EventArgs.Empty);
+            },
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         registry.Register(new CommandDefinition(
