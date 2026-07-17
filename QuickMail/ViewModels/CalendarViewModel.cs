@@ -51,6 +51,12 @@ public partial class CalendarViewModel : ObservableObject
     public event Action<CalendarEvent, Action>? DeleteConfirmRequested;
 
     /// <summary>
+    /// Raised to confirm deleting from a repeating series: the View offers "just this occurrence"
+    /// (first callback), "the whole series" (second), or cancel.
+    /// </summary>
+    public event Action<CalendarEvent, Action, Action>? RecurringDeleteConfirmRequested;
+
+    /// <summary>
     /// Raised after a create/edit/delete has persisted and the list rebuilt, so the View can
     /// place focus on the correct (new/neighbouring) row. Fires after the async save completes,
     /// which the editor window's synchronous Closed handler cannot wait for.
@@ -288,11 +294,15 @@ public partial class CalendarViewModel : ObservableObject
             return;
         }
 
-        // A recurring event in the list is an expanded occurrence; edit the stored master so the
-        // whole series is edited from its true start (v1: edits apply to the entire series).
-        var master = _calendarService.Events.FirstOrDefault(x => x.Uid == evt.Uid && x.AccountId == evt.AccountId) ?? evt;
-        var editor = new EventEditorViewModel(master);
-        editor.Saved += updated => _ = SaveEditedEventAsync(updated, isNew: false);
+        // A recurring occurrence opens on its own date/time with the This event / All events
+        // scope choice; anything else opens the stored master directly.
+        var source = evt.OccurrenceStart.HasValue
+            ? evt
+            : _calendarService.Events.FirstOrDefault(x => x.Uid == evt.Uid && x.AccountId == evt.AccountId) ?? evt;
+        var editor = new EventEditorViewModel(source);
+        editor.Saved += updated => _ = editor.IsDetachSave && editor.OccurrenceStart.HasValue
+            ? DetachOccurrenceAsync(source, editor.OccurrenceStart.Value, updated)
+            : SaveEditedEventAsync(updated, isNew: false);
         EditorRequested?.Invoke(editor);
     }
 
@@ -326,7 +336,62 @@ public partial class CalendarViewModel : ObservableObject
         }
 
         var target = evt;
-        DeleteConfirmRequested?.Invoke(target, () => _ = ConfirmDeleteAsync(target));
+        if (target.IsRecurring && target.OccurrenceStart.HasValue)
+        {
+            RecurringDeleteConfirmRequested?.Invoke(target,
+                () => _ = DeleteOccurrenceAsync(target),
+                () => _ = ConfirmDeleteAsync(target));
+        }
+        else
+        {
+            DeleteConfirmRequested?.Invoke(target, () => _ = ConfirmDeleteAsync(target));
+        }
+    }
+
+    /// <summary>
+    /// "This event only" save on a recurring occurrence: excludes the occurrence from the series
+    /// (EXDATE on the master) and inserts the edited copy as an independent appointment.
+    /// </summary>
+    private async Task DetachOccurrenceAsync(CalendarEvent occurrence, DateTime occurrenceStart, CalendarEvent standalone)
+    {
+        var master = _calendarService.Events.FirstOrDefault(
+            x => x.Uid == occurrence.Uid && x.AccountId == occurrence.AccountId);
+        if (master == null) return;
+
+        master.AddExDate(occurrenceStart);
+        await _calendarService.UpsertEventAsync(master);
+        await _calendarService.UpsertEventAsync(standalone);
+        ApplyFilters();
+        SelectedEvent = Events.FirstOrDefault(e => e.Uid == standalone.Uid);
+        Announce($"This occurrence updated. {standalone.Summary}, " +
+                 $"{standalone.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date"}. " +
+                 "The rest of the series is unchanged.", AnnouncementCategory.Result);
+        ListFocusRequested?.Invoke();
+    }
+
+    /// <summary>Deletes a single occurrence of a repeating series (EXDATE on the master).</summary>
+    private async Task DeleteOccurrenceAsync(CalendarEvent occurrence)
+    {
+        var master = _calendarService.Events.FirstOrDefault(
+            x => x.Uid == occurrence.Uid && x.AccountId == occurrence.AccountId);
+        if (master == null || !occurrence.OccurrenceStart.HasValue) return;
+
+        var index = _filteredEvents.FindIndex(e => ReferenceEquals(e, occurrence));
+        master.AddExDate(occurrence.OccurrenceStart.Value);
+        await _calendarService.UpsertEventAsync(master);
+        ApplyFilters();
+        if (VisibleEvents.Count > 0)
+        {
+            var next = Math.Min(Math.Max(index, 0), VisibleEvents.Count - 1);
+            SelectedEvent = Events[next];
+        }
+        else
+        {
+            SelectedEvent = null;
+        }
+        Announce($"Occurrence deleted. {occurrence.Summary}. The rest of the series is unchanged.",
+                 AnnouncementCategory.Result);
+        ListFocusRequested?.Invoke();
     }
 
     /// <summary>Persists a created/edited event, reloads, reselects it, and announces the result.</summary>
@@ -418,8 +483,10 @@ public partial class CalendarViewModel : ObservableObject
             var rule = e.IsRecurring ? RecurrenceRule.Parse(e.RecurrenceRule) : null;
             if (rule != null && e.StartTime.HasValue)
             {
+                var excluded = new HashSet<DateTime>(e.GetExDates());
                 foreach (var occStart in RecurrenceExpander.Expand(e.StartTime.Value, rule, recStart, recEnd))
-                    result.Add(CloneOccurrence(e, occStart));
+                    if (!excluded.Contains(occStart))
+                        result.Add(CloneOccurrence(e, occStart));
             }
             else if (window is { } w)
             {
@@ -482,6 +549,7 @@ public partial class CalendarViewModel : ObservableObject
             ResponseStatus  = master.ResponseStatus,
             IsAllDay        = master.IsAllDay,
             RecurrenceRule  = master.RecurrenceRule,
+            ExDates         = master.ExDates,
             OccurrenceStart = occStart,
         };
     }

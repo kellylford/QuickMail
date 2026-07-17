@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -41,6 +42,34 @@ public partial class CalendarEvent : ObservableObject
 
     /// <summary>True when this event repeats.</summary>
     public bool IsRecurring => !string.IsNullOrWhiteSpace(RecurrenceRule);
+
+    /// <summary>
+    /// Excluded occurrence starts for a recurring master, serialized as comma-separated local
+    /// "yyyyMMddTHHmmss" values. Occurrences at these starts are skipped ("delete/detach just
+    /// this one"). Null/empty for one-offs and untouched series.
+    /// </summary>
+    public string? ExDates { get; set; }
+
+    /// <summary>Parses <see cref="ExDates"/> into local DateTimes (invalid entries skipped).</summary>
+    public IReadOnlyList<DateTime> GetExDates()
+    {
+        if (string.IsNullOrWhiteSpace(ExDates)) return Array.Empty<DateTime>();
+        var list = new List<DateTime>();
+        foreach (var part in ExDates.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            if (DateTime.TryParseExact(part.Trim(), "yyyyMMdd'T'HHmmss",
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var dt))
+                list.Add(dt);
+        return list;
+    }
+
+    /// <summary>Appends an occurrence start (local) to <see cref="ExDates"/>.</summary>
+    public void AddExDate(DateTime occurrenceStartLocal)
+    {
+        var token = occurrenceStartLocal.ToString("yyyyMMdd'T'HHmmss",
+            System.Globalization.CultureInfo.InvariantCulture);
+        ExDates = string.IsNullOrWhiteSpace(ExDates) ? token : ExDates + "," + token;
+    }
 
     /// <summary>
     /// For an expanded occurrence of a recurring series, the occurrence's own start (local); null for

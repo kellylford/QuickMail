@@ -60,6 +60,37 @@ public partial class EventEditorViewModel : ObservableObject
     /// <summary>True when Weekly is selected — the View shows the day-of-week checkboxes.</summary>
     public bool IsWeekly => RepeatIndex == 2;
 
+    /// <summary>
+    /// True when editing one occurrence of a repeating series — the View shows the edit-scope
+    /// radio group (This event / All events).
+    /// </summary>
+    public bool IsRecurringEdit { get; }
+
+    /// <summary>The occurrence's original start (local), for excluding it when detaching.</summary>
+    public DateTime? OccurrenceStart { get; }
+
+    /// <summary>Edit scope: true = only this occurrence (default), false = the whole series.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(EditWholeSeries))]
+    [NotifyPropertyChangedFor(nameof(CanEditRepeat))]
+    private bool _editThisEventOnly = true;
+
+    /// <summary>Inverse radio binding for the "All events" option.</summary>
+    public bool EditWholeSeries
+    {
+        get => !EditThisEventOnly;
+        set => EditThisEventOnly = !value;
+    }
+
+    /// <summary>The Repeat controls only make sense when the edit applies to the series.</summary>
+    public bool CanEditRepeat => !(IsRecurringEdit && EditThisEventOnly);
+
+    /// <summary>
+    /// True when the save should detach this occurrence: caller must EXDATE the master at
+    /// <see cref="OccurrenceStart"/> and insert the returned standalone event.
+    /// </summary>
+    public bool IsDetachSave => IsRecurringEdit && EditThisEventOnly;
+
     /// <summary>False when the appointment is all-day — the View disables the time fields.</summary>
     public bool HasTimes => !IsAllDay;
 
@@ -93,11 +124,17 @@ public partial class EventEditorViewModel : ObservableObject
         EndTime = start.AddMinutes(30).ToString("t");
     }
 
-    /// <summary>Creates an editor populated from an existing locally-created event.</summary>
+    /// <summary>
+    /// Creates an editor populated from an existing locally-created event. For an expanded
+    /// occurrence of a repeating series (OccurrenceStart set), the editor opens on the
+    /// occurrence's own date/time and offers the This event / All events scope choice.
+    /// </summary>
     public EventEditorViewModel(CalendarEvent existing)
     {
         _uid = existing.Uid;
         IsEdit = true;
+        IsRecurringEdit = existing.IsRecurring && existing.OccurrenceStart.HasValue;
+        OccurrenceStart = existing.OccurrenceStart;
         Title = existing.Summary;
         Location = existing.Location;
         Notes = existing.Description;
@@ -208,7 +245,11 @@ public partial class EventEditorViewModel : ObservableObject
         }
 
         string? rrule = null;
-        if (RepeatIndex > 0)
+        if (IsDetachSave)
+        {
+            // Detached occurrence becomes an independent one-off appointment.
+        }
+        else if (RepeatIndex > 0)
         {
             if (RepeatInterval < 1)
             {
@@ -239,7 +280,7 @@ public partial class EventEditorViewModel : ObservableObject
 
         evt = new CalendarEvent
         {
-            Uid            = _uid,
+            Uid            = IsDetachSave ? "local-" + Guid.NewGuid().ToString("N") : _uid,
             AccountId      = CalendarEvent.LocalAccountId,
             Summary        = Title.Trim(),
             Location       = Location.Trim(),

@@ -5,8 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
-        Height="530" Width="500"
-        MinHeight="440" MinWidth="380"
+        Height="560" Width="500"
+        MinHeight="460" MinWidth="380"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
         ShowInTaskbar="False"
@@ -29,6 +29,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -39,56 +40,77 @@
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
+        <!-- Edit scope — shown only when editing one occurrence of a repeating series.
+             Radio group: one tab stop, arrows cycle. -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4"
+                    Orientation="Horizontal" Margin="0,0,0,10"
+                    Visibility="{Binding IsRecurringEdit, Converter={StaticResource BoolToVis}}"
+                    KeyboardNavigation.TabNavigation="Once"
+                    KeyboardNavigation.DirectionalNavigation="Cycle">
+            <TextBlock Text="Change:" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <RadioButton Content="This event only"
+                         GroupName="EditScope"
+                         AutomationProperties.Name="This event only"
+                         IsChecked="{Binding EditThisEventOnly}"
+                         Margin="0,0,12,0" VerticalAlignment="Center"/>
+            <RadioButton Content="All events in the series"
+                         GroupName="EditScope"
+                         AutomationProperties.Name="All events in the series"
+                         IsChecked="{Binding EditWholeSeries}"
+                         VerticalAlignment="Center"/>
+        </StackPanel>
+
         <!-- Title -->
-        <TextBlock Grid.Row="0" Grid.Column="0" Text="Title:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <TextBox   Grid.Row="0" Grid.Column="1" Grid.ColumnSpan="2"
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Title:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox   Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
                    x:Name="TitleBox"
                    AutomationProperties.Name="Title"
                    Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
                    MaxLength="200" Margin="0,0,8,10"/>
-        <CheckBox  Grid.Row="0" Grid.Column="3"
+        <CheckBox  Grid.Row="1" Grid.Column="3"
                    Content="_All day"
                    AutomationProperties.Name="All day"
                    IsChecked="{Binding IsAllDay}"
                    VerticalAlignment="Center" Margin="0,0,0,10"/>
 
         <!-- Start -->
-        <TextBlock  Grid.Row="1" Grid.Column="0" Text="Starts:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <DatePicker Grid.Row="1" Grid.Column="1"
+        <TextBlock  Grid.Row="2" Grid.Column="0" Text="Starts:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <DatePicker Grid.Row="2" Grid.Column="1"
                     x:Name="StartDatePicker"
                     AutomationProperties.Name="Start date"
                     SelectedDate="{Binding StartDate}" Margin="0,0,8,10"/>
-        <TextBlock  Grid.Row="1" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <TextBox    Grid.Row="1" Grid.Column="3"
+        <TextBlock  Grid.Row="2" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox    Grid.Row="2" Grid.Column="3"
                     AutomationProperties.Name="Start time"
                     Text="{Binding StartTime, UpdateSourceTrigger=PropertyChanged}"
                     IsEnabled="{Binding HasTimes}"
                     MinWidth="90" MaxLength="20" Margin="0,0,0,10"/>
 
         <!-- End -->
-        <TextBlock  Grid.Row="2" Grid.Column="0" Text="Ends:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <DatePicker Grid.Row="2" Grid.Column="1"
+        <TextBlock  Grid.Row="3" Grid.Column="0" Text="Ends:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <DatePicker Grid.Row="3" Grid.Column="1"
                     x:Name="EndDatePicker"
                     AutomationProperties.Name="End date"
                     SelectedDate="{Binding EndDate}" Margin="0,0,8,10"/>
-        <TextBlock  Grid.Row="2" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <TextBox    Grid.Row="2" Grid.Column="3"
+        <TextBlock  Grid.Row="3" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox    Grid.Row="3" Grid.Column="3"
                     AutomationProperties.Name="End time"
                     Text="{Binding EndTime, UpdateSourceTrigger=PropertyChanged}"
                     IsEnabled="{Binding HasTimes}"
                     MinWidth="90" MaxLength="20" Margin="0,0,0,10"/>
 
         <!-- Location -->
-        <TextBlock Grid.Row="3" Grid.Column="0" Text="Location:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <TextBox   Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Location:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox   Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3"
                    AutomationProperties.Name="Location"
                    Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}"
                    MaxLength="300" Margin="0,0,0,10"/>
 
         <!-- Repeat -->
-        <TextBlock Grid.Row="4" Grid.Column="0" Text="Repeat:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <StackPanel Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3"
+        <TextBlock Grid.Row="5" Grid.Column="0" Text="Repeat:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
                     Orientation="Horizontal" Margin="0,0,0,10"
+                    IsEnabled="{Binding CanEditRepeat}"
                     KeyboardNavigation.TabNavigation="Continue">
             <ComboBox AutomationProperties.Name="Repeat"
                       SelectedIndex="{Binding RepeatIndex}"
@@ -113,10 +135,11 @@
         </StackPanel>
 
         <!-- Weekly day picker — visible only when Repeat = Weekly. All unchecked = start day. -->
-        <TextBlock Grid.Row="5" Grid.Column="0" Text="On days:" Margin="0,0,8,10" VerticalAlignment="Center"
+        <TextBlock Grid.Row="6" Grid.Column="0" Text="On days:" Margin="0,0,8,10" VerticalAlignment="Center"
                    Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"/>
-        <WrapPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,10"
+        <WrapPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,10"
                    Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"
+                   IsEnabled="{Binding CanEditRepeat}"
                    KeyboardNavigation.TabNavigation="Continue"
                    KeyboardNavigation.DirectionalNavigation="Contained">
             <CheckBox Content="Sun" AutomationProperties.Name="Sunday"
@@ -136,11 +159,11 @@
         </WrapPanel>
 
         <!-- Notes label -->
-        <TextBlock Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="4"
+        <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="4"
                    Text="Notes:" Margin="0,0,0,4"/>
 
         <!-- Notes body -->
-        <TextBox   Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="4"
+        <TextBox   Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="4"
                    x:Name="NotesBox"
                    AutomationProperties.Name="Notes"
                    Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
@@ -149,7 +172,7 @@
                    MinHeight="80" Margin="0,0,0,10"/>
 
         <!-- Buttons -->
-        <StackPanel Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="4"
+        <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="4"
                     Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SaveButton"
                     Content="_Save"

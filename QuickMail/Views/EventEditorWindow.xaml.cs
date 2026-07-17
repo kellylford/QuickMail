@@ -36,7 +36,10 @@ public partial class EventEditorWindow : Window
             TitleBox.Focus();
             TitleBox.SelectAll();
             AccessibilityHelper.Announce(this,
-                "Tab through the fields. Press Control plus Enter to save, Escape to cancel.",
+                vm.IsRecurringEdit
+                    ? "This is a repeating event. Choose what to change: this event only, or all events " +
+                      "in the series. Tab through the fields. Press Control plus Enter to save, Escape to cancel."
+                    : "Tab through the fields. Press Control plus Enter to save, Escape to cancel.",
                 category: AnnouncementCategory.Hint);
         };
     }

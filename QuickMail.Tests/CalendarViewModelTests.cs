@@ -292,6 +292,92 @@ public class CalendarViewModelTests
     }
 
     [Fact]
+    public async Task ExDate_SkipsThatOccurrenceOnly()
+    {
+        var start = DateTime.Today.AddHours(9);
+        var master = MakeRecurring("x1", start, "FREQ=DAILY;COUNT=5");
+        master.AddExDate(start.AddDays(2)); // exclude the third day
+        var vm = MakeVm(new List<CalendarEvent> { master });
+        await vm.LoadAsync();
+
+        Assert.Equal(4, vm.VisibleEvents.Count);
+        Assert.DoesNotContain(vm.VisibleEvents, e => e.StartTime == start.AddDays(2));
+    }
+
+    [Fact]
+    public async Task DeleteOccurrence_ExDatesMasterAndKeepsSeries()
+    {
+        var start = DateTime.Today.AddHours(9);
+        var svc = new StubCalendarService { StoredEvents = [MakeRecurring("d1", start, "FREQ=DAILY;COUNT=4")] };
+        var vm = new CalendarViewModel(svc, onlineMode: false, showDeclinedEvents: false);
+        await vm.LoadAsync();
+        Assert.Equal(4, vm.VisibleEvents.Count);
+
+        var second = vm.VisibleEvents[1];             // tomorrow's occurrence
+        Action? deleteOne = null;
+        vm.RecurringDeleteConfirmRequested += (_, one, _) => deleteOne = one;
+        vm.DeleteEventCommand.Execute(second);
+        Assert.NotNull(deleteOne);
+        deleteOne!();
+
+        // Master survives with an EXDATE; only 3 occurrences remain.
+        Assert.Single(svc.StoredEvents);
+        Assert.Contains(svc.StoredEvents[0].GetExDates(), d => d == start.AddDays(1));
+        Assert.Equal(3, vm.VisibleEvents.Count);
+    }
+
+    [Fact]
+    public async Task EditThisEventOnly_DetachesOccurrence()
+    {
+        var start = DateTime.Today.AddHours(9);
+        var svc = new StubCalendarService { StoredEvents = [MakeRecurring("m1", start, "FREQ=DAILY;COUNT=3")] };
+        var vm = new CalendarViewModel(svc, onlineMode: false, showDeclinedEvents: false);
+        await vm.LoadAsync();
+
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.EditEventCommand.Execute(vm.VisibleEvents[1]); // tomorrow's occurrence
+
+        Assert.NotNull(editor);
+        Assert.True(editor!.IsRecurringEdit);
+        Assert.True(editor.EditThisEventOnly);            // default scope
+        editor.Title = "Moved just this one";
+        editor.SaveCommand.Execute(null);
+
+        // Master got an EXDATE; a standalone copy exists with a new uid.
+        Assert.Equal(2, svc.StoredEvents.Count);
+        var master = svc.StoredEvents.First(e => e.Uid == "m1");
+        var detached = svc.StoredEvents.First(e => e.Uid != "m1");
+        Assert.Single(master.GetExDates());
+        Assert.Equal("Moved just this one", detached.Summary);
+        Assert.False(detached.IsRecurring);
+
+        // Still 3 visible: 2 remaining series occurrences + the detached copy.
+        Assert.Equal(3, vm.VisibleEvents.Count);
+    }
+
+    [Fact]
+    public async Task EditAllEvents_UpdatesSeriesMaster()
+    {
+        var start = DateTime.Today.AddHours(9);
+        var svc = new StubCalendarService { StoredEvents = [MakeRecurring("m2", start, "FREQ=DAILY;COUNT=3")] };
+        var vm = new CalendarViewModel(svc, onlineMode: false, showDeclinedEvents: false);
+        await vm.LoadAsync();
+
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.EditEventCommand.Execute(vm.VisibleEvents[1]);
+
+        editor!.EditThisEventOnly = false;   // All events
+        editor.Title = "Whole series renamed";
+        editor.SaveCommand.Execute(null);
+
+        Assert.Single(svc.StoredEvents);     // still one master, no detached copy
+        Assert.Equal("Whole series renamed", svc.StoredEvents[0].Summary);
+        Assert.True(svc.StoredEvents[0].IsRecurring);
+    }
+
+    [Fact]
     public async Task RecurringWithCount_StopsAfterN()
     {
         var start = DateTime.Today.AddHours(9);

@@ -121,6 +121,9 @@ public class LocalStoreService : ILocalStoreService
         // RRULE string for repeating appointments (null for one-offs). Idempotent ALTER.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN recurrence_rule TEXT DEFAULT NULL;");
 
+        // Excluded occurrence starts for a recurring master ("delete just this one"). Idempotent ALTER.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN exdates TEXT DEFAULT NULL;");
+
         RunDataMigrations(conn);
     }
 
@@ -800,8 +803,8 @@ public class LocalStoreService : ILocalStoreService
             INSERT INTO CalendarEvent(uid, account_id, summary, description, location,
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
                                       sequence, method, source_message_id, source_folder, response_status,
-                                      is_all_day, recurrence_rule)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule)
+                                      is_all_day, recurrence_rule, exdates)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -815,7 +818,8 @@ public class LocalStoreService : ILocalStoreService
                 source_message_id = excluded.source_message_id,
                 source_folder     = excluded.source_folder,
                 is_all_day        = excluded.is_all_day,
-                recurrence_rule   = excluded.recurrence_rule;
+                recurrence_rule   = excluded.recurrence_rule,
+                exdates           = excluded.exdates;
             """;
         cmd.Parameters.AddWithValue("$uid",  evt.Uid);
         cmd.Parameters.AddWithValue("$aid",  evt.AccountId.ToString());
@@ -833,6 +837,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$rs",   (int)evt.ResponseStatus);
         cmd.Parameters.AddWithValue("$allday", evt.IsAllDay ? 1 : 0);
         cmd.Parameters.AddWithValue("$rrule", (object?)evt.RecurrenceRule ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$exd",  (object?)evt.ExDates ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
@@ -845,7 +850,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
-                   source_folder, response_status, is_all_day, recurrence_rule
+                   source_folder, response_status, is_all_day, recurrence_rule, exdates
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -870,6 +875,7 @@ public class LocalStoreService : ILocalStoreService
                 ResponseStatus   = (CalendarResponseStatus)r.GetInt32(13),
                 IsAllDay         = !r.IsDBNull(14) && r.GetInt32(14) != 0,
                 RecurrenceRule   = r.IsDBNull(15) ? null : r.GetString(15),
+                ExDates          = r.IsDBNull(16) ? null : r.GetString(16),
             });
         }
         return list;

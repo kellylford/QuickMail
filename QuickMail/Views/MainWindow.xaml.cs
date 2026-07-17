@@ -397,6 +397,7 @@ public partial class MainWindow : Window
                 vm.OpenCalendarSourceMessage(accountId, folder, messageId);
             vm.CalendarVm.EditorRequested += OpenEventEditor;
             vm.CalendarVm.DeleteConfirmRequested += ConfirmDeleteAppointment;
+            vm.CalendarVm.RecurringDeleteConfirmRequested += ConfirmDeleteRecurring;
             vm.CalendarVm.ListFocusRequested += () =>
                 Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
             vm.CalendarVm.ExportRequested += SaveAppointmentIcs;
@@ -2309,6 +2310,24 @@ public partial class MainWindow : Window
             MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
         if (result == MessageBoxResult.Yes)
             confirmed();
+    }
+
+    /// <summary>
+    /// Three-way confirm for deleting from a repeating series:
+    /// Yes = just this occurrence, No = the entire series, Cancel = nothing.
+    /// </summary>
+    private void ConfirmDeleteRecurring(CalendarEvent evt, Action deleteOccurrence, Action deleteSeries)
+    {
+        var when = evt.StartTime?.ToString("ddd, MMM d 'at' t") ?? "";
+        var result = MessageBox.Show(this,
+            $"“{evt.Summary}” repeats.\n\n" +
+            $"Yes: delete only this occurrence ({when}).\n" +
+            "No: delete the entire series.\n" +
+            "Cancel: keep everything.",
+            "Delete repeating appointment",
+            MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        if (result == MessageBoxResult.Yes) deleteOccurrence();
+        else if (result == MessageBoxResult.No) deleteSeries();
     }
 
     private void FocusItemAt(int idx)
