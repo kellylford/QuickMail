@@ -395,6 +395,11 @@ public partial class MainWindow : Window
                 AccessibilityHelper.Announce(this, text, interrupt: true, category: category);
             vm.CalendarVm.OpenSourceMessageRequested += (accountId, folder, messageId) =>
                 vm.OpenCalendarSourceMessage(accountId, folder, messageId);
+            vm.CalendarVm.EditorRequested += OpenEventEditor;
+            vm.CalendarVm.DeleteConfirmRequested += ConfirmDeleteAppointment;
+            vm.CalendarVm.ListFocusRequested += () =>
+                Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+            vm.CalendarVm.ExportRequested += SaveAppointmentIcs;
         }
 
         vm.PropertyChanged += async (_, e) =>
@@ -1181,9 +1186,60 @@ public partial class MainWindow : Window
 
         _registry.Register(new CommandDefinition(
             id: "calendar.openSourceMessage", category: "View", title: "Open Calendar Event Source Message",
-            execute: () => _vm.CalendarVm?.OpenSourceMessageCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            execute: ActivateSelectedCalendarEvent,
             defaultKey: Key.Return, defaultModifiers: ModifierKeys.None,
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        // ── Appointment authoring (Calendar category) ──
+        _registry.Register(new CommandDefinition(
+            id: "calendar.newEvent", category: "Calendar", title: "New Appointment",
+            execute: () => _vm.CalendarVm?.NewEventCommand.Execute(null),
+            defaultKey: Key.N, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.editEvent", category: "Calendar", title: "Edit Appointment",
+            execute: () => _vm.CalendarVm?.EditEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            defaultKey: Key.E, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.deleteEvent", category: "Calendar", title: "Delete Appointment",
+            execute: () => _vm.CalendarVm?.DeleteEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.exportEvent", category: "Calendar", title: "Export Appointment as .ics",
+            execute: () => _vm.CalendarVm?.ExportEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        // ── Calendar views + period navigation (Calendar category) ──
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewAgenda", category: "Calendar", title: "Agenda View",
+            execute: () => _vm.CalendarVm?.ShowAgendaCommand.Execute(null),
+            defaultKey: Key.A, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewDay", category: "Calendar", title: "Day View",
+            execute: () => _vm.CalendarVm?.ShowDayCommand.Execute(null),
+            defaultKey: Key.D, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewWeek", category: "Calendar", title: "Week View",
+            execute: () => _vm.CalendarVm?.ShowWeekCommand.Execute(null),
+            defaultKey: Key.W, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.prevPeriod", category: "Calendar", title: "Previous Day or Week",
+            execute: () => _vm.CalendarVm?.PreviousPeriodCommand.Execute(null),
+            defaultKey: Key.Left, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.nextPeriod", category: "Calendar", title: "Next Day or Week",
+            execute: () => _vm.CalendarVm?.NextPeriodCommand.Execute(null),
+            defaultKey: Key.Right, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
 
         // Install the WM_CONTEXTMENU hook before WebView2 init. WebView2 initialization
         // creates an out-of-process HWND that grabs Win32 focus without WPF tracking it,
@@ -2085,6 +2141,96 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
         }
+    }
+
+    // ── Calendar authoring: toolbar buttons, editor launch, delete confirm, Enter activation ──
+
+    private void CalendarAgenda_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowAgendaCommand.Execute(null);
+    private void CalendarDay_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowDayCommand.Execute(null);
+    private void CalendarWeek_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowWeekCommand.Execute(null);
+    private void CalendarPrev_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.PreviousPeriodCommand.Execute(null);
+    private void CalendarNext_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.NextPeriodCommand.Execute(null);
+    private void CalendarToday_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ToggleTodayFilterCommand.Execute(null);
+
+    private void CalendarNew_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.NewEventCommand.Execute(null);
+
+    private void CalendarEdit_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.EditEventCommand.Execute(_vm.CalendarVm.SelectedEvent);
+
+    private void CalendarDelete_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.DeleteEventCommand.Execute(_vm.CalendarVm.SelectedEvent);
+
+    /// <summary>
+    /// Enter on the calendar list: edit a locally-created appointment, or open the source
+    /// invitation email for a harvested invite (the original calendar behaviour).
+    /// </summary>
+    private void ActivateSelectedCalendarEvent()
+    {
+        var evt = _vm.CalendarVm?.SelectedEvent;
+        if (evt == null) return;
+        if (evt.IsUserCreated)
+            _vm.CalendarVm?.EditEventCommand.Execute(evt);
+        else
+            _vm.CalendarVm?.OpenSourceMessageCommand.Execute(evt);
+    }
+
+    /// <summary>Opens the modeless appointment editor and restores focus to the list on close.</summary>
+    private void OpenEventEditor(EventEditorViewModel editorVm)
+    {
+        var editor = new EventEditorWindow(editorVm) { Owner = this };
+        editor.Closed += (_, _) =>
+        {
+            // Return focus to the calendar list (virtualised — re-focus the selected row).
+            Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+        };
+        editor.Show();
+    }
+
+    /// <summary>Shows a Save dialog and writes the exported .ics file (View concern).</summary>
+    private void SaveAppointmentIcs(string suggestedFileName, string icsBody)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = suggestedFileName,
+            DefaultExt = ".ics",
+            Filter = "Calendar file (*.ics)|*.ics|All files (*.*)|*.*",
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            System.IO.File.WriteAllText(dialog.FileName, icsBody);
+            AccessibilityHelper.Announce(this,
+                $"Appointment exported to {System.IO.Path.GetFileName(dialog.FileName)}.",
+                category: AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Export appointment .ics", ex);
+            AccessibilityHelper.Announce(this,
+                "Could not save the file. See the log for details.",
+                category: AnnouncementCategory.Result);
+        }
+    }
+
+    /// <summary>Confirms deleting an appointment (View concern); invokes the callback on Yes.</summary>
+    private void ConfirmDeleteAppointment(CalendarEvent evt, Action confirmed)
+    {
+        var prompt = evt.IsRecurring
+            ? $"Delete the repeating appointment “{evt.Summary}” and all its occurrences?"
+            : $"Delete the appointment “{evt.Summary}”?";
+        var result = MessageBox.Show(this, prompt,
+            "Delete appointment",
+            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (result == MessageBoxResult.Yes)
+            confirmed();
     }
 
     private void FocusItemAt(int idx)

@@ -79,6 +79,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _contactListShowFieldLabels;
 
     [ObservableProperty]
+    private bool _calendarListShowFieldLabels;
+
+    [ObservableProperty]
     private bool _confirmEmptyTrash;
 
     [ObservableProperty]
@@ -260,6 +263,7 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceFormattingWhileNavigating = cfg.AnnounceFormattingWhileNavigating;
         AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ContactListShowFieldLabels       = cfg.ContactListShowFieldLabels;
+        CalendarListShowFieldLabels      = cfg.CalendarListShowFieldLabels;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         NotifyOnNewMail                  = cfg.NotifyOnNewMail;
         CloseToTray                      = cfg.CloseToTray;
@@ -328,6 +332,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceFormattingWhileNavigating = AnnounceFormattingWhileNavigating;
         cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ContactListShowFieldLabels       = ContactListShowFieldLabels;
+        cfg.CalendarListShowFieldLabels      = CalendarListShowFieldLabels;
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
         cfg.CloseToTray                      = CloseToTray;

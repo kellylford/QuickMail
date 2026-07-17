@@ -297,6 +297,11 @@
                                           IsChecked="{Binding ContactListShowFieldLabels, Mode=TwoWay}"
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Show field labels in the address book contact list accessible names"/>
+
+                                <CheckBox Content="Show field labels in the _calendar event list"
+                                          IsChecked="{Binding CalendarListShowFieldLabels, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Show field labels in the calendar event list accessible names"/>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

@@ -65,6 +65,17 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/People.Read",
     ];
 
+    // Calendar read/write scope for Graph calendar sync (full-calendar spec, M4). Explicit scope so
+    // it works for BOTH personal and work/school accounts — same reasoning as GraphContactScopes.
+    // Requested only when the user adds a Microsoft calendar. NOTE: work/school accounts sign in with
+    // `.default`, so for them Calendars.ReadWrite must ALSO be declared on the app registration (see
+    // docs/ENTRA-APP-REGISTRATION.md §3); this explicit array is what personal (MSA) accounts request.
+    // Forward-declared now so M4 has the scope wired; not yet requested by any code path.
+    public static readonly string[] GraphCalendarScopes =
+    [
+        "https://graph.microsoft.com/Calendars.ReadWrite",
+    ];
+
     // Authoritative "is this a personal Microsoft account" signal: every consumer account lives in the
     // well-known MSA "consumers" tenant. Detected from the MSAL account at sign-in and persisted on
     // AccountModel (#233), so it's correct even for personal accounts on custom/vanity domains.

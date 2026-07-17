@@ -353,26 +353,47 @@
                           InputGestureText="Ctrl+Shift+H"/>
                 <Separator/>
                 <MenuItem Header="View _Mode">
+                    <!-- Mail view modes — hidden while the calendar is open. -->
                     <MenuItem Header="_Messages"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                               IsCheckable="True"
                               IsChecked="{Binding IsMessagesView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="Messages"/>
                     <MenuItem Header="_Conversations"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                               IsCheckable="True"
                               IsChecked="{Binding IsConversationsView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="Conversations"/>
                     <MenuItem Header="By _Sender"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                               IsCheckable="True"
                               IsChecked="{Binding IsFromView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="From"/>
                     <MenuItem Header="By _Recipient"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                               IsCheckable="True"
                               IsChecked="{Binding IsToView, Mode=OneWay}"
                               Command="{Binding SetViewModeCommand}"
                               CommandParameter="To"/>
+                    <!-- Calendar view modes — shown only while the calendar is open. -->
+                    <MenuItem Header="_Agenda"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                              IsCheckable="True"
+                              IsChecked="{Binding CalendarVm.IsAgendaView, Mode=OneWay}"
+                              Command="{Binding CalendarVm.ShowAgendaCommand}"/>
+                    <MenuItem Header="_Day"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                              IsCheckable="True"
+                              IsChecked="{Binding CalendarVm.IsDayView, Mode=OneWay}"
+                              Command="{Binding CalendarVm.ShowDayCommand}"/>
+                    <MenuItem Header="_Week"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                              IsCheckable="True"
+                              IsChecked="{Binding CalendarVm.IsWeekView, Mode=OneWay}"
+                              Command="{Binding CalendarVm.ShowWeekCommand}"/>
                 </MenuItem>
                 <MenuItem Header="F_ilter">
                     <MenuItem Header="S_how All"
@@ -660,25 +681,44 @@
                     <ContextMenu AutomationProperties.Name="View mode"
                                  DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                         <MenuItem Header="_Messages"
+                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsMessagesView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
                                   CommandParameter="Messages"/>
                         <MenuItem Header="_Conversations"
+                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsConversationsView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
                                   CommandParameter="Conversations"/>
                         <MenuItem Header="_From"
+                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsFromView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
                                   CommandParameter="From"/>
                         <MenuItem Header="_To"
+                                  Visibility="{Binding IsCalendarView, Converter={StaticResource InverseBoolToVisibilityConverter}}"
                                   IsCheckable="True"
                                   IsChecked="{Binding IsToView, Mode=OneWay}"
                                   Command="{Binding SetViewModeCommand}"
                                   CommandParameter="To"/>
+                        <MenuItem Header="_Agenda"
+                                  Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding CalendarVm.IsAgendaView, Mode=OneWay}"
+                                  Command="{Binding CalendarVm.ShowAgendaCommand}"/>
+                        <MenuItem Header="_Day"
+                                  Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding CalendarVm.IsDayView, Mode=OneWay}"
+                                  Command="{Binding CalendarVm.ShowDayCommand}"/>
+                        <MenuItem Header="_Week"
+                                  Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                                  IsCheckable="True"
+                                  IsChecked="{Binding CalendarVm.IsWeekView, Mode=OneWay}"
+                                  Command="{Binding CalendarVm.ShowWeekCommand}"/>
                     </ContextMenu>
                 </Button.ContextMenu>
             </Button>
@@ -1099,40 +1139,107 @@
                     <!-- Standard list view and conversation tree occupy the same space;
                          only one is visible at a time based on ViewMode. -->
                     <Grid>
-                    <!-- Calendar event list — shown in place of the message list when the
-                         Calendar virtual folder is selected. Behaves like the flat message
-                         list: Up/Down to browse, Enter to open the source invite, T to
-                         filter to today, F5 to refresh, Escape to return to the folder tree. -->
-                    <ListBox x:Name="CalendarList"
-                             AutomationProperties.Name="Calendar events"
-                             Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
-                             ItemsSource="{Binding CalendarVm.Events}"
-                             SelectedItem="{Binding CalendarVm.SelectedEvent, Mode=TwoWay}"
-                             BorderThickness="0"
-                             TabIndex="3"
-                             KeyboardNavigation.TabNavigation="Once"
-                             KeyboardNavigation.DirectionalNavigation="Contained"
-                             VirtualizingPanel.IsVirtualizing="True"
-                             VirtualizingPanel.VirtualizationMode="Recycling"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             ScrollViewer.VerticalScrollBarVisibility="Auto"
-                             GotKeyboardFocus="CalendarList_GotKeyboardFocus"
-                             PreviewKeyDown="CalendarList_PreviewKeyDown">
-                        <ListBox.ItemContainerStyle>
-                            <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                                <Setter Property="AutomationProperties.Name" Value="{Binding DisplayLine}"/>
-                                <Setter Property="Padding" Value="8,4"/>
-                            </Style>
-                        </ListBox.ItemContainerStyle>
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <StackPanel>
-                                    <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock Text="{Binding DisplayLine}" FontSize="{DynamicResource Theme.FontSizeSmall}" Opacity="0.75" TextTrimming="CharacterEllipsis"/>
-                                </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <!-- Calendar (master/detail) — shown in place of the message list when the
+                         Calendar virtual folder is selected. A columned event list (Subject /
+                         When / Status) on top, a read-only Details pane below. Up/Down to browse,
+                         Enter to open (edit an appointment, or the source invite), N new, E edit,
+                         Delete to remove, T today, F5 refresh, Escape to return to the folder tree. -->
+                    <Grid Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="2*"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="1*"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- View switch + period navigation. Arrows stay within the group. -->
+                        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,4,6,0"
+                                    KeyboardNavigation.TabNavigation="Continue"
+                                    KeyboardNavigation.DirectionalNavigation="Contained">
+                            <Button Content="_Agenda" AutomationProperties.Name="Agenda view"
+                                    MinWidth="64" Margin="0,0,4,0" Click="CalendarAgenda_Click"/>
+                            <Button Content="_Day" AutomationProperties.Name="Day view"
+                                    MinWidth="52" Margin="0,0,4,0" Click="CalendarDay_Click"/>
+                            <Button Content="_Week" AutomationProperties.Name="Week view"
+                                    MinWidth="56" Margin="0,0,12,0" Click="CalendarWeek_Click"/>
+                            <Button Content="◀" AutomationProperties.Name="Previous period"
+                                    MinWidth="32" Margin="0,0,4,0" Click="CalendarPrev_Click"/>
+                            <Button Content="Today" AutomationProperties.Name="Go to today"
+                                    MinWidth="56" Margin="0,0,4,0" Click="CalendarToday_Click"/>
+                            <Button Content="▶" AutomationProperties.Name="Next period"
+                                    MinWidth="32" Click="CalendarNext_Click"/>
+                        </StackPanel>
+
+                        <!-- Period label + item toolbar -->
+                        <DockPanel Grid.Row="1" Margin="6,4" LastChildFill="False">
+                            <TextBlock DockPanel.Dock="Left"
+                                       Text="{Binding CalendarVm.PeriodLabel}"
+                                       FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal"
+                                        KeyboardNavigation.TabNavigation="Continue"
+                                        KeyboardNavigation.DirectionalNavigation="Contained">
+                                <Button Content="_New" AutomationProperties.Name="New appointment"
+                                        MinWidth="64" Margin="0,0,6,0" Click="CalendarNew_Click"/>
+                                <Button Content="_Edit" AutomationProperties.Name="Edit appointment"
+                                        MinWidth="64" Margin="0,0,6,0" Click="CalendarEdit_Click"/>
+                                <Button Content="De_lete" AutomationProperties.Name="Delete appointment"
+                                        MinWidth="64" Click="CalendarDelete_Click"/>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <ListView x:Name="CalendarList"
+                                  Grid.Row="2"
+                                  AutomationProperties.Name="Calendar events"
+                                  ItemsSource="{Binding CalendarVm.Events}"
+                                  SelectedItem="{Binding CalendarVm.SelectedEvent, Mode=TwoWay}"
+                                  BorderThickness="0"
+                                  TabIndex="3"
+                                  KeyboardNavigation.TabNavigation="Once"
+                                  KeyboardNavigation.DirectionalNavigation="Contained"
+                                  VirtualizingPanel.IsVirtualizing="True"
+                                  VirtualizingPanel.VirtualizationMode="Recycling"
+                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                  GotKeyboardFocus="CalendarList_GotKeyboardFocus"
+                                  PreviewKeyDown="CalendarList_PreviewKeyDown">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                    <!-- Row name = the stamped accessible name (data-only or field-labeled
+                                         per the CalendarListShowFieldLabels setting); the visual columns
+                                         aid sighted users. -->
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Subject" Width="260"
+                                                    DisplayMemberBinding="{Binding Summary}"/>
+                                    <GridViewColumn Header="When" Width="170"
+                                                    DisplayMemberBinding="{Binding WhenText}"/>
+                                    <GridViewColumn Header="Status" Width="110"
+                                                    DisplayMemberBinding="{Binding StatusText}"/>
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+
+                        <GridSplitter Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
+                                      ResizeBehavior="PreviousAndNext" ResizeDirection="Rows"
+                                      IsTabStop="False"
+                                      Background="{DynamicResource Theme.Border}"/>
+
+                        <TextBox x:Name="CalendarDetails"
+                                 Grid.Row="4"
+                                 AutomationProperties.Name="Appointment details"
+                                 Text="{Binding CalendarVm.SelectedEventDetail, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 TabIndex="4"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 BorderThickness="0"
+                                 Margin="4"/>
+                    </Grid>
 
                     <ListView x:Name="MessageList"
                               AutomationProperties.Name="Messages"

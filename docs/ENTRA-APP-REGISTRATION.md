@@ -77,6 +77,7 @@ declared scopes). Both must still be declared here.
 | --- | --- |
 | `Mail.ReadWrite` | Read/move/flag/delete mail; save drafts (Graph backend) |
 | `Mail.Send` | Send mail (Graph backend) |
+| `Calendars.ReadWrite` | Calendar sync — read/create/update/delete events (full-calendar spec M4). Added 2026-07-16 via the §7 device-code runbook (scope id `1ec239c2-d7c9-4623-a91a-a9775856bb36`). Code side: `OAuthService.GraphCalendarScopes` (explicit scope for personal accounts; work/school gets it via `.default`). |
 | `MailboxSettings.ReadWrite` | Server-side Inbox rules (messageRule API). **Superset of `MailboxSettings.Read`** — declare ReadWrite, not Read. |
 | `User.Read` | Resolve the signed-in user's address/profile |
 | `User.ReadBasic.All` | Resolve other users (recipient display names) |

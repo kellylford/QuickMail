@@ -136,10 +136,10 @@ public class IcsModel
                         model.Location = UnescapeIcsText(value);
                         break;
                     case "DTSTART":
-                        model.StartTime = ParseIcsDateTime(value);
+                        model.StartTime = ParseIcsDateTime(value, ExtractTzidParam(prop));
                         break;
                     case "DTEND":
-                        model.EndTime = ParseIcsDateTime(value);
+                        model.EndTime = ParseIcsDateTime(value, ExtractTzidParam(prop));
                         break;
                     case "UID":
                         model.Uid = value;
@@ -194,6 +194,54 @@ public class IcsModel
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Serializes a calendar event to a standalone .ics file body (METHOD:PUBLISH) suitable for
+    /// saving to disk and importing into any calendar application. All-day events use DATE values;
+    /// timed events use UTC; a recurrence rule is carried through as RRULE.
+    /// </summary>
+    public static string ExportEvent(CalendarEvent evt)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("BEGIN:VCALENDAR");
+        sb.AppendLine("VERSION:2.0");
+        sb.AppendLine("PRODID:-//QuickMail//EN");
+        sb.AppendLine("METHOD:PUBLISH");
+        sb.AppendLine("BEGIN:VEVENT");
+        sb.AppendLine($"UID:{(string.IsNullOrWhiteSpace(evt.Uid) ? Guid.NewGuid().ToString("N") : evt.Uid)}");
+        sb.AppendLine($"DTSTAMP:{DateTime.UtcNow:yyyyMMdd'T'HHmmss'Z'}");
+
+        if (evt.StartTime.HasValue)
+        {
+            if (evt.IsAllDay)
+            {
+                // All-day: DATE values; DTEND is exclusive per RFC 5545, so day after the last day.
+                var startDay = evt.StartTime.Value.Date;
+                var endDayExclusive = (evt.EndTime ?? evt.StartTime.Value).Date.AddDays(1);
+                sb.AppendLine($"DTSTART;VALUE=DATE:{startDay:yyyyMMdd}");
+                sb.AppendLine($"DTEND;VALUE=DATE:{endDayExclusive:yyyyMMdd}");
+            }
+            else
+            {
+                sb.AppendLine($"DTSTART:{evt.StartTime.Value.ToUniversalTime():yyyyMMdd'T'HHmmss'Z'}");
+                if (evt.EndTime.HasValue)
+                    sb.AppendLine($"DTEND:{evt.EndTime.Value.ToUniversalTime():yyyyMMdd'T'HHmmss'Z'}");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(evt.RecurrenceRule))
+            sb.AppendLine($"RRULE:{evt.RecurrenceRule}");
+        if (!string.IsNullOrWhiteSpace(evt.Summary))
+            sb.AppendLine($"SUMMARY:{EscapeIcsText(evt.Summary)}");
+        if (!string.IsNullOrWhiteSpace(evt.Location))
+            sb.AppendLine($"LOCATION:{EscapeIcsText(evt.Location)}");
+        if (!string.IsNullOrWhiteSpace(evt.Description))
+            sb.AppendLine($"DESCRIPTION:{EscapeIcsText(evt.Description)}");
+
+        sb.AppendLine("END:VEVENT");
+        sb.AppendLine("END:VCALENDAR");
+        return sb.ToString();
+    }
+
     // ── Parsing helpers ────────────────────────────────────────────────────────
 
     /// <summary>ICS lines can be folded (continued on next line with a leading space/tab).</summary>
@@ -238,12 +286,13 @@ public class IcsModel
     }
 
     /// <summary>
-    /// Parses an ICS datetime value. Handles both UTC (ending in Z) and local time.
-    /// LIMITATION: TZID parameters are ignored; times without a 'Z' suffix are
-    /// treated as local machine time, which may be incorrect for attendees in
-    /// different time zones.
+    /// Parses an ICS datetime value, honoring a TZID parameter when present. A value ending in
+    /// 'Z' is UTC. A value with a resolvable <paramref name="tzid"/> is interpreted in that zone
+    /// and converted to machine-local time, so a 10:00 Eastern meeting displays correctly for a
+    /// Pacific user. A value with no TZID (or an unresolvable one) falls back to the historical
+    /// behavior: treated as machine-local time.
     /// </summary>
-    private static DateTime? ParseIcsDateTime(string value)
+    private static DateTime? ParseIcsDateTime(string value, string? tzid = null)
     {
         // Formats: 20260101T120000Z, 20260101T120000, 20260101
         value = value.Trim();
@@ -252,19 +301,60 @@ public class IcsModel
             var isUtc = value.EndsWith('Z');
             var datePart = value[..8];
             var timePart = value.Substring(9, 6);
-            if (DateTime.TryParseExact($"{datePart}{timePart}",
-                    isUtc ? "yyyyMMddHHmmss" : "yyyyMMddHHmmss",
+
+            if (isUtc)
+            {
+                if (DateTime.TryParseExact($"{datePart}{timePart}", "yyyyMMddHHmmss",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                        out var utc))
+                    return utc;
+                return null;
+            }
+
+            if (DateTime.TryParseExact($"{datePart}{timePart}", "yyyyMMddHHmmss",
                     System.Globalization.CultureInfo.InvariantCulture,
-                    isUtc ? System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal
-                          : System.Globalization.DateTimeStyles.AssumeLocal,
-                    out var dt))
-                return dt;
+                    System.Globalization.DateTimeStyles.None,
+                    out var naive))
+            {
+                // TZID present and resolvable: the naive time is wall-clock in that zone.
+                // .NET 8 resolves both IANA ids ("America/New_York") and Windows ids
+                // ("Eastern Standard Time") on Windows 10+ via ICU.
+                if (!string.IsNullOrWhiteSpace(tzid)
+                    && TimeZoneInfo.TryFindSystemTimeZoneById(tzid, out var zone))
+                {
+                    var utcTime = TimeZoneInfo.ConvertTimeToUtc(
+                        DateTime.SpecifyKind(naive, DateTimeKind.Unspecified), zone);
+                    return utcTime.ToLocalTime();
+                }
+                // No/unknown TZID: historical behavior — assume machine-local.
+                return DateTime.SpecifyKind(naive, DateTimeKind.Local);
+            }
         }
         if (value.Length >= 8 && DateTime.TryParseExact(value[..8], "yyyyMMdd",
                 System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.AssumeLocal,
                 out var dateOnly))
             return dateOnly;
+        return null;
+    }
+
+    /// <summary>
+    /// Extracts the TZID parameter from a property name with parameters, e.g.
+    /// "DTSTART;TZID=America/Chicago" or "DTSTART;VALUE=DATE-TIME;TZID=\"Europe/Paris\"".
+    /// Returns null when absent. Quotes are stripped.
+    /// </summary>
+    internal static string? ExtractTzidParam(string propWithParams)
+    {
+        foreach (var part in propWithParams.Split(';'))
+        {
+            var trimmed = part.Trim();
+            if (trimmed.StartsWith("TZID=", StringComparison.OrdinalIgnoreCase))
+            {
+                var v = trimmed[5..].Trim().Trim('"');
+                return v.Length > 0 ? v : null;
+            }
+        }
         return null;
     }
 

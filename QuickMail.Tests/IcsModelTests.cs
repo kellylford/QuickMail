@@ -50,6 +50,148 @@ public class IcsModelTests
         Assert.Equal(14, model.StartTime.Value.Hour); // UTC
     }
 
+    // ── Parse: TZID handling ────────────────────────────────────────────────────
+
+    private static IcsModel? ParseWithDtstart(string dtstartLine) =>
+        IcsModel.Parse(string.Join("\r\n",
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "BEGIN:VEVENT",
+            "UID:tz-test@test.com",
+            "SUMMARY:TZ Test",
+            dtstartLine,
+            "END:VEVENT",
+            "END:VCALENDAR"));
+
+    [Fact]
+    public void Parse_DtstartWithIanaTzid_ConvertsToCorrectInstant()
+    {
+        var model = ParseWithDtstart("DTSTART;TZID=America/New_York:20260115T100000");
+
+        Assert.NotNull(model?.StartTime);
+        // Expected instant computed through TimeZoneInfo so the test passes on any machine zone.
+        var eastern = TimeZoneInfo.FindSystemTimeZoneById("America/New_York");
+        var expectedUtc = TimeZoneInfo.ConvertTimeToUtc(
+            new DateTime(2026, 1, 15, 10, 0, 0, DateTimeKind.Unspecified), eastern);
+        Assert.Equal(expectedUtc, model!.StartTime!.Value.ToUniversalTime());
+    }
+
+    [Fact]
+    public void Parse_DtstartWithWindowsTzid_ConvertsToCorrectInstant()
+    {
+        var model = ParseWithDtstart("DTSTART;TZID=Eastern Standard Time:20260115T100000");
+
+        Assert.NotNull(model?.StartTime);
+        var eastern = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+        var expectedUtc = TimeZoneInfo.ConvertTimeToUtc(
+            new DateTime(2026, 1, 15, 10, 0, 0, DateTimeKind.Unspecified), eastern);
+        Assert.Equal(expectedUtc, model!.StartTime!.Value.ToUniversalTime());
+    }
+
+    [Fact]
+    public void Parse_DtstartWithQuotedTzidAndExtraParams_StillResolves()
+    {
+        var model = ParseWithDtstart("DTSTART;VALUE=DATE-TIME;TZID=\"America/Chicago\":20260601T090000");
+
+        Assert.NotNull(model?.StartTime);
+        var central = TimeZoneInfo.FindSystemTimeZoneById("America/Chicago");
+        var expectedUtc = TimeZoneInfo.ConvertTimeToUtc(
+            new DateTime(2026, 6, 1, 9, 0, 0, DateTimeKind.Unspecified), central);
+        Assert.Equal(expectedUtc, model!.StartTime!.Value.ToUniversalTime());
+    }
+
+    [Fact]
+    public void Parse_DtstartWithUnknownTzid_FallsBackToMachineLocal()
+    {
+        var model = ParseWithDtstart("DTSTART;TZID=Not/AZone:20260115T100000");
+
+        Assert.NotNull(model?.StartTime);
+        // Historical fallback: treated as machine-local wall-clock 10:00.
+        Assert.Equal(10, model!.StartTime!.Value.Hour);
+        Assert.Equal(DateTimeKind.Local, model.StartTime.Value.Kind);
+    }
+
+    [Fact]
+    public void Parse_DtstartWithoutTzid_KeepsMachineLocalBehavior()
+    {
+        var model = ParseWithDtstart("DTSTART:20260115T100000");
+
+        Assert.NotNull(model?.StartTime);
+        Assert.Equal(10, model!.StartTime!.Value.Hour);
+    }
+
+    [Fact]
+    public void ExtractTzidParam_Variants()
+    {
+        Assert.Equal("America/Chicago", IcsModel.ExtractTzidParam("DTSTART;TZID=America/Chicago"));
+        Assert.Equal("Europe/Paris", IcsModel.ExtractTzidParam("DTSTART;VALUE=DATE-TIME;TZID=\"Europe/Paris\""));
+        Assert.Null(IcsModel.ExtractTzidParam("DTSTART"));
+        Assert.Null(IcsModel.ExtractTzidParam("DTSTART;VALUE=DATE"));
+    }
+
+    // ── ExportEvent (.ics export) ───────────────────────────────────────────────
+
+    [Fact]
+    public void ExportEvent_TimedEvent_RoundTripsThroughParse()
+    {
+        var evt = new CalendarEvent
+        {
+            Uid = "local-export1",
+            AccountId = CalendarEvent.LocalAccountId,
+            Summary = "Dentist, downtown",              // comma must survive escaping
+            Location = "12 Main St; Suite 4",           // semicolon too
+            Description = "Bring insurance card",
+            StartTimeTicks = new DateTime(2026, 7, 20, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks = new DateTime(2026, 7, 20, 14, 30, 0, DateTimeKind.Utc).Ticks,
+        };
+
+        var ics = IcsModel.ExportEvent(evt);
+        Assert.Contains("METHOD:PUBLISH", ics);
+        Assert.Contains("UID:local-export1", ics);
+
+        var parsed = IcsModel.Parse(ics);
+        Assert.NotNull(parsed);
+        Assert.Equal("Dentist, downtown", parsed!.Summary);
+        Assert.Equal("12 Main St; Suite 4", parsed.Location);
+        Assert.Equal("Bring insurance card", parsed.Description);
+        Assert.Equal(evt.StartTimeTicks, parsed.StartTime!.Value.ToUniversalTime().Ticks);
+        Assert.Equal(evt.EndTimeTicks, parsed.EndTime!.Value.ToUniversalTime().Ticks);
+    }
+
+    [Fact]
+    public void ExportEvent_AllDay_UsesDateValuesWithExclusiveEnd()
+    {
+        var evt = new CalendarEvent
+        {
+            Uid = "local-allday1",
+            AccountId = CalendarEvent.LocalAccountId,
+            Summary = "Holiday",
+            IsAllDay = true,
+            StartTimeTicks = new DateTime(2026, 7, 20).ToUniversalTime().Ticks,
+            EndTimeTicks = new DateTime(2026, 7, 20, 23, 59, 59).ToUniversalTime().Ticks,
+        };
+
+        var ics = IcsModel.ExportEvent(evt);
+        Assert.Contains("DTSTART;VALUE=DATE:20260720", ics);
+        Assert.Contains("DTEND;VALUE=DATE:20260721", ics); // exclusive end = next day
+    }
+
+    [Fact]
+    public void ExportEvent_Recurring_CarriesRRule()
+    {
+        var evt = new CalendarEvent
+        {
+            Uid = "local-rec1",
+            AccountId = CalendarEvent.LocalAccountId,
+            Summary = "Standup",
+            StartTimeTicks = DateTime.UtcNow.Ticks,
+            RecurrenceRule = "FREQ=WEEKLY;BYDAY=TU",
+        };
+
+        var ics = IcsModel.ExportEvent(evt);
+        Assert.Contains("RRULE:FREQ=WEEKLY;BYDAY=TU", ics);
+    }
+
     [Fact]
     public void Parse_MinimalValidIcs_ReturnsModel()
     {

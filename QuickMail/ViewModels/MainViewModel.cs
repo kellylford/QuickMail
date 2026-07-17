@@ -873,7 +873,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
         {
-            CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents);
+            CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents,
+                                               cfg.CalendarListShowFieldLabels);
         }
 
         _syncService.FolderSynced    += OnFolderSynced;
@@ -1340,6 +1341,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ReadAsPlainText   = cfg.ReadAsPlainText;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
         OnPropertyChanged(nameof(AnnounceFlagStatus));
+
+        // Push the calendar field-labels preference live (re-stamps the event list).
+        if (CalendarVm != null)
+            CalendarVm.ShowFieldLabels = cfg.CalendarListShowFieldLabels;
 
         var newPreviewLines = cfg.PreviewLines;
         var newShowPreview  = newPreviewLines > 0;

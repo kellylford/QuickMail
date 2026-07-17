@@ -114,6 +114,13 @@ public class LocalStoreService : ILocalStoreService
             """;
         cmd.ExecuteNonQuery();
 
+        // All-day flag for locally-authored appointments. Idempotent ALTER (RunMigration ignores
+        // "duplicate column" on databases that already have it).
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN is_all_day INTEGER NOT NULL DEFAULT 0;");
+
+        // RRULE string for repeating appointments (null for one-offs). Idempotent ALTER.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN recurrence_rule TEXT DEFAULT NULL;");
+
         RunDataMigrations(conn);
     }
 
@@ -792,8 +799,9 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             INSERT INTO CalendarEvent(uid, account_id, summary, description, location,
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
-                                      sequence, method, source_message_id, source_folder, response_status)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs)
+                                      sequence, method, source_message_id, source_folder, response_status,
+                                      is_all_day, recurrence_rule)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -805,7 +813,9 @@ public class LocalStoreService : ILocalStoreService
                 sequence          = excluded.sequence,
                 method            = excluded.method,
                 source_message_id = excluded.source_message_id,
-                source_folder     = excluded.source_folder;
+                source_folder     = excluded.source_folder,
+                is_all_day        = excluded.is_all_day,
+                recurrence_rule   = excluded.recurrence_rule;
             """;
         cmd.Parameters.AddWithValue("$uid",  evt.Uid);
         cmd.Parameters.AddWithValue("$aid",  evt.AccountId.ToString());
@@ -821,6 +831,8 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$smid", evt.SourceMessageId);
         cmd.Parameters.AddWithValue("$sf",   evt.SourceFolder);
         cmd.Parameters.AddWithValue("$rs",   (int)evt.ResponseStatus);
+        cmd.Parameters.AddWithValue("$allday", evt.IsAllDay ? 1 : 0);
+        cmd.Parameters.AddWithValue("$rrule", (object?)evt.RecurrenceRule ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
@@ -833,7 +845,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
-                   source_folder, response_status
+                   source_folder, response_status, is_all_day, recurrence_rule
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -856,6 +868,8 @@ public class LocalStoreService : ILocalStoreService
                 SourceMessageId  = r.GetString(11),
                 SourceFolder     = r.GetString(12),
                 ResponseStatus   = (CalendarResponseStatus)r.GetInt32(13),
+                IsAllDay         = !r.IsDBNull(14) && r.GetInt32(14) != 0,
+                RecurrenceRule   = r.IsDBNull(15) ? null : r.GetString(15),
             });
         }
         return list;

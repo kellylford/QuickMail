@@ -27,4 +27,7 @@ public interface ICalendarService
 
     /// <summary>Updates the response status for an event and persists it.</summary>
     Task SetResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status, CancellationToken ct = default);
+
+    /// <summary>Deletes an event (by Uid + AccountId) and refreshes the in-memory list.</summary>
+    Task DeleteEventAsync(string uid, Guid accountId, CancellationToken ct = default);
 }

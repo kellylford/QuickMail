@@ -22,6 +22,7 @@ public partial class CalendarViewModel : ObservableObject
     private readonly ICalendarService _calendarService;
     private readonly bool _onlineMode;
     private readonly bool _showDeclinedEvents;
+    private bool _showFieldLabels;
 
     /// <summary>
     /// Raised when a screen reader announcement is needed.
@@ -37,6 +38,31 @@ public partial class CalendarViewModel : ObservableObject
     /// </summary>
     public event Action<Guid, string, string>? OpenSourceMessageRequested;
 
+    /// <summary>
+    /// Raised when the user opens the appointment editor (New or Edit). The View opens a
+    /// modeless <c>EventEditorWindow</c> for the supplied editor VM and restores focus on close.
+    /// </summary>
+    public event Action<EventEditorViewModel>? EditorRequested;
+
+    /// <summary>
+    /// Raised to confirm deleting a locally-created appointment. The View shows a confirmation
+    /// and invokes the supplied callback only if the user confirms.
+    /// </summary>
+    public event Action<CalendarEvent, Action>? DeleteConfirmRequested;
+
+    /// <summary>
+    /// Raised after a create/edit/delete has persisted and the list rebuilt, so the View can
+    /// place focus on the correct (new/neighbouring) row. Fires after the async save completes,
+    /// which the editor window's synchronous Closed handler cannot wait for.
+    /// </summary>
+    public event Action? ListFocusRequested;
+
+    /// <summary>
+    /// Raised to save an event as a .ics file. The View shows a Save dialog for the suggested
+    /// file name and writes the supplied file body.
+    /// </summary>
+    public event Action<string, string>? ExportRequested;
+
     [ObservableProperty]
     private BatchObservableCollection<CalendarEvent> _events = [];
 
@@ -47,18 +73,82 @@ public partial class CalendarViewModel : ObservableObject
     [ObservableProperty]
     private bool _isTodayFilter;
 
+    /// <summary>Which slice of the calendar the list shows (Agenda / Day / Week).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PeriodLabel))]
+    [NotifyPropertyChangedFor(nameof(IsAgendaView))]
+    [NotifyPropertyChangedFor(nameof(IsDayView))]
+    [NotifyPropertyChangedFor(nameof(IsWeekView))]
+    private CalendarViewMode _viewMode = CalendarViewMode.Agenda;
+
+    /// <summary>Check-state helpers for the View Mode menu.</summary>
+    public bool IsAgendaView => ViewMode == CalendarViewMode.Agenda;
+    public bool IsDayView => ViewMode == CalendarViewMode.Day;
+    public bool IsWeekView => ViewMode == CalendarViewMode.Week;
+
+    /// <summary>The date Day/Week views are centred on. Ignored in Agenda.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PeriodLabel))]
+    private DateTime _referenceDate = DateTime.Today;
+
+    /// <summary>Human-readable label for the current view + period, shown above the list.</summary>
+    public string PeriodLabel => ViewMode switch
+    {
+        CalendarViewMode.Day  => "Day: " + ReferenceDate.ToString("dddd, MMMM d, yyyy"),
+        CalendarViewMode.Week => "Week of " + WeekStart(ReferenceDate).ToString("MMMM d")
+                                 + " to " + WeekStart(ReferenceDate).AddDays(6).ToString("MMMM d"),
+        _                     => IsTodayFilter ? "Agenda: today" : "Agenda: all appointments",
+    };
+
+    private static DateTime WeekStart(DateTime date)
+    {
+        var first = System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var diff = (7 + (date.DayOfWeek - first)) % 7;
+        return date.Date.AddDays(-diff);
+    }
+
     [ObservableProperty]
     private CalendarEvent? _selectedEvent;
+
+    /// <summary>Multi-line details of the selected event for the master/detail Details pane.</summary>
+    public string SelectedEventDetail => SelectedEvent?.DetailText ?? string.Empty;
+
+    /// <summary>True when the selected event is a locally-created appointment (editable/deletable).</summary>
+    public bool CanEditSelected => SelectedEvent?.IsUserCreated == true;
+
+    partial void OnSelectedEventChanged(CalendarEvent? value)
+    {
+        OnPropertyChanged(nameof(SelectedEventDetail));
+        OnPropertyChanged(nameof(CanEditSelected));
+    }
 
     /// <summary>True when the calendar pane is unavailable (--online mode).</summary>
     [ObservableProperty]
     private bool _isUnavailable;
 
-    public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents)
+    public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents,
+                             bool showFieldLabels = false)
     {
         _calendarService = calendarService;
         _onlineMode = onlineMode;
         _showDeclinedEvents = showDeclinedEvents;
+        _showFieldLabels = showFieldLabels;
+    }
+
+    /// <summary>
+    /// When true, each event row's accessible name uses field labels ("Subject …, when …"); when
+    /// false, concise data only. Mirrors the address book's ContactListShowFieldLabels. Updated live
+    /// from <c>MainViewModel.ApplySettings</c> when the setting changes.
+    /// </summary>
+    public bool ShowFieldLabels
+    {
+        get => _showFieldLabels;
+        set
+        {
+            if (_showFieldLabels == value) return;
+            _showFieldLabels = value;
+            ApplyFilters();
+        }
     }
 
     /// <summary>Loads events from the service and applies filters. Call on pane open.</summary>
@@ -90,18 +180,164 @@ public partial class CalendarViewModel : ObservableObject
                  AnnouncementCategory.Result);
     }
 
-    /// <summary>Toggles the Today filter. Bound to T.</summary>
+    /// <summary>
+    /// Bound to T. In Agenda, toggles the Today filter. In Day/Week, jumps the reference date to
+    /// today (the natural "go to today" action for those views).
+    /// </summary>
     [RelayCommand]
     private void ToggleTodayFilter()
     {
-        IsTodayFilter = !IsTodayFilter;
-        ApplyFilters();
-        if (IsTodayFilter)
-            Announce($"Today. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
-                     AnnouncementCategory.Result);
+        if (ViewMode == CalendarViewMode.Agenda)
+        {
+            IsTodayFilter = !IsTodayFilter;
+            OnPropertyChanged(nameof(PeriodLabel));
+            ApplyFilters();
+            Announce(IsTodayFilter
+                    ? $"Today. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}."
+                    : $"All events. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
+                AnnouncementCategory.Result);
+        }
         else
-            Announce($"All events. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
-                     AnnouncementCategory.Result);
+        {
+            ReferenceDate = DateTime.Today;
+            ApplyFilters();
+            AnnouncePeriod();
+        }
+    }
+
+    /// <summary>Switches to Agenda view. Bound to A.</summary>
+    [RelayCommand] private void ShowAgenda() => SwitchView(CalendarViewMode.Agenda);
+
+    /// <summary>Switches to Day view. Bound to D.</summary>
+    [RelayCommand] private void ShowDay() => SwitchView(CalendarViewMode.Day);
+
+    /// <summary>Switches to Week view. Bound to W.</summary>
+    [RelayCommand] private void ShowWeek() => SwitchView(CalendarViewMode.Week);
+
+    private void SwitchView(CalendarViewMode mode)
+    {
+        ViewMode = mode;
+        ApplyFilters();
+        SelectedEvent = Events.Count > 0 ? Events[0] : null;
+        AnnouncePeriod();
+    }
+
+    /// <summary>Moves to the previous day/week. Bound to Ctrl+Left. No-op in Agenda.</summary>
+    [RelayCommand] private void PreviousPeriod() => Page(-1);
+
+    /// <summary>Moves to the next day/week. Bound to Ctrl+Right. No-op in Agenda.</summary>
+    [RelayCommand] private void NextPeriod() => Page(+1);
+
+    private void Page(int direction)
+    {
+        switch (ViewMode)
+        {
+            case CalendarViewMode.Day:  ReferenceDate = ReferenceDate.AddDays(direction); break;
+            case CalendarViewMode.Week: ReferenceDate = ReferenceDate.AddDays(7 * direction); break;
+            default: return; // Agenda doesn't page
+        }
+        ApplyFilters();
+        SelectedEvent = Events.Count > 0 ? Events[0] : null;
+        AnnouncePeriod();
+    }
+
+    private void AnnouncePeriod()
+        => Announce($"{PeriodLabel}. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
+                    AnnouncementCategory.Status);
+
+    /// <summary>Opens the appointment editor to create a new local event. Bound to N / Ctrl+Shift+N.</summary>
+    [RelayCommand]
+    private void NewEvent()
+    {
+        if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
+
+        var editor = new EventEditorViewModel(DateTime.Now);
+        editor.Saved += evt => _ = SaveEditedEventAsync(evt, isNew: true);
+        EditorRequested?.Invoke(editor);
+    }
+
+    /// <summary>Opens the appointment editor to edit the selected local event. Bound to E / Enter on a local event.</summary>
+    [RelayCommand]
+    private void EditEvent(CalendarEvent? evt)
+    {
+        evt ??= SelectedEvent;
+        if (evt == null) return;
+        if (!evt.IsUserCreated)
+        {
+            Announce("Only appointments you created can be edited.", AnnouncementCategory.Result);
+            return;
+        }
+
+        // A recurring event in the list is an expanded occurrence; edit the stored master so the
+        // whole series is edited from its true start (v1: edits apply to the entire series).
+        var master = _calendarService.Events.FirstOrDefault(x => x.Uid == evt.Uid && x.AccountId == evt.AccountId) ?? evt;
+        var editor = new EventEditorViewModel(master);
+        editor.Saved += updated => _ = SaveEditedEventAsync(updated, isNew: false);
+        EditorRequested?.Invoke(editor);
+    }
+
+    /// <summary>Exports the selected event as a .ics file (any event, local or invite-sourced).</summary>
+    [RelayCommand]
+    private void ExportEvent(CalendarEvent? evt)
+    {
+        evt ??= SelectedEvent;
+        if (evt == null) return;
+
+        // For a recurring occurrence, export the series master so the RRULE and true start go out.
+        var master = _calendarService.Events.FirstOrDefault(x => x.Uid == evt.Uid && x.AccountId == evt.AccountId) ?? evt;
+        var ics = IcsModel.ExportEvent(master);
+
+        var baseName = string.IsNullOrWhiteSpace(master.Summary) ? "appointment" : master.Summary;
+        foreach (var c in System.IO.Path.GetInvalidFileNameChars())
+            baseName = baseName.Replace(c, '_');
+        ExportRequested?.Invoke(baseName + ".ics", ics);
+    }
+
+    /// <summary>Deletes the selected local event (with confirmation). Bound to Delete.</summary>
+    [RelayCommand]
+    private void DeleteEvent(CalendarEvent? evt)
+    {
+        evt ??= SelectedEvent;
+        if (evt == null) return;
+        if (!evt.IsUserCreated)
+        {
+            Announce("Only appointments you created can be deleted.", AnnouncementCategory.Result);
+            return;
+        }
+
+        var target = evt;
+        DeleteConfirmRequested?.Invoke(target, () => _ = ConfirmDeleteAsync(target));
+    }
+
+    /// <summary>Persists a created/edited event, reloads, reselects it, and announces the result.</summary>
+    private async Task SaveEditedEventAsync(CalendarEvent evt, bool isNew)
+    {
+        await _calendarService.UpsertEventAsync(evt);
+        ApplyFilters();
+        SelectedEvent = Events.FirstOrDefault(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
+        var when = evt.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date";
+        Announce($"Appointment {(isNew ? "created" : "updated")}. {evt.Summary}, {when}.",
+                 AnnouncementCategory.Result);
+        ListFocusRequested?.Invoke();
+    }
+
+    private async Task ConfirmDeleteAsync(CalendarEvent evt)
+    {
+        var index = _filteredEvents.FindIndex(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
+        await _calendarService.DeleteEventAsync(evt.Uid, evt.AccountId);
+        ApplyFilters();
+        // Move selection to the neighbouring event so focus is never stranded.
+        if (VisibleEvents.Count > 0)
+        {
+            var next = Math.Min(index, VisibleEvents.Count - 1);
+            SelectedEvent = next >= 0 ? Events[next] : null;
+        }
+        else
+        {
+            SelectedEvent = null;
+        }
+        Announce($"Appointment deleted. {evt.Summary}.", AnnouncementCategory.Result);
+        ListFocusRequested?.Invoke();
     }
 
     /// <summary>Opens the source invite message. Bound to Enter.</summary>
@@ -129,29 +365,58 @@ public partial class CalendarViewModel : ObservableObject
     /// <summary>Reapplies filters without re-fetching from the service. Called after external status updates.</summary>
     public void ApplyFiltersFromExternalUpdate() => ApplyFilters();
 
-    /// <summary>Applies the today and declined filters, rebuilding the visible list.</summary>
+    /// <summary>
+    /// Rebuilds the visible list for the current view: applies declined/cancelled filters, windows
+    /// one-off events to the view's date range, and expands recurring masters into per-date
+    /// occurrences within that window.
+    /// </summary>
     private void ApplyFilters()
     {
-        var all = _calendarService.Events;
+        var baseEvents = _calendarService.Events
+            .Where(e => _showDeclinedEvents || e.ResponseStatus != CalendarResponseStatus.Declined)
+            .Where(e => e.ResponseStatus != CalendarResponseStatus.Cancelled)
+            .ToList();
 
-        IEnumerable<CalendarEvent> filtered = all;
-
-        // Hide declined unless the setting is on.
-        if (!_showDeclinedEvents)
-            filtered = filtered.Where(e => e.ResponseStatus != CalendarResponseStatus.Declined);
-
-        // Always hide cancelled events — the organizer cancelled the meeting,
-        // so it should not clutter the calendar list.
-        filtered = filtered.Where(e => e.ResponseStatus != CalendarResponseStatus.Cancelled);
-
-        // Today filter: events starting today (local date).
-        if (IsTodayFilter)
+        // The date window for the current view. Null = Agenda "all" (one-offs are not date-bounded).
+        (DateTime Start, DateTime End)? window = ViewMode switch
         {
-            var today = DateTime.Today;
-            filtered = filtered.Where(e => e.StartTime.HasValue && e.StartTime.Value.Date == today);
+            CalendarViewMode.Day  => (ReferenceDate.Date, ReferenceDate.Date.AddDays(1)),
+            CalendarViewMode.Week => (WeekStart(ReferenceDate), WeekStart(ReferenceDate).AddDays(7)),
+            _ => IsTodayFilter
+                    ? (DateTime.Today, DateTime.Today.AddDays(1))
+                    : ((DateTime Start, DateTime End)?)null,
+        };
+
+        // Recurring series are unbounded, so they always expand within a bounded window: the view's
+        // window, or (Agenda-all) a look-ahead from a week ago through 12 months out.
+        var recStart = window?.Start ?? DateTime.Today.AddDays(-7);
+        var recEnd   = window?.End   ?? DateTime.Today.AddMonths(12);
+
+        var result = new List<CalendarEvent>();
+        foreach (var e in baseEvents)
+        {
+            var rule = e.IsRecurring ? RecurrenceRule.Parse(e.RecurrenceRule) : null;
+            if (rule != null && e.StartTime.HasValue)
+            {
+                foreach (var occStart in RecurrenceExpander.Expand(e.StartTime.Value, rule, recStart, recEnd))
+                    result.Add(CloneOccurrence(e, occStart));
+            }
+            else if (window is { } w)
+            {
+                if (e.StartTime.HasValue && e.StartTime.Value >= w.Start && e.StartTime.Value < w.End)
+                    result.Add(e);
+            }
+            else
+            {
+                result.Add(e); // Agenda, no today filter: every one-off event
+            }
         }
 
-        _filteredEvents = filtered.OrderBy(e => e.StartTimeTicks ?? long.MaxValue).ToList();
+        _filteredEvents = result.OrderBy(e => e.StartTimeTicks ?? long.MaxValue).ToList();
+
+        // Stamp each row's accessible name per the field-labels setting (mirrors the address book).
+        foreach (var evt in _filteredEvents)
+            evt.AccessibleName = _showFieldLabels ? evt.LabeledLine : evt.DisplayLine;
 
         using (Events.BeginBatchScope())
         {
@@ -161,18 +426,48 @@ public partial class CalendarViewModel : ObservableObject
         }
     }
 
+    /// <summary>Builds a display-only occurrence of a recurring master at the given local start.</summary>
+    private static CalendarEvent CloneOccurrence(CalendarEvent master, DateTime occStart)
+    {
+        var durTicks = master.StartTimeTicks.HasValue && master.EndTimeTicks.HasValue
+            ? master.EndTimeTicks.Value - master.StartTimeTicks.Value
+            : TimeSpan.FromMinutes(30).Ticks;
+        var startUtcTicks = occStart.ToUniversalTime().Ticks;
+        return new CalendarEvent
+        {
+            Uid             = master.Uid,          // shared Uid → edit/delete act on the series
+            AccountId       = master.AccountId,
+            Summary         = master.Summary,
+            Description     = master.Description,
+            Location        = master.Location,
+            Organizer       = master.Organizer,
+            OrganizerName   = master.OrganizerName,
+            StartTimeTicks  = startUtcTicks,
+            EndTimeTicks    = startUtcTicks + durTicks,
+            Sequence        = master.Sequence,
+            Method          = master.Method,
+            SourceMessageId = master.SourceMessageId,
+            SourceFolder    = master.SourceFolder,
+            ResponseStatus  = master.ResponseStatus,
+            IsAllDay        = master.IsAllDay,
+            RecurrenceRule  = master.RecurrenceRule,
+            OccurrenceStart = occStart,
+        };
+    }
+
     private void AnnounceOpenHint()
     {
         var count = VisibleEvents.Count;
         if (count == 0)
         {
-            Announce("Calendar. No events.", AnnouncementCategory.Status);
+            Announce("Calendar. No events. Press N to create an appointment.", AnnouncementCategory.Hint);
         }
         else
         {
             Announce($"Calendar. {count} upcoming event{(count == 1 ? "" : "s")}. " +
-                     "Use Up and Down arrows to browse. Press Enter to open the invitation. " +
-                     "Press T to filter to today. Press Escape to return to the folder list.",
+                     "Use Up and Down arrows to browse. Press Enter to open. Press N for a new appointment, " +
+                     "E to edit, Delete to remove. Press A for agenda, D for day, W for week; " +
+                     "Control plus Left or Right to move between days or weeks. Press Escape to return to the folder list.",
                      AnnouncementCategory.Hint);
         }
     }

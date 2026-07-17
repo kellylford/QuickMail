@@ -1,7 +1,7 @@
 # Full Calendar — Best-in-Class Accessible Calendar with Sync — PM & Dev Specification
 
-**Status:** Draft for review (greenfield planning)
-**Date:** June 26, 2026
+**Status:** Approved for M1 — §15 open questions Q1–Q7 resolved by Kelly on July 16, 2026 (see §15). M1 (local authoring, recurrence, time zones) may proceed; M2–M6 follow the resolved decisions below.
+**Date:** June 26, 2026 (decisions resolved July 16, 2026)
 **Target:** Phase 3+ (multi-release; sequenced into v-series milestones below)
 **Crew:** Bravo (PM → Dev Lead → Test Enforcer)
 **Depends on (shipped):**
@@ -128,7 +128,7 @@ The work reuses what already exists: the `ICalendarProvider` interface (designed
 | **Sync — ICS feed** | Read-only subscription by URL | Add by URL | off until added | M5 |
 | **Multiple calendars** | Per-account named calendars; color + text label; visibility toggle | Calendar list panel; `Space` toggles | all visible | M4 |
 | | Default calendar for new events | `DefaultCalendarId` | first writable | M4 |
-| **Reminders** | Pre-event notification (in-app banner + optional OS toast + optional sound) | `CalendarReminders` (bool), `DefaultReminderMinutes` | on / 10 min | M6 |
+| **Reminders** | Pre-event notification (Windows toast via existing `INotificationService` + in-app `Result` announcement) | `CalendarReminders` (bool), `DefaultReminderMinutes` | **off (opt-in)** / 10 min | M6 |
 | | Per-event override of reminder lead time | In editor | inherits default | M6 |
 | **Search** | Find events by text/date | `Ctrl+F` within calendar | — | M3 |
 | **RSVP integration** | Accepting an invite also writes the response to the synced calendar | — (automatic when synced) | on | M4 |
@@ -462,6 +462,15 @@ Each milestone is independently shippable and code-reviewable. M1–M3 deliver a
 
 ### M1 — Authoring, recurrence, time zones (local store)
 
+> **Progress — July 16, 2026 (branch `claude/local-calendar-authoring`).** Landed local M1 (partial) + part of M2:
+> - **Local appointment authoring** (create / edit / delete) via `EventEditorViewModel` + modeless `EventEditorWindow`; local events use `CalendarEvent.AccountId == Guid.Empty` as a "local calendar" sentinel.
+> - **Master/detail view** — columned `ListView` (Subject / When / Status) over a read-only Details pane (the ghmanage pattern Kelly asked for).
+> - **All-day appointments** — one additive `is_all_day` column (idempotent ALTER); editor checkbox disables the time fields; all-day-aware display.
+> - **Agenda / Day / Week views** (`CalendarViewMode`) — a windowed filter over the same accessible list plus a period label and navigation (A/D/W, Ctrl+Left/Right, T = today). New `Calendar` command category.
+> - Tests: `EventEditorViewModelTests`, `CalendarViewModelTests` (authoring + view windowing), `CalendarStoreTests` (all-day round-trip); 56 calendar + 35 XAML/construction pass.
+>
+> **Still open:** recurrence (RRULE parse/expand + `RecurrenceExpander`), TZID handling, `.ics` export, the **Month grid** (M3 — deliberately deferred: needs a custom `AutomationPeer` validated live with Kelly's screen reader per Q2), an optional richer 2-D week time-grid, and all sync/reminders (M4–M6). Open gesture is the already-shipped `Ctrl+Shift+C` (not `Ctrl+Shift+K` — the Q3 premise that no toggle existed was inaccurate). **Open a11y question for Kelly:** whether the Agenda list should navigate row-as-sentence (current) or column-by-column.
+
 **Goal:** Create/edit/delete events locally; recurring series expand correctly; TZID honored; single-event `.ics` export.
 
 **Deliverables:**
@@ -527,9 +536,9 @@ Each milestone is independently shippable and code-reviewable. M1–M3 deliver a
 
 ### M6 — Reminders & notifications
 
-**Goal:** Pre-event reminders (in-app banner + optional OS toast + sound), snooze, per-event override.
+**Goal:** Pre-event reminders (Windows toast via the existing `INotificationService`, plus the in-app `Result` announcement), snooze, per-event override. Reminders default **off** (opt-in).
 
-**Deliverables:** `ReminderService` (look-ahead timer over local store); reminder banner + commands; settings (on/off, default minutes, sound); editor reminder field already in M1.
+**Deliverables:** `ReminderService` (look-ahead timer over local store); `ShowReminder(...)` added to `INotificationService` / `WindowsToastNotificationService` (reuses the shipped toast dependency — no new package); reminder commands (Open / Snooze / Dismiss); settings (on/off default off, default minutes); editor reminder field already in M1.
 
 **Tests:** `ReminderServiceTests` (fires at correct lead time, snooze, respects setting), settings round-trip.
 
@@ -663,24 +672,40 @@ Each milestone is independently shippable and code-reviewable. M1–M3 deliver a
 
 ## 15. Open Questions — Decisions Needed Before M2
 
-> Per your instruction, each is written up with the viable options and a recommendation. None is locked.
+> **RESOLVED — July 16, 2026 (Kelly).** All seven questions are decided. Summary:
+>
+> | Q | Decision |
+> |---|---|
+> | Q1 | **CalDAV** for Google (one CalDAV path also serves iCloud/Fastmail/Nextcloud). |
+> | Q2 | **Real grid/table semantics** for the Month grid (Option A); custom `AutomationPeer`, validated live with a screen reader before M3 merge. |
+> | Q3 | **Both** — register a `Ctrl+Shift+K` command *and* keep folder-tree entry (Option C). |
+> | Q4 | **New `Calendar` category** (sixth category; update the category-validation list). |
+> | Q5 | **Unavailable with a Hint** in `--online` mode through M3 (Option A); reconsider remote-only after M4 sync lands. |
+> | Q6 | **Reminders default OFF (opt-in).** When enabled: 10-min lead. Sync poll 5 min. |
+> | Q7 | **Windows toast, reusing the existing notification service — no new dependency.** The `Microsoft.Toolkit.Uwp.Notifications` dependency this question worried about already ships (added for new-mail toasts); add a `ShowReminder(...)` method to `INotificationService` / `WindowsToastNotificationService`. |
+>
+> The per-question write-ups below are retained for rationale.
 
-**Q1 — Google sync stack: CalDAV vs Google Calendar API?**
+**Q1 — Google sync stack: CalDAV vs Google Calendar API?** — **DECIDED: CalDAV (Option A).**
 - *Option A — CalDAV (Google's CalDAV endpoint + Google OAuth).* Pro: one CalDAV code path also serves iCloud/Fastmail/Nextcloud; less Google-specific code. Con: Google's CalDAV is less feature-rich than its REST API; some edge cases (notifications, conferencing) unavailable.
 - *Option B — Google Calendar REST API.* Pro: richest features, clean incremental `syncToken`. Con: Google-specific code + possibly a NuGet dep (or hand-rolled DTOs, consistent with the raw-HttpClient mail decision); separate OAuth client/consent screen verification overhead.
 - **Recommendation:** **A** (CalDAV) for v1 to maximize reuse and minimize Google-specific surface; revisit B if users hit CalDAV limitations. *Your call.*
 
-**Q2 — Month-grid accessibility model: table semantics (A), list-of-days (B), or hybrid (C)?** See Decision 4. **Recommendation: A** (richest, real grid semantics) — but it is the most work and the highest a11y risk; **B** is a safe fallback if A proves unreliable with your screen reader. This is exactly the kind of call where your lived screen-reader expertise should decide; I will not assert what is "better" without your test.
+**Q2 — Month-grid accessibility model: table semantics (A), list-of-days (B), or hybrid (C)?** — **DECIDED: Option A, real grid/table semantics.** The custom `AutomationPeer` must be validated by Kelly with a real screen reader before M3 merge (per §16.2). See Decision 4. **Recommendation: A** (richest, real grid semantics) — but it is the most work and the highest a11y risk; **B** is a safe fallback if A proves unreliable with your screen reader. This is exactly the kind of call where your lived screen-reader expertise should decide; I will not assert what is "better" without your test.
 
-**Q3 — Canonical open gesture.** The minimal-calendar spec proposed `Ctrl+Shift+C`; the shipped build reaches the calendar via the folder tree (no dedicated toggle wired). Options: (A) adopt `Ctrl+Shift+K` as the calendar-mode shortcut; (B) keep folder-tree entry only; (C) both. **Recommendation: C** — register a command (so it's in the palette + customizable) *and* keep folder-tree entry. Confirm the key (`Ctrl+Shift+K` is currently free; verify against `CommandRegistry` at implementation time).
+**Q3 — Canonical open gesture.** — **DECIDED: Option C, both.** Register a `Ctrl+Shift+K` command (palette + customizable) and keep folder-tree entry; verify the key is free in `CommandRegistry` at implementation time. The minimal-calendar spec proposed `Ctrl+Shift+C`; the shipped build reaches the calendar via the folder tree (no dedicated toggle wired). Options: (A) adopt `Ctrl+Shift+K` as the calendar-mode shortcut; (B) keep folder-tree entry only; (C) both. **Recommendation: C** — register a command (so it's in the palette + customizable) *and* keep folder-tree entry. Confirm the key (`Ctrl+Shift+K` is currently free; verify against `CommandRegistry` at implementation time).
 
-**Q4 — Command category.** New commands could go under the existing `View` category or a new `Calendar` category. The enforced list today is `View, Mail, Account, Contacts, Settings, Help`. **Recommendation:** add a **`Calendar`** category (cleaner palette grouping) — but this touches the category-validation list; confirm you want a sixth category.
+**Q4 — Command category.** — **DECIDED: add a new `Calendar` category.** New commands could go under the existing `View` category or a new `Calendar` category. The enforced list today is `View, Mail, Account, Contacts, Settings, Help`. **Recommendation:** add a **`Calendar`** category (cleaner palette grouping) — but this touches the category-validation list; confirm you want a sixth category.
 
-**Q5 — `--online` behavior.** Option A: calendar unavailable with a Hint (matches shipped behavior, simplest). Option B: remote-only live mode (no reminders/search). **Recommendation: A** through M3; reconsider B after sync lands in M4.
+**Q5 — `--online` behavior.** — **DECIDED: Option A (unavailable with a Hint) through M3; reconsider remote-only after M4 sync lands.** Option A: calendar unavailable with a Hint (matches shipped behavior, simplest). Option B: remote-only live mode (no reminders/search). **Recommendation: A** through M3; reconsider B after sync lands in M4.
 
-**Q6 — Default sync cadence & reminder defaults.** Proposed: sync poll 5 min (configurable 1–60), reminders on by default at 10 min, sound off by default, OS toast on by default. Confirm defaults — especially whether reminders should default **on** or **off** (the announcement-infra convention leans toward off-by-default for anything potentially intrusive; reminders are arguably opt-in).
+**Q6 — Default sync cadence & reminder defaults.** — **DECIDED: reminders default OFF (opt-in); when enabled, 10-min lead; sync poll 5 min (configurable 1–60).** This matches the announcement-infra convention of off-by-default for potentially intrusive features. Original proposal (reminders on by default) is overridden.
 
-**Q7 — OS toast dependency.** Native Windows toast (via `Microsoft.Toolkit.Uwp.Notifications` / `CommunityToolkit`) adds a dependency and packaging considerations for the self-contained single-file exe. Alternative: in-app banner only (no dependency). **Recommendation:** in-app banner + sound for v1 (no new dep); add OS toast as a later enhancement if requested.
+**Q7 — OS toast dependency.** — **DECIDED: use native Windows toast, reusing the existing notification service. No new dependency.**
+
+This question's original premise is **out of date**: it was written before new-mail notifications shipped. `Microsoft.Toolkit.Uwp.Notifications` (v7.1.3) is **already** a `PackageReference` in `QuickMail.csproj` and already ships inside the self-contained single-file exe — it was added for new-mail toasts. `WindowsToastNotificationService` already uses `ToastNotificationManagerCompat`, which auto-registers the AppUserModelID + COM activator for an unpackaged Win32 app (no MSIX/appxmanifest); Velopack's Start Menu shortcut supplies the toast's app name/icon. There is therefore **no new dependency and no additional packaging work** for reminders.
+
+**Implementation:** extend `INotificationService` with a `ShowReminder(...)` method (event title, start time, calendar name; toast actions Open / Snooze / Dismiss) and implement it in `WindowsToastNotificationService` alongside `ShowNewMail` / `ShowInfo`, reusing the existing `Activated` argument-parsing/activation plumbing. Every platform call stays guarded (degrade to a logged no-op, never a crash), matching the existing service. A custom reminder window (Outlook-classic style) is explicitly **not** required for v1 and remains a possible later enhancement. The `AnnouncementCategory.Result` in-app announcement (§7) still fires regardless, so reminders are accessible even where the OS toast is unavailable.
 
 ---
 

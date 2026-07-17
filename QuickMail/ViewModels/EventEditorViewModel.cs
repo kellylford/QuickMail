@@ -1,0 +1,259 @@
+using System;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using QuickMail.Models;
+
+namespace QuickMail.ViewModels;
+
+/// <summary>
+/// Authoring ViewModel for a single locally-created calendar appointment. Holds the editable
+/// fields (title, start/end date+time, location, notes), validates them, and produces a
+/// <see cref="CalendarEvent"/> on save. Pure VM: no View types, no window references. The View
+/// subscribes to <see cref="Saved"/> / <see cref="Cancelled"/> to close and persist, and to
+/// <see cref="AnnouncementRequested"/> for validation feedback.
+///
+/// v1 scope: timed events only. All-day support needs a persisted model flag and is deferred.
+/// </summary>
+public partial class EventEditorViewModel : ObservableObject
+{
+    private readonly string _uid;
+
+    /// <summary>True when editing an existing event; false when creating a new one.</summary>
+    public bool IsEdit { get; }
+
+    /// <summary>Window title text ("New appointment" / "Edit appointment").</summary>
+    public string WindowTitle => IsEdit ? "Edit appointment" : "New appointment";
+
+    [ObservableProperty] private string _title = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasTimes))]
+    private bool _isAllDay;
+
+    [ObservableProperty] private DateTime? _startDate;
+    [ObservableProperty] private string _startTime = string.Empty;
+    [ObservableProperty] private DateTime? _endDate;
+    [ObservableProperty] private string _endTime = string.Empty;
+    [ObservableProperty] private string _location = string.Empty;
+    [ObservableProperty] private string _notes = string.Empty;
+
+    // Recurrence — 0 = Does not repeat, 1 = Daily, 2 = Weekly, 3 = Monthly, 4 = Yearly.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRepeat))]
+    [NotifyPropertyChangedFor(nameof(RepeatUnitLabel))]
+    private int _repeatIndex;
+
+    [ObservableProperty] private int _repeatInterval = 1;
+    [ObservableProperty] private DateTime? _repeatUntil;
+
+    /// <summary>False when the appointment is all-day — the View disables the time fields.</summary>
+    public bool HasTimes => !IsAllDay;
+
+    /// <summary>True when a repeat frequency is selected — the View shows interval/until controls.</summary>
+    public bool HasRepeat => RepeatIndex > 0;
+
+    /// <summary>Unit word for the "every N ___" interval control.</summary>
+    public string RepeatUnitLabel => RepeatIndex switch
+    {
+        1 => "days", 2 => "weeks", 3 => "months", 4 => "years", _ => "",
+    };
+
+    /// <summary>Raised with the built event when the user saves and validation passes.</summary>
+    public event Action<CalendarEvent>? Saved;
+
+    /// <summary>Raised when the user cancels.</summary>
+    public event Action? Cancelled;
+
+    /// <summary>Raised for screen-reader feedback (validation errors). View calls AccessibilityHelper.Announce.</summary>
+    public event Action<string, AnnouncementCategory>? AnnouncementRequested;
+
+    /// <summary>Creates an editor for a new appointment defaulting to the given start (usually now, rounded).</summary>
+    public EventEditorViewModel(DateTime defaultStart)
+    {
+        _uid = "local-" + Guid.NewGuid().ToString("N");
+        IsEdit = false;
+        var start = RoundUpToQuarterHour(defaultStart);
+        StartDate = start.Date;
+        StartTime = start.ToString("t");
+        EndDate = start.Date;
+        EndTime = start.AddMinutes(30).ToString("t");
+    }
+
+    /// <summary>Creates an editor populated from an existing locally-created event.</summary>
+    public EventEditorViewModel(CalendarEvent existing)
+    {
+        _uid = existing.Uid;
+        IsEdit = true;
+        Title = existing.Summary;
+        Location = existing.Location;
+        Notes = existing.Description;
+        IsAllDay = existing.IsAllDay;
+
+        var start = existing.StartTime ?? DateTime.Now;
+        StartDate = start.Date;
+        StartTime = start.ToString("t");
+        var end = existing.EndTime ?? start.AddMinutes(30);
+        EndDate = end.Date;
+        EndTime = end.ToString("t");
+
+        var rule = Models.RecurrenceRule.Parse(existing.RecurrenceRule);
+        if (rule != null)
+        {
+            RepeatIndex = rule.Frequency switch
+            {
+                RecurrenceFrequency.Daily => 1,
+                RecurrenceFrequency.Weekly => 2,
+                RecurrenceFrequency.Monthly => 3,
+                RecurrenceFrequency.Yearly => 4,
+                _ => 0,
+            };
+            RepeatInterval = rule.Interval;
+            RepeatUntil = rule.Until;
+        }
+    }
+
+    [RelayCommand]
+    private void Save()
+    {
+        if (!TryBuildEvent(out var evt, out var error))
+        {
+            AnnouncementRequested?.Invoke(error, AnnouncementCategory.Result);
+            return;
+        }
+        Saved?.Invoke(evt);
+    }
+
+    [RelayCommand]
+    private void Cancel() => Cancelled?.Invoke();
+
+    /// <summary>
+    /// Validates the fields and, on success, produces the persisted <see cref="CalendarEvent"/>.
+    /// Returns false with a spoken-friendly <paramref name="error"/> message on failure.
+    /// </summary>
+    public bool TryBuildEvent(out CalendarEvent evt, out string error)
+    {
+        evt = null!;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(Title))
+        {
+            error = "Title is required.";
+            return false;
+        }
+        if (StartDate is null)
+        {
+            error = "Start date is required.";
+            return false;
+        }
+
+        DateTime start, end;
+
+        if (IsAllDay)
+        {
+            // All-day: span whole day(s). Single day => start 00:00, end 23:59:59 same date.
+            start = StartDate.Value.Date;
+            var endDay = (EndDate ?? StartDate.Value).Date;
+            if (endDay < start.Date)
+            {
+                error = "The end date is before the start date.";
+                return false;
+            }
+            end = endDay.AddDays(1).AddSeconds(-1);
+        }
+        else
+        {
+            start = CombineDateAndTime(StartDate.Value, StartTime, out var startOk);
+            if (!startOk)
+            {
+                error = "Start time is not a valid time. Try a format like 9:00 AM.";
+                return false;
+            }
+
+            var endBaseDate = EndDate ?? StartDate.Value;
+            if (string.IsNullOrWhiteSpace(EndTime))
+            {
+                end = start.AddMinutes(30);
+            }
+            else
+            {
+                end = CombineDateAndTime(endBaseDate, EndTime, out var endOk);
+                if (!endOk)
+                {
+                    error = "End time is not a valid time. Try a format like 9:30 AM.";
+                    return false;
+                }
+            }
+
+            if (end < start)
+            {
+                error = "The end time is before the start time.";
+                return false;
+            }
+        }
+
+        string? rrule = null;
+        if (RepeatIndex > 0)
+        {
+            if (RepeatInterval < 1)
+            {
+                error = "Repeat interval must be at least 1.";
+                return false;
+            }
+            if (RepeatUntil is DateTime u && u.Date < start.Date)
+            {
+                error = "The repeat end date is before the start date.";
+                return false;
+            }
+            rrule = new RecurrenceRule
+            {
+                Frequency = RepeatIndex switch
+                {
+                    1 => RecurrenceFrequency.Daily,
+                    2 => RecurrenceFrequency.Weekly,
+                    3 => RecurrenceFrequency.Monthly,
+                    _ => RecurrenceFrequency.Yearly,
+                },
+                Interval = RepeatInterval,
+                Until = RepeatUntil,
+            }.ToRRule();
+        }
+
+        evt = new CalendarEvent
+        {
+            Uid            = _uid,
+            AccountId      = CalendarEvent.LocalAccountId,
+            Summary        = Title.Trim(),
+            Location       = Location.Trim(),
+            Description    = Notes.Trim(),
+            StartTimeTicks = start.ToUniversalTime().Ticks,
+            EndTimeTicks   = end.ToUniversalTime().Ticks,
+            IsAllDay       = IsAllDay,
+            RecurrenceRule = rrule,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        return true;
+    }
+
+    /// <summary>Combines a date with a free-typed time string ("9", "9:00", "9:00 AM", "14:30").</summary>
+    private static DateTime CombineDateAndTime(DateTime date, string timeText, out bool ok)
+    {
+        if (string.IsNullOrWhiteSpace(timeText))
+        {
+            ok = true;
+            return date.Date; // midnight
+        }
+        if (DateTime.TryParse(timeText.Trim(), out var parsed))
+        {
+            ok = true;
+            return date.Date + parsed.TimeOfDay;
+        }
+        ok = false;
+        return date.Date;
+    }
+
+    private static DateTime RoundUpToQuarterHour(DateTime dt)
+    {
+        var minutes = (dt.Minute / 15 + 1) * 15;
+        return dt.Date.AddHours(dt.Hour).AddMinutes(minutes);
+    }
+}

@@ -246,6 +246,7 @@ public class ConfigService : IConfigService
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
                     case "contactlistshowfieldlabels":      config.ContactListShowFieldLabels      = ParseBool(value); break;
+                    case "calendarlistshowfieldlabels":     config.CalendarListShowFieldLabels     = ParseBool(value); break;
                     case "spellingsuggestionsverbosity":
                         config.SpellingSuggestionsVerbosity = string.Equals(value, "justSuggestions", StringComparison.OrdinalIgnoreCase)
                             ? "justSuggestions" : "numbersWithSuggestions";
@@ -440,6 +441,11 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ContactListShowFieldLabels = {(config.ContactListShowFieldLabels ? "on" : "off")}");
         sb.AppendLine("# Address book: speak field labels (Name/email/account) in each contact row's");
         sb.AppendLine("# accessible name. Off (default) speaks concise field data only. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CalendarListShowFieldLabels = {(config.CalendarListShowFieldLabels ? "on" : "off")}");
+        sb.AppendLine("# Calendar: speak field labels (Subject/when/status) in each event row's");
+        sb.AppendLine("# accessible name. Off (default) speaks concise data only. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceStatus = {(config.AnnounceStatus ? "on" : "off")}");

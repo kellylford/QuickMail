@@ -308,6 +308,12 @@ sealed class StubCalendarService : ICalendarService
         if (idx >= 0) StoredEvents[idx].ResponseStatus = status;
         return Task.CompletedTask;
     }
+
+    public Task DeleteEventAsync(string uid, Guid accountId, CancellationToken ct = default)
+    {
+        StoredEvents.RemoveAll(e => e.Uid == uid && e.AccountId == accountId);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Runs everything inline — VM unit tests are single-threaded by design.</summary>

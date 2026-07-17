@@ -121,6 +121,13 @@ public class ConfigModel
     /// </summary>
     public bool ContactListShowFieldLabels { get; set; } = false;
 
+    /// <summary>
+    /// When true, the calendar event list speaks field labels in each row's accessible name
+    /// ("Subject … when … status …"); when false (default) it speaks concise data only, matching
+    /// how the message and contact lists read. Mirrors <see cref="ContactListShowFieldLabels"/>.
+    /// </summary>
+    public bool CalendarListShowFieldLabels { get; set; } = false;
+
     // ── Flagging ──────────────────────────────────────────────────────────────────
 
     /// <summary>
