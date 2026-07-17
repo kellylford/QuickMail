@@ -1706,6 +1706,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Start periodic NOOP heartbeat (10-minute interval) to keep connections alive
             // and detect mid-session drops on non-INBOX folders.
             _ = StartPeriodicNoOpAsync(accountList, ct);
+
+            // Start the fallback mail-sync loop (issue #267) — a safety net behind IMAP IDLE that
+            // periodically re-syncs inboxes on a user-configurable interval.
+            _ = StartFallbackSyncAsync(ct);
         }
         catch (OperationCanceledException) { /* sync cancelled — normal */ }
         catch (Exception ex)
@@ -1823,6 +1827,59 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     try { await _imap.NoOpAsync(account.Id, ct); }
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex) { LogService.Log($"NOOP for {account.AccountLabel}", ex); }
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    // Fallback mail sync behind IMAP IDLE (issue #267). IDLE is the primary new-mail signal, but if a
+    // server never pushes, the held IDLE connection dies quietly, or a message's read/flag state
+    // changes in another client (which IDLE never reports), nothing updates until the user acts. This
+    // loop periodically re-syncs each IMAP account's inbox as the safety net. The interval is
+    // user-configurable (config.MailSyncPollMinutes); 0 disables it. Re-reads the setting each cycle
+    // so a Settings change takes effect without a restart. Non-online only — online mode has no local
+    // store to sync into and StartBackgroundSyncAsync returns before this is reached.
+    private async Task StartFallbackSyncAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var minutes = _configService.Load().MailSyncPollMinutes;
+
+                // Disabled: re-check the setting every 5 minutes so re-enabling it doesn't need a restart.
+                var delay = minutes <= 0 ? TimeSpan.FromMinutes(5) : TimeSpan.FromMinutes(minutes);
+                await Task.Delay(delay, ct);
+                if (ct.IsCancellationRequested) break;
+                if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
+
+                foreach (var account in Accounts.ToList())
+                {
+                    if (ct.IsCancellationRequested) break;
+                    if (account.BackendKind != BackendKind.ImapSmtp) continue; // Graph has its own delta poll
+                    if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+
+                    var inbox = folders.FirstOrDefault(f =>
+                        f.Kind == Models.SpecialFolderKind.Inbox ||
+                        string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
+                    if (inbox is null) continue;
+
+                    try
+                    {
+                        var incoming = await _syncService.SyncOneFolderAsync(account, inbox, ct);
+                        LogService.Debug($"Fallback sync [{account.AccountLabel}] inbox: {incoming.Count} fetched.");
+
+                        // Notify for genuinely-new arrivals the same way the IDLE path does; the
+                        // de-dupe set (single-thread-owned) prevents re-notifying mail IDLE already flagged.
+                        if (incoming.Count > 0)
+                            _ui.Post(() => MaybeNotifyNewMail(account, incoming));
+
+                        // New/updated mail changes server unread counts; refresh (debounced, STATUS-authoritative).
+                        ScheduleFolderCountRefresh(account.Id);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { LogService.Log($"Fallback sync {account.AccountLabel}", ex); }
                 }
             }
         }

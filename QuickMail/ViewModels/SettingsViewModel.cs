@@ -33,6 +33,9 @@ public partial class SettingsViewModel : ObservableObject
     private int _initialSyncCount;
 
     [ObservableProperty]
+    private int _mailSyncPollMinutes;
+
+    [ObservableProperty]
     private bool _customAnnouncements;
 
     [ObservableProperty]
@@ -249,6 +252,7 @@ public partial class SettingsViewModel : ObservableObject
         ViewMode = cfg.ViewMode;
         SyncDays = cfg.SyncDays;
         InitialSyncCount = cfg.InitialSyncCount;
+        MailSyncPollMinutes = cfg.MailSyncPollMinutes;
         CustomAnnouncements = cfg.CustomAnnouncements;
         AnnounceHints       = cfg.AnnounceHints;
         AnnounceStatus      = cfg.AnnounceStatus;
@@ -317,6 +321,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.ViewMode = ViewMode;
         cfg.SyncDays = SyncDays;
         cfg.InitialSyncCount = InitialSyncCount;
+        cfg.MailSyncPollMinutes = MailSyncPollMinutes;
         cfg.CustomAnnouncements = CustomAnnouncements;
         cfg.AnnounceHints       = AnnounceHints;
         cfg.AnnounceStatus      = AnnounceStatus;

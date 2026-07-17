@@ -85,6 +85,41 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void MailSyncPollMinutes_DefaultsTo5_AndRoundTrips()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        // Default is 5 minutes (fallback poll on) for a fresh config.
+        Assert.Equal(5, service.Load().MailSyncPollMinutes);
+
+        var config = service.Load();
+        config.MailSyncPollMinutes = 15;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.Equal(15, reloaded.MailSyncPollMinutes);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]     // 0 disables the fallback poll and is preserved
+    [InlineData(-3, 0)]    // any non-positive value normalizes to 0 (disabled)
+    [InlineData(1, 1)]     // lower bound
+    [InlineData(200, 120)] // clamped to the 120-minute ceiling
+    public void MailSyncPollMinutes_IsClampedOnLoad(int written, int expected)
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.MailSyncPollMinutes = written;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.Equal(expected, reloaded.MailSyncPollMinutes);
+    }
+
+    [Fact]
     public void SaveThenLoad_RoundTripsReadAsPlainText()
     {
         // Issue #34: the sticky plain-text preference must survive a real INI write→read
