@@ -1214,7 +1214,22 @@ public class ImapMailService : IMailService, IChangeNotifier
                         // A client idle beyond the threshold may have been silently dropped by the
                         // server; probe it with a NOOP before handing it out so we reconnect here
                         // instead of throwing in the caller (#268). Hot reuse skips the probe.
-                        if (!reuseIsStale || await IsConnectionAliveAsync(reuse, ct))
+                        bool alive;
+                        try
+                        {
+                            alive = !reuseIsStale || await IsConnectionAliveAsync(reuse, ct);
+                        }
+                        catch
+                        {
+                            // Probe cancelled (or threw) after we popped `reuse` from _idle. `client` is
+                            // still null, so the outer catch won't clean it up — discard it here so the
+                            // connection isn't orphaned in _all for the rest of the session.
+                            lock (_gate) { _all.Remove(reuse); }
+                            DisposeClient(reuse);
+                            throw;
+                        }
+
+                        if (alive)
                         {
                             client = reuse;
                             break;
