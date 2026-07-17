@@ -1046,6 +1046,27 @@ public class ImapMailService : IMailService, IChangeNotifier
         catch { return false; }
     }
 
+    // Actively verifies a pooled connection is alive by issuing a NOOP. IsConnected only reflects the
+    // last known socket state, so a connection the server silently dropped during a long idle passes
+    // IsClientUsable but fails on the next real command. A NOOP forces that failure here, letting the
+    // pool discard the dead client and reconnect instead of surfacing "An existing connection was
+    // forcibly closed by the remote host" to the caller (#268). Cancellation propagates; any other
+    // failure means the connection is dead.
+    private static async Task<bool> IsConnectionAliveAsync(ImapClient client, CancellationToken ct)
+    {
+        try
+        {
+            await client.NoOpAsync(ct);
+            return true;
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            LogService.Debug($"IMAP pool: stale connection discarded after NOOP probe — {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
     private static void DisposeClient(ImapClient client)
     {
         try { client.Dispose(); } catch { /* best effort */ }
@@ -1092,7 +1113,17 @@ public class ImapMailService : IMailService, IChangeNotifier
         private readonly object _gate = new();
         private readonly Stack<ImapClient> _idle = new();
         private readonly HashSet<ImapClient> _all = new();
+        // When each idle client was returned to the pool. A client that has been sitting idle longer
+        // than StaleProbeThreshold is liveness-probed (NOOP) before reuse — see RentAsync (#268).
+        private readonly Dictionary<ImapClient, DateTimeOffset> _returnedUtc = new();
         private bool _disposed;
+
+        // A pooled connection idle longer than this is NOOP-probed before reuse. IsConnected is a
+        // cached flag; a server that silently drops the socket during a long idle still reports
+        // connected until the next I/O, so without a probe the caller gets "An existing connection
+        // was forcibly closed by the remote host." Hot reuse (under the threshold) skips the probe to
+        // avoid an extra round-trip on every rent.
+        private static readonly TimeSpan StaleProbeThreshold = TimeSpan.FromSeconds(30);
 
         public AccountConnectionPool(
             ImapMailService owner, AccountModel account, string? password, int maxConnections)
@@ -1153,8 +1184,8 @@ public class ImapMailService : IMailService, IChangeNotifier
             {
                 while (client == null)
                 {
-                    AccountModel account;
-                    string? password;
+                    ImapClient? reuse = null;
+                    var reuseIsStale = false;
 
                     lock (_gate)
                     {
@@ -1165,17 +1196,40 @@ public class ImapMailService : IMailService, IChangeNotifier
                             var candidate = _idle.Pop();
                             if (IsClientUsable(candidate))
                             {
-                                client = candidate;
+                                reuse = candidate;
+                                reuseIsStale = !_returnedUtc.TryGetValue(candidate, out var returned)
+                                    || DateTimeOffset.UtcNow - returned > StaleProbeThreshold;
+                                _returnedUtc.Remove(candidate);
                                 break;
                             }
 
                             _all.Remove(candidate);
+                            _returnedUtc.Remove(candidate);
                             DisposeClient(candidate);
                         }
+                    }
 
-                        if (client != null)
+                    if (reuse != null)
+                    {
+                        // A client idle beyond the threshold may have been silently dropped by the
+                        // server; probe it with a NOOP before handing it out so we reconnect here
+                        // instead of throwing in the caller (#268). Hot reuse skips the probe.
+                        if (!reuseIsStale || await IsConnectionAliveAsync(reuse, ct))
+                        {
+                            client = reuse;
                             break;
+                        }
 
+                        lock (_gate) { _all.Remove(reuse); }
+                        DisposeClient(reuse);
+                        continue; // dead connection — try the next idle client or create a fresh one
+                    }
+
+                    AccountModel account;
+                    string? password;
+                    lock (_gate)
+                    {
+                        ObjectDisposedException.ThrowIf(_disposed, this);
                         account = CloneAccount(Account);
                         password = Password;
                     }
@@ -1214,11 +1268,13 @@ public class ImapMailService : IMailService, IChangeNotifier
                 if (!_disposed && IsClientUsable(client))
                 {
                     _idle.Push(client);
+                    _returnedUtc[client] = DateTimeOffset.UtcNow;
                     keep = true;
                 }
                 else
                 {
                     _all.Remove(client);
+                    _returnedUtc.Remove(client);
                 }
             }
 
@@ -1240,6 +1296,7 @@ public class ImapMailService : IMailService, IChangeNotifier
                 clients = _all.ToList();
                 _idle.Clear();
                 _all.Clear();
+                _returnedUtc.Clear();
             }
 
             foreach (var client in clients)
@@ -1256,6 +1313,7 @@ public class ImapMailService : IMailService, IChangeNotifier
                 clients = _all.ToList();
                 _idle.Clear();
                 _all.Clear();
+                _returnedUtc.Clear();
             }
 
             foreach (var client in clients)
