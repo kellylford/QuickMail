@@ -261,13 +261,19 @@ public partial class App : Application
             var calendarProvider = new LocalCacheCalendarProvider(localStore);
             var calendarService = new CalendarService(calendarProvider);
 
+            // Graph calendar sync (read-down v1): pulls each Graph account's primary calendar into
+            // the local store. Reuses the Graph backend's client (owned + disposed with the backend);
+            // the sync timer and its CTS live in MainViewModel (disposed in MainViewModel.Dispose).
+            var graphCalendarSync = new GraphCalendarSyncService(accountService, localStore, graphBackend.Client);
+
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
-                themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService);
+                themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
+                graphCalendarSyncService: graphCalendarSync);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 

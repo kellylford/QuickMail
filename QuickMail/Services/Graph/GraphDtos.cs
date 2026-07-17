@@ -118,3 +118,41 @@ internal sealed class GraphScoredEmailAddress
     [JsonPropertyName("address")] public string? Address { get; set; }
     [JsonPropertyName("relevanceScore")] public double RelevanceScore { get; set; }
 }
+
+// ── Calendar sync (full-calendar spec, M4 read-down v1) ─────────────────────
+
+/// <summary>
+/// An event occurrence from <c>/me/calendarView</c>. calendarView expands recurring series
+/// server-side, so each item is a concrete occurrence with its own id — no RRULE handling needed.
+/// </summary>
+internal sealed class GraphCalendarEvent
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("subject")] public string? Subject { get; set; }
+    [JsonPropertyName("bodyPreview")] public string? BodyPreview { get; set; }
+    [JsonPropertyName("location")] public GraphLocation? Location { get; set; }
+    [JsonPropertyName("organizer")] public GraphRecipient? Organizer { get; set; }
+    [JsonPropertyName("start")] public GraphDateTimeTimeZone? Start { get; set; }
+    [JsonPropertyName("end")] public GraphDateTimeTimeZone? End { get; set; }
+    [JsonPropertyName("isAllDay")] public bool IsAllDay { get; set; }
+    [JsonPropertyName("isOrganizer")] public bool IsOrganizer { get; set; }
+    [JsonPropertyName("responseStatus")] public GraphResponseStatus? ResponseStatus { get; set; }
+}
+
+/// <summary>Graph's dateTimeTimeZone shape: a wall-clock string plus the zone it is expressed in.</summary>
+internal sealed class GraphDateTimeTimeZone
+{
+    [JsonPropertyName("dateTime")] public string? DateTime { get; set; }
+    [JsonPropertyName("timeZone")] public string? TimeZone { get; set; }
+}
+
+internal sealed class GraphLocation
+{
+    [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+}
+
+internal sealed class GraphResponseStatus
+{
+    /// <summary>Values: "none" | "organizer" | "tentativelyAccepted" | "accepted" | "declined" | "notResponded".</summary>
+    [JsonPropertyName("response")] public string? Response { get; set; }
+}

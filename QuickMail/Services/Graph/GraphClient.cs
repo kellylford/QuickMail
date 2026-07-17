@@ -63,13 +63,22 @@ public sealed class GraphClient : IDisposable
     /// modal address book, where launching an embedded WebView2 sign-in could deadlock the UI thread.
     /// A missing/expired grant surfaces as <see cref="InteractiveSignInRequiredException"/>.
     /// </summary>
-    public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly, CancellationToken ct = default)
+    public Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly, CancellationToken ct = default)
+        => GetAllPagesAsync<T>(account, path, scopes, silentOnly, headers: null, ct);
+
+    /// <summary>
+    /// As the silent-aware overload, plus extra request headers applied to every page request.
+    /// Used by calendar sync to send <c>Prefer: outlook.timezone="UTC"</c> so Graph returns event
+    /// times normalized to UTC regardless of the mailbox's configured time zone.
+    /// </summary>
+    public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
         var all = new List<T>();
         string? next = path;
         while (!string.IsNullOrEmpty(next))
         {
-            using var resp = await SendAsync(account, HttpMethod.Get, next, null, scopes, silentOnly, ct);
+            using var resp = await SendAsync(account, HttpMethod.Get, next, null, scopes, silentOnly, headers, ct);
             await EnsureSuccessAsync(resp, ct);
             var page = await resp.Content.ReadFromJsonAsync<GraphCollection<T>>(JsonOpts, ct);
             if (page?.Value != null) all.AddRange(page.Value);
@@ -144,10 +153,11 @@ public sealed class GraphClient : IDisposable
 
     private Task<HttpResponseMessage> SendAsync(
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, CancellationToken ct)
-        => SendAsync(account, method, pathOrUrl, contentFactory, null, silentOnly: false, ct);
+        => SendAsync(account, method, pathOrUrl, contentFactory, null, silentOnly: false, headers: null, ct);
 
     private async Task<HttpResponseMessage> SendAsync(
-        AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, string[]? scopes, bool silentOnly, CancellationToken ct)
+        AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, string[]? scopes, bool silentOnly,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
     {
         var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : BaseUrl + pathOrUrl;
 
@@ -165,6 +175,9 @@ public sealed class GraphClient : IDisposable
                     : await _oauth.GetAccessTokenAsync(account, scopes, ct);
             using var req = new HttpRequestMessage(method, url);
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            if (headers != null)
+                foreach (var (name, value) in headers)
+                    req.Headers.TryAddWithoutValidation(name, value);
             if (contentFactory != null)
                 req.Content = contentFactory(); // fresh per attempt — content can't be resent after a 429
 

@@ -145,6 +145,7 @@ public class EventEditorViewModelTests
             Title = "Biweekly sync",
             StartDate = new DateTime(2026, 7, 14),
             StartTime = "9:00 AM",
+            EndTime = "9:30 AM",
             RepeatIndex = 2,        // Weekly
             RepeatInterval = 2,
         };
@@ -163,6 +164,7 @@ public class EventEditorViewModelTests
             Title = "MWF workout",
             StartDate = new DateTime(2026, 7, 13),
             StartTime = "6:00 AM",
+            EndTime = "7:00 AM",
             RepeatIndex = 2,          // Weekly
             RepeatOnMonday = true,
             RepeatOnWednesday = true,
@@ -181,6 +183,7 @@ public class EventEditorViewModelTests
             Title = "Simple weekly",
             StartDate = DateTime.Today,
             StartTime = "9:00 AM",
+            EndTime = "9:30 AM",
             RepeatIndex = 2,
         };
         Assert.True(vm.TryBuildEvent(out var evt, out _));
@@ -195,6 +198,7 @@ public class EventEditorViewModelTests
             Title = "Daily thing",
             StartDate = DateTime.Today,
             StartTime = "9:00 AM",
+            EndTime = "9:30 AM",
             RepeatIndex = 1,          // Daily
             RepeatOnMonday = true,    // leftover check must not leak into the rule
         };

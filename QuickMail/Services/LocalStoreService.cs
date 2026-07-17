@@ -124,6 +124,12 @@ public class LocalStoreService : ILocalStoreService
         // Excluded occurrence starts for a recurring master ("delete just this one"). Idempotent ALTER.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN exdates TEXT DEFAULT NULL;");
 
+        // Marks rows pulled from a Microsoft (Graph) calendar by GraphCalendarSyncService (M4
+        // read-down v1). Graph rows are replaced wholesale per sync and must be excluded from the
+        // invite harvest and orphan cleanup; account deletion still cascades by account_id.
+        // Idempotent ALTER, mirroring is_all_day.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN is_graph INTEGER NOT NULL DEFAULT 0;");
+
         RunDataMigrations(conn);
     }
 
@@ -803,8 +809,8 @@ public class LocalStoreService : ILocalStoreService
             INSERT INTO CalendarEvent(uid, account_id, summary, description, location,
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
                                       sequence, method, source_message_id, source_folder, response_status,
-                                      is_all_day, recurrence_rule, exdates)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd)
+                                      is_all_day, recurrence_rule, exdates, is_graph)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -819,8 +825,12 @@ public class LocalStoreService : ILocalStoreService
                 source_folder     = excluded.source_folder,
                 is_all_day        = excluded.is_all_day,
                 recurrence_rule   = excluded.recurrence_rule,
-                exdates           = excluded.exdates;
+                exdates           = excluded.exdates
+            WHERE CalendarEvent.is_graph = 0;
             """;
+        // The DO UPDATE ... WHERE guard: Graph-synced rows (is_graph=1) are owned by
+        // GraphCalendarSyncService's replace-slice; the invite harvest and local authoring
+        // paths that come through here must never overwrite them (e.g. on a UID collision).
         cmd.Parameters.AddWithValue("$uid",  evt.Uid);
         cmd.Parameters.AddWithValue("$aid",  evt.AccountId.ToString());
         cmd.Parameters.AddWithValue("$sum",  evt.Summary);
@@ -838,7 +848,80 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$allday", evt.IsAllDay ? 1 : 0);
         cmd.Parameters.AddWithValue("$rrule", (object?)evt.RecurrenceRule ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$exd",  (object?)evt.ExDates ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("$graph", evt.IsGraph ? 1 : 0);
         await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    public async Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events)
+    {
+        // Replace-slice semantics (v1, no delta tokens): each sync deletes the account's previous
+        // Graph-sourced rows and inserts the fresh window, all in one transaction, so events that
+        // vanished on the server disappear locally. Harvested-invite and local rows (is_graph=0)
+        // are untouched.
+        await using var conn = await OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+
+        await using (var del = conn.CreateCommand())
+        {
+            del.CommandText = "DELETE FROM CalendarEvent WHERE account_id = $aid AND is_graph = 1;";
+            del.Parameters.AddWithValue("$aid", accountId.ToString());
+            await del.ExecuteNonQueryAsync();
+        }
+
+        await using (var ins = conn.CreateCommand())
+        {
+            // INSERT OR REPLACE: defensive against a duplicate occurrence id within one payload,
+            // and against a (astronomically unlikely) collision with a harvested invite's UID —
+            // the Graph copy wins for the (uid, account) key.
+            ins.CommandText = """
+                INSERT OR REPLACE INTO CalendarEvent(uid, account_id, summary, description, location,
+                                          organizer, organizer_name, start_time_ticks, end_time_ticks,
+                                          sequence, method, source_message_id, source_folder, response_status,
+                                          is_all_day, recurrence_rule, exdates, is_graph)
+                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1);
+                """;
+            var pUid  = ins.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pAid  = ins.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pSum  = ins.Parameters.Add("$sum",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pDesc = ins.Parameters.Add("$desc", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pLoc  = ins.Parameters.Add("$loc",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pOrg  = ins.Parameters.Add("$org",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pOrgn = ins.Parameters.Add("$orgn", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pSt   = ins.Parameters.Add("$st",   Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pEt   = ins.Parameters.Add("$et",   Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pSeq  = ins.Parameters.Add("$seq",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pMeth = ins.Parameters.Add("$meth", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pSmid = ins.Parameters.Add("$smid", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pSf   = ins.Parameters.Add("$sf",   Microsoft.Data.Sqlite.SqliteType.Text);
+            var pRs   = ins.Parameters.Add("$rs",   Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pAll  = ins.Parameters.Add("$allday", Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pRr   = ins.Parameters.Add("$rrule", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pExd  = ins.Parameters.Add("$exd",  Microsoft.Data.Sqlite.SqliteType.Text);
+
+            foreach (var evt in events)
+            {
+                pUid.Value  = evt.Uid;
+                pAid.Value  = accountId.ToString();
+                pSum.Value  = evt.Summary;
+                pDesc.Value = evt.Description;
+                pLoc.Value  = evt.Location;
+                pOrg.Value  = evt.Organizer;
+                pOrgn.Value = evt.OrganizerName;
+                pSt.Value   = (object?)evt.StartTimeTicks ?? DBNull.Value;
+                pEt.Value   = (object?)evt.EndTimeTicks ?? DBNull.Value;
+                pSeq.Value  = (object?)evt.Sequence ?? DBNull.Value;
+                pMeth.Value = (object?)evt.Method ?? DBNull.Value;
+                pSmid.Value = evt.SourceMessageId;
+                pSf.Value   = evt.SourceFolder;
+                pRs.Value   = (int)evt.ResponseStatus;
+                pAll.Value  = evt.IsAllDay ? 1 : 0;
+                pRr.Value   = (object?)evt.RecurrenceRule ?? DBNull.Value;
+                pExd.Value  = (object?)evt.ExDates ?? DBNull.Value;
+                await ins.ExecuteNonQueryAsync();
+            }
+        }
+
         await tx.CommitAsync();
     }
 
@@ -850,7 +933,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
-                   source_folder, response_status, is_all_day, recurrence_rule, exdates
+                   source_folder, response_status, is_all_day, recurrence_rule, exdates, is_graph
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -876,6 +959,7 @@ public class LocalStoreService : ILocalStoreService
                 IsAllDay         = !r.IsDBNull(14) && r.GetInt32(14) != 0,
                 RecurrenceRule   = r.IsDBNull(15) ? null : r.GetString(15),
                 ExDates          = r.IsDBNull(16) ? null : r.GetString(16),
+                IsGraph          = !r.IsDBNull(17) && r.GetInt32(17) != 0,
             });
         }
         return list;
@@ -936,10 +1020,14 @@ public class LocalStoreService : ILocalStoreService
         // deletes a message) but the CalendarEvent outlives it.  After clearing,
         // OpenSourceMessage silently no-ops for these events instead of failing with
         // "Message UID N not found".
+        // is_graph = 0 guard: Graph-synced rows never reference an invite email (their source
+        // fields are already empty) and are owned by the sync's replace-slice — the invite
+        // harvest's cleanup must not touch them.
         cmd.CommandText = """
             UPDATE CalendarEvent
             SET source_message_id = '', source_folder = ''
             WHERE source_message_id != ''
+              AND is_graph = 0
               AND NOT EXISTS (
                   SELECT 1 FROM MessageDetail md
                   WHERE md.unique_id   = CalendarEvent.source_message_id

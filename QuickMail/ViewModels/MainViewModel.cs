@@ -34,6 +34,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ISendMailService _smtp;
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
+    private readonly IGraphCalendarSyncService? _graphCalendarSync;
     private readonly IUpdateCheckService? _updateCheckService;
     // Windows toast notifications for new mail. Null in tests and when the OS/platform is
     // unsupported. Calling into it is an OS side-effect a service owns, not a View-layer type,
@@ -64,6 +65,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Debounced calendar harvest: re-harvests events 2s after the last FolderSynced
     // event so we don't harvest on every folder during a multi-folder sync.
     private System.Threading.Timer? _calendarHarvestTimer;
+
+    // Periodic Graph calendar pull (read-down v1): first pass right after the startup mail sync,
+    // then every 15 minutes. Callback marshals to the UI thread via _ui.Post (like the harvest
+    // timer above). Disposed in Dispose; in-flight HTTP is cancelled via _graphCalSyncCts.
+    private System.Threading.Timer? _graphCalendarSyncTimer;
+    private CancellationTokenSource? _graphCalSyncCts;
+    private bool _graphCalendarSyncRunning; // UI-thread-owned re-entrancy guard (timer vs. F5)
+    private static readonly TimeSpan GraphCalendarSyncInterval = TimeSpan.FromMinutes(15);
 
     /// <summary>
     /// Cancels and disposes the old CTS, creates a new one, and outputs its token.
@@ -98,6 +107,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _folderCountCts.Clear();
         _calendarHarvestTimer?.Dispose();
         _calendarHarvestTimer = null;
+        _graphCalendarSyncTimer?.Dispose();
+        _graphCalendarSyncTimer = null;
+        DrainCts(ref _graphCalSyncCts);
         _reminderTimer?.Dispose();
         _reminderTimer = null;
         GC.SuppressFinalize(this);
@@ -837,7 +849,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IUiDispatcher? uiDispatcher = null,
         IThemeService? themeService = null,
         INotificationService? notificationService = null,
-        IContactSyncService? contactSyncService = null)
+        IContactSyncService? contactSyncService = null,
+        IGraphCalendarSyncService? graphCalendarSyncService = null)
     {
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
@@ -858,6 +871,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _themeService         = themeService;
         _notifications        = notificationService;
         _contactSync          = contactSyncService;
+        _graphCalendarSync    = graphCalendarSyncService;
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
@@ -1666,6 +1680,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (missingRecipients)
             {
                 await FetchAllMailAsync();
+                StartGraphCalendarSyncTimer(); // this path skips the full sync below but still counts as "startup done"
                 return;
             }
         }
@@ -1734,6 +1749,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _suppressFolderSyncUpdates = false;
             progressCts.Cancel();
             try { await progressTask.ConfigureAwait(false); } catch { }
+
+            // Graph calendar sync: first pass now that the initial mail sync has finished (tokens
+            // are warm, so acquisition is silent), then every 15 minutes. In the finally so a sync
+            // error or cancellation doesn't leave the calendar permanently unsynced.
+            StartGraphCalendarSyncTimer();
         }
     }
 
@@ -3328,6 +3348,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // through CommandRegistry, so an isAvailable guard alone can't disambiguate them.
         if (IsCalendarView)
         {
+            // Pull the latest Graph calendar slice first so F5 reflects the server, then let the
+            // calendar's own refresh reload from the store and announce the updated count.
+            await RunGraphCalendarSyncAsync(refreshAndAnnounce: false);
             if (CalendarVm != null)
                 await CalendarVm.RefreshCommand.ExecuteAsync(null);
             return;
@@ -5996,6 +6019,62 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }, null, Timeout.Infinite, Timeout.Infinite);
 
         _calendarHarvestTimer.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
+    }
+
+    // ── Graph calendar sync (read-down v1) ────────────────────────────────────────
+
+    /// <summary>
+    /// Starts the periodic Graph calendar pull: an immediate first pass (called after the startup
+    /// mail sync completes, so OAuth tokens are warm and the token acquisition is silent), then
+    /// every 15 minutes. Idempotent — a repeat call just restarts the schedule.
+    /// </summary>
+    private void StartGraphCalendarSyncTimer()
+    {
+        if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
+
+        _graphCalendarSyncTimer ??= new System.Threading.Timer(
+            _ => _ui.Post(() => _ = RunGraphCalendarSyncAsync()), null, Timeout.Infinite, Timeout.Infinite);
+        _graphCalendarSyncTimer.Change(TimeSpan.Zero, GraphCalendarSyncInterval);
+    }
+
+    /// <summary>
+    /// One Graph calendar sync pass: pulls every Graph account's primary calendar into the local
+    /// store (replace-slice), then reloads the in-memory calendar. Announces the result (Status
+    /// category) only while the calendar view is active, so background passes stay silent.
+    /// Runs on the UI thread; overlapping passes (timer vs. F5) are skipped, not queued.
+    /// </summary>
+    private async Task RunGraphCalendarSyncAsync(bool refreshAndAnnounce = true)
+    {
+        if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
+        if (_graphCalendarSyncRunning) return;
+        _graphCalendarSyncRunning = true;
+        try
+        {
+            ReplaceCts(ref _graphCalSyncCts, out var ct);
+            var result = await _graphCalendarSync.SyncAllAsync(ct);
+            // Nothing eligible (no Graph accounts) or nothing pulled — leave the calendar alone.
+            if (result.AccountsSynced == 0) return;
+            if (!refreshAndAnnounce) return; // F5 path: CalendarVm.RefreshAsync reloads + announces
+
+            await _calendarService.RefreshAsync(ct);
+            if (IsCalendarView)
+            {
+                CalendarVm?.ApplyFiltersFromExternalUpdate();
+                var n = result.EventsFetched;
+                Announce($"Calendar sync complete. {n} event{(n == 1 ? "" : "s")}.",
+                         AnnouncementCategory.Status);
+            }
+        }
+        catch (OperationCanceledException) { /* shutdown or superseded pass — normal */ }
+        catch (Exception ex)
+        {
+            // Best-effort background work: log, never surface a modal or break the caller.
+            LogService.Log("GraphCalendarSync (background pass)", ex);
+        }
+        finally
+        {
+            _graphCalendarSyncRunning = false;
+        }
     }
 
     // ── Calendar reminders ────────────────────────────────────────────────────────

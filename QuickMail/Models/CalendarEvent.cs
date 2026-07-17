@@ -35,6 +35,15 @@ public partial class CalendarEvent : ObservableObject
     public bool IsAllDay { get; set; }
 
     /// <summary>
+    /// True when this row was pulled from the account's Microsoft (Graph) calendar by
+    /// <see cref="Services.GraphCalendarSyncService"/> rather than harvested from an email invite
+    /// or authored locally. Graph rows are read-only in the UI (the server is the source of truth;
+    /// v1 sync is read-down only) and are replaced wholesale on each sync, so the invite harvest
+    /// and orphan cleanup must never touch them. Persisted in the <c>is_graph</c> column.
+    /// </summary>
+    public bool IsGraph { get; set; }
+
+    /// <summary>
     /// iCalendar RRULE string for a repeating appointment (e.g. "FREQ=WEEKLY;BYDAY=TU"), or null/empty
     /// for a one-off. Parse with <see cref="Models.RecurrenceRule.Parse"/>.
     /// </summary>
