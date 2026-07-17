@@ -2215,6 +2215,10 @@ public partial class MainWindow : Window
     private bool CalendarPaneFocused =>
         CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin;
 
+    /// <summary>New selection loaded into the Details pane: start reading from the first line.</summary>
+    private void CalendarDetails_TextChanged(object sender, TextChangedEventArgs e)
+        => CalendarDetails.CaretIndex = 0;
+
     private void CalendarNew_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.NewEventCommand.Execute(null);
 

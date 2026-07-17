@@ -1291,6 +1291,8 @@
                                  AutomationProperties.Name="Appointment details"
                                  Text="{Binding CalendarVm.SelectedEventDetail, Mode=OneWay}"
                                  IsReadOnly="True"
+                                 IsReadOnlyCaretVisible="True"
+                                 TextChanged="CalendarDetails_TextChanged"
                                  TabIndex="4"
                                  TextWrapping="Wrap"
                                  AcceptsReturn="True"
