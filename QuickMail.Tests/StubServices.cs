@@ -322,10 +322,29 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
     public int SyncCallCount { get; private set; }
     public GraphCalendarSyncResult Result { get; set; } = GraphCalendarSyncResult.None;
 
+    /// <summary>When set, CreateEventAsync throws it (simulates a failed push).</summary>
+    public Exception? CreateFailure { get; set; }
+    public List<CalendarEvent> CreatedEvents { get; } = [];
+
     public Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
     {
         SyncCallCount++;
         return Task.FromResult(Result);
+    }
+
+    public Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (CreateFailure != null) throw CreateFailure;
+        // Mimic the real service: the stored copy carries the server id and the Graph flag.
+        var created = new CalendarEvent
+        {
+            Uid = "graph-" + CreatedEvents.Count, AccountId = account.Id, IsGraph = true,
+            Summary = evt.Summary, Location = evt.Location, Description = evt.Description,
+            StartTimeTicks = evt.StartTimeTicks, EndTimeTicks = evt.EndTimeTicks,
+            IsAllDay = evt.IsAllDay, ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        CreatedEvents.Add(created);
+        return Task.FromResult(created);
     }
 }
 

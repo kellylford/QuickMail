@@ -288,4 +288,84 @@ public class EventEditorViewModelTests
         Assert.NotNull(announced);
         Assert.Contains("Title", announced);
     }
+
+    // ── Save-target (Calendar) picker ────────────────────────────────────────────
+
+    private static readonly Guid AccountA = Guid.NewGuid();
+
+    private static EventEditorViewModel NewEditorWithAccount() =>
+        new(new DateTime(2026, 7, 20, 9, 0, 0),
+            new[] { new CalendarSaveTarget("Work (Microsoft)", AccountA) });
+
+    [Fact]
+    public void SaveTargets_DefaultToLocal_WithAccountListed()
+    {
+        var vm = NewEditorWithAccount();
+
+        Assert.True(vm.ShowSaveTarget);
+        Assert.Equal(2, vm.SaveTargetLabels.Count);
+        Assert.Equal("My Appointments (this computer)", vm.SaveTargetLabels[0]);
+        Assert.Equal("Work (Microsoft)", vm.SaveTargetLabels[1]);
+        Assert.Equal(0, vm.SelectedTargetIndex);
+        Assert.Equal(CalendarEvent.LocalAccountId, vm.SelectedTargetAccountId);
+
+        vm.Title = "Local by default";
+        Assert.True(vm.TryBuildEvent(out var evt, out _));
+        Assert.Equal(CalendarEvent.LocalAccountId, evt.AccountId);
+    }
+
+    [Fact]
+    public void SaveTargets_AccountSelected_SetsEventAccountId()
+    {
+        var vm = NewEditorWithAccount();
+        vm.Title = "On the work calendar";
+        vm.SelectedTargetIndex = 1;
+
+        Assert.Equal(AccountA, vm.SelectedTargetAccountId);
+        Assert.True(vm.TryBuildEvent(out var evt, out _));
+        Assert.Equal(AccountA, evt.AccountId);
+        Assert.False(evt.IsUserCreated);
+    }
+
+    [Fact]
+    public void SaveTargets_RecurringToAccount_FailsValidation()
+    {
+        var vm = NewEditorWithAccount();
+        vm.Title = "Weekly on the account";
+        vm.SelectedTargetIndex = 1;
+        vm.RepeatIndex = 2; // Weekly
+
+        Assert.False(vm.TryBuildEvent(out _, out var error));
+        Assert.Equal("Repeating appointments can only be saved to My Appointments for now.", error);
+
+        // Back on the local target the same repeat is fine.
+        vm.SelectedTargetIndex = 0;
+        Assert.True(vm.TryBuildEvent(out var evt, out _));
+        Assert.Equal(CalendarEvent.LocalAccountId, evt.AccountId);
+        Assert.True(evt.IsRecurring);
+    }
+
+    [Fact]
+    public void SaveTargets_NoAccounts_PickerHidden()
+    {
+        var vm = new EventEditorViewModel(DateTime.Now);
+        Assert.False(vm.ShowSaveTarget);
+        Assert.Single(vm.SaveTargetLabels);
+    }
+
+    [Fact]
+    public void SaveTargets_EditMode_PickerHidden()
+    {
+        var vm = new EventEditorViewModel(new CalendarEvent
+        {
+            Uid = "local-x", AccountId = CalendarEvent.LocalAccountId, Summary = "Existing",
+            StartTimeTicks = DateTime.UtcNow.Ticks,
+        });
+        Assert.False(vm.ShowSaveTarget);
+
+        // Editing keeps the appointment on the local calendar (cannot move calendars in v1).
+        vm.Title = "Existing";
+        Assert.True(vm.TryBuildEvent(out var evt, out _));
+        Assert.Equal(CalendarEvent.LocalAccountId, evt.AccountId);
+    }
 }

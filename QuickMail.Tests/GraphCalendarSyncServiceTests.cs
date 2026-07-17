@@ -52,15 +52,19 @@ public class GraphCalendarSyncServiceTests : IDisposable
         public RecordingHandler(params HttpResponseMessage[] responses)
             => _responses = new Queue<HttpResponseMessage>(responses);
 
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        public List<string> Methods { get; } = [];
+        public List<string?> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             Calls++;
             Urls.Add(request.RequestUri!.ToString());
+            Methods.Add(request.Method.Method);
             PreferHeaders.Add(request.Headers.TryGetValues("Prefer", out var v) ? string.Join(",", v) : null);
-            var resp = _responses.Count > 0
+            Bodies.Add(request.Content is null ? null : await request.Content.ReadAsStringAsync(ct));
+            return _responses.Count > 0
                 ? _responses.Dequeue()
                 : Json("""{ "value": [] }""");
-            return Task.FromResult(resp);
         }
     }
 
@@ -382,6 +386,106 @@ public class GraphCalendarSyncServiceTests : IDisposable
         Assert.NotNull(result.Error);
         Assert.Contains("sign-in", result.Error, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(await _store.LoadCalendarEventsAsync()); // nothing was deleted or inserted
+    }
+
+    // ── Create push (POST /me/events) ────────────────────────────────────────────
+
+    [Fact]
+    public async Task CreateEvent_Timed_PostsExpectedShape_AndStoresServerCopy()
+    {
+        var handler = new RecordingHandler(Json(
+            EventJson("srv-1", "Board meeting", "2026-08-01T14:00:00.0000000", "2026-08-01T15:00:00.0000000",
+                      isOrganizer: true, response: "organizer", location: "Room 9", preview: "quarterly")));
+        var service = Service(handler);
+        var evt = new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Board meeting",
+            Description = "quarterly", Location = "Room 9",
+            StartTimeTicks = new DateTime(2026, 8, 1, 14, 0, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 1, 15, 0, 0, DateTimeKind.Utc).Ticks,
+        };
+
+        var created = await service.CreateEventAsync(GraphAccount(), evt, TestContext.Current.CancellationToken);
+
+        Assert.Equal("POST", Assert.Single(handler.Methods));
+        Assert.EndsWith("/me/events", handler.Urls[0]);
+        Assert.Equal("outlook.timezone=\"UTC\"", handler.PreferHeaders[0]);
+
+        using var body = System.Text.Json.JsonDocument.Parse(handler.Bodies[0]!);
+        var root = body.RootElement;
+        Assert.Equal("Board meeting", root.GetProperty("subject").GetString());
+        Assert.Equal("text", root.GetProperty("body").GetProperty("contentType").GetString());
+        Assert.Equal("quarterly", root.GetProperty("body").GetProperty("content").GetString());
+        Assert.Equal("2026-08-01T14:00:00", root.GetProperty("start").GetProperty("dateTime").GetString());
+        Assert.Equal("UTC", root.GetProperty("start").GetProperty("timeZone").GetString());
+        Assert.Equal("2026-08-01T15:00:00", root.GetProperty("end").GetProperty("dateTime").GetString());
+        Assert.Equal("Room 9", root.GetProperty("location").GetProperty("displayName").GetString());
+        Assert.False(root.GetProperty("isAllDay").GetBoolean());
+
+        // The server's copy is stored (Uid = the Graph id, is_graph set) so it shows immediately
+        // and is simply re-fetched by the next replace-slice sync.
+        Assert.Equal("srv-1", created.Uid);
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("srv-1", row.Uid);
+        Assert.True(row.IsGraph);
+        Assert.Equal(CalendarResponseStatus.Accepted, row.ResponseStatus);
+    }
+
+    [Fact]
+    public async Task CreateEvent_AllDay_SendsMidnightBoundaries_EndDayAfterLastDay()
+    {
+        var handler = new RecordingHandler(Json(
+            EventJson("srv-allday", "Offsite", "2026-08-03T00:00:00.0000000", "2026-08-05T00:00:00.0000000", allDay: true)));
+        var service = Service(handler);
+        // Local all-day storage: local midnight of first day .. 23:59:59 of the last day (Aug 3-4).
+        var evt = new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Offsite", IsAllDay = true,
+            StartTimeTicks = new DateTime(2026, 8, 3, 0, 0, 0, DateTimeKind.Local).ToUniversalTime().Ticks,
+            EndTimeTicks   = new DateTime(2026, 8, 4, 23, 59, 59, DateTimeKind.Local).ToUniversalTime().Ticks,
+        };
+
+        await service.CreateEventAsync(GraphAccount(), evt, TestContext.Current.CancellationToken);
+
+        using var body = System.Text.Json.JsonDocument.Parse(handler.Bodies[0]!);
+        var root = body.RootElement;
+        Assert.True(root.GetProperty("isAllDay").GetBoolean());
+        Assert.Equal("2026-08-03T00:00:00", root.GetProperty("start").GetProperty("dateTime").GetString());
+        // Graph requires an EXCLUSIVE end: the day after the last day (Aug 4 → Aug 5).
+        Assert.Equal("2026-08-05T00:00:00", root.GetProperty("end").GetProperty("dateTime").GetString());
+    }
+
+    [Fact]
+    public async Task CreateEvent_Recurring_ThrowsNotSupported()
+    {
+        var handler = new RecordingHandler();
+        var service = Service(handler);
+        var evt = new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Weekly",
+            RecurrenceRule = "FREQ=WEEKLY",
+            StartTimeTicks = DateTime.UtcNow.Ticks,
+        };
+
+        await Assert.ThrowsAsync<NotSupportedException>(
+            () => service.CreateEventAsync(GraphAccount(), evt, TestContext.Current.CancellationToken));
+        Assert.Equal(0, handler.Calls); // rejected before any network traffic
+    }
+
+    [Fact]
+    public async Task CreateEvent_HttpFailure_Throws_AndStoresNothing()
+    {
+        var handler = new RecordingHandler(Json("""{ "error": "denied" }""", code: HttpStatusCode.Forbidden));
+        var service = Service(handler);
+        var evt = new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = _accountId, Summary = "Doomed",
+            StartTimeTicks = DateTime.UtcNow.Ticks,
+        };
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => service.CreateEventAsync(GraphAccount(), evt, TestContext.Current.CancellationToken));
+        Assert.Empty(await _store.LoadCalendarEventsAsync());
     }
 
     [Fact]

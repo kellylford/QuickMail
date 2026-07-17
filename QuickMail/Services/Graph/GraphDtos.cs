@@ -156,3 +156,16 @@ internal sealed class GraphResponseStatus
     /// <summary>Values: "none" | "organizer" | "tentativelyAccepted" | "accepted" | "declined" | "notResponded".</summary>
     [JsonPropertyName("response")] public string? Response { get; set; }
 }
+
+/// <summary>Request body for <c>POST /me/events</c> (create push, single events only in v1).</summary>
+internal sealed class GraphCreateEventBody
+{
+    [JsonPropertyName("subject")] public string Subject { get; set; } = string.Empty;
+    [JsonPropertyName("body"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GraphItemBody? Body { get; set; }
+    [JsonPropertyName("start")] public GraphDateTimeTimeZone? Start { get; set; }
+    [JsonPropertyName("end")] public GraphDateTimeTimeZone? End { get; set; }
+    [JsonPropertyName("location"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GraphLocation? Location { get; set; }
+    [JsonPropertyName("isAllDay")] public bool IsAllDay { get; set; }
+}

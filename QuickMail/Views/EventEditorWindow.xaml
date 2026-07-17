@@ -40,6 +40,21 @@
             <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
 
+        <!-- Save target — NEW appointments only, and only when a Graph account offers a second
+             calendar. Shares row 0 with the edit-scope radios below: edit-scope shows only while
+             editing, this only while creating, so the two are never visible together. Items are
+             plain strings so each ComboBox item announces its label (Selector accessibility rule). -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4"
+                    Orientation="Horizontal" Margin="0,0,0,10"
+                    Visibility="{Binding ShowSaveTarget, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="Calendar:" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <ComboBox x:Name="SaveTargetCombo"
+                      AutomationProperties.Name="Calendar"
+                      ItemsSource="{Binding SaveTargetLabels}"
+                      SelectedIndex="{Binding SelectedTargetIndex}"
+                      MinWidth="220" VerticalAlignment="Center"/>
+        </StackPanel>
+
         <!-- Edit scope — shown only when editing one occurrence of a repeating series.
              Radio group: one tab stop, arrows cycle. -->
         <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4"
@@ -112,7 +127,8 @@
                     Orientation="Horizontal" Margin="0,0,0,10"
                     IsEnabled="{Binding CanEditRepeat}"
                     KeyboardNavigation.TabNavigation="Continue">
-            <ComboBox AutomationProperties.Name="Repeat"
+            <ComboBox x:Name="RepeatCombo"
+                      AutomationProperties.Name="Repeat"
                       SelectedIndex="{Binding RepeatIndex}"
                       MinWidth="130" VerticalAlignment="Center">
                 <ComboBoxItem>Does not repeat</ComboBoxItem>

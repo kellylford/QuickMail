@@ -24,6 +24,12 @@ public partial class CalendarViewModel : ObservableObject
     private readonly bool _showDeclinedEvents;
     private bool _showFieldLabels;
 
+    // Graph create push (save-target picker). Both optional: null in tests and when the app has
+    // no Graph accounts — the editor then offers only the local calendar. The provider is a
+    // deferred lookup because the account list loads after this VM is constructed.
+    private readonly IGraphCalendarSyncService? _graphSync;
+    private readonly Func<IReadOnlyList<AccountModel>>? _graphAccountsProvider;
+
     /// <summary>
     /// Raised when a screen reader announcement is needed.
     /// The View subscribes and calls <c>AccessibilityHelper.Announce(text, category)</c>.
@@ -191,12 +197,16 @@ public partial class CalendarViewModel : ObservableObject
     }
 
     public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents,
-                             bool showFieldLabels = false)
+                             bool showFieldLabels = false,
+                             IGraphCalendarSyncService? graphSync = null,
+                             Func<IReadOnlyList<AccountModel>>? graphAccountsProvider = null)
     {
         _calendarService = calendarService;
         _onlineMode = onlineMode;
         _showDeclinedEvents = showDeclinedEvents;
         _showFieldLabels = showFieldLabels;
+        _graphSync = graphSync;
+        _graphAccountsProvider = graphAccountsProvider;
     }
 
     /// <summary>
@@ -329,9 +339,57 @@ public partial class CalendarViewModel : ObservableObject
     {
         if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
 
-        var editor = new EventEditorViewModel(DateTime.Now);
-        editor.Saved += evt => _ = SaveEditedEventAsync(evt, isNew: true);
+        // Save targets: the local calendar (always, default) plus each Graph-backed account.
+        var accountTargets = (_graphAccountsProvider?.Invoke() ?? [])
+            .Select(a => new CalendarSaveTarget(a.AccountLabel, a.Id))
+            .ToList();
+        var editor = new EventEditorViewModel(DateTime.Now, accountTargets);
+        editor.Saved += evt => _ = SaveNewEventAsync(evt);
         EditorRequested?.Invoke(editor);
+    }
+
+    /// <summary>
+    /// Persists a NEW appointment to its chosen calendar: local save, or a Graph create push for
+    /// an account target. A failed push falls back to a local save so the user's data is never
+    /// lost, announced as such.
+    /// </summary>
+    internal async Task SaveNewEventAsync(CalendarEvent evt)
+    {
+        var account = evt.AccountId == CalendarEvent.LocalAccountId
+            ? null
+            : _graphAccountsProvider?.Invoke().FirstOrDefault(a => a.Id == evt.AccountId);
+
+        if (account is null || _graphSync is null)
+        {
+            // Local target — or an account target we can no longer resolve (account removed
+            // between opening the editor and saving): keep the data rather than fail.
+            evt.AccountId = CalendarEvent.LocalAccountId;
+            await SaveEditedEventAsync(evt, isNew: true);
+            return;
+        }
+
+        try
+        {
+            var created = await _graphSync.CreateEventAsync(account, evt);
+            await _calendarService.RefreshAsync(); // reload the in-memory list from the store
+            ApplyFilters();
+            SelectedEvent = Events.FirstOrDefault(e => e.Uid == created.Uid && e.AccountId == created.AccountId);
+            var when = created.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date";
+            Announce($"Appointment created on {account.AccountLabel}. {created.Summary}, {when}.",
+                     AnnouncementCategory.Result);
+            ListFocusRequested?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Graph calendar create failed for {account.AccountLabel}", ex);
+            evt.AccountId = CalendarEvent.LocalAccountId;
+            await _calendarService.UpsertEventAsync(evt);
+            ApplyFilters();
+            SelectedEvent = Events.FirstOrDefault(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
+            Announce($"Could not save to {account.AccountLabel}. Saved to My Appointments instead.",
+                     AnnouncementCategory.Result);
+            ListFocusRequested?.Invoke();
+        }
     }
 
     /// <summary>Opens the appointment editor to edit the selected local event. Bound to E / Enter on a local event.</summary>

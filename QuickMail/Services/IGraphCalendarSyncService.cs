@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using QuickMail.Models;
 
 namespace QuickMail.Services;
 
@@ -27,4 +28,14 @@ public interface IGraphCalendarSyncService
     /// so events deleted on the server disappear locally.
     /// </summary>
     Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Creates a single (non-repeating) event on the account's primary Microsoft calendar
+    /// (<c>POST /me/events</c>) and upserts the server's copy into the local store with
+    /// <c>is_graph</c> set, so it appears immediately and survives the next replace-slice sync.
+    /// Unlike <see cref="SyncAllAsync"/>, this THROWS on failure — the caller decides the
+    /// fallback (e.g. save locally instead). Returns the locally-stored row (Uid = the
+    /// server-assigned event id).
+    /// </summary>
+    Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
 }

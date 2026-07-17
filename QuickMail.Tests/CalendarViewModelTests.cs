@@ -726,4 +726,82 @@ public class CalendarViewModelTests
         Assert.Equal("noon", vm.VisibleEvents[1].Uid);
         Assert.Equal("late", vm.VisibleEvents[2].Uid);
     }
+
+    // ── Save-target push (new appointments) ──────────────────────────────────────
+
+    private static (CalendarViewModel Vm, StubCalendarService Store, StubGraphCalendarSyncService Sync, AccountModel Account)
+        MakePushVm()
+    {
+        var account = new AccountModel
+        {
+            Id = Guid.NewGuid(),
+            BackendKind = BackendKind.MicrosoftGraph,
+            Username = "work@example.com",
+        };
+        var store = new StubCalendarService();
+        var sync = new StubGraphCalendarSyncService();
+        var vm = new CalendarViewModel(store, onlineMode: false, showDeclinedEvents: false,
+                                       showFieldLabels: false, graphSync: sync,
+                                       graphAccountsProvider: () => new[] { account });
+        return (vm, store, sync, account);
+    }
+
+    [Fact]
+    public async Task SaveNewEvent_AccountTarget_PushesToGraph()
+    {
+        var (vm, store, sync, account) = MakePushVm();
+        var evt = new CalendarEvent
+        {
+            Uid = "local-tmp", AccountId = account.Id, Summary = "Pushed",
+            StartTimeTicks = DateTime.UtcNow.AddHours(1).Ticks,
+        };
+
+        await vm.SaveNewEventAsync(evt);
+
+        var created = Assert.Single(sync.CreatedEvents);
+        Assert.Equal(account.Id, created.AccountId);
+        Assert.True(created.IsGraph);
+        // The push path persists via the sync service (server copy), not a local upsert.
+        Assert.DoesNotContain(store.StoredEvents, e => e.Uid == "local-tmp");
+    }
+
+    [Fact]
+    public async Task SaveNewEvent_PushFails_FallsBackToLocal_AndAnnounces()
+    {
+        var (vm, store, sync, account) = MakePushVm();
+        sync.CreateFailure = new InvalidOperationException("network down");
+        var announcements = new List<string>();
+        vm.AnnouncementRequested += (text, _) => announcements.Add(text);
+        var evt = new CalendarEvent
+        {
+            Uid = "local-fallback", AccountId = account.Id, Summary = "Keep me",
+            StartTimeTicks = DateTime.UtcNow.AddHours(1).Ticks,
+        };
+
+        await vm.SaveNewEventAsync(evt);
+
+        // Saved locally so the user's data is never lost.
+        var saved = Assert.Single(store.StoredEvents);
+        Assert.Equal("local-fallback", saved.Uid);
+        Assert.Equal(CalendarEvent.LocalAccountId, saved.AccountId);
+        Assert.True(saved.IsUserCreated);
+        Assert.Contains(announcements, a =>
+            a.Contains("Could not save to") && a.Contains("Saved to My Appointments instead."));
+    }
+
+    [Fact]
+    public async Task SaveNewEvent_LocalTarget_SavesLocallyWithoutPush()
+    {
+        var (vm, store, sync, _) = MakePushVm();
+        var evt = new CalendarEvent
+        {
+            Uid = "local-only", AccountId = CalendarEvent.LocalAccountId, Summary = "Local",
+            StartTimeTicks = DateTime.UtcNow.AddHours(1).Ticks,
+        };
+
+        await vm.SaveNewEventAsync(evt);
+
+        Assert.Empty(sync.CreatedEvents);
+        Assert.Equal("local-only", Assert.Single(store.StoredEvents).Uid);
+    }
 }

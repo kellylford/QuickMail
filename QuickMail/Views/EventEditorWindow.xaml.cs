@@ -85,8 +85,10 @@ public partial class EventEditorWindow : Window
             return;
         }
 
-        // Escape — cancel. Let an open DatePicker calendar consume Escape itself first.
-        if (e.Key == Key.Escape && !StartDatePicker.IsDropDownOpen && !EndDatePicker.IsDropDownOpen)
+        // Escape — cancel. Let an open DatePicker calendar or ComboBox dropdown consume
+        // Escape itself first (per the modeless-dialog Escape guard in CLAUDE.md).
+        if (e.Key == Key.Escape && !StartDatePicker.IsDropDownOpen && !EndDatePicker.IsDropDownOpen
+            && !RepeatCombo.IsDropDownOpen && !SaveTargetCombo.IsDropDownOpen)
         {
             e.Handled = true;
             _vm.CancelCommand.Execute(null);

@@ -113,6 +113,78 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         return mapped.Count;
     }
 
+    public async Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (evt.IsRecurring)
+            throw new NotSupportedException("v1 Graph push handles single events only.");
+
+        var body = BuildCreateBody(evt);
+
+        // Same auth posture as SyncAccountAsync: calendar scopes, never interactive from here.
+        // Prefer UTC so the response times come back ready to store as UTC ticks.
+        var created = await _graph.PostReadAsync<GraphCalendarEvent>(
+            account, "/me/events", body, OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct)
+            ?? throw new InvalidOperationException("Graph returned no event body for the created event.");
+
+        // Store the SERVER's copy (Uid = the Graph id), flagged is_graph — it shows up
+        // immediately, and because it now exists on the server it survives (is re-fetched by)
+        // the next replace-slice sync.
+        var mapped = MapEvent(created, account.Id);
+        await _store.UpsertCalendarEventAsync(mapped);
+        LogService.Log($"GraphCalendarSync: created event on {account.AccountLabel} ({mapped.Uid}).");
+        return mapped;
+    }
+
+    /// <summary>Builds the <c>POST /me/events</c> body for a local event about to be pushed.</summary>
+    internal static GraphCreateEventBody BuildCreateBody(CalendarEvent evt)
+    {
+        GraphDateTimeTimeZone start, end;
+        if (evt.IsAllDay)
+        {
+            // Graph all-day events must span midnight-to-midnight with an EXCLUSIVE end. Local
+            // all-day rows are stored as local midnight .. 23:59:59 of the last day, so send the
+            // local calendar dates as date boundaries and end = the day AFTER the last day.
+            var startDay = (evt.StartTime ?? DateTime.Today).Date;
+            var lastDay  = (evt.EndTime ?? startDay).Date;
+            if (lastDay < startDay) lastDay = startDay;
+            start = DateBoundary(startDay);
+            end   = DateBoundary(lastDay.AddDays(1));
+        }
+        else
+        {
+            start = UtcStamp(evt.StartTimeTicks ?? DateTime.UtcNow.Ticks);
+            end   = UtcStamp(evt.EndTimeTicks ?? (evt.StartTimeTicks ?? DateTime.UtcNow.Ticks) + TimeSpan.FromMinutes(30).Ticks);
+        }
+
+        return new GraphCreateEventBody
+        {
+            Subject  = evt.Summary,
+            Body     = string.IsNullOrWhiteSpace(evt.Description)
+                        ? null
+                        : new GraphItemBody { ContentType = "text", Content = evt.Description },
+            Start    = start,
+            End      = end,
+            Location = string.IsNullOrWhiteSpace(evt.Location)
+                        ? null
+                        : new GraphLocation { DisplayName = evt.Location },
+            IsAllDay = evt.IsAllDay,
+        };
+    }
+
+    private static GraphDateTimeTimeZone UtcStamp(long utcTicks) => new()
+    {
+        DateTime = new DateTime(utcTicks, DateTimeKind.Utc).ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture),
+        TimeZone = "UTC",
+    };
+
+    /// <summary>An all-day boundary: midnight of the given calendar date (zone label UTC — all-day
+    /// events are date-anchored, so the date is what matters).</summary>
+    private static GraphDateTimeTimeZone DateBoundary(DateTime day) => new()
+    {
+        DateTime = day.ToString("yyyy-MM-dd'T'00:00:00", CultureInfo.InvariantCulture),
+        TimeZone = "UTC",
+    };
+
     /// <summary>Maps one Graph calendarView occurrence to a local <see cref="CalendarEvent"/> row.</summary>
     internal static CalendarEvent MapEvent(GraphCalendarEvent e, Guid accountId)
     {

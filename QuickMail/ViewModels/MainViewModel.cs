@@ -912,8 +912,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
         {
+            // The accounts provider is deferred (evaluated when the editor opens) because the
+            // account list loads after this constructor; only Graph-backed accounts have a
+            // Microsoft calendar to save to.
             CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents,
-                                               cfg.CalendarListShowFieldLabels);
+                                               cfg.CalendarListShowFieldLabels,
+                                               _graphCalendarSync,
+                                               () => Accounts.Where(a => a.BackendKind == BackendKind.MicrosoftGraph).ToList());
             RemindersEnabled = cfg.CalendarReminders;
             ReminderLeadMinutes = cfg.CalendarReminderMinutes;
             StartReminderTimer();

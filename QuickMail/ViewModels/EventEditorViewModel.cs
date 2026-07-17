@@ -7,6 +7,12 @@ using QuickMail.Models;
 namespace QuickMail.ViewModels;
 
 /// <summary>
+/// One entry in the appointment editor's "Calendar" save-target picker: the local calendar
+/// (<see cref="CalendarEvent.LocalAccountId"/>) or a Graph-backed account's calendar.
+/// </summary>
+public sealed record CalendarSaveTarget(string Label, Guid AccountId);
+
+/// <summary>
 /// Authoring ViewModel for a single locally-created calendar appointment. Holds the editable
 /// fields (title, start/end date+time, location, notes), validates them, and produces a
 /// <see cref="CalendarEvent"/> on save. Pure VM: no View types, no window references. The View
@@ -18,9 +24,32 @@ namespace QuickMail.ViewModels;
 public partial class EventEditorViewModel : ObservableObject
 {
     private readonly string _uid;
+    private readonly List<CalendarSaveTarget> _saveTargets;
 
     /// <summary>True when editing an existing event; false when creating a new one.</summary>
     public bool IsEdit { get; }
+
+    /// <summary>
+    /// Labels for the "Calendar" save-target picker. Index 0 is always the local calendar;
+    /// the rest are Graph-backed accounts. Plain strings so the ComboBox items announce
+    /// correctly (Selector accessibility rule).
+    /// </summary>
+    public IReadOnlyList<string> SaveTargetLabels { get; }
+
+    /// <summary>Selected save target. Defaults to 0 (the local calendar).</summary>
+    [ObservableProperty] private int _selectedTargetIndex;
+
+    /// <summary>The account id the appointment will save to (resolved from the picker).</summary>
+    public Guid SelectedTargetAccountId =>
+        SelectedTargetIndex >= 0 && SelectedTargetIndex < _saveTargets.Count
+            ? _saveTargets[SelectedTargetIndex].AccountId
+            : CalendarEvent.LocalAccountId;
+
+    /// <summary>
+    /// True when the View should show the save-target picker: only for NEW appointments (an
+    /// appointment cannot move calendars in v1) and only when there is a real choice to make.
+    /// </summary>
+    public bool ShowSaveTarget => !IsEdit && _saveTargets.Count > 1;
 
     /// <summary>Window title text ("New appointment" / "Edit appointment").</summary>
     public string WindowTitle => IsEdit ? "Edit appointment" : "New appointment";
@@ -112,16 +141,36 @@ public partial class EventEditorViewModel : ObservableObject
     /// <summary>Raised for screen-reader feedback (validation errors). View calls AccessibilityHelper.Announce.</summary>
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
 
-    /// <summary>Creates an editor for a new appointment defaulting to the given start (usually now, rounded).</summary>
-    public EventEditorViewModel(DateTime defaultStart)
+    /// <summary>
+    /// Creates an editor for a new appointment defaulting to the given start (usually now,
+    /// rounded). <paramref name="accountTargets"/> lists the Graph-backed accounts the
+    /// appointment may alternatively be saved to; the local calendar is always offered first
+    /// and is the default.
+    /// </summary>
+    public EventEditorViewModel(DateTime defaultStart, IReadOnlyList<CalendarSaveTarget>? accountTargets = null)
     {
         _uid = "local-" + Guid.NewGuid().ToString("N");
         IsEdit = false;
+        _saveTargets = BuildSaveTargets(accountTargets);
+        SaveTargetLabels = _saveTargets.ConvertAll(t => t.Label);
         var start = RoundUpToQuarterHour(defaultStart);
         StartDate = start.Date;
         StartTime = start.ToString("t");
         EndDate = start.Date;
         EndTime = start.AddMinutes(30).ToString("t");
+    }
+
+    private static List<CalendarSaveTarget> BuildSaveTargets(IReadOnlyList<CalendarSaveTarget>? accountTargets)
+    {
+        var targets = new List<CalendarSaveTarget>
+        {
+            new("My Appointments (this computer)", CalendarEvent.LocalAccountId),
+        };
+        if (accountTargets != null)
+            foreach (var t in accountTargets)
+                if (t.AccountId != CalendarEvent.LocalAccountId)
+                    targets.Add(t);
+        return targets;
     }
 
     /// <summary>
@@ -133,6 +182,9 @@ public partial class EventEditorViewModel : ObservableObject
     {
         _uid = existing.Uid;
         IsEdit = true;
+        // Editing never moves an appointment between calendars (v1) — no picker.
+        _saveTargets = BuildSaveTargets(null);
+        SaveTargetLabels = _saveTargets.ConvertAll(t => t.Label);
         IsRecurringEdit = existing.IsRecurring && existing.OccurrenceStart.HasValue;
         OccurrenceStart = existing.OccurrenceStart;
         Title = existing.Summary;
@@ -278,10 +330,18 @@ public partial class EventEditorViewModel : ObservableObject
             rrule = rule.ToRRule();
         }
 
+        // v1 Graph push handles single events only — a repeating appointment must stay local.
+        var targetAccountId = IsEdit ? CalendarEvent.LocalAccountId : SelectedTargetAccountId;
+        if (targetAccountId != CalendarEvent.LocalAccountId && rrule != null)
+        {
+            error = "Repeating appointments can only be saved to My Appointments for now.";
+            return false;
+        }
+
         evt = new CalendarEvent
         {
             Uid            = IsDetachSave ? "local-" + Guid.NewGuid().ToString("N") : _uid,
-            AccountId      = CalendarEvent.LocalAccountId,
+            AccountId      = targetAccountId,
             Summary        = Title.Trim(),
             Location       = Location.Trim(),
             Description    = Notes.Trim(),

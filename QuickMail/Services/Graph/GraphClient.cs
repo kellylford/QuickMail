@@ -120,6 +120,21 @@ public sealed class GraphClient : IDisposable
     }
 
     /// <summary>
+    /// POSTs a JSON body with an explicit token scope set (optionally silent-only, with extra
+    /// headers) and deserializes the JSON response. Used by calendar sync to create an event
+    /// (<c>POST /me/events</c>) under the calendar scopes and read back the created event.
+    /// </summary>
+    public async Task<T?> PostReadAsync<T>(AccountModel account, string path, object body,
+        string[]? scopes, bool silentOnly, IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
+    {
+        var json = JsonSerializer.Serialize(body, JsonOpts);
+        using var resp = await SendAsync(account, HttpMethod.Post, path,
+            () => new StringContent(json, Encoding.UTF8, "application/json"), scopes, silentOnly, headers, ct);
+        await EnsureSuccessAsync(resp, ct);
+        return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
+    }
+
+    /// <summary>
     /// POSTs an already-encoded raw body and deserializes the JSON response. Used to create a draft
     /// from MIME (<c>POST /me/messages</c>), where the created message's id is needed back.
     /// </summary>
