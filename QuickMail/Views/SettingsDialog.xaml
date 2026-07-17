@@ -302,6 +302,18 @@
                                           IsChecked="{Binding CalendarListShowFieldLabels, Mode=TwoWay}"
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Show field labels in the calendar event list accessible names"/>
+
+                                <CheckBox Content="Remind me before appoin_tments"
+                                          IsChecked="{Binding CalendarReminders, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Remind me before appointments"/>
+                                <StackPanel Orientation="Horizontal" Margin="32,4,0,0"
+                                            IsEnabled="{Binding CalendarReminders}">
+                                    <TextBlock Text="Minutes before:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                    <TextBox Text="{Binding CalendarReminderMinutes, Mode=TwoWay}"
+                                             AutomationProperties.Name="Reminder minutes before appointment"
+                                             Width="48"/>
+                                </StackPanel>
                             </StackPanel>
                         </GroupBox>
                     </StackPanel>

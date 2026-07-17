@@ -52,6 +52,71 @@ public class MainViewModelCalendarTests
     }
 
     [Fact]
+    public void CheckReminders_FiresOncePerOccurrence_WithinLeadWindow()
+    {
+        var soon = DateTime.Now.AddMinutes(5);
+        var calendarService = new StubCalendarService
+        {
+            StoredEvents =
+            [
+                new CalendarEvent
+                {
+                    Uid = "rem-1", AccountId = CalendarEvent.LocalAccountId,
+                    Summary = "Standup", Location = "Zoom",
+                    StartTimeTicks = soon.ToUniversalTime().Ticks,
+                    ResponseStatus = CalendarResponseStatus.Accepted,
+                },
+                new CalendarEvent   // outside the 10-minute window: must not fire
+                {
+                    Uid = "rem-2", AccountId = CalendarEvent.LocalAccountId,
+                    Summary = "Later",
+                    StartTimeTicks = DateTime.Now.AddHours(3).ToUniversalTime().Ticks,
+                    ResponseStatus = CalendarResponseStatus.Accepted,
+                },
+            ],
+        };
+        var vm = MakeVm(calendarService);
+        vm.RemindersEnabled = true;
+        vm.ReminderLeadMinutes = 10;
+
+        var announced = new System.Collections.Generic.List<string>();
+        vm.AnnouncementRequested += (_, e) => announced.Add(e.Text);
+
+        vm.CheckReminders();
+        vm.CheckReminders();   // second pass must not re-fire
+
+        Assert.Single(announced);
+        Assert.Contains("Standup", announced[0]);
+        Assert.DoesNotContain(announced, a => a.Contains("Later"));
+    }
+
+    [Fact]
+    public void CheckReminders_Disabled_FiresNothing()
+    {
+        var calendarService = new StubCalendarService
+        {
+            StoredEvents =
+            [
+                new CalendarEvent
+                {
+                    Uid = "rem-3", AccountId = CalendarEvent.LocalAccountId,
+                    Summary = "Soon",
+                    StartTimeTicks = DateTime.Now.AddMinutes(5).ToUniversalTime().Ticks,
+                    ResponseStatus = CalendarResponseStatus.Accepted,
+                },
+            ],
+        };
+        var vm = MakeVm(calendarService);
+        vm.RemindersEnabled = false;   // default
+
+        var announced = 0;
+        vm.AnnouncementRequested += (_, _) => announced++;
+        vm.CheckReminders();
+
+        Assert.Equal(0, announced);
+    }
+
+    [Fact]
     public async Task RefreshAsync_OutsideCalendarView_DoesNotTouchCalendarService()
     {
         var calendarService = new StubCalendarService();

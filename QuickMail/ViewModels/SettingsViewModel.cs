@@ -82,6 +82,12 @@ public partial class SettingsViewModel : ObservableObject
     private bool _calendarListShowFieldLabels;
 
     [ObservableProperty]
+    private bool _calendarReminders;
+
+    [ObservableProperty]
+    private int _calendarReminderMinutes = 10;
+
+    [ObservableProperty]
     private bool _confirmEmptyTrash;
 
     [ObservableProperty]
@@ -264,6 +270,8 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceFlagStatus               = cfg.AnnounceFlagStatus;
         ContactListShowFieldLabels       = cfg.ContactListShowFieldLabels;
         CalendarListShowFieldLabels      = cfg.CalendarListShowFieldLabels;
+        CalendarReminders                = cfg.CalendarReminders;
+        CalendarReminderMinutes          = cfg.CalendarReminderMinutes;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         NotifyOnNewMail                  = cfg.NotifyOnNewMail;
         CloseToTray                      = cfg.CloseToTray;
@@ -333,6 +341,8 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceFlagStatus               = AnnounceFlagStatus;
         cfg.ContactListShowFieldLabels       = ContactListShowFieldLabels;
         cfg.CalendarListShowFieldLabels      = CalendarListShowFieldLabels;
+        cfg.CalendarReminders                = CalendarReminders;
+        cfg.CalendarReminderMinutes          = Math.Clamp(CalendarReminderMinutes, 1, 1440);
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
         cfg.CloseToTray                      = CloseToTray;

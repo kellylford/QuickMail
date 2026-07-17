@@ -247,6 +247,11 @@ public class ConfigService : IConfigService
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
                     case "contactlistshowfieldlabels":      config.ContactListShowFieldLabels      = ParseBool(value); break;
                     case "calendarlistshowfieldlabels":     config.CalendarListShowFieldLabels     = ParseBool(value); break;
+                    case "calendarreminders":               config.CalendarReminders               = ParseBool(value); break;
+                    case "calendarreminderminutes":
+                        if (int.TryParse(value, out var remMin) && remMin >= 1 && remMin <= 1440)
+                            config.CalendarReminderMinutes = remMin;
+                        break;
                     case "spellingsuggestionsverbosity":
                         config.SpellingSuggestionsVerbosity = string.Equals(value, "justSuggestions", StringComparison.OrdinalIgnoreCase)
                             ? "justSuggestions" : "numbersWithSuggestions";
@@ -446,6 +451,15 @@ public class ConfigService : IConfigService
         sb.AppendLine($"CalendarListShowFieldLabels = {(config.CalendarListShowFieldLabels ? "on" : "off")}");
         sb.AppendLine("# Calendar: speak field labels (Subject/when/status) in each event row's");
         sb.AppendLine("# accessible name. Off (default) speaks concise data only. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CalendarReminders = {(config.CalendarReminders ? "on" : "off")}");
+        sb.AppendLine("# Notify before each appointment (Windows notification + announcement).");
+        sb.AppendLine("# Off by default. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CalendarReminderMinutes = {config.CalendarReminderMinutes}");
+        sb.AppendLine("# Minutes before the appointment start that the reminder fires (1-1440).");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceStatus = {(config.AnnounceStatus ? "on" : "off")}");

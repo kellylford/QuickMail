@@ -98,6 +98,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _folderCountCts.Clear();
         _calendarHarvestTimer?.Dispose();
         _calendarHarvestTimer = null;
+        _reminderTimer?.Dispose();
+        _reminderTimer = null;
         GC.SuppressFinalize(this);
     }
 
@@ -875,6 +877,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents,
                                                cfg.CalendarListShowFieldLabels);
+            RemindersEnabled = cfg.CalendarReminders;
+            ReminderLeadMinutes = cfg.CalendarReminderMinutes;
+            StartReminderTimer();
         }
 
         _syncService.FolderSynced    += OnFolderSynced;
@@ -1345,6 +1350,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Push the calendar field-labels preference live (re-stamps the event list).
         if (CalendarVm != null)
             CalendarVm.ShowFieldLabels = cfg.CalendarListShowFieldLabels;
+        RemindersEnabled = cfg.CalendarReminders;
+        ReminderLeadMinutes = cfg.CalendarReminderMinutes;
 
         var newPreviewLines = cfg.PreviewLines;
         var newShowPreview  = newPreviewLines > 0;
@@ -5989,6 +5996,72 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }, null, Timeout.Infinite, Timeout.Infinite);
 
         _calendarHarvestTimer.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
+    }
+
+    // ── Calendar reminders ────────────────────────────────────────────────────────
+
+    private System.Threading.Timer? _reminderTimer;
+    private readonly HashSet<(string Uid, DateTime Start)> _firedReminders = [];
+    internal bool RemindersEnabled;          // pushed from config at startup and ApplySettings
+    internal int ReminderLeadMinutes = 10;
+
+    /// <summary>Starts the once-a-minute reminder check (no-op without a calendar service).</summary>
+    private void StartReminderTimer()
+    {
+        if (_calendarService == null || OnlineMode) return;
+        _reminderTimer = new System.Threading.Timer(
+            _ => _ui.Post(CheckReminders), null,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
+    }
+
+    /// <summary>
+    /// Fires one reminder per appointment occurrence whose start falls within the lead window.
+    /// Recurring series are expanded over the window; each (uid, start) fires at most once per run
+    /// of the app. Reminders are opt-in (CalendarReminders, default off).
+    /// </summary>
+    internal void CheckReminders()
+    {
+        if (!RemindersEnabled || _calendarService == null) return;
+
+        var now = DateTime.Now;
+        var windowEnd = now.AddMinutes(ReminderLeadMinutes);
+
+        foreach (var e in _calendarService.Events)
+        {
+            if (!e.StartTime.HasValue) continue;
+            if (e.ResponseStatus is CalendarResponseStatus.Declined or CalendarResponseStatus.Cancelled) continue;
+
+            var rule = e.IsRecurring ? RecurrenceRule.Parse(e.RecurrenceRule) : null;
+            IEnumerable<DateTime> starts;
+            if (rule != null)
+            {
+                var excluded = new HashSet<DateTime>(e.GetExDates());
+                starts = Helpers.RecurrenceExpander
+                    .Expand(e.StartTime.Value, rule, now, windowEnd)
+                    .Where(s => !excluded.Contains(s));
+            }
+            else
+            {
+                starts = e.StartTime.Value > now && e.StartTime.Value <= windowEnd
+                    ? [e.StartTime.Value] : [];
+            }
+
+            foreach (var start in starts)
+            {
+                if (!_firedReminders.Add((e.Uid, start))) continue;
+                var minutes = Math.Max(1, (int)Math.Round((start - now).TotalMinutes));
+                var title = string.IsNullOrWhiteSpace(e.Summary) ? "Appointment" : e.Summary;
+                var body = $"In {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}"
+                           + (string.IsNullOrWhiteSpace(e.Location) ? "" : $". {e.Location}");
+                _notifications?.ShowInfo(title, body);
+                Announce($"Reminder. {title} in {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}.",
+                         AnnouncementCategory.Result);
+            }
+        }
+
+        // Keep the fired set from growing without bound across long sessions.
+        if (_firedReminders.Count > 500)
+            _firedReminders.RemoveWhere(f => f.Start < now.AddDays(-1));
     }
 
     // Releases landing page — used when no specific update is known so the always-present

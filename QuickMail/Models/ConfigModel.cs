@@ -128,6 +128,15 @@ public class ConfigModel
     /// </summary>
     public bool CalendarListShowFieldLabels { get; set; } = false;
 
+    /// <summary>
+    /// Fire a notification before each appointment. OFF by default (opt-in, per the
+    /// announcement-infra convention for potentially intrusive features; full-calendar spec Q6).
+    /// </summary>
+    public bool CalendarReminders { get; set; } = false;
+
+    /// <summary>Minutes before an appointment's start that the reminder fires. Default 10.</summary>
+    public int CalendarReminderMinutes { get; set; } = 10;
+
     // ── Flagging ──────────────────────────────────────────────────────────────────
 
     /// <summary>
