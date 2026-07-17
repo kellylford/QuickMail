@@ -203,6 +203,48 @@ public class CalendarViewModelTests
     }
 
     [Fact]
+    public async Task AccountFilter_ShowsOnlyThatSource()
+    {
+        var acctA = Guid.NewGuid();
+        var local = new CalendarEvent
+        {
+            Uid = "loc-1", AccountId = CalendarEvent.LocalAccountId, Summary = "Mine",
+            StartTimeTicks = DateTime.Today.AddHours(9).ToUniversalTime().Ticks,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        var fromA = MakeEvent("a-1", DateTime.Today.AddHours(10)); fromA.AccountId = acctA;
+        var fromB = MakeEvent("b-1", DateTime.Today.AddHours(11)); // random other account
+
+        var vm = MakeVm(new List<CalendarEvent> { local, fromA, fromB });
+        await vm.LoadAsync();
+        Assert.Equal(3, vm.VisibleEvents.Count);          // null filter = all
+
+        vm.AccountFilter = acctA;                          // one account's calendar
+        Assert.Single(vm.VisibleEvents);
+        Assert.Equal("a-1", vm.VisibleEvents[0].Uid);
+
+        vm.AccountFilter = Guid.Empty;                     // local appointments only
+        Assert.Single(vm.VisibleEvents);
+        Assert.Equal("loc-1", vm.VisibleEvents[0].Uid);
+
+        vm.AccountFilter = null;                           // back to all
+        Assert.Equal(3, vm.VisibleEvents.Count);
+    }
+
+    [Fact]
+    public void CalendarFilterFor_MapsFolderNamesCorrectly()
+    {
+        var id = Guid.NewGuid();
+        Assert.Null(MainViewModel.CalendarFilterFor(MainViewModel.CalendarFolder.FullName));
+        Assert.Null(MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + "all"));
+        Assert.Equal(Guid.Empty, MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + "local"));
+        Assert.Equal(id, MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + id.ToString("D")));
+        Assert.True(MainViewModel.IsCalendarFolderName(MainViewModel.CalendarSourcePrefix + "local"));
+        Assert.True(MainViewModel.IsCalendarFolderName(MainViewModel.CalendarFolder.FullName));
+        Assert.False(MainViewModel.IsCalendarFolderName("INBOX"));
+    }
+
+    [Fact]
     public async Task MonthView_Builds42Cells_WithCountsAndSelection()
     {
         var today = DateTime.Today;

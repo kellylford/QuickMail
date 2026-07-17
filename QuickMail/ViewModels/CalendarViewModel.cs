@@ -166,6 +166,23 @@ public partial class CalendarViewModel : ObservableObject
 
     partial void OnSearchTextChanged(string value) => ApplyFilters();
 
+    /// <summary>
+    /// Which calendar source the views show: null = all sources merged; Guid.Empty = locally
+    /// authored appointments only; otherwise that account's events (synced or invite-harvested).
+    /// Set by MainViewModel from the selected tree node before LoadAsync.
+    /// </summary>
+    private Guid? _accountFilter;
+    public Guid? AccountFilter
+    {
+        get => _accountFilter;
+        set
+        {
+            if (_accountFilter == value) return;
+            _accountFilter = value;
+            ApplyFilters();
+        }
+    }
+
     /// <summary>Clears and hides search, restoring the unfiltered view.</summary>
     public void ClearSearch()
     {
@@ -500,6 +517,7 @@ public partial class CalendarViewModel : ObservableObject
     private void ApplyFilters()
     {
         var baseEvents = _calendarService.Events
+            .Where(e => _accountFilter is not Guid f || e.AccountId == f)
             .Where(e => _showDeclinedEvents || e.ResponseStatus != CalendarResponseStatus.Declined)
             .Where(e => e.ResponseStatus != CalendarResponseStatus.Cancelled)
             .ToList();

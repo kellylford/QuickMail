@@ -210,6 +210,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DisplayName = "Calendar"
     };
 
+    // Per-source calendar children under the Calendar node: " Calendar:{guid}" for one
+    // account's calendar, ":local" for locally-authored appointments, ":all" for the merged view.
+    internal const string CalendarSourcePrefix = " Calendar:";
+
+    /// <summary>True for the Calendar node or any of its per-source children.</summary>
+    internal static bool IsCalendarFolderName(string? fullName) =>
+        fullName != null
+        && (string.Equals(fullName, CalendarFolder.FullName, StringComparison.Ordinal)
+            || fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Maps a calendar folder name to the account filter it selects:
+    /// null = all sources; Guid.Empty = local appointments; else that account's calendar.
+    /// </summary>
+    internal static Guid? CalendarFilterFor(string fullName)
+    {
+        if (!fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal)) return null;
+        var tail = fullName[CalendarSourcePrefix.Length..];
+        if (tail == "all") return null;
+        if (tail == "local") return Guid.Empty;
+        return Guid.TryParse(tail, out var id) ? id : null;
+    }
+
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
 
@@ -282,7 +305,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
-               string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
+               IsCalendarFolderName(folder.FullName);
     }
 
     // ── Saved views ───────────────────────────────────────────────────────────────
@@ -408,7 +431,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// calendar event list is shown in place of the message list.
     /// </summary>
     public bool IsCalendarView => SelectedFolder != null &&
-        string.Equals(SelectedFolder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
+        IsCalendarFolderName(SelectedFolder.FullName);
 
     public ObservableCollection<FlagDefinition> FlagDefinitions { get; } = [];
 
@@ -2597,11 +2620,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Shown only when a calendar service is wired (skipped in tests / online-only builds).
         if (CalendarVm != null)
         {
-            roots.Add(new FolderTreeNode
+            var calNode = new FolderTreeNode
             {
                 Folder = CalendarFolder,
                 Label  = CalendarFolder.DisplayName,
+            };
+            calNode.Children.Add(new FolderTreeNode
+            {
+                Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "all", DisplayName = "All Calendars" },
+                Label  = "All Calendars",
             });
+            calNode.Children.Add(new FolderTreeNode
+            {
+                Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "local", DisplayName = "My Appointments" },
+                Label  = "My Appointments",
+            });
+            foreach (var acct in Accounts)
+            {
+                calNode.Children.Add(new FolderTreeNode
+                {
+                    Folder = new MailFolderModel
+                    {
+                        FullName    = CalendarSourcePrefix + acct.Id.ToString("D"),
+                        DisplayName = acct.AccountLabel,
+                    },
+                    Label = acct.AccountLabel,
+                });
+            }
+            roots.Add(calNode);
         }
 
         // "Views" group — shown only when the user has saved at least one view.
@@ -2991,9 +3037,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Intercept the calendar virtual folder — it shows the event list, not messages.
-        if (string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal))
+        if (IsCalendarFolderName(folder.FullName))
         {
-            await SelectCalendarAsync();
+            await SelectCalendarAsync(folder);
             return;
         }
 
@@ -3024,9 +3070,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// and requests focus to the event list. Called when the user selects the
     /// Calendar virtual folder from the folder tree.
     /// </summary>
-    private async Task SelectCalendarAsync()
+    private async Task SelectCalendarAsync(MailFolderModel? folder = null)
     {
         if (CalendarVm == null) return;
+        CalendarVm.AccountFilter = folder == null ? null : CalendarFilterFor(folder.FullName);
 
         _suppressFilterRebuild = true;
         ActiveFilter        = MessageFilter.All;
@@ -3035,7 +3082,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SearchText          = string.Empty;
         IsSearchActive      = false;
         ActiveView          = null;
-        SelectedFolder      = CalendarFolder;
+        SelectedFolder      = folder ?? CalendarFolder;
         MessageDetail       = null;
         IsMessageOpen       = false;
         _suppressFilterRebuild = false;
