@@ -20,6 +20,19 @@ public partial class SettingsDialog : Window
         _vm = vm;
         InitializeComponent();
         DataContext = vm;
+
+        // Speak the CalDAV Test outcome (the visual text updates regardless). The dialog is
+        // modal and the VM dies with it, so no unsubscribe is needed.
+        vm.CalDavTestCompleted += text =>
+            AccessibilityHelper.Announce(CalDavTestButton, text, category: AnnouncementCategory.Result);
+    }
+
+    /// <summary>PasswordBox.Password is not bindable; push it to the VM by hand (the
+    /// AccountManager precedent). The VM stores it only in Windows Credential Manager.</summary>
+    private void CalDavPasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox pb)
+            _vm.CalDavPassword = pb.Password;
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)

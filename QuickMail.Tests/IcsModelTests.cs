@@ -611,6 +611,159 @@ public class IcsModelTests
         Assert.Equal("Standup", brief);
     }
 
+    // ── ParseAllEvents (CalDAV multi-VEVENT bodies) ─────────────────────────────
+
+    [Fact]
+    public void ParseAllEvents_MultiVEvent_ReturnsEachEvent_WithCalendarMethodApplied()
+    {
+        var ics = string.Join("\r\n",
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "METHOD:PUBLISH",
+            "BEGIN:VEVENT",
+            "UID:one@test",
+            "SUMMARY:First",
+            "DTSTART:20260801T090000Z",
+            "DTEND:20260801T100000Z",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:two@test",
+            "SUMMARY:Second",
+            "DTSTART;VALUE=DATE:20260803",
+            "DTEND;VALUE=DATE:20260805",
+            "END:VEVENT",
+            "END:VCALENDAR");
+
+        var events = IcsModel.ParseAllEvents(ics);
+
+        Assert.Equal(2, events.Count);
+        Assert.Equal("one@test", events[0].Uid);
+        Assert.False(events[0].IsAllDay);
+        Assert.Equal("PUBLISH", events[0].Method);
+        Assert.Equal(new DateTime(2026, 8, 1, 9, 0, 0, DateTimeKind.Utc), events[0].StartTime!.Value.ToUniversalTime());
+
+        Assert.Equal("two@test", events[1].Uid);
+        Assert.True(events[1].IsAllDay);
+        Assert.Equal("PUBLISH", events[1].Method);
+        Assert.Equal(new DateTime(2026, 8, 3), events[1].StartTime!.Value.Date);
+        // DTEND stays EXCLUSIVE on the model (RFC 5545); consumers re-anchor.
+        Assert.Equal(new DateTime(2026, 8, 5), events[1].EndTime!.Value.Date);
+    }
+
+    [Fact]
+    public void ParseAllEvents_RecurringMaster_CapturesRRuleAndExDates()
+    {
+        var ics = string.Join("\r\n",
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "UID:series@test",
+            "SUMMARY:Weekly sync",
+            "DTSTART:20260804T090000",   // local wall-clock, no TZID
+            "DTEND:20260804T093000",
+            "RRULE:FREQ=WEEKLY;BYDAY=TU",
+            "EXDATE:20260811T090000,20260825T090000",
+            "END:VEVENT",
+            "END:VCALENDAR");
+
+        var evt = Assert.Single(IcsModel.ParseAllEvents(ics));
+
+        Assert.Equal("FREQ=WEEKLY;BYDAY=TU", evt.RecurrenceRule);
+        Assert.Null(evt.RecurrenceId);
+        Assert.Equal(
+            new[] { new DateTime(2026, 8, 11, 9, 0, 0), new DateTime(2026, 8, 25, 9, 0, 0) },
+            evt.ExDates);
+    }
+
+    [Fact]
+    public void ParseAllEvents_UtcExDate_NormalizesToLocal()
+    {
+        var ics = string.Join("\r\n",
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "UID:series-utc@test",
+            "SUMMARY:Daily",
+            "DTSTART:20260804T160000Z",
+            "RRULE:FREQ=DAILY",
+            "EXDATE:20260805T160000Z",
+            "END:VEVENT",
+            "END:VCALENDAR");
+
+        var evt = Assert.Single(IcsModel.ParseAllEvents(ics));
+
+        var expectedLocal = new DateTime(2026, 8, 5, 16, 0, 0, DateTimeKind.Utc).ToLocalTime();
+        Assert.Equal(expectedLocal, Assert.Single(evt.ExDates));
+    }
+
+    [Fact]
+    public void ParseAllEvents_OverriddenInstance_CarriesRecurrenceId()
+    {
+        var ics = string.Join("\r\n",
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "UID:series@test",
+            "SUMMARY:Weekly sync",
+            "DTSTART:20260804T090000Z",
+            "RRULE:FREQ=WEEKLY",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:series@test",
+            "SUMMARY:Weekly sync (moved)",
+            "RECURRENCE-ID:20260811T090000Z",
+            "DTSTART:20260811T100000Z",
+            "END:VEVENT",
+            "END:VCALENDAR");
+
+        var events = IcsModel.ParseAllEvents(ics);
+
+        Assert.Equal(2, events.Count);
+        Assert.Null(events[0].RecurrenceId);
+        Assert.Equal("20260811T090000Z", events[1].RecurrenceId);
+    }
+
+    [Fact]
+    public void ParseAllEvents_CapturesStatus()
+    {
+        var ics = string.Join("\r\n",
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "UID:gone@test",
+            "SUMMARY:Cancelled thing",
+            "DTSTART:20260801T090000Z",
+            "STATUS:CANCELLED",
+            "END:VEVENT",
+            "END:VCALENDAR");
+
+        Assert.Equal("CANCELLED", Assert.Single(IcsModel.ParseAllEvents(ics)).Status);
+    }
+
+    [Fact]
+    public void ParseAllEvents_GarbageOrEmpty_ReturnsEmpty()
+    {
+        Assert.Empty(IcsModel.ParseAllEvents(""));
+        Assert.Empty(IcsModel.ParseAllEvents("not ics at all"));
+        Assert.Empty(IcsModel.ParseAllEvents("BEGIN:VCALENDAR\r\nEND:VCALENDAR"));
+    }
+
+    [Fact]
+    public void Parse_MultiVEventBody_ReturnsFirstEvent()
+    {
+        var ics = string.Join("\r\n",
+            "BEGIN:VCALENDAR",
+            "BEGIN:VEVENT",
+            "UID:one@test",
+            "SUMMARY:First",
+            "DTSTART:20260801T090000Z",
+            "END:VEVENT",
+            "BEGIN:VEVENT",
+            "UID:two@test",
+            "SUMMARY:Second",
+            "DTSTART:20260802T090000Z",
+            "END:VEVENT",
+            "END:VCALENDAR");
+
+        Assert.Equal("one@test", IcsModel.Parse(ics)!.Uid);
+    }
+
     // ── Helpers ─────────────────────────────────────────────────────────────────
 
     private static IcsModel CreateSampleInvite()

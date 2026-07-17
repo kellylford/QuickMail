@@ -30,6 +30,14 @@ namespace QuickMail.Services;
 /// row"), replace-slice per account. NOTE: the class/interface name predates the Google path;
 /// renaming to CalendarSyncService is earmarked for the M4 two-way engine.
 /// </para>
+/// <para>
+/// CalDAV path (read-down v1, iCloud-first): a single Settings-configured source (URL +
+/// username + app-specific password from Windows Credential Manager), synced via
+/// <see cref="CalDavCalendarClient"/> under a SYNTHETIC deterministic account id
+/// (<see cref="CalDavCalendarClient.AccountIdFor"/>) since a CalDAV source is not a QuickMail
+/// account. Unlike Graph/Google there is no server-side series expansion, so recurring masters
+/// keep their RRULE (+ EXDATE) and the local RecurrenceExpander produces the occurrences.
+/// </para>
 /// </remarks>
 public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 {
@@ -45,14 +53,29 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private readonly ILocalStoreService _store;
     private readonly GraphClient _graph;
     private readonly GoogleCalendarClient? _google;
+    private readonly ICalDavCalendarClient? _calDav;
+    private readonly IConfigService? _config;
+    private readonly ICredentialService? _credentials;
+
+    // Cached CalDAV discovery result (the resolved calendar collection URL), keyed by
+    // "url|username" so a Settings change forces re-discovery; cleared on fetch failure so a
+    // stale collection URL (e.g. calendar recreated server-side) heals on the next pass.
+    private string? _calDavCalendarUrl;
+    private string? _calDavCacheKey;
 
     public GraphCalendarSyncService(IAccountService accounts, ILocalStoreService store, GraphClient graph,
-                                    GoogleCalendarClient? google = null)
+                                    GoogleCalendarClient? google = null,
+                                    ICalDavCalendarClient? calDav = null,
+                                    IConfigService? config = null,
+                                    ICredentialService? credentials = null)
     {
-        _accounts = accounts;
-        _store    = store;
-        _graph    = graph;
-        _google   = google;
+        _accounts    = accounts;
+        _store       = store;
+        _graph       = graph;
+        _google      = google;
+        _calDav      = calDav;
+        _config      = config;
+        _credentials = credentials;
     }
 
     /// <summary>Accounts on the Graph mail backend have a Microsoft calendar to pull.</summary>
@@ -104,6 +127,31 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
                 // refresh token predates the calendar consent lands here as a 403 until the user
                 // re-signs-in interactively.
                 LogService.Log($"CalendarSync failed for {account.AccountLabel}", ex);
+                error = ex.Message;
+            }
+        }
+
+        // CalDAV source (iCloud/Fastmail/Nextcloud…): configured in Settings, not an account.
+        var cfg = _calDav != null && _config != null && _credentials != null ? _config.Load() : null;
+        if (cfg is { HasCalDavSource: true })
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var count = await SyncCalDavAsync(cfg, ct);
+                accountsSynced++;
+                eventsFetched += count;
+                LogService.Log($"CalendarSync: {cfg.CalDavDisplayName} (CalDAV) — {count} event(s) synced.");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Same best-effort posture as the account loop: log and report, never throw —
+                // the prior slice stays in place because replace happens only after a full fetch.
+                LogService.Log($"CalendarSync failed for {cfg.CalDavDisplayName} (CalDAV)", ex);
                 error = ex.Message;
             }
         }
@@ -239,6 +287,123 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         => DateTimeOffset.TryParse(stamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dto)
             ? dto.UtcTicks
             : null;
+
+    // ── CalDAV (read-down v1) ────────────────────────────────────────────────────
+
+    private async Task<int> SyncCalDavAsync(ConfigModel cfg, CancellationToken ct)
+    {
+        var password = _credentials!.GetSecret(CalDavCalendarClient.SecretKeyFor(cfg.CalDavUsername));
+        if (string.IsNullOrEmpty(password))
+            throw new InvalidOperationException(
+                $"no saved calendar password for {cfg.CalDavUsername} — re-enter it in Settings.");
+
+        var cacheKey = $"{cfg.CalDavUrl}|{cfg.CalDavUsername}";
+        if (_calDavCalendarUrl == null || _calDavCacheKey != cacheKey)
+        {
+            var info = await _calDav!.DiscoverCalendarAsync(cfg.CalDavUrl, cfg.CalDavUsername, password, ct);
+            _calDavCalendarUrl = info.Url;
+            _calDavCacheKey    = cacheKey;
+        }
+
+        var nowUtc = DateTime.UtcNow;
+        List<string> icsBodies;
+        try
+        {
+            icsBodies = await _calDav!.FetchEventIcsAsync(_calDavCalendarUrl, cfg.CalDavUsername, password,
+                                                          nowUtc - WindowBack, nowUtc + WindowForward, ct);
+        }
+        catch
+        {
+            _calDavCalendarUrl = null; // stale collection URL? re-discover next pass
+            throw;
+        }
+
+        var accountId = CalDavCalendarClient.AccountIdFor(cfg.CalDavUrl, cfg.CalDavUsername);
+        var mapped = MapCalDavEvents(icsBodies, accountId);
+        await _store.ReplaceGraphCalendarEventsAsync(accountId, mapped);
+        return mapped.Count;
+    }
+
+    /// <summary>
+    /// Maps fetched calendar-data ICS bodies to local rows. Unlike Graph/Google there is NO
+    /// server-side expansion of recurring series: the master VEVENT arrives with its RRULE, which
+    /// is stored so the local <c>RecurrenceExpander</c> produces the occurrences, and EXDATE
+    /// entries land in the exdates column so deleted single occurrences stay hidden.
+    /// v1 limitations, by design: overridden instances (RECURRENCE-ID VEVENTs) are skipped — a
+    /// rescheduled occurrence shows at its original series slot; and STATUS:CANCELLED events are
+    /// dropped. Duplicate UIDs across bodies collapse to one row (last wins).
+    /// </summary>
+    internal static List<CalendarEvent> MapCalDavEvents(IEnumerable<string> icsBodies, Guid accountId)
+    {
+        var byUid = new Dictionary<string, CalendarEvent>(StringComparer.Ordinal);
+        foreach (var body in icsBodies)
+        {
+            foreach (var ics in IcsModel.ParseAllEvents(body))
+            {
+                if (string.Equals(ics.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.IsNullOrEmpty(ics.RecurrenceId)) continue;
+                var evt = MapCalDavEvent(ics, accountId);
+                byUid[evt.Uid] = evt;
+            }
+        }
+        return byUid.Values.ToList();
+    }
+
+    /// <summary>Maps one parsed VEVENT to a local row (is_graph=1 = "server-synced").</summary>
+    internal static CalendarEvent MapCalDavEvent(IcsModel ics, Guid accountId)
+    {
+        long? startTicks, endTicks;
+        if (ics.IsAllDay)
+        {
+            // ICS all-day: date values with an EXCLUSIVE DTEND. Re-anchor at LOCAL midnight /
+            // 23:59:59 of the last day, matching Graph, Google, and locally-authored all-day rows.
+            var startDay = ics.StartTime?.Date;
+            var endDay   = ics.EndTime?.Date.AddDays(-1) ?? startDay;
+            if (endDay.HasValue && startDay.HasValue && endDay.Value < startDay.Value)
+                endDay = startDay;
+            startTicks = startDay.HasValue
+                ? DateTime.SpecifyKind(startDay.Value, DateTimeKind.Local).ToUniversalTime().Ticks
+                : null;
+            endTicks = endDay.HasValue
+                ? DateTime.SpecifyKind(endDay.Value.AddDays(1).AddSeconds(-1), DateTimeKind.Local).ToUniversalTime().Ticks
+                : null;
+        }
+        else
+        {
+            // IcsModel start/end are Kind-carrying (Utc for Z stamps, Local otherwise);
+            // ToUniversalTime handles both.
+            startTicks = ics.StartTime?.ToUniversalTime().Ticks;
+            endTicks   = ics.EndTime?.ToUniversalTime().Ticks;
+        }
+
+        var uid = !string.IsNullOrWhiteSpace(ics.Uid)
+            ? ics.Uid
+            : CalDavCalendarClient.SyntheticUid($"{ics.Summary}|{startTicks}");
+
+        var evt = new CalendarEvent
+        {
+            Uid             = uid,
+            AccountId       = accountId,
+            IsGraph         = true, // "server-synced row" — read-only in UI, replace-slice owned
+            Summary         = ics.Summary?.Trim() ?? string.Empty,
+            Description     = ics.Description?.Trim() ?? string.Empty,
+            Location        = ics.Location?.Trim() ?? string.Empty,
+            Organizer       = ics.Organizer?.Trim() ?? string.Empty,
+            OrganizerName   = ics.OrganizerName?.Trim() ?? string.Empty,
+            StartTimeTicks  = startTicks,
+            EndTimeTicks    = endTicks,
+            IsAllDay        = ics.IsAllDay,
+            // The user's own calendar; CalDAV v1 does not resolve per-attendee RSVP state.
+            ResponseStatus  = CalendarResponseStatus.Accepted,
+            SourceMessageId = string.Empty, // not an invite email
+            SourceFolder    = string.Empty,
+            Sequence        = ics.Sequence,
+            RecurrenceRule  = string.IsNullOrWhiteSpace(ics.RecurrenceRule) ? null : ics.RecurrenceRule,
+        };
+        foreach (var exDate in ics.ExDates)
+            evt.AddExDate(exDate);
+        return evt;
+    }
 
     // ── Microsoft create push ────────────────────────────────────────────────────
 

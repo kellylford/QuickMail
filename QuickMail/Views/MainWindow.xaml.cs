@@ -5128,7 +5128,12 @@ public partial class MainWindow : Window
             .Select(f => f.Source)
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
+        // Per-dialog CalDAV client for the Test button; disposed when this method (and the
+        // modal dialog inside it) finishes. An in-flight Test at close just faults into the
+        // command's catch-all.
+        using var calDavClient = new CalDavCalendarClient();
+        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
+                                       _credentials, calDavClient);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {

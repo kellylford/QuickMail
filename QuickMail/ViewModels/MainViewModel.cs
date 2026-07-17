@@ -220,6 +220,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
         && (string.Equals(fullName, CalendarFolder.FullName, StringComparison.Ordinal)
             || fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal));
 
+    // The Settings-configured CalDAV calendar source, shown as an extra per-source child under
+    // the Calendar node. Its id is SYNTHETIC (deterministically derived from URL + username by
+    // CalDavCalendarClient.AccountIdFor — a CalDAV source is not a QuickMail account), so
+    // CalendarFilterFor's Guid parse routes it exactly like a real account's calendar, and the
+    // read-only guards hold because the id never matches a Graph account.
+    private Guid? _calDavAccountId;
+    private string _calDavDisplayName = "iCloud";
+
+    /// <summary>Refreshes the cached CalDAV source identity from config; true when it changed
+    /// (the folder tree then needs a rebuild).</summary>
+    private bool UpdateCalDavSource(ConfigModel cfg)
+    {
+        var newId = cfg.HasCalDavSource
+            ? CalDavCalendarClient.AccountIdFor(cfg.CalDavUrl, cfg.CalDavUsername)
+            : (Guid?)null;
+        var changed = newId != _calDavAccountId
+            || !string.Equals(cfg.CalDavDisplayName, _calDavDisplayName, StringComparison.Ordinal);
+        _calDavAccountId   = newId;
+        _calDavDisplayName = cfg.CalDavDisplayName;
+        return changed;
+    }
+
     /// <summary>
     /// Maps a calendar folder name to the account filter it selects:
     /// null = all sources; Guid.Empty = local appointments; else that account's calendar.
@@ -909,6 +931,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
 
+        UpdateCalDavSource(cfg);
+
         // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
         {
@@ -1394,6 +1418,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CalendarVm.ShowFieldLabels = cfg.CalendarListShowFieldLabels;
         RemindersEnabled = cfg.CalendarReminders;
         ReminderLeadMinutes = cfg.CalendarReminderMinutes;
+
+        // A CalDAV source added/removed/renamed in Settings changes the calendar tree children.
+        if (UpdateCalDavSource(cfg) && CalendarVm != null)
+            BuildFolderTree();
 
         var newPreviewLines = cfg.PreviewLines;
         var newShowPreview  = newPreviewLines > 0;
@@ -2656,6 +2684,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         DisplayName = acct.AccountLabel,
                     },
                     Label = acct.AccountLabel,
+                });
+            }
+            // The CalDAV source (e.g. iCloud) configured in Settings — synthetic account id.
+            if (_calDavAccountId is Guid calDavId)
+            {
+                calNode.Children.Add(new FolderTreeNode
+                {
+                    Folder = new MailFolderModel
+                    {
+                        FullName    = CalendarSourcePrefix + calDavId.ToString("D"),
+                        DisplayName = _calDavDisplayName,
+                    },
+                    Label = _calDavDisplayName,
                 });
             }
             roots.Add(calNode);

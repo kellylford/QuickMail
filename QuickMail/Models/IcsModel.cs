@@ -24,6 +24,27 @@ public class IcsModel
     public string? Sequence { get; set; }
     public string? Method { get; set; } // REQUEST, CANCEL, REPLY, etc.
 
+    /// <summary>True when DTSTART was a date-only value (VALUE=DATE) — an all-day event.
+    /// For all-day events <see cref="EndTime"/> keeps the ICS DTEND semantics: EXCLUSIVE
+    /// (midnight of the day after the last day), per RFC 5545.</summary>
+    public bool IsAllDay { get; set; }
+
+    /// <summary>Raw RRULE value for a recurring series master (e.g. "FREQ=WEEKLY;BYDAY=TU"),
+    /// or null for a one-off. Parse with <see cref="RecurrenceRule.Parse"/>.</summary>
+    public string? RecurrenceRule { get; set; }
+
+    /// <summary>Raw RECURRENCE-ID value when this VEVENT is an overridden instance of a
+    /// recurring series (not the series master). Null for masters and one-offs.</summary>
+    public string? RecurrenceId { get; set; }
+
+    /// <summary>ICS STATUS value (CONFIRMED, TENTATIVE, CANCELLED), or null when absent.</summary>
+    public string? Status { get; set; }
+
+    /// <summary>Excluded occurrence starts (EXDATE), normalized to machine-local wall-clock —
+    /// the same shape <see cref="CalendarEvent.AddExDate"/> expects. Empty for one-offs and
+    /// untouched series.</summary>
+    public List<DateTime> ExDates { get; } = [];
+
     /// <summary>
     /// Human-readable summary for screen reader announcement and display.
     /// </summary>
@@ -71,98 +92,164 @@ public class IcsModel
     }
 
     /// <summary>
-    /// Parses an ICS file from raw text content.
-    /// Returns null if the content is not a valid meeting request.
+    /// Parses an ICS file from raw text content. Multi-VEVENT calendars yield the FIRST
+    /// meaningful VEVENT (invite emails carry a single VEVENT, so this matters only for
+    /// pathological input). Returns null if the content is not a valid meeting request.
     /// </summary>
     public static IcsModel? Parse(string icsContent)
     {
-        if (string.IsNullOrWhiteSpace(icsContent)) return null;
+        var events = ParseAllEvents(icsContent);
+        return events.Count > 0 ? events[0] : null;
+    }
+
+    /// <summary>
+    /// Parses EVERY VEVENT in an ICS calendar body — the CalDAV sync path, where one
+    /// calendar-data body can carry a recurring series master plus overridden instances
+    /// (RECURRENCE-ID). Each VEVENT becomes its own model with the same per-property
+    /// handling as <see cref="Parse"/> (TZID-aware date-times, escaping, folding), plus
+    /// RRULE / EXDATE / RECURRENCE-ID / STATUS / all-day capture. The VCALENDAR-level
+    /// METHOD is applied to every event that did not carry its own. Events with neither
+    /// a start time nor a summary are dropped. Never throws; malformed input yields [].
+    /// </summary>
+    public static List<IcsModel> ParseAllEvents(string icsContent)
+    {
+        var result = new List<IcsModel>();
+        if (string.IsNullOrWhiteSpace(icsContent)) return result;
 
         try
         {
-            var model = new IcsModel();
             var lines = UnfoldLines(icsContent);
+            string? calendarMethod = null;
+            IcsModel? current = null;
 
-            bool inVevent = false;
+            void FlushCurrent()
+            {
+                // Only keep meaningful events (same criterion Parse always used).
+                if (current != null &&
+                    (current.StartTime.HasValue || !string.IsNullOrWhiteSpace(current.Summary)))
+                    result.Add(current);
+                current = null;
+            }
+
             foreach (var rawLine in lines)
             {
                 var line = rawLine.Trim();
                 if (string.IsNullOrEmpty(line)) continue;
 
-                // METHOD is at the VCALENDAR level, not inside VEVENT
-                if (!inVevent && line.StartsWith("METHOD:", StringComparison.OrdinalIgnoreCase))
-                {
-                    model.Method = line[7..];
-                    continue;
-                }
-
                 if (line.StartsWith("BEGIN:VEVENT", StringComparison.OrdinalIgnoreCase))
                 {
-                    inVevent = true;
+                    FlushCurrent(); // defensive: unterminated previous VEVENT
+                    current = new IcsModel();
                     continue;
                 }
                 if (line.StartsWith("END:VEVENT", StringComparison.OrdinalIgnoreCase))
                 {
-                    inVevent = false;
+                    FlushCurrent();
                     continue;
                 }
-                if (!inVevent) continue;
-
-                var colonIdx = line.IndexOf(':');
-                if (colonIdx < 0) continue;
-
-                var prop = line[..colonIdx];
-                var value = line[(colonIdx + 1)..];
-
-                // Handle property parameters (e.g. "DTSTART;TZID=America/Chicago:20260101T120000")
-                var semicolonIdx = prop.IndexOf(';');
-                var propName = semicolonIdx >= 0 ? prop[..semicolonIdx] : prop;
-
-                switch (propName.ToUpperInvariant())
+                if (current == null)
                 {
-                    case "ORGANIZER":
-                        model.OrganizerName = ExtractCnParam(prop);
-                        model.Organizer = ExtractMailtoValue(value);
-                        if (string.IsNullOrWhiteSpace(model.OrganizerName))
-                            model.OrganizerName = model.Organizer;
-                        break;
-                    case "SUMMARY":
-                        model.Summary = UnescapeIcsText(value);
-                        break;
-                    case "DESCRIPTION":
-                        model.Description = UnescapeIcsText(value);
-                        break;
-                    case "LOCATION":
-                        model.Location = UnescapeIcsText(value);
-                        break;
-                    case "DTSTART":
-                        model.StartTime = ParseIcsDateTime(value, ExtractTzidParam(prop));
-                        break;
-                    case "DTEND":
-                        model.EndTime = ParseIcsDateTime(value, ExtractTzidParam(prop));
-                        break;
-                    case "UID":
-                        model.Uid = value;
-                        break;
-                    case "SEQUENCE":
-                        model.Sequence = value;
-                        break;
-                    case "METHOD":
-                        model.Method = value;
-                        break;
+                    // METHOD is at the VCALENDAR level, not inside VEVENT
+                    if (line.StartsWith("METHOD:", StringComparison.OrdinalIgnoreCase))
+                        calendarMethod = line[7..];
+                    continue;
                 }
+
+                ParseVEventLine(current, line);
             }
+            FlushCurrent(); // defensive: truncated input missing END:VEVENT
 
-            // Only return if we found a meaningful event
-            if (model.StartTime.HasValue || !string.IsNullOrWhiteSpace(model.Summary))
-                return model;
+            foreach (var evt in result)
+                evt.Method ??= calendarMethod;
 
-            return null;
+            return result;
         }
         catch
         {
-            return null;
+            return [];
         }
+    }
+
+    /// <summary>Applies one unfolded content line to the VEVENT being built.</summary>
+    private static void ParseVEventLine(IcsModel model, string line)
+    {
+        var colonIdx = line.IndexOf(':');
+        if (colonIdx < 0) return;
+
+        var prop = line[..colonIdx];
+        var value = line[(colonIdx + 1)..];
+
+        // Handle property parameters (e.g. "DTSTART;TZID=America/Chicago:20260101T120000")
+        var semicolonIdx = prop.IndexOf(';');
+        var propName = semicolonIdx >= 0 ? prop[..semicolonIdx] : prop;
+
+        switch (propName.ToUpperInvariant())
+        {
+            case "ORGANIZER":
+                model.OrganizerName = ExtractCnParam(prop);
+                model.Organizer = ExtractMailtoValue(value);
+                if (string.IsNullOrWhiteSpace(model.OrganizerName))
+                    model.OrganizerName = model.Organizer;
+                break;
+            case "SUMMARY":
+                model.Summary = UnescapeIcsText(value);
+                break;
+            case "DESCRIPTION":
+                model.Description = UnescapeIcsText(value);
+                break;
+            case "LOCATION":
+                model.Location = UnescapeIcsText(value);
+                break;
+            case "DTSTART":
+                model.StartTime = ParseIcsDateTime(value, ExtractTzidParam(prop));
+                model.IsAllDay = IsDateOnly(prop, value);
+                break;
+            case "DTEND":
+                model.EndTime = ParseIcsDateTime(value, ExtractTzidParam(prop));
+                break;
+            case "UID":
+                model.Uid = value;
+                break;
+            case "SEQUENCE":
+                model.Sequence = value;
+                break;
+            case "METHOD":
+                model.Method = value;
+                break;
+            case "RRULE":
+                model.RecurrenceRule = value;
+                break;
+            case "RECURRENCE-ID":
+                model.RecurrenceId = value;
+                break;
+            case "STATUS":
+                model.Status = value.Trim();
+                break;
+            case "EXDATE":
+                // EXDATE can carry multiple comma-separated values, each honoring the
+                // property's TZID. Normalize to machine-local wall-clock, matching what
+                // CalendarEvent.AddExDate stores and RecurrenceExpander compares against.
+                var tzid = ExtractTzidParam(prop);
+                foreach (var part in value.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var parsed = ParseIcsDateTime(part.Trim(), tzid);
+                    if (parsed.HasValue)
+                        model.ExDates.Add(parsed.Value.Kind == DateTimeKind.Utc
+                            ? parsed.Value.ToLocalTime()
+                            : parsed.Value);
+                }
+                break;
+        }
+    }
+
+    /// <summary>True when a DTSTART property is date-only: explicit VALUE=DATE parameter,
+    /// or a bare 8-digit yyyyMMdd value.</summary>
+    private static bool IsDateOnly(string propWithParams, string value)
+    {
+        foreach (var part in propWithParams.Split(';'))
+            if (string.Equals(part.Trim(), "VALUE=DATE", StringComparison.OrdinalIgnoreCase))
+                return true;
+        return value.Trim().Length == 8;
     }
 
     /// <summary>
