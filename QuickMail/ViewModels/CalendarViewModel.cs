@@ -400,7 +400,26 @@ public partial class CalendarViewModel : ObservableObject
         if (evt == null) return;
         if (!evt.IsUserCreated)
         {
-            Announce("Only appointments you created can be edited.", AnnouncementCategory.Result);
+            // Microsoft-synced single events are editable (write-back); everything else server-side
+            // (Google rows, recurring server occurrences, harvested invites) stays read-only.
+            var pushAccount = GraphAccountFor(evt);
+            if (pushAccount != null)
+            {
+                if (evt.IsRecurring)
+                {
+                    Announce("Repeating events from your online calendar can't be edited yet.",
+                             AnnouncementCategory.Result);
+                    return;
+                }
+                var serverEditor = new EventEditorViewModel(evt);
+                serverEditor.Saved += updated => _ = ServerUpdateAsync(pushAccount, evt, updated);
+                EditorRequested?.Invoke(serverEditor);
+                return;
+            }
+            Announce(evt.IsGraph
+                    ? "This event syncs from your online calendar and can't be edited here."
+                    : "Only appointments you created can be edited.",
+                AnnouncementCategory.Result);
             return;
         }
 
@@ -441,7 +460,17 @@ public partial class CalendarViewModel : ObservableObject
         if (evt == null) return;
         if (!evt.IsUserCreated)
         {
-            Announce("Only appointments you created can be deleted.", AnnouncementCategory.Result);
+            var pushAccount = GraphAccountFor(evt);
+            if (pushAccount != null && !evt.IsRecurring)
+            {
+                var serverTarget = evt;
+                DeleteConfirmRequested?.Invoke(serverTarget, () => _ = ServerDeleteAsync(pushAccount, serverTarget));
+                return;
+            }
+            Announce(evt.IsGraph
+                    ? "This event syncs from your online calendar and can't be deleted here."
+                    : "Only appointments you created can be deleted.",
+                AnnouncementCategory.Result);
             return;
         }
 
@@ -456,6 +485,60 @@ public partial class CalendarViewModel : ObservableObject
         {
             DeleteConfirmRequested?.Invoke(target, () => _ = ConfirmDeleteAsync(target));
         }
+    }
+
+    /// <summary>
+    /// The Graph-backed account a server-synced row can write back to, or null when the row is
+    /// not writable from here (local rows, Google rows, no sync service wired).
+    /// </summary>
+    private AccountModel? GraphAccountFor(CalendarEvent evt)
+        => evt.IsGraph && _graphSync != null
+            ? _graphAccountsProvider?.Invoke().FirstOrDefault(a => a.Id == evt.AccountId)
+            : null;
+
+    /// <summary>Pushes an edit of a Microsoft-synced event to the server; local state only changes on success.</summary>
+    private async Task ServerUpdateAsync(AccountModel account, CalendarEvent original, CalendarEvent edited)
+    {
+        try
+        {
+            // Keep the server identity: same Uid and account, is_graph flag preserved by the
+            // sync service when it stores the server's returned copy.
+            edited.Uid = original.Uid;
+            edited.AccountId = account.Id;
+            var updated = await _graphSync!.UpdateEventAsync(account, edited);
+            await _calendarService.RefreshAsync();
+            ApplyFilters();
+            SelectedEvent = Events.FirstOrDefault(e => e.Uid == updated.Uid && e.AccountId == account.Id);
+            Announce($"Updated on your online calendar. {updated.Summary}.", AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Calendar server update", ex);
+            Announce("Could not update your online calendar.", AnnouncementCategory.Result);
+        }
+        ListFocusRequested?.Invoke();
+    }
+
+    /// <summary>Deletes a Microsoft-synced event on the server; local state only changes on success.</summary>
+    private async Task ServerDeleteAsync(AccountModel account, CalendarEvent evt)
+    {
+        try
+        {
+            var index = _filteredEvents.FindIndex(e => ReferenceEquals(e, evt));
+            await _graphSync!.DeleteEventAsync(account, evt);
+            await _calendarService.RefreshAsync();
+            ApplyFilters();
+            SelectedEvent = VisibleEvents.Count > 0
+                ? Events[Math.Min(Math.Max(index, 0), VisibleEvents.Count - 1)]
+                : null;
+            Announce($"Deleted from your online calendar. {evt.Summary}.", AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Calendar server delete", ex);
+            Announce("Could not update your online calendar.", AnnouncementCategory.Result);
+        }
+        ListFocusRequested?.Invoke();
     }
 
     /// <summary>

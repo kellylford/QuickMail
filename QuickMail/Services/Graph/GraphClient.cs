@@ -158,6 +158,29 @@ public sealed class GraphClient : IDisposable
         await EnsureSuccessAsync(resp, ct);
     }
 
+    /// <summary>
+    /// PATCHes a JSON body with an explicit token scope set and deserializes the JSON response.
+    /// Used by calendar write-back to update an event (<c>PATCH /me/events/{id}</c>) under the
+    /// calendar scopes and read back the server's updated copy.
+    /// </summary>
+    public async Task<T?> PatchReadAsync<T>(AccountModel account, string path, object body,
+        string[]? scopes, bool silentOnly, IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
+    {
+        var json = JsonSerializer.Serialize(body, JsonOpts);
+        using var resp = await SendAsync(account, HttpMethod.Patch, path,
+            () => new StringContent(json, Encoding.UTF8, "application/json"), scopes, silentOnly, headers, ct);
+        await EnsureSuccessAsync(resp, ct);
+        return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
+    }
+
+    /// <summary>DELETEs a resource under an explicit token scope set (calendar write-back).</summary>
+    public async Task DeleteAsync(AccountModel account, string path,
+        string[]? scopes, bool silentOnly, CancellationToken ct = default)
+    {
+        using var resp = await SendAsync(account, HttpMethod.Delete, path, null, scopes, silentOnly, headers: null, ct);
+        await EnsureSuccessAsync(resp, ct);
+    }
+
     /// <summary>GETs a raw byte payload (attachment <c>$value</c> download).</summary>
     public async Task<byte[]> GetBytesAsync(AccountModel account, string path, CancellationToken ct = default)
     {

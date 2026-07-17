@@ -746,6 +746,96 @@ public class CalendarViewModelTests
         return (vm, store, sync, account);
     }
 
+    private static CalendarEvent MakeGraphRow(Guid accountId, string uid = "srv-1") => new()
+    {
+        Uid = uid, AccountId = accountId, IsGraph = true, Summary = "Server event",
+        StartTimeTicks = DateTime.Today.AddHours(9).ToUniversalTime().Ticks,
+        EndTimeTicks = DateTime.Today.AddHours(10).ToUniversalTime().Ticks,
+        ResponseStatus = CalendarResponseStatus.Accepted,
+    };
+
+    [Fact]
+    public async Task EditGraphEvent_PushesUpdateToServer()
+    {
+        var (vm, store, sync, account) = MakePushVm();
+        var row = MakeGraphRow(account.Id);
+        store.StoredEvents.Add(row);
+        await vm.LoadAsync();
+
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.EditEventCommand.Execute(row);
+
+        Assert.NotNull(editor);            // server-editable, editor opened
+        editor!.Title = "Server event (moved)";
+        editor.SaveCommand.Execute(null);
+
+        Assert.Single(sync.UpdatedEvents);
+        Assert.Equal(row.Uid, sync.UpdatedEvents[0].Uid);          // identity preserved
+        Assert.Equal(account.Id, sync.UpdatedEvents[0].AccountId);
+    }
+
+    [Fact]
+    public async Task EditGraphEvent_PushFailure_AnnouncesAndChangesNothing()
+    {
+        var (vm, store, sync, account) = MakePushVm();
+        store.StoredEvents.Add(MakeGraphRow(account.Id));
+        await vm.LoadAsync();
+        sync.WriteFailure = new InvalidOperationException("boom");
+
+        EventEditorViewModel? editor = null;
+        string? announced = null;
+        vm.EditorRequested += e => editor = e;
+        vm.AnnouncementRequested += (t, _) => announced = t;
+
+        vm.EditEventCommand.Execute(vm.VisibleEvents[0]);
+        editor!.Title = "won't stick";
+        editor.SaveCommand.Execute(null);
+
+        Assert.Contains("Could not update", announced);
+        Assert.Equal("Server event", store.StoredEvents[0].Summary); // untouched
+    }
+
+    [Fact]
+    public async Task DeleteGraphEvent_ConfirmsThenDeletesOnServer()
+    {
+        var (vm, store, sync, account) = MakePushVm();
+        var row = MakeGraphRow(account.Id);
+        store.StoredEvents.Add(row);
+        await vm.LoadAsync();
+
+        Action? confirm = null;
+        vm.DeleteConfirmRequested += (_, cb) => confirm = cb;
+        vm.DeleteEventCommand.Execute(row);
+        Assert.NotNull(confirm);
+        confirm!();
+
+        Assert.Single(sync.DeletedEvents);
+        Assert.Equal(row.Uid, sync.DeletedEvents[0].Uid);
+    }
+
+    [Fact]
+    public async Task GoogleRow_StaysReadOnly()
+    {
+        var (vm, store, _, _) = MakePushVm();
+        // A server row whose account is NOT in the Graph-accounts list (i.e. a Google account).
+        var googleRow = MakeGraphRow(Guid.NewGuid(), "goog-1");
+        store.StoredEvents.Add(googleRow);
+        await vm.LoadAsync();
+
+        var editorOpened = false;
+        string? announced = null;
+        vm.EditorRequested += _ => editorOpened = true;
+        vm.AnnouncementRequested += (t, _) => announced = t;
+
+        vm.EditEventCommand.Execute(googleRow);
+        Assert.False(editorOpened);
+        Assert.Contains("can't be edited here", announced);
+
+        vm.DeleteEventCommand.Execute(googleRow);
+        Assert.Contains("can't be deleted here", announced);
+    }
+
     [Fact]
     public async Task SaveNewEvent_AccountTarget_PushesToGraph()
     {

@@ -346,6 +346,26 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
         CreatedEvents.Add(created);
         return Task.FromResult(created);
     }
+
+    /// <summary>When set, UpdateEventAsync/DeleteEventAsync throw it (simulates a failed push).</summary>
+    public Exception? WriteFailure { get; set; }
+    public List<CalendarEvent> UpdatedEvents { get; } = [];
+    public List<CalendarEvent> DeletedEvents { get; } = [];
+
+    public Task<CalendarEvent> UpdateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (WriteFailure != null) throw WriteFailure;
+        evt.IsGraph = true;
+        UpdatedEvents.Add(evt);
+        return Task.FromResult(evt);
+    }
+
+    public Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (WriteFailure != null) throw WriteFailure;
+        DeletedEvents.Add(evt);
+        return Task.CompletedTask;
+    }
 }
 
 /// <summary>Runs everything inline — VM unit tests are single-threaded by design.</summary>

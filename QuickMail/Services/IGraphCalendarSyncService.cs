@@ -40,4 +40,10 @@ public interface IGraphCalendarSyncService
     /// server-assigned event id).
     /// </summary>
     Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
+
+    /// <summary>PATCHes an existing server event and upserts the server's returned copy locally.</summary>
+    Task<CalendarEvent> UpdateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
+
+    /// <summary>DELETEs a server event and removes the local row.</summary>
+    Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default);
 }

@@ -264,6 +264,31 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         return mapped;
     }
 
+    public async Task<CalendarEvent> UpdateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (evt.IsRecurring)
+            throw new NotSupportedException("v1 Graph push handles single events only.");
+
+        var body = BuildCreateBody(evt); // PATCH accepts the same shape; omitted fields are unchanged
+        var updated = await _graph.PatchReadAsync<GraphCalendarEvent>(
+            account, $"/me/events/{Uri.EscapeDataString(evt.Uid)}", body,
+            OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct)
+            ?? throw new InvalidOperationException("Graph returned no event body for the updated event.");
+
+        var mapped = MapEvent(updated, account.Id);
+        await _store.UpsertCalendarEventAsync(mapped);
+        LogService.Log($"GraphCalendarSync: updated event on {account.AccountLabel} ({mapped.Uid}).");
+        return mapped;
+    }
+
+    public async Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        await _graph.DeleteAsync(account, $"/me/events/{Uri.EscapeDataString(evt.Uid)}",
+            OAuthService.GraphCalendarScopes, silentOnly: true, ct);
+        await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
+        LogService.Log($"GraphCalendarSync: deleted event on {account.AccountLabel} ({evt.Uid}).");
+    }
+
     /// <summary>Builds the <c>POST /me/events</c> body for a local event about to be pushed.</summary>
     internal static GraphCreateEventBody BuildCreateBody(CalendarEvent evt)
     {
