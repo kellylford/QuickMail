@@ -262,7 +262,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// per-provider eligibility.
     /// </summary>
     internal static bool IsCalendarPushAccount(AccountModel a)
-        => a.BackendKind == BackendKind.MicrosoftGraph || a.AuthType == AuthType.OAuth2Google;
+        => a.BackendKind == BackendKind.MicrosoftGraph
+           || a.AuthType == AuthType.OAuth2Microsoft
+           || a.AuthType == AuthType.OAuth2Google;
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
@@ -2683,8 +2685,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             });
             calNode.Children.Add(new FolderTreeNode
             {
-                Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "local", DisplayName = "My Appointments" },
-                Label  = "My Appointments",
+                Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "local", DisplayName = "Local Calendar" },
+                Label  = "Local Calendar",
             });
             foreach (var acct in Accounts)
             {

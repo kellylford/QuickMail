@@ -79,7 +79,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     }
 
     /// <summary>Accounts on the Graph mail backend have a Microsoft calendar to pull.</summary>
-    private static bool IsGraphEligible(AccountModel account) => account.BackendKind == BackendKind.MicrosoftGraph;
+    private static bool IsGraphEligible(AccountModel account) =>
+        account.BackendKind == BackendKind.MicrosoftGraph || account.AuthType == AuthType.OAuth2Microsoft;
 
     /// <summary>
     /// Google-signed-in accounts have a Google calendar to pull (keyed by auth type, not backend:

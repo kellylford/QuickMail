@@ -165,7 +165,7 @@ public partial class EventEditorViewModel : ObservableObject
     {
         var targets = new List<CalendarSaveTarget>
         {
-            new("My Appointments (this computer)", CalendarEvent.LocalAccountId),
+            new("Local Calendar (this computer)", CalendarEvent.LocalAccountId),
         };
         if (accountTargets != null)
             foreach (var t in accountTargets)
@@ -335,7 +335,7 @@ public partial class EventEditorViewModel : ObservableObject
         var targetAccountId = IsEdit ? CalendarEvent.LocalAccountId : SelectedTargetAccountId;
         if (targetAccountId != CalendarEvent.LocalAccountId && rrule != null)
         {
-            error = "Repeating appointments can only be saved to My Appointments for now.";
+            error = "Repeating appointments can only be saved to Local Calendar for now.";
             return false;
         }
 

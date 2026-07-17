@@ -388,7 +388,7 @@ public partial class CalendarViewModel : ObservableObject
             await _calendarService.UpsertEventAsync(evt);
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
-            Announce($"Could not save to {account.AccountLabel}. Saved to My Appointments instead.",
+            Announce($"Could not save to {account.AccountLabel}. Saved to Local Calendar instead.",
                      AnnouncementCategory.Result);
             ListFocusRequested?.Invoke();
         }

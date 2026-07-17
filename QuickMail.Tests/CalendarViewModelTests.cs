@@ -909,7 +909,7 @@ public class CalendarViewModelTests
         Assert.Equal(CalendarEvent.LocalAccountId, saved.AccountId);
         Assert.True(saved.IsUserCreated);
         Assert.Contains(announcements, a =>
-            a.Contains("Could not save to") && a.Contains("Saved to My Appointments instead."));
+            a.Contains("Could not save to") && a.Contains("Saved to Local Calendar instead."));
     }
 
     [Fact]

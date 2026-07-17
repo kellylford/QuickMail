@@ -304,7 +304,7 @@ public class EventEditorViewModelTests
 
         Assert.True(vm.ShowSaveTarget);
         Assert.Equal(2, vm.SaveTargetLabels.Count);
-        Assert.Equal("My Appointments (this computer)", vm.SaveTargetLabels[0]);
+        Assert.Equal("Local Calendar (this computer)", vm.SaveTargetLabels[0]);
         Assert.Equal("Work (Microsoft)", vm.SaveTargetLabels[1]);
         Assert.Equal(0, vm.SelectedTargetIndex);
         Assert.Equal(CalendarEvent.LocalAccountId, vm.SelectedTargetAccountId);
@@ -336,7 +336,7 @@ public class EventEditorViewModelTests
         vm.RepeatIndex = 2; // Weekly
 
         Assert.False(vm.TryBuildEvent(out _, out var error));
-        Assert.Equal("Repeating appointments can only be saved to My Appointments for now.", error);
+        Assert.Equal("Repeating appointments can only be saved to Local Calendar for now.", error);
 
         // Back on the local target the same repeat is fine.
         vm.SelectedTargetIndex = 0;
