@@ -16,9 +16,11 @@ public sealed record GraphCalendarSyncResult(int AccountsSynced, int EventsFetch
 }
 
 /// <summary>
-/// Pulls each Microsoft (Graph backend) account's primary calendar into the local CalendarEvent
-/// table — read-down only (full-calendar spec M4, v1). Best-effort: a failing account is logged
-/// and reported in the result, never thrown, so calendar sync can never break a mail-sync caller.
+/// Pulls each server-backed account's primary calendar into the local CalendarEvent table —
+/// read-down only: Microsoft (Graph backend) accounts via Graph calendarView, and Google-signed-in
+/// accounts via the Google Calendar REST API (the name predates the Google path; see the
+/// implementation remarks). Best-effort: a failing account is logged and reported in the result,
+/// never thrown, so calendar sync can never break a mail-sync caller.
 /// </summary>
 public interface IGraphCalendarSyncService
 {

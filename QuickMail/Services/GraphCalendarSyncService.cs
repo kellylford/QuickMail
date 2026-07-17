@@ -11,13 +11,25 @@ namespace QuickMail.Services;
 
 /// <inheritdoc cref="IGraphCalendarSyncService"/>
 /// <remarks>
-/// Uses <c>GET /me/calendarView</c> over the user's PRIMARY calendar. calendarView expands
-/// recurring series server-side, so each returned item is a concrete occurrence stored as its
-/// own row (Uid = the occurrence's own Graph id) with <see cref="CalendarEvent.RecurrenceRule"/>
-/// left null — otherwise the local <c>RecurrenceExpander</c> would double-expand the series.
-/// The <c>Prefer: outlook.timezone="UTC"</c> header normalizes event times to UTC so they can be
+/// <para>
+/// Microsoft path: <c>GET /me/calendarView</c> over the user's PRIMARY calendar. calendarView
+/// expands recurring series server-side, so each returned item is a concrete occurrence stored
+/// as its own row (Uid = the occurrence's own Graph id) with
+/// <see cref="CalendarEvent.RecurrenceRule"/> left null — otherwise the local
+/// <c>RecurrenceExpander</c> would double-expand the series. The
+/// <c>Prefer: outlook.timezone="UTC"</c> header normalizes event times to UTC so they can be
 /// stored directly as UTC ticks. Paging and HTTP 429 Retry-After handling come from
 /// <see cref="GraphClient"/> (the same client the Graph mail backend and contact sync use).
+/// </para>
+/// <para>
+/// Google path (read-down v1): <c>GET calendars/primary/events?singleEvents=true</c> via
+/// <see cref="GoogleCalendarClient"/> — the same server-expanded-occurrence model, keyed by
+/// <see cref="AuthType.OAuth2Google"/> (a Gmail account is IMAP + Google OAuth, so the identity
+/// provider, not the mail backend, is what makes calendar sync possible — mirrors contact sync).
+/// Both providers store rows the same way: <c>is_graph=1</c> (meaning "server-synced calendar
+/// row"), replace-slice per account. NOTE: the class/interface name predates the Google path;
+/// renaming to CalendarSyncService is earmarked for the M4 two-way engine.
+/// </para>
 /// </remarks>
 public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 {
@@ -32,16 +44,26 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private readonly IAccountService _accounts;
     private readonly ILocalStoreService _store;
     private readonly GraphClient _graph;
+    private readonly GoogleCalendarClient? _google;
 
-    public GraphCalendarSyncService(IAccountService accounts, ILocalStoreService store, GraphClient graph)
+    public GraphCalendarSyncService(IAccountService accounts, ILocalStoreService store, GraphClient graph,
+                                    GoogleCalendarClient? google = null)
     {
         _accounts = accounts;
         _store    = store;
         _graph    = graph;
+        _google   = google;
     }
 
-    /// <summary>Only accounts on the Graph mail backend have a Microsoft calendar to pull.</summary>
-    private static bool IsEligible(AccountModel account) => account.BackendKind == BackendKind.MicrosoftGraph;
+    /// <summary>Accounts on the Graph mail backend have a Microsoft calendar to pull.</summary>
+    private static bool IsGraphEligible(AccountModel account) => account.BackendKind == BackendKind.MicrosoftGraph;
+
+    /// <summary>
+    /// Google-signed-in accounts have a Google calendar to pull (keyed by auth type, not backend:
+    /// Gmail mail is IMAP). No-op when no Google client is wired or no such account exists.
+    /// </summary>
+    private bool IsGoogleEligible(AccountModel account)
+        => _google != null && account.AuthType == AuthType.OAuth2Google && !IsGraphEligible(account);
 
     public async Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
     {
@@ -50,15 +72,19 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 
         foreach (var account in _accounts.LoadAccounts())
         {
-            if (!IsEligible(account)) continue;
+            var graphEligible  = IsGraphEligible(account);
+            var googleEligible = IsGoogleEligible(account);
+            if (!graphEligible && !googleEligible) continue;
             ct.ThrowIfCancellationRequested();
 
             try
             {
-                var count = await SyncAccountAsync(account, ct);
+                var count = graphEligible
+                    ? await SyncAccountAsync(account, ct)
+                    : await SyncGoogleAccountAsync(account, ct);
                 accountsSynced++;
                 eventsFetched += count;
-                LogService.Log($"GraphCalendarSync: {account.AccountLabel} — {count} event(s) synced.");
+                LogService.Log($"CalendarSync: {account.AccountLabel} — {count} event(s) synced.");
             }
             catch (OperationCanceledException)
             {
@@ -68,14 +94,16 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             {
                 // The calendar grant hasn't been consented (or lapsed). Sync never opens an
                 // interactive sign-in window from the background — surface how to fix it instead.
-                LogService.Log($"GraphCalendarSync: sign-in required for {account.AccountLabel} — {ex.Message}");
+                LogService.Log($"CalendarSync: sign-in required for {account.AccountLabel} — {ex.Message}");
                 error = $"calendar access needs a new sign-in for {account.AccountLabel}.";
             }
             catch (Exception ex)
             {
                 // Best-effort: log and report, never throw — a calendar-sync failure must not
-                // break the mail-sync caller (mirrors ContactSyncService).
-                LogService.Log($"GraphCalendarSync failed for {account.AccountLabel}", ex);
+                // break the mail-sync caller (mirrors ContactSyncService). A Google account whose
+                // refresh token predates the calendar consent lands here as a 403 until the user
+                // re-signs-in interactively.
+                LogService.Log($"CalendarSync failed for {account.AccountLabel}", ex);
                 error = ex.Message;
             }
         }
@@ -112,6 +140,107 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         await _store.ReplaceGraphCalendarEventsAsync(account.Id, mapped);
         return mapped.Count;
     }
+
+    // ── Google (read-down v1) ────────────────────────────────────────────────────
+
+    private async Task<int> SyncGoogleAccountAsync(AccountModel account, CancellationToken ct)
+    {
+        var nowUtc = DateTime.UtcNow;
+        var items = await _google!.GetPrimaryEventsAsync(
+            account.Username, nowUtc - WindowBack, nowUtc + WindowForward, ct);
+
+        var mapped = items
+            .Where(e => !string.IsNullOrEmpty(e.Id))
+            // Cancelled occurrences can appear despite the default filters; they are deletions.
+            .Where(e => !string.Equals(e.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            .Select(e => MapGoogleEvent(e, account.Id))
+            .ToList();
+
+        await _store.ReplaceGraphCalendarEventsAsync(account.Id, mapped);
+        return mapped.Count;
+    }
+
+    /// <summary>
+    /// Maps one Google Calendar occurrence to a local row. Stored exactly like a Graph row —
+    /// is_graph=1 here means "server-synced calendar row", regardless of which provider it came
+    /// from; the account id says whose calendar it is.
+    /// </summary>
+    internal static CalendarEvent MapGoogleEvent(GoogleCalendarEvent e, Guid accountId)
+    {
+        long? startTicks, endTicks;
+        var allDay = e.Start?.Date != null; // all-day events carry date-only start/end
+
+        if (allDay)
+        {
+            // Google all-day: date-only strings with an EXCLUSIVE end date. Re-anchor at LOCAL
+            // midnight / 23:59:59 of the last day, matching Graph and locally-authored all-day rows.
+            var startDay = ParseDateOnly(e.Start?.Date);
+            var endDay   = ParseDateOnly(e.End?.Date)?.AddDays(-1);
+            if (endDay.HasValue && startDay.HasValue && endDay.Value < startDay.Value)
+                endDay = startDay;
+            startTicks = startDay.HasValue
+                ? DateTime.SpecifyKind(startDay.Value, DateTimeKind.Local).ToUniversalTime().Ticks
+                : null;
+            endTicks = endDay.HasValue
+                ? DateTime.SpecifyKind(endDay.Value.AddDays(1).AddSeconds(-1), DateTimeKind.Local).ToUniversalTime().Ticks
+                : null;
+        }
+        else
+        {
+            startTicks = ParseRfc3339UtcTicks(e.Start?.DateTime);
+            endTicks   = ParseRfc3339UtcTicks(e.End?.DateTime);
+        }
+
+        return new CalendarEvent
+        {
+            Uid             = e.Id,
+            AccountId       = accountId,
+            IsGraph         = true, // "server-synced row" — see remark above
+            Summary         = e.Summary?.Trim() ?? string.Empty,
+            Description     = e.Description?.Trim() ?? string.Empty,
+            Location        = e.Location?.Trim() ?? string.Empty,
+            Organizer       = e.Organizer?.Email?.Trim() ?? string.Empty,
+            OrganizerName   = e.Organizer?.DisplayName?.Trim() ?? string.Empty,
+            StartTimeTicks  = startTicks,
+            EndTimeTicks    = endTicks,
+            IsAllDay        = allDay,
+            ResponseStatus  = MapGoogleResponseStatus(e),
+            SourceMessageId = string.Empty, // not an invite email
+            SourceFolder    = string.Empty,
+            RecurrenceRule  = null, // singleEvents=true already expanded any series server-side
+        };
+    }
+
+    /// <summary>
+    /// The user's own response: the attendee entry with <c>self=true</c>. Events with no
+    /// attendee list (or no self entry) are the user's own calendar entries — Accepted.
+    /// </summary>
+    internal static CalendarResponseStatus MapGoogleResponseStatus(GoogleCalendarEvent e)
+    {
+        var self = e.Attendees?.FirstOrDefault(a => a.Self);
+        return self?.ResponseStatus?.ToLowerInvariant() switch
+        {
+            "accepted"    => CalendarResponseStatus.Accepted,
+            "declined"    => CalendarResponseStatus.Declined,
+            "tentative"   => CalendarResponseStatus.Tentative,
+            "needsaction" => CalendarResponseStatus.Pending,
+            _             => CalendarResponseStatus.Accepted,
+        };
+    }
+
+    private static DateTime? ParseDateOnly(string? date)
+        => DateTime.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture,
+                                  DateTimeStyles.None, out var d)
+            ? d.Date
+            : null;
+
+    /// <summary>Parses an RFC3339 stamp (offset-carrying) to UTC ticks.</summary>
+    private static long? ParseRfc3339UtcTicks(string? stamp)
+        => DateTimeOffset.TryParse(stamp, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dto)
+            ? dto.UtcTicks
+            : null;
+
+    // ── Microsoft create push ────────────────────────────────────────────────────
 
     public async Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
     {

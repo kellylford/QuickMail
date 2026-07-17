@@ -542,9 +542,9 @@ public partial class CalendarViewModel : ObservableObject
         if (evt == null) return;
         if (evt.IsGraph)
         {
-            // Graph-synced rows never had a source invite email; the stale-cache message would
-            // be wrong and confusing for them.
-            Announce("This event syncs from your Microsoft calendar.", AnnouncementCategory.Result);
+            // Server-synced rows (Microsoft or Google) never had a source invite email; the
+            // stale-cache message would be wrong and confusing for them.
+            Announce("This event syncs from your online calendar.", AnnouncementCategory.Result);
             return;
         }
         if (string.IsNullOrEmpty(evt.SourceMessageId))

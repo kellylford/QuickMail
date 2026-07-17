@@ -15,6 +15,7 @@ public partial class App : Application
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
     private GooglePeopleClient? _googlePeopleClient;
+    private GoogleCalendarClient? _googleCalendarClient;
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
     private GraphChangeNotifier? _graphNotifier;
@@ -261,10 +262,14 @@ public partial class App : Application
             var calendarProvider = new LocalCacheCalendarProvider(localStore);
             var calendarService = new CalendarService(calendarProvider);
 
-            // Graph calendar sync (read-down v1): pulls each Graph account's primary calendar into
-            // the local store. Reuses the Graph backend's client (owned + disposed with the backend);
-            // the sync timer and its CTS live in MainViewModel (disposed in MainViewModel.Dispose).
-            var graphCalendarSync = new GraphCalendarSyncService(accountService, localStore, graphBackend.Client);
+            // Calendar sync (read-down v1): pulls each server-backed account's primary calendar
+            // into the local store — Microsoft via the Graph backend's client (owned + disposed
+            // with the backend) and Google via its own Calendar API client (owns an HttpClient →
+            // disposed in OnExit, like the People client). The sync timer and its CTS live in
+            // MainViewModel (disposed in MainViewModel.Dispose).
+            _googleCalendarClient = new GoogleCalendarClient(googleOAuth);
+            var graphCalendarSync = new GraphCalendarSyncService(accountService, localStore, graphBackend.Client,
+                                                                 _googleCalendarClient);
 
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
@@ -310,6 +315,7 @@ public partial class App : Application
         _graphBackend?.Dispose();   // releases GraphClient/HttpClient; after the notifiers, which poll through its client
         _graphSendMail?.Dispose();
         _googlePeopleClient?.Dispose();
+        _googleCalendarClient?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();

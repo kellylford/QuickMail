@@ -35,11 +35,13 @@ public partial class CalendarEvent : ObservableObject
     public bool IsAllDay { get; set; }
 
     /// <summary>
-    /// True when this row was pulled from the account's Microsoft (Graph) calendar by
-    /// <see cref="Services.GraphCalendarSyncService"/> rather than harvested from an email invite
-    /// or authored locally. Graph rows are read-only in the UI (the server is the source of truth;
-    /// v1 sync is read-down only) and are replaced wholesale on each sync, so the invite harvest
-    /// and orphan cleanup must never touch them. Persisted in the <c>is_graph</c> column.
+    /// True when this row is a SERVER-SYNCED calendar row — pulled from the account's online
+    /// calendar (Microsoft via Graph, or Google via the Calendar API) by
+    /// <see cref="Services.GraphCalendarSyncService"/> — rather than harvested from an email
+    /// invite or authored locally. The column name <c>is_graph</c> predates the Google path but
+    /// means exactly this for both providers. Server-synced rows are read-only in the UI (the
+    /// server is the source of truth; v1 sync is read-down only) and are replaced wholesale on
+    /// each sync, so the invite harvest and orphan cleanup must never touch them.
     /// </summary>
     public bool IsGraph { get; set; }
 
