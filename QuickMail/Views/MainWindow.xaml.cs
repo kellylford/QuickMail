@@ -1183,7 +1183,7 @@ public partial class MainWindow : Window
             id: "calendar.toggleTodayFilter", category: "View", title: "Toggle Today Filter",
             execute: () => _vm.CalendarVm?.ToggleTodayFilterCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
 
         _registry.Register(new CommandDefinition(
             id: "calendar.openSourceMessage", category: "View", title: "Open Calendar Event Source Message",
@@ -1196,7 +1196,7 @@ public partial class MainWindow : Window
             id: "calendar.newEvent", category: "Calendar", title: "New Appointment",
             execute: () => _vm.CalendarVm?.NewEventCommand.Execute(null),
             defaultKey: Key.N, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
 
         _registry.Register(new CommandDefinition(
             id: "calendar.editEvent", category: "Calendar", title: "Edit Appointment",
@@ -1219,34 +1219,39 @@ public partial class MainWindow : Window
             id: "calendar.search", category: "Calendar", title: "Search Appointments",
             execute: OpenCalendarSearch,
             defaultKey: Key.F, defaultModifiers: ModifierKeys.Control,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin || CalendarSearchBox.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused || CalendarSearchBox.IsKeyboardFocusWithin));
 
         // ── Calendar views + period navigation (Calendar category) ──
         _registry.Register(new CommandDefinition(
             id: "calendar.viewAgenda", category: "Calendar", title: "Agenda View",
             execute: () => _vm.CalendarVm?.ShowAgendaCommand.Execute(null),
             defaultKey: Key.A, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
         _registry.Register(new CommandDefinition(
             id: "calendar.viewDay", category: "Calendar", title: "Day View",
             execute: () => _vm.CalendarVm?.ShowDayCommand.Execute(null),
             defaultKey: Key.D, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
         _registry.Register(new CommandDefinition(
             id: "calendar.viewWeek", category: "Calendar", title: "Week View",
             execute: () => _vm.CalendarVm?.ShowWeekCommand.Execute(null),
             defaultKey: Key.W, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewMonth", category: "Calendar", title: "Month View",
+            execute: () => _vm.CalendarVm?.ShowMonthCommand.Execute(null),
+            defaultKey: Key.M, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarPaneFocused));
         _registry.Register(new CommandDefinition(
             id: "calendar.prevPeriod", category: "Calendar", title: "Previous Day or Week",
             execute: () => _vm.CalendarVm?.PreviousPeriodCommand.Execute(null),
             defaultKey: Key.Left, defaultModifiers: ModifierKeys.Control,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
         _registry.Register(new CommandDefinition(
             id: "calendar.nextPeriod", category: "Calendar", title: "Next Day or Week",
             execute: () => _vm.CalendarVm?.NextPeriodCommand.Execute(null),
             defaultKey: Key.Right, defaultModifiers: ModifierKeys.Control,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
 
         // Install the WM_CONTEXTMENU hook before WebView2 init. WebView2 initialization
         // creates an out-of-process HWND that grabs Win32 focus without WPF tracking it,
@@ -1557,7 +1562,7 @@ public partial class MainWindow : Window
                     e.Handled = true;
                     await CycleFocusAsync(true);
                     return;
-                case Key.Escape when _vm.IsCalendarView && CalendarList.IsKeyboardFocusWithin
+                case Key.Escape when _vm.IsCalendarView && CalendarPaneFocused
                                      && _vm.CalendarVm?.IsSearchActive == true:
                     // A search is active: first Escape clears it and stays in the list.
                     _vm.CalendarVm.ClearSearch();
@@ -1566,7 +1571,7 @@ public partial class MainWindow : Window
                         interrupt: true, category: AnnouncementCategory.Result);
                     e.Handled = true;
                     return;
-                case Key.Escape when _vm.IsCalendarView && CalendarList.IsKeyboardFocusWithin:
+                case Key.Escape when _vm.IsCalendarView && CalendarPaneFocused:
                     // Escape from the calendar list returns focus to the folder tree,
                     // matching the behaviour of Escape from the message list.
                     FocusFolderTree();
@@ -2089,6 +2094,17 @@ public partial class MainWindow : Window
     // and by the CalendarPaneFocusRequested event after SelectCalendarAsync loads events.
     private void FocusCalendarList()
     {
+        // Month view focuses the grid; the ListBox routes focus to the selected cell.
+        if (_vm.CalendarVm?.IsMonthView == true)
+        {
+            if (MonthGrid.SelectedItem != null
+                && MonthGrid.ItemContainerGenerator.ContainerFromItem(MonthGrid.SelectedItem) is ListBoxItem cell)
+                cell.Focus();
+            else
+                MonthGrid.Focus();
+            return;
+        }
+
         if (CalendarList.Items.Count == 0) { CalendarList.Focus(); return; }
         if (CalendarList.SelectedIndex < 0) CalendarList.SelectedIndex = 0;
 
@@ -2167,12 +2183,29 @@ public partial class MainWindow : Window
         => _vm.CalendarVm?.ShowDayCommand.Execute(null);
     private void CalendarWeek_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.ShowWeekCommand.Execute(null);
+    private void CalendarMonth_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowMonthCommand.Execute(null);
+
+    /// <summary>Enter on a month cell drills into that day's Day view; the list takes focus.</summary>
+    private void MonthGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && _vm.CalendarVm?.SelectedMonthCell != null)
+        {
+            _vm.CalendarVm.DrillIntoDayCommand.Execute(null);
+            Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+            e.Handled = true;
+        }
+    }
     private void CalendarPrev_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.PreviousPeriodCommand.Execute(null);
     private void CalendarNext_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.NextPeriodCommand.Execute(null);
     private void CalendarToday_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.ToggleTodayFilterCommand.Execute(null);
+
+    /// <summary>True when the calendar's main content (event list or Month grid) has focus.</summary>
+    private bool CalendarPaneFocused =>
+        CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin;
 
     private void CalendarNew_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.NewEventCommand.Execute(null);
@@ -3411,7 +3444,7 @@ public partial class MainWindow : Window
         if (AccountList.IsKeyboardFocusWithin)  return 1;
         if (FolderList.IsKeyboardFocusWithin)   return 2;
         if (SearchBox.IsKeyboardFocusWithin)    return 6;
-        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin) return 3;
+        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin) return 3;
         if (TabStrip.IsKeyboardFocusWithin)     return 7; // between message list and reading pane
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;

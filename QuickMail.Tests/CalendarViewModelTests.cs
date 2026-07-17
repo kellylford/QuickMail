@@ -203,6 +203,59 @@ public class CalendarViewModelTests
     }
 
     [Fact]
+    public async Task MonthView_Builds42Cells_WithCountsAndSelection()
+    {
+        var today = DateTime.Today;
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("m1", today.AddHours(9)),
+            MakeEvent("m2", today.AddHours(14)),
+        });
+        await vm.LoadAsync();
+
+        vm.ShowMonthCommand.Execute(null);
+
+        Assert.Equal(42, vm.MonthCells.Count);
+        Assert.NotNull(vm.SelectedMonthCell);
+        Assert.Equal(today, vm.SelectedMonthCell!.Date);
+        Assert.Equal(2, vm.SelectedMonthCell.EventCount);
+        Assert.Contains("2 events", vm.SelectedMonthCell.AccessibleName);
+        Assert.Contains("today", vm.SelectedMonthCell.AccessibleName);
+        Assert.Contains(today.ToString("MMMM yyyy"), vm.PeriodLabel);
+        // Details pane shows the selected day's events.
+        Assert.Contains("Event m1", vm.SelectedEventDetail);
+    }
+
+    [Fact]
+    public async Task MonthView_DrillIntoDay_SwitchesToDayView()
+    {
+        var today = DateTime.Today;
+        var vm = MakeVm(new List<CalendarEvent> { MakeEvent("m3", today.AddHours(9)) });
+        await vm.LoadAsync();
+        vm.ShowMonthCommand.Execute(null);
+
+        vm.DrillIntoDayCommand.Execute(null);
+
+        Assert.True(vm.IsDayView);
+        Assert.Equal(today, vm.ReferenceDate.Date);
+        Assert.Single(vm.VisibleEvents);
+    }
+
+    [Fact]
+    public async Task MonthView_NextPeriod_MovesOneMonth()
+    {
+        var vm = MakeVm(new List<CalendarEvent> { MakeEvent("m4", DateTime.Today.AddHours(9)) });
+        await vm.LoadAsync();
+        vm.ShowMonthCommand.Execute(null);
+        var before = vm.ReferenceDate;
+
+        vm.NextPeriodCommand.Execute(null);
+
+        Assert.Equal(before.AddMonths(1).Month, vm.ReferenceDate.Month);
+        Assert.Equal(42, vm.MonthCells.Count);
+    }
+
+    [Fact]
     public async Task SearchText_FiltersAcrossSummaryLocationAndNotes()
     {
         var events = new List<CalendarEvent>

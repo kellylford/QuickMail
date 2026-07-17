@@ -394,6 +394,11 @@
                               IsCheckable="True"
                               IsChecked="{Binding CalendarVm.IsWeekView, Mode=OneWay}"
                               Command="{Binding CalendarVm.ShowWeekCommand}"/>
+                    <MenuItem Header="M_onth"
+                              Visibility="{Binding IsCalendarView, Converter={StaticResource BoolToVisibilityConverter}}"
+                              IsCheckable="True"
+                              IsChecked="{Binding CalendarVm.IsMonthView, Mode=OneWay}"
+                              Command="{Binding CalendarVm.ShowMonthCommand}"/>
                 </MenuItem>
                 <MenuItem Header="F_ilter">
                     <MenuItem Header="S_how All"
@@ -1162,7 +1167,9 @@
                             <Button Content="_Day" AutomationProperties.Name="Day view"
                                     MinWidth="52" Margin="0,0,4,0" Click="CalendarDay_Click"/>
                             <Button Content="_Week" AutomationProperties.Name="Week view"
-                                    MinWidth="56" Margin="0,0,12,0" Click="CalendarWeek_Click"/>
+                                    MinWidth="56" Margin="0,0,4,0" Click="CalendarWeek_Click"/>
+                            <Button Content="_Month" AutomationProperties.Name="Month view"
+                                    MinWidth="56" Margin="0,0,12,0" Click="CalendarMonth_Click"/>
                             <Button Content="◀" AutomationProperties.Name="Previous period"
                                     MinWidth="32" Margin="0,0,4,0" Click="CalendarPrev_Click"/>
                             <Button Content="Today" AutomationProperties.Name="Go to today"
@@ -1195,9 +1202,53 @@
                             </StackPanel>
                         </DockPanel>
 
+                        <!-- Month grid — a 7-column day grid shown instead of the event list in
+                             Month view. Arrows move spatially (left/right = day, up/down = week);
+                             Enter drills into that day. Each cell speaks "Tuesday June 9, 3 events". -->
+                        <ListBox x:Name="MonthGrid"
+                                 Grid.Row="2"
+                                 AutomationProperties.Name="Month grid"
+                                 Visibility="{Binding CalendarVm.IsMonthView, Converter={StaticResource BoolToVisibilityConverter}}"
+                                 ItemsSource="{Binding CalendarVm.MonthCells}"
+                                 SelectedItem="{Binding CalendarVm.SelectedMonthCell, Mode=TwoWay}"
+                                 BorderThickness="0"
+                                 KeyboardNavigation.TabNavigation="Once"
+                                 KeyboardNavigation.DirectionalNavigation="Contained"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                                 PreviewKeyDown="MonthGrid_PreviewKeyDown">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <UniformGrid Columns="7"/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding CellText}" Padding="6,8" TextAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInMonth}" Value="False">
+                                                        <Setter Property="Opacity" Value="0.45"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
                         <ListView x:Name="CalendarList"
                                   Grid.Row="2"
                                   AutomationProperties.Name="Calendar events"
+                                  Visibility="{Binding CalendarVm.IsListView, Converter={StaticResource BoolToVisibilityConverter}}"
                                   ItemsSource="{Binding CalendarVm.Events}"
                                   SelectedItem="{Binding CalendarVm.SelectedEvent, Mode=TwoWay}"
                                   BorderThickness="0"

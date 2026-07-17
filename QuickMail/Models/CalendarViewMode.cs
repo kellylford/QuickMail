@@ -15,4 +15,7 @@ public enum CalendarViewMode
 
     /// <summary>Appointments in the week containing the reference date.</summary>
     Week,
+
+    /// <summary>A month at a glance: a 7-column day grid; Enter on a day drills into Day view.</summary>
+    Month,
 }

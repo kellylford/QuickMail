@@ -85,12 +85,18 @@ public partial class CalendarViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsAgendaView))]
     [NotifyPropertyChangedFor(nameof(IsDayView))]
     [NotifyPropertyChangedFor(nameof(IsWeekView))]
+    [NotifyPropertyChangedFor(nameof(IsMonthView))]
+    [NotifyPropertyChangedFor(nameof(IsListView))]
     private CalendarViewMode _viewMode = CalendarViewMode.Agenda;
 
     /// <summary>Check-state helpers for the View Mode menu.</summary>
     public bool IsAgendaView => ViewMode == CalendarViewMode.Agenda;
     public bool IsDayView => ViewMode == CalendarViewMode.Day;
     public bool IsWeekView => ViewMode == CalendarViewMode.Week;
+    public bool IsMonthView => ViewMode == CalendarViewMode.Month;
+
+    /// <summary>True for the list-based views (Agenda/Day/Week); false when the Month grid shows.</summary>
+    public bool IsListView => ViewMode != CalendarViewMode.Month;
 
     /// <summary>The date Day/Week views are centred on. Ignored in Agenda.</summary>
     [ObservableProperty]
@@ -100,11 +106,21 @@ public partial class CalendarViewModel : ObservableObject
     /// <summary>Human-readable label for the current view + period, shown above the list.</summary>
     public string PeriodLabel => ViewMode switch
     {
-        CalendarViewMode.Day  => "Day: " + ReferenceDate.ToString("dddd, MMMM d, yyyy"),
-        CalendarViewMode.Week => "Week of " + WeekStart(ReferenceDate).ToString("MMMM d")
-                                 + " to " + WeekStart(ReferenceDate).AddDays(6).ToString("MMMM d"),
-        _                     => IsTodayFilter ? "Agenda: today" : "Agenda: all appointments",
+        CalendarViewMode.Day   => "Day: " + ReferenceDate.ToString("dddd, MMMM d, yyyy"),
+        CalendarViewMode.Week  => "Week of " + WeekStart(ReferenceDate).ToString("MMMM d")
+                                  + " to " + WeekStart(ReferenceDate).AddDays(6).ToString("MMMM d"),
+        CalendarViewMode.Month => ReferenceDate.ToString("MMMM yyyy"),
+        _                      => IsTodayFilter ? "Agenda: today" : "Agenda: all appointments",
     };
+
+    /// <summary>Day cells for the Month grid (leading/trailing days pad to full weeks).</summary>
+    public BatchObservableCollection<MonthCell> MonthCells { get; } = [];
+
+    [ObservableProperty]
+    private MonthCell? _selectedMonthCell;
+
+    partial void OnSelectedMonthCellChanged(MonthCell? value)
+        => OnPropertyChanged(nameof(SelectedEventDetail));
 
     private static DateTime WeekStart(DateTime date)
     {
@@ -116,8 +132,13 @@ public partial class CalendarViewModel : ObservableObject
     [ObservableProperty]
     private CalendarEvent? _selectedEvent;
 
-    /// <summary>Multi-line details of the selected event for the master/detail Details pane.</summary>
-    public string SelectedEventDetail => SelectedEvent?.DetailText ?? string.Empty;
+    /// <summary>
+    /// Multi-line details for the Details pane: the selected event's fields, or in Month view
+    /// the selected day's event list.
+    /// </summary>
+    public string SelectedEventDetail => ViewMode == CalendarViewMode.Month
+        ? SelectedMonthCell?.DayDetail ?? string.Empty
+        : SelectedEvent?.DetailText ?? string.Empty;
 
     /// <summary>True when the selected event is a locally-created appointment (editable/deletable).</summary>
     public bool CanEditSelected => SelectedEvent?.IsUserCreated == true;
@@ -240,6 +261,19 @@ public partial class CalendarViewModel : ObservableObject
     /// <summary>Switches to Week view. Bound to W.</summary>
     [RelayCommand] private void ShowWeek() => SwitchView(CalendarViewMode.Week);
 
+    /// <summary>Switches to Month view. Bound to M.</summary>
+    [RelayCommand] private void ShowMonth() => SwitchView(CalendarViewMode.Month);
+
+    /// <summary>Enter on a month cell: drill into that day's Day view.</summary>
+    [RelayCommand]
+    private void DrillIntoDay(MonthCell? cell)
+    {
+        cell ??= SelectedMonthCell;
+        if (cell == null) return;
+        ReferenceDate = cell.Date;
+        SwitchView(CalendarViewMode.Day);
+    }
+
     private void SwitchView(CalendarViewMode mode)
     {
         ViewMode = mode;
@@ -258,8 +292,9 @@ public partial class CalendarViewModel : ObservableObject
     {
         switch (ViewMode)
         {
-            case CalendarViewMode.Day:  ReferenceDate = ReferenceDate.AddDays(direction); break;
-            case CalendarViewMode.Week: ReferenceDate = ReferenceDate.AddDays(7 * direction); break;
+            case CalendarViewMode.Day:   ReferenceDate = ReferenceDate.AddDays(direction); break;
+            case CalendarViewMode.Week:  ReferenceDate = ReferenceDate.AddDays(7 * direction); break;
+            case CalendarViewMode.Month: ReferenceDate = ReferenceDate.AddMonths(direction); break;
             default: return; // Agenda doesn't page
         }
         ApplyFilters();
@@ -463,10 +498,12 @@ public partial class CalendarViewModel : ObservableObject
             .ToList();
 
         // The date window for the current view. Null = Agenda "all" (one-offs are not date-bounded).
+        var monthGridStart = WeekStart(new DateTime(ReferenceDate.Year, ReferenceDate.Month, 1));
         (DateTime Start, DateTime End)? window = ViewMode switch
         {
-            CalendarViewMode.Day  => (ReferenceDate.Date, ReferenceDate.Date.AddDays(1)),
-            CalendarViewMode.Week => (WeekStart(ReferenceDate), WeekStart(ReferenceDate).AddDays(7)),
+            CalendarViewMode.Day   => (ReferenceDate.Date, ReferenceDate.Date.AddDays(1)),
+            CalendarViewMode.Week  => (WeekStart(ReferenceDate), WeekStart(ReferenceDate).AddDays(7)),
+            CalendarViewMode.Month => (monthGridStart, monthGridStart.AddDays(42)),
             _ => IsTodayFilter
                     ? (DateTime.Today, DateTime.Today.AddDays(1))
                     : ((DateTime Start, DateTime End)?)null,
@@ -522,6 +559,31 @@ public partial class CalendarViewModel : ObservableObject
             foreach (var evt in _filteredEvents)
                 Events.Add(evt);
         }
+
+        if (ViewMode == CalendarViewMode.Month)
+            RebuildMonthCells(monthGridStart);
+    }
+
+    /// <summary>Builds the 42 day cells (6 full weeks) for the Month grid.</summary>
+    private void RebuildMonthCells(DateTime gridStart)
+    {
+        var byDate = _filteredEvents
+            .Where(e => e.StartTime.HasValue)
+            .GroupBy(e => e.StartTime!.Value.Date)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        using (MonthCells.BeginBatchScope())
+        {
+            MonthCells.Clear();
+            for (var i = 0; i < 42; i++)
+            {
+                var date = gridStart.AddDays(i);
+                byDate.TryGetValue(date, out var dayEvents);
+                MonthCells.Add(new MonthCell(date, ReferenceDate.Month, dayEvents ?? []));
+            }
+        }
+        SelectedMonthCell = MonthCells.FirstOrDefault(c => c.Date == ReferenceDate.Date)
+                            ?? MonthCells.FirstOrDefault(c => c.IsInMonth);
     }
 
     /// <summary>Builds a display-only occurrence of a recurring master at the given local start.</summary>
