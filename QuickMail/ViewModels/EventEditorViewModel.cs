@@ -26,6 +26,8 @@ public partial class EventEditorViewModel : ObservableObject
 {
     private readonly string _uid;
     private readonly List<CalendarSaveTarget> _saveTargets;
+    private readonly int? _masterRepeatCount;
+    private readonly Guid _editAccountId = CalendarEvent.LocalAccountId;
 
     /// <summary>True when editing an existing event; false when creating a new one.</summary>
     public bool IsEdit { get; }
@@ -183,6 +185,8 @@ public partial class EventEditorViewModel : ObservableObject
     {
         _uid = existing.Uid;
         IsEdit = true;
+        _editAccountId = existing.AccountId;   // server rows keep their account; the
+                                               // recurring-stays-local rule can then fire on edits too
         // Editing never moves an appointment between calendars (v1) — no picker.
         _saveTargets = BuildSaveTargets(null);
         SaveTargetLabels = _saveTargets.ConvertAll(t => t.Label);
@@ -213,6 +217,7 @@ public partial class EventEditorViewModel : ObservableObject
             };
             RepeatInterval = rule.Interval;
             RepeatUntil = rule.Until;
+            _masterRepeatCount = rule.Count;   // preserved through a whole-series save (no UI yet)
             foreach (var day in rule.ByDay)
                 SetRepeatDay(day, true);
         }
@@ -325,6 +330,9 @@ public partial class EventEditorViewModel : ObservableObject
                 },
                 Interval = RepeatInterval,
                 Until = RepeatUntil,
+                // A COUNT-limited series must stay COUNT-limited across an edit even though the
+                // editor has no count field yet — dropping it made the series infinite.
+                Count = RepeatUntil is null ? _masterRepeatCount : null,
             };
             if (RepeatIndex == 2)
                 rule.ByDay.AddRange(CheckedRepeatDays());
@@ -332,9 +340,14 @@ public partial class EventEditorViewModel : ObservableObject
         }
 
         // v1 calendar push handles single events only — a repeating appointment must stay local.
-        var targetAccountId = IsEdit ? CalendarEvent.LocalAccountId : SelectedTargetAccountId;
+        var targetAccountId = IsDetachSave ? CalendarEvent.LocalAccountId
+            : IsEdit ? _editAccountId
+            : SelectedTargetAccountId;
         if (targetAccountId != CalendarEvent.LocalAccountId && rrule != null)
         {
+            // Fires for new appointments targeting an account AND for edits of server-synced
+            // events that try to add a repeat — previously the edit path skipped this and the
+            // whole edit was discarded post-close by the push's NotSupportedException.
             error = "Repeating appointments can only be saved to Local Calendar for now.";
             return false;
         }

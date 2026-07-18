@@ -43,16 +43,19 @@ public static class RecurrenceExpander
 
         if (rule.Frequency == RecurrenceFrequency.Weekly && rule.ByDay.Count > 0)
         {
-            var days = rule.ByDay.Distinct().OrderBy(d => (int)d).ToList();
+            // RFC 5545's default week start (WKST) is MONDAY. Anchoring on Sunday put Sunday
+            // occurrences of INTERVAL>1 series into the wrong alternating weeks.
+            static int MondayOffset(DayOfWeek d) => ((int)d + 6) % 7; // Mon=0 .. Sun=6
+            var days = rule.ByDay.Distinct().OrderBy(MondayOffset).ToList();
             var timeOfDay = start.TimeOfDay;
-            var weekAnchor = start.Date.AddDays(-(int)start.DayOfWeek); // Sunday of the start's week
+            var weekAnchor = start.Date.AddDays(-MondayOffset(start.DayOfWeek)); // Monday of the start's week
             var week = 0;
             while (emitted < safetyCap)
             {
                 var baseDay = weekAnchor.AddDays(7 * rule.Interval * week);
                 foreach (var d in days)
                 {
-                    var occ = baseDay.AddDays((int)d) + timeOfDay;
+                    var occ = baseDay.AddDays(MondayOffset(d)) + timeOfDay;
                     if (occ < start) continue; // days earlier in the first week than the actual start
                     yield return occ;
                     if (++emitted >= safetyCap) yield break;

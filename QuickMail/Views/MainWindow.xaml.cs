@@ -1246,6 +1246,11 @@ public partial class MainWindow : Window
             defaultKey: Key.W, defaultModifiers: ModifierKeys.None,
             isAvailable: () => CalendarPaneFocused));
         _registry.Register(new CommandDefinition(
+            id: "calendar.drillIntoDay", category: "Calendar", title: "Open Selected Day",
+            execute: DrillIntoSelectedDay,
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => MonthGrid.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedMonthCell != null));
+        _registry.Register(new CommandDefinition(
             id: "calendar.viewMonth", category: "Calendar", title: "Month View",
             execute: () => _vm.CalendarVm?.ShowMonthCommand.Execute(null),
             defaultKey: Key.M, defaultModifiers: ModifierKeys.None,
@@ -1579,9 +1584,10 @@ public partial class MainWindow : Window
                         interrupt: true, category: AnnouncementCategory.Result);
                     e.Handled = true;
                     return;
-                case Key.Escape when _vm.IsCalendarView && CalendarPaneFocused:
-                    // Escape from the calendar list returns focus to the folder tree,
-                    // matching the behaviour of Escape from the message list.
+                case Key.Escape when _vm.IsCalendarView
+                                     && (CalendarPaneFocused || CalendarDetails.IsKeyboardFocusWithin):
+                    // Escape from the calendar list, grid, or Details pane returns focus to the
+                    // folder tree, matching the behaviour of Escape from the message list.
                     FocusFolderTree();
                     e.Handled = true;
                     return;
@@ -2194,15 +2200,12 @@ public partial class MainWindow : Window
     private void CalendarMonth_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.ShowMonthCommand.Execute(null);
 
-    /// <summary>Enter on a month cell drills into that day's Day view; the list takes focus.</summary>
-    private void MonthGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+    /// <summary>Enter on a month cell: dispatched via the calendar.drillIntoDay registration.</summary>
+    private void DrillIntoSelectedDay()
     {
-        if (e.Key == Key.Enter && _vm.CalendarVm?.SelectedMonthCell != null)
-        {
-            _vm.CalendarVm.DrillIntoDayCommand.Execute(null);
-            Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
-            e.Handled = true;
-        }
+        if (_vm.CalendarVm?.SelectedMonthCell == null) return;
+        _vm.CalendarVm.DrillIntoDayCommand.Execute(null);
+        Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
     }
     private void CalendarPrev_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.PreviousPeriodCommand.Execute(null);
@@ -2236,10 +2239,14 @@ public partial class MainWindow : Window
     {
         var evt = _vm.CalendarVm?.SelectedEvent;
         if (evt == null) return;
-        if (evt.IsUserCreated)
-            _vm.CalendarVm?.EditEventCommand.Execute(evt);
-        else
+        // Harvested email invites open their source message; everything else routes through
+        // EditEvent, which itself edits what is editable (local rows, single Microsoft/Google
+        // events) and announces the right read-only message otherwise — so Enter and E always
+        // agree on the same row.
+        if (!evt.IsUserCreated && !evt.IsGraph)
             _vm.CalendarVm?.OpenSourceMessageCommand.Execute(evt);
+        else
+            _vm.CalendarVm?.EditEventCommand.Execute(evt);
     }
 
     /// <summary>Opens the modeless appointment editor and restores focus to the list on close.</summary>
@@ -3456,7 +3463,7 @@ public partial class MainWindow : Window
         if (AccountList.IsKeyboardFocusWithin)  return 1;
         if (FolderList.IsKeyboardFocusWithin)   return 2;
         if (SearchBox.IsKeyboardFocusWithin)    return 6;
-        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin) return 3;
+        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin || CalendarDetails.IsKeyboardFocusWithin || CalendarSearchBox.IsKeyboardFocusWithin) return 3;
         if (TabStrip.IsKeyboardFocusWithin)     return 7; // between message list and reading pane
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;

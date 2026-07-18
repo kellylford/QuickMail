@@ -90,10 +90,21 @@ public sealed class RecurrenceRule
             rule.Count = count;
         if (map.TryGetValue("UNTIL", out var until))
         {
-            var formats = new[] { "yyyyMMdd'T'HHmmss'Z'", "yyyyMMdd'T'HHmmss", "yyyyMMdd" };
-            if (DateTime.TryParseExact(until, formats, CultureInfo.InvariantCulture,
-                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var u))
-                rule.Until = u.ToLocalTime();
+            // Date-only UNTIL (yyyyMMdd, standard for all-day series) is a calendar date, not an
+            // instant: treating it as UTC midnight and converting to local shifted the inclusive
+            // end back a day west of Greenwich, dropping the series' final occurrence.
+            if (until.Length == 8 && DateTime.TryParseExact(until, "yyyyMMdd",
+                    CultureInfo.InvariantCulture, DateTimeStyles.None, out var dateOnly))
+            {
+                rule.Until = DateTime.SpecifyKind(dateOnly, DateTimeKind.Local);
+            }
+            else
+            {
+                var formats = new[] { "yyyyMMdd'T'HHmmss'Z'", "yyyyMMdd'T'HHmmss" };
+                if (DateTime.TryParseExact(until, formats, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var u))
+                    rule.Until = u.ToLocalTime();
+            }
         }
         return rule;
     }

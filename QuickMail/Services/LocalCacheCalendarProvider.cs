@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using QuickMail.Models;
@@ -77,6 +78,14 @@ public sealed class LocalCacheCalendarProvider : ICalendarProvider
                 SourceMessageId  = messageId,
                 SourceFolder     = folder,
                 ResponseStatus   = isCancel ? CalendarResponseStatus.Cancelled : CalendarResponseStatus.Pending,
+                // Carry the invite's all-day/recurrence data — without these, a recurring or
+                // all-day invite harvested from email showed as a single timed event at 12:00 AM.
+                IsAllDay         = model.IsAllDay,
+                RecurrenceRule   = model.RecurrenceRule,
+                ExDates          = model.ExDates.Count == 0
+                    ? null
+                    : string.Join(",", model.ExDates.Select(d =>
+                        d.ToString("yyyyMMdd'T'HHmmss", System.Globalization.CultureInfo.InvariantCulture))),
             };
             await _store.UpsertCalendarEventAsync(evt);
 

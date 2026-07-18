@@ -826,11 +826,14 @@ public class LocalStoreService : ILocalStoreService
                 is_all_day        = excluded.is_all_day,
                 recurrence_rule   = excluded.recurrence_rule,
                 exdates           = excluded.exdates
-            WHERE CalendarEvent.is_graph = 0;
+            WHERE CalendarEvent.is_graph = 0 OR excluded.is_graph = 1;
             """;
-        // The DO UPDATE ... WHERE guard: Graph-synced rows (is_graph=1) are owned by
-        // GraphCalendarSyncService's replace-slice; the invite harvest and local authoring
-        // paths that come through here must never overwrite them (e.g. on a UID collision).
+        // The DO UPDATE ... WHERE guard: server-synced rows (is_graph=1) are owned by the calendar
+        // sync service; the invite harvest and local authoring paths (which write is_graph=0) must
+        // never overwrite them on a UID collision. The sync service's own write-back stores the
+        // server's returned copy WITH is_graph=1 (excluded.is_graph=1), which must update the row —
+        // without that clause a successful server edit left the local copy stale until the next
+        // replace-slice sync.
         cmd.Parameters.AddWithValue("$uid",  evt.Uid);
         cmd.Parameters.AddWithValue("$aid",  evt.AccountId.ToString());
         cmd.Parameters.AddWithValue("$sum",  evt.Summary);

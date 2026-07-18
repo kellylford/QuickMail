@@ -1215,8 +1215,7 @@
                                  KeyboardNavigation.TabNavigation="Once"
                                  KeyboardNavigation.DirectionalNavigation="Contained"
                                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                                 PreviewKeyDown="MonthGrid_PreviewKeyDown">
+                                 ScrollViewer.VerticalScrollBarVisibility="Disabled">
                             <ListBox.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <UniformGrid Columns="7"/>

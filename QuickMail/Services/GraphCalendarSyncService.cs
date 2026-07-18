@@ -46,8 +46,13 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     internal static readonly TimeSpan WindowBack    = TimeSpan.FromDays(30);
     internal static readonly TimeSpan WindowForward = TimeSpan.FromDays(365);
 
+    // Ask Graph for times in the machine's own zone (Windows zone id, the format Outlook uses).
+    // Timed events still convert exactly to UTC ticks via ParseGraphDateTimeUtc (which honors the
+    // returned zone). All-day events arrive as LOCAL midnights, so taking .Date yields the correct
+    // calendar day — with a UTC Prefer header an all-day event authored east of Greenwich came back
+    // as the previous day's UTC evening and displayed one day early.
     private static readonly IReadOnlyDictionary<string, string> UtcPreferHeader =
-        new Dictionary<string, string> { ["Prefer"] = "outlook.timezone=\"UTC\"" };
+        new Dictionary<string, string> { ["Prefer"] = $"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"" };
 
     private readonly IAccountService _accounts;
     private readonly ILocalStoreService _store;

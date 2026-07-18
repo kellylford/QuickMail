@@ -69,15 +69,7 @@ public partial class EventEditorWindow : Window
             return;
         }
 
-        // Ctrl+Enter — save from anywhere, including the multi-line Notes box.
-        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
-        {
-            e.Handled = true;
-            _vm.SaveCommand.Execute(null);
-            return;
-        }
-
-        // F6 / Shift+F6 — cycle the logical field groups.
+        // F6 / Shift+F6 — cycle the logical field groups (framework-level, like the palette).
         if (e.Key == Key.F6)
         {
             e.Handled = true;
@@ -85,13 +77,21 @@ public partial class EventEditorWindow : Window
             return;
         }
 
-        // Escape — cancel. Let an open DatePicker calendar or ComboBox dropdown consume
-        // Escape itself first (per the modeless-dialog Escape guard in CLAUDE.md).
-        if (e.Key == Key.Escape && !StartDatePicker.IsDropDownOpen && !EndDatePicker.IsDropDownOpen
-            && !RepeatCombo.IsDropDownOpen && !SaveTargetCombo.IsDropDownOpen)
+        // Escape while a DatePicker calendar or ComboBox dropdown is open: let the control
+        // consume it (the modeless-dialog Escape guard in CLAUDE.md).
+        if (e.Key == Key.Escape
+            && (StartDatePicker.IsDropDownOpen || EndDatePicker.IsDropDownOpen
+                || RepeatCombo.IsDropDownOpen || SaveTargetCombo.IsDropDownOpen))
+            return;
+
+        // Registry dispatch (ComposeWindow pattern) — so editor.save / editor.cancel rebindings
+        // in the keyboard customizations dialog actually take effect.
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+        var cmd = _registry.FindByGesture(key, Keyboard.Modifiers);
+        if (cmd != null && (cmd.IsAvailable?.Invoke() ?? true))
         {
             e.Handled = true;
-            _vm.CancelCommand.Execute(null);
+            cmd.Execute();
         }
     }
 

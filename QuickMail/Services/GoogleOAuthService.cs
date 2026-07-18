@@ -87,7 +87,11 @@ public partial class GoogleOAuthService : IGoogleOAuthService
             if (string.IsNullOrEmpty(refreshToken))
                 throw new InvalidOperationException($"No Google credentials stored for {username}. Sign in first.");
 
-            credential = new UserCredential(CreateFlow(Scopes, new NoOpDataStore()), username, new TokenResponse
+            // Scopes: null — a refresh request must OMIT the scope parameter so Google returns a token
+            // with everything the stored refresh token was granted (mail, calendar, contacts).
+            // Passing the mail-only list here narrowed refreshed tokens and broke calendar sync
+            // after every app restart.
+            credential = new UserCredential(CreateFlow(null, new NoOpDataStore()), username, new TokenResponse
             {
                 RefreshToken = refreshToken,
             });

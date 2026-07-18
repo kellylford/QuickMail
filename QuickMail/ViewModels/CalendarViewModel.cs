@@ -434,7 +434,9 @@ public partial class CalendarViewModel : ObservableObject
         var editor = new EventEditorViewModel(source);
         editor.Saved += updated => _ = editor.IsDetachSave && editor.OccurrenceStart.HasValue
             ? DetachOccurrenceAsync(source, editor.OccurrenceStart.Value, updated)
-            : SaveEditedEventAsync(updated, isNew: false);
+            : source.OccurrenceStart.HasValue
+                ? SaveWholeSeriesAsync(source, updated)
+                : SaveEditedEventAsync(updated, isNew: false);
         EditorRequested?.Invoke(editor);
     }
 
@@ -527,7 +529,7 @@ public partial class CalendarViewModel : ObservableObject
     {
         try
         {
-            var index = _filteredEvents.FindIndex(e => ReferenceEquals(e, evt));
+            var index = _filteredEvents.FindIndex(e => e.Uid == evt.Uid && e.StartTimeTicks == evt.StartTimeTicks);
             await _graphSync!.DeleteEventAsync(account, evt);
             await _calendarService.RefreshAsync();
             ApplyFilters();
@@ -542,6 +544,31 @@ public partial class CalendarViewModel : ObservableObject
             Announce("Could not update your online calendar.", AnnouncementCategory.Result);
         }
         ListFocusRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// "All events" save on a recurring occurrence: applies the edited fields to the series
+    /// master while preserving what the editor doesn't show — the excluded occurrences and the
+    /// series' original start DATE (the edited time-of-day and duration are applied to it).
+    /// Without this, saving a series edit resurrected deleted occurrences and re-anchored the
+    /// series on the edited occurrence's date.
+    /// </summary>
+    private async Task SaveWholeSeriesAsync(CalendarEvent occurrence, CalendarEvent updated)
+    {
+        var master = _calendarService.Events.FirstOrDefault(
+            x => x.Uid == occurrence.Uid && x.AccountId == occurrence.AccountId);
+        if (master != null)
+        {
+            updated.ExDates = master.ExDates;
+            if (master.StartTime.HasValue && updated.StartTime.HasValue && updated.EndTime.HasValue)
+            {
+                var duration = updated.EndTime.Value - updated.StartTime.Value;
+                var newStart = master.StartTime.Value.Date + updated.StartTime.Value.TimeOfDay;
+                updated.StartTimeTicks = newStart.ToUniversalTime().Ticks;
+                updated.EndTimeTicks   = (newStart + duration).ToUniversalTime().Ticks;
+            }
+        }
+        await SaveEditedEventAsync(updated, isNew: false);
     }
 
     /// <summary>
@@ -560,7 +587,7 @@ public partial class CalendarViewModel : ObservableObject
         ApplyFilters();
         SelectedEvent = Events.FirstOrDefault(e => e.Uid == standalone.Uid);
         Announce($"This occurrence updated. {standalone.Summary}, " +
-                 $"{standalone.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date"}. " +
+                 $"{standalone.WhenText}. " +
                  "The rest of the series is unchanged.", AnnouncementCategory.Result);
         ListFocusRequested?.Invoke();
     }
@@ -596,7 +623,7 @@ public partial class CalendarViewModel : ObservableObject
         await _calendarService.UpsertEventAsync(evt);
         ApplyFilters();
         SelectedEvent = Events.FirstOrDefault(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
-        var when = evt.StartTime?.ToString("ddd, MMM d 'at' t") ?? "no date";
+        var when = evt.WhenText;
         Announce($"Appointment {(isNew ? "created" : "updated")}. {evt.Summary}, {when}.",
                  AnnouncementCategory.Result);
         ListFocusRequested?.Invoke();
@@ -696,7 +723,11 @@ public partial class CalendarViewModel : ObservableObject
             }
             else if (window is { } w)
             {
-                if (e.StartTime.HasValue && e.StartTime.Value >= w.Start && e.StartTime.Value < w.End)
+                // Overlap, not start-in-window: a multi-day or in-progress event must appear on
+                // every day it spans, not just its first.
+                if (e.StartTime.HasValue
+                    && e.StartTime.Value < w.End
+                    && (e.EndTime ?? e.StartTime.Value) >= w.Start)
                     result.Add(e);
             }
             else
@@ -779,6 +810,7 @@ public partial class CalendarViewModel : ObservableObject
             SourceFolder    = master.SourceFolder,
             ResponseStatus  = master.ResponseStatus,
             IsAllDay        = master.IsAllDay,
+            IsGraph         = master.IsGraph,
             RecurrenceRule  = master.RecurrenceRule,
             ExDates         = master.ExDates,
             OccurrenceStart = occStart,
@@ -790,7 +822,8 @@ public partial class CalendarViewModel : ObservableObject
         var count = VisibleEvents.Count;
         if (count == 0)
         {
-            Announce("Calendar. No events. Press N to create an appointment.", AnnouncementCategory.Hint);
+            Announce("Calendar. No events.", AnnouncementCategory.Status);
+            Announce("Press N to create an appointment.", AnnouncementCategory.Hint);
         }
         else
         {
