@@ -207,7 +207,9 @@ public class GraphCalendarSyncServiceTests : IDisposable
         await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(1, handler.Calls);
-        Assert.Equal("outlook.timezone=\"UTC\"", handler.PreferHeaders[0]);
+        // We ask Graph for times in the machine's own Windows zone so all-day events come back
+        // as local midnights (a UTC Prefer header shifted them a day for users east of Greenwich).
+        Assert.Equal($"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"", handler.PreferHeaders[0]);
         var url = handler.Urls[0];
         Assert.Contains("/me/calendarView?", url);
         Assert.Contains("startDateTime=", url);
@@ -409,7 +411,9 @@ public class GraphCalendarSyncServiceTests : IDisposable
 
         Assert.Equal("POST", Assert.Single(handler.Methods));
         Assert.EndsWith("/me/events", handler.Urls[0]);
-        Assert.Equal("outlook.timezone=\"UTC\"", handler.PreferHeaders[0]);
+        // Prefer header carries the machine's Windows zone (see Sync test); the body below still
+        // sends explicit UTC start/end, so the created event's times are unambiguous.
+        Assert.Equal($"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"", handler.PreferHeaders[0]);
 
         using var body = System.Text.Json.JsonDocument.Parse(handler.Bodies[0]!);
         var root = body.RootElement;

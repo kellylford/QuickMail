@@ -822,8 +822,8 @@ public partial class CalendarViewModel : ObservableObject
         var count = VisibleEvents.Count;
         if (count == 0)
         {
-            Announce("Calendar. No events.", AnnouncementCategory.Status);
-            Announce("Press N to create an appointment.", AnnouncementCategory.Hint);
+            Announce("Calendar. No events. Press N to create an appointment.",
+                     AnnouncementCategory.Hint);
         }
         else
         {
