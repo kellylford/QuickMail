@@ -20,6 +20,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 - [Calendar](#calendar)
 - [Notifications](#notifications)
 - [Tools Menu](#tools-menu)
+- [Reporting Issues](#reporting-issues)
 - [Settings](#settings)
 - [Themes](#themes)
 - [Screen Reader Announcements](#screen-reader-announcements)
@@ -209,11 +210,9 @@ The **Help** menu also has a **Keyboard Tutorial** entry, a short interactive wa
 
 ### Reporting a Bug
 
-Choose **Report a Bug** from the **Help** menu (also available from the command palette) to open a report window without needing a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce; a **Preview** box below the fields always shows exactly what will be sent, built fresh from those fields. Press **Send** to submit — QuickMail creates the GitHub issue directly using its own limited-scope credential, and the window shows a link to the created issue.
+Choose **Report a Bug** from the **Help** menu (also available from the command palette) to open a report window without needing a GitHub account. Fill in a summary and, optionally, what happened, what you expected, and steps to reproduce; a **Preview** box always shows exactly what will be sent. Press **Send** to file it directly, or **Copy report and open GitHub** to submit it under your own GitHub account.
 
-Alongside what you type, the report includes a short **Environment** section so a maintainer can reproduce the problem in the right context. It currently lists the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view (the message grouping — Messages, Conversations, From, or To — and the saved view name if one is applied), and the current message sort order. No message content, email addresses, account settings, credentials, or log file content is ever collected or sent — and because the Preview shows the full report verbatim, you can always see exactly what is included before sending.
-
-If sending fails, or you'd rather review the report yourself, choose **Copy report and open GitHub** instead: your report is copied to the clipboard and a pre-filled GitHub issue page opens in your browser, ready to paste and submit.
+This is one of three ways to report a problem. See **[Reporting Issues](#reporting-issues)** for all three — including email — and guidance on which to choose.
 
 ---
 
@@ -750,6 +749,44 @@ The **Tools** menu is always available from the main window menu bar and groups 
 - **Address Book…** (`Ctrl+Shift+B`)
 - **Rules…** (`Ctrl+Shift+L`) — opens the [Rules Manager](#mail-rules).
 - **Command Palette…** (`Ctrl+Shift+P`)
+
+---
+
+## Reporting Issues
+
+QuickMail improves because people report problems and suggest changes. There are **three** ways to do it. They mostly differ in one thing: **whether you can be contacted for follow-up**. Pick whichever fits.
+
+| Way | Where | Follow-up? | Best when |
+|-----|-------|-----------|-----------|
+| **1. Report a Bug → Send** | Help menu, in QuickMail | No | You want to report a problem but don't want any follow-up. |
+| **2. Report a Bug → Copy report and open GitHub** | Help menu, in QuickMail | Yes (via GitHub) | You have a GitHub account and want automatic filing plus direct contact. |
+| **3. Email** | `quickmailissues@theideaplace.net` | Yes (by email) | You'd rather use email and want a personal reply. |
+
+### 1. Report a Bug — Send it directly (no account needed, anonymous)
+
+Choose **Report a Bug** from the **Help** menu (it's also in the command palette). A report window opens with a **Summary** and — all optional — **What happened**, **What you expected**, and **Steps to reproduce**. A **Preview** area always shows exactly what will be sent, built fresh from those fields as you type.
+
+Press **Send**. QuickMail files the report for you and shows a link to the issue it created.
+
+Because a Send report includes **no email address or other identifying information**, there is no way for anyone to follow up with you about it. Choose this option when you want to report something but **don't want any direct follow-up**.
+
+### 2. Report a Bug — Copy report and open GitHub (filed under your account)
+
+In the same **Report a Bug** window, choose **Copy report and open GitHub** instead of Send. QuickMail copies the report to your clipboard and opens a pre-filled new-issue page on GitHub. You submit it there under **your own GitHub account**, so your GitHub contact information is attached and you'll be notified as the issue is discussed.
+
+Choose this option when you **have a GitHub account** and want automatic bug reporting **plus** the ability to be contacted and to follow along.
+
+### 3. Email us (personal follow-up)
+
+If you'd rather not use the in-app tool at all, email **[quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net)**. Describe the problem in your own words — the more detail (what you did, what happened, what you expected), the better.
+
+Choose this option when you **don't mind sending an email** and want a **personal follow-up**.
+
+### What's included in a report — and what's never included
+
+Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view, and the current sort order.
+
+**No message content, email addresses, account settings, passwords, or log file content is ever collected or sent.** The Preview shows the full report verbatim, so you always see exactly what is included before it leaves your computer.
 
 ---
 

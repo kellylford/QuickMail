@@ -133,3 +133,15 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - The content region is now a two-row `Grid` whose row sizes swap on a new `IsMessageListAreaVisible` VM flag via `BoolToGridLengthConverter`. The flag is `!(MessageOpenMode == Tab && ActiveTab is MessageTabViewModel && IsMessageOpen)` — the `IsMessageOpen` term keeps the list visible during the async body load and if the load fails/returns null, so a slow or failed open never blanks the pane (Feature Checklist rule 4). `CycleFocusAsync` gates the message-list F6 stop on the same flag; the window-level **Escape** handler routes to `ActivateMessageListTab()` (revealing the list, leaving the tab open) in Tab mode instead of `CloseReadingPane`.
 - Reading-Pane and Window layouts are byte-for-byte equivalent (the flag is always true outside Tab mode). Independent review caught and fixed the transient/failed-load blank-pane case before merge. Adds `TabModeMessageListVisibilityTests` (8 cases).
 - Brian Vogel's #177 review also surfaced two still-parked, pre-existing items — the Reading-Pane reading pane not being resizable, and account deletion triggering repeated re-auth prompts — neither of which is addressed here.
+
+---
+
+## Reporting Issues
+
+Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
+
+1. **Report a Bug → Send** (Help menu, inside QuickMail). Files the report for you anonymously — it includes no email address or other identifying information, so there is no way to follow up with you. **Best when you don't want any follow-up.**
+2. **Report a Bug → Copy report and open GitHub** (Help menu). Opens a pre-filled issue that you submit under your own GitHub account, so your GitHub contact information is attached. **Best when you have a GitHub account and want automatic filing plus direct contact.**
+3. **Email** [quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net). **Best when you don't mind sending email and want a personal follow-up.**
+
+Full details, including exactly what a report contains (and what it never contains), are in the [Reporting Issues section of the User Guide](https://kellylford.github.io/QuickMail/reporting-issues.html).

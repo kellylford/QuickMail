@@ -64,6 +64,8 @@ The user guide (`docs/USER-GUIDE.md`) is automatically converted to HTML and pub
 
 **Before you ship a release**: Update `docs/USER-GUIDE.md` with any changes, then publish (manual or automatic).
 
+**Release notes footer**: Every `docs/release-notes-vX.Y.Z.md` must end with the standard **Reporting Issues** footer. The canonical text lives in `docs/reporting-issues-footer.md` — copy the section below its divider to the end of each release notes file. Keep it in sync with the User Guide's Reporting Issues page (`reporting-issues.html`).
+
 ### GitHub Pages Setup (One-time)
 
 Run the setup script once:
