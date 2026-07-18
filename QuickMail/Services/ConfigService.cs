@@ -224,6 +224,11 @@ public class ConfigService : IConfigService
                     case "graphpollseconds":
                         if (int.TryParse(value, out var gps)) config.GraphPollSeconds = Math.Clamp(gps, 30, 600);
                         break;
+                    case "mailsyncpollminutes":
+                        // 0 disables the fallback poll; any other value is clamped to 1–120.
+                        if (int.TryParse(value, out var msp))
+                            config.MailSyncPollMinutes = msp <= 0 ? 0 : Math.Clamp(msp, 1, 120);
+                        break;
                     case "appearancethemeid":
                         if (!string.IsNullOrWhiteSpace(value)) config.AppearanceThemeId = value;
                         break;
@@ -410,6 +415,13 @@ public class ConfigService : IConfigService
         sb.AppendLine($"GraphPollSeconds = {Math.Clamp(config.GraphPollSeconds, 30, 600)}");
         sb.AppendLine("# Poll interval (seconds) for the Microsoft Graph new-mail watcher.");
         sb.AppendLine("# Default is 60. Values: 30-600. IMAP accounts use IDLE and ignore this.");
+        sb.AppendLine();
+
+        sb.AppendLine($"MailSyncPollMinutes = {(config.MailSyncPollMinutes <= 0 ? 0 : Math.Clamp(config.MailSyncPollMinutes, 1, 120))}");
+        sb.AppendLine("# Fallback mail-sync interval (minutes) behind IMAP IDLE.");
+        sb.AppendLine("# Periodically re-syncs inboxes so new mail still arrives if the server never");
+        sb.AppendLine("# pushes or the IDLE connection dies, and read/flag changes from other clients");
+        sb.AppendLine("# reconcile. Default 5. Set to 0 to disable and rely on IDLE alone. Values: 0 or 1-120.");
         sb.AppendLine();
 
         sb.AppendLine($"AppearanceThemeId = {config.AppearanceThemeId}");

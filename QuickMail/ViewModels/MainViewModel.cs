@@ -1809,6 +1809,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Start periodic NOOP heartbeat (10-minute interval) to keep connections alive
             // and detect mid-session drops on non-INBOX folders.
             _ = StartPeriodicNoOpAsync(accountList, ct);
+
+            // Start the fallback mail-sync loop (issue #267) — a safety net behind IMAP IDLE that
+            // periodically re-syncs inboxes on a user-configurable interval.
+            _ = StartFallbackSyncAsync(ct);
         }
         catch (OperationCanceledException) { /* sync cancelled — normal */ }
         catch (Exception ex)
@@ -1937,6 +1941,80 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (OperationCanceledException) { }
     }
 
+    // Fallback mail sync behind IMAP IDLE (issue #267). IDLE is the primary new-mail signal, but if a
+    // server never pushes, the held IDLE connection dies quietly, or a message's read/flag state
+    // changes in another client (which IDLE never reports), nothing updates until the user acts. This
+    // loop periodically re-syncs each IMAP account's inbox as the safety net. The interval is
+    // user-configurable (config.MailSyncPollMinutes); 0 disables it. Re-reads the setting at the top of
+    // each cycle so a Settings change applies without a restart — note the change takes effect after the
+    // current wait elapses (up to one interval of lag; Off→enabled is bounded at ≤5 min). Non-online
+    // only — online mode has no local store to sync into and StartBackgroundSyncAsync returns first.
+    //
+    // Threading: the loop body runs on a threadpool thread (ConfigureAwait(false) on the delay), so the
+    // fetch + SQLite upsert never touch the UI thread. Accounts/_cachedFolders are UI-thread-owned, so
+    // the work list is snapshotted via _ui.Invoke, and the UI-owned follow-ups (notify, count refresh)
+    // are marshalled back via _ui.Post. This mirrors OnInboxNewMailDetected but makes the thread
+    // ownership explicit rather than relying on an ambient sync context.
+    private async Task StartFallbackSyncAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var minutes = _configService.Load().MailSyncPollMinutes;
+
+                // Disabled: re-check the setting every 5 minutes so re-enabling it doesn't need a restart.
+                var delay = minutes <= 0 ? TimeSpan.FromMinutes(5) : TimeSpan.FromMinutes(minutes);
+                await Task.Delay(delay, ct).ConfigureAwait(false);
+                if (ct.IsCancellationRequested) break;
+                if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
+
+                // Snapshot the IMAP inboxes to sync on the UI thread (Accounts/_cachedFolders are
+                // UI-thread-owned). Graph accounts are skipped — they have their own delta poll.
+                var jobs = new List<(AccountModel Account, MailFolderModel Inbox)>();
+                _ui.Invoke(() =>
+                {
+                    foreach (var account in Accounts)
+                    {
+                        if (account.BackendKind != BackendKind.ImapSmtp) continue;
+                        if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+
+                        var inbox = folders.FirstOrDefault(f =>
+                            f.Kind == Models.SpecialFolderKind.Inbox ||
+                            string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
+                        if (inbox != null) jobs.Add((account, inbox));
+                    }
+                });
+
+                foreach (var (account, inbox) in jobs)
+                {
+                    if (ct.IsCancellationRequested) break;
+                    try
+                    {
+                        // Fetch + SQLite upsert run off the UI thread; SyncOneFolderAsync marshals its
+                        // FolderSynced event to the UI thread internally.
+                        var incoming = await _syncService.SyncOneFolderAsync(account, inbox, ct)
+                            .ConfigureAwait(false);
+                        LogService.Debug($"Fallback sync [{account.AccountLabel}] inbox: {incoming.Count} fetched.");
+
+                        // Marshal the UI-owned follow-ups back to the UI thread: notify for genuinely-new
+                        // arrivals (the single-thread-owned de-dupe set prevents re-notifying mail IDLE
+                        // already flagged) and refresh unread counts (debounced, STATUS-authoritative).
+                        _ui.Post(() =>
+                        {
+                            if (incoming.Count > 0)
+                                MaybeNotifyNewMail(account, incoming);
+                            ScheduleFolderCountRefresh(account.Id);
+                        });
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex) { LogService.Log($"Fallback sync {account.AccountLabel}", ex); }
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
     // ── FolderSynced merge ───────────────────────────────────────────────────────
 
     // Called on the UI thread by SyncService after each folder sync.
@@ -2017,6 +2095,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Collect truly new messages; add them to _rawMessages immediately so the
         // search pool stays in sync with what the list will eventually show.
         var toInsert = new List<MailMessageSummary>();
+        // Existing messages whose read-state was reconciled from the server (#269). Their filter
+        // membership may have changed (e.g. now-read messages must leave the Unread view), so their
+        // presence in the visible list is reconciled after the loop.
+        var readReconciled = new List<MailMessageSummary>();
         foreach (var msg in relevant.OrderByDescending(m => m.Date))
         {
             // Reconcile server-flagged state for new incoming messages: a message with
@@ -2029,14 +2111,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var key = keyOf(msg);
             if (!seen.Add(key))
             {
-                // Existing message: reconcile external flag change (§9.3).
-                // If the server now reports not-flagged but the in-memory message still has
-                // a flag set, another client cleared it — clear our local flag to match.
-                if (!msg.IsServerFlagged &&
-                    rawByKey.TryGetValue(key, out var existing) &&
-                    existing.FlagId != null)
+                // Existing message: reconcile external state changes made by another client.
+                if (rawByKey.TryGetValue(key, out var existing))
                 {
-                    existing.FlagId = null;
+                    // Read/unread (#269): a message read (or marked unread) elsewhere — e.g. Gmail
+                    // web — must not keep showing the stale state here. IsRead is observable, so this
+                    // refreshes the row; folder unread counts reconcile via the debounced,
+                    // STATUS-authoritative refresh already scheduled on the sync path.
+                    if (existing.IsRead != msg.IsRead)
+                    {
+                        existing.IsRead = msg.IsRead;
+                        readReconciled.Add(existing); // its filter membership may have changed
+                    }
+
+                    // Flag clear (§9.3): server now reports not-flagged but we still show a flag —
+                    // another client cleared it, so clear our local flag to match.
+                    if (!msg.IsServerFlagged && existing.FlagId != null)
+                        existing.FlagId = null;
                 }
                 continue;
             }
@@ -2063,6 +2154,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             foreach (var msg in toInsert)
                 InsertMessageSorted(msg);
+
+            // #269: reconcile the visible list for messages whose read-state changed externally. A
+            // now-read message must leave the Unread view; a now-unread one must (re)appear if it
+            // matches. Done inside the batch so it costs one Reset, not one event per change.
+            foreach (var m in readReconciled)
+            {
+                var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
+                    && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
+                var isShown = Messages.Contains(m);
+                if (shouldShow && !isShown)
+                    InsertMessageSorted(m);
+                else if (!shouldShow && isShown)
+                    Messages.Remove(m);
+            }
         }
         // If WPF cleared SelectedMessage during the Reset but the message is still in
         // the list, restore it so the reading pane header and command guards stay correct.
@@ -2136,6 +2241,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (_notifiedMessageKeys.Count > 10_000) _notifiedMessageKeys.Clear();
 
         var fresh = Helpers.NewMailFilter.SelectNew(incoming, _notifyThresholdUtc, _notifiedMessageKeys);
+
+        // #270 instrumentation: the user reports an inflated count that re-notifies every ~30 min
+        // (the IDLE reconnect cadence). Log enough to tell whether the SAME message re-notifies each
+        // cycle (dedup key not matching / session reset) or a genuinely new one arrives. UIDs are the
+        // dedup key input, so logging them pins which mechanism is at play. Debug-only (Advanced log).
+        LogService.Debug(
+            $"NewMail notify [{account.AccountLabel}]: incoming={incoming.Count} " +
+            $"unread={incoming.Count(m => !m.IsRead)} fresh={fresh.Count} " +
+            $"notifiedSetSize={_notifiedMessageKeys.Count} threshold={_notifyThresholdUtc:o} " +
+            $"freshUids=[{string.Join(",", fresh.Select(m => m.MessageId))}]");
+
         if (fresh.Count == 0) return;
 
         _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
