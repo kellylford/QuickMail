@@ -538,20 +538,177 @@ Press the assigned hotkey from anywhere in the main window to switch to that vie
 
 ## Calendar
 
-QuickMail tracks upcoming appointments drawn from meeting-invitation emails (`.ics` attachments) in your mailbox. This is not a general-purpose calendar — it exists so that once you accept a meeting invitation in QuickMail, you have a place to see what you accepted.
+QuickMail has a full, keyboard-first calendar. You can create and edit your own appointments, keep repeating events, get reminders, respond to meeting invitations, and — if you connect an online account — see and (for some providers) change the events already on your Microsoft, Google, or iCloud calendar. Everything is stored locally so the calendar works offline, and every part of it is reachable with the keyboard and announced by screen readers.
 
-A **Calendar** node appears in the folder tree. Select it to replace the message list with a list of upcoming events, sorted by date and time.
+This page is long because the calendar does a lot. If you just want the essentials: press **Ctrl+Shift+C** to open the calendar, press **N** to create an appointment, and use the arrow keys to move through your events. The rest of this page fills in the detail, including a clear list of [what the calendar does and does not do](#what-the-calendar-does-and-does-not-do).
 
-- **Arrow keys** move through the event list.
-- **Enter** opens the email the selected event came from. If that message is no longer in your local cache, QuickMail announces this and does nothing rather than attempting a failing fetch.
-- **T** filters the list to today's events.
-- **Ctrl+G** opens **Go to Date**: choose a date and press **Go** to jump the calendar there. In Day, Week, or Month view the current view is kept and recentred on the date you chose; from the Agenda list it switches to Day view for that date. A **Go To Date…** button on the calendar toolbar does the same thing.
-- **F5** refreshes the calendar.
-- **F6** cycles to the next pane as usual.
+### Opening the Calendar
 
-### Responding to Invitations
+There are two ways in:
 
-Open a meeting invitation email as you would any message. Below the invitation details (organizer, time, location, description), the message body shows three response links: **Accept**, **Tentative**, and **Decline**. Activating one records your response and updates the Calendar immediately — no restart or refresh needed. These links are not shown on a cancellation notice. When you receive an updated or cancelled invitation, the corresponding calendar entry updates or is removed automatically.
+- Press **Ctrl+Shift+C** from anywhere in the main window.
+- Select the **Calendar** node in the folder tree. It sits alongside your mail folders.
+
+Either way, the message list is replaced by your list of events, and a small toolbar appears above it with buttons for the views, date navigation, and creating or editing appointments. Everything on that toolbar has a keyboard shortcut too, listed at the end of this page.
+
+> The calendar needs QuickMail's local cache, so it is **not available when you run QuickMail in online mode** (`--online`). In that mode the calendar announces that it is unavailable.
+
+### Calendars (sources)
+
+Expand the **Calendar** node in the folder tree to choose which events you are looking at:
+
+- **All Calendars** — everything, merged together.
+- **Local Calendar** — only the appointments you created in QuickMail, stored on this computer.
+- **One entry per account** — the events from each email account's online calendar (see [Connecting an online calendar](#connecting-an-online-calendar)).
+- **iCloud** (or whatever you named it) — appears when you have set up an internet calendar in Settings.
+
+Selecting a source filters the list to just that calendar. "All Calendars" is the usual choice for day-to-day use.
+
+### The four views
+
+Your events can be shown four ways. Switch between them with the toolbar buttons or these keys while the event list has focus:
+
+- **Agenda** (press **A**) — a running list of upcoming events, oldest first. This is the default and the simplest to browse. Press **T** to filter it down to just today, and **T** again to show everything.
+- **Day** (press **D**) — a single day's events.
+- **Week** (press **W**) — one week, starting on whatever your Windows region setting uses as the first day of the week.
+- **Month** (press **M**) — a grid of the whole month. Arrow keys move day by day and week by week; press **Enter** on a day to open that day in Day view.
+
+The header above the list always tells you which view and which period you are looking at (for example, "Week of March 9 to March 15").
+
+### Moving around the calendar
+
+In Day, Week, and Month views:
+
+- **Ctrl+Left** and **Ctrl+Right** move to the previous or next day, week, or month (whichever view you are in).
+- **T** jumps back to today.
+- **Ctrl+G** opens **Go to Date**: type or pick a date, then press **Go**. Day, Week, and Month views keep their view and recenter on the date you chose; from the Agenda list, Go to Date switches to Day view for that date. A **Go To Date…** button on the toolbar does the same thing.
+
+(In Agenda view there is no "previous/next period" — the list is already continuous — so **Ctrl+Left/Right** do nothing there, and **T** toggles the today filter instead of jumping.)
+
+### Reading an appointment
+
+Move through the list with the arrow keys. Each row is announced as a short summary — for example, "Team standup, today 10:00 to 10:30, Accepted. Location: Zoom." A **details** area below the list shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
+
+If you prefer each row spoken with field labels ("Subject …, when …, location …") instead of the concise form, turn on **Show field labels in the calendar event list** in **Settings → General**. It takes effect immediately.
+
+### Creating an appointment
+
+Press **N** (or the **New** toolbar button) to open the appointment editor. It is a normal window you can tab through:
+
+- **Title** — required.
+- **All day** — check this for an all-day event; the time fields then switch off.
+- **Starts / Ends** — a date and a time for each. You can type the time naturally: "9", "9:00", "9:00 AM", or "14:30" all work. If you leave the end time blank, QuickMail uses 30 minutes after the start.
+- **Location** — optional.
+- **Repeat** — leave as "Does not repeat" for a one-off, or set up a repeating appointment (see below).
+- **Notes** — free text.
+- **Calendar** — when you have a Microsoft or Google account connected, a picker lets you choose whether the new appointment is saved to your **Local Calendar** or pushed to that account. With no connected calendar this picker does not appear and everything is saved locally.
+
+Press **Enter** (or the **Save** button) to save, or **Escape** to cancel.
+
+### Repeating appointments
+
+In the editor's **Repeat** field choose Daily, Weekly, Monthly, or Yearly. You can then set:
+
+- **Every N** — for example "every 2 weeks."
+- **Until** — an optional date the repetition stops on.
+- **On days** (Weekly only) — check the days of the week it should fall on. Leave them all unchecked to repeat on the same weekday as the start date.
+
+When you later edit or delete one occurrence of a repeating appointment, QuickMail asks whether you mean **this event only** or **all events in the series**:
+
+- **This event only** — changes (or removes) just that one date and leaves the rest of the series alone.
+- **All events in the series** — changes (or removes) the whole repeating appointment.
+
+### Editing and deleting
+
+- Press **E** (or the **Edit** button) to edit the selected appointment.
+- Press **Delete** (or the **Delete** button) to delete it. QuickMail always confirms before deleting.
+
+What you can change depends on where the appointment lives:
+
+- **Your own (Local Calendar) appointments** — fully editable and deletable.
+- **Single events from a connected Microsoft or Google calendar** — editable and deletable; your change is sent back to that account.
+- **Repeating events from a connected online calendar** — read-only for now; QuickMail tells you so rather than changing them.
+- **iCloud / internet-calendar events and meeting invitations** — read-only. QuickMail explains why instead of failing silently.
+
+If saving a change to an online account ever fails, QuickMail saves your appointment to the Local Calendar instead so your work is never lost, and tells you it did.
+
+### Reminders
+
+Reminders are **off by default**. To turn them on, open **Settings → General**, check **Remind me before appointments**, and set the **Minutes before** value (10 by default). When a reminder is due, QuickMail shows a Windows notification and announces it, telling you how long until the appointment and where it is. Each reminder fires once per session.
+
+There is a single reminder lead time for all appointments; per-appointment reminder times and snoozing are not offered.
+
+### Exporting an appointment
+
+To share an appointment as a standard calendar file, select it and choose **Export Appointment as .ics** from the command palette (**Ctrl+Shift+P**) or the toolbar/menu. QuickMail writes a `.ics` file you can send to someone or import elsewhere. (Exporting one occurrence of a repeating appointment exports the whole series.) This action has no default keyboard shortcut, but you can assign one in **Settings → Keyboard**.
+
+### Searching your appointments
+
+Press **Ctrl+Shift+S** while the calendar is open to search. Type to filter the list by title, location, or notes; the count of matches is announced as you type. Press **Escape** to clear the search and return to the full list.
+
+### Responding to meeting invitations
+
+When you open an email that contains a meeting invitation, QuickMail adds an event card to the top of the message with three buttons: **Accept**, **Tentative**, and **Decline**. Choosing one sends your reply to the organizer and updates your calendar right away — no restart or refresh needed. If the invitation has been cancelled by the organizer, the card says so instead of offering buttons, and the matching calendar entry is removed. From the calendar list, pressing **Enter** on an invitation-based event opens the original email it came from.
+
+### Connecting an online calendar
+
+QuickMail can sync with online calendars. What it can do depends on the provider:
+
+| Provider | See your events | Create / edit / delete from QuickMail | How to set it up |
+|----------|-----------------|----------------------------------------|------------------|
+| **Local Calendar** | — (they live here) | Full | Nothing to set up; it is always there. |
+| **Microsoft** (Outlook.com, Microsoft 365) | Yes | Yes, for single (non-repeating) events | Automatic once you add the Microsoft account for mail and grant calendar access. |
+| **Google** | Yes | Yes, for single (non-repeating) events | Automatic once the Google account is connected for mail. |
+| **iCloud / other internet calendars (CalDAV)** | Yes | No — read-only | **Settings → General → Internet Calendar**: enter the server address, your username, and an app-specific password, then press **Test**. For iCloud use `https://caldav.icloud.com`, your Apple ID, and an app-specific password. |
+
+Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup). Press **F5** to refresh on demand. Syncing is one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
+
+### What the calendar does and does not do
+
+To set expectations clearly:
+
+**It does:**
+
+- Let you create, edit, and delete your own appointments, including all-day and repeating ones.
+- Show four views (Agenda, Day, Week, Month) and jump to any date.
+- Remind you before appointments (when you turn reminders on).
+- Respond to meeting invitations and keep your reply in sync.
+- Download events from Microsoft, Google, and iCloud/CalDAV calendars, and send single-event changes back to Microsoft and Google.
+- Export any appointment as a `.ics` file.
+
+**It does not (yet):**
+
+- Work in online mode — it needs the local cache.
+- Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
+- Edit **repeating** events that came from an online calendar, or edit anything on an **iCloud/CalDAV** calendar (those are read-only).
+- Subscribe to public `.ics` calendar feeds (holidays, sports schedules, and the like).
+- Offer multiple named calendars, calendar colors, per-appointment reminder times, or reminder snoozing.
+
+By default, invitations you have **declined** are hidden. Showing them is an advanced option set in the configuration file (`ShowDeclinedEvents`) and takes effect after a restart.
+
+Repeating appointments are expanded for browsing from about a week ago through the next twelve months; events far outside that window may not appear in the continuous Agenda list until you navigate to their date.
+
+### Calendar keyboard shortcuts
+
+These work while the calendar list (or, where noted, the Month grid) has focus:
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+C` | Open the Calendar |
+| `A` / `D` / `W` / `M` | Agenda / Day / Week / Month view |
+| `T` | Today (filter to today in Agenda; jump to today in Day/Week/Month) |
+| `Ctrl+Left` / `Ctrl+Right` | Previous / next day, week, or month |
+| `Ctrl+G` | Go to Date |
+| `Enter` | Open an invitation's source email, edit your own appointment, or (in Month view) open the selected day |
+| `N` | New appointment |
+| `E` | Edit appointment |
+| `Delete` | Delete appointment |
+| `Ctrl+Shift+S` | Search appointments |
+| `Escape` | Clear search / leave the calendar |
+| `F5` | Refresh |
+| `F6` | Move to the next pane |
+
+Export as `.ics`, and the invitation responses (Accept, Tentative, Decline), are available from the command palette (**Ctrl+Shift+P**) and have no default key until you assign one.
 
 ---
 
@@ -785,7 +942,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 
 **Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, and **Report a Bug** are likewise command-palette-only unless you assign a shortcut yourself in Settings → Keyboard.
 
-**Calendar list** (when the Calendar folder is selected): `T` filters to today's events; `Enter` opens the source invitation email; `F5` refreshes; arrow keys browse.
+**Calendar** (`Ctrl+Shift+C` to open): `A`/`D`/`W`/`M` switch views, `T` goes to today, `Ctrl+Left`/`Ctrl+Right` move between periods, `Ctrl+G` goes to a date, `N`/`E`/`Delete` create/edit/delete appointments, and `Ctrl+Shift+S` searches. See the [Calendar](#calendar) section for the full list.
 
 ### Tabs
 
