@@ -2270,18 +2270,31 @@ public partial class MainWindow : Window
     private void CalendarGoToDate_Click(object sender, RoutedEventArgs e)
         => _vm.CalendarVm?.RequestGoToDateCommand.Execute(null);
 
+    private GoToDateWindow? _goToDateWindow;
+
     /// <summary>
     /// Opens the modeless Go To Date picker seeded with <paramref name="initial"/>. On confirm it
     /// jumps the calendar; either way focus returns to the calendar list on close. Modeless per the
-    /// CLAUDE.md modal rules (editable DatePicker over the live WebView2 reading pane).
+    /// CLAUDE.md modal rules (editable DatePicker over the live WebView2 reading pane). Only one
+    /// picker is shown at a time — a second request activates the existing one.
     /// </summary>
     private void OpenGoToDateDialog(DateTime initial)
     {
+        if (_goToDateWindow != null)
+        {
+            _goToDateWindow.Activate();
+            return;
+        }
+
         var pickerVm = new GoToDateViewModel(initial);
         pickerVm.Saved += date => _vm.CalendarVm?.GoToDate(date);
         var picker = new GoToDateWindow(pickerVm) { Owner = this };
+        _goToDateWindow = picker;
         picker.Closed += (_, _) =>
+        {
+            _goToDateWindow = null;
             Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+        };
         picker.Show();
     }
 

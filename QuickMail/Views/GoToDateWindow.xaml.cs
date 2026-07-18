@@ -42,7 +42,7 @@ public partial class GoToDateWindow : Window
     private void RegisterPaletteCommands()
     {
         _registry.Register(new CommandDefinition(
-            id: "gotodate.confirm", category: "Calendar", title: "Go to date",
+            id: "gotodate.confirm", category: "Calendar", title: "Go to Date",
             execute: () => _vm.ConfirmCommand.Execute(null),
             defaultKey: Key.Enter, defaultModifiers: ModifierKeys.Control));
         _registry.Register(new CommandDefinition(

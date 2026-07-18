@@ -212,15 +212,21 @@ public class CalendarViewModelTests
     }
 
     [Fact]
-    public void RequestGoToDate_OnlineMode_DoesNotRaise()
+    public void RequestGoToDate_OnlineMode_DoesNotRaise_ButAnnounces()
     {
         var vm = MakeVm(new List<CalendarEvent> { MakeEvent("e1") }, onlineMode: true);
 
         bool raised = false;
+        string? announced = null;
+        AnnouncementCategory? cat = null;
         vm.GoToDateRequested += _ => raised = true;
+        vm.AnnouncementRequested += (t, c) => { announced = t; cat = c; };
+
         vm.RequestGoToDateCommand.Execute(null);
 
         Assert.False(raised);
+        Assert.Contains("unavailable in online mode", announced);
+        Assert.Equal(AnnouncementCategory.Result, cat);
     }
 
     [Fact]

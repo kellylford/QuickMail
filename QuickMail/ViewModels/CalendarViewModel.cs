@@ -345,7 +345,11 @@ public partial class CalendarViewModel : ObservableObject
     [RelayCommand]
     private void RequestGoToDate()
     {
-        if (_onlineMode) return;
+        if (_onlineMode)
+        {
+            Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result);
+            return;
+        }
         var seed = ViewMode == CalendarViewMode.Agenda ? DateTime.Today : ReferenceDate;
         GoToDateRequested?.Invoke(seed);
     }
