@@ -184,6 +184,107 @@ public class CalendarViewModelTests
     }
 
     [Fact]
+    public async Task RequestGoToDate_RaisesRequest_SeededWithReferenceDate()
+    {
+        var vm = MakeVm(new List<CalendarEvent> { MakeEvent("e1", DateTime.Today.AddHours(9)) });
+        await vm.LoadAsync();
+        vm.ShowDayCommand.Execute(null);
+        vm.NextPeriodCommand.Execute(null);          // reference = tomorrow
+
+        DateTime? seed = null;
+        vm.GoToDateRequested += d => seed = d;
+        vm.RequestGoToDateCommand.Execute(null);
+
+        Assert.Equal(DateTime.Today.AddDays(1), seed);
+    }
+
+    [Fact]
+    public async Task RequestGoToDate_InAgenda_SeedsToday()
+    {
+        var vm = MakeVm(new List<CalendarEvent> { MakeEvent("e1", DateTime.Today.AddHours(9)) });
+        await vm.LoadAsync();                          // Agenda ignores ReferenceDate
+
+        DateTime? seed = null;
+        vm.GoToDateRequested += d => seed = d;
+        vm.RequestGoToDateCommand.Execute(null);
+
+        Assert.Equal(DateTime.Today, seed);
+    }
+
+    [Fact]
+    public void RequestGoToDate_OnlineMode_DoesNotRaise_ButAnnounces()
+    {
+        var vm = MakeVm(new List<CalendarEvent> { MakeEvent("e1") }, onlineMode: true);
+
+        bool raised = false;
+        string? announced = null;
+        AnnouncementCategory? cat = null;
+        vm.GoToDateRequested += _ => raised = true;
+        vm.AnnouncementRequested += (t, c) => { announced = t; cat = c; };
+
+        vm.RequestGoToDateCommand.Execute(null);
+
+        Assert.False(raised);
+        Assert.Contains("unavailable in online mode", announced);
+        Assert.Equal(AnnouncementCategory.Result, cat);
+    }
+
+    [Fact]
+    public async Task GoToDate_InDayView_MovesReferenceAndFiltersToThatDay()
+    {
+        var target = DateTime.Today.AddDays(5);
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("today", DateTime.Today.AddHours(9)),
+            MakeEvent("target", target.AddHours(9)),
+        });
+        await vm.LoadAsync();
+        vm.ShowDayCommand.Execute(null);
+        Assert.Equal("today", vm.VisibleEvents[0].Uid);
+
+        vm.GoToDate(target);
+
+        Assert.True(vm.IsDayView);
+        Assert.Equal(target, vm.ReferenceDate.Date);
+        Assert.Single(vm.VisibleEvents);
+        Assert.Equal("target", vm.VisibleEvents[0].Uid);
+    }
+
+    [Fact]
+    public async Task GoToDate_FromAgenda_SwitchesToDayView()
+    {
+        var target = DateTime.Today.AddDays(3);
+        var vm = MakeVm(new List<CalendarEvent>
+        {
+            MakeEvent("today", DateTime.Today.AddHours(9)),
+            MakeEvent("target", target.AddHours(9)),
+        });
+        await vm.LoadAsync();                          // Agenda
+
+        vm.GoToDate(target);
+
+        Assert.True(vm.IsDayView);                     // Agenda ignores ReferenceDate → show the day
+        Assert.Equal(target, vm.ReferenceDate.Date);
+        Assert.Single(vm.VisibleEvents);
+        Assert.Equal("target", vm.VisibleEvents[0].Uid);
+    }
+
+    [Fact]
+    public async Task GoToDate_InMonthView_KeepsMonthViewAndMovesMonth()
+    {
+        var target = DateTime.Today.AddMonths(2);
+        var vm = MakeVm(new List<CalendarEvent> { MakeEvent("e1", DateTime.Today.AddHours(9)) });
+        await vm.LoadAsync();
+        vm.ShowMonthCommand.Execute(null);
+
+        vm.GoToDate(target);
+
+        Assert.True(vm.IsMonthView);                   // view mode preserved
+        Assert.Equal(target.Date, vm.ReferenceDate.Date);
+        Assert.Contains(target.ToString("MMMM yyyy"), vm.PeriodLabel);
+    }
+
+    [Fact]
     public async Task WeekView_IncludesWholeWeek_ExcludesNextWeek()
     {
         var today = DateTime.Today;

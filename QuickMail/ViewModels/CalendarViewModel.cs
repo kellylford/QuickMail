@@ -334,6 +334,44 @@ public partial class CalendarViewModel : ObservableObject
         => Announce($"{PeriodLabel}. {VisibleEvents.Count} event{(VisibleEvents.Count == 1 ? "" : "s")}.",
                     AnnouncementCategory.Status);
 
+    /// <summary>Raised to open the Go To Date picker, seeded with the current reference date.</summary>
+    public event Action<DateTime>? GoToDateRequested;
+
+    /// <summary>
+    /// Bound to Ctrl+G (calendar.goToDate). Opens the Go To Date picker so the user can jump the
+    /// calendar to any date. Seeds the picker with the current reference date (today in Agenda,
+    /// which ignores it).
+    /// </summary>
+    [RelayCommand]
+    private void RequestGoToDate()
+    {
+        if (_onlineMode)
+        {
+            Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result);
+            return;
+        }
+        var seed = ViewMode == CalendarViewMode.Agenda ? DateTime.Today : ReferenceDate;
+        GoToDateRequested?.Invoke(seed);
+    }
+
+    /// <summary>
+    /// Jumps the calendar to <paramref name="date"/>. Day/Week/Month keep their view mode and
+    /// recentre on the date; Agenda (which ignores ReferenceDate) switches to Day view so the
+    /// chosen date is actually shown. Called by the View when the Go To Date picker confirms.
+    /// </summary>
+    public void GoToDate(DateTime date)
+    {
+        ReferenceDate = date.Date;
+        if (ViewMode == CalendarViewMode.Agenda)
+        {
+            SwitchView(CalendarViewMode.Day); // applies filters, reselects, announces the day
+            return;
+        }
+        ApplyFilters();
+        SelectedEvent = Events.Count > 0 ? Events[0] : null;
+        AnnouncePeriod();
+    }
+
     /// <summary>Opens the appointment editor to create a new local event. Bound to N / Ctrl+Shift+N.</summary>
     [RelayCommand]
     private void NewEvent()

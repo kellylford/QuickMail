@@ -1175,7 +1175,9 @@
                             <Button Content="Today" AutomationProperties.Name="Go to today"
                                     MinWidth="56" Margin="0,0,4,0" Click="CalendarToday_Click"/>
                             <Button Content="▶" AutomationProperties.Name="Next period"
-                                    MinWidth="32" Click="CalendarNext_Click"/>
+                                    MinWidth="32" Margin="0,0,12,0" Click="CalendarNext_Click"/>
+                            <Button Content="_Go To Date…" AutomationProperties.Name="Go to date"
+                                    MinWidth="96" Click="CalendarGoToDate_Click"/>
                         </StackPanel>
 
                         <!-- Period label + search + item toolbar -->
