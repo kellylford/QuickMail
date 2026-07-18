@@ -129,6 +129,22 @@ public class ConfigModel
     /// </summary>
     public bool ContactListShowFieldLabels { get; set; } = false;
 
+    /// <summary>
+    /// When true, the calendar event list speaks field labels in each row's accessible name
+    /// ("Subject … when … status …"); when false (default) it speaks concise data only, matching
+    /// how the message and contact lists read. Mirrors <see cref="ContactListShowFieldLabels"/>.
+    /// </summary>
+    public bool CalendarListShowFieldLabels { get; set; } = false;
+
+    /// <summary>
+    /// Fire a notification before each appointment. OFF by default (opt-in, per the
+    /// announcement-infra convention for potentially intrusive features; full-calendar spec Q6).
+    /// </summary>
+    public bool CalendarReminders { get; set; } = false;
+
+    /// <summary>Minutes before an appointment's start that the reminder fires. Default 10.</summary>
+    public int CalendarReminderMinutes { get; set; } = 10;
+
     // ── Flagging ──────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -243,6 +259,26 @@ public class ConfigModel
     /// Set in the [google] section of config.ini. Never committed to source control.
     /// </summary>
     public string GoogleClientSecret { get; set; } = string.Empty;
+
+    // ── CalDAV calendar source ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// CalDAV calendar server address (e.g. "https://caldav.icloud.com"). Set from Settings.
+    /// Empty = no CalDAV calendar source configured. Stored in the [caldav] section of
+    /// config.ini. The password is NEVER stored here — it lives in Windows Credential
+    /// Manager under <c>QuickMail/CalDAV/{username}</c> via ICredentialService.
+    /// </summary>
+    public string CalDavUrl { get; set; } = string.Empty;
+
+    /// <summary>CalDAV account username (for iCloud, the Apple ID email).</summary>
+    public string CalDavUsername { get; set; } = string.Empty;
+
+    /// <summary>Display name for the CalDAV source in the calendar folder tree.</summary>
+    public string CalDavDisplayName { get; set; } = "iCloud";
+
+    /// <summary>True when a CalDAV calendar source is configured (URL + username present).</summary>
+    public bool HasCalDavSource =>
+        !string.IsNullOrWhiteSpace(CalDavUrl) && !string.IsNullOrWhiteSpace(CalDavUsername);
 
     // ── Feature flags ─────────────────────────────────────────────────────────────
 

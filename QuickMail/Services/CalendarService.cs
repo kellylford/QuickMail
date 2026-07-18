@@ -64,4 +64,13 @@ public sealed class CalendarService : ICalendarService
                 _events[idx].ResponseStatus = status;
         }
     }
+
+    public async Task DeleteEventAsync(string uid, Guid accountId, CancellationToken ct = default)
+    {
+        await _provider.DeleteEventAsync(uid, accountId, ct);
+        lock (_lock)
+        {
+            _events.RemoveAll(e => e.Uid == uid && e.AccountId == accountId);
+        }
+    }
 }

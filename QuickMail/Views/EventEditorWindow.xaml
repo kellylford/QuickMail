@@ -1,0 +1,206 @@
+<Window x:Class="QuickMail.Views.EventEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="{Binding WindowTitle}"
+        Height="560" Width="500"
+        MinHeight="460" MinWidth="380"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        PreviewKeyDown="Window_PreviewKeyDown"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Save target — NEW appointments only, and only when a Graph account offers a second
+             calendar. Shares row 0 with the edit-scope radios below: edit-scope shows only while
+             editing, this only while creating, so the two are never visible together. Items are
+             plain strings so each ComboBox item announces its label (Selector accessibility rule). -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4"
+                    Orientation="Horizontal" Margin="0,0,0,10"
+                    Visibility="{Binding ShowSaveTarget, Converter={StaticResource BoolToVis}}">
+            <TextBlock Text="Calendar:" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <ComboBox x:Name="SaveTargetCombo"
+                      AutomationProperties.Name="Calendar"
+                      ItemsSource="{Binding SaveTargetLabels}"
+                      SelectedIndex="{Binding SelectedTargetIndex}"
+                      MinWidth="220" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Edit scope — shown only when editing one occurrence of a repeating series.
+             Radio group: one tab stop, arrows cycle. -->
+        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4"
+                    Orientation="Horizontal" Margin="0,0,0,10"
+                    Visibility="{Binding IsRecurringEdit, Converter={StaticResource BoolToVis}}"
+                    KeyboardNavigation.TabNavigation="Once"
+                    KeyboardNavigation.DirectionalNavigation="Cycle">
+            <TextBlock Text="Change:" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <RadioButton Content="This event only"
+                         GroupName="EditScope"
+                         AutomationProperties.Name="This event only"
+                         IsChecked="{Binding EditThisEventOnly}"
+                         Margin="0,0,12,0" VerticalAlignment="Center"/>
+            <RadioButton Content="All events in the series"
+                         GroupName="EditScope"
+                         AutomationProperties.Name="All events in the series"
+                         IsChecked="{Binding EditWholeSeries}"
+                         VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <!-- Title -->
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Title:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox   Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2"
+                   x:Name="TitleBox"
+                   AutomationProperties.Name="Title"
+                   Text="{Binding Title, UpdateSourceTrigger=PropertyChanged}"
+                   MaxLength="200" Margin="0,0,8,10"/>
+        <CheckBox  Grid.Row="1" Grid.Column="3"
+                   Content="_All day"
+                   AutomationProperties.Name="All day"
+                   IsChecked="{Binding IsAllDay}"
+                   VerticalAlignment="Center" Margin="0,0,0,10"/>
+
+        <!-- Start -->
+        <TextBlock  Grid.Row="2" Grid.Column="0" Text="Starts:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <DatePicker Grid.Row="2" Grid.Column="1"
+                    x:Name="StartDatePicker"
+                    AutomationProperties.Name="Start date"
+                    SelectedDate="{Binding StartDate}" Margin="0,0,8,10"/>
+        <TextBlock  Grid.Row="2" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox    Grid.Row="2" Grid.Column="3"
+                    AutomationProperties.Name="Start time"
+                    Text="{Binding StartTime, UpdateSourceTrigger=PropertyChanged}"
+                    IsEnabled="{Binding HasTimes}"
+                    MinWidth="90" MaxLength="20" Margin="0,0,0,10"/>
+
+        <!-- End -->
+        <TextBlock  Grid.Row="3" Grid.Column="0" Text="Ends:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <DatePicker Grid.Row="3" Grid.Column="1"
+                    x:Name="EndDatePicker"
+                    AutomationProperties.Name="End date"
+                    SelectedDate="{Binding EndDate}" Margin="0,0,8,10"/>
+        <TextBlock  Grid.Row="3" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox    Grid.Row="3" Grid.Column="3"
+                    AutomationProperties.Name="End time"
+                    Text="{Binding EndTime, UpdateSourceTrigger=PropertyChanged}"
+                    IsEnabled="{Binding HasTimes}"
+                    MinWidth="90" MaxLength="20" Margin="0,0,0,10"/>
+
+        <!-- Location -->
+        <TextBlock Grid.Row="4" Grid.Column="0" Text="Location:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <TextBox   Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3"
+                   AutomationProperties.Name="Location"
+                   Text="{Binding Location, UpdateSourceTrigger=PropertyChanged}"
+                   MaxLength="300" Margin="0,0,0,10"/>
+
+        <!-- Repeat -->
+        <TextBlock Grid.Row="5" Grid.Column="0" Text="Repeat:" Margin="0,0,8,10" VerticalAlignment="Center"/>
+        <StackPanel Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3"
+                    Orientation="Horizontal" Margin="0,0,0,10"
+                    IsEnabled="{Binding CanEditRepeat}"
+                    KeyboardNavigation.TabNavigation="Continue">
+            <ComboBox x:Name="RepeatCombo"
+                      AutomationProperties.Name="Repeat"
+                      SelectedIndex="{Binding RepeatIndex}"
+                      MinWidth="130" VerticalAlignment="Center">
+                <ComboBoxItem>Does not repeat</ComboBoxItem>
+                <ComboBoxItem>Daily</ComboBoxItem>
+                <ComboBoxItem>Weekly</ComboBoxItem>
+                <ComboBoxItem>Monthly</ComboBoxItem>
+                <ComboBoxItem>Yearly</ComboBoxItem>
+            </ComboBox>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                        Visibility="{Binding HasRepeat, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="every" Margin="10,0,6,0" VerticalAlignment="Center"/>
+                <TextBox AutomationProperties.Name="Repeat interval"
+                         Text="{Binding RepeatInterval, UpdateSourceTrigger=PropertyChanged}"
+                         Width="42" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding RepeatUnitLabel}" Margin="6,0,10,0" VerticalAlignment="Center"/>
+                <TextBlock Text="until" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                <DatePicker AutomationProperties.Name="Repeat until date"
+                            SelectedDate="{Binding RepeatUntil}" MinWidth="120"/>
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Weekly day picker — visible only when Repeat = Weekly. All unchecked = start day. -->
+        <TextBlock Grid.Row="6" Grid.Column="0" Text="On days:" Margin="0,0,8,10" VerticalAlignment="Center"
+                   Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"/>
+        <WrapPanel Grid.Row="6" Grid.Column="1" Grid.ColumnSpan="3" Margin="0,0,0,10"
+                   Visibility="{Binding IsWeekly, Converter={StaticResource BoolToVis}}"
+                   IsEnabled="{Binding CanEditRepeat}"
+                   KeyboardNavigation.TabNavigation="Continue"
+                   KeyboardNavigation.DirectionalNavigation="Contained">
+            <CheckBox Content="Sun" AutomationProperties.Name="Sunday"
+                      IsChecked="{Binding RepeatOnSunday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Mon" AutomationProperties.Name="Monday"
+                      IsChecked="{Binding RepeatOnMonday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Tue" AutomationProperties.Name="Tuesday"
+                      IsChecked="{Binding RepeatOnTuesday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Wed" AutomationProperties.Name="Wednesday"
+                      IsChecked="{Binding RepeatOnWednesday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Thu" AutomationProperties.Name="Thursday"
+                      IsChecked="{Binding RepeatOnThursday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Fri" AutomationProperties.Name="Friday"
+                      IsChecked="{Binding RepeatOnFriday}" Margin="0,0,8,4"/>
+            <CheckBox Content="Sat" AutomationProperties.Name="Saturday"
+                      IsChecked="{Binding RepeatOnSaturday}" Margin="0,0,8,4"/>
+        </WrapPanel>
+
+        <!-- Notes label -->
+        <TextBlock Grid.Row="7" Grid.Column="0" Grid.ColumnSpan="4"
+                   Text="Notes:" Margin="0,0,0,4"/>
+
+        <!-- Notes body -->
+        <TextBox   Grid.Row="8" Grid.Column="0" Grid.ColumnSpan="4"
+                   x:Name="NotesBox"
+                   AutomationProperties.Name="Notes"
+                   Text="{Binding Notes, UpdateSourceTrigger=PropertyChanged}"
+                   AcceptsReturn="True" TextWrapping="Wrap"
+                   VerticalScrollBarVisibility="Auto"
+                   MinHeight="80" Margin="0,0,0,10"/>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="4"
+                    Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="SaveButton"
+                    Content="_Save"
+                    IsDefault="True"
+                    AutomationProperties.Name="Save appointment"
+                    MinWidth="90"
+                    Click="Save_Click"/>
+            <Button Content="Cancel"
+                    IsCancel="True"
+                    AutomationProperties.Name="Cancel"
+                    MinWidth="90" Margin="8,0,0,0"
+                    Click="Cancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

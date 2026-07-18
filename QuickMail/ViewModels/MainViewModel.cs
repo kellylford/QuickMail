@@ -34,6 +34,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly ISendMailService _smtp;
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
+    private readonly IGraphCalendarSyncService? _graphCalendarSync;
     private readonly IUpdateCheckService? _updateCheckService;
     // Windows toast notifications for new mail. Null in tests and when the OS/platform is
     // unsupported. Calling into it is an OS side-effect a service owns, not a View-layer type,
@@ -64,6 +65,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Debounced calendar harvest: re-harvests events 2s after the last FolderSynced
     // event so we don't harvest on every folder during a multi-folder sync.
     private System.Threading.Timer? _calendarHarvestTimer;
+
+    // Periodic Graph calendar pull (read-down v1): first pass right after the startup mail sync,
+    // then every 15 minutes. Callback marshals to the UI thread via _ui.Post (like the harvest
+    // timer above). Disposed in Dispose; in-flight HTTP is cancelled via _graphCalSyncCts.
+    private System.Threading.Timer? _graphCalendarSyncTimer;
+    private CancellationTokenSource? _graphCalSyncCts;
+    private bool _graphCalendarSyncRunning; // UI-thread-owned re-entrancy guard (timer vs. F5)
+    private static readonly TimeSpan GraphCalendarSyncInterval = TimeSpan.FromMinutes(15);
 
     /// <summary>
     /// Cancels and disposes the old CTS, creates a new one, and outputs its token.
@@ -98,6 +107,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _folderCountCts.Clear();
         _calendarHarvestTimer?.Dispose();
         _calendarHarvestTimer = null;
+        _graphCalendarSyncTimer?.Dispose();
+        _graphCalendarSyncTimer = null;
+        DrainCts(ref _graphCalSyncCts);
+        _reminderTimer?.Dispose();
+        _reminderTimer = null;
         GC.SuppressFinalize(this);
     }
 
@@ -196,6 +210,62 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DisplayName = "Calendar"
     };
 
+    // Per-source calendar children under the Calendar node: " Calendar:{guid}" for one
+    // account's calendar, ":local" for locally-authored appointments, ":all" for the merged view.
+    internal const string CalendarSourcePrefix = " Calendar:";
+
+    /// <summary>True for the Calendar node or any of its per-source children.</summary>
+    internal static bool IsCalendarFolderName(string? fullName) =>
+        fullName != null
+        && (string.Equals(fullName, CalendarFolder.FullName, StringComparison.Ordinal)
+            || fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal));
+
+    // The Settings-configured CalDAV calendar source, shown as an extra per-source child under
+    // the Calendar node. Its id is SYNTHETIC (deterministically derived from URL + username by
+    // CalDavCalendarClient.AccountIdFor — a CalDAV source is not a QuickMail account), so
+    // CalendarFilterFor's Guid parse routes it exactly like a real account's calendar, and the
+    // read-only guards hold because the id never matches a Graph account.
+    private Guid? _calDavAccountId;
+    private string _calDavDisplayName = "iCloud";
+
+    /// <summary>Refreshes the cached CalDAV source identity from config; true when it changed
+    /// (the folder tree then needs a rebuild).</summary>
+    private bool UpdateCalDavSource(ConfigModel cfg)
+    {
+        var newId = cfg.HasCalDavSource
+            ? CalDavCalendarClient.AccountIdFor(cfg.CalDavUrl, cfg.CalDavUsername)
+            : (Guid?)null;
+        var changed = newId != _calDavAccountId
+            || !string.Equals(cfg.CalDavDisplayName, _calDavDisplayName, StringComparison.Ordinal);
+        _calDavAccountId   = newId;
+        _calDavDisplayName = cfg.CalDavDisplayName;
+        return changed;
+    }
+
+    /// <summary>
+    /// Maps a calendar folder name to the account filter it selects:
+    /// null = all sources; Guid.Empty = local appointments; else that account's calendar.
+    /// </summary>
+    internal static Guid? CalendarFilterFor(string fullName)
+    {
+        if (!fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal)) return null;
+        var tail = fullName[CalendarSourcePrefix.Length..];
+        if (tail == "all") return null;
+        if (tail == "local") return Guid.Empty;
+        return Guid.TryParse(tail, out var id) ? id : null;
+    }
+
+    /// <summary>
+    /// True for accounts with a server calendar the app can push appointments to: Microsoft
+    /// (Graph backend) and Google-signed-in accounts (keyed by auth type — Gmail mail is IMAP).
+    /// Plain IMAP/password accounts have no server calendar. Mirrors the sync service's
+    /// per-provider eligibility.
+    /// </summary>
+    internal static bool IsCalendarPushAccount(AccountModel a)
+        => a.BackendKind == BackendKind.MicrosoftGraph
+           || a.AuthType == AuthType.OAuth2Microsoft
+           || a.AuthType == AuthType.OAuth2Google;
+
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
 
@@ -268,7 +338,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
-               string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
+               IsCalendarFolderName(folder.FullName);
     }
 
     // ── Saved views ───────────────────────────────────────────────────────────────
@@ -394,7 +464,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// calendar event list is shown in place of the message list.
     /// </summary>
     public bool IsCalendarView => SelectedFolder != null &&
-        string.Equals(SelectedFolder.FullName, CalendarFolder.FullName, StringComparison.Ordinal);
+        IsCalendarFolderName(SelectedFolder.FullName);
 
     public ObservableCollection<FlagDefinition> FlagDefinitions { get; } = [];
 
@@ -835,7 +905,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IUiDispatcher? uiDispatcher = null,
         IThemeService? themeService = null,
         INotificationService? notificationService = null,
-        IContactSyncService? contactSyncService = null)
+        IContactSyncService? contactSyncService = null,
+        IGraphCalendarSyncService? graphCalendarSyncService = null)
     {
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
@@ -856,6 +927,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _themeService         = themeService;
         _notifications        = notificationService;
         _contactSync          = contactSyncService;
+        _graphCalendarSync    = graphCalendarSyncService;
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
@@ -870,10 +942,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
 
+        UpdateCalDavSource(cfg);
+
         // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
         {
-            CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents);
+            // The accounts provider is deferred (evaluated when the editor opens) because the
+            // account list loads after this constructor. Server calendars the app can write to:
+            // Microsoft (Graph backend) accounts and Google-signed-in accounts (Gmail mail is
+            // IMAP — the identity provider, not the mail backend, is what makes calendar push
+            // possible, mirroring calendar sync eligibility). Plain IMAP/password accounts have
+            // no server calendar and are excluded.
+            CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents,
+                                               cfg.CalendarListShowFieldLabels,
+                                               _graphCalendarSync,
+                                               () => Accounts.Where(IsCalendarPushAccount).ToList());
+            RemindersEnabled = cfg.CalendarReminders;
+            ReminderLeadMinutes = cfg.CalendarReminderMinutes;
+            StartReminderTimer();
         }
 
         _syncService.FolderSynced    += OnFolderSynced;
@@ -1341,6 +1427,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _announceFlagStatus = cfg.AnnounceFlagStatus;
         OnPropertyChanged(nameof(AnnounceFlagStatus));
 
+        // Push the calendar field-labels preference live (re-stamps the event list).
+        if (CalendarVm != null)
+            CalendarVm.ShowFieldLabels = cfg.CalendarListShowFieldLabels;
+        RemindersEnabled = cfg.CalendarReminders;
+        ReminderLeadMinutes = cfg.CalendarReminderMinutes;
+
+        // A CalDAV source added/removed/renamed in Settings changes the calendar tree children.
+        if (UpdateCalDavSource(cfg) && CalendarVm != null)
+            BuildFolderTree();
+
         var newPreviewLines = cfg.PreviewLines;
         var newShowPreview  = newPreviewLines > 0;
         if (_showPreview && !newShowPreview)
@@ -1447,7 +1543,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         registry.Register(new CommandDefinition(
             id: "view.search", category: "View", title: "Search Messages…",
-            execute: () => { IsSearchActive = true; SearchRequested?.Invoke(this, EventArgs.Empty); },
+            execute: () =>
+            {
+                // Context-aware: in the calendar this routes to appointment search (the View
+                // checks IsCalendarView); only mail search uses the mail search box state.
+                if (!IsCalendarView) IsSearchActive = true;
+                SearchRequested?.Invoke(this, EventArgs.Empty);
+            },
             defaultKey: Key.S, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
         registry.Register(new CommandDefinition(
@@ -1654,6 +1756,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (missingRecipients)
             {
                 await FetchAllMailAsync();
+                StartGraphCalendarSyncTimer(); // this path skips the full sync below but still counts as "startup done"
                 return;
             }
         }
@@ -1726,6 +1829,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _suppressFolderSyncUpdates = false;
             progressCts.Cancel();
             try { await progressTask.ConfigureAwait(false); } catch { }
+
+            // Graph calendar sync: first pass now that the initial mail sync has finished (tokens
+            // are warm, so acquisition is silent), then every 15 minutes. In the finally so a sync
+            // error or cancellation doesn't leave the calendar permanently unsynced.
+            StartGraphCalendarSyncTimer();
         }
     }
 
@@ -2681,11 +2789,47 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Shown only when a calendar service is wired (skipped in tests / online-only builds).
         if (CalendarVm != null)
         {
-            roots.Add(new FolderTreeNode
+            var calNode = new FolderTreeNode
             {
                 Folder = CalendarFolder,
                 Label  = CalendarFolder.DisplayName,
+            };
+            calNode.Children.Add(new FolderTreeNode
+            {
+                Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "all", DisplayName = "All Calendars" },
+                Label  = "All Calendars",
             });
+            calNode.Children.Add(new FolderTreeNode
+            {
+                Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "local", DisplayName = "Local Calendar" },
+                Label  = "Local Calendar",
+            });
+            foreach (var acct in Accounts)
+            {
+                calNode.Children.Add(new FolderTreeNode
+                {
+                    Folder = new MailFolderModel
+                    {
+                        FullName    = CalendarSourcePrefix + acct.Id.ToString("D"),
+                        DisplayName = acct.AccountLabel,
+                    },
+                    Label = acct.AccountLabel,
+                });
+            }
+            // The CalDAV source (e.g. iCloud) configured in Settings — synthetic account id.
+            if (_calDavAccountId is Guid calDavId)
+            {
+                calNode.Children.Add(new FolderTreeNode
+                {
+                    Folder = new MailFolderModel
+                    {
+                        FullName    = CalendarSourcePrefix + calDavId.ToString("D"),
+                        DisplayName = _calDavDisplayName,
+                    },
+                    Label = _calDavDisplayName,
+                });
+            }
+            roots.Add(calNode);
         }
 
         // "Views" group — shown only when the user has saved at least one view.
@@ -3075,9 +3219,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         // Intercept the calendar virtual folder — it shows the event list, not messages.
-        if (string.Equals(folder.FullName, CalendarFolder.FullName, StringComparison.Ordinal))
+        if (IsCalendarFolderName(folder.FullName))
         {
-            await SelectCalendarAsync();
+            await SelectCalendarAsync(folder);
             return;
         }
 
@@ -3108,9 +3252,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// and requests focus to the event list. Called when the user selects the
     /// Calendar virtual folder from the folder tree.
     /// </summary>
-    private async Task SelectCalendarAsync()
+    private async Task SelectCalendarAsync(MailFolderModel? folder = null)
     {
         if (CalendarVm == null) return;
+        CalendarVm.AccountFilter = folder == null ? null : CalendarFilterFor(folder.FullName);
 
         _suppressFilterRebuild = true;
         ActiveFilter        = MessageFilter.All;
@@ -3119,7 +3264,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SearchText          = string.Empty;
         IsSearchActive      = false;
         ActiveView          = null;
-        SelectedFolder      = CalendarFolder;
+        SelectedFolder      = folder ?? CalendarFolder;
         MessageDetail       = null;
         IsMessageOpen       = false;
         _suppressFilterRebuild = false;
@@ -3432,6 +3577,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // through CommandRegistry, so an isAvailable guard alone can't disambiguate them.
         if (IsCalendarView)
         {
+            // Pull the latest Graph calendar slice first so F5 reflects the server, then let the
+            // calendar's own refresh reload from the store and announce the updated count.
+            await RunGraphCalendarSyncAsync(refreshAndAnnounce: false);
             if (CalendarVm != null)
                 await CalendarVm.RefreshCommand.ExecuteAsync(null);
             return;
@@ -6100,6 +6248,128 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }, null, Timeout.Infinite, Timeout.Infinite);
 
         _calendarHarvestTimer.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
+    }
+
+    // ── Graph calendar sync (read-down v1) ────────────────────────────────────────
+
+    /// <summary>
+    /// Starts the periodic Graph calendar pull: an immediate first pass (called after the startup
+    /// mail sync completes, so OAuth tokens are warm and the token acquisition is silent), then
+    /// every 15 minutes. Idempotent — a repeat call just restarts the schedule.
+    /// </summary>
+    private void StartGraphCalendarSyncTimer()
+    {
+        if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
+
+        _graphCalendarSyncTimer ??= new System.Threading.Timer(
+            _ => _ui.Post(() => _ = RunGraphCalendarSyncAsync()), null, Timeout.Infinite, Timeout.Infinite);
+        _graphCalendarSyncTimer.Change(TimeSpan.Zero, GraphCalendarSyncInterval);
+    }
+
+    /// <summary>
+    /// One Graph calendar sync pass: pulls every Graph account's primary calendar into the local
+    /// store (replace-slice), then reloads the in-memory calendar. Announces the result (Status
+    /// category) only while the calendar view is active, so background passes stay silent.
+    /// Runs on the UI thread; overlapping passes (timer vs. F5) are skipped, not queued.
+    /// </summary>
+    private async Task RunGraphCalendarSyncAsync(bool refreshAndAnnounce = true)
+    {
+        if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
+        if (_graphCalendarSyncRunning) return;
+        _graphCalendarSyncRunning = true;
+        try
+        {
+            ReplaceCts(ref _graphCalSyncCts, out var ct);
+            var result = await _graphCalendarSync.SyncAllAsync(ct);
+            // Nothing eligible (no Graph accounts) or nothing pulled — leave the calendar alone.
+            if (result.AccountsSynced == 0) return;
+            if (!refreshAndAnnounce) return; // F5 path: CalendarVm.RefreshAsync reloads + announces
+
+            await _calendarService.RefreshAsync(ct);
+            if (IsCalendarView)
+            {
+                CalendarVm?.ApplyFiltersFromExternalUpdate();
+                var n = result.EventsFetched;
+                Announce($"Calendar sync complete. {n} event{(n == 1 ? "" : "s")}.",
+                         AnnouncementCategory.Status);
+            }
+        }
+        catch (OperationCanceledException) { /* shutdown or superseded pass — normal */ }
+        catch (Exception ex)
+        {
+            // Best-effort background work: log, never surface a modal or break the caller.
+            LogService.Log("GraphCalendarSync (background pass)", ex);
+        }
+        finally
+        {
+            _graphCalendarSyncRunning = false;
+        }
+    }
+
+    // ── Calendar reminders ────────────────────────────────────────────────────────
+
+    private System.Threading.Timer? _reminderTimer;
+    private readonly HashSet<(string Uid, DateTime Start)> _firedReminders = [];
+    internal bool RemindersEnabled;          // pushed from config at startup and ApplySettings
+    internal int ReminderLeadMinutes = 10;
+
+    /// <summary>Starts the once-a-minute reminder check (no-op without a calendar service).</summary>
+    private void StartReminderTimer()
+    {
+        if (_calendarService == null || OnlineMode) return;
+        _reminderTimer = new System.Threading.Timer(
+            _ => _ui.Post(CheckReminders), null,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(60));
+    }
+
+    /// <summary>
+    /// Fires one reminder per appointment occurrence whose start falls within the lead window.
+    /// Recurring series are expanded over the window; each (uid, start) fires at most once per run
+    /// of the app. Reminders are opt-in (CalendarReminders, default off).
+    /// </summary>
+    internal void CheckReminders()
+    {
+        if (!RemindersEnabled || _calendarService == null) return;
+
+        var now = DateTime.Now;
+        var windowEnd = now.AddMinutes(ReminderLeadMinutes);
+
+        foreach (var e in _calendarService.Events)
+        {
+            if (!e.StartTime.HasValue) continue;
+            if (e.ResponseStatus is CalendarResponseStatus.Declined or CalendarResponseStatus.Cancelled) continue;
+
+            var rule = e.IsRecurring ? RecurrenceRule.Parse(e.RecurrenceRule) : null;
+            IEnumerable<DateTime> starts;
+            if (rule != null)
+            {
+                var excluded = new HashSet<DateTime>(e.GetExDates());
+                starts = Helpers.RecurrenceExpander
+                    .Expand(e.StartTime.Value, rule, now, windowEnd)
+                    .Where(s => !excluded.Contains(s));
+            }
+            else
+            {
+                starts = e.StartTime.Value > now && e.StartTime.Value <= windowEnd
+                    ? [e.StartTime.Value] : [];
+            }
+
+            foreach (var start in starts)
+            {
+                if (!_firedReminders.Add((e.Uid, start))) continue;
+                var minutes = Math.Max(1, (int)Math.Round((start - now).TotalMinutes));
+                var title = string.IsNullOrWhiteSpace(e.Summary) ? "Appointment" : e.Summary;
+                var body = $"In {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}"
+                           + (string.IsNullOrWhiteSpace(e.Location) ? "" : $". {e.Location}");
+                _notifications?.ShowInfo(title, body);
+                Announce($"Reminder. {title} in {minutes} minute{(minutes == 1 ? "" : "s")}, at {start:t}.",
+                         AnnouncementCategory.Result);
+            }
+        }
+
+        // Keep the fired set from growing without bound across long sessions.
+        if (_firedReminders.Count > 500)
+            _firedReminders.RemoveWhere(f => f.Start < now.AddDays(-1));
     }
 
     // Releases landing page — used when no specific update is known so the always-present

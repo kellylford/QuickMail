@@ -845,6 +845,7 @@ public class SavedViewsMainViewModelTests
         public Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
             => Task.FromResult(new List<(Guid, string, string, string)>());
         public Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
+        public Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events) => Task.CompletedTask;
         public Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId) => Task.FromResult<string?>(null);
         public Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken) => Task.CompletedTask;
     }

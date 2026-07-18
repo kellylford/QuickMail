@@ -395,6 +395,12 @@ public partial class MainWindow : Window
                 AccessibilityHelper.Announce(this, text, interrupt: true, category: category);
             vm.CalendarVm.OpenSourceMessageRequested += (accountId, folder, messageId) =>
                 vm.OpenCalendarSourceMessage(accountId, folder, messageId);
+            vm.CalendarVm.EditorRequested += OpenEventEditor;
+            vm.CalendarVm.DeleteConfirmRequested += ConfirmDeleteAppointment;
+            vm.CalendarVm.RecurringDeleteConfirmRequested += ConfirmDeleteRecurring;
+            vm.CalendarVm.ListFocusRequested += () =>
+                Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+            vm.CalendarVm.ExportRequested += SaveAppointmentIcs;
         }
 
         vm.PropertyChanged += async (_, e) =>
@@ -836,6 +842,13 @@ public partial class MainWindow : Window
 
     private void OpenSearch()
     {
+        // Ctrl+Shift+S is the one search gesture app-wide: in the calendar it opens
+        // appointment search; everywhere else, the message search box.
+        if (_vm.IsCalendarView)
+        {
+            OpenCalendarSearch();
+            return;
+        }
         _vm.IsSearchActive = true;
         Dispatcher.InvokeAsync(() =>
         {
@@ -1177,13 +1190,81 @@ public partial class MainWindow : Window
             id: "calendar.toggleTodayFilter", category: "View", title: "Toggle Today Filter",
             execute: () => _vm.CalendarVm?.ToggleTodayFilterCommand.Execute(null),
             defaultKey: Key.T, defaultModifiers: ModifierKeys.None,
-            isAvailable: () => CalendarList.IsKeyboardFocusWithin));
+            isAvailable: () => CalendarPaneFocused));
 
         _registry.Register(new CommandDefinition(
             id: "calendar.openSourceMessage", category: "View", title: "Open Calendar Event Source Message",
-            execute: () => _vm.CalendarVm?.OpenSourceMessageCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            execute: ActivateSelectedCalendarEvent,
             defaultKey: Key.Return, defaultModifiers: ModifierKeys.None,
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        // ── Appointment authoring (Calendar category) ──
+        _registry.Register(new CommandDefinition(
+            id: "calendar.newEvent", category: "Calendar", title: "New Appointment",
+            execute: () => _vm.CalendarVm?.NewEventCommand.Execute(null),
+            defaultKey: Key.N, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarPaneFocused));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.editEvent", category: "Calendar", title: "Edit Appointment",
+            execute: () => _vm.CalendarVm?.EditEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            defaultKey: Key.E, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.deleteEvent", category: "Calendar", title: "Delete Appointment",
+            execute: () => _vm.CalendarVm?.DeleteEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.exportEvent", category: "Calendar", title: "Export Appointment as .ics",
+            execute: () => _vm.CalendarVm?.ExportEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
+            isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
+
+        // No default key: Ctrl+Shift+S (view.search) routes here while the calendar is open,
+        // so search is ONE gesture app-wide. Palette entry + rebindable id kept.
+        _registry.Register(new CommandDefinition(
+            id: "calendar.search", category: "Calendar", title: "Search Appointments",
+            execute: OpenCalendarSearch,
+            isAvailable: () => _vm.IsCalendarView));
+
+        // ── Calendar views + period navigation (Calendar category) ──
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewAgenda", category: "Calendar", title: "Agenda View",
+            execute: () => _vm.CalendarVm?.ShowAgendaCommand.Execute(null),
+            defaultKey: Key.A, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarPaneFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewDay", category: "Calendar", title: "Day View",
+            execute: () => _vm.CalendarVm?.ShowDayCommand.Execute(null),
+            defaultKey: Key.D, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarPaneFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewWeek", category: "Calendar", title: "Week View",
+            execute: () => _vm.CalendarVm?.ShowWeekCommand.Execute(null),
+            defaultKey: Key.W, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarPaneFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.drillIntoDay", category: "Calendar", title: "Open Selected Day",
+            execute: DrillIntoSelectedDay,
+            defaultKey: Key.Return, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => MonthGrid.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedMonthCell != null));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.viewMonth", category: "Calendar", title: "Month View",
+            execute: () => _vm.CalendarVm?.ShowMonthCommand.Execute(null),
+            defaultKey: Key.M, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => CalendarPaneFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.prevPeriod", category: "Calendar", title: "Previous Day or Week",
+            execute: () => _vm.CalendarVm?.PreviousPeriodCommand.Execute(null),
+            defaultKey: Key.Left, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => CalendarPaneFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.nextPeriod", category: "Calendar", title: "Next Day or Week",
+            execute: () => _vm.CalendarVm?.NextPeriodCommand.Execute(null),
+            defaultKey: Key.Right, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => CalendarPaneFocused));
 
         // Install the WM_CONTEXTMENU hook before WebView2 init. WebView2 initialization
         // creates an out-of-process HWND that grabs Win32 focus without WPF tracking it,
@@ -1494,9 +1575,19 @@ public partial class MainWindow : Window
                     e.Handled = true;
                     await CycleFocusAsync(true);
                     return;
-                case Key.Escape when _vm.IsCalendarView && CalendarList.IsKeyboardFocusWithin:
-                    // Escape from the calendar list returns focus to the folder tree,
-                    // matching the behaviour of Escape from the message list.
+                case Key.Escape when _vm.IsCalendarView && CalendarPaneFocused
+                                     && _vm.CalendarVm?.IsSearchActive == true:
+                    // A search is active: first Escape clears it and stays in the list.
+                    _vm.CalendarVm.ClearSearch();
+                    AccessibilityHelper.Announce(this,
+                        $"Search cleared. {_vm.CalendarVm.VisibleEvents.Count} appointment{(_vm.CalendarVm.VisibleEvents.Count == 1 ? "" : "s")}.",
+                        interrupt: true, category: AnnouncementCategory.Result);
+                    e.Handled = true;
+                    return;
+                case Key.Escape when _vm.IsCalendarView
+                                     && (CalendarPaneFocused || CalendarDetails.IsKeyboardFocusWithin):
+                    // Escape from the calendar list, grid, or Details pane returns focus to the
+                    // folder tree, matching the behaviour of Escape from the message list.
                     FocusFolderTree();
                     e.Handled = true;
                     return;
@@ -2017,6 +2108,17 @@ public partial class MainWindow : Window
     // and by the CalendarPaneFocusRequested event after SelectCalendarAsync loads events.
     private void FocusCalendarList()
     {
+        // Month view focuses the grid; the ListBox routes focus to the selected cell.
+        if (_vm.CalendarVm?.IsMonthView == true)
+        {
+            if (MonthGrid.SelectedItem != null
+                && MonthGrid.ItemContainerGenerator.ContainerFromItem(MonthGrid.SelectedItem) is ListBoxItem cell)
+                cell.Focus();
+            else
+                MonthGrid.Focus();
+            return;
+        }
+
         if (CalendarList.Items.Count == 0) { CalendarList.Focus(); return; }
         if (CalendarList.SelectedIndex < 0) CalendarList.SelectedIndex = 0;
 
@@ -2085,6 +2187,199 @@ public partial class MainWindow : Window
         {
             e.Handled = true;
         }
+    }
+
+    // ── Calendar authoring: toolbar buttons, editor launch, delete confirm, Enter activation ──
+
+    private void CalendarAgenda_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowAgendaCommand.Execute(null);
+    private void CalendarDay_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowDayCommand.Execute(null);
+    private void CalendarWeek_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowWeekCommand.Execute(null);
+    private void CalendarMonth_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ShowMonthCommand.Execute(null);
+
+    /// <summary>Enter on a month cell: dispatched via the calendar.drillIntoDay registration.</summary>
+    private void DrillIntoSelectedDay()
+    {
+        if (_vm.CalendarVm?.SelectedMonthCell == null) return;
+        _vm.CalendarVm.DrillIntoDayCommand.Execute(null);
+        Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+    }
+    private void CalendarPrev_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.PreviousPeriodCommand.Execute(null);
+    private void CalendarNext_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.NextPeriodCommand.Execute(null);
+    private void CalendarToday_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.ToggleTodayFilterCommand.Execute(null);
+
+    /// <summary>True when the calendar's main content (event list or Month grid) has focus.</summary>
+    private bool CalendarPaneFocused =>
+        CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin;
+
+    /// <summary>New selection loaded into the Details pane: start reading from the first line.</summary>
+    private void CalendarDetails_TextChanged(object sender, TextChangedEventArgs e)
+        => CalendarDetails.CaretIndex = 0;
+
+    private void CalendarNew_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.NewEventCommand.Execute(null);
+
+    private void CalendarEdit_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.EditEventCommand.Execute(_vm.CalendarVm.SelectedEvent);
+
+    private void CalendarDelete_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.DeleteEventCommand.Execute(_vm.CalendarVm.SelectedEvent);
+
+    /// <summary>
+    /// Enter on the calendar list: edit a locally-created appointment, or open the source
+    /// invitation email for a harvested invite (the original calendar behaviour).
+    /// </summary>
+    private void ActivateSelectedCalendarEvent()
+    {
+        var evt = _vm.CalendarVm?.SelectedEvent;
+        if (evt == null) return;
+        // Harvested email invites open their source message; everything else routes through
+        // EditEvent, which itself edits what is editable (local rows, single Microsoft/Google
+        // events) and announces the right read-only message otherwise — so Enter and E always
+        // agree on the same row.
+        if (!evt.IsUserCreated && !evt.IsGraph)
+            _vm.CalendarVm?.OpenSourceMessageCommand.Execute(evt);
+        else
+            _vm.CalendarVm?.EditEventCommand.Execute(evt);
+    }
+
+    /// <summary>Opens the modeless appointment editor and restores focus to the list on close.</summary>
+    private void OpenEventEditor(EventEditorViewModel editorVm)
+    {
+        var editor = new EventEditorWindow(editorVm) { Owner = this };
+        editor.Closed += (_, _) =>
+        {
+            // Return focus to the calendar list (virtualised — re-focus the selected row).
+            Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+        };
+        editor.Show();
+    }
+
+    // ── Calendar search (Ctrl+F while the calendar list has focus) ──
+
+    private System.Windows.Threading.DispatcherTimer? _calSearchAnnounceTimer;
+
+    private void OpenCalendarSearch()
+    {
+        if (_vm.CalendarVm == null) return;
+        _vm.CalendarVm.IsSearchActive = true;
+
+        // Debounced live count so the screen reader isn't chattering on every keystroke.
+        if (_calSearchAnnounceTimer == null)
+        {
+            _calSearchAnnounceTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(600),
+            };
+            _calSearchAnnounceTimer.Tick += (_, _) =>
+            {
+                _calSearchAnnounceTimer!.Stop();
+                var n = _vm.CalendarVm?.VisibleEvents.Count ?? 0;
+                AccessibilityHelper.Announce(this, $"{n} appointment{(n == 1 ? "" : "s")}.",
+                    interrupt: true, category: AnnouncementCategory.Result);
+            };
+            _vm.CalendarVm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(CalendarViewModel.SearchText)
+                    && _vm.CalendarVm!.IsSearchActive)
+                {
+                    _calSearchAnnounceTimer!.Stop();
+                    _calSearchAnnounceTimer.Start();
+                }
+            };
+        }
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            CalendarSearchBox.Focus();
+            AccessibilityHelper.Announce(this, "Search appointments. Type to filter.",
+                interrupt: true, category: AnnouncementCategory.Hint);
+        }, DispatcherPriority.Input);
+    }
+
+    private void CalendarSearchBox_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (_vm.CalendarVm == null) return;
+        if (e.Key == Key.Escape)
+        {
+            _calSearchAnnounceTimer?.Stop();
+            _vm.CalendarVm.ClearSearch();
+            var n = _vm.CalendarVm.VisibleEvents.Count;
+            FocusCalendarList();
+            AccessibilityHelper.Announce(this, $"Search cleared. {n} appointment{(n == 1 ? "" : "s")}.",
+                interrupt: true, category: AnnouncementCategory.Result);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Down || (e.Key == Key.Tab && Keyboard.Modifiers == ModifierKeys.None))
+        {
+            // Into the (filtered) list; search stays active so Escape there can clear it later.
+            FocusCalendarList();
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Shows a Save dialog and writes the exported .ics file (View concern).</summary>
+    private void SaveAppointmentIcs(string suggestedFileName, string icsBody)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            FileName = suggestedFileName,
+            DefaultExt = ".ics",
+            Filter = "Calendar file (*.ics)|*.ics|All files (*.*)|*.*",
+        };
+        if (dialog.ShowDialog(this) != true) return;
+
+        try
+        {
+            System.IO.File.WriteAllText(dialog.FileName, icsBody);
+            AccessibilityHelper.Announce(this,
+                $"Appointment exported to {System.IO.Path.GetFileName(dialog.FileName)}.",
+                category: AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("Export appointment .ics", ex);
+            AccessibilityHelper.Announce(this,
+                "Could not save the file. See the log for details.",
+                category: AnnouncementCategory.Result);
+        }
+    }
+
+    /// <summary>Confirms deleting an appointment (View concern); invokes the callback on Yes.</summary>
+    private void ConfirmDeleteAppointment(CalendarEvent evt, Action confirmed)
+    {
+        var prompt = evt.IsRecurring
+            ? $"Delete the repeating appointment “{evt.Summary}” and all its occurrences?"
+            : $"Delete the appointment “{evt.Summary}”?";
+        var result = MessageBox.Show(this, prompt,
+            "Delete appointment",
+            MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No);
+        if (result == MessageBoxResult.Yes)
+            confirmed();
+    }
+
+    /// <summary>
+    /// Three-way confirm for deleting from a repeating series:
+    /// Yes = just this occurrence, No = the entire series, Cancel = nothing.
+    /// </summary>
+    private void ConfirmDeleteRecurring(CalendarEvent evt, Action deleteOccurrence, Action deleteSeries)
+    {
+        var when = evt.StartTime?.ToString("ddd, MMM d 'at' t") ?? "";
+        var result = MessageBox.Show(this,
+            $"“{evt.Summary}” repeats.\n\n" +
+            $"Yes: delete only this occurrence ({when}).\n" +
+            "No: delete the entire series.\n" +
+            "Cancel: keep everything.",
+            "Delete repeating appointment",
+            MessageBoxButton.YesNoCancel, MessageBoxImage.Question, MessageBoxResult.Cancel);
+        if (result == MessageBoxResult.Yes) deleteOccurrence();
+        else if (result == MessageBoxResult.No) deleteSeries();
     }
 
     private void FocusItemAt(int idx)
@@ -3168,7 +3463,7 @@ public partial class MainWindow : Window
         if (AccountList.IsKeyboardFocusWithin)  return 1;
         if (FolderList.IsKeyboardFocusWithin)   return 2;
         if (SearchBox.IsKeyboardFocusWithin)    return 6;
-        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin) return 3;
+        if (MessageList.IsKeyboardFocusWithin || ConversationTree.IsKeyboardFocusWithin || SenderGroupTree.IsKeyboardFocusWithin || ToGroupTree.IsKeyboardFocusWithin || CalendarList.IsKeyboardFocusWithin || MonthGrid.IsKeyboardFocusWithin || CalendarDetails.IsKeyboardFocusWithin || CalendarSearchBox.IsKeyboardFocusWithin) return 3;
         if (TabStrip.IsKeyboardFocusWithin)     return 7; // between message list and reading pane
         if (MessageBody.IsKeyboardFocusWithin)  return 4;
         if (MainStatusBar.IsKeyboardFocusWithin) return 5;
@@ -4844,7 +5139,12 @@ public partial class MainWindow : Window
             .Select(f => f.Source)
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
+        // Per-dialog CalDAV client for the Test button; disposed when this method (and the
+        // modal dialog inside it) finishes. An in-flight Test at close just faults into the
+        // command's catch-all.
+        using var calDavClient = new CalDavCalendarClient();
+        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
+                                       _credentials, calDavClient);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {

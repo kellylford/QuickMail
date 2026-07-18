@@ -251,6 +251,12 @@ public class ConfigService : IConfigService
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
                     case "contactlistshowfieldlabels":      config.ContactListShowFieldLabels      = ParseBool(value); break;
+                    case "calendarlistshowfieldlabels":     config.CalendarListShowFieldLabels     = ParseBool(value); break;
+                    case "calendarreminders":               config.CalendarReminders               = ParseBool(value); break;
+                    case "calendarreminderminutes":
+                        if (int.TryParse(value, out var remMin) && remMin >= 1 && remMin <= 1440)
+                            config.CalendarReminderMinutes = remMin;
+                        break;
                     case "spellingsuggestionsverbosity":
                         config.SpellingSuggestionsVerbosity = string.Equals(value, "justSuggestions", StringComparison.OrdinalIgnoreCase)
                             ? "justSuggestions" : "numbersWithSuggestions";
@@ -333,6 +339,17 @@ public class ConfigService : IConfigService
                 {
                     case "googleclientid":     config.GoogleClientId     = value; break;
                     case "googleclientsecret": config.GoogleClientSecret = value; break;
+                }
+            }
+            else if (section == "caldav")
+            {
+                switch (key)
+                {
+                    case "caldavurl":         config.CalDavUrl         = value; break;
+                    case "caldavusername":    config.CalDavUsername    = value; break;
+                    case "caldavdisplayname":
+                        if (!string.IsNullOrWhiteSpace(value)) config.CalDavDisplayName = value;
+                        break;
                 }
             }
         }
@@ -452,6 +469,20 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ContactListShowFieldLabels = {(config.ContactListShowFieldLabels ? "on" : "off")}");
         sb.AppendLine("# Address book: speak field labels (Name/email/account) in each contact row's");
         sb.AppendLine("# accessible name. Off (default) speaks concise field data only. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CalendarListShowFieldLabels = {(config.CalendarListShowFieldLabels ? "on" : "off")}");
+        sb.AppendLine("# Calendar: speak field labels (Subject/when/status) in each event row's");
+        sb.AppendLine("# accessible name. Off (default) speaks concise data only. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CalendarReminders = {(config.CalendarReminders ? "on" : "off")}");
+        sb.AppendLine("# Notify before each appointment (Windows notification + announcement).");
+        sb.AppendLine("# Off by default. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"CalendarReminderMinutes = {config.CalendarReminderMinutes}");
+        sb.AppendLine("# Minutes before the appointment start that the reminder fires (1-1440).");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceStatus = {(config.AnnounceStatus ? "on" : "off")}");
@@ -644,6 +675,22 @@ public class ConfigService : IConfigService
                 sb.AppendLine($"GoogleClientId = {config.GoogleClientId}");
             if (!string.IsNullOrEmpty(config.GoogleClientSecret))
                 sb.AppendLine($"GoogleClientSecret = {config.GoogleClientSecret}");
+            sb.AppendLine();
+        }
+
+        // ── [caldav] ───────────────────────────────────────────────────────────────
+        // Only written when a CalDAV calendar source is configured. The password is NOT
+        // here — it lives in Windows Credential Manager (QuickMail/CalDAV/{username}).
+        if (!string.IsNullOrEmpty(config.CalDavUrl) || !string.IsNullOrEmpty(config.CalDavUsername))
+        {
+            sb.AppendLine("[caldav]");
+            sb.AppendLine("# CalDAV calendar source (e.g. iCloud: https://caldav.icloud.com).");
+            sb.AppendLine("# The app-specific password is stored in Windows Credential Manager, never here.");
+            sb.AppendLine();
+            sb.AppendLine($"CalDavUrl = {config.CalDavUrl}");
+            sb.AppendLine($"CalDavUsername = {config.CalDavUsername}");
+            sb.AppendLine($"CalDavDisplayName = {config.CalDavDisplayName}");
+            sb.AppendLine("# Display name shown for this calendar in the folder tree.");
             sb.AppendLine();
         }
 

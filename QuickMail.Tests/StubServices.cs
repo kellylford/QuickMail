@@ -130,6 +130,7 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task<List<(Guid AccountId, string FolderName, string MessageId, string IcsText)>> LoadAllCalendarIcsAsync()
         => Task.FromResult(new List<(Guid, string, string, string)>());
     public Task ClearOrphanedCalendarSourceLinksAsync() => Task.CompletedTask;
+    public Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events) => Task.CompletedTask;
     public Task<string?> GetDeltaTokenAsync(Guid accountId, string folderId) => Task.FromResult<string?>(null);
     public Task SetDeltaTokenAsync(Guid accountId, string folderId, string deltaToken) => Task.CompletedTask;
 }
@@ -306,6 +307,63 @@ sealed class StubCalendarService : ICalendarService
     {
         var idx = StoredEvents.FindIndex(e => e.Uid == uid && e.AccountId == accountId);
         if (idx >= 0) StoredEvents[idx].ResponseStatus = status;
+        return Task.CompletedTask;
+    }
+
+    public Task DeleteEventAsync(string uid, Guid accountId, CancellationToken ct = default)
+    {
+        StoredEvents.RemoveAll(e => e.Uid == uid && e.AccountId == accountId);
+        return Task.CompletedTask;
+    }
+}
+
+sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
+{
+    public int SyncCallCount { get; private set; }
+    public GraphCalendarSyncResult Result { get; set; } = GraphCalendarSyncResult.None;
+
+    /// <summary>When set, CreateEventAsync throws it (simulates a failed push).</summary>
+    public Exception? CreateFailure { get; set; }
+    public List<CalendarEvent> CreatedEvents { get; } = [];
+
+    public Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
+    {
+        SyncCallCount++;
+        return Task.FromResult(Result);
+    }
+
+    public Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (CreateFailure != null) throw CreateFailure;
+        // Mimic the real service: the stored copy carries the server id and the Graph flag.
+        var created = new CalendarEvent
+        {
+            Uid = "graph-" + CreatedEvents.Count, AccountId = account.Id, IsGraph = true,
+            Summary = evt.Summary, Location = evt.Location, Description = evt.Description,
+            StartTimeTicks = evt.StartTimeTicks, EndTimeTicks = evt.EndTimeTicks,
+            IsAllDay = evt.IsAllDay, ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        CreatedEvents.Add(created);
+        return Task.FromResult(created);
+    }
+
+    /// <summary>When set, UpdateEventAsync/DeleteEventAsync throw it (simulates a failed push).</summary>
+    public Exception? WriteFailure { get; set; }
+    public List<CalendarEvent> UpdatedEvents { get; } = [];
+    public List<CalendarEvent> DeletedEvents { get; } = [];
+
+    public Task<CalendarEvent> UpdateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (WriteFailure != null) throw WriteFailure;
+        evt.IsGraph = true;
+        UpdatedEvents.Add(evt);
+        return Task.FromResult(evt);
+    }
+
+    public Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
+    {
+        if (WriteFailure != null) throw WriteFailure;
+        DeletedEvents.Add(evt);
         return Task.CompletedTask;
     }
 }

@@ -80,6 +80,14 @@ public interface ILocalStoreService
     Task DeleteCalendarEventAsync(string uid, Guid accountId);
 
     /// <summary>
+    /// Replaces all Graph-synced calendar rows (<c>is_graph = 1</c>) for the account with the
+    /// supplied fresh set, in one transaction. Rows are stored with <c>is_graph = 1</c> regardless
+    /// of each event's flag. Harvested-invite and locally-authored rows are untouched. Used by
+    /// <see cref="GraphCalendarSyncService"/>'s replace-slice sync (read-down v1, no delta tokens).
+    /// </summary>
+    Task ReplaceGraphCalendarEventsAsync(Guid accountId, IReadOnlyList<CalendarEvent> events);
+
+    /// <summary>
     /// Returns all non-empty calendar_ics rows from MessageDetail, for harvesting.
     /// Each item is (AccountId, FolderName, MessageId, IcsText).
     /// </summary>

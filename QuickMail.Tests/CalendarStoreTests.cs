@@ -65,6 +65,49 @@ public class CalendarStoreTests : IDisposable
         Assert.Equal(evt.StartTimeTicks, r.StartTimeTicks);
         Assert.Equal(CalendarResponseStatus.Accepted, r.ResponseStatus);
         Assert.Equal("msg-1", r.SourceMessageId);
+        Assert.False(r.IsAllDay);
+    }
+
+    [Fact]
+    public async Task AllDayFlag_RoundTrips()
+    {
+        var evt = new CalendarEvent
+        {
+            Uid = "local-allday",
+            AccountId = CalendarEvent.LocalAccountId,
+            Summary = "Holiday",
+            StartTimeTicks = DateTime.UtcNow.Date.Ticks,
+            EndTimeTicks = DateTime.UtcNow.Date.AddDays(1).AddSeconds(-1).Ticks,
+            IsAllDay = true,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+
+        await _store.UpsertCalendarEventAsync(evt);
+        var loaded = await _store.LoadCalendarEventsAsync();
+
+        Assert.Single(loaded);
+        Assert.True(loaded[0].IsAllDay);
+        Assert.True(loaded[0].IsUserCreated);
+    }
+
+    [Fact]
+    public async Task RecurrenceRule_RoundTrips()
+    {
+        var evt = new CalendarEvent
+        {
+            Uid = "local-weekly",
+            AccountId = CalendarEvent.LocalAccountId,
+            Summary = "Standup",
+            StartTimeTicks = DateTime.UtcNow.Date.AddHours(9).Ticks,
+            RecurrenceRule = "FREQ=WEEKLY;BYDAY=TU",
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+
+        await _store.UpsertCalendarEventAsync(evt);
+        var loaded = (await _store.LoadCalendarEventsAsync()).Single();
+
+        Assert.Equal("FREQ=WEEKLY;BYDAY=TU", loaded.RecurrenceRule);
+        Assert.True(loaded.IsRecurring);
     }
 
     [Fact]

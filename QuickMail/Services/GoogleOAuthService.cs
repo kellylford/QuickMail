@@ -31,7 +31,22 @@ public partial class GoogleOAuthService : IGoogleOAuthService
         "https://www.googleapis.com/auth/contacts.other.readonly",
     ];
 
-    private static string[] MailAndContactsScopes => [.. Scopes, .. ContactsScopes];
+    // Google Calendar scope for calendar sync (full-calendar spec M5 read-down). Already
+    // authorized on the project's consent screen (app in Testing; see AI-HANDOFF §0). Requested
+    // on every INTERACTIVE sign-in so the next consent covers calendar too; the refresh flow in
+    // GetAccessTokenAsync deliberately keeps the mail-only scope list so tokens from refresh
+    // tokens granted BEFORE calendar consent keep working for mail unchanged — a token simply
+    // lacks calendar access (Calendar API → 403, surfaced as a logged sync error) until the
+    // user re-consents interactively.
+    private static readonly string[] CalendarScopes = ["https://www.googleapis.com/auth/calendar"];
+
+    // Every INTERACTIVE path must request the full superset it wants to keep: a successful
+    // interactive sign-in REPLACES the stored refresh token with one carrying exactly the scopes
+    // just consented, so leaving calendar out of any interactive flow would silently drop the
+    // calendar grant the next time that flow runs.
+    private static string[] MailAndCalendarScopes => [.. Scopes, .. CalendarScopes];
+
+    private static string[] MailContactsAndCalendarScopes => [.. Scopes, .. ContactsScopes, .. CalendarScopes];
 
     private static string TokenKey(string username)
         => $"QuickMail:GoogleToken:{username.ToLowerInvariant()}";
@@ -72,7 +87,11 @@ public partial class GoogleOAuthService : IGoogleOAuthService
             if (string.IsNullOrEmpty(refreshToken))
                 throw new InvalidOperationException($"No Google credentials stored for {username}. Sign in first.");
 
-            credential = new UserCredential(CreateFlow(Scopes, new NoOpDataStore()), username, new TokenResponse
+            // Scopes: null — a refresh request must OMIT the scope parameter so Google returns a token
+            // with everything the stored refresh token was granted (mail, calendar, contacts).
+            // Passing the mail-only list here narrowed refreshed tokens and broke calendar sync
+            // after every app restart.
+            credential = new UserCredential(CreateFlow(null, new NoOpDataStore()), username, new TokenResponse
             {
                 RefreshToken = refreshToken,
             });
@@ -84,10 +103,10 @@ public partial class GoogleOAuthService : IGoogleOAuthService
     }
 
     public Task<OAuthResult> SignInInteractiveAsync(string loginHint, CancellationToken ct = default)
-        => AuthorizeInteractiveAsync(loginHint, Scopes, ct);
+        => AuthorizeInteractiveAsync(loginHint, MailAndCalendarScopes, ct);
 
     public Task<OAuthResult> AuthorizeContactsAsync(string loginHint, CancellationToken ct = default)
-        => AuthorizeInteractiveAsync(loginHint, MailAndContactsScopes, ct);
+        => AuthorizeInteractiveAsync(loginHint, MailContactsAndCalendarScopes, ct);
 
     private async Task<OAuthResult> AuthorizeInteractiveAsync(string loginHint, string[] scopes, CancellationToken ct)
     {

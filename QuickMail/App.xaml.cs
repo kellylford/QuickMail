@@ -15,6 +15,8 @@ public partial class App : Application
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
     private GooglePeopleClient? _googlePeopleClient;
+    private GoogleCalendarClient? _googleCalendarClient;
+    private CalDavCalendarClient? _calDavCalendarClient;
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
     private GraphChangeNotifier? _graphNotifier;
@@ -261,13 +263,28 @@ public partial class App : Application
             var calendarProvider = new LocalCacheCalendarProvider(localStore);
             var calendarService = new CalendarService(calendarProvider);
 
+            // Calendar sync (read-down v1): pulls each server-backed account's primary calendar
+            // into the local store — Microsoft via the Graph backend's client (owned + disposed
+            // with the backend) and Google via its own Calendar API client (owns an HttpClient →
+            // disposed in OnExit, like the People client). The sync timer and its CTS live in
+            // MainViewModel (disposed in MainViewModel.Dispose).
+            _googleCalendarClient = new GoogleCalendarClient(googleOAuth);
+            // Generic CalDAV (iCloud-first): the source is configured in Settings (URL + username
+            // in config.ini, app-specific password in Windows Credential Manager), so the sync
+            // service reads config/credentials per pass rather than binding to an account.
+            _calDavCalendarClient = new CalDavCalendarClient();
+            var graphCalendarSync = new GraphCalendarSyncService(accountService, localStore, graphBackend.Client,
+                                                                 _googleCalendarClient,
+                                                                 _calDavCalendarClient, configService, credentialService);
+
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
-                themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService);
+                themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
+                graphCalendarSyncService: graphCalendarSync);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
@@ -304,6 +321,8 @@ public partial class App : Application
         _graphBackend?.Dispose();   // releases GraphClient/HttpClient; after the notifiers, which poll through its client
         _graphSendMail?.Dispose();
         _googlePeopleClient?.Dispose();
+        _googleCalendarClient?.Dispose();
+        _calDavCalendarClient?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();

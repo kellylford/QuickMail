@@ -289,7 +289,7 @@ Every user-facing keyboard shortcut **must** be registered in `CommandRegistry` 
   - `Ctrl+Shift+P` — opens the Command Palette itself (cannot dispatch through the palette)
   - Navigation shortcuts `Ctrl+0–3`, `Ctrl+9`, `Ctrl+Y`, `F6` — focus-only pane jumps with no associated command title
 - **`InputGestureText` in menus** must match the registered default key, e.g. `InputGestureText="Ctrl+Shift+F"`.
-- **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Settings`, `Help`.
+- **Category** must be one of: `View`, `Mail`, `Account`, `Contacts`, `Calendar`, `Settings`, `Help`. (`Calendar` added 2026-07-17 per the full-calendar spec, resolved question Q4.)
 
 ### Adding a new shortcut — checklist
 

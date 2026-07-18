@@ -93,6 +93,13 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("Spam rule", new MailRule { Name = "Spam rule" }.ToString());
         Assert.Equal("Work", new AccountModel { AccountName = "Work" }.ToString());
 
+        // Month grid day cells (MonthGrid ListBox): spoken name = full day context.
+        var cell = new MonthCell(new System.DateTime(2026, 7, 21), displayedMonth: 7, dayEvents:
+            [new CalendarEvent { Summary = "A" }, new CalendarEvent { Summary = "B" }]);
+        Assert.Equal(cell.AccessibleName, cell.ToString());
+        Assert.Contains("Tuesday July 21", cell.ToString());
+        Assert.Contains("2 events", cell.ToString());
+
         var group = new GroupModel { Name = "Team" };
         Assert.Equal(group.Display, group.ToString());
     }

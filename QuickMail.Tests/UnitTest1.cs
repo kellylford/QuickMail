@@ -331,6 +331,16 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void EventEditorWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new EventEditorViewModel(new DateTime(2026, 7, 16, 9, 0, 0));
+        var window = new EventEditorWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
     public void GroupManagerWindow_XamlParsesWithoutException()
     {
         EnsureApplication();
