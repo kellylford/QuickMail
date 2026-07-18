@@ -12,7 +12,6 @@ namespace QuickMail.ViewModels;
 public partial class SettingsViewModel : ObservableObject
 {
     private readonly IConfigService _configService;
-    private readonly ICredentialService? _credentials;
 
     [ObservableProperty]
     private int _previewLines;
@@ -225,11 +224,9 @@ public partial class SettingsViewModel : ObservableObject
         IConfigService configService,
         ICommandRegistry registry,
         IThemeService? themeService = null,
-        System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
-        ICredentialService? credentialService = null)
+        System.Collections.Generic.IEnumerable<string>? fontFamilies = null)
     {
         _configService = configService;
-        _credentials   = credentialService;
         var cfg = configService.Load();
 
         // Appearance: themes from the service; installed fonts from the View

@@ -5176,8 +5176,7 @@ public partial class MainWindow : Window
             .Select(f => f.Source)
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
-                                       _credentials);
+        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
