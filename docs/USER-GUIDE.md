@@ -545,6 +545,7 @@ A **Calendar** node appears in the folder tree. Select it to replace the message
 - **Arrow keys** move through the event list.
 - **Enter** opens the email the selected event came from. If that message is no longer in your local cache, QuickMail announces this and does nothing rather than attempting a failing fetch.
 - **T** filters the list to today's events.
+- **Ctrl+G** opens **Go to Date**: choose a date and press **Go** to jump the calendar there. In Day, Week, or Month view the current view is kept and recentred on the date you chose; from the Agenda list it switches to Day view for that date. A **Go To Date…** button on the calendar toolbar does the same thing.
 - **F5** refreshes the calendar.
 - **F6** cycles to the next pane as usual.
 

@@ -396,6 +396,7 @@ public partial class MainWindow : Window
             vm.CalendarVm.OpenSourceMessageRequested += (accountId, folder, messageId) =>
                 vm.OpenCalendarSourceMessage(accountId, folder, messageId);
             vm.CalendarVm.EditorRequested += OpenEventEditor;
+            vm.CalendarVm.GoToDateRequested += OpenGoToDateDialog;
             vm.CalendarVm.DeleteConfirmRequested += ConfirmDeleteAppointment;
             vm.CalendarVm.RecurringDeleteConfirmRequested += ConfirmDeleteRecurring;
             vm.CalendarVm.ListFocusRequested += () =>
@@ -1265,6 +1266,11 @@ public partial class MainWindow : Window
             execute: () => _vm.CalendarVm?.NextPeriodCommand.Execute(null),
             defaultKey: Key.Right, defaultModifiers: ModifierKeys.Control,
             isAvailable: () => CalendarPaneFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.goToDate", category: "Calendar", title: "Go to Date",
+            execute: () => _vm.CalendarVm?.RequestGoToDateCommand.Execute(null),
+            defaultKey: Key.G, defaultModifiers: ModifierKeys.Control,
+            isAvailable: () => _vm.IsCalendarView));
 
         // Install the WM_CONTEXTMENU hook before WebView2 init. WebView2 initialization
         // creates an out-of-process HWND that grabs Win32 focus without WPF tracking it,
@@ -2259,6 +2265,24 @@ public partial class MainWindow : Window
             Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
         };
         editor.Show();
+    }
+
+    private void CalendarGoToDate_Click(object sender, RoutedEventArgs e)
+        => _vm.CalendarVm?.RequestGoToDateCommand.Execute(null);
+
+    /// <summary>
+    /// Opens the modeless Go To Date picker seeded with <paramref name="initial"/>. On confirm it
+    /// jumps the calendar; either way focus returns to the calendar list on close. Modeless per the
+    /// CLAUDE.md modal rules (editable DatePicker over the live WebView2 reading pane).
+    /// </summary>
+    private void OpenGoToDateDialog(DateTime initial)
+    {
+        var pickerVm = new GoToDateViewModel(initial);
+        pickerVm.Saved += date => _vm.CalendarVm?.GoToDate(date);
+        var picker = new GoToDateWindow(pickerVm) { Owner = this };
+        picker.Closed += (_, _) =>
+            Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+        picker.Show();
     }
 
     // ── Calendar search (Ctrl+F while the calendar list has focus) ──
