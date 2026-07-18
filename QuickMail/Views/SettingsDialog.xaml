@@ -130,6 +130,28 @@
                                         <ComboBoxItem Tag="0" Content="All messages"/>
                                     </ComboBox>
                                 </StackPanel>
+
+                                <!-- Fallback sync interval -->
+                                <StackPanel Margin="0,8,0,0">
+                                    <Label x:Name="MailPollLabel"
+                                           Content="Check for new mail _every:"
+                                           Target="{Binding ElementName=MailPollCombo}"
+                                           FontWeight="SemiBold"/>
+                                    <ComboBox x:Name="MailPollCombo"
+                                              SelectedValue="{Binding MailSyncPollMinutes, Mode=TwoWay}"
+                                              SelectedValuePath="Tag"
+                                              AutomationProperties.LabeledBy="{Binding ElementName=MailPollLabel}">
+                                        <ComboBoxItem Tag="0" Content="Off (server push only)"/>
+                                        <ComboBoxItem Tag="1" Content="1 minute"/>
+                                        <ComboBoxItem Tag="5" Content="5 minutes"/>
+                                        <ComboBoxItem Tag="15" Content="15 minutes"/>
+                                        <ComboBoxItem Tag="30" Content="30 minutes"/>
+                                        <ComboBoxItem Tag="60" Content="60 minutes"/>
+                                    </ComboBox>
+                                    <TextBlock Text="A safety net behind instant server push: re-checks your inbox on this schedule so new mail still arrives, and read messages sync, if push is interrupted."
+                                               Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                               TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                </StackPanel>
                             </StackPanel>
                         </GroupBox>
 

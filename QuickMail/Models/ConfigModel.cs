@@ -55,6 +55,14 @@ public class ConfigModel
     /// </summary>
     public int GraphPollSeconds { get; set; } = 60;
 
+    /// <summary>
+    /// Fallback mail-sync interval in minutes. Primary new-mail detection is IMAP IDLE (server push);
+    /// this periodic inbox sync is a safety net for when a server never pushes, the held IDLE
+    /// connection dies quietly, or read/flag state changed in another client (which IDLE never
+    /// reports). Default 5. Set to 0 to disable and rely on IDLE alone. Clamped to 0 or 1–120.
+    /// </summary>
+    public int MailSyncPollMinutes { get; set; } = 5;
+
     // ── Appearance ────────────────────────────────────────────────────────────────
 
     /// <summary>
