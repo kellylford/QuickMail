@@ -2242,18 +2242,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var fresh = Helpers.NewMailFilter.SelectNew(incoming, _notifyThresholdUtc, _notifiedMessageKeys);
 
-        // #270 instrumentation: the user reports an inflated count that re-notifies every ~30 min
-        // (the IDLE reconnect cadence). Log enough to tell whether the SAME message re-notifies each
-        // cycle (dedup key not matching / session reset) or a genuinely new one arrives. UIDs are the
-        // dedup key input, so logging them pins which mechanism is at play. Debug-only (Advanced log).
-        LogService.Debug(
+        // #270 diagnostics: the user reports an inflated count that re-notifies every ~30 min. This
+        // line tells whether the SAME message re-notifies each cycle (dedup key not matching / session
+        // reset) or a genuinely new one arrives — freshUids are the dedup key input, so they pin which
+        // mechanism is at play. When a notification actually fires (fresh > 0) it is logged at Log
+        // level so it is captured by the Settings → Advanced logging toggle (users don't launch with
+        // /debug); the frequent no-op evaluations (fresh == 0, one per IDLE fire and poll cycle) stay
+        // Debug-only so a normal log isn't flooded.
+        var diag =
             $"NewMail notify [{account.AccountLabel}]: incoming={incoming.Count} " +
             $"unread={incoming.Count(m => !m.IsRead)} fresh={fresh.Count} " +
             $"notifiedSetSize={_notifiedMessageKeys.Count} threshold={_notifyThresholdUtc:o} " +
-            $"freshUids=[{string.Join(",", fresh.Select(m => m.MessageId))}]");
+            $"freshUids=[{string.Join(",", fresh.Select(m => m.MessageId))}]";
 
-        if (fresh.Count == 0) return;
+        if (fresh.Count == 0)
+        {
+            LogService.Debug(diag);
+            return;
+        }
 
+        LogService.Log(diag);
         _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
     }
 
