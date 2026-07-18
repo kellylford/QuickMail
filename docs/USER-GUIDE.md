@@ -537,7 +537,7 @@ Press the assigned hotkey from anywhere in the main window to switch to that vie
 
 ## Calendar
 
-QuickMail has a full, keyboard-first calendar. You can create and edit your own appointments, keep repeating events, get reminders, respond to meeting invitations, and — if you connect an online account — see and (for some providers) change the events already on your Microsoft, Google, or iCloud calendar. Everything is stored locally so the calendar works offline, and every part of it is reachable with the keyboard and announced by screen readers.
+QuickMail has a full, keyboard-first calendar. You can create and edit your own appointments, keep repeating events, get reminders, respond to meeting invitations, and — if you connect a Microsoft or Google account — see and change the events already on that account's calendar. Everything is stored locally so the calendar works offline, and every part of it is reachable with the keyboard and announced by screen readers.
 
 This page is long because the calendar does a lot. If you just want the essentials: press **Ctrl+Shift+C** to open the calendar, press **N** to create an appointment, and use the arrow keys to move through your events. The rest of this page fills in the detail, including a clear list of [what the calendar does and does not do](#what-the-calendar-does-and-does-not-do).
 
@@ -559,7 +559,6 @@ Expand the **Calendar** node in the folder tree to choose which events you are l
 - **All Calendars** — everything, merged together.
 - **Local Calendar** — only the appointments you created in QuickMail, stored on this computer.
 - **One entry per account** — the events from each email account's online calendar (see [Connecting an online calendar](#connecting-an-online-calendar)).
-- **iCloud** (or whatever you named it) — appears when you have set up an internet calendar in Settings.
 
 Selecting a source filters the list to just that calendar. "All Calendars" is the usual choice for day-to-day use.
 
@@ -627,7 +626,7 @@ What you can change depends on where the appointment lives:
 - **Your own (Local Calendar) appointments** — fully editable and deletable.
 - **Single events from a connected Microsoft or Google calendar** — editable and deletable; your change is sent back to that account.
 - **Repeating events from a connected online calendar** — read-only for now; QuickMail tells you so rather than changing them.
-- **iCloud / internet-calendar events and meeting invitations** — read-only. QuickMail explains why instead of failing silently.
+- **Meeting invitations** — read-only. QuickMail explains why instead of failing silently.
 
 If saving a change to an online account ever fails, QuickMail saves your appointment to the Local Calendar instead so your work is never lost, and tells you it did.
 
@@ -651,14 +650,15 @@ When you open an email that contains a meeting invitation, QuickMail adds an eve
 
 ### Connecting an online calendar
 
-QuickMail can sync with online calendars. What it can do depends on the provider:
+QuickMail syncs the calendar of any **Microsoft** or **Google** account you have added for email. What it can do depends on the provider:
 
 | Provider | See your events | Create / edit / delete from QuickMail | How to set it up |
 |----------|-----------------|----------------------------------------|------------------|
 | **Local Calendar** | — (they live here) | Full | Nothing to set up; it is always there. |
 | **Microsoft** (Outlook.com, Microsoft 365) | Yes | Yes, for single (non-repeating) events | Automatic once you add the Microsoft account for mail and grant calendar access. |
 | **Google** | Yes | Yes, for single (non-repeating) events | Automatic once the Google account is connected for mail. |
-| **iCloud / other internet calendars (CalDAV)** | Yes | No — read-only | **Settings → General → Internet Calendar**: enter the server address, your username, and an app-specific password, then press **Test**. For iCloud use `https://caldav.icloud.com`, your Apple ID, and an app-specific password. |
+
+**iCloud and other calendars (CalDAV) are not connected yet.** Adding an Apple account brings in its mail, but not its calendar — per-account calendar connection for those providers is planned but not in this release. See [what the calendar does and does not do](#what-the-calendar-does-and-does-not-do).
 
 Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup). Press **F5** to refresh on demand. Syncing is one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
 
@@ -672,14 +672,15 @@ To set expectations clearly:
 - Show four views (Agenda, Day, Week, Month) and jump to any date.
 - Remind you before appointments (when you turn reminders on).
 - Respond to meeting invitations and keep your reply in sync.
-- Download events from Microsoft, Google, and iCloud/CalDAV calendars, and send single-event changes back to Microsoft and Google.
+- Download events from your Microsoft and Google calendars, and send single-event changes back to them.
 - Export any appointment as a `.ics` file.
 
 **It does not (yet):**
 
 - Work in online mode — it needs the local cache.
+- Connect **iCloud or other CalDAV** calendars. Adding an Apple account brings in its mail only; per-account calendar connection for those providers is planned.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
-- Edit **repeating** events that came from an online calendar, or edit anything on an **iCloud/CalDAV** calendar (those are read-only).
+- Edit **repeating** events that came from an online calendar (those are read-only).
 - Subscribe to public `.ics` calendar feeds (holidays, sports schedules, and the like).
 - Offer multiple named calendars, calendar colors, per-appointment reminder times, or reminder snoozing.
 

@@ -11,7 +11,7 @@ Two options are available for v0.8.33:
 
 Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
 
-This is a big release. QuickMail now has a **full calendar**: create your own appointments, keep repeating events, get reminders, respond to meeting invitations, and connect your Microsoft, Google, or iCloud calendar. It also makes **new-mail sync more reliable**, quiets down **notifications after your computer wakes**, and fixes **opening a message in a tab**. See the [Calendar section of the User Guide](https://kellylford.github.io/QuickMail/calendar.html) for the full walkthrough. If you installed QuickMail from the MSI, this update is delivered automatically.
+This is a big release. QuickMail now has a **full calendar**: create your own appointments, keep repeating events, get reminders, respond to meeting invitations, and connect your Microsoft or Google calendar. It also makes **new-mail sync more reliable**, quiets down **notifications after your computer wakes**, and fixes **opening a message in a tab**. See the [Calendar section of the User Guide](https://kellylford.github.io/QuickMail/calendar.html) for the full walkthrough. If you installed QuickMail from the MSI, this update is delivered automatically.
 
 ---
 
@@ -41,10 +41,9 @@ Open an email that contains a meeting invitation and QuickMail adds an event car
 
 ### Connect an online calendar
 
-Connect an account and QuickMail shows its calendar too:
+Add a **Microsoft** (Outlook.com, Microsoft 365) or **Google** account for email and QuickMail shows its calendar too — see your events, and create, edit, or delete **single** (non-repeating) events, with the change sent back to that account.
 
-- **Microsoft** (Outlook.com, Microsoft 365) and **Google** — see your events, and create, edit, or delete **single** (non-repeating) events, with the change sent back to that account.
-- **iCloud and other internet calendars (CalDAV)** — see your events (read-only). Set this up in **Settings → General → Internet Calendar** with the server address, your username, and an app-specific password.
+iCloud and other CalDAV calendars are not connected yet — adding an Apple account brings in its mail only. Per-account calendar connection for those providers is planned.
 
 Connected calendars refresh in the background; **F5** refreshes on demand. Repeating appointments are always saved to your local calendar, and repeating events that come from an online calendar are read-only for now — the guide's [what the calendar does and does not do](https://kellylford.github.io/QuickMail/calendar.html) list lays out the current limits.
 
@@ -104,13 +103,17 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - Local authoring with a modeless `EventEditorWindow` (per the modal-dialog rules — editable fields over the live WebView2), master/detail list + details pane, and four views (`Agenda`/`Day`/`Week`/`Month`) driven by `CalendarViewModel.ViewMode` + `ReferenceDate`. Month is a 42-cell grid with arrow navigation and Enter-to-drill.
 - Recurrence is a practical RFC-5545 subset (`RecurrenceRule`, `RecurrenceExpander`): `FREQ` daily/weekly/monthly/yearly, `INTERVAL`, weekly `BYDAY`, and one `COUNT`/`UNTIL` end condition. Expansion is local wall-clock (DST-safe) with a ~10-year iteration cap. Per-occurrence edit/delete uses `EXDATE` + detach; whole-series edits preserve `EXDATE`s and the original start.
 - All-day events are fully supported and persisted (`is_all_day` column; re-anchored to local midnight across all providers to avoid off-by-one-day display). The "timed events only / deferred" comment in `EventEditorViewModel` is stale and should be removed.
-- Times stored as UTC ticks; TZID handling per provider (`Prefer: outlook.timezone` for Graph, RFC3339 offsets for Google, kind-carrying stamps for CalDAV).
-- Sync engine (`GraphCalendarSyncService`, name predates multi-provider): read-down window −30…+365 days, replace-slice per source, background pass every 15 min plus one after startup mail sync, best-effort (never throws), `silentOnly` (no interactive sign-in). Write-back is Microsoft + Google **single events only** (recurring push rejected pre-network with `NotSupportedException`); CalDAV (`CalDavCalendarClient`) is read-only. Failed server create/edit falls back to a local save, announced. Providers gated by `IsCalendarPushAccount` / `IsGraphEligible` / `IsGoogleEligible`.
-- Folder tree: `Calendar` sentinel node with `All Calendars` / `Local Calendar` / per-account / CalDAV children; `CalendarFilterFor` maps a node to `CalendarViewModel.AccountFilter`.
+- Times stored as UTC ticks; TZID handling per provider (`Prefer: outlook.timezone` for Graph, RFC3339 offsets for Google).
+- Sync engine (`GraphCalendarSyncService`, name predates multi-provider): read-down window −30…+365 days, replace-slice per account, background pass every 15 min plus one after startup mail sync, best-effort (never throws), `silentOnly` (no interactive sign-in). Write-back is Microsoft + Google **single events only** (recurring push rejected pre-network with `NotSupportedException`). Failed server create/edit falls back to a local save, announced. Providers gated by `IsCalendarPushAccount` / `IsGraphEligible` / `IsGoogleEligible`.
+- Folder tree: `Calendar` sentinel node with `All Calendars` / `Local Calendar` / per-account children; `CalendarFilterFor` maps a node to `CalendarViewModel.AccountFilter`.
 - Invitations: `LocalCacheCalendarProvider` harvests `text/calendar` parts; Accept/Tentative/Decline event card in the reading pane sends an ICS REPLY and upserts the response status immediately; `METHOD:CANCEL` marks events cancelled (filtered from all views).
 - Reminders: opt-in 60-second timer (`CalendarReminders` / `CalendarReminderMinutes`, default off / 10 min), Windows notification + `AnnouncementCategory.Result`, fired at most once per `(uid, start)` per run.
 - Export via `IcsModel.ExportEvent` (`calendar.exportEvent`, no default key).
-- Settings: Internet Calendar (CalDAV) group with Test; Calendar field labels; Calendar reminders + minutes. `ShowDeclinedEvents` remains config-only (read at construction; not live-updated).
+- Settings: Calendar field labels; Calendar reminders + minutes. `ShowDeclinedEvents` remains config-only (read at construction; not live-updated).
+
+### Removed the Settings-based Internet Calendar (CalDAV) source (issue #282)
+
+- The global **Settings → General → Internet Calendar** (CalDAV/iCloud) configuration is removed, along with its `CalDavCalendarClient`, the `GraphCalendarSyncService` CalDAV branch, the `[caldav]` config keys, and the synthetic-id calendar tree node. Calendar sync is now Microsoft + Google only (tied to the account you added), plus the local calendar. Per Kelly: calendars should connect **per account** (a checkbox in the account editor, mirroring contact sync #256), and dedicated calendar accounts belong in the account manager — not a global setting. Tracked in #282; the CalDAV read-down code was removed rather than shipped half-wired.
 
 ### Go to Date (PR #279)
 

@@ -13,7 +13,6 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly IConfigService _configService;
     private readonly ICredentialService? _credentials;
-    private readonly ICalDavCalendarClient? _calDavClient;
 
     [ObservableProperty]
     private int _previewLines;
@@ -91,31 +90,6 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private int _calendarReminderMinutes = 10;
-
-    // ── CalDAV calendar source ─────────────────────────────────────────────────────
-
-    [ObservableProperty]
-    private string _calDavUrl = string.Empty;
-
-    [ObservableProperty]
-    private string _calDavUsername = string.Empty;
-
-    [ObservableProperty]
-    private string _calDavDisplayName = "iCloud";
-
-    /// <summary>
-    /// The app-specific password, pushed from the View's PasswordBox (PasswordChanged handler —
-    /// the AccountManager precedent; PasswordBox.Password is not bindable). Never persisted to
-    /// config: Save() writes it to Windows Credential Manager only. Empty = keep the saved one.
-    /// </summary>
-    internal string CalDavPassword { get; set; } = string.Empty;
-
-    /// <summary>Outcome text of the last Test run, shown next to the Test button.</summary>
-    [ObservableProperty]
-    private string _calDavTestResult = string.Empty;
-
-    /// <summary>Raised when a Test run finishes, so the View can announce the result.</summary>
-    public event Action<string>? CalDavTestCompleted;
 
     [ObservableProperty]
     private bool _confirmEmptyTrash;
@@ -252,12 +226,10 @@ public partial class SettingsViewModel : ObservableObject
         ICommandRegistry registry,
         IThemeService? themeService = null,
         System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
-        ICredentialService? credentialService = null,
-        ICalDavCalendarClient? calDavClient = null)
+        ICredentialService? credentialService = null)
     {
         _configService = configService;
         _credentials   = credentialService;
-        _calDavClient  = calDavClient;
         var cfg = configService.Load();
 
         // Appearance: themes from the service; installed fonts from the View
@@ -307,9 +279,6 @@ public partial class SettingsViewModel : ObservableObject
         CalendarListShowFieldLabels      = cfg.CalendarListShowFieldLabels;
         CalendarReminders                = cfg.CalendarReminders;
         CalendarReminderMinutes          = cfg.CalendarReminderMinutes;
-        CalDavUrl                        = cfg.CalDavUrl;
-        CalDavUsername                   = cfg.CalDavUsername;
-        CalDavDisplayName                = cfg.CalDavDisplayName;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         NotifyOnNewMail                  = cfg.NotifyOnNewMail;
         CloseToTray                      = cfg.CloseToTray;
@@ -382,14 +351,6 @@ public partial class SettingsViewModel : ObservableObject
         cfg.CalendarListShowFieldLabels      = CalendarListShowFieldLabels;
         cfg.CalendarReminders                = CalendarReminders;
         cfg.CalendarReminderMinutes          = Math.Clamp(CalendarReminderMinutes, 1, 1440);
-        cfg.CalDavUrl         = CalDavUrl.Trim();
-        cfg.CalDavUsername    = CalDavUsername.Trim();
-        cfg.CalDavDisplayName = string.IsNullOrWhiteSpace(CalDavDisplayName) ? "iCloud" : CalDavDisplayName.Trim();
-        // The password goes ONLY to Windows Credential Manager (never config.ini/JSON), keyed by
-        // username. An empty box means "keep the saved password" so reopening Settings and saving
-        // does not wipe the credential.
-        if (_credentials != null && !string.IsNullOrEmpty(CalDavPassword) && !string.IsNullOrWhiteSpace(CalDavUsername))
-            _credentials.SaveSecret(CalDavCalendarClient.SecretKeyFor(CalDavUsername), CalDavPassword);
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
         cfg.CloseToTray                      = CloseToTray;
@@ -447,49 +408,6 @@ public partial class SettingsViewModel : ObservableObject
     private static void ClearHotkey(HotkeyRowViewModel? row)
     {
         row?.ClearCustomBinding();
-    }
-
-    /// <summary>
-    /// Validates the CalDAV settings by running the real discovery sequence (principal →
-    /// calendar home → first event calendar) against the entered values. Uses the typed
-    /// password when present, otherwise the saved one, so Test works after reopening
-    /// Settings without retyping. Catches everything: a failure is a result message, and
-    /// the dialog may close while a request is in flight (the client is disposed with it).
-    /// </summary>
-    [RelayCommand]
-    private async Task TestCalDavAsync()
-    {
-        if (_calDavClient == null)
-        {
-            CalDavTestResult = "Connection test is not available here.";
-            CalDavTestCompleted?.Invoke(CalDavTestResult);
-            return;
-        }
-
-        var url  = CalDavUrl.Trim();
-        var user = CalDavUsername.Trim();
-        var password = !string.IsNullOrEmpty(CalDavPassword)
-            ? CalDavPassword
-            : _credentials?.GetSecret(CalDavCalendarClient.SecretKeyFor(user));
-
-        if (string.IsNullOrEmpty(url) || string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password))
-        {
-            CalDavTestResult = "Enter the server address, username, and app-specific password first.";
-            CalDavTestCompleted?.Invoke(CalDavTestResult);
-            return;
-        }
-
-        CalDavTestResult = "Testing…";
-        try
-        {
-            var calendar = await _calDavClient.DiscoverCalendarAsync(url, user, password);
-            CalDavTestResult = $"Connected. Found calendar: {calendar.DisplayName}.";
-        }
-        catch (Exception ex)
-        {
-            CalDavTestResult = $"Could not connect. {ex.Message}";
-        }
-        CalDavTestCompleted?.Invoke(CalDavTestResult);
     }
 
     internal HotkeyRowViewModel? FindConflict(Key key, ModifierKeys modifiers)
