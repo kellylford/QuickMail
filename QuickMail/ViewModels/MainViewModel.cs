@@ -44,6 +44,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // the key set de-dupes across repeated IDLE fires within the session.
     private readonly DateTimeOffset _notifyThresholdUtc = DateTimeOffset.UtcNow;
     private readonly HashSet<string> _notifiedMessageKeys = new();
+    // A single evaluation yielding more genuinely-new messages than this is a catch-up backlog
+    // (mail that piled up while the machine slept or the connection was down), not real-time
+    // arrivals — so it does not raise a toast. See MaybeNotifyNewMail.
+    private const int MaxNotifyBatchSize = 5;
     // Exposes hex strings only, so consuming it here does not violate the
     // no-UI-types-in-ViewModels rule. Null in tests that don't exercise theming.
     private readonly IThemeService? _themeService;
@@ -2258,6 +2262,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (fresh.Count == 0)
         {
             LogService.Debug(diag);
+            return;
+        }
+
+        // Suppress a big catch-up batch: after the machine wakes from sleep or a dropped connection
+        // reconnects, all the mail that arrived during the gap is fetched at once and shows up as many
+        // "fresh" messages in one evaluation. The startup backlog is already excluded by
+        // _notifyThresholdUtc; this is its mid-session equivalent. SelectNew has already marked these
+        // as notified (so they won't re-fire), and the count is logged — we just skip the toast so a
+        // wake doesn't fire a "9 new messages" burst. Real-time arrivals (a handful at a time) notify
+        // normally.
+        if (fresh.Count > MaxNotifyBatchSize)
+        {
+            LogService.Log($"{diag}  — toast suppressed (batch > {MaxNotifyBatchSize}, likely wake/reconnect backlog)");
             return;
         }
 
