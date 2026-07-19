@@ -40,6 +40,18 @@ public class PerAccountCalendarSyncTests
     }
 
     [Fact]
+    public void ShowCalendarSyncOption_TrueAfterTypingICloudAddress()
+    {
+        // The real user path: on the default IMAP backend, typing an iCloud address auto-fills the
+        // Apple IMAP host, which must flip the calendar checkbox on.
+        var vm = NewEditor();
+        Assert.False(vm.ShowCalendarSyncOption);   // nothing typed yet
+        vm.Username = "someone@icloud.com";
+        Assert.Equal("imap.mail.me.com", vm.ImapHost);
+        Assert.True(vm.ShowCalendarSyncOption);
+    }
+
+    [Fact]
     public void ShowCalendarSyncOption_FalseForPlainImap()
     {
         var vm = NewEditor();
