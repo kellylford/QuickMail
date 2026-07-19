@@ -263,15 +263,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// True for accounts with a server calendar the app can push appointments to: Microsoft
-    /// (Graph backend) and Google-signed-in accounts (keyed by auth type — Gmail mail is IMAP).
-    /// Plain IMAP/password accounts have no server calendar. Mirrors the sync service's
-    /// per-provider eligibility.
+    /// (Graph backend), Google-signed-in accounts (keyed by auth type — Gmail mail is IMAP), and
+    /// iCloud accounts (IMAP host imap.mail.me.com — CalDAV over the app-specific password). Plain
+    /// IMAP/password accounts have no server calendar. Mirrors the sync service's per-provider
+    /// eligibility; membership here also drives edit/delete write-back (ServerAccountFor).
     /// </summary>
     internal static bool IsCalendarPushAccount(AccountModel a)
         => a.SyncCalendar
            && (a.BackendKind == BackendKind.MicrosoftGraph
                || a.AuthType == AuthType.OAuth2Microsoft
-               || a.AuthType == AuthType.OAuth2Google);
+               || a.AuthType == AuthType.OAuth2Google
+               || a.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
@@ -962,7 +964,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                                cfg.CalendarListShowFieldLabels,
                                                _graphCalendarSync,
                                                () => Accounts.Where(IsCalendarPushAccount).ToList(),
-                                               () => Accounts.ToList());
+                                               () => Accounts.ToList(),
+                                               // Discovered calendar sources (per iCloud calendar) feed the
+                                               // save-target picker so each iCloud calendar is its own target.
+                                               () => _calendarSources);
             RemindersEnabled = cfg.CalendarReminders;
             ReminderLeadMinutes = cfg.CalendarReminderMinutes;
             StartReminderTimer();

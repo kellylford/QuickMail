@@ -282,17 +282,21 @@ public class IcsModel
     }
 
     /// <summary>
-    /// Serializes a calendar event to a standalone .ics file body (METHOD:PUBLISH) suitable for
-    /// saving to disk and importing into any calendar application. All-day events use DATE values;
-    /// timed events use UTC; a recurrence rule is carried through as RRULE.
+    /// Serializes a calendar event to a standalone .ics VCALENDAR body. All-day events use DATE
+    /// values; timed events use UTC; a recurrence rule is carried through as RRULE.
+    /// <paramref name="includeMethod"/> controls the <c>METHOD:PUBLISH</c> property: true (the
+    /// default) for a file exported to disk / imported elsewhere; false for a CalDAV PUT, because
+    /// RFC 4791 §4.1 says a stored calendar object resource must NOT contain a METHOD (iCloud and
+    /// other CalDAV servers can reject a PUT that carries one).
     /// </summary>
-    public static string ExportEvent(CalendarEvent evt)
+    public static string ExportEvent(CalendarEvent evt, bool includeMethod = true)
     {
         var sb = new StringBuilder();
         sb.AppendLine("BEGIN:VCALENDAR");
         sb.AppendLine("VERSION:2.0");
         sb.AppendLine("PRODID:-//QuickMail//EN");
-        sb.AppendLine("METHOD:PUBLISH");
+        if (includeMethod)
+            sb.AppendLine("METHOD:PUBLISH");
         sb.AppendLine("BEGIN:VEVENT");
         sb.AppendLine($"UID:{(string.IsNullOrWhiteSpace(evt.Uid) ? Guid.NewGuid().ToString("N") : evt.Uid)}");
         sb.AppendLine($"DTSTAMP:{DateTime.UtcNow:yyyyMMdd'T'HHmmss'Z'}");

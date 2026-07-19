@@ -98,7 +98,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     /// CalDAV client or credential service isn't wired (tests).
     /// </summary>
     private bool IsICloudCalendarEligible(AccountModel account)
-        => _calDav != null && _credentials != null
+        => _calDav != null && _credentials != null && account.SyncCalendar
            && account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>True when the account has a calendar QuickMail can pull, regardless of the opt-in flag.</summary>
@@ -354,10 +354,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     /// </summary>
     private async Task<int> SyncICloudCalendarAsync(AccountModel account, CancellationToken ct)
     {
-        var password = _credentials!.GetPassword(account.Id);
-        if (string.IsNullOrEmpty(password))
-            throw new InvalidOperationException(
-                $"no app-specific password saved for {account.Username} — re-enter it in Manage Accounts.");
+        var password = ICloudPassword(account);
 
         if (!_calDavCalendarsByAccount.TryGetValue(account.Id, out var calendars))
         {
@@ -373,9 +370,9 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             // so each calendar is its own selectable source.
             foreach (var cal in calendars)
             {
-                var icsBodies = await _calDav!.FetchEventIcsAsync(cal.Url, account.Username, password,
+                var resources = await _calDav!.FetchEventIcsAsync(cal.Url, account.Username, password,
                                                                   nowUtc - WindowBack, nowUtc + WindowForward, ct);
-                union.AddRange(MapCalDavEvents(icsBodies, account.Id, cal.Url, cal.DisplayName));
+                union.AddRange(MapCalDavEvents(resources, account.Id, cal.Url, cal.DisplayName));
             }
         }
         catch
@@ -397,26 +394,36 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     /// rescheduled occurrence shows at its original series slot; and STATUS:CANCELLED events are
     /// dropped. Duplicate UIDs across bodies collapse to one row (last wins).
     /// </summary>
-    internal static List<CalendarEvent> MapCalDavEvents(IEnumerable<string> icsBodies, Guid accountId,
+    internal static List<CalendarEvent> MapCalDavEvents(IEnumerable<(string Href, string Ics)> icsBodies, Guid accountId,
         string calendarId = "", string calendarName = "")
     {
         var byUid = new Dictionary<string, CalendarEvent>(StringComparer.Ordinal);
-        foreach (var body in icsBodies)
+        foreach (var (href, body) in icsBodies)
         {
+            // Resolve the resource href absolute against the calendar collection when the server
+            // gave a relative one (the client normally resolves it already). This is the REAL
+            // resource URL — Apple names iPhone/web-created resources randomly (≠ UID), so it is
+            // what edit/delete must target.
+            var resourceUrl = href;
+            if (!string.IsNullOrEmpty(href) && !Uri.IsWellFormedUriString(href, UriKind.Absolute)
+                && Uri.TryCreate(calendarId, UriKind.Absolute, out var baseUri)
+                && Uri.TryCreate(baseUri, href, out var abs))
+                resourceUrl = abs.ToString();
+
             foreach (var ics in IcsModel.ParseAllEvents(body))
             {
                 if (string.Equals(ics.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!string.IsNullOrEmpty(ics.RecurrenceId)) continue;
-                var evt = MapCalDavEvent(ics, accountId, calendarId, calendarName);
+                var evt = MapCalDavEvent(ics, accountId, calendarId, calendarName, resourceUrl);
                 byUid[evt.Uid] = evt;
             }
         }
         return byUid.Values.ToList();
     }
 
-    /// <summary>Maps one parsed VEVENT to a local row (is_graph=1 = "server-synced"), tagged with its calendar.</summary>
+    /// <summary>Maps one parsed VEVENT to a local row (is_graph=1 = "server-synced"), tagged with its calendar and CalDAV resource href.</summary>
     internal static CalendarEvent MapCalDavEvent(IcsModel ics, Guid accountId,
-        string calendarId = "", string calendarName = "")
+        string calendarId = "", string calendarName = "", string resourceUrl = "")
     {
         long? startTicks, endTicks;
         if (ics.IsAllDay)
@@ -453,6 +460,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             IsGraph         = true, // "server-synced row" — read-only in UI, replace-slice owned
             CalendarId      = calendarId,
             CalendarName    = calendarName,
+            ResourceUrl     = resourceUrl,
             Summary         = ics.Summary?.Trim() ?? string.Empty,
             Description     = ics.Description?.Trim() ?? string.Empty,
             Location        = ics.Location?.Trim() ?? string.Empty,
@@ -473,6 +481,85 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         return evt;
     }
 
+    /// <summary>The account's app-specific password (the same one IMAP uses), or a clear error.</summary>
+    private string ICloudPassword(AccountModel account)
+    {
+        var password = _credentials!.GetPassword(account.Id);
+        if (string.IsNullOrEmpty(password))
+            throw new InvalidOperationException(
+                $"no app-specific password saved for {account.Username} — re-enter it in Manage Accounts.");
+        return password;
+    }
+
+    // ── iCloud CalDAV write (create / edit / delete, single events) ───────────────
+    // A locally-authored appointment is serialized to a VCALENDAR (IcsModel.ExportEvent) and PUT to
+    // its calendar collection; the row is stored is_graph so it shows immediately and survives the
+    // next replace-slice sync (which re-fetches it from the server). v1 is last-write-wins — no
+    // ETag / If-Match round-trip yet (a create still uses If-None-Match to avoid clobbering).
+
+    private async Task<CalendarEvent> CreateICloudEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
+    {
+        var password = ICloudPassword(account);
+        if (string.IsNullOrWhiteSpace(evt.CalendarId))
+            throw new InvalidOperationException("No iCloud calendar was selected for the new appointment.");
+        if (string.IsNullOrWhiteSpace(evt.Uid))
+            evt.Uid = Guid.NewGuid().ToString("N") + "@quickmail";
+
+        var ics = IcsModel.ExportEvent(evt, includeMethod: false); // RFC 4791: no METHOD on a stored CalDAV resource
+        // A new resource: QuickMail chooses its name (after the UID). Record the URL it PUT to so an
+        // immediate edit (before the next read-sync captures the server's real href) still targets it.
+        var resourceUrl = CalDavCalendarClient.EventResourceUrl(evt.CalendarId, evt.Uid);
+        await _calDav!.PutEventAsync(resourceUrl, ics, account.Username, password, ifNoneMatch: true, ct);
+
+        evt.AccountId = account.Id;
+        evt.IsGraph = true; // "server-synced row"
+        evt.ResponseStatus = CalendarResponseStatus.Accepted;
+        evt.ResourceUrl = resourceUrl;
+        await _store.UpsertCalendarEventAsync(evt);
+        LogService.Log($"CalendarSync: created iCloud event on {account.AccountLabel} ({evt.Uid}).");
+        return evt;
+    }
+
+    private async Task<CalendarEvent> UpdateICloudEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
+    {
+        var password = ICloudPassword(account);
+        if (string.IsNullOrWhiteSpace(evt.CalendarId))
+            throw new InvalidOperationException("This iCloud appointment has no calendar to update.");
+
+        var ics = IcsModel.ExportEvent(evt, includeMethod: false); // RFC 4791: no METHOD on a stored CalDAV resource
+        // Edit the resource where it actually lives: the real href captured on read-sync when we have
+        // one (Apple names iPhone/web-created resources randomly, ≠ UID), else the QuickMail-created
+        // name (a row not yet re-synced). Using {collection}/{uid}.ics blindly 404s / duplicates.
+        var resourceUrl = string.IsNullOrEmpty(evt.ResourceUrl)
+            ? CalDavCalendarClient.EventResourceUrl(evt.CalendarId, evt.Uid)
+            : evt.ResourceUrl;
+        await _calDav!.PutEventAsync(resourceUrl, ics, account.Username, password, ifNoneMatch: false, ct);
+
+        evt.AccountId = account.Id;
+        evt.IsGraph = true;
+        evt.ResourceUrl = resourceUrl;
+        await _store.UpsertCalendarEventAsync(evt);
+        LogService.Log($"CalendarSync: updated iCloud event on {account.AccountLabel} ({evt.Uid}).");
+        return evt;
+    }
+
+    private async Task DeleteICloudEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
+    {
+        var password = ICloudPassword(account);
+        if (string.IsNullOrWhiteSpace(evt.CalendarId))
+            throw new InvalidOperationException("This iCloud appointment has no calendar to delete from.");
+
+        // Delete the resource where it actually lives: the real href captured on read-sync when we
+        // have one (Apple names iPhone/web-created resources randomly, ≠ UID), else the
+        // QuickMail-created name (a row not yet re-synced). Blindly using {collection}/{uid}.ics 404s.
+        var resourceUrl = string.IsNullOrEmpty(evt.ResourceUrl)
+            ? CalDavCalendarClient.EventResourceUrl(evt.CalendarId, evt.Uid)
+            : evt.ResourceUrl;
+        await _calDav!.DeleteEventAsync(resourceUrl, account.Username, password, ct);
+        await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
+        LogService.Log($"CalendarSync: deleted iCloud event on {account.AccountLabel} ({evt.Uid}).");
+    }
+
     // ── Create/edit/delete push (Microsoft + Google) ─────────────────────────────
     // Each public method dispatches on the account: Google-signed-in accounts push to the Google
     // Calendar API, everything else takes the Graph path. Both providers reject recurring events
@@ -483,8 +570,13 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     {
         if (evt.IsRecurring)
             throw new NotSupportedException("v1 calendar push handles single events only.");
+        // Dispatch order mirrors the read path (SyncOneAccountAsync): Graph → Google → iCloud.
+        // Graph is the default body; the guarded providers keep Google before iCloud. Predicates are
+        // mutually exclusive, so ordering is for consistency, not behavior.
         if (IsGoogleEligible(account))
             return await CreateGoogleEventAsync(account, evt, ct);
+        if (IsICloudCalendarEligible(account))
+            return await CreateICloudEventAsync(account, evt, ct);
 
         var body = BuildCreateBody(evt);
 
@@ -507,8 +599,11 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     {
         if (evt.IsRecurring)
             throw new NotSupportedException("v1 calendar push handles single events only.");
+        // Dispatch order mirrors the read path (SyncOneAccountAsync): Graph → Google → iCloud.
         if (IsGoogleEligible(account))
             return await UpdateGoogleEventAsync(account, evt, ct);
+        if (IsICloudCalendarEligible(account))
+            return await UpdateICloudEventAsync(account, evt, ct);
 
         var body = BuildCreateBody(evt); // PATCH accepts the same shape; omitted fields are unchanged
         var updated = await _graph.PatchReadAsync<GraphCalendarEvent>(
@@ -524,11 +619,17 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 
     public async Task DeleteEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)
     {
+        // Dispatch order mirrors the read path (SyncOneAccountAsync): Graph → Google → iCloud.
         if (IsGoogleEligible(account))
         {
             await _google!.DeleteEventAsync(account.Username, evt.Uid, ct);
             await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
             LogService.Log($"CalendarSync: deleted Google event on {account.AccountLabel} ({evt.Uid}).");
+            return;
+        }
+        if (IsICloudCalendarEligible(account))
+        {
+            await DeleteICloudEventAsync(account, evt, ct);
             return;
         }
 

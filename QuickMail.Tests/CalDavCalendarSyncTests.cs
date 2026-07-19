@@ -317,6 +317,22 @@ public class CalDavCalendarSyncTests : IDisposable
     }
 
     [Fact]
+    public async Task Sync_StoresResourceHref_ResolvedAbsolute_EvenWhenHrefFilenameDiffersFromUid()
+    {
+        // ReportXml names each resource /123456/calendars/home/{n}.ics — a filename that is NOT the
+        // event UID (exactly how Apple stores iPhone/web-created events). The stored ResourceUrl must
+        // be that real href, resolved absolute against the collection host that answered the REPORT,
+        // so a later edit/delete targets the right resource rather than {collection}/{uid}.ics.
+        var handler = FullSyncHandler(TimedIcs);
+        await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("timed@icloud", row.Uid);
+        Assert.Equal("https://p42-caldav.icloud.com/123456/calendars/home/1.ics", row.ResourceUrl);
+        Assert.NotEqual(CalDavCalendarClient.EventResourceUrl(row.CalendarId, row.Uid), row.ResourceUrl);
+    }
+
+    [Fact]
     public async Task Sync_Discovery_WalksPrincipalHomeAndCollections_WithAuthAndDepth()
     {
         var handler = FullSyncHandler(TimedIcs);
@@ -579,12 +595,25 @@ public class CalDavCalendarSyncTests : IDisposable
     }
 
     [Fact]
-    public void ParseCalendarData_ExtractsEveryIcsBody()
+    public void ParseCalendarData_ExtractsEveryIcsBody_WithItsHref()
     {
         var bodies = CalDavCalendarClient.ParseCalendarData(ReportXml(TimedIcs, AllDayIcs));
         Assert.Equal(2, bodies.Count);
-        Assert.Contains("UID:timed@icloud", bodies[0]);
-        Assert.Contains("UID:allday@icloud", bodies[1]);
+        Assert.Contains("UID:timed@icloud", bodies[0].Ics);
+        Assert.Contains("UID:allday@icloud", bodies[1].Ics);
+        // Each body is paired with its own sibling <href> (raw, no base to resolve against here).
+        Assert.Equal("/123456/calendars/home/1.ics", bodies[0].Href);
+        Assert.Equal("/123456/calendars/home/2.ics", bodies[1].Href);
+    }
+
+    [Fact]
+    public void ParseCalendarData_ResolvesRelativeHref_AgainstBaseUri()
+    {
+        var baseUri = new Uri("https://p42-caldav.icloud.com/123456/calendars/home/");
+        var bodies = CalDavCalendarClient.ParseCalendarData(ReportXml(TimedIcs), baseUri);
+        // Relative href resolves absolute against the collection that answered.
+        Assert.Equal("https://p42-caldav.icloud.com/123456/calendars/home/1.ics",
+                     Assert.Single(bodies).Href);
     }
 
     // ── Mapping units ────────────────────────────────────────────────────────────
@@ -592,10 +621,33 @@ public class CalDavCalendarSyncTests : IDisposable
     [Fact]
     public void MapCalDavEvents_DuplicateUids_CollapseToOneRow()
     {
-        var rows = GraphCalendarSyncService.MapCalDavEvents([TimedIcs, TimedIcs], _accountId, "cal-url", "Home");
+        var rows = GraphCalendarSyncService.MapCalDavEvents(
+            [("/cal/a.ics", TimedIcs), ("/cal/b.ics", TimedIcs)], _accountId, "cal-url", "Home");
         Assert.Single(rows);
         Assert.Equal("cal-url", rows[0].CalendarId);   // tagged with the calendar it came from
         Assert.Equal("Home", rows[0].CalendarName);
+    }
+
+    [Fact]
+    public void MapCalDavEvents_TagsRowWithResourceHref_EvenWhenHrefFilenameDiffersFromUid()
+    {
+        // Apple names an iPhone/web-created resource randomly — filename ≠ UID. The mapped row must
+        // carry that real href so edit/delete target the right resource, not {collection}/{uid}.ics.
+        var href = "https://p42-caldav.icloud.com/123456/calendars/home/AB12-random.ics";
+        var row = Assert.Single(GraphCalendarSyncService.MapCalDavEvents(
+            [(href, TimedIcs)], _accountId,
+            "https://p42-caldav.icloud.com/123456/calendars/home/", "Home"));
+        Assert.Equal("timed@icloud", row.Uid);
+        Assert.Equal(href, row.ResourceUrl);
+    }
+
+    [Fact]
+    public void MapCalDavEvents_ResolvesRelativeHref_AgainstCalendarCollection()
+    {
+        var row = Assert.Single(GraphCalendarSyncService.MapCalDavEvents(
+            [("/123456/calendars/home/random.ics", TimedIcs)], _accountId,
+            "https://p42-caldav.icloud.com/123456/calendars/home/", "Home"));
+        Assert.Equal("https://p42-caldav.icloud.com/123456/calendars/home/random.ics", row.ResourceUrl);
     }
 
     [Fact]
@@ -609,8 +661,8 @@ public class CalDavCalendarSyncTests : IDisposable
             "END:VEVENT",
             "END:VCALENDAR");
 
-        var first  = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([ics], _accountId, "cal-url", "Home"));
-        var second = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([ics], _accountId, "cal-url", "Home"));
+        var first  = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([("/cal/a.ics", ics)], _accountId, "cal-url", "Home"));
+        var second = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([("/cal/a.ics", ics)], _accountId, "cal-url", "Home"));
 
         Assert.StartsWith("caldav-", first.Uid);
         Assert.Equal(first.Uid, second.Uid); // stable across passes → replace-slice keeps identity
