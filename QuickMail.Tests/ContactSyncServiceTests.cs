@@ -94,6 +94,53 @@ public class ContactSyncServiceTests
     }
 
     [Fact]
+    public async Task SyncAccount_ICloud_RoutesToICloudSourceByImapHost()
+    {
+        var (contacts, dir) = MakeContacts();
+        try
+        {
+            var ms = new FakeSource { Source = ContactSource.Microsoft };
+            var google = new FakeSource { Source = ContactSource.Google };
+            var icloud = new FakeSource { Source = ContactSource.ICloud, OnFetch = _ => [Server("i1", "a@icloud.test")] };
+            var sut = new ContactSyncService(new FakeAccountService(), contacts, ms, google, icloud);
+            // An iCloud account is a plain Password/IMAP account — routed by IMAP host, not auth type.
+            var account = new AccountModel { AuthType = AuthType.Password, ImapHost = "imap.mail.me.com" };
+
+            Assert.True(sut.CanSync(account));
+            var result = await sut.SyncAccountAsync(account);
+
+            Assert.Equal(1, result.AccountsSynced);
+            Assert.Equal(1, result.ContactsFetched);
+            Assert.Equal(1, icloud.FetchCount);
+            Assert.Equal(0, ms.FetchCount);
+            var stored = await contacts.LoadAllContactsAsync();
+            Assert.Equal(ContactSource.ICloud, Assert.Single(stored).Source);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task SyncAccount_PlainPasswordOtherHost_IsStillNoOp_EvenWithICloudSource()
+    {
+        var (contacts, dir) = MakeContacts();
+        try
+        {
+            var ms = new FakeSource { Source = ContactSource.Microsoft };
+            var google = new FakeSource { Source = ContactSource.Google };
+            var icloud = new FakeSource { Source = ContactSource.ICloud, OnFetch = _ => [Server("i1", "a@icloud.test")] };
+            var sut = new ContactSyncService(new FakeAccountService(), contacts, ms, google, icloud);
+            var account = new AccountModel { AuthType = AuthType.Password, ImapHost = "imap.example.com" };
+
+            Assert.False(sut.CanSync(account));
+            var result = await sut.SyncAccountAsync(account);
+
+            Assert.Equal(0, result.AccountsSynced);
+            Assert.Equal(0, icloud.FetchCount);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
     public async Task SyncAccount_SourceThrows_ReturnsErrorAndDoesNotThrow()
     {
         var (contacts, dir) = MakeContacts();

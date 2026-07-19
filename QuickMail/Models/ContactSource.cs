@@ -17,4 +17,7 @@ public enum ContactSource
 
     /// <summary>Synced from a Google account via the People API (connections and other contacts).</summary>
     Google = 2,
+
+    /// <summary>Synced from an iCloud account via CardDAV (the account's address book).</summary>
+    ICloud = 3,
 }

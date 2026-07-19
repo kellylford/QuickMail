@@ -61,6 +61,27 @@ public class PerAccountCalendarSyncTests
     }
 
     [Fact]
+    public void ShowContactSyncOption_TrueForICloud()
+    {
+        // Contact sync (CardDAV) is offered for iCloud too, keyed on the iCloud IMAP host, so typing
+        // an iCloud address (which auto-fills that host) must flip the contacts checkbox on.
+        var vm = NewEditor();
+        Assert.False(vm.ShowContactSyncOption);   // nothing typed yet
+        vm.Username = "someone@icloud.com";
+        Assert.Equal("imap.mail.me.com", vm.ImapHost);
+        Assert.True(vm.ShowContactSyncOption);
+    }
+
+    [Fact]
+    public void ShowContactSyncOption_FalseForPlainImap()
+    {
+        var vm = NewEditor();
+        vm.AuthType = AuthType.Password;
+        vm.ImapHost = "imap.example.com";
+        Assert.False(vm.ShowContactSyncOption);
+    }
+
+    [Fact]
     public void ToAccountModel_KeepsCalendarFlagOnlyWhenOptionShown()
     {
         // Checked while iCloud → persists.

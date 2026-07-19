@@ -12,6 +12,7 @@ public sealed class ContactSyncService : IContactSyncService
     private readonly IContactService _contacts;
     private readonly IProviderContactSource _microsoftSource;
     private readonly IProviderContactSource _googleSource;
+    private readonly IProviderContactSource? _iCloudSource;
 
     // Process-lifetime throttle for the automatic background trigger. UtcNow is only read here (not in
     // a resumable/replayable context), so it's safe.
@@ -22,25 +23,36 @@ public sealed class ContactSyncService : IContactSyncService
         IAccountService accounts,
         IContactService contacts,
         IProviderContactSource microsoftSource,
-        IProviderContactSource googleSource)
+        IProviderContactSource googleSource,
+        IProviderContactSource? iCloudSource = null)
     {
         _accounts        = accounts;
         _contacts        = contacts;
         _microsoftSource = microsoftSource;
         _googleSource    = googleSource;
+        _iCloudSource    = iCloudSource;
     }
 
     public bool CanSync(AccountModel account) => SourceFor(account) is not null;
 
-    private IProviderContactSource? SourceFor(AccountModel account) => account.AuthType switch
+    private IProviderContactSource? SourceFor(AccountModel account)
     {
-        // Keyed by auth type, not backend: a Gmail account is IMAP + Google OAuth (not the Graph
-        // backend), and an Outlook.com account can be IMAP + Microsoft OAuth. The contact API follows
-        // the identity provider, so a valid OAuth token is what makes contact sync possible.
-        AuthType.OAuth2Microsoft => _microsoftSource,
-        AuthType.OAuth2Google    => _googleSource,
-        _                        => null,
-    };
+        // iCloud is keyed by IMAP host, not auth type: an iCloud account is a plain Password/IMAP
+        // account, and CardDAV reuses that app-specific password. Check this before the auth switch.
+        if (_iCloudSource != null &&
+            account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase))
+            return _iCloudSource;
+
+        return account.AuthType switch
+        {
+            // Keyed by auth type, not backend: a Gmail account is IMAP + Google OAuth (not the Graph
+            // backend), and an Outlook.com account can be IMAP + Microsoft OAuth. The contact API follows
+            // the identity provider, so a valid OAuth token is what makes contact sync possible.
+            AuthType.OAuth2Microsoft => _microsoftSource,
+            AuthType.OAuth2Google    => _googleSource,
+            _                        => null,
+        };
+    }
 
     public async Task<ContactSyncResult> SyncAccountAsync(AccountModel account, CancellationToken ct = default)
     {

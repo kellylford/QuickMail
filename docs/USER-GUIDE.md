@@ -131,7 +131,7 @@ Enter your iCloud address (`@icloud.com`, `@me.com`, or `@mac.com`) in the **Ema
 
 **App-specific password required.** Apple does not allow third-party apps to use your Apple ID password directly. Generate an app-specific password at **appleid.apple.com** (Sign-In & Security → App-Specific Passwords) and enter it in the Password field. QuickMail shows a reminder in the password area when it detects an iCloud address.
 
-To show your iCloud calendar in the Calendar view, check **Sync calendar from this account** — QuickMail uses the same app-specific password, so there's nothing else to set up. iCloud calendars are read-only in QuickMail. See the [Calendar](#calendar) section for details.
+To bring in your iCloud data, check **Sync contacts from this account** and/or **Sync calendar from this account** — QuickMail uses the same app-specific password for both, so there's nothing else to set up. iCloud contacts and calendars are read-only in QuickMail. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts) and the [Calendar](#calendar) section for details.
 
 ### Managing Accounts
 
@@ -442,13 +442,13 @@ The address book lists everyone you have sent mail to or explicitly added, plus 
 
 ### Syncing Contacts from Your Accounts
 
-QuickMail can fill the address book from the contacts and prior recipients already stored in your Microsoft and Google accounts, so the people your account knows are available for autocomplete when you address a message.
+QuickMail can fill the address book from the contacts already stored in your Microsoft, Google, and iCloud accounts, so the people your account knows are available for autocomplete when you address a message.
 
-- **Turn it on per account.** When adding a Microsoft or Google account, check **Sync contacts from this account** in the Add Account dialog before you sign in. For an account you already have, open **Settings → Accounts**, edit the account, and check the same box — it takes effect immediately, with no separate Save step. Enabling sync asks your account for read-only access to your contacts (for Google this is part of the normal sign-in; for Microsoft it is granted right after sign-in).
+- **Turn it on per account.** When adding a Microsoft, Google, or iCloud account, check **Sync contacts from this account** in the Add Account dialog. For an account you already have, open **Settings → Accounts**, select the account, and check the same box — it takes effect immediately, with no separate Save step. Enabling sync asks your account for read-only access to your contacts (for Google this is part of the normal sign-in; for Microsoft it is granted right after sign-in; **for iCloud it uses the app-specific password you already entered**, so there is no extra prompt).
 - **Synced contacts are read-only.** They come from the server into QuickMail only — QuickMail never writes changes back to your account. Synced people appear in the list but cannot be edited or deleted there. Contacts you added yourself stay fully editable, even if someone has the same address. Turning the switch off removes that account's synced contacts from QuickMail.
 - **Refreshing.** QuickMail refreshes synced contacts quietly in the background about twice a day. To pull the latest right away, use the **Sync Now** button in the address book, or the **Sync Contacts Now** command in the Command Palette.
 
-Contact sync is one-directional and read-only in this release: no changes are written back, and iCloud/CardDAV accounts are not yet supported.
+Contact sync is one-directional and read-only in this release: no changes are written back. For Microsoft and Google it also pulls the people you've recently emailed; iCloud brings in your saved contacts (its CardDAV service has no separate "recent recipients" list).
 
 ### Groups
 
