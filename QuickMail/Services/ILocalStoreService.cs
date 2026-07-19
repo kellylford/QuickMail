@@ -73,6 +73,13 @@ public interface ILocalStoreService
     /// <summary>Loads all calendar events, ordered by start time ascending (nulls last).</summary>
     Task<List<CalendarEvent>> LoadCalendarEventsAsync();
 
+    /// <summary>
+    /// Returns the distinct server calendars (one row per account + calendar) across all synced rows
+    /// (<c>is_graph = 1</c> with a non-empty <c>calendar_id</c>), for building the per-calendar
+    /// grandchild nodes under each account in the folder tree.
+    /// </summary>
+    Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync();
+
     /// <summary>Updates only the response status for an event.</summary>
     Task UpdateCalendarResponseStatusAsync(string uid, Guid accountId, CalendarResponseStatus status);
 

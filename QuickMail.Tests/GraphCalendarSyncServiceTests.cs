@@ -134,12 +134,27 @@ public class GraphCalendarSyncServiceTests : IDisposable
     private static string Page(string? nextLink, params string[] events)
         => $$"""{ "value": [{{string.Join(",", events)}}]{{(nextLink is null ? "" : $$""", "@odata.nextLink": "{{nextLink}}" """)}} }""";
 
+    /// <summary>A <c>/me/calendars</c> list response — the enumeration step multi-calendar sync issues first.</summary>
+    private static string CalendarsPage(params (string Id, string Name)[] cals)
+    {
+        var items = string.Join(",", cals.Select(c => $"{{ \"id\": \"{c.Id}\", \"name\": \"{c.Name}\" }}"));
+        return $"{{ \"value\": [{items}] }}";
+    }
+
+    /// <summary>Handler for a single-calendar account: the calendars list, then that calendar's view pages.</summary>
+    private static RecordingHandler OneCalendarHandler(params HttpResponseMessage[] viewPages)
+    {
+        var responses = new List<HttpResponseMessage> { Json(CalendarsPage(("cal-1", "Calendar"))) };
+        responses.AddRange(viewPages);
+        return new RecordingHandler(responses.ToArray());
+    }
+
     // ── Mapping ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Sync_MapsTimedEvent_StoringUtcTicksAndGraphFlag()
     {
-        var handler = new RecordingHandler(Json(Page(null,
+        var handler = OneCalendarHandler(Json(Page(null,
             EventJson("gid-1", "Team sync", "2026-08-01T14:00:00.0000000", "2026-08-01T15:00:00.0000000",
                       location: "Room 1", preview: "agenda"))));
 
@@ -153,6 +168,8 @@ public class GraphCalendarSyncServiceTests : IDisposable
         Assert.Equal("gid-1", row.Uid);
         Assert.Equal(_accountId, row.AccountId);
         Assert.True(row.IsGraph);
+        Assert.Equal("cal-1", row.CalendarId);     // tagged with the calendar it came from
+        Assert.Equal("Calendar", row.CalendarName);
         Assert.False(row.IsUserCreated); // real account id → read-only in the UI
         Assert.Equal("Team sync", row.Summary);
         Assert.Equal("Room 1", row.Location);
@@ -174,7 +191,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
     public async Task Sync_AllDayEvent_AnchorsToLocalDay()
     {
         // Graph all-day: midnight-to-midnight with an EXCLUSIVE end, in the preferred (UTC) zone.
-        var handler = new RecordingHandler(Json(Page(null,
+        var handler = OneCalendarHandler(Json(Page(null,
             EventJson("gid-allday", "Holiday", "2026-08-03T00:00:00.0000000", "2026-08-04T00:00:00.0000000", allDay: true))));
 
         await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
@@ -202,21 +219,48 @@ public class GraphCalendarSyncServiceTests : IDisposable
     // ── Request shape ────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task Sync_SendsPreferUtcHeader_AndCalendarViewWindow()
+    public async Task Sync_EnumeratesCalendars_ThenSendsPreferUtcHeader_AndCalendarViewWindow()
     {
-        var handler = new RecordingHandler(Json(Page(null)));
+        var handler = OneCalendarHandler(Json(Page(null)));
 
         await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(1, handler.Calls);
-        // We ask Graph for times in the machine's own Windows zone so all-day events come back
-        // as local midnights (a UTC Prefer header shifted them a day for users east of Greenwich).
-        Assert.Equal($"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"", handler.PreferHeaders[0]);
-        var url = handler.Urls[0];
-        Assert.Contains("/me/calendarView?", url);
+        Assert.Equal(2, handler.Calls); // calendars list, then that calendar's view
+        // First: the calendar enumeration.
+        Assert.Contains("/me/calendars?", handler.Urls[0]);
+        // Second: the per-calendar calendarView, with the machine's own Windows zone Prefer header so
+        // all-day events come back as local midnights (a UTC header shifted them a day east of Greenwich).
+        Assert.Equal($"outlook.timezone=\"{TimeZoneInfo.Local.Id}\"", handler.PreferHeaders[1]);
+        var url = handler.Urls[1];
+        Assert.Contains("/me/calendars/cal-1/calendarView?", url);
         Assert.Contains("startDateTime=", url);
         Assert.Contains("endDateTime=", url);
         Assert.Contains("$select=", url);
+    }
+
+    // ── Multiple calendars per account ───────────────────────────────────────────
+
+    [Fact]
+    public async Task Sync_EnumeratesEveryCalendar_TaggingRowsWithTheirCalendar()
+    {
+        // Two calendars; each returns one event. Sync issues the list call, then one view per calendar.
+        var handler = new RecordingHandler(
+            Json(CalendarsPage(("cal-home", "Home"), ("cal-work", "Work"))),
+            Json(Page(null, EventJson("gid-home", "Dinner", "2026-08-01T18:00:00.0000000", "2026-08-01T19:00:00.0000000"))),
+            Json(Page(null, EventJson("gid-work", "Standup", "2026-08-02T09:00:00.0000000", "2026-08-02T09:30:00.0000000"))));
+
+        var result = await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.EventsFetched);
+        Assert.Equal(3, handler.Calls);
+        Assert.Contains("/me/calendars/cal-home/calendarView?", handler.Urls[1]);
+        Assert.Contains("/me/calendars/cal-work/calendarView?", handler.Urls[2]);
+
+        var rows = await _store.LoadCalendarEventsAsync();
+        Assert.Equal("Home", rows.Single(r => r.Uid == "gid-home").CalendarName);
+        Assert.Equal("cal-home", rows.Single(r => r.Uid == "gid-home").CalendarId);
+        Assert.Equal("Work", rows.Single(r => r.Uid == "gid-work").CalendarName);
+        Assert.Equal("cal-work", rows.Single(r => r.Uid == "gid-work").CalendarId);
     }
 
     // ── Paging ───────────────────────────────────────────────────────────────────
@@ -224,7 +268,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
     [Fact]
     public async Task Sync_FollowsNextLink_AcrossPages()
     {
-        var handler = new RecordingHandler(
+        var handler = OneCalendarHandler(
             Json(Page("https://graph.microsoft.com/v1.0/me/calendarView?page=2",
                 EventJson("gid-a", "A", "2026-08-01T09:00:00.0000000", "2026-08-01T10:00:00.0000000"),
                 EventJson("gid-b", "B", "2026-08-02T09:00:00.0000000", "2026-08-02T10:00:00.0000000"))),
@@ -233,8 +277,8 @@ public class GraphCalendarSyncServiceTests : IDisposable
 
         var result = await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, handler.Calls);
-        Assert.Contains("page=2", handler.Urls[1]);
+        Assert.Equal(3, handler.Calls); // calendars list, view page 1, view page 2
+        Assert.Contains("page=2", handler.Urls[2]);
         Assert.Equal(3, result.EventsFetched);
         var rows = await _store.LoadCalendarEventsAsync();
         Assert.Equal(new[] { "gid-a", "gid-b", "gid-c" }, rows.Select(r => r.Uid).OrderBy(u => u).ToArray());
@@ -245,13 +289,13 @@ public class GraphCalendarSyncServiceTests : IDisposable
     [Fact]
     public async Task Sync_RetriesOn429_HonoringRetryAfter()
     {
-        var handler = new RecordingHandler(
+        var handler = OneCalendarHandler(
             Json("{}", retryAfter: TimeSpan.Zero, code: (HttpStatusCode)429),
             Json(Page(null, EventJson("gid-429", "Throttled", "2026-08-01T09:00:00.0000000", "2026-08-01T10:00:00.0000000"))));
 
         var result = await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, handler.Calls); // one 429, one successful retry
+        Assert.Equal(3, handler.Calls); // calendars list, one 429 on the view, one successful retry
         Assert.Null(result.Error);
         Assert.Equal("gid-429", Assert.Single(await _store.LoadCalendarEventsAsync()).Uid);
     }
@@ -261,10 +305,13 @@ public class GraphCalendarSyncServiceTests : IDisposable
     [Fact]
     public async Task SecondSync_RemovesEventsThatVanishedOnServer()
     {
+        // Two syncs — each enumerates calendars, then pulls the one calendar's view.
         var handler = new RecordingHandler(
+            Json(CalendarsPage(("cal-1", "Calendar"))),
             Json(Page(null,
                 EventJson("gid-keep", "Keep", "2026-08-01T09:00:00.0000000", "2026-08-01T10:00:00.0000000"),
                 EventJson("gid-drop", "Drop", "2026-08-02T09:00:00.0000000", "2026-08-02T10:00:00.0000000"))),
+            Json(CalendarsPage(("cal-1", "Calendar"))),
             Json(Page(null,
                 EventJson("gid-keep", "Keep", "2026-08-01T09:00:00.0000000", "2026-08-01T10:00:00.0000000"))));
 
@@ -292,7 +339,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
             SourceMessageId = "msg-1", SourceFolder = "INBOX",
         });
 
-        var handler = new RecordingHandler(Json(Page(null,
+        var handler = OneCalendarHandler(Json(Page(null,
             EventJson("gid-1", "Graph event", "2026-08-01T09:00:00.0000000", "2026-08-01T10:00:00.0000000"))));
         await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
 

@@ -174,18 +174,18 @@ public partial class CalendarViewModel : ObservableObject
     partial void OnSearchTextChanged(string value) => ApplyFilters();
 
     /// <summary>
-    /// Which calendar source the views show: null = all sources merged; Guid.Empty = locally
-    /// authored appointments only; otherwise that account's events (synced or invite-harvested).
-    /// Set by MainViewModel from the selected tree node before LoadAsync.
+    /// Which calendar source(s) the views show: null = all sources merged; otherwise the
+    /// <see cref="MainViewModel.CalendarFilter"/> chosen from the selected tree node (an account, one
+    /// of its calendars, or the local calendar). Set by MainViewModel before LoadAsync.
     /// </summary>
-    private Guid? _accountFilter;
-    public Guid? AccountFilter
+    private MainViewModel.CalendarFilter? _sourceFilter;
+    public MainViewModel.CalendarFilter? SourceFilter
     {
-        get => _accountFilter;
+        get => _sourceFilter;
         set
         {
-            if (_accountFilter == value) return;
-            _accountFilter = value;
+            if (_sourceFilter == value) return;
+            _sourceFilter = value;
             ApplyFilters();
         }
     }
@@ -726,7 +726,8 @@ public partial class CalendarViewModel : ObservableObject
     private void ApplyFilters()
     {
         var baseEvents = _calendarService.Events
-            .Where(e => _accountFilter is not Guid f || e.AccountId == f)
+            .Where(e => (_sourceFilter?.Account is not Guid a || e.AccountId == a)
+                        && (_sourceFilter?.CalendarId is not string c || e.CalendarId == c))
             .Where(e => _showDeclinedEvents || e.ResponseStatus != CalendarResponseStatus.Declined)
             .Where(e => e.ResponseStatus != CalendarResponseStatus.Cancelled)
             .ToList();
@@ -849,6 +850,10 @@ public partial class CalendarViewModel : ObservableObject
             ResponseStatus  = master.ResponseStatus,
             IsAllDay        = master.IsAllDay,
             IsGraph         = master.IsGraph,
+            // Carry the calendar tag so an expanded occurrence of a recurring server calendar
+            // (e.g. a CalDAV series) still filters under its own calendar node.
+            CalendarId      = master.CalendarId,
+            CalendarName    = master.CalendarName,
             RecurrenceRule  = master.RecurrenceRule,
             ExDates         = master.ExDates,
             OccurrenceStart = occStart,

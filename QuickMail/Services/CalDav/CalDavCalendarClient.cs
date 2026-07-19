@@ -31,6 +31,16 @@ public interface ICalDavCalendarClient
                                                    CancellationToken ct = default);
 
     /// <summary>
+    /// Resolves EVERY VEVENT-capable calendar collection for the account (same principal →
+    /// calendar-home-set → child-collections walk as <see cref="DiscoverCalendarAsync"/>, but keeps
+    /// all matching collections instead of the first). Used by multi-calendar sync so each of an
+    /// account's calendars (Home, Work, Family) becomes its own tagged, selectable source. Throws
+    /// when no event calendar is found.
+    /// </summary>
+    Task<List<CalDavCalendarInfo>> DiscoverCalendarsAsync(string serverUrl, string username, string password,
+                                                          CancellationToken ct = default);
+
+    /// <summary>
     /// REPORT calendar-query for VEVENTs intersecting the UTC window, returning each
     /// response's raw calendar-data ICS body (one body per event resource; a body may hold
     /// several VEVENTs — a recurring master plus overridden instances).
@@ -100,6 +110,12 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
 
     public async Task<CalDavCalendarInfo> DiscoverCalendarAsync(string serverUrl, string username, string password,
                                                                 CancellationToken ct = default)
+        // The single-calendar entry point (and the Settings "Test" validation) is the first of the
+        // discovered set — the same walk, just keeping one collection.
+        => (await DiscoverCalendarsAsync(serverUrl, username, password, ct))[0];
+
+    public async Task<List<CalDavCalendarInfo>> DiscoverCalendarsAsync(string serverUrl, string username, string password,
+                                                                       CancellationToken ct = default)
     {
         var baseUri = NormalizeUri(serverUrl);
 
@@ -115,10 +131,14 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
 
         var (collectionsXml, collectionsReqUri) =
             await SendAsync(PropfindMethod, new Uri(homeReqUri, homeHref), CollectionsBody, depth: "1", username, password, ct);
-        var (calendarHref, calendarName) = ParseFirstVEventCalendar(collectionsXml)
-            ?? throw new InvalidOperationException("No event calendar was found for this account.");
+        var calendars = ParseAllVEventCalendars(collectionsXml);
+        if (calendars.Count == 0)
+            throw new InvalidOperationException("No event calendar was found for this account.");
 
-        return new CalDavCalendarInfo(new Uri(collectionsReqUri, calendarHref).ToString(), calendarName);
+        // Resolve each collection href against the host that answered the Depth-1 PROPFIND.
+        return calendars
+            .Select(c => new CalDavCalendarInfo(new Uri(collectionsReqUri, c.Href).ToString(), c.DisplayName))
+            .ToList();
     }
 
     // ── Event fetch ──────────────────────────────────────────────────────────────
@@ -163,13 +183,24 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
     }
 
     /// <summary>
-    /// The first response in a Depth-1 collections multistatus whose resourcetype marks a CalDAV
-    /// calendar collection AND whose supported-calendar-component-set includes VEVENT (a missing
-    /// component set counts as supporting everything). Skips VTODO-only collections (e.g.
-    /// Reminders lists) and non-calendar children (inbox/outbox/notifications).
+    /// The first VEVENT-capable calendar collection in a Depth-1 collections multistatus, or null.
+    /// Thin wrapper over <see cref="ParseAllVEventCalendars"/>.
     /// </summary>
     internal static (string Href, string DisplayName)? ParseFirstVEventCalendar(string xml)
     {
+        var all = ParseAllVEventCalendars(xml);
+        return all.Count > 0 ? all[0] : null;
+    }
+
+    /// <summary>
+    /// Every response in a Depth-1 collections multistatus whose resourcetype marks a CalDAV
+    /// calendar collection AND whose supported-calendar-component-set includes VEVENT (a missing
+    /// component set counts as supporting everything). Skips VTODO-only collections (e.g.
+    /// Reminders lists) and non-calendar children (inbox/outbox/notifications). Order preserved.
+    /// </summary>
+    internal static List<(string Href, string DisplayName)> ParseAllVEventCalendars(string xml)
+    {
+        var result = new List<(string, string)>();
         var doc = XDocument.Parse(xml);
         foreach (var response in doc.Descendants().Where(e => e.Name.LocalName == "response"))
         {
@@ -194,9 +225,9 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
 
             var name = response.Descendants()
                 .FirstOrDefault(e => e.Name.LocalName == "displayname")?.Value.Trim();
-            return (href, string.IsNullOrEmpty(name) ? "Calendar" : name);
+            result.Add((href, string.IsNullOrEmpty(name) ? "Calendar" : name));
         }
-        return null;
+        return result;
     }
 
     /// <summary>Every non-empty calendar-data ICS body in a REPORT multistatus.</summary>

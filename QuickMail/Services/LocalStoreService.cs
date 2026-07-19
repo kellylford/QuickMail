@@ -130,6 +130,12 @@ public class LocalStoreService : ILocalStoreService
         // Idempotent ALTER, mirroring is_all_day.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN is_graph INTEGER NOT NULL DEFAULT 0;");
 
+        // Per-calendar tagging (multi-calendar-per-account): the specific server calendar a synced
+        // row belongs to, so one account's calendars show as separate tree nodes. Empty for local /
+        // invite-harvested rows. Unversioned idempotent ALTERs, like is_all_day/is_graph above.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN calendar_id   TEXT NOT NULL DEFAULT '';");
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN calendar_name TEXT NOT NULL DEFAULT '';");
+
         RunDataMigrations(conn);
     }
 
@@ -809,8 +815,8 @@ public class LocalStoreService : ILocalStoreService
             INSERT INTO CalendarEvent(uid, account_id, summary, description, location,
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
                                       sequence, method, source_message_id, source_folder, response_status,
-                                      is_all_day, recurrence_rule, exdates, is_graph)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph)
+                                      is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -825,7 +831,12 @@ public class LocalStoreService : ILocalStoreService
                 source_folder     = excluded.source_folder,
                 is_all_day        = excluded.is_all_day,
                 recurrence_rule   = excluded.recurrence_rule,
-                exdates           = excluded.exdates
+                exdates           = excluded.exdates,
+                -- Preserve an existing calendar tag when the incoming row is untagged (e.g. a server
+                -- write-back that targets the default calendar and carries no tag); the next full
+                -- sync re-tags it. A non-empty incoming tag always wins.
+                calendar_id       = CASE WHEN excluded.calendar_id   = '' THEN calendar_id   ELSE excluded.calendar_id   END,
+                calendar_name     = CASE WHEN excluded.calendar_name = '' THEN calendar_name ELSE excluded.calendar_name END
             WHERE CalendarEvent.is_graph = 0 OR excluded.is_graph = 1;
             """;
         // The DO UPDATE ... WHERE guard: server-synced rows (is_graph=1) are owned by the calendar
@@ -852,6 +863,8 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$rrule", (object?)evt.RecurrenceRule ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$exd",  (object?)evt.ExDates ?? DBNull.Value);
         cmd.Parameters.AddWithValue("$graph", evt.IsGraph ? 1 : 0);
+        cmd.Parameters.AddWithValue("$calid", evt.CalendarId);
+        cmd.Parameters.AddWithValue("$calname", evt.CalendarName);
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
@@ -881,8 +894,8 @@ public class LocalStoreService : ILocalStoreService
                 INSERT OR REPLACE INTO CalendarEvent(uid, account_id, summary, description, location,
                                           organizer, organizer_name, start_time_ticks, end_time_ticks,
                                           sequence, method, source_message_id, source_folder, response_status,
-                                          is_all_day, recurrence_rule, exdates, is_graph)
-                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1);
+                                          is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name)
+                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname);
                 """;
             var pUid  = ins.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Text);
             var pAid  = ins.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
@@ -901,6 +914,8 @@ public class LocalStoreService : ILocalStoreService
             var pAll  = ins.Parameters.Add("$allday", Microsoft.Data.Sqlite.SqliteType.Integer);
             var pRr   = ins.Parameters.Add("$rrule", Microsoft.Data.Sqlite.SqliteType.Text);
             var pExd  = ins.Parameters.Add("$exd",  Microsoft.Data.Sqlite.SqliteType.Text);
+            var pCid  = ins.Parameters.Add("$calid",   Microsoft.Data.Sqlite.SqliteType.Text);
+            var pCn   = ins.Parameters.Add("$calname", Microsoft.Data.Sqlite.SqliteType.Text);
 
             foreach (var evt in events)
             {
@@ -921,6 +936,8 @@ public class LocalStoreService : ILocalStoreService
                 pAll.Value  = evt.IsAllDay ? 1 : 0;
                 pRr.Value   = (object?)evt.RecurrenceRule ?? DBNull.Value;
                 pExd.Value  = (object?)evt.ExDates ?? DBNull.Value;
+                pCid.Value  = evt.CalendarId;
+                pCn.Value   = evt.CalendarName;
                 await ins.ExecuteNonQueryAsync();
             }
         }
@@ -936,7 +953,8 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText = """
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
-                   source_folder, response_status, is_all_day, recurrence_rule, exdates, is_graph
+                   source_folder, response_status, is_all_day, recurrence_rule, exdates, is_graph,
+                   calendar_id, calendar_name
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -963,8 +981,29 @@ public class LocalStoreService : ILocalStoreService
                 RecurrenceRule   = r.IsDBNull(15) ? null : r.GetString(15),
                 ExDates          = r.IsDBNull(16) ? null : r.GetString(16),
                 IsGraph          = !r.IsDBNull(17) && r.GetInt32(17) != 0,
+                CalendarId       = r.IsDBNull(18) ? string.Empty : r.GetString(18),
+                CalendarName     = r.IsDBNull(19) ? string.Empty : r.GetString(19),
             });
         }
+        return list;
+    }
+
+    public async Task<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>> LoadCalendarSourcesAsync()
+    {
+        var list = new List<(Guid, string, string)>();
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        // Distinct server calendars across all synced rows — one row per (account, calendar), used to
+        // build the per-calendar grandchild nodes under each account in the folder tree.
+        cmd.CommandText = """
+            SELECT DISTINCT account_id, calendar_id, calendar_name
+            FROM CalendarEvent
+            WHERE is_graph = 1 AND calendar_id <> ''
+            ORDER BY calendar_name;
+            """;
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            list.Add((Guid.Parse(r.GetString(0)), r.GetString(1), r.GetString(2)));
         return list;
     }
 

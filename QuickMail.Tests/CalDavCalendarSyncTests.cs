@@ -348,6 +348,57 @@ public class CalDavCalendarSyncTests : IDisposable
         Assert.Contains("time-range start=", report.Body);
     }
 
+    // Two VEVENT calendars in the home — Home and Work — so multi-calendar sync fetches each.
+    private const string TwoCalendarsXml =
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+          <d:response>
+            <d:href>/123456/calendars/home/</d:href>
+            <d:propstat><d:prop>
+              <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
+              <d:displayname>Home</d:displayname>
+              <c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>
+            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+          </d:response>
+          <d:response>
+            <d:href>/123456/calendars/work/</d:href>
+            <d:propstat><d:prop>
+              <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
+              <d:displayname>Work</d:displayname>
+              <c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>
+            </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+          </d:response>
+        </d:multistatus>
+        """;
+
+    [Fact]
+    public async Task Sync_MultipleCalendars_FetchesEach_AndTagsRows()
+    {
+        // Discovery returns two VEVENT calendars; sync issues one REPORT per calendar and tags rows.
+        var handler = new RecordingHandler(
+            Xml(PrincipalXml), Xml(HomeSetXml), Xml(TwoCalendarsXml),
+            Xml(ReportXml(TimedIcs)),   // Home
+            Xml(ReportXml(AllDayIcs))); // Work
+
+        var result = await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.EventsFetched);
+        // 3 discovery hops + one REPORT per calendar.
+        Assert.Equal(5, handler.Requests.Count);
+        Assert.Equal("REPORT", handler.Requests[3].Method);
+        Assert.Equal("https://p42-caldav.icloud.com/123456/calendars/home/", handler.Requests[3].Url);
+        Assert.Equal("REPORT", handler.Requests[4].Method);
+        Assert.Equal("https://p42-caldav.icloud.com/123456/calendars/work/", handler.Requests[4].Url);
+
+        var rows = await _store.LoadCalendarEventsAsync();
+        Assert.Equal("Home", rows.Single(r => r.Uid == "timed@icloud").CalendarName);
+        Assert.Equal("Work", rows.Single(r => r.Uid == "allday@icloud").CalendarName);
+        // The collection href is the calendar id (round-trips through the folder-tree encoding).
+        Assert.Equal("https://p42-caldav.icloud.com/123456/calendars/home/",
+                     rows.Single(r => r.Uid == "timed@icloud").CalendarId);
+    }
+
     [Fact]
     public async Task Sync_SecondPass_ReusesDiscoveredCalendar_AndReplacesSlice()
     {
@@ -541,8 +592,10 @@ public class CalDavCalendarSyncTests : IDisposable
     [Fact]
     public void MapCalDavEvents_DuplicateUids_CollapseToOneRow()
     {
-        var rows = GraphCalendarSyncService.MapCalDavEvents([TimedIcs, TimedIcs], _accountId);
+        var rows = GraphCalendarSyncService.MapCalDavEvents([TimedIcs, TimedIcs], _accountId, "cal-url", "Home");
         Assert.Single(rows);
+        Assert.Equal("cal-url", rows[0].CalendarId);   // tagged with the calendar it came from
+        Assert.Equal("Home", rows[0].CalendarName);
     }
 
     [Fact]
@@ -556,10 +609,51 @@ public class CalDavCalendarSyncTests : IDisposable
             "END:VEVENT",
             "END:VCALENDAR");
 
-        var first  = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([ics], _accountId));
-        var second = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([ics], _accountId));
+        var first  = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([ics], _accountId, "cal-url", "Home"));
+        var second = Assert.Single(GraphCalendarSyncService.MapCalDavEvents([ics], _accountId, "cal-url", "Home"));
 
         Assert.StartsWith("caldav-", first.Uid);
         Assert.Equal(first.Uid, second.Uid); // stable across passes → replace-slice keeps identity
+    }
+
+    [Fact]
+    public void ParseAllVEventCalendars_ReturnsEveryVEventCollection()
+    {
+        // CollectionsXml has one VEVENT calendar (Home); add a second to prove all are returned.
+        const string twoCalendars =
+            """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+              <d:response>
+                <d:href>/123456/calendars/home/</d:href>
+                <d:propstat><d:prop>
+                  <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
+                  <d:displayname>Home</d:displayname>
+                  <c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>
+                </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+              </d:response>
+              <d:response>
+                <d:href>/123456/calendars/work/</d:href>
+                <d:propstat><d:prop>
+                  <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
+                  <d:displayname>Work</d:displayname>
+                  <c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set>
+                </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+              </d:response>
+              <d:response>
+                <d:href>/123456/calendars/tasks/</d:href>
+                <d:propstat><d:prop>
+                  <d:resourcetype><d:collection/><c:calendar/></d:resourcetype>
+                  <d:displayname>Reminders</d:displayname>
+                  <c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set>
+                </d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat>
+              </d:response>
+            </d:multistatus>
+            """;
+
+        var calendars = CalDavCalendarClient.ParseAllVEventCalendars(twoCalendars);
+        Assert.Equal(2, calendars.Count); // both VEVENT calendars; the VTODO Reminders list is skipped
+        Assert.Equal(("/123456/calendars/home/", "Home"), calendars[0]);
+        Assert.Equal(("/123456/calendars/work/", "Work"), calendars[1]);
     }
 }
