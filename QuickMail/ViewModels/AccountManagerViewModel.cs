@@ -19,6 +19,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     private readonly IOAuthService _oauth;
     private readonly IFeatureGate _featureGate;
     private readonly IContactSyncService? _contactSync;
+    private readonly IGraphCalendarSyncService? _graphCalendarSync;
 
     [ObservableProperty]
     private ObservableCollection<AccountModel> _accounts = [];
@@ -26,6 +27,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(CanSyncContacts))]
+    [NotifyPropertyChangedFor(nameof(CanSyncCalendar))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
@@ -38,7 +40,17 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _contactSync != null &&
         SelectedAccount is { AuthType: AuthType.OAuth2Microsoft or AuthType.OAuth2Google };
 
-    // SyncContacts is inherited from AccountEditorViewModel (shared with the Add Account flow).
+    // SyncContacts / SyncCalendar are inherited from AccountEditorViewModel (shared with Add Account).
+
+    /// <summary>
+    /// Calendar sync (#282) is offered for a superset of contact sync: Microsoft and Google (calendar
+    /// API), plus iCloud accounts (CalDAV via the account's app-specific password). Other password/IMAP
+    /// accounts show no checkbox.
+    /// </summary>
+    public bool CanSyncCalendar =>
+        _graphCalendarSync != null && SelectedAccount is { } acct &&
+        (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
+         || acct.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
 
     public override bool ShowGoogleAuthOption => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
 
@@ -50,7 +62,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         ILocalStoreService localStore,
         IConfigService configService,
         IFeatureGate featureGate,
-        IContactSyncService? contactSync = null)
+        IContactSyncService? contactSync = null,
+        IGraphCalendarSyncService? graphCalendarSync = null)
         : base(imap, oauth)
     {
         _accountService = accountService;
@@ -60,6 +73,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _configService  = configService;
         _featureGate    = featureGate;
         _contactSync    = contactSync;
+        _graphCalendarSync = graphCalendarSync;
         Accounts = new ObservableCollection<AccountModel>(accountService.LoadAccounts());
     }
 
@@ -84,6 +98,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SmtpAcceptInvalidCert = value.SmtpAcceptInvalidCert;
         Signature = value.Signature;
         SyncContacts = value.SyncContacts;
+        SyncCalendar = value.SyncCalendar;
         StatusText = string.Empty;
     }
 
@@ -133,6 +148,57 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
+    /// <summary>
+    /// Applies a calendar-sync toggle immediately (#282) — no Save step, mirroring contact sync.
+    /// Enabling requests calendar consent where needed (Microsoft; Google/iCloud need none), persists
+    /// the flag, and pulls an initial snapshot; disabling removes that account's synced calendar rows.
+    /// On failure the checkbox reverts. Called from the checkbox's Click handler (never fires on the
+    /// programmatic assignment in <see cref="OnSelectedAccountChanged"/>).
+    /// </summary>
+    public async Task SetCalendarSyncAsync(bool enabled)
+    {
+        if (SelectedAccount is not { } account) return;
+
+        try
+        {
+            if (enabled)
+            {
+                if (!CanSyncCalendar) return; // box is hidden for these accounts; defensive
+                account.SyncCalendar = true;
+                // Only Microsoft needs an explicit calendar-scope consent; Google's is granted at
+                // mail sign-in and iCloud uses the account's app-specific password — neither prompts,
+                // so don't show a "requesting permission" message for them.
+                if (account.AuthType == AuthType.OAuth2Microsoft)
+                {
+                    StatusText = "Requesting permission to read your calendar…";
+                    await _oauth.RequestCalendarConsentAsync(account);
+                }
+                _accountService.SaveAccounts([.. Accounts]);
+                // Pull an initial snapshot so events appear without waiting for the next sync pass.
+                _graphCalendarSync?.SyncAccountCalendarAsync(account).LogFaults("calendar sync after enable");
+                StatusText = "Calendar sync enabled — this account's events will appear in the Calendar.";
+            }
+            else
+            {
+                account.SyncCalendar = false;
+                _accountService.SaveAccounts([.. Accounts]);
+                if (_graphCalendarSync != null)
+                    await _graphCalendarSync.RemoveAccountCalendarAsync(account.Id);
+                StatusText = "Calendar sync disabled.";
+            }
+        }
+        catch (Exception ex)
+        {
+            // Consent declined or failed — revert the checkbox and leave sync off so we don't retry
+            // against a missing grant.
+            account.SyncCalendar = false;
+            SyncCalendar = false;
+            _accountService.SaveAccounts([.. Accounts]);
+            StatusText = $"Calendar sync not enabled: {ex.Message}";
+            LogService.Log($"AccountManager: calendar-sync enable failed for {account.AccountLabel} — {ex.Message}");
+        }
+    }
+
     public AddAccountViewModel CreateAddAccountViewModel() => new(_featureGate, MailService, OAuthService);
 
     public void CommitNewAccount(AccountModel account, string password)
@@ -149,6 +215,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         // scope granted now (silent when the app registration declares it). Then pull the first batch.
         if (account.SyncContacts && _contactSync != null && _contactSync.CanSync(account))
             _ = FinishNewAccountContactSyncAsync(account);
+
+        // Same for calendar (#282): Microsoft needs a calendar-scope grant now; Google already has it
+        // from sign-in; iCloud uses the app-specific password just saved above. Then pull the first batch.
+        if (account.SyncCalendar && _graphCalendarSync != null)
+            _ = FinishNewAccountCalendarSyncAsync(account);
     }
 
     private async Task FinishNewAccountContactSyncAsync(AccountModel account)
@@ -166,6 +237,24 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             _accountService.SaveAccounts([.. Accounts]);
             StatusText = $"Account added, but contact sync couldn't be enabled: {ex.Message}";
             LogService.Log($"AccountManager: new-account contact sync failed for {account.AccountLabel} — {ex.Message}");
+        }
+    }
+
+    private async Task FinishNewAccountCalendarSyncAsync(AccountModel account)
+    {
+        try
+        {
+            if (account.AuthType == AuthType.OAuth2Microsoft)
+                await _oauth.RequestCalendarConsentAsync(account);
+            _graphCalendarSync!.SyncAccountCalendarAsync(account).LogFaults("initial calendar sync for new account");
+            StatusText = "Account added. Calendar sync enabled — this account's events will appear in the Calendar.";
+        }
+        catch (Exception ex)
+        {
+            account.SyncCalendar = false;
+            _accountService.SaveAccounts([.. Accounts]);
+            StatusText = $"Account added, but calendar sync couldn't be enabled: {ex.Message}";
+            LogService.Log($"AccountManager: new-account calendar sync failed for {account.AccountLabel} — {ex.Message}");
         }
     }
 

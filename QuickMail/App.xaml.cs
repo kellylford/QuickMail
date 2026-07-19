@@ -269,13 +269,13 @@ public partial class App : Application
             // disposed in OnExit, like the People client). The sync timer and its CTS live in
             // MainViewModel (disposed in MainViewModel.Dispose).
             _googleCalendarClient = new GoogleCalendarClient(googleOAuth);
-            // Generic CalDAV (iCloud-first): the source is configured in Settings (URL + username
-            // in config.ini, app-specific password in Windows Credential Manager), so the sync
-            // service reads config/credentials per pass rather than binding to an account.
+            // iCloud CalDAV runs per-account (#282): for each account the user opted into whose IMAP
+            // host is imap.mail.me.com, the sync service discovers/fetches its calendar using the
+            // account's own app-specific password from Windows Credential Manager.
             _calDavCalendarClient = new CalDavCalendarClient();
             var graphCalendarSync = new GraphCalendarSyncService(accountService, localStore, graphBackend.Client,
                                                                  _googleCalendarClient,
-                                                                 _calDavCalendarClient, configService, credentialService);
+                                                                 _calDavCalendarClient, credentialService);
 
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
@@ -288,7 +288,7 @@ public partial class App : Application
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.

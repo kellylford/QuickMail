@@ -80,26 +80,6 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
 
     // ── Identity helpers ─────────────────────────────────────────────────────────
 
-    /// <summary>Windows Credential Manager key for a CalDAV source's app-specific password.</summary>
-    public static string SecretKeyFor(string username) => $"QuickMail/CalDAV/{username.Trim()}";
-
-    /// <summary>
-    /// The synthetic, stable AccountId for a CalDAV source's rows in the CalendarEvent table.
-    /// CalDAV sources are not QuickMail accounts, but every calendar row needs an account id, so
-    /// one is derived DETERMINISTICALLY from the source's identity: the first 16 bytes of
-    /// SHA-256 over <c>"caldav|{url}|{username}"</c> (both trimmed and lower-cased, trailing
-    /// slash dropped from the URL). The same Settings values always map to the same id — the
-    /// calendar-tree filter, replace-slice deletes, and previously synced rows all keep lining
-    /// up across restarts — while different sources cannot collide with each other, with real
-    /// account GUIDs (random v4), or with the local sentinel (<see cref="System.Guid.Empty"/>).
-    /// </summary>
-    public static Guid AccountIdFor(string url, string username)
-    {
-        var key = $"caldav|{url.Trim().TrimEnd('/').ToLowerInvariant()}|{username.Trim().ToLowerInvariant()}";
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
-        return new Guid(hash.AsSpan(0, 16));
-    }
-
     /// <summary>Deterministic fallback Uid for a VEVENT that (against RFC 5545) carries no UID.</summary>
     internal static string SyntheticUid(string seed)
     {

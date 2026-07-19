@@ -52,6 +52,15 @@ public partial class AccountModel : ObservableObject
     public bool SyncContacts { get; set; } = false;
 
     /// <summary>
+    /// When true, QuickMail pulls this account's calendar into the calendar view (#282). Off by
+    /// default. Meaningful for Microsoft and Google (calendar API) and iCloud accounts (CalDAV at
+    /// caldav.icloud.com, reusing the account's app-specific password). Enabling a Microsoft
+    /// account triggers a one-time calendar-scope consent; Google's calendar scope is already
+    /// granted at mail sign-in; iCloud needs no extra consent.
+    /// </summary>
+    public bool SyncCalendar { get; set; } = false;
+
+    /// <summary>
     /// Plain-text signature appended to new messages and replies/forwards.
     /// Empty string means no signature. Stored in accounts.json.
     /// </summary>

@@ -111,11 +111,15 @@ Choose **Microsoft OAuth**. The server fields fill in automatically. Activate **
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
+To show this account's calendar in the Calendar view, check **Sync calendar from this account**. See the [Calendar](#calendar) section for details.
+
 ### Gmail (Google Account)
 
 Enter your Gmail address in the **Email / Username** field — QuickMail then automatically selects Google authentication for the account, so you do not need to set the authentication type yourself. Activate the **Sign in with Google** button; your browser opens to a Google sign-in page. Complete the sign-in, grant QuickMail permission to read and send mail, then close the browser window. Back in QuickMail, activate **Add Account**. Gmail's server settings fill in automatically.
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in — for Google this is folded into the same sign-in consent. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
+
+To show this account's calendar in the Calendar view, check **Sync calendar from this account** — Google's calendar permission is part of the same sign-in. See the [Calendar](#calendar) section for details.
 
 You may see a message that no password was saved for the account. This is expected with Google authentication — Gmail signs in through your Google account rather than a stored password, so there is no password to save. The Google sign-in itself is stored securely in Windows Credential Manager and refreshes automatically; you are not prompted to sign in again unless you revoke access from your Google account settings.
 
@@ -127,9 +131,11 @@ Enter your iCloud address (`@icloud.com`, `@me.com`, or `@mac.com`) in the **Ema
 
 **App-specific password required.** Apple does not allow third-party apps to use your Apple ID password directly. Generate an app-specific password at **appleid.apple.com** (Sign-In & Security → App-Specific Passwords) and enter it in the Password field. QuickMail shows a reminder in the password area when it detects an iCloud address.
 
+To show your iCloud calendar in the Calendar view, check **Sync calendar from this account** — QuickMail uses the same app-specific password, so there's nothing else to set up. iCloud calendars are read-only in QuickMail. See the [Calendar](#calendar) section for details.
+
 ### Managing Accounts
 
-Open **Settings → Accounts** to rename, edit, or remove an account. Removing an account does not delete mail from the server. For OAuth accounts (Microsoft or Google), removing the account also clears the stored credential from Windows Credential Manager. Editing a Microsoft or Google account is also where you turn **Sync contacts from this account** on or off after the fact; the change applies immediately.
+Open **Settings → Accounts** to rename, edit, or remove an account. Removing an account does not delete mail from the server. For OAuth accounts (Microsoft or Google), removing the account also clears the stored credential from Windows Credential Manager. Managing an account is also where you turn **Sync contacts from this account** (Microsoft/Google) and **Sync calendar from this account** (Microsoft, Google, or iCloud) on or off after the fact; each change applies immediately.
 
 ---
 
@@ -651,16 +657,18 @@ When you open an email that contains a meeting invitation, QuickMail adds an eve
 
 ### Connecting an online calendar
 
-QuickMail can sync with online calendars. What it can do depends on the provider:
+Calendars connect **per account**, the same way contact sync does. When you add an email account — or later, in **Manage Accounts** — check **Sync calendar from this account** and QuickMail shows that account's calendar in the Calendar view. Nothing is synced until you check the box, and unchecking it removes that account's events again. The checkbox is offered for the providers QuickMail can read:
 
-| Provider | See your events | Create / edit / delete from QuickMail | How to set it up |
-|----------|-----------------|----------------------------------------|------------------|
+| Provider | See your events | Create / edit / delete from QuickMail | Setup |
+|----------|-----------------|----------------------------------------|-------|
 | **Local Calendar** | — (they live here) | Full | Nothing to set up; it is always there. |
-| **Microsoft** (Outlook.com, Microsoft 365) | Yes | Yes, for single (non-repeating) events | Automatic once you add the Microsoft account for mail and grant calendar access. |
-| **Google** | Yes | Yes, for single (non-repeating) events | Automatic once the Google account is connected for mail. |
-| **iCloud / other internet calendars (CalDAV)** | Yes | No — read-only | **Settings → General → Internet Calendar**: enter the server address, your username, and an app-specific password, then press **Test**. For iCloud use `https://caldav.icloud.com`, your Apple ID, and an app-specific password. |
+| **Microsoft** (Outlook.com, Microsoft 365) | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. Microsoft asks once for calendar permission. |
+| **Google** | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. Permission was granted when you signed in for mail. |
+| **iCloud** | Yes | No — read-only | Check **Sync calendar from this account**. QuickMail uses the app-specific password you already entered for the account — no separate setup. |
 
-Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup). Press **F5** to refresh on demand. Syncing is one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
+**Turning it on for an account you already have:** open **Manage Accounts**, select the account, and check **Sync calendar from this account**. It applies immediately — a **Calendar → [account]** node appears in the folder tree and the events sync in the background. Unchecking it removes them.
+
+Connected calendars refresh automatically in the background (roughly every 15 minutes, and once shortly after startup). Press **F5** to refresh on demand, or use **Sync Calendars Now** from the command palette. Syncing is a one-directional download plus, for Microsoft and Google, the single-event write-back described above; it never opens a sign-in prompt on its own — if an account needs you to sign in again for calendar access, QuickMail tells you.
 
 ### What the calendar does and does not do
 
@@ -679,7 +687,8 @@ To set expectations clearly:
 
 - Work in online mode — it needs the local cache.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
-- Edit **repeating** events that came from an online calendar, or edit anything on an **iCloud/CalDAV** calendar (those are read-only).
+- Edit **repeating** events that came from an online calendar, or change anything on an **iCloud** calendar (iCloud is read-only in QuickMail).
+- Connect calendars from generic CalDAV servers other than iCloud (Fastmail, Nextcloud, and the like).
 - Subscribe to public `.ics` calendar feeds (holidays, sports schedules, and the like).
 - Offer multiple named calendars, calendar colors, per-appointment reminder times, or reminder snoozing.
 

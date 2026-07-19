@@ -260,26 +260,6 @@ public class ConfigModel
     /// </summary>
     public string GoogleClientSecret { get; set; } = string.Empty;
 
-    // ── CalDAV calendar source ───────────────────────────────────────────────────
-
-    /// <summary>
-    /// CalDAV calendar server address (e.g. "https://caldav.icloud.com"). Set from Settings.
-    /// Empty = no CalDAV calendar source configured. Stored in the [caldav] section of
-    /// config.ini. The password is NEVER stored here — it lives in Windows Credential
-    /// Manager under <c>QuickMail/CalDAV/{username}</c> via ICredentialService.
-    /// </summary>
-    public string CalDavUrl { get; set; } = string.Empty;
-
-    /// <summary>CalDAV account username (for iCloud, the Apple ID email).</summary>
-    public string CalDavUsername { get; set; } = string.Empty;
-
-    /// <summary>Display name for the CalDAV source in the calendar folder tree.</summary>
-    public string CalDavDisplayName { get; set; } = "iCloud";
-
-    /// <summary>True when a CalDAV calendar source is configured (URL + username present).</summary>
-    public bool HasCalDavSource =>
-        !string.IsNullOrWhiteSpace(CalDavUrl) && !string.IsNullOrWhiteSpace(CalDavUsername);
-
     // ── Feature flags ─────────────────────────────────────────────────────────────
 
     /// <summary>

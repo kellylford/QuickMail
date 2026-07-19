@@ -88,6 +88,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
         public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
         public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
         public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+        public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
         public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
     }
 
@@ -104,6 +105,7 @@ public class GraphCalendarSyncServiceTests : IDisposable
         Id = _accountId,
         BackendKind = BackendKind.MicrosoftGraph,
         Username = "user@example.com",
+        SyncCalendar = true, // calendar sync is opt-in per account (#282)
     };
 
     private GraphCalendarSyncService Service(RecordingHandler handler, params AccountModel[] accounts)
@@ -370,6 +372,23 @@ public class GraphCalendarSyncServiceTests : IDisposable
         var handler = new RecordingHandler();
 
         var result = await Service(handler, imapAccount).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, handler.Calls);
+        Assert.Equal(GraphCalendarSyncResult.None, result);
+    }
+
+    [Fact]
+    public async Task Sync_SkipsAccountsWithoutCalendarOptIn()
+    {
+        // A Microsoft account that has NOT opted into calendar sync (#282) is skipped — no request.
+        var notOptedIn = new AccountModel
+        {
+            Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph,
+            Username = "user@example.com", SyncCalendar = false,
+        };
+        var handler = new RecordingHandler();
+
+        var result = await Service(handler, notOptedIn).SyncAllAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(0, handler.Calls);
         Assert.Equal(GraphCalendarSyncResult.None, result);

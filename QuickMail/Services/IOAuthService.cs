@@ -67,5 +67,14 @@ public interface IOAuthService
     /// </summary>
     Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default);
 
+    /// <summary>
+    /// Ensures the account has consented to the read/write calendar scopes needed for calendar sync
+    /// (#282): Graph <c>Calendars.ReadWrite</c> for Microsoft accounts. Silent when consent was
+    /// already granted; otherwise opens an interactive sign-in. Throws if the user declines. Call
+    /// from a foreground user action only. Google needs no call (its calendar scope is granted at
+    /// mail sign-in); the router routes only Microsoft accounts here.
+    /// </summary>
+    Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default);
+
     Task SignOutAsync(AccountModel account);
 }

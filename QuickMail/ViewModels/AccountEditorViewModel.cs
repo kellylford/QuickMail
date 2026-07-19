@@ -23,6 +23,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsICloudAccount))]
+    [NotifyPropertyChangedFor(nameof(ShowCalendarSyncOption))]
     private string _imapHost = string.Empty;
     [ObservableProperty] private int    _imapPort = 993;
     [ObservableProperty] private bool   _imapUseSsl = true;
@@ -39,6 +40,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsGoogleOAuth))]
     [NotifyPropertyChangedFor(nameof(AuthTypeIndex))]
     [NotifyPropertyChangedFor(nameof(ShowContactSyncOption))]
+    [NotifyPropertyChangedFor(nameof(ShowCalendarSyncOption))]
     private AuthType _authType = AuthType.Password;
 
     /// <summary>
@@ -51,6 +53,17 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     /// <summary>Contact sync is only offered for OAuth accounts — the backends with a contact API.</summary>
     public bool ShowContactSyncOption => IsOAuth2 || IsGoogleOAuth;
+
+    /// <summary>
+    /// Bound to the "Sync calendar from this account" checkbox (#282). Like contact sync it can be
+    /// checked before sign-in. Offered for a superset of contact sync: Microsoft and Google
+    /// (calendar API) plus iCloud (CalDAV via the account's app-specific password).
+    /// </summary>
+    [ObservableProperty]
+    private bool _syncCalendar;
+
+    /// <summary>Calendar sync is offered for Microsoft, Google, and iCloud accounts.</summary>
+    public bool ShowCalendarSyncOption => IsOAuth2 || IsGoogleOAuth || IsICloudAccount;
 
     /// <summary>True when the IMAP host matches iCloud — drives the app-specific password hint.</summary>
     public bool IsICloudAccount => ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);

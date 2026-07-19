@@ -98,6 +98,7 @@ sealed class StubOAuthService : IOAuthService
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
     public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
+    public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
     public Task SignOutAsync(AccountModel account) => Task.CompletedTask;
 }
 
@@ -330,6 +331,21 @@ sealed class StubGraphCalendarSyncService : IGraphCalendarSyncService
     {
         SyncCallCount++;
         return Task.FromResult(Result);
+    }
+
+    public List<Guid> SyncedAccounts { get; } = [];
+    public List<Guid> RemovedAccounts { get; } = [];
+
+    public Task<int> SyncAccountCalendarAsync(AccountModel account, CancellationToken ct = default)
+    {
+        SyncedAccounts.Add(account.Id);
+        return Task.FromResult(0);
+    }
+
+    public Task RemoveAccountCalendarAsync(Guid accountId, CancellationToken ct = default)
+    {
+        RemovedAccounts.Add(accountId);
+        return Task.CompletedTask;
     }
 
     public Task<CalendarEvent> CreateEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct = default)

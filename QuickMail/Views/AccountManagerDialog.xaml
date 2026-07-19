@@ -241,6 +241,18 @@
                               Margin="0,0,0,4" TabIndex="12"/>
                 </StackPanel>
 
+                <!-- Calendar sync (#282) — shown for Microsoft, Google, and iCloud accounts. -->
+                <StackPanel Visibility="{Binding CanSyncCalendar, Converter={StaticResource BoolToVisibility}}">
+                    <Separator Margin="0,12,0,6"/>
+                    <TextBlock Text="Calendar" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <CheckBox Content="Sync ca_lendar from this account"
+                              IsChecked="{Binding SyncCalendar}"
+                              Click="SyncCalendarCheckBox_Click"
+                              AutomationProperties.Name="Sync calendar from this account"
+                              AutomationProperties.HelpText="Shows this account's calendar in the Calendar view. Microsoft asks for a one-time permission; iCloud uses your app-specific password."
+                              Margin="0,0,0,4" TabIndex="13"/>
+                </StackPanel>
+
             </StackPanel>
         </ScrollViewer>
 

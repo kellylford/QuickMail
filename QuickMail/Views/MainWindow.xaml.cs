@@ -187,6 +187,7 @@ public partial class MainWindow : Window
 
     private readonly IContactService _contactService;
     private readonly IContactSyncService? _contactSyncService;
+    private readonly IGraphCalendarSyncService? _graphCalendarSyncService;
     private readonly IConfigService _configService;
     private readonly ILocalStoreService _localStore;
     private readonly IViewService _viewService;
@@ -253,7 +254,8 @@ public partial class MainWindow : Window
         IThemeService? themeService = null,
         IBugReportService? bugReportService = null,
         INotificationService? notificationService = null,
-        IContactSyncService? contactSyncService = null)
+        IContactSyncService? contactSyncService = null,
+        IGraphCalendarSyncService? graphCalendarSyncService = null)
     {
         _vm = vm;
         _notificationService = notificationService;
@@ -265,6 +267,7 @@ public partial class MainWindow : Window
         _registry = registry;
         _contactService = contactService;
         _contactSyncService = contactSyncService;
+        _graphCalendarSyncService = graphCalendarSyncService;
         _configService = configService;
         _localStore = localStore;
         _viewService = viewService;
@@ -995,6 +998,11 @@ public partial class MainWindow : Window
             id: "contacts.syncNow", category: "Contacts", title: "Sync Contacts Now",
             execute: SyncContactsNow,
             isAvailable: () => _contactSyncService != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.syncNow", category: "Calendar", title: "Sync Calendars Now",
+            execute: SyncCalendarsNow,
+            isAvailable: () => _graphCalendarSyncService != null));
 
         _registry.Register(new CommandDefinition(
             id: "settings.toggleCustomAnnouncements", category: "Settings", title: "Toggle Custom Announcements",
@@ -4541,20 +4549,23 @@ public partial class MainWindow : Window
 
     private void OpenAccountManager()
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService, _graphCalendarSyncService);
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
-        if (dialog.ShowDialog() == true)
-            _vm.RefreshAccountList();
+        dialog.ShowDialog();
+        // Refresh regardless of the dialog result: the contact- and calendar-sync toggles apply
+        // immediately (persisted without a Save step), so the calendar tree must reflect them even
+        // when the dialog is closed with Cancel.
+        _vm.RefreshAccountList();
     }
 
     private void OpenAccountManagerForAccount(AccountModel account)
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService, _graphCalendarSyncService);
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);
-        if (dialog.ShowDialog() == true)
-            _vm.RefreshAccountList();
+        dialog.ShowDialog();
+        _vm.RefreshAccountList();   // see note above — reflect immediate sync toggles
     }
 
     // ── Tab & Window Management handlers ────────────────────────────────────────
@@ -5129,6 +5140,31 @@ public partial class MainWindow : Window
         }
     }
 
+    // Manual "Sync Calendars Now" (#282) — mirrors SyncContactsNow. Syncs every account the user
+    // opted into calendar sync for. F5 already refreshes the open calendar; this is the app-wide
+    // palette action so it works from anywhere.
+    private async void SyncCalendarsNow()
+    {
+        if (_graphCalendarSyncService is null) return;
+        AccessibilityHelper.Announce(this, "Syncing calendars…", category: AnnouncementCategory.Status);
+        try
+        {
+            var result = await _graphCalendarSyncService.SyncAllAsync();
+            var message = result.Error is not null
+                ? $"Calendar sync failed: {result.Error}"
+                : result.AccountsSynced == 0
+                    ? "No accounts are set up to sync calendars."
+                    : $"Calendars synced, {result.EventsFetched} event{(result.EventsFetched == 1 ? "" : "s")} total.";
+            AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Result);
+            _vm.CalendarVm?.ApplyFiltersFromExternalUpdate();
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("SyncCalendarsNow", ex);
+            AccessibilityHelper.Announce(this, $"Calendar sync failed: {ex.Message}", category: AnnouncementCategory.Result);
+        }
+    }
+
     private void OpenAddressBook()
     {
         var vm = new AddressBookViewModel(_contactService, _contactSyncService, _accountService, _configService);
@@ -5176,12 +5212,7 @@ public partial class MainWindow : Window
             .Select(f => f.Source)
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        // Per-dialog CalDAV client for the Test button; disposed when this method (and the
-        // modal dialog inside it) finishes. An in-flight Test at close just faults into the
-        // command's catch-all.
-        using var calDavClient = new CalDavCalendarClient();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
-                                       _credentials, calDavClient);
+        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {

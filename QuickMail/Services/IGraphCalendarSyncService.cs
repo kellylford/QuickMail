@@ -32,6 +32,16 @@ public interface IGraphCalendarSyncService
     Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default);
 
     /// <summary>
+    /// Syncs a single account's calendar on demand — used when the user turns an account's calendar
+    /// sync on (#282). Best-effort (never throws); returns the event count. No-op unless the account
+    /// has calendar sync enabled and a reachable calendar.
+    /// </summary>
+    Task<int> SyncAccountCalendarAsync(AccountModel account, CancellationToken ct = default);
+
+    /// <summary>Removes an account's synced calendar rows — used when the user turns its sync off.</summary>
+    Task RemoveAccountCalendarAsync(Guid accountId, CancellationToken ct = default);
+
+    /// <summary>
     /// Creates a single (non-repeating) event on the account's primary calendar — Microsoft
     /// (<c>POST /me/events</c>) or Google (<c>POST calendars/primary/events</c>), dispatched on
     /// the account — and upserts the server's copy into the local store with <c>is_graph</c> set,

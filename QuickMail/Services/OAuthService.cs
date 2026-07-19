@@ -290,6 +290,16 @@ public class OAuthService : IOAuthService
         await GetAccessTokenAsync(account, GraphContactScopes, ct);
     }
 
+    public async Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default)
+    {
+        // Same pattern as RequestContactsConsentAsync: acquiring a token for the calendar scopes
+        // drives the one-time consent (silent if already granted, interactive otherwise), so the
+        // background calendar sync's silent GraphCalendarScopes acquisition then succeeds. The token
+        // is discarded here — GraphCalendarSyncService acquires its own when it syncs. Google needs
+        // no equivalent: its calendar scope is already requested at mail sign-in.
+        await GetAccessTokenAsync(account, GraphCalendarScopes, ct);
+    }
+
     public async Task SignOutAsync(AccountModel account)
     {
         await EnsureTokenCacheAsync();
