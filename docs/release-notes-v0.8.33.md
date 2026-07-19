@@ -39,14 +39,14 @@ Turn on **Remind me before appointments** in **Settings → General** and choose
 
 Open an email that contains a meeting invitation and QuickMail adds an event card to the top with **Accept**, **Tentative**, and **Decline** buttons. Choosing one replies to the organizer and updates your calendar right away. Cancellations remove the matching entry automatically.
 
-### Connect an online calendar
+### Connect an online calendar — per account
 
-Connect an account and QuickMail shows its calendar too:
+Calendars connect **per account**, just like contact sync. When you add an account — or later, in **Manage Accounts** — check **Sync calendar from this account** and QuickMail shows that account's calendar:
 
 - **Microsoft** (Outlook.com, Microsoft 365) and **Google** — see your events, and create, edit, or delete **single** (non-repeating) events, with the change sent back to that account.
-- **iCloud and other internet calendars (CalDAV)** — see your events (read-only). Set this up in **Settings → General → Internet Calendar** with the server address, your username, and an app-specific password.
+- **iCloud** — see your events (read-only). QuickMail uses the app-specific password you already entered for the account, so there's nothing else to set up.
 
-Connected calendars refresh in the background; **F5** refreshes on demand. Repeating appointments are always saved to your local calendar, and repeating events that come from an online calendar are read-only for now — the guide's [what the calendar does and does not do](https://kellylford.github.io/QuickMail/calendar.html) list lays out the current limits.
+Nothing syncs until you check the box, and unchecking it removes that account's events. Connected calendars refresh in the background; **F5** (or **Sync Calendars Now** in the command palette) refreshes on demand. Repeating appointments are always saved to your local calendar, and repeating events that come from an online calendar are read-only for now — the guide's [what the calendar does and does not do](https://kellylford.github.io/QuickMail/calendar.html) list lays out the current limits.
 
 ### Search and export
 
@@ -105,12 +105,21 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - Recurrence is a practical RFC-5545 subset (`RecurrenceRule`, `RecurrenceExpander`): `FREQ` daily/weekly/monthly/yearly, `INTERVAL`, weekly `BYDAY`, and one `COUNT`/`UNTIL` end condition. Expansion is local wall-clock (DST-safe) with a ~10-year iteration cap. Per-occurrence edit/delete uses `EXDATE` + detach; whole-series edits preserve `EXDATE`s and the original start.
 - All-day events are fully supported and persisted (`is_all_day` column; re-anchored to local midnight across all providers to avoid off-by-one-day display). The "timed events only / deferred" comment in `EventEditorViewModel` is stale and should be removed.
 - Times stored as UTC ticks; TZID handling per provider (`Prefer: outlook.timezone` for Graph, RFC3339 offsets for Google, kind-carrying stamps for CalDAV).
-- Sync engine (`GraphCalendarSyncService`, name predates multi-provider): read-down window −30…+365 days, replace-slice per source, background pass every 15 min plus one after startup mail sync, best-effort (never throws), `silentOnly` (no interactive sign-in). Write-back is Microsoft + Google **single events only** (recurring push rejected pre-network with `NotSupportedException`); CalDAV (`CalDavCalendarClient`) is read-only. Failed server create/edit falls back to a local save, announced. Providers gated by `IsCalendarPushAccount` / `IsGraphEligible` / `IsGoogleEligible`.
-- Folder tree: `Calendar` sentinel node with `All Calendars` / `Local Calendar` / per-account / CalDAV children; `CalendarFilterFor` maps a node to `CalendarViewModel.AccountFilter`.
+- Sync engine (`GraphCalendarSyncService`, name predates multi-provider): read-down window −30…+365 days, replace-slice per account, background pass every 15 min plus one after startup mail sync, best-effort (never throws), `silentOnly` (no interactive sign-in). Write-back is Microsoft + Google **single events only** (recurring push rejected pre-network with `NotSupportedException`); iCloud CalDAV (`CalDavCalendarClient`) is read-only. Failed server create/edit falls back to a local save, announced. Which accounts sync is the per-account opt-in below.
+- Folder tree: `Calendar` sentinel node with `All Calendars` / `Local Calendar` / one child per opted-in account; `CalendarFilterFor` maps a node to `CalendarViewModel.AccountFilter`.
 - Invitations: `LocalCacheCalendarProvider` harvests `text/calendar` parts; Accept/Tentative/Decline event card in the reading pane sends an ICS REPLY and upserts the response status immediately; `METHOD:CANCEL` marks events cancelled (filtered from all views).
 - Reminders: opt-in 60-second timer (`CalendarReminders` / `CalendarReminderMinutes`, default off / 10 min), Windows notification + `AnnouncementCategory.Result`, fired at most once per `(uid, start)` per run.
 - Export via `IcsModel.ExportEvent` (`calendar.exportEvent`, no default key).
-- Settings: Internet Calendar (CalDAV) group with Test; Calendar field labels; Calendar reminders + minutes. `ShowDeclinedEvents` remains config-only (read at construction; not live-updated).
+- Settings: Calendar field labels; Calendar reminders + minutes. `ShowDeclinedEvents` remains config-only (read at construction; not live-updated).
+
+### Per-account calendar sync (#282)
+
+- Calendar sync is now a per-account opt-in mirroring contact sync (#256), not a global setting. New `AccountModel.SyncCalendar` bool (auto-persists); a "Sync calendar from this account" checkbox in the Add Account and Manage Accounts dialogs (`AccountEditorViewModel.ShowCalendarSyncOption` / `AccountManagerViewModel.CanSyncCalendar` + `SetCalendarSyncAsync`, immediate-apply via a `Click` handler). Offered for Microsoft, Google, and iCloud — a superset of contacts.
+- `GraphCalendarSyncService.SyncAllAsync` now gates on `SyncCalendar`; new public `SyncAccountCalendarAsync` / `RemoveAccountCalendarAsync` drive the enable/disable paths. `IsCalendarPushAccount` (save-target picker) and the calendar tree loop also gate on the flag.
+- **iCloud** calendars are reached over CalDAV per account (`https://caldav.icloud.com`), reusing the account's own app-specific password (`ICredentialService.GetPassword(account.Id)`) — the same one IMAP uses, no separate credential. `CalDavCalendarClient` (manual-redirect discovery + REPORT fetch) is retained and adapted per-account; the discovery result is cached per account id.
+- **Consent**: Microsoft gets a one-time `RequestCalendarConsentAsync` (`Calendars.ReadWrite`) at opt-in; Google's calendar scope is already granted at mail sign-in; iCloud needs none. The `OAuthRouter` routes only Microsoft to the consent call.
+- **Removed** the interim global Settings → Internet Calendar (CalDAV) source: its UI, `SettingsViewModel` CalDav members, `[caldav]` config keys, and the synthetic-id (`AccountIdFor` / `SecretKeyFor`) helpers — all superseded by the per-account model.
+- New palette command `calendar.syncNow` ("Sync Calendars Now"). Tests: per-account CalDAV sync (rewritten `CalDavCalendarSyncTests`), opt-in gating, `ShowCalendarSyncOption`, `IsCalendarPushAccount`.
 
 ### Go to Date (PR #279)
 

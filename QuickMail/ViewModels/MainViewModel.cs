@@ -224,28 +224,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         && (string.Equals(fullName, CalendarFolder.FullName, StringComparison.Ordinal)
             || fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal));
 
-    // The Settings-configured CalDAV calendar source, shown as an extra per-source child under
-    // the Calendar node. Its id is SYNTHETIC (deterministically derived from URL + username by
-    // CalDavCalendarClient.AccountIdFor — a CalDAV source is not a QuickMail account), so
-    // CalendarFilterFor's Guid parse routes it exactly like a real account's calendar, and the
-    // read-only guards hold because the id never matches a Graph account.
-    private Guid? _calDavAccountId;
-    private string _calDavDisplayName = "iCloud";
-
-    /// <summary>Refreshes the cached CalDAV source identity from config; true when it changed
-    /// (the folder tree then needs a rebuild).</summary>
-    private bool UpdateCalDavSource(ConfigModel cfg)
-    {
-        var newId = cfg.HasCalDavSource
-            ? CalDavCalendarClient.AccountIdFor(cfg.CalDavUrl, cfg.CalDavUsername)
-            : (Guid?)null;
-        var changed = newId != _calDavAccountId
-            || !string.Equals(cfg.CalDavDisplayName, _calDavDisplayName, StringComparison.Ordinal);
-        _calDavAccountId   = newId;
-        _calDavDisplayName = cfg.CalDavDisplayName;
-        return changed;
-    }
-
     /// <summary>
     /// Maps a calendar folder name to the account filter it selects:
     /// null = all sources; Guid.Empty = local appointments; else that account's calendar.
@@ -266,9 +244,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// per-provider eligibility.
     /// </summary>
     internal static bool IsCalendarPushAccount(AccountModel a)
-        => a.BackendKind == BackendKind.MicrosoftGraph
-           || a.AuthType == AuthType.OAuth2Microsoft
-           || a.AuthType == AuthType.OAuth2Google;
+        => a.SyncCalendar
+           && (a.BackendKind == BackendKind.MicrosoftGraph
+               || a.AuthType == AuthType.OAuth2Microsoft
+               || a.AuthType == AuthType.OAuth2Google);
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";
@@ -946,8 +925,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
         _announceFlagStatus = cfg.AnnounceFlagStatus;
 
-        UpdateCalDavSource(cfg);
-
         // Calendar — only when a calendar service is wired (skipped in tests).
         if (_calendarService != null)
         {
@@ -1436,10 +1413,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CalendarVm.ShowFieldLabels = cfg.CalendarListShowFieldLabels;
         RemindersEnabled = cfg.CalendarReminders;
         ReminderLeadMinutes = cfg.CalendarReminderMinutes;
-
-        // A CalDAV source added/removed/renamed in Settings changes the calendar tree children.
-        if (UpdateCalDavSource(cfg) && CalendarVm != null)
-            BuildFolderTree();
 
         var newPreviewLines = cfg.PreviewLines;
         var newShowPreview  = newPreviewLines > 0;
@@ -2829,7 +2802,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "local", DisplayName = "Local Calendar" },
                 Label  = "Local Calendar",
             });
-            foreach (var acct in Accounts)
+            // Only accounts the user opted into calendar sync for (#282) get a source node.
+            foreach (var acct in Accounts.Where(a => a.SyncCalendar))
             {
                 calNode.Children.Add(new FolderTreeNode
                 {
@@ -2839,19 +2813,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         DisplayName = acct.AccountLabel,
                     },
                     Label = acct.AccountLabel,
-                });
-            }
-            // The CalDAV source (e.g. iCloud) configured in Settings — synthetic account id.
-            if (_calDavAccountId is Guid calDavId)
-            {
-                calNode.Children.Add(new FolderTreeNode
-                {
-                    Folder = new MailFolderModel
-                    {
-                        FullName    = CalendarSourcePrefix + calDavId.ToString("D"),
-                        DisplayName = _calDavDisplayName,
-                    },
-                    Label = _calDavDisplayName,
                 });
             }
             roots.Add(calNode);
@@ -5948,6 +5909,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void RefreshAccountList()
     {
         LoadAccountList();
+
+        // Rebuild the folder tree from what's already cached so per-account changes that don't need a
+        // reconnect are reflected immediately — notably a calendar-sync opt-in/out (#282), which
+        // adds or removes that account's Calendar node (BuildFolderTree filters on SyncCalendar).
+        // The reconnect loop below rebuilds again for any account that actually needs connecting.
+        RebuildFolderListFromCache();
 
         // Reconnect any account that isn't truly connected in its backend, OR whose folders aren't
         // cached in the VM (e.g. a newly added account). Checking the backend (_imap.IsConnected) —

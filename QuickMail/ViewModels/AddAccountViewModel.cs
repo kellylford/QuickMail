@@ -131,5 +131,6 @@ public partial class AddAccountViewModel : AccountEditorViewModel
         SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
         Signature = Signature,
         SyncContacts = SyncContacts && ShowContactSyncOption,
+        SyncCalendar = SyncCalendar && ShowCalendarSyncOption,
     };
 }

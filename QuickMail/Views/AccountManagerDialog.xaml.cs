@@ -79,4 +79,13 @@ public partial class AccountManagerDialog : Window
         if (sender is CheckBox { IsChecked: { } isChecked })
             await _vm.SetContactSyncAsync(isChecked);
     }
+
+    // The "Sync calendar" checkbox applies immediately (#282), same pattern as contacts above:
+    // checking prompts for consent where needed and pulls events; unchecking removes them. Click
+    // fires only on real user interaction, so programmatic re-selection does not trigger it.
+    private async void SyncCalendarCheckBox_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is CheckBox { IsChecked: { } isChecked })
+            await _vm.SetCalendarSyncAsync(isChecked);
+    }
 }

@@ -83,6 +83,16 @@ public class OAuthRouter : IOAuthService
             : _microsoft.RequestContactsConsentAsync(account, ct);
     }
 
+    public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default)
+    {
+        // Microsoft needs an explicit calendar-scope consent (Calendars.ReadWrite). Google does not:
+        // its calendar scope is already part of the mail sign-in (MailAndCalendarScopes), so any
+        // Google account added has it — no separate step.
+        return account.AuthType == AuthType.OAuth2Google
+            ? Task.CompletedTask
+            : _microsoft.RequestCalendarConsentAsync(account, ct);
+    }
+
     public Task SignOutAsync(AccountModel account)
     {
         return account.AuthType == AuthType.OAuth2Google

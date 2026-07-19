@@ -848,11 +848,15 @@ public class CalendarViewModelTests
     }
 
     [Fact]
-    public void IsCalendarPushAccount_CoversGraphAndGoogle()
+    public void IsCalendarPushAccount_CoversGraphAndGoogle_WhenOptedIn()
     {
-        Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { BackendKind = BackendKind.MicrosoftGraph }));
-        Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.OAuth2Google }));
-        Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.Password }));
+        // Push targets require BOTH a supported provider AND the per-account calendar opt-in (#282).
+        Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { BackendKind = BackendKind.MicrosoftGraph, SyncCalendar = true }));
+        Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.OAuth2Google, SyncCalendar = true }));
+        Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.Password, SyncCalendar = true }));
+        // Not opted in → not a push target even for a supported provider.
+        Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { BackendKind = BackendKind.MicrosoftGraph, SyncCalendar = false }));
+        Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.OAuth2Google, SyncCalendar = false }));
     }
 
     [Fact]

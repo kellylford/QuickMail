@@ -155,53 +155,6 @@
                             </StackPanel>
                         </GroupBox>
 
-                        <!-- Internet Calendar (CalDAV) Group -->
-                        <GroupBox Header="_Internet Calendar" Padding="10" Margin="0,10,0,0"
-                                  AutomationProperties.Name="Internet calendar settings">
-                            <StackPanel>
-                                <TextBlock Text="Show events from an iCloud or other CalDAV calendar in the Calendar view. For iCloud, use https://caldav.icloud.com with your Apple ID and an app-specific password (created at appleid.apple.com). Leave the server address empty to turn this off."
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,0,0,8" TextWrapping="Wrap"/>
-
-                                <Label x:Name="CalDavUrlLabel" Content="Server a_ddress:"
-                                       Target="{Binding ElementName=CalDavUrlBox}" FontWeight="SemiBold"/>
-                                <TextBox x:Name="CalDavUrlBox"
-                                         Text="{Binding CalDavUrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Calendar server address"/>
-
-                                <Label x:Name="CalDavUserLabel" Content="User_name:" Margin="0,8,0,0"
-                                       Target="{Binding ElementName=CalDavUsernameBox}" FontWeight="SemiBold"/>
-                                <TextBox x:Name="CalDavUsernameBox"
-                                         Text="{Binding CalDavUsername, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Calendar username"/>
-
-                                <Label x:Name="CalDavPasswordLabel" Content="App-specific pass_word:" Margin="0,8,0,0"
-                                       Target="{Binding ElementName=CalDavPasswordBox}" FontWeight="SemiBold"/>
-                                <PasswordBox x:Name="CalDavPasswordBox"
-                                             PasswordChanged="CalDavPasswordBox_PasswordChanged"
-                                             AutomationProperties.Name="Calendar app-specific password"/>
-                                <TextBlock Text="Stored securely in Windows Credential Manager. Leave empty to keep the saved password."
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
-
-                                <Label x:Name="CalDavNameLabel" Content="Calendar nam_e:" Margin="0,8,0,0"
-                                       Target="{Binding ElementName=CalDavNameBox}" FontWeight="SemiBold"/>
-                                <TextBox x:Name="CalDavNameBox"
-                                         Text="{Binding CalDavDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                         AutomationProperties.Name="Calendar name"/>
-                                <TextBlock Text="How this calendar is listed in the folder tree."
-                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
-
-                                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                    <Button x:Name="CalDavTestButton" Content="_Test"
-                                            Command="{Binding TestCalDavCommand}"
-                                            MinWidth="80"
-                                            AutomationProperties.Name="Test calendar connection"/>
-                                    <TextBlock Text="{Binding CalDavTestResult}"
-                                               VerticalAlignment="Center" Margin="10,0,0,0" TextWrapping="Wrap"
-                                               MaxWidth="360"/>
-                                </StackPanel>
-                            </StackPanel>
-                        </GroupBox>
-
                         <!-- Mail Actions Group -->
                         <GroupBox Header="Mail _Actions" Padding="10" Margin="0,10,0,0"
                                   AutomationProperties.Name="Mail action settings">

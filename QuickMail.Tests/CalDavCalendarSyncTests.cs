@@ -15,13 +15,15 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Generic CalDAV calendar sync (read-down v1, iCloud-first) through the shared calendar sync
+/// Per-account iCloud CalDAV calendar sync (read-down v1, #282) through the shared calendar sync
 /// service and the raw <see cref="CalDavCalendarClient"/>: discovery (PROPFIND principal → home
 /// → first VEVENT calendar, with a cross-host redirect that must keep Basic auth), REPORT
 /// calendar-query parsing (timed + all-day + recurring w/ EXDATE from one multistatus),
-/// replace-slice under the synthetic account id, and failure isolation. HTTP is stubbed with a
-/// queued <see cref="HttpMessageHandler"/>; persistence uses a real temp-profile
-/// LocalStoreService, mirroring GoogleCalendarSyncTests.
+/// replace-slice under the account id, and failure isolation. Only accounts whose IMAP host is
+/// <c>imap.mail.me.com</c> and that opted in (<see cref="AccountModel.SyncCalendar"/>) are synced,
+/// using the account's own app-specific password (<see cref="ICredentialService.GetPassword"/>).
+/// HTTP is stubbed with a queued <see cref="HttpMessageHandler"/>; persistence uses a real
+/// temp-profile LocalStoreService, mirroring GoogleCalendarSyncTests.
 /// </summary>
 public class CalDavCalendarSyncTests : IDisposable
 {
@@ -30,7 +32,7 @@ public class CalDavCalendarSyncTests : IDisposable
 
     private readonly string _tempDir;
     private readonly LocalStoreService _store;
-    private readonly Guid _accountId = CalDavCalendarClient.AccountIdFor(ServerUrl, Username);
+    private readonly Guid _accountId = Guid.NewGuid();
 
     public CalDavCalendarSyncTests()
     {
@@ -72,45 +74,54 @@ public class CalDavCalendarSyncTests : IDisposable
         }
     }
 
-    private sealed class SecretCredentialService : ICredentialService
+    /// <summary>Returns saved passwords keyed by account id, mirroring the real per-account model.</summary>
+    private sealed class StubCredentials : ICredentialService
     {
-        private readonly Dictionary<string, string> _secrets = [];
-        public SecretCredentialService(string? key = null, string? value = null)
+        private readonly Dictionary<Guid, string> _passwords = [];
+        public StubCredentials(Guid? accountId = null, string? password = null)
         {
-            if (key != null && value != null) _secrets[key] = value;
+            if (accountId is { } id && password != null) _passwords[id] = password;
         }
-        public void SavePassword(Guid accountId, string password) { }
-        public string? GetPassword(Guid accountId) => null;
-        public void DeletePassword(Guid accountId) { }
-        public void SaveSecret(string key, string value) => _secrets[key] = value;
-        public string? GetSecret(string key) => _secrets.TryGetValue(key, out var v) ? v : null;
-        public void DeleteSecret(string key) => _secrets.Remove(key);
+        public void SavePassword(Guid accountId, string password) => _passwords[accountId] = password;
+        public string? GetPassword(Guid accountId) => _passwords.TryGetValue(accountId, out var v) ? v : null;
+        public void DeletePassword(Guid accountId) => _passwords.Remove(accountId);
+        public void SaveSecret(string key, string value) { }
+        public string? GetSecret(string key) => null;
+        public void DeleteSecret(string key) { }
     }
 
-    private sealed class CalDavConfigService : IConfigService
+    private sealed class FixedAccountService : IAccountService
     {
-        private ConfigModel _config;
-        public CalDavConfigService(bool configured = true)
-            => _config = configured
-                ? new ConfigModel { CalDavUrl = ServerUrl, CalDavUsername = Username, CalDavDisplayName = "iCloud" }
-                : new ConfigModel();
-        public ConfigModel Load() => _config;
-        public void Save(ConfigModel config) => _config = config;
+        private readonly List<AccountModel> _accounts;
+        public FixedAccountService(params AccountModel[] accounts) => _accounts = [.. accounts];
+        public List<AccountModel> LoadAccounts() => _accounts;
+        public void SaveAccounts(List<AccountModel> accounts) { }
+        public void SetDefaultAccount(Guid accountId) { }
     }
 
     private static HttpResponseMessage Xml(string body, HttpStatusCode code = (HttpStatusCode)207)
         => new(code) { Content = new StringContent(body, Encoding.UTF8, "application/xml") };
 
+    /// <summary>An opted-in iCloud account (IMAP host imap.mail.me.com, SyncCalendar on).</summary>
+    private AccountModel ICloudAccount() => new()
+    {
+        Id = _accountId,
+        AuthType = AuthType.Password,
+        BackendKind = BackendKind.ImapSmtp,
+        ImapHost = "imap.mail.me.com",
+        Username = Username,
+        SyncCalendar = true,
+    };
+
     private GraphCalendarSyncService Service(RecordingHandler handler,
-                                             IConfigService? config = null,
-                                             ICredentialService? credentials = null)
-        => new(new StubAccountService(), // no mail accounts — only the CalDAV source syncs
+                                             ICredentialService? credentials = null,
+                                             AccountModel? account = null)
+        => new(new FixedAccountService(account ?? ICloudAccount()),
                _store,
                new GraphClient(new StubOAuthService(), new HttpClient(new RecordingHandler()), defaultRetryDelay: TimeSpan.Zero),
                google: null,
                calDav: new CalDavCalendarClient(new HttpClient(handler)),
-               config: config ?? new CalDavConfigService(),
-               credentials: credentials ?? new SecretCredentialService(CalDavCalendarClient.SecretKeyFor(Username), "app-pass"));
+               credentials: credentials ?? new StubCredentials(_accountId, "app-pass"));
 
     // ── XML fixtures ─────────────────────────────────────────────────────────────
 
@@ -274,7 +285,7 @@ public class CalDavCalendarSyncTests : IDisposable
         Assert.Equal(3, rows.Count);
         Assert.All(rows, r =>
         {
-            Assert.Equal(_accountId, r.AccountId); // the synthetic, deterministic source id
+            Assert.Equal(_accountId, r.AccountId); // stored under the real account id
             Assert.True(r.IsGraph);                // "server-synced row" → read-only in UI
             Assert.False(r.IsUserCreated);
             Assert.Equal(CalendarResponseStatus.Accepted, r.ResponseStatus);
@@ -350,7 +361,7 @@ public class CalDavCalendarSyncTests : IDisposable
         handler.Enqueue(Xml(ReportXml(TimedIcs)));
         await service.SyncAllAsync(TestContext.Current.CancellationToken);
 
-        // 4 discovery+report calls, then ONE more (REPORT only — discovery cached).
+        // 4 discovery+report calls, then ONE more (REPORT only — discovery cached per account).
         Assert.Equal(5, handler.Requests.Count);
         Assert.Equal("REPORT", handler.Requests[4].Method);
         Assert.Equal("timed@icloud", Assert.Single(await _store.LoadCalendarEventsAsync()).Uid);
@@ -398,21 +409,50 @@ public class CalDavCalendarSyncTests : IDisposable
     {
         var handler = FullSyncHandler(TimedIcs);
 
-        var result = await Service(handler, credentials: new SecretCredentialService())
+        // No password saved for the account id → the account's sync fails before any request.
+        var result = await Service(handler, credentials: new StubCredentials())
             .SyncAllAsync(TestContext.Current.CancellationToken);
 
+        Assert.Equal(0, result.AccountsSynced);
         Assert.NotNull(result.Error);
-        Assert.Contains("Settings", result.Error);
+        Assert.Contains("Manage Accounts", result.Error);
+        Assert.Empty(handler.Requests);
+        Assert.Empty(await _store.LoadCalendarEventsAsync());
+    }
+
+    // ── Per-account opt-in / eligibility (#282) ──────────────────────────────────
+
+    [Fact]
+    public async Task Sync_AccountWithoutSyncCalendar_IsSkipped()
+    {
+        var optedOut = ICloudAccount();
+        optedOut.SyncCalendar = false;
+        var handler = FullSyncHandler(TimedIcs);
+
+        var result = await Service(handler, account: optedOut)
+            .SyncAllAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(GraphCalendarSyncResult.None, result);
         Assert.Empty(handler.Requests);
         Assert.Empty(await _store.LoadCalendarEventsAsync());
     }
 
     [Fact]
-    public async Task Sync_NoCalDavConfigured_DoesNothing()
+    public async Task Sync_NonICloudAccount_IsNotSynced()
     {
+        // Opted in, but a plain IMAP account with no iCloud calendar to reach.
+        var nonICloud = new AccountModel
+        {
+            Id = Guid.NewGuid(),
+            AuthType = AuthType.Password,
+            BackendKind = BackendKind.ImapSmtp,
+            ImapHost = "imap.example.com",
+            Username = "kelly@example.com",
+            SyncCalendar = true,
+        };
         var handler = FullSyncHandler(TimedIcs);
 
-        var result = await Service(handler, config: new CalDavConfigService(configured: false))
+        var result = await Service(handler, account: nonICloud)
             .SyncAllAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(GraphCalendarSyncResult.None, result);
@@ -494,18 +534,6 @@ public class CalDavCalendarSyncTests : IDisposable
         Assert.Equal(2, bodies.Count);
         Assert.Contains("UID:timed@icloud", bodies[0]);
         Assert.Contains("UID:allday@icloud", bodies[1]);
-    }
-
-    // ── Synthetic account id ─────────────────────────────────────────────────────
-
-    [Fact]
-    public void AccountIdFor_IsDeterministic_AndNormalized()
-    {
-        var a = CalDavCalendarClient.AccountIdFor("https://caldav.icloud.com", "kelly@example.com");
-        Assert.Equal(a, CalDavCalendarClient.AccountIdFor("https://caldav.icloud.com/", "Kelly@Example.com "));
-        Assert.NotEqual(Guid.Empty, a);
-        Assert.NotEqual(a, CalDavCalendarClient.AccountIdFor("https://caldav.icloud.com", "other@example.com"));
-        Assert.NotEqual(a, CalDavCalendarClient.AccountIdFor("https://caldav.fastmail.com", "kelly@example.com"));
     }
 
     // ── Mapping units ────────────────────────────────────────────────────────────

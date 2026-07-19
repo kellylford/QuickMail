@@ -111,6 +111,14 @@
                           AutomationProperties.HelpText="Check this before signing in to also grant read-only permission to read your contacts into the address book."
                           Margin="0,8,0,0" TabIndex="4"/>
 
+                <!-- Calendar sync (#282) — shown for Microsoft, Google, and iCloud accounts. -->
+                <CheckBox Content="Sync ca_lendar from this account"
+                          Visibility="{Binding ShowCalendarSyncOption, Converter={StaticResource BoolToVisibility}}"
+                          IsChecked="{Binding SyncCalendar, Mode=TwoWay}"
+                          AutomationProperties.Name="Sync calendar from this account"
+                          AutomationProperties.HelpText="Show this account's calendar in the Calendar view. For Microsoft, grants calendar permission when you sign in; for iCloud, uses your app-specific password."
+                          Margin="0,6,0,0" TabIndex="5"/>
+
                 <StackPanel Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
                             Margin="0,4,0,0">
                     <Button Content="Sign in with _Microsoft…"

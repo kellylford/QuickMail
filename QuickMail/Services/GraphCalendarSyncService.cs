@@ -31,12 +31,13 @@ namespace QuickMail.Services;
 /// renaming to CalendarSyncService is earmarked for the M4 two-way engine.
 /// </para>
 /// <para>
-/// CalDAV path (read-down v1, iCloud-first): a single Settings-configured source (URL +
-/// username + app-specific password from Windows Credential Manager), synced via
-/// <see cref="CalDavCalendarClient"/> under a SYNTHETIC deterministic account id
-/// (<see cref="CalDavCalendarClient.AccountIdFor"/>) since a CalDAV source is not a QuickMail
-/// account. Unlike Graph/Google there is no server-side series expansion, so recurring masters
-/// keep their RRULE (+ EXDATE) and the local RecurrenceExpander produces the occurrences.
+/// iCloud CalDAV path (read-down v1, per-account #282): for each opted-in account whose IMAP host
+/// is <c>imap.mail.me.com</c>, its calendar at caldav.icloud.com is discovered and fetched via
+/// <see cref="CalDavCalendarClient"/> using the account's own app-specific password
+/// (<see cref="ICredentialService.GetPassword"/>) — no separate credential. Rows are stored under
+/// the real <see cref="AccountModel.Id"/>. Unlike Graph/Google there is no server-side series
+/// expansion, so recurring masters keep their RRULE (+ EXDATE) and the local RecurrenceExpander
+/// produces the occurrences.
 /// </para>
 /// </remarks>
 public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
@@ -59,19 +60,16 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private readonly GraphClient _graph;
     private readonly GoogleCalendarClient? _google;
     private readonly ICalDavCalendarClient? _calDav;
-    private readonly IConfigService? _config;
     private readonly ICredentialService? _credentials;
 
-    // Cached CalDAV discovery result (the resolved calendar collection URL), keyed by
-    // "url|username" so a Settings change forces re-discovery; cleared on fetch failure so a
-    // stale collection URL (e.g. calendar recreated server-side) heals on the next pass.
-    private string? _calDavCalendarUrl;
-    private string? _calDavCacheKey;
+    // Resolved CalDAV calendar-collection URL per account (from discovery), so each iCloud account's
+    // home collection is found once and reused. Cleared for an account on fetch failure so a stale
+    // collection URL (e.g. calendar recreated server-side) heals on the next pass.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _calDavUrlByAccount = new();
 
     public GraphCalendarSyncService(IAccountService accounts, ILocalStoreService store, GraphClient graph,
                                     GoogleCalendarClient? google = null,
                                     ICalDavCalendarClient? calDav = null,
-                                    IConfigService? config = null,
                                     ICredentialService? credentials = null)
     {
         _accounts    = accounts;
@@ -79,7 +77,6 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         _graph       = graph;
         _google      = google;
         _calDav      = calDav;
-        _config      = config;
         _credentials = credentials;
     }
 
@@ -94,6 +91,19 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private bool IsGoogleEligible(AccountModel account)
         => _google != null && account.AuthType == AuthType.OAuth2Google && !IsGraphEligible(account);
 
+    /// <summary>
+    /// iCloud accounts (IMAP host <c>imap.mail.me.com</c>) have a CalDAV calendar at
+    /// caldav.icloud.com, reached with the account's own app-specific password. No-op when the
+    /// CalDAV client or credential service isn't wired (tests).
+    /// </summary>
+    private bool IsICloudCalendarEligible(AccountModel account)
+        => _calDav != null && _credentials != null
+           && account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True when the account has a calendar QuickMail can pull, regardless of the opt-in flag.</summary>
+    private bool HasCalendar(AccountModel account)
+        => IsGraphEligible(account) || IsGoogleEligible(account) || IsICloudCalendarEligible(account);
+
     public async Task<GraphCalendarSyncResult> SyncAllAsync(CancellationToken ct = default)
     {
         int accountsSynced = 0, eventsFetched = 0;
@@ -101,16 +111,14 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 
         foreach (var account in _accounts.LoadAccounts())
         {
-            var graphEligible  = IsGraphEligible(account);
-            var googleEligible = IsGoogleEligible(account);
-            if (!graphEligible && !googleEligible) continue;
+            // Per-account opt-in (#282): only accounts the user chose to sync (Manage Accounts /
+            // Add Account checkbox), and only those with a calendar we can reach.
+            if (!account.SyncCalendar || !HasCalendar(account)) continue;
             ct.ThrowIfCancellationRequested();
 
             try
             {
-                var count = graphEligible
-                    ? await SyncAccountAsync(account, ct)
-                    : await SyncGoogleAccountAsync(account, ct);
+                var count = await SyncOneAccountAsync(account, ct);
                 accountsSynced++;
                 eventsFetched += count;
                 LogService.Log($"CalendarSync: {account.AccountLabel} — {count} event(s) synced.");
@@ -137,34 +145,48 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             }
         }
 
-        // CalDAV source (iCloud/Fastmail/Nextcloud…): configured in Settings, not an account.
-        var cfg = _calDav != null && _config != null && _credentials != null ? _config.Load() : null;
-        if (cfg is { HasCalDavSource: true })
-        {
-            ct.ThrowIfCancellationRequested();
-            try
-            {
-                var count = await SyncCalDavAsync(cfg, ct);
-                accountsSynced++;
-                eventsFetched += count;
-                LogService.Log($"CalendarSync: {cfg.CalDavDisplayName} (CalDAV) — {count} event(s) synced.");
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                // Same best-effort posture as the account loop: log and report, never throw —
-                // the prior slice stays in place because replace happens only after a full fetch.
-                LogService.Log($"CalendarSync failed for {cfg.CalDavDisplayName} (CalDAV)", ex);
-                error = ex.Message;
-            }
-        }
-
         return accountsSynced == 0 && error is null
             ? GraphCalendarSyncResult.None
             : new GraphCalendarSyncResult(accountsSynced, eventsFetched, error);
+    }
+
+    /// <summary>Dispatches one account to its provider (Microsoft / Google / iCloud CalDAV). May throw.</summary>
+    private async Task<int> SyncOneAccountAsync(AccountModel account, CancellationToken ct)
+    {
+        if (IsGraphEligible(account))  return await SyncAccountAsync(account, ct);
+        if (IsGoogleEligible(account)) return await SyncGoogleAccountAsync(account, ct);
+        if (IsICloudCalendarEligible(account)) return await SyncICloudCalendarAsync(account, ct);
+        return 0;
+    }
+
+    /// <summary>
+    /// Syncs one account's calendar on demand (from a Manage Accounts / Add Account opt-in). Honors
+    /// the opt-in flag and eligibility, and is best-effort — logs and swallows failures like the
+    /// background pass, so a fire-and-forget caller never faults. Returns the event count.
+    /// </summary>
+    public async Task<int> SyncAccountCalendarAsync(AccountModel account, CancellationToken ct = default)
+    {
+        if (!account.SyncCalendar || !HasCalendar(account)) return 0;
+        try
+        {
+            return await SyncOneAccountAsync(account, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"CalendarSync (single) failed for {account.AccountLabel}", ex);
+            return 0;
+        }
+    }
+
+    /// <summary>Removes an account's synced calendar rows (called when the user turns its sync off).</summary>
+    public async Task RemoveAccountCalendarAsync(Guid accountId, CancellationToken ct = default)
+    {
+        _calDavUrlByAccount.TryRemove(accountId, out _);
+        await _store.ReplaceGraphCalendarEventsAsync(accountId, []);
     }
 
     private async Task<int> SyncAccountAsync(AccountModel account, CancellationToken ct)
@@ -294,39 +316,45 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             ? dto.UtcTicks
             : null;
 
-    // ── CalDAV (read-down v1) ────────────────────────────────────────────────────
+    // ── iCloud CalDAV (read-down v1, per-account) ────────────────────────────────
 
-    private async Task<int> SyncCalDavAsync(ConfigModel cfg, CancellationToken ct)
+    private const string ICloudCalDavUrl = "https://caldav.icloud.com";
+
+    /// <summary>
+    /// Syncs one iCloud account's calendar over CalDAV, using the account's own app-specific
+    /// password (the same one IMAP uses — no separate credential). Discovery result is cached per
+    /// account and cleared on fetch failure so a recreated server collection heals next pass. Rows
+    /// are stored under the real <c>account.Id</c> and replace-sliced like the Graph/Google paths.
+    /// </summary>
+    private async Task<int> SyncICloudCalendarAsync(AccountModel account, CancellationToken ct)
     {
-        var password = _credentials!.GetSecret(CalDavCalendarClient.SecretKeyFor(cfg.CalDavUsername));
+        var password = _credentials!.GetPassword(account.Id);
         if (string.IsNullOrEmpty(password))
             throw new InvalidOperationException(
-                $"no saved calendar password for {cfg.CalDavUsername} — re-enter it in Settings.");
+                $"no app-specific password saved for {account.Username} — re-enter it in Manage Accounts.");
 
-        var cacheKey = $"{cfg.CalDavUrl}|{cfg.CalDavUsername}";
-        if (_calDavCalendarUrl == null || _calDavCacheKey != cacheKey)
+        if (!_calDavUrlByAccount.TryGetValue(account.Id, out var calendarUrl))
         {
-            var info = await _calDav!.DiscoverCalendarAsync(cfg.CalDavUrl, cfg.CalDavUsername, password, ct);
-            _calDavCalendarUrl = info.Url;
-            _calDavCacheKey    = cacheKey;
+            var info = await _calDav!.DiscoverCalendarAsync(ICloudCalDavUrl, account.Username, password, ct);
+            calendarUrl = info.Url;
+            _calDavUrlByAccount[account.Id] = calendarUrl;
         }
 
         var nowUtc = DateTime.UtcNow;
         List<string> icsBodies;
         try
         {
-            icsBodies = await _calDav!.FetchEventIcsAsync(_calDavCalendarUrl, cfg.CalDavUsername, password,
+            icsBodies = await _calDav!.FetchEventIcsAsync(calendarUrl, account.Username, password,
                                                           nowUtc - WindowBack, nowUtc + WindowForward, ct);
         }
         catch
         {
-            _calDavCalendarUrl = null; // stale collection URL? re-discover next pass
+            _calDavUrlByAccount.TryRemove(account.Id, out _); // stale collection URL? re-discover next pass
             throw;
         }
 
-        var accountId = CalDavCalendarClient.AccountIdFor(cfg.CalDavUrl, cfg.CalDavUsername);
-        var mapped = MapCalDavEvents(icsBodies, accountId);
-        await _store.ReplaceGraphCalendarEventsAsync(accountId, mapped);
+        var mapped = MapCalDavEvents(icsBodies, account.Id);
+        await _store.ReplaceGraphCalendarEventsAsync(account.Id, mapped);
         return mapped.Count;
     }
 

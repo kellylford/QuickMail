@@ -78,6 +78,7 @@ public class GoogleCalendarSyncTests : IDisposable
         AuthType = AuthType.OAuth2Google,
         BackendKind = BackendKind.ImapSmtp, // Gmail mail is IMAP — the identity provider is what matters
         Username = "kelly@gmail.com",
+        SyncCalendar = true, // calendar sync is opt-in per account (#282)
     };
 
     /// <summary>The shared sync service with only the Google client's HTTP stubbed (no Graph accounts).</summary>

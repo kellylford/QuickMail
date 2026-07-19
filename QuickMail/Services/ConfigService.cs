@@ -341,17 +341,6 @@ public class ConfigService : IConfigService
                     case "googleclientsecret": config.GoogleClientSecret = value; break;
                 }
             }
-            else if (section == "caldav")
-            {
-                switch (key)
-                {
-                    case "caldavurl":         config.CalDavUrl         = value; break;
-                    case "caldavusername":    config.CalDavUsername    = value; break;
-                    case "caldavdisplayname":
-                        if (!string.IsNullOrWhiteSpace(value)) config.CalDavDisplayName = value;
-                        break;
-                }
-            }
         }
 
         return config;
@@ -675,22 +664,6 @@ public class ConfigService : IConfigService
                 sb.AppendLine($"GoogleClientId = {config.GoogleClientId}");
             if (!string.IsNullOrEmpty(config.GoogleClientSecret))
                 sb.AppendLine($"GoogleClientSecret = {config.GoogleClientSecret}");
-            sb.AppendLine();
-        }
-
-        // ── [caldav] ───────────────────────────────────────────────────────────────
-        // Only written when a CalDAV calendar source is configured. The password is NOT
-        // here — it lives in Windows Credential Manager (QuickMail/CalDAV/{username}).
-        if (!string.IsNullOrEmpty(config.CalDavUrl) || !string.IsNullOrEmpty(config.CalDavUsername))
-        {
-            sb.AppendLine("[caldav]");
-            sb.AppendLine("# CalDAV calendar source (e.g. iCloud: https://caldav.icloud.com).");
-            sb.AppendLine("# The app-specific password is stored in Windows Credential Manager, never here.");
-            sb.AppendLine();
-            sb.AppendLine($"CalDavUrl = {config.CalDavUrl}");
-            sb.AppendLine($"CalDavUsername = {config.CalDavUsername}");
-            sb.AppendLine($"CalDavDisplayName = {config.CalDavDisplayName}");
-            sb.AppendLine("# Display name shown for this calendar in the folder tree.");
             sb.AppendLine();
         }
 
