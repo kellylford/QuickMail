@@ -57,6 +57,16 @@ public partial class CalendarEvent : ObservableObject
     public string CalendarName { get; set; } = string.Empty;
 
     /// <summary>
+    /// The CalDAV resource href (absolute URL) this row lives at on the server — captured during
+    /// read-sync. Apple stores an event created on iPhone / iCloud-web at a RANDOM filename that is
+    /// not the UID, so edit/delete must target this real href rather than the reconstructed
+    /// <c>{collection}/{uid}.ics</c>. Empty for Graph/Google/local/invite rows, and empty for a
+    /// QuickMail-created iCloud row that has not yet been re-synced (edit/delete falls back to
+    /// <see cref="Services.CalDavCalendarClient.EventResourceUrl"/> in that case).
+    /// </summary>
+    public string ResourceUrl { get; set; } = string.Empty;
+
+    /// <summary>
     /// iCalendar RRULE string for a repeating appointment (e.g. "FREQ=WEEKLY;BYDAY=TU"), or null/empty
     /// for a one-off. Parse with <see cref="Models.RecurrenceRule.Parse"/>.
     /// </summary>

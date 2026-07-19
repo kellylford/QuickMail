@@ -73,6 +73,62 @@ public class CalendarStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task ResourceUrl_RoundTrips_ThroughUpsertAndReplaceSlice()
+    {
+        var accountId = Guid.NewGuid();
+        const string href = "https://p42-caldav.icloud.com/123456/calendars/home/AB12-random.ics";
+
+        // Upsert path (write-back / local create).
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "res-upsert", AccountId = accountId, IsGraph = true, Summary = "Upsert",
+            CalendarId = "cal-home", ResourceUrl = href,
+        });
+        // Replace-slice path (read-sync).
+        await _store.ReplaceGraphCalendarEventsAsync(accountId,
+        [
+            new CalendarEvent { Uid = "res-slice", AccountId = accountId, CalendarId = "cal-home", ResourceUrl = href },
+        ]);
+
+        var rows = await _store.LoadCalendarEventsAsync();
+        Assert.Equal(href, rows.Single(r => r.Uid == "res-slice").ResourceUrl);
+
+        // A row with no href round-trips as empty (Graph/Google/local/invite rows).
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "res-none", AccountId = CalendarEvent.LocalAccountId, Summary = "No href",
+        });
+        Assert.Equal(string.Empty,
+            (await _store.LoadCalendarEventsAsync()).Single(r => r.Uid == "res-none").ResourceUrl);
+    }
+
+    [Fact]
+    public async Task ResourceUrl_Preserved_WhenUpsertWriteBackCarriesNoHref()
+    {
+        var accountId = Guid.NewGuid();
+        const string href = "https://p42-caldav.icloud.com/123456/calendars/home/AB12-random.ics";
+
+        // Read-sync captured the real server href.
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "res-keep", AccountId = accountId, IsGraph = true, Summary = "Original",
+            CalendarId = "cal-home", ResourceUrl = href,
+        });
+
+        // A later write-back for the same row that carries NO href (e.g. an untagged edit) must not
+        // wipe the stored one — mirrors the calendar_id CASE-preserve idiom.
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "res-keep", AccountId = accountId, IsGraph = true, Summary = "Edited",
+            CalendarId = "cal-home", ResourceUrl = string.Empty,
+        });
+
+        var row = Assert.Single(await _store.LoadCalendarEventsAsync());
+        Assert.Equal("Edited", row.Summary);
+        Assert.Equal(href, row.ResourceUrl); // preserved, not wiped
+    }
+
+    [Fact]
     public async Task LoadCalendarSources_ReturnsDistinctTaggedCalendars()
     {
         var acctA = Guid.NewGuid();

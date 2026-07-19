@@ -902,15 +902,55 @@ public class CalendarViewModelTests
     }
 
     [Fact]
-    public void IsCalendarPushAccount_CoversGraphAndGoogle_WhenOptedIn()
+    public void IsCalendarPushAccount_CoversGraphGoogleAndICloud_WhenOptedIn()
     {
         // Push targets require BOTH a supported provider AND the per-account calendar opt-in (#282).
         Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { BackendKind = BackendKind.MicrosoftGraph, SyncCalendar = true }));
         Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.OAuth2Google, SyncCalendar = true }));
+        // iCloud is a CalDAV push target, detected by IMAP host.
+        Assert.True(MainViewModel.IsCalendarPushAccount(new AccountModel { ImapHost = "imap.mail.me.com", SyncCalendar = true }));
         Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.Password, SyncCalendar = true }));
         // Not opted in → not a push target even for a supported provider.
         Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { BackendKind = BackendKind.MicrosoftGraph, SyncCalendar = false }));
         Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { AuthType = AuthType.OAuth2Google, SyncCalendar = false }));
+        Assert.False(MainViewModel.IsCalendarPushAccount(new AccountModel { ImapHost = "imap.mail.me.com", SyncCalendar = false }));
+    }
+
+    [Fact]
+    public void NewEvent_ICloudAccount_OffersOneTargetPerCalendar_PlusLocal()
+    {
+        var apple = new AccountModel
+        {
+            Id = Guid.NewGuid(), ImapHost = "imap.mail.me.com", AccountName = "Apple", SyncCalendar = true,
+        };
+        var store = new StubCalendarService();
+        var vm = new CalendarViewModel(store, onlineMode: false, showDeclinedEvents: false,
+            showFieldLabels: false, graphSync: new StubGraphCalendarSyncService(),
+            graphAccountsProvider: () => new[] { apple },
+            calendarSourcesProvider: () => new[]
+            {
+                (apple.Id, "https://p42-caldav.icloud.com/1/calendars/home/", "Home"),
+                (apple.Id, "https://p42-caldav.icloud.com/1/calendars/family/", "Family"),
+            });
+
+        EventEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.NewEventCommand.Execute(null);
+
+        Assert.NotNull(editor);
+        Assert.True(editor!.ShowSaveTarget);
+        // Local first, then one target per discovered iCloud calendar.
+        Assert.Equal(3, editor.SaveTargetLabels.Count);
+        Assert.Contains("Apple: Home", editor.SaveTargetLabels);
+        Assert.Contains("Apple: Family", editor.SaveTargetLabels);
+
+        // Selecting the second iCloud calendar stamps the built event with that collection URL.
+        editor.SelectedTargetIndex = 2; // Apple: Family
+        editor.Title = "Reunion";
+        Assert.True(editor.TryBuildEvent(out var evt, out _));
+        Assert.Equal(apple.Id, evt.AccountId);
+        Assert.Equal("https://p42-caldav.icloud.com/1/calendars/family/", evt.CalendarId);
+        Assert.Equal("Family", evt.CalendarName);
     }
 
     [Fact]

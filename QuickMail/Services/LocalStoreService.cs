@@ -136,6 +136,12 @@ public class LocalStoreService : ILocalStoreService
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN calendar_id   TEXT NOT NULL DEFAULT '';");
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN calendar_name TEXT NOT NULL DEFAULT '';");
 
+        // CalDAV resource href for a server-synced iCloud row — the real URL the event lives at on
+        // the server (Apple names iPhone/web-created resources randomly, ≠ UID), so edit/delete can
+        // target it instead of a reconstructed {collection}/{uid}.ics. Empty for Graph/Google/local/
+        // invite rows. Unversioned idempotent ALTER, like calendar_id/calendar_name above.
+        RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN resource_url TEXT NOT NULL DEFAULT '';");
+
         RunDataMigrations(conn);
     }
 
@@ -815,8 +821,9 @@ public class LocalStoreService : ILocalStoreService
             INSERT INTO CalendarEvent(uid, account_id, summary, description, location,
                                       organizer, organizer_name, start_time_ticks, end_time_ticks,
                                       sequence, method, source_message_id, source_folder, response_status,
-                                      is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name)
-            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname)
+                                      is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
+                                      resource_url)
+            VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, $graph, $calid, $calname, $resurl)
             ON CONFLICT(uid, account_id) DO UPDATE SET
                 summary           = excluded.summary,
                 description       = excluded.description,
@@ -836,7 +843,10 @@ public class LocalStoreService : ILocalStoreService
                 -- write-back that targets the default calendar and carries no tag); the next full
                 -- sync re-tags it. A non-empty incoming tag always wins.
                 calendar_id       = CASE WHEN excluded.calendar_id   = '' THEN calendar_id   ELSE excluded.calendar_id   END,
-                calendar_name     = CASE WHEN excluded.calendar_name = '' THEN calendar_name ELSE excluded.calendar_name END
+                calendar_name     = CASE WHEN excluded.calendar_name = '' THEN calendar_name ELSE excluded.calendar_name END,
+                -- Preserve a stored CalDAV resource href when the incoming row carries none (a local
+                -- create/edit write-back has no href until the next read-sync captures the real one).
+                resource_url      = CASE WHEN excluded.resource_url  = '' THEN resource_url  ELSE excluded.resource_url  END
             WHERE CalendarEvent.is_graph = 0 OR excluded.is_graph = 1;
             """;
         // The DO UPDATE ... WHERE guard: server-synced rows (is_graph=1) are owned by the calendar
@@ -865,6 +875,7 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("$graph", evt.IsGraph ? 1 : 0);
         cmd.Parameters.AddWithValue("$calid", evt.CalendarId);
         cmd.Parameters.AddWithValue("$calname", evt.CalendarName);
+        cmd.Parameters.AddWithValue("$resurl", evt.ResourceUrl);
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
     }
@@ -894,8 +905,9 @@ public class LocalStoreService : ILocalStoreService
                 INSERT OR REPLACE INTO CalendarEvent(uid, account_id, summary, description, location,
                                           organizer, organizer_name, start_time_ticks, end_time_ticks,
                                           sequence, method, source_message_id, source_folder, response_status,
-                                          is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name)
-                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname);
+                                          is_all_day, recurrence_rule, exdates, is_graph, calendar_id, calendar_name,
+                                          resource_url)
+                VALUES($uid, $aid, $sum, $desc, $loc, $org, $orgn, $st, $et, $seq, $meth, $smid, $sf, $rs, $allday, $rrule, $exd, 1, $calid, $calname, $resurl);
                 """;
             var pUid  = ins.Parameters.Add("$uid",  Microsoft.Data.Sqlite.SqliteType.Text);
             var pAid  = ins.Parameters.Add("$aid",  Microsoft.Data.Sqlite.SqliteType.Text);
@@ -916,6 +928,7 @@ public class LocalStoreService : ILocalStoreService
             var pExd  = ins.Parameters.Add("$exd",  Microsoft.Data.Sqlite.SqliteType.Text);
             var pCid  = ins.Parameters.Add("$calid",   Microsoft.Data.Sqlite.SqliteType.Text);
             var pCn   = ins.Parameters.Add("$calname", Microsoft.Data.Sqlite.SqliteType.Text);
+            var pRes  = ins.Parameters.Add("$resurl",  Microsoft.Data.Sqlite.SqliteType.Text);
 
             foreach (var evt in events)
             {
@@ -938,6 +951,7 @@ public class LocalStoreService : ILocalStoreService
                 pExd.Value  = (object?)evt.ExDates ?? DBNull.Value;
                 pCid.Value  = evt.CalendarId;
                 pCn.Value   = evt.CalendarName;
+                pRes.Value  = evt.ResourceUrl;
                 await ins.ExecuteNonQueryAsync();
             }
         }
@@ -954,7 +968,7 @@ public class LocalStoreService : ILocalStoreService
             SELECT uid, account_id, summary, description, location, organizer, organizer_name,
                    start_time_ticks, end_time_ticks, sequence, method, source_message_id,
                    source_folder, response_status, is_all_day, recurrence_rule, exdates, is_graph,
-                   calendar_id, calendar_name
+                   calendar_id, calendar_name, resource_url
             FROM CalendarEvent
             ORDER BY start_time_ticks IS NULL, start_time_ticks ASC;
             """;
@@ -983,6 +997,7 @@ public class LocalStoreService : ILocalStoreService
                 IsGraph          = !r.IsDBNull(17) && r.GetInt32(17) != 0,
                 CalendarId       = r.IsDBNull(18) ? string.Empty : r.GetString(18),
                 CalendarName     = r.IsDBNull(19) ? string.Empty : r.GetString(19),
+                ResourceUrl      = r.IsDBNull(20) ? string.Empty : r.GetString(20),
             });
         }
         return list;

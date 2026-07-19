@@ -127,6 +127,12 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - All three providers enumerate every calendar and union them into the existing per-account replace-slice (one `ReplaceGraphCalendarEventsAsync(account.Id, union)`): Microsoft `GET /me/calendars` → per-calendar `calendarView`; Google `calendarList` → per-calendar events; iCloud CalDAV keeps **all** VEVENT collections (discovery cache is now a per-account list) and issues one REPORT per calendar. A single calendar's fetch failing leaves the prior slice intact.
 - Tree grandchildren (only when an account has >1 calendar) are fed from a new `LocalStoreService.LoadCalendarSourcesAsync` (DISTINCT account/calendar), cached and refreshed on startup and after each sync. Selecting a calendar node filters to that calendar; the account node still shows all its calendars merged.
 
+### iCloud calendar write (CalDAV)
+
+- iCloud calendars are no longer read-only: you can **create, edit, and delete single (non-repeating) appointments** on them, alongside the existing Microsoft/Google write-back. When creating an appointment, the save-target picker lists each of your Apple calendars (e.g. "Apple: Home", "Apple: Family") so you choose which one.
+- `CalDavCalendarClient` gains `PutEventAsync`/`DeleteEventAsync` (the redirect/Basic-auth `SendAsync` refactored into a shared `SendCoreAsync` so reads and writes share it); PUT sends `text/calendar` with `If-None-Match: *` on create; the VCALENDAR body omits `METHOD` per RFC 4791. `GraphCalendarSyncService` create/edit/delete gain an iCloud branch; `IsCalendarPushAccount` includes iCloud.
+- Read-sync now stores each event's real CalDAV resource URL (`CalendarEvent.ResourceUrl`, new `resource_url` column), so editing or deleting an event **created on another device** targets the correct server resource (Apple names resources by a random filename, not the UID). Recurring events stay read-only; last-write-wins (no ETag/If-Match in v1).
+
 ### iCloud contacts via CardDAV
 
 - The "Sync contacts from this account" checkbox (#256) now also appears for **iCloud** accounts, alongside Microsoft and Google — so every account offers a checkbox for each service QuickMail can read. iCloud contacts sync over **CardDAV** (`https://contacts.icloud.com`) using the account's own app-specific password (`GetPassword(account.Id)`), no OAuth.

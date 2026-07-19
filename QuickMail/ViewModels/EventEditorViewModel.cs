@@ -8,10 +8,13 @@ namespace QuickMail.ViewModels;
 
 /// <summary>
 /// One entry in the appointment editor's "Calendar" save-target picker: the local calendar
-/// (<see cref="CalendarEvent.LocalAccountId"/>) or a server-backed (Microsoft or Google)
-/// account's calendar.
+/// (<see cref="CalendarEvent.LocalAccountId"/>) or a server-backed account's calendar.
+/// <paramref name="CalendarId"/> is the CalDAV collection URL for an iCloud target (which offers
+/// one entry per calendar, e.g. Home / Family); it is null for Local, Microsoft, and Google
+/// targets, which save to the account's default/primary calendar.
 /// </summary>
-public sealed record CalendarSaveTarget(string Label, Guid AccountId);
+public sealed record CalendarSaveTarget(string Label, Guid AccountId,
+                                        string? CalendarId = null, string? CalendarName = null);
 
 /// <summary>
 /// Authoring ViewModel for a single locally-created calendar appointment. Holds the editable
@@ -43,10 +46,20 @@ public partial class EventEditorViewModel : ObservableObject
     [ObservableProperty] private int _selectedTargetIndex;
 
     /// <summary>The account id the appointment will save to (resolved from the picker).</summary>
-    public Guid SelectedTargetAccountId =>
+    public Guid SelectedTargetAccountId => SelectedTarget?.AccountId ?? CalendarEvent.LocalAccountId;
+
+    /// <summary>
+    /// The chosen target's calendar (CalDAV collection URL) and display name — set only for an
+    /// iCloud target, which the save uses to tag and route the event. Null for Local / Microsoft /
+    /// Google (their default calendar).
+    /// </summary>
+    public string? SelectedTargetCalendarId => SelectedTarget?.CalendarId;
+    public string? SelectedTargetCalendarName => SelectedTarget?.CalendarName;
+
+    private CalendarSaveTarget? SelectedTarget =>
         SelectedTargetIndex >= 0 && SelectedTargetIndex < _saveTargets.Count
-            ? _saveTargets[SelectedTargetIndex].AccountId
-            : CalendarEvent.LocalAccountId;
+            ? _saveTargets[SelectedTargetIndex]
+            : null;
 
     /// <summary>
     /// True when the View should show the save-target picker: only for NEW appointments (an
@@ -356,6 +369,11 @@ public partial class EventEditorViewModel : ObservableObject
         {
             Uid            = IsDetachSave ? "local-" + Guid.NewGuid().ToString("N") : _uid,
             AccountId      = targetAccountId,
+            // Tag with the chosen calendar for a new iCloud target (empty for Local / Microsoft /
+            // Google / detach). An edit keeps its stored calendar via the caller (ServerUpdate),
+            // and the edit editor offers only the local target, so this resolves to empty there.
+            CalendarId     = SelectedTargetCalendarId ?? string.Empty,
+            CalendarName   = SelectedTargetCalendarName ?? string.Empty,
             Summary        = Title.Trim(),
             Location       = Location.Trim(),
             Description    = Notes.Trim(),

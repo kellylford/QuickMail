@@ -41,12 +41,29 @@ public interface ICalDavCalendarClient
                                                           CancellationToken ct = default);
 
     /// <summary>
-    /// REPORT calendar-query for VEVENTs intersecting the UTC window, returning each
-    /// response's raw calendar-data ICS body (one body per event resource; a body may hold
-    /// several VEVENTs — a recurring master plus overridden instances).
+    /// REPORT calendar-query for VEVENTs intersecting the UTC window, returning each response's
+    /// resource href (absolute URL, resolved against the collection that answered) paired with its
+    /// raw calendar-data ICS body (one body per event resource; a body may hold several VEVENTs — a
+    /// recurring master plus overridden instances). The href is the real resource URL — Apple names
+    /// iPhone/web-created resources randomly (≠ UID), so it is what edit/delete must target.
     /// </summary>
-    Task<List<string>> FetchEventIcsAsync(string calendarUrl, string username, string password,
+    Task<List<(string Href, string Ics)>> FetchEventIcsAsync(string calendarUrl, string username, string password,
                                           DateTime startUtc, DateTime endUtc, CancellationToken ct = default);
+
+    /// <summary>
+    /// PUTs an ICS calendar object to a specific event resource URL. For a create, the caller builds
+    /// the URL with <see cref="CalDavCalendarClient.EventResourceUrl"/> (naming the resource after
+    /// the UID); for an edit, the caller passes the resource's REAL href captured on read-sync (Apple
+    /// names iPhone/web-created resources randomly, ≠ UID). <paramref name="ifNoneMatch"/> true sends
+    /// <c>If-None-Match: *</c> so a create fails rather than clobbering an existing resource; false is
+    /// an unconditional replace (edit). Returns the resource URL the event now lives at. Throws on a
+    /// non-success status with the response body.
+    /// </summary>
+    Task<string> PutEventAsync(string eventResourceUrl, string icsBody,
+                               string username, string password, bool ifNoneMatch, CancellationToken ct = default);
+
+    /// <summary>DELETEs an event resource by its absolute .ics URL. Throws on a non-success status.</summary>
+    Task DeleteEventAsync(string eventResourceUrl, string username, string password, CancellationToken ct = default);
 }
 
 /// <summary>
@@ -97,6 +114,17 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
         return "caldav-" + Convert.ToHexString(hash.AsSpan(0, 12)).ToLowerInvariant();
     }
 
+    /// <summary>
+    /// The .ics resource URL for an event UID within a calendar collection:
+    /// <c>{collection}/{escaped-uid}.ics</c>. RFC 4791 lets the client choose the resource name;
+    /// naming a QuickMail-CREATED event after its UID lets create address it without the server
+    /// handing a location back. Used for creates, and as the edit/delete fallback for a
+    /// QuickMail-created row not yet re-synced (once read-sync captures the server's real href —
+    /// which for an Apple-created event is a random name ≠ UID — edit/delete target that instead).
+    /// </summary>
+    public static string EventResourceUrl(string calendarCollectionUrl, string uid)
+        => $"{calendarCollectionUrl.TrimEnd('/')}/{Uri.EscapeDataString(uid)}.ics";
+
     // ── Discovery ────────────────────────────────────────────────────────────────
 
     private const string PrincipalBody =
@@ -143,7 +171,7 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
 
     // ── Event fetch ──────────────────────────────────────────────────────────────
 
-    public async Task<List<string>> FetchEventIcsAsync(string calendarUrl, string username, string password,
+    public async Task<List<(string Href, string Ics)>> FetchEventIcsAsync(string calendarUrl, string username, string password,
                                                        DateTime startUtc, DateTime endUtc, CancellationToken ct = default)
     {
         var body =
@@ -161,9 +189,37 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
             </c:calendar-query>
             """;
 
-        var (xml, _) = await SendAsync(ReportMethod, NormalizeUri(calendarUrl), body, depth: "1", username, password, ct);
-        return ParseCalendarData(xml);
+        // finalUri is the collection host that actually answered (after any partition redirect);
+        // relative resource hrefs in the multistatus resolve against it.
+        var (xml, finalUri) = await SendAsync(ReportMethod, NormalizeUri(calendarUrl), body, depth: "1", username, password, ct);
+        return ParseCalendarData(xml, finalUri);
     }
+
+    // ── Event write (create / edit / delete) ─────────────────────────────────────
+
+    public async Task<string> PutEventAsync(string eventResourceUrl, string icsBody,
+        string username, string password, bool ifNoneMatch, CancellationToken ct = default)
+    {
+        await SendCoreAsync(NormalizeUri(eventResourceUrl), username, password, target =>
+        {
+            // StringContent stamps "text/calendar; charset=utf-8" — the media type CalDAV requires.
+            var req = new HttpRequestMessage(HttpMethod.Put, target)
+            {
+                Content = new StringContent(icsBody, Encoding.UTF8, "text/calendar"),
+            };
+            // If-None-Match: * makes a create refuse to overwrite an existing resource; an edit
+            // omits it (unconditional replace — v1 is last-write-wins, no ETag round-trip yet).
+            if (ifNoneMatch)
+                req.Headers.TryAddWithoutValidation("If-None-Match", "*");
+            return req;
+        }, ct);
+        return eventResourceUrl;
+    }
+
+    public Task DeleteEventAsync(string eventResourceUrl, string username, string password, CancellationToken ct = default)
+        // DELETE carries no body and no Depth header — just the manual redirect + auth re-attach.
+        => SendCoreAsync(NormalizeUri(eventResourceUrl), username, password,
+                         target => new HttpRequestMessage(HttpMethod.Delete, target), ct);
 
     private static string Stamp(DateTime utc)
         => DateTime.SpecifyKind(utc, DateTimeKind.Utc)
@@ -230,15 +286,31 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
         return result;
     }
 
-    /// <summary>Every non-empty calendar-data ICS body in a REPORT multistatus.</summary>
-    internal static List<string> ParseCalendarData(string xml)
+    /// <summary>
+    /// Every response in a REPORT multistatus that carries a non-empty calendar-data ICS body,
+    /// paired with that response's own resource href. The href is resolved absolute against
+    /// <paramref name="baseUri"/> (the collection that answered) when supplied — so an edit/delete
+    /// can target the resource directly, whatever name the server gave it. Walks per-response
+    /// (mirroring <see cref="ParseAllVEventCalendars"/>) so each body keeps its own sibling href;
+    /// a response's href is its direct child, the body is nested under propstat/prop.
+    /// </summary>
+    internal static List<(string Href, string Ics)> ParseCalendarData(string xml, Uri? baseUri = null)
     {
+        var result = new List<(string, string)>();
         var doc = XDocument.Parse(xml);
-        return doc.Descendants()
-            .Where(e => e.Name.LocalName == "calendar-data")
-            .Select(e => e.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .ToList();
+        foreach (var response in doc.Descendants().Where(e => e.Name.LocalName == "response"))
+        {
+            var ics = response.Descendants()
+                .FirstOrDefault(e => e.Name.LocalName == "calendar-data")?.Value;
+            if (string.IsNullOrWhiteSpace(ics)) continue;
+
+            var href = response.Elements().FirstOrDefault(e => e.Name.LocalName == "href")?.Value.Trim() ?? string.Empty;
+            if (baseUri != null && !string.IsNullOrEmpty(href) && Uri.TryCreate(baseUri, href, out var abs))
+                href = abs.ToString();
+
+            result.Add((href, ics));
+        }
+        return result;
     }
 
     // ── HTTP plumbing ────────────────────────────────────────────────────────────
@@ -252,22 +324,39 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
     }
 
     /// <summary>
-    /// Sends one WebDAV request with Basic auth, following redirects manually (auth re-attached
-    /// on each hop — see class remarks). Returns the response body and the FINAL request URI so
+    /// Sends one WebDAV request with a body and a Depth header (the PROPFIND / REPORT shape),
+    /// following redirects manually. Returns the response body and the FINAL request URI so
     /// relative hrefs in the response resolve against the host that actually answered.
     /// </summary>
-    private async Task<(string Body, Uri FinalUri)> SendAsync(HttpMethod method, Uri uri, string body,
+    private Task<(string Body, Uri FinalUri)> SendAsync(HttpMethod method, Uri uri, string body,
         string depth, string username, string password, CancellationToken ct)
+        => SendCoreAsync(uri, username, password, target =>
+        {
+            var req = new HttpRequestMessage(method, target);
+            req.Headers.TryAddWithoutValidation("Depth", depth);
+            req.Content = new StringContent(body, Encoding.UTF8, "application/xml");
+            return req;
+        }, ct);
+
+    /// <summary>
+    /// Core send loop shared by the XML (PROPFIND/REPORT) and write (PUT/DELETE) paths. Follows
+    /// redirects manually, re-attaching Basic auth on every hop — .NET strips the Authorization
+    /// header on cross-host auto-redirects, which iCloud's partition-host redirect would otherwise
+    /// turn into a silent 401 (see class remarks). <paramref name="buildRequest"/> is invoked once
+    /// per hop because an <see cref="HttpRequestMessage"/> and its content can only be sent once;
+    /// it must NOT set Authorization (the loop owns that). Returns the response body and the FINAL
+    /// request URI. Throws on a non-success status with the response body.
+    /// </summary>
+    private async Task<(string Body, Uri FinalUri)> SendCoreAsync(Uri uri, string username, string password,
+        Func<Uri, HttpRequestMessage> buildRequest, CancellationToken ct)
     {
         var auth = new AuthenticationHeaderValue("Basic",
             Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{password}")));
 
         for (var hop = 0; hop <= MaxRedirects; hop++)
         {
-            using var req = new HttpRequestMessage(method, uri);
+            using var req = buildRequest(uri);
             req.Headers.Authorization = auth;
-            req.Headers.TryAddWithoutValidation("Depth", depth);
-            req.Content = new StringContent(body, Encoding.UTF8, "application/xml");
 
             using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
 
@@ -279,7 +368,7 @@ public sealed class CalDavCalendarClient : ICalDavCalendarClient, IDisposable
                 continue;
             }
 
-            if (!resp.IsSuccessStatusCode) // 207 Multi-Status is a success code
+            if (!resp.IsSuccessStatusCode) // 2xx incl. 201/204 (writes) and 207 Multi-Status (reads)
             {
                 var errBody = await resp.Content.ReadAsStringAsync(ct);
                 throw new HttpRequestException(

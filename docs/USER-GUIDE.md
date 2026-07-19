@@ -131,7 +131,7 @@ Enter your iCloud address (`@icloud.com`, `@me.com`, or `@mac.com`) in the **Ema
 
 **App-specific password required.** Apple does not allow third-party apps to use your Apple ID password directly. Generate an app-specific password at **appleid.apple.com** (Sign-In & Security → App-Specific Passwords) and enter it in the Password field. QuickMail shows a reminder in the password area when it detects an iCloud address.
 
-To bring in your iCloud data, check **Sync contacts from this account** and/or **Sync calendar from this account** — QuickMail uses the same app-specific password for both, so there's nothing else to set up. iCloud contacts and calendars are read-only in QuickMail. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts) and the [Calendar](#calendar) section for details.
+To bring in your iCloud data, check **Sync contacts from this account** and/or **Sync calendar from this account** — QuickMail uses the same app-specific password for both, so there's nothing else to set up. iCloud **contacts** are read-only; iCloud **calendars** you can also add, edit, and delete single (non-repeating) appointments on. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts) and the [Calendar](#calendar) section for details.
 
 ### Managing Accounts
 
@@ -606,7 +606,7 @@ Press **N** (or the **New** toolbar button) to open the appointment editor. It i
 - **Location** — optional.
 - **Repeat** — leave as "Does not repeat" for a one-off, or set up a repeating appointment (see below).
 - **Notes** — free text.
-- **Calendar** — when you have a Microsoft or Google account connected, a picker lets you choose whether the new appointment is saved to your **Local Calendar** or pushed to that account. With no connected calendar this picker does not appear and everything is saved locally.
+- **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved: your **Local Calendar** or a connected account. For iCloud the picker lists each of your Apple calendars (Home, Family, …) so you can choose which one. With no connected calendar this picker does not appear and everything is saved locally.
 
 Press **Enter** (or the **Save** button) to save, or **Escape** to cancel.
 
@@ -631,9 +631,9 @@ When you later edit or delete one occurrence of a repeating appointment, QuickMa
 What you can change depends on where the appointment lives:
 
 - **Your own (Local Calendar) appointments** — fully editable and deletable.
-- **Single events from a connected Microsoft or Google calendar** — editable and deletable; your change is sent back to that account.
+- **Single events from a connected Microsoft, Google, or iCloud calendar** — editable and deletable; your change is sent back to that account.
 - **Repeating events from a connected online calendar** — read-only for now; QuickMail tells you so rather than changing them.
-- **iCloud / internet-calendar events and meeting invitations** — read-only. QuickMail explains why instead of failing silently.
+- **Meeting invitations** — read-only. QuickMail explains why instead of failing silently.
 
 If saving a change to an online account ever fails, QuickMail saves your appointment to the Local Calendar instead so your work is never lost, and tells you it did.
 
@@ -664,7 +664,7 @@ Calendars connect **per account**, the same way contact sync does. When you add 
 | **Local Calendar** | — (they live here) | Full | Nothing to set up; it is always there. |
 | **Microsoft** (Outlook.com, Microsoft 365) | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. Microsoft asks once for calendar permission. |
 | **Google** | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. Permission was granted when you signed in for mail. |
-| **iCloud** | Yes | No — read-only | Check **Sync calendar from this account**. QuickMail uses the app-specific password you already entered for the account — no separate setup. |
+| **iCloud** | Yes | Yes, for single (non-repeating) events | Check **Sync calendar from this account**. QuickMail uses the app-specific password you already entered for the account — no separate setup. When you create an appointment you can choose which iCloud calendar (Home, Family, …) it goes on. |
 
 **Turning it on for an account you already have:** open **Manage Accounts**, select the account, and check **Sync calendar from this account**. It applies immediately — a **Calendar → [account]** node appears in the folder tree and the events sync in the background. Unchecking it removes them.
 
@@ -680,14 +680,14 @@ To set expectations clearly:
 - Show four views (Agenda, Day, Week, Month) and jump to any date.
 - Remind you before appointments (when you turn reminders on).
 - Respond to meeting invitations and keep your reply in sync.
-- Download events from Microsoft, Google, and iCloud/CalDAV calendars, and send single-event changes back to Microsoft and Google.
+- Download events from Microsoft, Google, and iCloud calendars, and create, edit, and delete single (non-repeating) events on any of them.
 - Export any appointment as a `.ics` file.
 
 **It does not (yet):**
 
 - Work in online mode — it needs the local cache.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
-- Edit **repeating** events that came from an online calendar, or change anything on an **iCloud** calendar (iCloud is read-only in QuickMail).
+- Edit or delete **repeating** events that came from an online calendar (repeating server events are read-only).
 - Connect calendars from generic CalDAV servers other than iCloud (Fastmail, Nextcloud, and the like).
 - Subscribe to public `.ics` calendar feeds (holidays, sports schedules, and the like).
 - Offer multiple named calendars, calendar colors, per-appointment reminder times, or reminder snoozing.

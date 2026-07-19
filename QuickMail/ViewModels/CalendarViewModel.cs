@@ -201,11 +201,16 @@ public partial class CalendarViewModel : ObservableObject
     // push-capable accounts only, so it omits iCloud). Null in tests.
     private readonly Func<IReadOnlyList<AccountModel>>? _allAccountsProvider;
 
+    // Discovered calendar sources (AccountId, CalendarId, CalendarName) — used to offer one save
+    // target per iCloud calendar (Home / Family). Null in tests and until sync has discovered any.
+    private readonly Func<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>>? _calendarSourcesProvider;
+
     public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents,
                              bool showFieldLabels = false,
                              IGraphCalendarSyncService? graphSync = null,
                              Func<IReadOnlyList<AccountModel>>? graphAccountsProvider = null,
-                             Func<IReadOnlyList<AccountModel>>? allAccountsProvider = null)
+                             Func<IReadOnlyList<AccountModel>>? allAccountsProvider = null,
+                             Func<IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)>>? calendarSourcesProvider = null)
     {
         _calendarService = calendarService;
         _onlineMode = onlineMode;
@@ -214,7 +219,16 @@ public partial class CalendarViewModel : ObservableObject
         _graphSync = graphSync;
         _graphAccountsProvider = graphAccountsProvider;
         _allAccountsProvider = allAccountsProvider;
+        _calendarSourcesProvider = calendarSourcesProvider;
     }
+
+    /// <summary>
+    /// iCloud accounts save per-calendar: each discovered CalDAV collection is its own save target
+    /// (Home / Family), unlike Microsoft/Google which save to their default calendar. Detected by
+    /// IMAP host, matching the sync service's eligibility.
+    /// </summary>
+    private static bool IsICloudAccount(AccountModel a)
+        => a.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Builds the "Calendar" source label for a row: "Local" for locally-authored appointments,
@@ -397,11 +411,26 @@ public partial class CalendarViewModel : ObservableObject
     {
         if (_onlineMode) { Announce("Calendar is unavailable in online mode.", AnnouncementCategory.Result); return; }
 
-        // Save targets: the local calendar (always, default) plus each server-backed account
-        // (Microsoft or Google — whatever the provider supplies).
-        var accountTargets = (_graphAccountsProvider?.Invoke() ?? [])
-            .Select(a => new CalendarSaveTarget(a.AccountLabel, a.Id))
-            .ToList();
+        // Save targets: the local calendar (always, default; added by the editor) plus each
+        // server-backed account. Microsoft/Google contribute one target (their default calendar);
+        // an iCloud account contributes one target PER discovered calendar so the user picks Home
+        // vs. Family.
+        var sources = _calendarSourcesProvider?.Invoke() ?? [];
+        var accountTargets = new List<CalendarSaveTarget>();
+        foreach (var a in _graphAccountsProvider?.Invoke() ?? [])
+        {
+            if (IsICloudAccount(a))
+            {
+                foreach (var (_, calId, calName) in sources.Where(s => s.AccountId == a.Id))
+                    accountTargets.Add(new CalendarSaveTarget($"{a.AccountLabel}: {calName}", a.Id, calId, calName));
+                // No discovered calendars yet (never synced) → offer nothing rather than a target
+                // that can't resolve a collection to PUT to.
+            }
+            else
+            {
+                accountTargets.Add(new CalendarSaveTarget(a.AccountLabel, a.Id));
+            }
+        }
         var editor = new EventEditorViewModel(DateTime.Now, accountTargets);
         editor.Saved += evt => _ = SaveNewEventAsync(evt);
         EditorRequested?.Invoke(editor);
@@ -421,8 +450,11 @@ public partial class CalendarViewModel : ObservableObject
         if (account is null || _graphSync is null)
         {
             // Local target — or an account target we can no longer resolve (account removed
-            // between opening the editor and saving): keep the data rather than fail.
+            // between opening the editor and saving): keep the data rather than fail. Drop any
+            // server calendar tag so the row reads as a clean local appointment.
             evt.AccountId = CalendarEvent.LocalAccountId;
+            evt.CalendarId = string.Empty;
+            evt.CalendarName = string.Empty;
             await SaveEditedEventAsync(evt, isNew: true);
             return;
         }
@@ -442,6 +474,8 @@ public partial class CalendarViewModel : ObservableObject
         {
             LogService.Log($"Graph calendar create failed for {account.AccountLabel}", ex);
             evt.AccountId = CalendarEvent.LocalAccountId;
+            evt.CalendarId = string.Empty;
+            evt.CalendarName = string.Empty;
             await _calendarService.UpsertEventAsync(evt);
             ApplyFilters();
             SelectedEvent = Events.FirstOrDefault(e => e.Uid == evt.Uid && e.AccountId == evt.AccountId);
@@ -564,9 +598,13 @@ public partial class CalendarViewModel : ObservableObject
         try
         {
             // Keep the server identity: same Uid and account, is_graph flag preserved by the
-            // sync service when it stores the server's returned copy.
+            // sync service when it stores the server's returned copy. Carry the original's calendar
+            // tag too — an iCloud update PUTs back to the collection the event lives on (Microsoft
+            // and Google ignore it).
             edited.Uid = original.Uid;
             edited.AccountId = account.Id;
+            edited.CalendarId = original.CalendarId;
+            edited.CalendarName = original.CalendarName;
             var updated = await _graphSync!.UpdateEventAsync(account, edited);
             await _calendarService.RefreshAsync();
             ApplyFilters();
