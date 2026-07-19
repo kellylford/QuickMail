@@ -223,6 +223,19 @@ public partial class CalendarEvent : ObservableObject
         set => _accessibleName = value;
     }
 
+    /// <summary>
+    /// Column text for the "Calendar" grid column — which calendar this appointment belongs to,
+    /// as "AccountLabel: CalendarName" (e.g. "Apple: Family"), the account label alone for events
+    /// with no specific calendar (invites), or "Local" for locally-authored appointments. Stamped by
+    /// <see cref="ViewModels.CalendarViewModel"/>, which has the account labels; empty otherwise.
+    /// </summary>
+    private string _calendarSourceLabel = string.Empty;
+    public string CalendarSourceLabel
+    {
+        get => _calendarSourceLabel;
+        set => _calendarSourceLabel = value;
+    }
+
     /// <summary>Column text for the "When" grid column — a friendly date/time range.</summary>
     public string WhenText
     {
