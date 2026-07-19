@@ -121,6 +121,11 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - **Removed** the interim global Settings → Internet Calendar (CalDAV) source: its UI, `SettingsViewModel` CalDav members, `[caldav]` config keys, and the synthetic-id (`AccountIdFor` / `SecretKeyFor`) helpers — all superseded by the per-account model.
 - New palette command `calendar.syncNow` ("Sync Calendars Now"). Tests: per-account CalDAV sync (rewritten `CalDavCalendarSyncTests`), opt-in gating, `ShowCalendarSyncOption`, `IsCalendarPushAccount`.
 
+### iCloud contacts via CardDAV
+
+- The "Sync contacts from this account" checkbox (#256) now also appears for **iCloud** accounts, alongside Microsoft and Google — so every account offers a checkbox for each service QuickMail can read. iCloud contacts sync over **CardDAV** (`https://contacts.icloud.com`) using the account's own app-specific password (`GetPassword(account.Id)`), no OAuth.
+- New `CardDavContactClient` (mirrors `CalDavCalendarClient`: manual-redirect Basic-auth `SendAsync`, `current-user-principal` → `addressbook-home-set` → collections discovery, `addressbook-query` REPORT) + minimal vCard parsing (`VCardModel`, reusing `IcsModel`'s unfolding/block-scan/unescape). `ICloudContactSource : IProviderContactSource` (`ContactSource.ICloud`) plugs into `ContactSyncService` via an iCloud host guard in `SourceFor`. `ShowContactSyncOption` / `CanSyncContacts` extended to the iCloud host; consent is requested for Microsoft and Google only (iCloud reuses the app password). iCloud contacts are saved contacts only (CardDAV has no "recent recipients" concept).
+
 ### Go to Date (PR #279)
 
 - `calendar.goToDate` (default **Ctrl+G**, rebindable, in the Command Palette) opens a modeless `GoToDateWindow` (DatePicker). Day/Week/Month keep their view and recenter; Agenda switches to Day. `RequestGoToDate` announces unavailability in online mode; the picker is single-instance.

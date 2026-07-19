@@ -33,12 +33,14 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public bool IsEditing => SelectedAccount != null;
 
     /// <summary>
-    /// Contact sync (issue #256) is offered only for OAuth accounts — the only backends that expose
-    /// a contact API. Password/IMAP accounts show no checkbox at all (spec §6 Path F).
+    /// Contact sync (issue #256) is offered for Microsoft and Google (OAuth contact APIs), plus
+    /// iCloud accounts (CardDAV via the account's app-specific password) — a superset matching
+    /// calendar sync. Other password/IMAP accounts show no checkbox.
     /// </summary>
     public bool CanSyncContacts =>
-        _contactSync != null &&
-        SelectedAccount is { AuthType: AuthType.OAuth2Microsoft or AuthType.OAuth2Google };
+        _contactSync != null && SelectedAccount is { } acct &&
+        (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
+         || acct.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
 
     // SyncContacts / SyncCalendar are inherited from AccountEditorViewModel (shared with Add Account).
 
@@ -120,8 +122,17 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             {
                 if (!CanSyncContacts) return; // box is hidden for these accounts; defensive
                 account.SyncContacts = true;
-                StatusText = "Requesting permission to read your contacts…";
-                await _oauth.RequestContactsConsentAsync(account);
+                // Both OAuth providers need an explicit contact-scope consent here: unlike calendar
+                // (Google's calendar scope rides along with mail sign-in), the Google CONTACTS scope
+                // is NOT in the base sign-in, so toggling contacts on for a Google account must
+                // request it (RequestContactsConsentAsync re-authorizes for Google, acquires the
+                // Graph scope for Microsoft). iCloud uses the account's app-specific password over
+                // CardDAV — no OAuth, no prompt.
+                if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
+                {
+                    StatusText = "Requesting permission to read your contacts…";
+                    await _oauth.RequestContactsConsentAsync(account);
+                }
                 _accountService.SaveAccounts([.. Accounts]);
                 // Pull an initial snapshot so contacts appear without waiting for the next launch.
                 _contactSync?.SyncAccountAsync(account).LogFaults("contact sync after enable");

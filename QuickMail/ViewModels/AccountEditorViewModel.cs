@@ -23,6 +23,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsICloudAccount))]
+    [NotifyPropertyChangedFor(nameof(ShowContactSyncOption))]
     [NotifyPropertyChangedFor(nameof(ShowCalendarSyncOption))]
     private string _imapHost = string.Empty;
     [ObservableProperty] private int    _imapPort = 993;
@@ -51,8 +52,11 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _syncContacts;
 
-    /// <summary>Contact sync is only offered for OAuth accounts — the backends with a contact API.</summary>
-    public bool ShowContactSyncOption => IsOAuth2 || IsGoogleOAuth;
+    /// <summary>
+    /// Contact sync is offered for Microsoft and Google (OAuth contact APIs) plus iCloud (CardDAV
+    /// via the account's app-specific password) — a superset matching calendar sync.
+    /// </summary>
+    public bool ShowContactSyncOption => IsOAuth2 || IsGoogleOAuth || IsICloudAccount;
 
     /// <summary>
     /// Bound to the "Sync calendar from this account" checkbox (#282). Like contact sync it can be

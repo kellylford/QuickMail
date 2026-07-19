@@ -17,6 +17,7 @@ public partial class App : Application
     private GooglePeopleClient? _googlePeopleClient;
     private GoogleCalendarClient? _googleCalendarClient;
     private CalDavCalendarClient? _calDavCalendarClient;
+    private CardDavContactClient? _cardDavContactClient;
     private TemplateService? _templateService;
     private ChangeNotifierRouter? _changeNotifier;
     private GraphChangeNotifier? _graphNotifier;
@@ -235,7 +236,12 @@ public partial class App : Application
             var graphContactSource  = new GraphContactSource(graphBackend.Client);
             _googlePeopleClient     = new GooglePeopleClient(googleOAuth);
             var googleContactSource = new GoogleContactSource(_googlePeopleClient);
-            var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource);
+            // iCloud contacts run per-account over CardDAV: for each account the user opted into whose
+            // IMAP host is imap.mail.me.com, the source discovers/fetches its address book using the
+            // account's own app-specific password (no separate credential, no OAuth).
+            _cardDavContactClient   = new CardDavContactClient();
+            var iCloudContactSource = new ICloudContactSource(_cardDavContactClient, credentialService);
+            var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource, iCloudContactSource);
 
             var startupCfg = configService.Load();
             Views.AccessibilityHelper.Configure(startupCfg);
@@ -323,6 +329,7 @@ public partial class App : Application
         _googlePeopleClient?.Dispose();
         _googleCalendarClient?.Dispose();
         _calDavCalendarClient?.Dispose();
+        _cardDavContactClient?.Dispose();
         _contactService?.Dispose();
         _templateService?.Dispose();
         _updateCheckService?.Dispose();

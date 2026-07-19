@@ -94,3 +94,31 @@ public class AddressBookViewModelSyncTests
         Assert.Equal(1, recorder.SyncAllCount);
     }
 }
+
+/// <summary>
+/// AccountManagerViewModel contact-sync eligibility: the checkbox is offered for Microsoft, Google,
+/// and iCloud accounts (CardDAV), a superset matching calendar sync.
+/// </summary>
+public class AccountManagerContactSyncScopeTests
+{
+    private static AccountManagerViewModel NewManager() =>
+        new(new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
+            new StubOAuthService(), new StubLocalStoreService(), new StubConfigService(),
+            new StubFeatureGate(), new StubContactSyncService());
+
+    [Fact]
+    public void CanSyncContacts_TrueForICloudAccount()
+    {
+        var vm = NewManager();
+        vm.SelectedAccount = new AccountModel { AuthType = AuthType.Password, ImapHost = "imap.mail.me.com" };
+        Assert.True(vm.CanSyncContacts);
+    }
+
+    [Fact]
+    public void CanSyncContacts_FalseForPlainImapAccount()
+    {
+        var vm = NewManager();
+        vm.SelectedAccount = new AccountModel { AuthType = AuthType.Password, ImapHost = "imap.example.com" };
+        Assert.False(vm.CanSyncContacts);
+    }
+}
