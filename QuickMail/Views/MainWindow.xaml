@@ -1278,6 +1278,8 @@
                                                     DisplayMemberBinding="{Binding WhenText}"/>
                                     <GridViewColumn Header="Status" Width="110"
                                                     DisplayMemberBinding="{Binding StatusText}"/>
+                                    <GridViewColumn Header="Calendar" Width="150"
+                                                    DisplayMemberBinding="{Binding CalendarSourceLabel}"/>
                                 </GridView>
                             </ListView.View>
                         </ListView>

@@ -961,7 +961,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CalendarVm = new CalendarViewModel(_calendarService, onlineMode, cfg.ShowDeclinedEvents,
                                                cfg.CalendarListShowFieldLabels,
                                                _graphCalendarSync,
-                                               () => Accounts.Where(IsCalendarPushAccount).ToList());
+                                               () => Accounts.Where(IsCalendarPushAccount).ToList(),
+                                               () => Accounts.ToList());
             RemindersEnabled = cfg.CalendarReminders;
             ReminderLeadMinutes = cfg.CalendarReminderMinutes;
             StartReminderTimer();

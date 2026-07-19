@@ -80,8 +80,36 @@ public class CalendarViewModelTests
         await vm.LoadAsync();
 
         var name = vm.VisibleEvents[0].AccessibleName;
-        Assert.Equal(vm.VisibleEvents[0].DisplayLine, name);
+        // Concise (no field labels) base line, with the calendar source appended for accessibility (#1).
+        Assert.StartsWith(vm.VisibleEvents[0].DisplayLine, name);
         Assert.DoesNotContain("Subject ", name);
+        Assert.Contains(", calendar ", name);
+    }
+
+    [Fact]
+    public async Task CalendarSourceLabel_LocalAndTaggedCalendar()
+    {
+        var acctId = Guid.NewGuid();
+        var local = new CalendarEvent
+        {
+            Uid = "loc", AccountId = CalendarEvent.LocalAccountId, Summary = "Mine",
+            StartTimeTicks = DateTime.Today.AddHours(9).ToUniversalTime().Ticks,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        var tagged = new CalendarEvent
+        {
+            Uid = "fam", AccountId = acctId, IsGraph = true, Summary = "Reunion",
+            CalendarName = "Family",
+            StartTimeTicks = DateTime.Today.AddHours(10).ToUniversalTime().Ticks,
+            ResponseStatus = CalendarResponseStatus.Accepted,
+        };
+        var svc = new StubCalendarService { StoredEvents = [local, tagged] };
+        var vm = new CalendarViewModel(svc, onlineMode: false, showDeclinedEvents: false,
+            allAccountsProvider: () => new[] { new AccountModel { Id = acctId, AccountName = "Apple" } });
+        await vm.LoadAsync();
+
+        Assert.Equal("Local", vm.VisibleEvents.First(e => e.Uid == "loc").CalendarSourceLabel);
+        Assert.Equal("Apple: Family", vm.VisibleEvents.First(e => e.Uid == "fam").CalendarSourceLabel);
     }
 
     [Fact]

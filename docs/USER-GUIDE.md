@@ -592,7 +592,7 @@ In Day, Week, and Month views:
 
 ### Reading an appointment
 
-Move through the list with the arrow keys. Each row is announced as a short summary — for example, "Team standup, today 10:00 to 10:30, Accepted. Location: Zoom." A **details** area below the list shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
+Move through the list with the arrow keys. The list has **Subject**, **When**, **Status**, and **Calendar** columns; the Calendar column shows which calendar the appointment belongs to — for example **Apple: Family**, or **Local** for an appointment you created here. Each row is announced as a short summary that includes the calendar — for example, "Team standup, today 10:00 to 10:30, Accepted. Location: Zoom, calendar Apple: Family." A **details** area below the list shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
 
 If you prefer each row spoken with field labels ("Subject …, when …, location …") instead of the concise form, turn on **Show field labels in the calendar event list** in **Settings → General**. It takes effect immediately.
 

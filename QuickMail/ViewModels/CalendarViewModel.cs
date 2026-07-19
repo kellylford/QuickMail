@@ -197,10 +197,15 @@ public partial class CalendarViewModel : ObservableObject
         IsSearchActive = false;
     }
 
+    // Resolves EVERY account's label for the "Calendar" column (the graph-accounts provider above is
+    // push-capable accounts only, so it omits iCloud). Null in tests.
+    private readonly Func<IReadOnlyList<AccountModel>>? _allAccountsProvider;
+
     public CalendarViewModel(ICalendarService calendarService, bool onlineMode, bool showDeclinedEvents,
                              bool showFieldLabels = false,
                              IGraphCalendarSyncService? graphSync = null,
-                             Func<IReadOnlyList<AccountModel>>? graphAccountsProvider = null)
+                             Func<IReadOnlyList<AccountModel>>? graphAccountsProvider = null,
+                             Func<IReadOnlyList<AccountModel>>? allAccountsProvider = null)
     {
         _calendarService = calendarService;
         _onlineMode = onlineMode;
@@ -208,6 +213,20 @@ public partial class CalendarViewModel : ObservableObject
         _showFieldLabels = showFieldLabels;
         _graphSync = graphSync;
         _graphAccountsProvider = graphAccountsProvider;
+        _allAccountsProvider = allAccountsProvider;
+    }
+
+    /// <summary>
+    /// Builds the "Calendar" source label for a row: "Local" for locally-authored appointments,
+    /// "AccountLabel: CalendarName" (e.g. "Apple: Family") for a tagged server calendar, or the
+    /// account label alone when the row has no specific calendar (e.g. a harvested invitation).
+    /// </summary>
+    private string SourceLabelFor(CalendarEvent e, IReadOnlyDictionary<Guid, string> labels)
+    {
+        if (e.AccountId == CalendarEvent.LocalAccountId) return "Local";
+        var acct = labels.TryGetValue(e.AccountId, out var label) && !string.IsNullOrWhiteSpace(label)
+            ? label : "Account";
+        return string.IsNullOrWhiteSpace(e.CalendarName) ? acct : $"{acct}: {e.CalendarName.Trim()}";
     }
 
     /// <summary>
@@ -788,9 +807,18 @@ public partial class CalendarViewModel : ObservableObject
 
         _filteredEvents = result.OrderBy(e => e.StartTimeTicks ?? long.MaxValue).ToList();
 
-        // Stamp each row's accessible name per the field-labels setting (mirrors the address book).
+        // Stamp each row's accessible name (per the field-labels setting, mirroring the address book)
+        // plus the "Calendar" source column, which also gets spoken so screen-reader users hear which
+        // calendar a row belongs to (#1). Build the account-label map once.
+        var accountLabels = (_allAccountsProvider?.Invoke() ?? [])
+            .GroupBy(a => a.Id).ToDictionary(g => g.Key, g => g.First().AccountLabel);
         foreach (var evt in _filteredEvents)
-            evt.AccessibleName = _showFieldLabels ? evt.LabeledLine : evt.DisplayLine;
+        {
+            var source = SourceLabelFor(evt, accountLabels);
+            evt.CalendarSourceLabel = source;
+            var baseName = _showFieldLabels ? evt.LabeledLine : evt.DisplayLine;
+            evt.AccessibleName = string.IsNullOrEmpty(source) ? baseName : $"{baseName}, calendar {source}";
+        }
 
         using (Events.BeginBatchScope())
         {
