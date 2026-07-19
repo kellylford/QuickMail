@@ -121,6 +121,13 @@ internal sealed class GraphScoredEmailAddress
 
 // ── Calendar sync (full-calendar spec, M4 read-down v1) ─────────────────────
 
+/// <summary>One calendar from <c>/me/calendars</c> — its id and display name (multi-calendar sync).</summary>
+internal sealed class GraphCalendar
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("name")] public string? Name { get; set; }
+}
+
 /// <summary>
 /// An event occurrence from <c>/me/calendarView</c>. calendarView expands recurring series
 /// server-side, so each item is a concrete occurrence with its own id — no RRULE handling needed.

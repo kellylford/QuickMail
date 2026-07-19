@@ -35,6 +35,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IFlagService? _flagService;
     private readonly ICalendarService? _calendarService;
     private readonly IGraphCalendarSyncService? _graphCalendarSync;
+
+    // Distinct per-account server calendars (from the local store), cached on the UI thread so the
+    // synchronous BuildFolderTree can add a grandchild node per calendar. Refreshed after each
+    // calendar sync and on initial load.
+    private IReadOnlyList<(Guid AccountId, string CalendarId, string CalendarName)> _calendarSources = [];
     private readonly IUpdateCheckService? _updateCheckService;
     // Windows toast notifications for new mail. Null in tests and when the OS/platform is
     // unsupported. Calling into it is an OS side-effect a service owns, not a View-layer type,
@@ -215,7 +220,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     };
 
     // Per-source calendar children under the Calendar node: " Calendar:{guid}" for one
-    // account's calendar, ":local" for locally-authored appointments, ":all" for the merged view.
+    // account, "local" for locally-authored appointments, "all" for the merged view, and
+    // "{guid}|{escapedCalId}" for a single specific calendar of that account.
     internal const string CalendarSourcePrefix = " Calendar:";
 
     /// <summary>True for the Calendar node or any of its per-source children.</summary>
@@ -225,17 +231,35 @@ public partial class MainViewModel : ObservableObject, IDisposable
             || fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal));
 
     /// <summary>
-    /// Maps a calendar folder name to the account filter it selects:
-    /// null = all sources; Guid.Empty = local appointments; else that account's calendar.
+    /// Maps a calendar folder name to the source filter it selects. Returns null only for a name that
+    /// is not a per-source child (e.g. the bare Calendar node); the "all" child returns a filter that
+    /// matches every source. See <see cref="CalendarSourcePrefix"/> for the tail encoding.
     /// </summary>
-    internal static Guid? CalendarFilterFor(string fullName)
+    internal static CalendarFilter? CalendarFilterFor(string fullName)
     {
         if (!fullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal)) return null;
         var tail = fullName[CalendarSourcePrefix.Length..];
-        if (tail == "all") return null;
-        if (tail == "local") return Guid.Empty;
-        return Guid.TryParse(tail, out var id) ? id : null;
+        if (tail == "all")   return new CalendarFilter(null, null);
+        if (tail == "local") return new CalendarFilter(Guid.Empty, null);
+
+        // "{guid}|{escapedCalId}" selects one specific calendar; "{guid}" selects all of that
+        // account's calendars.
+        var sep = tail.IndexOf('|');
+        if (sep >= 0)
+        {
+            var calId = Uri.UnescapeDataString(tail[(sep + 1)..]);
+            return Guid.TryParse(tail[..sep], out var gid) ? new CalendarFilter(gid, calId) : null;
+        }
+        return Guid.TryParse(tail, out var id) ? new CalendarFilter(id, null) : null;
     }
+
+    /// <summary>
+    /// Which calendar source(s) the calendar list shows. <see cref="Account"/> null = every source
+    /// merged; <see cref="Guid.Empty"/> = locally-authored appointments only; otherwise that
+    /// account's rows. <see cref="CalendarId"/> null = all of that account's calendars; otherwise the
+    /// single tagged calendar.
+    /// </summary>
+    public sealed record CalendarFilter(Guid? Account, string? CalendarId);
 
     /// <summary>
     /// True for accounts with a server calendar the app can push appointments to: Microsoft
@@ -1663,6 +1687,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : "Connecting and syncing…";
         ConnectionStatusText = "Connecting…";
         StartPrefetchTopOfFolder();
+        await ReloadCalendarSourcesAsync(); // populate before the tree is built so calendars show at startup
         RebuildFolderListFromCache();
     }
 
@@ -2805,7 +2830,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Only accounts the user opted into calendar sync for (#282) get a source node.
             foreach (var acct in Accounts.Where(a => a.SyncCalendar))
             {
-                calNode.Children.Add(new FolderTreeNode
+                var acctNode = new FolderTreeNode
                 {
                     Folder = new MailFolderModel
                     {
@@ -2813,7 +2838,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         DisplayName = acct.AccountLabel,
                     },
                     Label = acct.AccountLabel,
-                });
+                };
+
+                // A grandchild per discovered calendar so the user can view Home vs. Work vs. Family.
+                // With 0 or 1 calendars the account node alone suffices (no redundant single child).
+                var acctCalendars = _calendarSources.Where(s => s.AccountId == acct.Id).ToList();
+                if (acctCalendars.Count > 1)
+                    foreach (var (_, calId, calName) in acctCalendars)
+                        acctNode.Children.Add(new FolderTreeNode
+                        {
+                            Folder = new MailFolderModel
+                            {
+                                FullName    = CalendarSourcePrefix + acct.Id.ToString("D") + "|" + Uri.EscapeDataString(calId),
+                                DisplayName = calName,
+                            },
+                            Label = calName,
+                        });
+
+                calNode.Children.Add(acctNode);
             }
             roots.Add(calNode);
         }
@@ -3241,7 +3283,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task SelectCalendarAsync(MailFolderModel? folder = null)
     {
         if (CalendarVm == null) return;
-        CalendarVm.AccountFilter = folder == null ? null : CalendarFilterFor(folder.FullName);
+        CalendarVm.SourceFilter = folder == null ? null : CalendarFilterFor(folder.FullName);
 
         _suppressFilterRebuild = true;
         ActiveFilter        = MessageFilter.All;
@@ -6264,6 +6306,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// category) only while the calendar view is active, so background passes stay silent.
     /// Runs on the UI thread; overlapping passes (timer vs. F5) are skipped, not queued.
     /// </summary>
+    /// <summary>
+    /// Reloads the distinct per-account calendar sources from the local store into
+    /// <see cref="_calendarSources"/> (best-effort; leaves the prior list on failure). Callers rebuild
+    /// the folder tree afterward. No-op without a calendar service or in online mode.
+    /// </summary>
+    private async Task ReloadCalendarSourcesAsync()
+    {
+        if (_calendarService == null || OnlineMode) { _calendarSources = []; return; }
+        try { _calendarSources = await _localStore.LoadCalendarSourcesAsync(); }
+        catch (Exception ex) { LogService.Log("LoadCalendarSources", ex); }
+    }
+
     private async Task RunGraphCalendarSyncAsync(bool refreshAndAnnounce = true)
     {
         if (_graphCalendarSync == null || _calendarService == null || OnlineMode) return;
@@ -6273,6 +6327,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             ReplaceCts(ref _graphCalSyncCts, out var ct);
             var result = await _graphCalendarSync.SyncAllAsync(ct);
+            // Refresh the per-calendar source list and rebuild the tree so newly discovered calendars
+            // appear as their own nodes (and vanished ones drop off).
+            await ReloadCalendarSourcesAsync();
+            BuildFolderTree();
             // Nothing eligible (no Graph accounts) or nothing pulled — leave the calendar alone.
             if (result.AccountsSynced == 0) return;
             if (!refreshAndAnnounce) return; // F5 path: CalendarVm.RefreshAsync reloads + announces

@@ -304,7 +304,7 @@ public class CalendarViewModelTests
     }
 
     [Fact]
-    public async Task AccountFilter_ShowsOnlyThatSource()
+    public async Task SourceFilter_ShowsOnlyThatSource()
     {
         var acctA = Guid.NewGuid();
         var local = new CalendarEvent
@@ -318,18 +318,36 @@ public class CalendarViewModelTests
 
         var vm = MakeVm(new List<CalendarEvent> { local, fromA, fromB });
         await vm.LoadAsync();
-        Assert.Equal(3, vm.VisibleEvents.Count);          // null filter = all
+        Assert.Equal(3, vm.VisibleEvents.Count);                              // null filter = all
 
-        vm.AccountFilter = acctA;                          // one account's calendar
+        vm.SourceFilter = new MainViewModel.CalendarFilter(acctA, null);      // one account's calendars
         Assert.Single(vm.VisibleEvents);
         Assert.Equal("a-1", vm.VisibleEvents[0].Uid);
 
-        vm.AccountFilter = Guid.Empty;                     // local appointments only
+        vm.SourceFilter = new MainViewModel.CalendarFilter(Guid.Empty, null); // local appointments only
         Assert.Single(vm.VisibleEvents);
         Assert.Equal("loc-1", vm.VisibleEvents[0].Uid);
 
-        vm.AccountFilter = null;                           // back to all
+        vm.SourceFilter = null;                                              // back to all
         Assert.Equal(3, vm.VisibleEvents.Count);
+    }
+
+    [Fact]
+    public async Task SourceFilter_SingleCalendar_ShowsOnlyThatCalendarsEvents()
+    {
+        var acct = Guid.NewGuid();
+        var home = MakeEvent("home-1", DateTime.Today.AddHours(9)); home.AccountId = acct; home.CalendarId = "cal-home";
+        var work = MakeEvent("work-1", DateTime.Today.AddHours(10)); work.AccountId = acct; work.CalendarId = "cal-work";
+
+        var vm = MakeVm(new List<CalendarEvent> { home, work });
+        await vm.LoadAsync();
+
+        vm.SourceFilter = new MainViewModel.CalendarFilter(acct, "cal-home"); // one specific calendar
+        Assert.Single(vm.VisibleEvents);
+        Assert.Equal("home-1", vm.VisibleEvents[0].Uid);
+
+        vm.SourceFilter = new MainViewModel.CalendarFilter(acct, null);       // all of the account's calendars
+        Assert.Equal(2, vm.VisibleEvents.Count);
     }
 
     [Fact]
@@ -337,9 +355,17 @@ public class CalendarViewModelTests
     {
         var id = Guid.NewGuid();
         Assert.Null(MainViewModel.CalendarFilterFor(MainViewModel.CalendarFolder.FullName));
-        Assert.Null(MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + "all"));
-        Assert.Equal(Guid.Empty, MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + "local"));
-        Assert.Equal(id, MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + id.ToString("D")));
+        Assert.Equal(new MainViewModel.CalendarFilter(null, null),
+            MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + "all"));
+        Assert.Equal(new MainViewModel.CalendarFilter(Guid.Empty, null),
+            MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + "local"));
+        Assert.Equal(new MainViewModel.CalendarFilter(id, null),
+            MainViewModel.CalendarFilterFor(MainViewModel.CalendarSourcePrefix + id.ToString("D")));
+        // A single-calendar tail: "{guid}|{escapedCalId}" round-trips the (possibly slash-bearing) id.
+        var calId = "https://p42-caldav.icloud.com/123/calendars/home/";
+        Assert.Equal(new MainViewModel.CalendarFilter(id, calId),
+            MainViewModel.CalendarFilterFor(
+                MainViewModel.CalendarSourcePrefix + id.ToString("D") + "|" + Uri.EscapeDataString(calId)));
         Assert.True(MainViewModel.IsCalendarFolderName(MainViewModel.CalendarSourcePrefix + "local"));
         Assert.True(MainViewModel.IsCalendarFolderName(MainViewModel.CalendarFolder.FullName));
         Assert.False(MainViewModel.IsCalendarFolderName("INBOX"));

@@ -564,10 +564,10 @@ Expand the **Calendar** node in the folder tree to choose which events you are l
 
 - **All Calendars** — everything, merged together.
 - **Local Calendar** — only the appointments you created in QuickMail, stored on this computer.
-- **One entry per account** — the events from each email account's online calendar (see [Connecting an online calendar](#connecting-an-online-calendar)).
-- **iCloud** (or whatever you named it) — appears when you have set up an internet calendar in Settings.
+- **One entry per account** — the events from each account you turned calendar sync on for (see [Connecting an online calendar](#connecting-an-online-calendar)). Selecting the account shows all of its calendars merged.
+- **Each calendar under an account** — if an account has more than one calendar (for example iCloud's Home, Family, and Work, or several Google or Outlook calendars), each appears as its own node beneath the account, so you can look at just that one.
 
-Selecting a source filters the list to just that calendar. "All Calendars" is the usual choice for day-to-day use.
+Selecting a source filters the list to it. "All Calendars" is the usual choice for day-to-day use.
 
 ### The four views
 

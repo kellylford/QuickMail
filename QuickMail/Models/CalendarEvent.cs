@@ -46,6 +46,17 @@ public partial class CalendarEvent : ObservableObject
     public bool IsGraph { get; set; }
 
     /// <summary>
+    /// Provider identifier of the specific calendar this server-synced row belongs to (Graph calendar
+    /// id, Google calendarList id, or CalDAV collection href). Empty for locally-authored and
+    /// invite-harvested rows, which have no distinct server calendar. Lets one account's calendars
+    /// (Home, Work, Family) show as separate selectable tree nodes.
+    /// </summary>
+    public string CalendarId { get; set; } = string.Empty;
+
+    /// <summary>Human-readable name of the calendar in <see cref="CalendarId"/> (the tree node label). Empty when untagged.</summary>
+    public string CalendarName { get; set; } = string.Empty;
+
+    /// <summary>
     /// iCalendar RRULE string for a repeating appointment (e.g. "FREQ=WEEKLY;BYDAY=TU"), or null/empty
     /// for a one-off. Parse with <see cref="Models.RecurrenceRule.Parse"/>.
     /// </summary>

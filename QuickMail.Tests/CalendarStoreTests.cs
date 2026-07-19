@@ -50,6 +50,8 @@ public class CalendarStoreTests : IDisposable
             SourceMessageId = "msg-1",
             SourceFolder = "INBOX",
             ResponseStatus = CalendarResponseStatus.Accepted,
+            CalendarId = "cal-home",
+            CalendarName = "Home",
         };
 
         await _store.UpsertCalendarEventAsync(evt);
@@ -65,7 +67,40 @@ public class CalendarStoreTests : IDisposable
         Assert.Equal(evt.StartTimeTicks, r.StartTimeTicks);
         Assert.Equal(CalendarResponseStatus.Accepted, r.ResponseStatus);
         Assert.Equal("msg-1", r.SourceMessageId);
+        Assert.Equal("cal-home", r.CalendarId);
+        Assert.Equal("Home", r.CalendarName);
         Assert.False(r.IsAllDay);
+    }
+
+    [Fact]
+    public async Task LoadCalendarSources_ReturnsDistinctTaggedCalendars()
+    {
+        var acctA = Guid.NewGuid();
+        var acctB = Guid.NewGuid();
+
+        // Two calendars on account A (two events each) and one on account B.
+        await _store.ReplaceGraphCalendarEventsAsync(acctA,
+        [
+            new CalendarEvent { Uid = "a-home-1", AccountId = acctA, CalendarId = "cal-home", CalendarName = "Home" },
+            new CalendarEvent { Uid = "a-home-2", AccountId = acctA, CalendarId = "cal-home", CalendarName = "Home" },
+            new CalendarEvent { Uid = "a-work-1", AccountId = acctA, CalendarId = "cal-work", CalendarName = "Work" },
+        ]);
+        await _store.ReplaceGraphCalendarEventsAsync(acctB,
+        [
+            new CalendarEvent { Uid = "b-fam-1", AccountId = acctB, CalendarId = "cal-fam", CalendarName = "Family" },
+        ]);
+        // A local (untagged) row must be excluded — it has no distinct server calendar.
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "local-1", AccountId = CalendarEvent.LocalAccountId, Summary = "Mine",
+        });
+
+        var sources = await _store.LoadCalendarSourcesAsync();
+
+        Assert.Equal(3, sources.Count); // Home, Work, Family — distinct, untagged local excluded
+        Assert.Contains(sources, s => s.AccountId == acctA && s.CalendarId == "cal-home" && s.CalendarName == "Home");
+        Assert.Contains(sources, s => s.AccountId == acctA && s.CalendarId == "cal-work" && s.CalendarName == "Work");
+        Assert.Contains(sources, s => s.AccountId == acctB && s.CalendarId == "cal-fam"  && s.CalendarName == "Family");
     }
 
     [Fact]

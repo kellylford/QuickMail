@@ -62,10 +62,11 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private readonly ICalDavCalendarClient? _calDav;
     private readonly ICredentialService? _credentials;
 
-    // Resolved CalDAV calendar-collection URL per account (from discovery), so each iCloud account's
-    // home collection is found once and reused. Cleared for an account on fetch failure so a stale
-    // collection URL (e.g. calendar recreated server-side) heals on the next pass.
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, string> _calDavUrlByAccount = new();
+    // Resolved CalDAV calendar collections per account (from discovery), so each iCloud account's
+    // calendars are found once and reused. A LIST now (multi-calendar): every VEVENT collection the
+    // account exposes. Cleared for an account on fetch failure so stale collection URLs (e.g. a
+    // calendar recreated server-side) heal on the next pass.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, List<CalDavCalendarInfo>> _calDavCalendarsByAccount = new();
 
     public GraphCalendarSyncService(IAccountService accounts, ILocalStoreService store, GraphClient graph,
                                     GoogleCalendarClient? google = null,
@@ -185,7 +186,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     /// <summary>Removes an account's synced calendar rows (called when the user turns its sync off).</summary>
     public async Task RemoveAccountCalendarAsync(Guid accountId, CancellationToken ct = default)
     {
-        _calDavUrlByAccount.TryRemove(accountId, out _);
+        _calDavCalendarsByAccount.TryRemove(accountId, out _);
         await _store.ReplaceGraphCalendarEventsAsync(accountId, []);
     }
 
@@ -194,9 +195,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         var nowUtc = DateTime.UtcNow;
         var startUtc = nowUtc - WindowBack;
         var endUtc   = nowUtc + WindowForward;
-
-        var path = "/me/calendarView"
-            + $"?startDateTime={Uri.EscapeDataString(startUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))}"
+        var window =
+              $"startDateTime={Uri.EscapeDataString(startUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))}"
             + $"&endDateTime={Uri.EscapeDataString(endUtc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))}"
             + "&$select=id,subject,bodyPreview,location,organizer,start,end,isAllDay,isOrganizer,responseStatus"
             + "&$top=100";
@@ -205,16 +205,27 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // contact sync). Consent comes from the account's normal sign-in: work/school accounts get
         // Calendars.ReadWrite via `.default` (declared on the app registration); personal accounts
         // acquire the explicit GraphCalendarScopes silently once granted.
-        var items = await _graph.GetAllPagesAsync<GraphCalendarEvent>(
-            account, path, OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct);
 
-        var mapped = items
-            .Where(e => !string.IsNullOrEmpty(e.Id))
-            .Select(e => MapEvent(e, account.Id))
-            .ToList();
+        // Enumerate every calendar, then pull each one's calendarView, tagging rows with the
+        // calendar they came from so Home / Work / Family show as separate selectable nodes.
+        var calendars = await _graph.GetAllPagesAsync<GraphCalendar>(
+            account, "/me/calendars?$select=id,name", OAuthService.GraphCalendarScopes, silentOnly: true, headers: null, ct);
 
-        await _store.ReplaceGraphCalendarEventsAsync(account.Id, mapped);
-        return mapped.Count;
+        var union = new List<CalendarEvent>();
+        foreach (var cal in calendars)
+        {
+            if (string.IsNullOrEmpty(cal.Id)) continue;
+            var calName = string.IsNullOrWhiteSpace(cal.Name) ? "Calendar" : cal.Name.Trim();
+            var path = $"/me/calendars/{Uri.EscapeDataString(cal.Id)}/calendarView?{window}";
+            var items = await _graph.GetAllPagesAsync<GraphCalendarEvent>(
+                account, path, OAuthService.GraphCalendarScopes, silentOnly: true, UtcPreferHeader, ct);
+            union.AddRange(items
+                .Where(e => !string.IsNullOrEmpty(e.Id))
+                .Select(e => MapEvent(e, account.Id, cal.Id, calName)));
+        }
+
+        await _store.ReplaceGraphCalendarEventsAsync(account.Id, union);
+        return union.Count;
     }
 
     // ── Google (read-down v1) ────────────────────────────────────────────────────
@@ -222,26 +233,39 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     private async Task<int> SyncGoogleAccountAsync(AccountModel account, CancellationToken ct)
     {
         var nowUtc = DateTime.UtcNow;
-        var items = await _google!.GetPrimaryEventsAsync(
-            account.Username, nowUtc - WindowBack, nowUtc + WindowForward, ct);
+        var timeMin = nowUtc - WindowBack;
+        var timeMax = nowUtc + WindowForward;
 
-        var mapped = items
-            .Where(e => !string.IsNullOrEmpty(e.Id))
-            // Cancelled occurrences can appear despite the default filters; they are deletions.
-            .Where(e => !string.Equals(e.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
-            .Select(e => MapGoogleEvent(e, account.Id))
-            .ToList();
+        // Enumerate the account's calendars, then pull each one's events, tagging rows with the
+        // calendar they came from so each shows as its own selectable node.
+        var calendars = await _google!.GetCalendarListAsync(account.Username, ct);
 
-        await _store.ReplaceGraphCalendarEventsAsync(account.Id, mapped);
-        return mapped.Count;
+        var union = new List<CalendarEvent>();
+        foreach (var cal in calendars)
+        {
+            if (string.IsNullOrEmpty(cal.Id) || cal.Deleted) continue;
+            var calName = string.IsNullOrWhiteSpace(cal.Summary) ? "Calendar" : cal.Summary.Trim();
+            var items = await _google!.GetEventsAsync(account.Username, timeMin, timeMax, cal.Id, ct);
+            union.AddRange(items
+                .Where(e => !string.IsNullOrEmpty(e.Id))
+                // Cancelled occurrences can appear despite the default filters; they are deletions.
+                .Where(e => !string.Equals(e.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+                .Select(e => MapGoogleEvent(e, account.Id, cal.Id, calName)));
+        }
+
+        await _store.ReplaceGraphCalendarEventsAsync(account.Id, union);
+        return union.Count;
     }
 
     /// <summary>
     /// Maps one Google Calendar occurrence to a local row. Stored exactly like a Graph row —
     /// is_graph=1 here means "server-synced calendar row", regardless of which provider it came
-    /// from; the account id says whose calendar it is.
+    /// from; the account id says whose calendar it is. <paramref name="calendarId"/>/
+    /// <paramref name="calendarName"/> tag which of the account's calendars it belongs to (empty for
+    /// the write-back path, which re-tags on the next full sync).
     /// </summary>
-    internal static CalendarEvent MapGoogleEvent(GoogleCalendarEvent e, Guid accountId)
+    internal static CalendarEvent MapGoogleEvent(GoogleCalendarEvent e, Guid accountId,
+        string calendarId = "", string calendarName = "")
     {
         long? startTicks, endTicks;
         var allDay = e.Start?.Date != null; // all-day events carry date-only start/end
@@ -272,6 +296,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             Uid             = e.Id,
             AccountId       = accountId,
             IsGraph         = true, // "server-synced row" — see remark above
+            CalendarId      = calendarId,
+            CalendarName    = calendarName,
             Summary         = e.Summary?.Trim() ?? string.Empty,
             Description     = e.Description?.Trim() ?? string.Empty,
             Location        = e.Location?.Trim() ?? string.Empty,
@@ -333,29 +359,33 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             throw new InvalidOperationException(
                 $"no app-specific password saved for {account.Username} — re-enter it in Manage Accounts.");
 
-        if (!_calDavUrlByAccount.TryGetValue(account.Id, out var calendarUrl))
+        if (!_calDavCalendarsByAccount.TryGetValue(account.Id, out var calendars))
         {
-            var info = await _calDav!.DiscoverCalendarAsync(ICloudCalDavUrl, account.Username, password, ct);
-            calendarUrl = info.Url;
-            _calDavUrlByAccount[account.Id] = calendarUrl;
+            calendars = await _calDav!.DiscoverCalendarsAsync(ICloudCalDavUrl, account.Username, password, ct);
+            _calDavCalendarsByAccount[account.Id] = calendars;
         }
 
         var nowUtc = DateTime.UtcNow;
-        List<string> icsBodies;
+        var union = new List<CalendarEvent>();
         try
         {
-            icsBodies = await _calDav!.FetchEventIcsAsync(calendarUrl, account.Username, password,
-                                                          nowUtc - WindowBack, nowUtc + WindowForward, ct);
+            // Fetch each discovered calendar, tagging rows with the collection href / display name
+            // so each calendar is its own selectable source.
+            foreach (var cal in calendars)
+            {
+                var icsBodies = await _calDav!.FetchEventIcsAsync(cal.Url, account.Username, password,
+                                                                  nowUtc - WindowBack, nowUtc + WindowForward, ct);
+                union.AddRange(MapCalDavEvents(icsBodies, account.Id, cal.Url, cal.DisplayName));
+            }
         }
         catch
         {
-            _calDavUrlByAccount.TryRemove(account.Id, out _); // stale collection URL? re-discover next pass
+            _calDavCalendarsByAccount.TryRemove(account.Id, out _); // stale collections? re-discover next pass
             throw;
         }
 
-        var mapped = MapCalDavEvents(icsBodies, account.Id);
-        await _store.ReplaceGraphCalendarEventsAsync(account.Id, mapped);
-        return mapped.Count;
+        await _store.ReplaceGraphCalendarEventsAsync(account.Id, union);
+        return union.Count;
     }
 
     /// <summary>
@@ -367,7 +397,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     /// rescheduled occurrence shows at its original series slot; and STATUS:CANCELLED events are
     /// dropped. Duplicate UIDs across bodies collapse to one row (last wins).
     /// </summary>
-    internal static List<CalendarEvent> MapCalDavEvents(IEnumerable<string> icsBodies, Guid accountId)
+    internal static List<CalendarEvent> MapCalDavEvents(IEnumerable<string> icsBodies, Guid accountId,
+        string calendarId = "", string calendarName = "")
     {
         var byUid = new Dictionary<string, CalendarEvent>(StringComparer.Ordinal);
         foreach (var body in icsBodies)
@@ -376,15 +407,16 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             {
                 if (string.Equals(ics.Status, "CANCELLED", StringComparison.OrdinalIgnoreCase)) continue;
                 if (!string.IsNullOrEmpty(ics.RecurrenceId)) continue;
-                var evt = MapCalDavEvent(ics, accountId);
+                var evt = MapCalDavEvent(ics, accountId, calendarId, calendarName);
                 byUid[evt.Uid] = evt;
             }
         }
         return byUid.Values.ToList();
     }
 
-    /// <summary>Maps one parsed VEVENT to a local row (is_graph=1 = "server-synced").</summary>
-    internal static CalendarEvent MapCalDavEvent(IcsModel ics, Guid accountId)
+    /// <summary>Maps one parsed VEVENT to a local row (is_graph=1 = "server-synced"), tagged with its calendar.</summary>
+    internal static CalendarEvent MapCalDavEvent(IcsModel ics, Guid accountId,
+        string calendarId = "", string calendarName = "")
     {
         long? startTicks, endTicks;
         if (ics.IsAllDay)
@@ -419,6 +451,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             Uid             = uid,
             AccountId       = accountId,
             IsGraph         = true, // "server-synced row" — read-only in UI, replace-slice owned
+            CalendarId      = calendarId,
+            CalendarName    = calendarName,
             Summary         = ics.Summary?.Trim() ?? string.Empty,
             Description     = ics.Description?.Trim() ?? string.Empty,
             Location        = ics.Location?.Trim() ?? string.Empty,
@@ -614,8 +648,13 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         TimeZone = "UTC",
     };
 
-    /// <summary>Maps one Graph calendarView occurrence to a local <see cref="CalendarEvent"/> row.</summary>
-    internal static CalendarEvent MapEvent(GraphCalendarEvent e, Guid accountId)
+    /// <summary>
+    /// Maps one Graph calendarView occurrence to a local <see cref="CalendarEvent"/> row.
+    /// <paramref name="calendarId"/>/<paramref name="calendarName"/> tag which of the account's
+    /// calendars it belongs to (empty for the write-back path, which re-tags on the next full sync).
+    /// </summary>
+    internal static CalendarEvent MapEvent(GraphCalendarEvent e, Guid accountId,
+        string calendarId = "", string calendarName = "")
     {
         long? startTicks, endTicks;
         if (e.IsAllDay)
@@ -647,6 +686,8 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             Uid             = e.Id,
             AccountId       = accountId,
             IsGraph         = true,
+            CalendarId      = calendarId,
+            CalendarName    = calendarName,
             Summary         = e.Subject?.Trim() ?? string.Empty,
             Description     = e.BodyPreview?.Trim() ?? string.Empty,
             Location        = e.Location?.DisplayName?.Trim() ?? string.Empty,

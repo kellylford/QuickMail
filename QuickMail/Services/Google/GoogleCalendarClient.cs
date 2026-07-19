@@ -46,13 +46,51 @@ public sealed class GoogleCalendarClient : IDisposable
     }
 
     /// <summary>
-    /// All events on the user's PRIMARY calendar within the UTC window, as server-expanded
-    /// occurrences (<c>singleEvents=true</c>), following <c>nextPageToken</c> until exhausted.
+    /// The user's calendar list (<c>GET users/me/calendarList</c>), following <c>nextPageToken</c>
+    /// until exhausted. One entry per calendar the account can see (its own Home/Work/Family plus
+    /// any subscribed calendars), each with an id, a display summary, and a <c>primary</c> flag.
     /// </summary>
-    internal async Task<List<GoogleCalendarEvent>> GetPrimaryEventsAsync(
-        string username, DateTime timeMinUtc, DateTime timeMaxUtc, CancellationToken ct = default)
+    internal async Task<List<GoogleCalendarListEntry>> GetCalendarListAsync(
+        string username, CancellationToken ct = default)
     {
-        var basePath = "calendars/primary/events"
+        var all = new List<GoogleCalendarListEntry>();
+        string? pageToken = null;
+        do
+        {
+            var token = await _oauth.GetAccessTokenAsync(username, ct);
+            var url = $"{BaseUrl}/users/me/calendarList?maxResults=250" +
+                      (string.IsNullOrEmpty(pageToken) ? string.Empty : $"&pageToken={Uri.EscapeDataString(pageToken)}");
+
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+
+            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                throw new HttpRequestException(
+                    $"Calendar API request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}");
+            }
+
+            var page = await resp.Content.ReadFromJsonAsync<GoogleCalendarListResponse>(JsonOpts, ct);
+            if (page?.Items != null) all.AddRange(page.Items);
+            pageToken = page?.NextPageToken;
+        }
+        while (!string.IsNullOrEmpty(pageToken));
+
+        return all;
+    }
+
+    /// <summary>
+    /// All events on the given calendar (default the user's PRIMARY) within the UTC window, as
+    /// server-expanded occurrences (<c>singleEvents=true</c>), following <c>nextPageToken</c> until
+    /// exhausted.
+    /// </summary>
+    internal async Task<List<GoogleCalendarEvent>> GetEventsAsync(
+        string username, DateTime timeMinUtc, DateTime timeMaxUtc,
+        string calendarId = "primary", CancellationToken ct = default)
+    {
+        var basePath = $"calendars/{Uri.EscapeDataString(calendarId)}/events"
             + $"?timeMin={Uri.EscapeDataString(Rfc3339(timeMinUtc))}"
             + $"&timeMax={Uri.EscapeDataString(Rfc3339(timeMaxUtc))}"
             + "&singleEvents=true&maxResults=250";
@@ -152,6 +190,25 @@ internal sealed class GoogleCalendarEventsResponse
 {
     [JsonPropertyName("items")]         public List<GoogleCalendarEvent>? Items { get; set; }
     [JsonPropertyName("nextPageToken")] public string? NextPageToken { get; set; }
+}
+
+/// <summary>Paging envelope for <c>users/me/calendarList</c>.</summary>
+internal sealed class GoogleCalendarListResponse
+{
+    [JsonPropertyName("items")]         public List<GoogleCalendarListEntry>? Items { get; set; }
+    [JsonPropertyName("nextPageToken")] public string? NextPageToken { get; set; }
+}
+
+/// <summary>One calendar in the account's calendar list.</summary>
+internal sealed class GoogleCalendarListEntry
+{
+    [JsonPropertyName("id")]      public string Id { get; set; } = string.Empty;
+    /// <summary>Display name of the calendar (the tree-node label).</summary>
+    [JsonPropertyName("summary")] public string? Summary { get; set; }
+    /// <summary>True for the account's own primary calendar.</summary>
+    [JsonPropertyName("primary")] public bool Primary { get; set; }
+    /// <summary>True when the user has removed this calendar from their list — skip it.</summary>
+    [JsonPropertyName("deleted")] public bool Deleted { get; set; }
 }
 
 /// <summary>One event occurrence from the Calendar API (<c>singleEvents=true</c>).</summary>

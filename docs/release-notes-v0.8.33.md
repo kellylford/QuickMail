@@ -106,7 +106,7 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - All-day events are fully supported and persisted (`is_all_day` column; re-anchored to local midnight across all providers to avoid off-by-one-day display). The "timed events only / deferred" comment in `EventEditorViewModel` is stale and should be removed.
 - Times stored as UTC ticks; TZID handling per provider (`Prefer: outlook.timezone` for Graph, RFC3339 offsets for Google, kind-carrying stamps for CalDAV).
 - Sync engine (`GraphCalendarSyncService`, name predates multi-provider): read-down window −30…+365 days, replace-slice per account, background pass every 15 min plus one after startup mail sync, best-effort (never throws), `silentOnly` (no interactive sign-in). Write-back is Microsoft + Google **single events only** (recurring push rejected pre-network with `NotSupportedException`); iCloud CalDAV (`CalDavCalendarClient`) is read-only. Failed server create/edit falls back to a local save, announced. Which accounts sync is the per-account opt-in below.
-- Folder tree: `Calendar` sentinel node with `All Calendars` / `Local Calendar` / one child per opted-in account; `CalendarFilterFor` maps a node to `CalendarViewModel.AccountFilter`.
+- Folder tree: `Calendar` sentinel node with `All Calendars` / `Local Calendar` / one child per opted-in account, and — when an account has more than one calendar — a grandchild per calendar. `CalendarFilterFor` maps a node to `CalendarViewModel.SourceFilter` (a `CalendarFilter(Guid? Account, string? CalendarId)` record).
 - Invitations: `LocalCacheCalendarProvider` harvests `text/calendar` parts; Accept/Tentative/Decline event card in the reading pane sends an ICS REPLY and upserts the response status immediately; `METHOD:CANCEL` marks events cancelled (filtered from all views).
 - Reminders: opt-in 60-second timer (`CalendarReminders` / `CalendarReminderMinutes`, default off / 10 min), Windows notification + `AnnouncementCategory.Result`, fired at most once per `(uid, start)` per run.
 - Export via `IcsModel.ExportEvent` (`calendar.exportEvent`, no default key).
@@ -120,6 +120,12 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - **Consent**: Microsoft gets a one-time `RequestCalendarConsentAsync` (`Calendars.ReadWrite`) at opt-in; Google's calendar scope is already granted at mail sign-in; iCloud needs none. The `OAuthRouter` routes only Microsoft to the consent call.
 - **Removed** the interim global Settings → Internet Calendar (CalDAV) source: its UI, `SettingsViewModel` CalDav members, `[caldav]` config keys, and the synthetic-id (`AccountIdFor` / `SecretKeyFor`) helpers — all superseded by the per-account model.
 - New palette command `calendar.syncNow` ("Sync Calendars Now"). Tests: per-account CalDAV sync (rewritten `CalDavCalendarSyncTests`), opt-in gating, `ShowCalendarSyncOption`, `IsCalendarPushAccount`.
+
+### Multiple calendars per account (separate & selectable)
+
+- Each account's calendars (Home / Family / Work …) now sync and appear as **separate selectable nodes** under the account in the folder tree, instead of only the primary/default calendar. `CalendarEvent` gains `CalendarId`/`CalendarName` (two idempotent `ALTER TABLE` migrations, no schema-version bump); every event is tagged with its source calendar.
+- All three providers enumerate every calendar and union them into the existing per-account replace-slice (one `ReplaceGraphCalendarEventsAsync(account.Id, union)`): Microsoft `GET /me/calendars` → per-calendar `calendarView`; Google `calendarList` → per-calendar events; iCloud CalDAV keeps **all** VEVENT collections (discovery cache is now a per-account list) and issues one REPORT per calendar. A single calendar's fetch failing leaves the prior slice intact.
+- Tree grandchildren (only when an account has >1 calendar) are fed from a new `LocalStoreService.LoadCalendarSourcesAsync` (DISTINCT account/calendar), cached and refreshed on startup and after each sync. Selecting a calendar node filters to that calendar; the account node still shows all its calendars merged.
 
 ### iCloud contacts via CardDAV
 

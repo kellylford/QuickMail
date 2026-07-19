@@ -109,13 +109,28 @@ public class GoogleCalendarSyncTests : IDisposable
     private static string Page(string? nextPageToken, params string[] events)
         => $$"""{ "items": [{{string.Join(",", events)}}]{{(nextPageToken is null ? "" : $$""", "nextPageToken": "{{nextPageToken}}" """)}} }""";
 
+    /// <summary>A <c>users/me/calendarList</c> response — the enumeration step multi-calendar sync issues first.</summary>
+    private static string CalendarListPage(params (string Id, string Summary)[] cals)
+    {
+        var items = string.Join(",", cals.Select(c => $"{{ \"id\": \"{c.Id}\", \"summary\": \"{c.Summary}\", \"primary\": true }}"));
+        return $"{{ \"items\": [{items}] }}";
+    }
+
+    /// <summary>Handler for a single-calendar account: the calendar list, then that calendar's event pages.</summary>
+    private static RecordingHandler OneCalendarHandler(params HttpResponseMessage[] eventPages)
+    {
+        var responses = new List<HttpResponseMessage> { Json(CalendarListPage(("primary", "kelly@gmail.com"))) };
+        responses.AddRange(eventPages);
+        return new RecordingHandler(responses.ToArray());
+    }
+
     // ── Mapping ──────────────────────────────────────────────────────────────────
 
     [Fact]
     public async Task Sync_MapsTimedEvent_OffsetStamps_ToUtcTicks()
     {
         // 09:00 at -07:00 == 16:00 UTC.
-        var handler = new RecordingHandler(Json(Page(null,
+        var handler = OneCalendarHandler(Json(Page(null,
             EventJson("gid-1", "Standup",
                       startDateTime: "2026-08-01T09:00:00-07:00", endDateTime: "2026-08-01T09:30:00-07:00",
                       location: "Meet", description: "daily"))));
@@ -130,6 +145,8 @@ public class GoogleCalendarSyncTests : IDisposable
         Assert.Equal("gid-1", row.Uid);
         Assert.Equal(_accountId, row.AccountId);
         Assert.True(row.IsGraph); // is_graph = "server-synced row", Google included
+        Assert.Equal("primary", row.CalendarId);          // tagged with the calendar it came from
+        Assert.Equal("kelly@gmail.com", row.CalendarName);
         Assert.False(row.IsUserCreated);
         Assert.Equal("Standup", row.Summary);
         Assert.Equal("Meet", row.Location);
@@ -146,7 +163,7 @@ public class GoogleCalendarSyncTests : IDisposable
     [Fact]
     public async Task Sync_AllDayDateOnly_AnchorsToLocalDay_EndExclusive()
     {
-        var handler = new RecordingHandler(Json(Page(null,
+        var handler = OneCalendarHandler(Json(Page(null,
             EventJson("gid-allday", "Offsite", startDate: "2026-08-03", endDate: "2026-08-05"))));
 
         await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
@@ -161,7 +178,7 @@ public class GoogleCalendarSyncTests : IDisposable
     [Fact]
     public async Task Sync_CancelledEvents_AreSkipped()
     {
-        var handler = new RecordingHandler(Json(Page(null,
+        var handler = OneCalendarHandler(Json(Page(null,
             EventJson("gid-live", "Live", startDateTime: "2026-08-01T09:00:00Z", endDateTime: "2026-08-01T10:00:00Z"),
             EventJson("gid-cancelled", "Gone", status: "cancelled",
                       startDateTime: "2026-08-02T09:00:00Z", endDateTime: "2026-08-02T10:00:00Z"))));
@@ -181,7 +198,7 @@ public class GoogleCalendarSyncTests : IDisposable
     [InlineData(null,                                                      CalendarResponseStatus.Accepted)]
     public async Task Sync_MapsSelfAttendeeResponseStatus(string? attendeesJson, CalendarResponseStatus expected)
     {
-        var handler = new RecordingHandler(Json(Page(null,
+        var handler = OneCalendarHandler(Json(Page(null,
             EventJson("gid-r", "R", startDateTime: "2026-08-01T09:00:00Z", endDateTime: "2026-08-01T10:00:00Z",
                       attendeesJson: attendeesJson))));
 
@@ -193,13 +210,15 @@ public class GoogleCalendarSyncTests : IDisposable
     // ── Request shape and paging ─────────────────────────────────────────────────
 
     [Fact]
-    public async Task Sync_RequestsPrimaryCalendar_SingleEvents_WithWindow()
+    public async Task Sync_EnumeratesCalendarList_ThenRequestsEachCalendar_SingleEvents_WithWindow()
     {
-        var handler = new RecordingHandler(Json(Page(null)));
+        var handler = OneCalendarHandler(Json(Page(null)));
 
         await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
 
-        var url = Assert.Single(handler.Urls);
+        Assert.Equal(2, handler.Calls); // calendar list, then that calendar's events
+        Assert.Contains("/calendar/v3/users/me/calendarList", handler.Urls[0]);
+        var url = handler.Urls[1];
         Assert.Contains("/calendar/v3/calendars/primary/events?", url);
         Assert.Contains("timeMin=", url);
         Assert.Contains("timeMax=", url);
@@ -209,7 +228,7 @@ public class GoogleCalendarSyncTests : IDisposable
     [Fact]
     public async Task Sync_FollowsNextPageToken()
     {
-        var handler = new RecordingHandler(
+        var handler = OneCalendarHandler(
             Json(Page("tok-2",
                 EventJson("gid-a", "A", startDateTime: "2026-08-01T09:00:00Z", endDateTime: "2026-08-01T10:00:00Z"))),
             Json(Page(null,
@@ -217,11 +236,34 @@ public class GoogleCalendarSyncTests : IDisposable
 
         var result = await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal(2, handler.Calls);
-        Assert.Contains("pageToken=tok-2", handler.Urls[1]);
+        Assert.Equal(3, handler.Calls); // calendar list, event page 1, event page 2
+        Assert.Contains("pageToken=tok-2", handler.Urls[2]);
         Assert.Equal(2, result.EventsFetched);
         Assert.Equal(new[] { "gid-a", "gid-b" },
             (await _store.LoadCalendarEventsAsync()).Select(r => r.Uid).OrderBy(u => u).ToArray());
+    }
+
+    // ── Multiple calendars per account ───────────────────────────────────────────
+
+    [Fact]
+    public async Task Sync_EnumeratesEveryCalendar_TaggingRowsWithTheirCalendar()
+    {
+        var handler = new RecordingHandler(
+            Json(CalendarListPage(("primary", "kelly@gmail.com"), ("fam123@group.calendar.google.com", "Family"))),
+            Json(Page(null, EventJson("gid-me", "Mine", startDateTime: "2026-08-01T09:00:00Z", endDateTime: "2026-08-01T10:00:00Z"))),
+            Json(Page(null, EventJson("gid-fam", "Soccer", startDateTime: "2026-08-02T09:00:00Z", endDateTime: "2026-08-02T10:00:00Z"))));
+
+        var result = await Service(handler).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(2, result.EventsFetched);
+        Assert.Equal(3, handler.Calls);
+        Assert.Contains("/calendars/primary/events?", handler.Urls[1]);
+        Assert.Contains("/calendars/fam123%40group.calendar.google.com/events?", handler.Urls[2]);
+
+        var rows = await _store.LoadCalendarEventsAsync();
+        Assert.Equal("kelly@gmail.com", rows.Single(r => r.Uid == "gid-me").CalendarName);
+        Assert.Equal("Family", rows.Single(r => r.Uid == "gid-fam").CalendarName);
+        Assert.Equal("fam123@group.calendar.google.com", rows.Single(r => r.Uid == "gid-fam").CalendarId);
     }
 
     // ── Replace-slice and failure isolation ──────────────────────────────────────
@@ -229,10 +271,13 @@ public class GoogleCalendarSyncTests : IDisposable
     [Fact]
     public async Task SecondSync_RemovesEventsThatVanishedOnServer()
     {
+        // Two syncs — each enumerates the calendar list, then pulls the one calendar's events.
         var handler = new RecordingHandler(
+            Json(CalendarListPage(("primary", "kelly@gmail.com"))),
             Json(Page(null,
                 EventJson("gid-keep", "Keep", startDateTime: "2026-08-01T09:00:00Z", endDateTime: "2026-08-01T10:00:00Z"),
                 EventJson("gid-drop", "Drop", startDateTime: "2026-08-02T09:00:00Z", endDateTime: "2026-08-02T10:00:00Z"))),
+            Json(CalendarListPage(("primary", "kelly@gmail.com"))),
             Json(Page(null,
                 EventJson("gid-keep", "Keep", startDateTime: "2026-08-01T09:00:00Z", endDateTime: "2026-08-01T10:00:00Z"))));
 
