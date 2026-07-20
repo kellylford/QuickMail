@@ -151,8 +151,9 @@ public partial class CalendarEvent : ObservableObject
         : null;
 
     /// <summary>
-    /// Human-readable, screen-reader-friendly one-line summary for the calendar list.
-    /// Example: "Team standup, today 10:00 to 10:30, Accepted. Location: Zoom."
+    /// Human-readable, screen-reader-friendly one-line summary for the calendar list, carrying NO
+    /// field labels (that's the labeled variant's job) — just the values, comma-separated. Example:
+    /// "Team standup, today 10:00 to 10:30, Accepted, Zoom".
     /// </summary>
     public string DisplayLine
     {
@@ -186,12 +187,15 @@ public partial class CalendarEvent : ObservableObject
             // meaningless for them, so only invite-sourced events announce a response status.
             if (!IsUserCreated)
                 sb.Append(", ").Append(ResponseStatus.ToString());
+            // Concise mode carries no field labels (that's what the labeled variant is for) — just
+            // the values, comma-separated. Location/organizer are appended without a "Location:" /
+            // "Organizer:" prefix.
             if (!string.IsNullOrWhiteSpace(Location))
-                sb.Append(". Location: ").Append(Location);
+                sb.Append(", ").Append(Location);
             if (!string.IsNullOrWhiteSpace(OrganizerName))
-                sb.Append(". Organizer: ").Append(OrganizerName);
+                sb.Append(", ").Append(OrganizerName);
             else if (!string.IsNullOrWhiteSpace(Organizer))
-                sb.Append(". Organizer: ").Append(Organizer);
+                sb.Append(", ").Append(Organizer);
 
             return sb.ToString();
         }

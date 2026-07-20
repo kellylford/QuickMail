@@ -859,8 +859,12 @@ public partial class CalendarViewModel : ObservableObject
         {
             var source = SourceLabelFor(evt, accountLabels);
             evt.CalendarSourceLabel = source;
+            // Field labels on: "…, calendar Apple: Family". Field labels off (concise): append the
+            // source as a bare value with no "calendar" label word — the whole row is label-free.
             var baseName = _showFieldLabels ? evt.LabeledLine : evt.DisplayLine;
-            evt.AccessibleName = string.IsNullOrEmpty(source) ? baseName : $"{baseName}, calendar {source}";
+            evt.AccessibleName = string.IsNullOrEmpty(source)
+                ? baseName
+                : _showFieldLabels ? $"{baseName}, calendar {source}" : $"{baseName}, {source}";
         }
 
         using (Events.BeginBatchScope())

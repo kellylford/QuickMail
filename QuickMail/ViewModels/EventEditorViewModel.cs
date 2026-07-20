@@ -67,6 +67,16 @@ public partial class EventEditorViewModel : ObservableObject
     /// </summary>
     public bool ShowSaveTarget => !IsEdit && _saveTargets.Count > 1;
 
+    /// <summary>
+    /// Which calendar the appointment being edited lives on ("Apple: Family", "Local", …), shown
+    /// read-only in the editor (editing can't move an appointment between calendars in v1). Empty
+    /// for a new appointment (which uses the save-target picker instead).
+    /// </summary>
+    public string EditCalendarLabel { get; } = string.Empty;
+
+    /// <summary>True when the read-only "Calendar" line should show — i.e. editing a tagged event.</summary>
+    public bool ShowEditCalendar => IsEdit && !string.IsNullOrEmpty(EditCalendarLabel);
+
     /// <summary>Window title text ("New appointment" / "Edit appointment").</summary>
     public string WindowTitle => IsEdit ? "Edit appointment" : "New appointment";
 
@@ -200,6 +210,12 @@ public partial class EventEditorViewModel : ObservableObject
         IsEdit = true;
         _editAccountId = existing.AccountId;   // server rows keep their account; the
                                                // recurring-stays-local rule can then fire on edits too
+        // Show which calendar this appointment lives on (read-only). CalendarSourceLabel is stamped
+        // by CalendarViewModel for every list row ("Apple: Family" / "Local"); fall back to "Local"
+        // for a locally-authored row that wasn't stamped.
+        EditCalendarLabel = !string.IsNullOrEmpty(existing.CalendarSourceLabel)
+            ? existing.CalendarSourceLabel
+            : existing.AccountId == CalendarEvent.LocalAccountId ? "Local" : string.Empty;
         // Editing never moves an appointment between calendars (v1) — no picker.
         _saveTargets = BuildSaveTargets(null);
         SaveTargetLabels = _saveTargets.ConvertAll(t => t.Label);
