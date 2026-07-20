@@ -48,6 +48,7 @@ public class GoogleCalendarSyncTests : IDisposable
         private readonly Queue<HttpResponseMessage> _responses;
         public int Calls { get; private set; }
         public List<string> Urls { get; } = [];
+        public List<string> Methods { get; } = [];
 
         public RecordingHandler(params HttpResponseMessage[] responses)
             => _responses = new Queue<HttpResponseMessage>(responses);
@@ -56,6 +57,7 @@ public class GoogleCalendarSyncTests : IDisposable
         {
             Calls++;
             Urls.Add(request.RequestUri!.ToString());
+            Methods.Add(request.Method.Method);
             return Task.FromResult(_responses.Count > 0 ? _responses.Dequeue() : Json("""{ "items": [] }"""));
         }
     }
@@ -320,5 +322,80 @@ public class GoogleCalendarSyncTests : IDisposable
 
         Assert.Equal(0, handler.Calls);
         Assert.Equal(GraphCalendarSyncResult.None, result);
+    }
+
+    // ── Write-path calendar targeting (regression for #293) ──────────────────────
+    // The Google write path was hardcoded to calendars/primary/events, so create/edit/delete of an
+    // event living on a SECONDARY calendar hit the primary calendar and 404'd ("could not update the
+    // online calendar"). Each write must target the event's own CalendarId (URL-escaped), with a
+    // "primary" fallback when the event carries no calendar id.
+
+    private CalendarEvent GoogleEvt(string uid, string calendarId) => new()
+    {
+        Uid            = uid,
+        AccountId      = _accountId,
+        CalendarId     = calendarId,
+        CalendarName   = "Family",
+        Summary        = "Lunch",
+        StartTimeTicks = new DateTime(2026, 8, 1, 16, 0, 0, DateTimeKind.Utc).Ticks,
+        EndTimeTicks   = new DateTime(2026, 8, 1, 17, 0, 0, DateTimeKind.Utc).Ticks,
+        IsGraph        = true,
+    };
+
+    private static HttpResponseMessage GoogleEventResponse(string id) => Json(EventJson(
+        id, "Lunch", startDateTime: "2026-08-01T16:00:00+00:00", endDateTime: "2026-08-01T17:00:00+00:00"));
+
+    [Fact]
+    public async Task DeleteEvent_OnSecondaryCalendar_TargetsThatCalendar_NotPrimary()
+    {
+        var handler = new RecordingHandler(); // default 200 OK is fine for DELETE
+        var evt = GoogleEvt("gid-x", "fam123@group.calendar.google.com");
+
+        await Service(handler).DeleteEventAsync(GoogleAccount(), evt, TestContext.Current.CancellationToken);
+
+        Assert.Equal("DELETE", handler.Methods[0]);
+        Assert.Contains("/calendars/fam123%40group.calendar.google.com/events/gid-x", handler.Urls[0]);
+        Assert.DoesNotContain("/calendars/primary/", handler.Urls[0]);
+    }
+
+    [Fact]
+    public async Task UpdateEvent_OnSecondaryCalendar_PatchesThatCalendar_AndKeepsTag()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-x"));
+        var evt = GoogleEvt("gid-x", "fam123@group.calendar.google.com");
+
+        await Service(handler).UpdateEventAsync(GoogleAccount(), evt, TestContext.Current.CancellationToken);
+
+        Assert.Equal("PATCH", handler.Methods[0]);
+        Assert.Contains("/calendars/fam123%40group.calendar.google.com/events/gid-x", handler.Urls[0]);
+        // The stored row stays tagged with the secondary calendar so a follow-up edit before the
+        // next full sync still targets the right calendar.
+        Assert.Equal("fam123@group.calendar.google.com",
+            Assert.Single(await _store.LoadCalendarEventsAsync()).CalendarId);
+    }
+
+    [Fact]
+    public async Task CreateEvent_OnSecondaryCalendar_PostsToThatCalendar()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"));
+        var evt = GoogleEvt("", "fam123@group.calendar.google.com");
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), evt, TestContext.Current.CancellationToken);
+
+        Assert.Equal("POST", handler.Methods[0]);
+        Assert.Contains("/calendars/fam123%40group.calendar.google.com/events", handler.Urls[0]);
+        Assert.DoesNotContain("/calendars/primary/", handler.Urls[0]);
+    }
+
+    [Fact]
+    public async Task CreateEvent_BlankCalendarId_FallsBackToPrimary()
+    {
+        var handler = new RecordingHandler(GoogleEventResponse("gid-new"));
+        var evt = GoogleEvt("", ""); // no calendar specified → "primary" fallback
+
+        await Service(handler).CreateEventAsync(GoogleAccount(), evt, TestContext.Current.CancellationToken);
+
+        Assert.Equal("POST", handler.Methods[0]);
+        Assert.Contains("/calendars/primary/events", handler.Urls[0]);
     }
 }
