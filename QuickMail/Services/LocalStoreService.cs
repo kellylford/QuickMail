@@ -475,6 +475,43 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
+    /// <summary>
+    /// Deletes calendar events whose <c>account_id</c> is not among <paramref name="knownAccountIds"/> —
+    /// orphans left behind when an account is removed and re-added (the re-added account gets a new id,
+    /// so the old id's events linger and show as duplicates), or after a cache rebuild. Local events
+    /// (<see cref="Guid.Empty"/>) are always kept. No-op when there are no orphans.
+    /// </summary>
+    public async Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
+    {
+        await using var conn = await OpenAsync();
+
+        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Guid.Empty.ToString() };
+        foreach (var id in knownAccountIds) keep.Add(id.ToString());
+
+        var present = new List<string>();
+        await using (var q = conn.CreateCommand())
+        {
+            q.CommandText = "SELECT DISTINCT account_id FROM CalendarEvent;";
+            await using var r = await q.ExecuteReaderAsync();
+            while (await r.ReadAsync()) present.Add(r.GetString(0));
+        }
+
+        var orphans = present.Where(a => !keep.Contains(a)).ToList();
+        if (orphans.Count == 0) return;
+
+        await using var del = conn.CreateCommand();
+        del.CommandText = "DELETE FROM CalendarEvent WHERE account_id = $aid;";
+        var p = del.CreateParameter();
+        p.ParameterName = "$aid";
+        del.Parameters.Add(p);
+        foreach (var orphan in orphans)
+        {
+            p.Value = orphan;
+            await del.ExecuteNonQueryAsync();
+        }
+        LogService.Log($"LocalStoreService: purged calendar events for {orphans.Count} unknown account(s).");
+    }
+
     public async Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead)
     {
         await using var conn = await OpenAsync();
