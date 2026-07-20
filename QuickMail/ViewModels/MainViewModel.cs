@@ -5964,6 +5964,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // The reconnect loop below rebuilds again for any account that actually needs connecting.
         RebuildFolderListFromCache();
 
+        // A newly added / re-opted-in account's calendars are discovered by the calendar sync pass,
+        // which otherwise only runs every 15 minutes. Kick it now so its calendar node and any
+        // per-calendar sub-nodes appear promptly rather than after the next pass or a restart (#282).
+        TriggerCalendarSyncSoon();
+
         // Reconnect any account that isn't truly connected in its backend, OR whose folders aren't
         // cached in the VM (e.g. a newly added account). Checking the backend (_imap.IsConnected) —
         // not just _cachedFolders — is what catches an account that was re-consented / re-authed
@@ -6305,6 +6310,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _ => _ui.Post(() => _ = RunGraphCalendarSyncAsync()), null, Timeout.Infinite, Timeout.Infinite);
         _graphCalendarSyncTimer.Change(TimeSpan.Zero, GraphCalendarSyncInterval);
     }
+
+    /// <summary>
+    /// Nudges the calendar sync timer to fire immediately (then resume its normal 15-minute
+    /// cadence). Called when the account list changes so a newly added — or newly calendar-opted-in
+    /// (#282) — account's calendars, and their per-calendar sub-nodes, appear right away instead of
+    /// only after the next timer pass or an app restart. No-op if the timer isn't running yet
+    /// (no calendar service, online mode, or startup hasn't reached StartGraphCalendarSyncTimer).
+    /// </summary>
+    private void TriggerCalendarSyncSoon()
+        => _graphCalendarSyncTimer?.Change(TimeSpan.Zero, GraphCalendarSyncInterval);
 
     /// <summary>
     /// One Graph calendar sync pass: pulls every Graph account's primary calendar into the local
