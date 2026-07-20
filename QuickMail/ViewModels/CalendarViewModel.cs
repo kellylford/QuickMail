@@ -341,6 +341,11 @@ public partial class CalendarViewModel : ObservableObject
         ApplyFilters();
         SelectedEvent = Events.Count > 0 ? Events[0] : null;
         AnnouncePeriod();
+        // Move keyboard focus to the control the new view shows (the Month grid, or the event list).
+        // Switching views swaps which control is visible; without this, focus is stranded on the
+        // now-hidden control and arrow keys do nothing until the user tabs away and back. The View's
+        // FocusCalendarList routes focus to the grid in Month view and the list otherwise.
+        ListFocusRequested?.Invoke();
     }
 
     /// <summary>Moves to the previous day/week. Bound to Ctrl+Left. No-op in Agenda.</summary>
