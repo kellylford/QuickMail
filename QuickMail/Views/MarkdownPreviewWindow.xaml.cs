@@ -93,13 +93,17 @@ public partial class MarkdownPreviewWindow : Window
                 }
             };
 
-            // Cancel external navigation — http/https/mailto open in the default browser;
-            // data: navigations are always blocked (they load without CSP).
+            // Cancel external navigation — http/https/mailto open in the default browser.
+            // about: and data: are the WebView's own document navigations: NavigateToString
+            // loads its content via a data:text/html URI in current WebView2 runtimes, so
+            // blocking data: here cancels the preview's own content and leaves it blank
+            // (issue 301). The content is CSP-locked in BuildHtml, so allowing it is safe.
             PreviewBody.CoreWebView2.NavigationStarting += (_, args) =>
             {
                 var uri = args.Uri;
                 if (string.IsNullOrEmpty(uri) ||
-                    uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase))
+                    uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase) ||
+                    uri.StartsWith("data:",  StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
                 // Only allow-listed schemes (http/https/mailto) may leave the app
