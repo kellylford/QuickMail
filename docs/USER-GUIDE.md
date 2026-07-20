@@ -543,9 +543,9 @@ Press the assigned hotkey from anywhere in the main window to switch to that vie
 
 ## Calendar
 
-QuickMail has a full, keyboard-first calendar. You can create and edit your own appointments, keep repeating events, get reminders, respond to meeting invitations, and — if you connect an online account — see and (for some providers) change the events already on your Microsoft, Google, or iCloud calendar. Everything is stored locally so the calendar works offline, and every part of it is reachable with the keyboard and announced by screen readers.
+QuickMail has a full, keyboard-first calendar. You can create and edit your own appointments, keep repeating events, get reminders, respond to meeting invitations, and — if you connect an online account — see and (for some providers) change the events already on your Microsoft, Google, or iCloud calendar. Everything is stored locally so the calendar works offline.
 
-This page is long because the calendar does a lot. If you just want the essentials: press **Ctrl+Shift+C** to open the calendar, press **N** to create an appointment, and use the arrow keys to move through your events. The rest of this page fills in the detail, including a clear list of [what the calendar does and does not do](#what-the-calendar-does-and-does-not-do).
+This page is long because the calendar does a lot. If you just want the essentials: press **Ctrl+Shift+C** to open the calendar, use the **Up and Down arrows** to move through your events, and on any appointment press **Tab** once for a details box with everything about it or **Enter** to open the full appointment. Press **N** to create a new one. The rest of this page fills in the detail, including a clear list of [what the calendar does and does not do](#what-the-calendar-does-and-does-not-do).
 
 ### Opening the Calendar
 
@@ -592,7 +592,12 @@ In Day, Week, and Month views:
 
 ### Reading an appointment
 
-Move through the list with the arrow keys. The list has **Subject**, **When**, **Status**, and **Calendar** columns; the Calendar column shows which calendar the appointment belongs to — for example **Apple: Family**, or **Local** for an appointment you created here. Each row is announced as a short summary that includes the calendar — for example, "Team standup, today 10:00 to 10:30, Accepted. Location: Zoom, calendar Apple: Family." A **details** area below the list shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
+Move through the list with the **Up and Down arrows**. The list has **Subject**, **When**, **Status**, and **Calendar** columns; the Calendar column shows which calendar the appointment belongs to — for example **Apple: Family**, or **Local** for an appointment you created here. Each row is announced as a short summary that includes the calendar — for example, "Team standup, today 10:00 to 10:30, Accepted. Location: Zoom, calendar Apple: Family."
+
+From any event you have two quick ways to see more:
+
+- Press **Tab** once to move into a **details box** below the list that shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
+- Press **Enter** to open the full appointment: your own appointments open in the editor, and a meeting invitation opens its source email.
 
 If you prefer each row spoken with field labels ("Subject …, when …, location …") instead of the concise form, turn on **Show field labels in the calendar event list** in **Settings → General**. It takes effect immediately.
 
