@@ -367,6 +367,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             IcsModel? calendarInvite = null;
             var calendarIcsText = string.Empty;
             var calendarPart = FindCalendarPart(s.Body);
+
             if (calendarPart != null)
             {
                 try
@@ -401,6 +402,14 @@ public class ImapMailService : IMailService, IChangeNotifier
                 HtmlBody      = htmlText,
                 Attachments   = attachments,
                 CalendarInvite = calendarInvite,
+                // Persist the RAW ICS too, not just the parsed CalendarInvite. CalendarInvite lives
+                // only in memory; CalendarIcs is the column the local store caches. Without this, a
+                // freshly fetched invite shows its Accept/Decline card (CalendarInvite is set), but
+                // the moment the row is cached — which prefetch does almost immediately — the stored
+                // calendar_ics is empty, so every later cache-served open reconstructs a null invite
+                // and the card silently vanishes. This is the root cause of invites "randomly" not
+                // being acceptable across accounts (it was really a prefetch-vs-open race).
+                CalendarIcs   = calendarIcsText,
                 DraftComposeMode = ParseComposeMode(s.Headers?["X-QuickMail-Compose-Mode"]),
             };
         }
