@@ -17,7 +17,7 @@ This is a big release. QuickMail now has a **full calendar**: create your own ap
 
 ## New: The Calendar
 
-QuickMail now has a real, keyboard-first calendar. Press **Ctrl+Shift+C** (or select the **Calendar** node in the folder tree) to open it. Everything is stored locally, so the calendar works offline, and every part of it is reachable with the keyboard and announced by screen readers.
+QuickMail now has a real, keyboard-first calendar. Press **Ctrl+Shift+C** (or select the **Calendar** node in the folder tree) to open it. Move through your events with the **Up and Down arrows**; on any appointment, press **Tab** once to reach a details box with everything about it, or **Enter** to open the full appointment.
 
 The [Calendar page of the User Guide](https://kellylford.github.io/QuickMail/calendar.html) covers all of this in detail. In brief:
 
@@ -90,16 +90,21 @@ Previewing the formatted (Markdown) version of a message you are composing opene
 
 ---
 
-## Accessibility
-
-- The entire calendar is keyboard-only and screen-reader-first: every view, the appointment editor, Go to Date, search, and the invitation response buttons are reachable without a mouse and announced. Each event row is spoken as a concise summary by default; turn on **Show field labels in the calendar event list** in Settings for a labeled reading ("Subject …, when …, location …") instead. The details area is read from the top so you can review an appointment line by line.
-- With a message open in a tab, the message list is removed from the view and from **F6** pane cycling, so F6 moves cleanly between the folder tree, the tab strip, and the open message without stopping on a list that isn't shown. Pressing **Escape** brings the list back and returns focus to it. While a message is loading — or if its load fails — the list stays in place and in the F6 cycle, so focus is never stranded on an empty pane.
-
----
-
 ## Thank You to Contributors
 
 Thank you, as always, to everyone who contributes to QuickMail through code, bug reports, feature suggestions, and other feedback — including the reports that shaped the calendar's design, the tab-open behavior found during the theming review, and the notification and sync-reliability reports.
+
+---
+
+## Reporting Issues
+
+Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
+
+1. **Report a Bug → Send** (Help menu, inside QuickMail). Files the report for you anonymously — it includes no email address or other identifying information, so there is no way to follow up with you. **Best when you don't want any follow-up.**
+2. **Report a Bug → Copy report and open GitHub** (Help menu). Opens a pre-filled issue that you submit under your own GitHub account, so your GitHub contact information is attached. **Best when you have a GitHub account and want automatic filing plus direct contact.**
+3. **Email** [quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net). **Best when you don't mind sending email and want a personal follow-up.**
+
+Full details, including exactly what a report contains (and what it never contains), are in the [Reporting Issues section of the User Guide](https://kellylford.github.io/QuickMail/reporting-issues.html).
 
 ---
 
@@ -176,15 +181,3 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 ### Markdown preview window opened blank (#301)
 
 - `MarkdownPreviewWindow`'s `NavigationStarting` handler cancelled every navigation except `about:`, which cancelled its own `data:text/html` content — how current WebView2 runtimes deliver `NavigateToString` — leaving a blank `about:blank` page. It now allows `data:` through (as `MessageWindow` already does); external `http`/`https`/`mailto` links still route to the default browser and the content stays CSP-locked in `BuildHtml`.
-
----
-
-## Reporting Issues
-
-Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
-
-1. **Report a Bug → Send** (Help menu, inside QuickMail). Files the report for you anonymously — it includes no email address or other identifying information, so there is no way to follow up with you. **Best when you don't want any follow-up.**
-2. **Report a Bug → Copy report and open GitHub** (Help menu). Opens a pre-filled issue that you submit under your own GitHub account, so your GitHub contact information is attached. **Best when you have a GitHub account and want automatic filing plus direct contact.**
-3. **Email** [quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net). **Best when you don't mind sending email and want a personal follow-up.**
-
-Full details, including exactly what a report contains (and what it never contains), are in the [Reporting Issues section of the User Guide](https://kellylford.github.io/QuickMail/reporting-issues.html).
