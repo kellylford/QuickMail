@@ -15,6 +15,12 @@ public interface ILocalStoreService
     Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null);
     Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
     Task DeleteAccountDataAsync(Guid accountId);
+
+    /// <summary>
+    /// Deletes calendar events for accounts not in <paramref name="knownAccountIds"/> (orphans from a
+    /// removed-and-re-added account or a cache rebuild). Local events (<see cref="Guid.Empty"/>) are kept.
+    /// </summary>
+    Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds);
     Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead);
     Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead);
     Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview);

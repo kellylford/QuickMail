@@ -1693,6 +1693,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             : "Connecting and syncing…";
         ConnectionStatusText = "Connecting…";
         StartPrefetchTopOfFolder();
+        // Drop calendar events left behind by accounts that no longer exist — e.g. an account removed
+        // and re-added during setup gets a new id, so its old events would otherwise linger and show
+        // as duplicates (one per stale id). Local events (empty account id) are kept.
+        await _localStore.PurgeCalendarEventsForUnknownAccountsAsync(Accounts.Select(a => a.Id).ToList());
         await ReloadCalendarSourcesAsync(); // populate before the tree is built so calendars show at startup
         RebuildFolderListFromCache();
     }

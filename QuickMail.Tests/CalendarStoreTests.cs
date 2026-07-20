@@ -598,4 +598,51 @@ public class CalendarStoreTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Null(loaded!.CalendarInvite);
     }
+
+    // ── Orphaned-account purge (duplicate appointments after remove/re-add) ───────
+    // An account removed and re-added gets a new id; its old id's calendar events linger and show as
+    // duplicates. The startup purge drops events for accounts not in the current set, but keeps local
+    // events (empty account id).
+
+    [Fact]
+    public async Task PurgeCalendarEventsForUnknownAccounts_RemovesOrphans_KeepsKnownAndLocal()
+    {
+        var known  = Guid.NewGuid();
+        var orphan = Guid.NewGuid();
+
+        async Task Seed(Guid acct, string uid) => await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = uid, AccountId = acct, Summary = "Dad party",
+            StartTimeTicks = new DateTime(2026, 6, 20, 16, 45, 0, DateTimeKind.Utc).Ticks,
+            EndTimeTicks   = new DateTime(2026, 6, 20, 18, 45, 0, DateTimeKind.Utc).Ticks,
+            IsGraph = true,
+        });
+
+        await Seed(known,  "uid-known");
+        await Seed(orphan, "uid-orphan");
+        await Seed(Guid.Empty, "uid-local"); // a locally-created appointment
+
+        await _store.PurgeCalendarEventsForUnknownAccountsAsync(new[] { known });
+
+        var remaining = await _store.LoadCalendarEventsAsync();
+        var accounts = remaining.Select(e => e.AccountId).ToHashSet();
+        Assert.Contains(known, accounts);        // kept
+        Assert.Contains(Guid.Empty, accounts);   // local events preserved
+        Assert.DoesNotContain(orphan, accounts); // orphan purged
+    }
+
+    [Fact]
+    public async Task PurgeCalendarEventsForUnknownAccounts_NoOrphans_IsNoOp()
+    {
+        var known = Guid.NewGuid();
+        await _store.UpsertCalendarEventAsync(new CalendarEvent
+        {
+            Uid = "uid-1", AccountId = known, Summary = "Keep me",
+            StartTimeTicks = DateTime.UtcNow.Ticks, EndTimeTicks = DateTime.UtcNow.Ticks, IsGraph = true,
+        });
+
+        await _store.PurgeCalendarEventsForUnknownAccountsAsync(new[] { known });
+
+        Assert.Single(await _store.LoadCalendarEventsAsync());
+    }
 }
