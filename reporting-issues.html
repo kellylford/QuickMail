@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reporting Issues - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="tools-menu.html">Previous: Tools Menu</a> | <a href="settings.html">Next: Settings</a></div>
+  <h1 id="reporting-issues">Reporting Issues</h1>
+<p>QuickMail improves because people report problems and suggest
+changes. There are <strong>three</strong> ways to do it. They mostly
+differ in one thing: <strong>whether you can be contacted for
+follow-up</strong>. Pick whichever fits.</p>
+<table>
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 20%" />
+<col style="width: 32%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Way</th>
+<th>Where</th>
+<th>Follow-up?</th>
+<th>Best when</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>1. Report a Bug → Send</strong></td>
+<td>Help menu, in QuickMail</td>
+<td>No</td>
+<td>You want to report a problem but don’t want any follow-up.</td>
+</tr>
+<tr class="even">
+<td><strong>2. Report a Bug → Copy report and open GitHub</strong></td>
+<td>Help menu, in QuickMail</td>
+<td>Yes (via GitHub)</td>
+<td>You have a GitHub account and want automatic filing plus direct
+contact.</td>
+</tr>
+<tr class="odd">
+<td><strong>3. Email</strong></td>
+<td><code>quickmailissues@theideaplace.net</code></td>
+<td>Yes (by email)</td>
+<td>You’d rather use email and want a personal reply.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="report-a-bug-send-it-directly-no-account-needed-anonymous">1.
+Report a Bug — Send it directly (no account needed, anonymous)</h3>
+<p>Choose <strong>Report a Bug</strong> from the <strong>Help</strong>
+menu (it’s also in the command palette). A report window opens with a
+<strong>Summary</strong> and — all optional — <strong>What
+happened</strong>, <strong>What you expected</strong>, and <strong>Steps
+to reproduce</strong>. A <strong>Preview</strong> area always shows
+exactly what will be sent, built fresh from those fields as you
+type.</p>
+<p>Press <strong>Send</strong>. QuickMail files the report for you and
+shows a link to the issue it created.</p>
+<p>Because a Send report includes <strong>no email address or other
+identifying information</strong>, there is no way for anyone to follow
+up with you about it. Choose this option when you want to report
+something but <strong>don’t want any direct follow-up</strong>.</p>
+<h3
+id="report-a-bug-copy-report-and-open-github-filed-under-your-account">2.
+Report a Bug — Copy report and open GitHub (filed under your
+account)</h3>
+<p>In the same <strong>Report a Bug</strong> window, choose <strong>Copy
+report and open GitHub</strong> instead of Send. QuickMail copies the
+report to your clipboard and opens a pre-filled new-issue page on
+GitHub. You submit it there under <strong>your own GitHub
+account</strong>, so your GitHub contact information is attached and
+you’ll be notified as the issue is discussed.</p>
+<p>Choose this option when you <strong>have a GitHub account</strong>
+and want automatic bug reporting <strong>plus</strong> the ability to be
+contacted and to follow along.</p>
+<h3 id="email-us-personal-follow-up">3. Email us (personal
+follow-up)</h3>
+<p>If you’d rather not use the in-app tool at all, email <strong><a
+href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a></strong>.
+Describe the problem in your own words — the more detail (what you did,
+what happened, what you expected), the better.</p>
+<p>Choose this option when you <strong>don’t mind sending an
+email</strong> and want a <strong>personal follow-up</strong>.</p>
+<h3 id="whats-included-in-a-report-and-whats-never-included">What’s
+included in a report — and what’s never included</h3>
+<p>Alongside what you type, an in-app report (options 1 and 2) adds a
+short <strong>Environment</strong> section so a problem can be
+reproduced in the right context: the QuickMail version, your Windows
+version, the .NET runtime version, the active color theme, the current
+view, and the current sort order.</p>
+<p><strong>No message content, email addresses, account settings,
+passwords, or log file content is ever collected or sent.</strong> The
+Preview shows the full report verbatim, so you always see exactly what
+is included before it leaves your computer.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="tools-menu.html">Previous: Tools Menu</a> | <a href="settings.html">Next: Settings</a></div>
+</body>
+</html>

@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.32</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.33</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -273,6 +273,7 @@ Message</a></li>
 <li><a href="#calendar">Calendar</a></li>
 <li><a href="#notifications">Notifications</a></li>
 <li><a href="#tools-menu">Tools Menu</a></li>
+<li><a href="#reporting-issues">Reporting Issues</a></li>
 <li><a href="#settings">Settings</a></li>
 <li><a href="#themes">Themes</a></li>
 <li><a href="#screen-reader-announcements">Screen Reader
@@ -420,6 +421,9 @@ way.</p>
 <strong>Sync contacts from this account</strong> before signing in. See
 <a href="#syncing-contacts-from-your-accounts">Syncing Contacts from
 Your Accounts</a>.</p>
+<p>To show this account’s calendar in the Calendar view, check
+<strong>Sync calendar from this account</strong>. See the <a
+href="#calendar">Calendar</a> section for details.</p>
 <h3 id="gmail-google-account">Gmail (Google Account)</h3>
 <p>Enter your Gmail address in the <strong>Email / Username</strong>
 field — QuickMail then automatically selects Google authentication for
@@ -434,6 +438,10 @@ settings fill in automatically.</p>
 Google this is folded into the same sign-in consent. See <a
 href="#syncing-contacts-from-your-accounts">Syncing Contacts from Your
 Accounts</a>.</p>
+<p>To show this account’s calendar in the Calendar view, check
+<strong>Sync calendar from this account</strong> — Google’s calendar
+permission is part of the same sign-in. See the <a
+href="#calendar">Calendar</a> section for details.</p>
 <p>You may see a message that no password was saved for the account.
 This is expected with Google authentication — Gmail signs in through
 your Google account rather than a stored password, so there is no
@@ -460,14 +468,24 @@ app-specific password at <strong>appleid.apple.com</strong> (Sign-In
 &amp; Security → App-Specific Passwords) and enter it in the Password
 field. QuickMail shows a reminder in the password area when it detects
 an iCloud address.</p>
+<p>To bring in your iCloud data, check <strong>Sync contacts from this
+account</strong> and/or <strong>Sync calendar from this account</strong>
+— QuickMail uses the same app-specific password for both, so there’s
+nothing else to set up. iCloud <strong>contacts</strong> are read-only;
+iCloud <strong>calendars</strong> you can also add, edit, and delete
+single (non-repeating) appointments on. See <a
+href="#syncing-contacts-from-your-accounts">Syncing Contacts from Your
+Accounts</a> and the <a href="#calendar">Calendar</a> section for
+details.</p>
 <h3 id="managing-accounts">Managing Accounts</h3>
 <p>Open <strong>Settings → Accounts</strong> to rename, edit, or remove
 an account. Removing an account does not delete mail from the server.
 For OAuth accounts (Microsoft or Google), removing the account also
-clears the stored credential from Windows Credential Manager. Editing a
-Microsoft or Google account is also where you turn <strong>Sync contacts
-from this account</strong> on or off after the fact; the change applies
-immediately.</p>
+clears the stored credential from Windows Credential Manager. Managing
+an account is also where you turn <strong>Sync contacts from this
+account</strong> (Microsoft/Google) and <strong>Sync calendar from this
+account</strong> (Microsoft, Google, or iCloud) on or off after the
+fact; each change applies immediately.</p>
 <hr />
 <h2 id="main-window">Main Window</h2>
 <p>The main window has four panes reachable by pressing
@@ -587,25 +605,12 @@ Escape) for anyone new to the app.</p>
 menu (also available from the command palette) to open a report window
 without needing a GitHub account. Fill in a summary and, optionally,
 what happened, what you expected, and steps to reproduce; a
-<strong>Preview</strong> box below the fields always shows exactly what
-will be sent, built fresh from those fields. Press <strong>Send</strong>
-to submit — QuickMail creates the GitHub issue directly using its own
-limited-scope credential, and the window shows a link to the created
-issue.</p>
-<p>Alongside what you type, the report includes a short
-<strong>Environment</strong> section so a maintainer can reproduce the
-problem in the right context. It currently lists the QuickMail version,
-your Windows version, the .NET runtime version, the active color theme,
-the current view (the message grouping — Messages, Conversations, From,
-or To — and the saved view name if one is applied), and the current
-message sort order. No message content, email addresses, account
-settings, credentials, or log file content is ever collected or sent —
-and because the Preview shows the full report verbatim, you can always
-see exactly what is included before sending.</p>
-<p>If sending fails, or you’d rather review the report yourself, choose
-<strong>Copy report and open GitHub</strong> instead: your report is
-copied to the clipboard and a pre-filled GitHub issue page opens in your
-browser, ready to paste and submit.</p>
+<strong>Preview</strong> box always shows exactly what will be sent.
+Press <strong>Send</strong> to file it directly, or <strong>Copy report
+and open GitHub</strong> to submit it under your own GitHub account.</p>
+<p>This is one of three ways to report a problem. See <strong><a
+href="#reporting-issues">Reporting Issues</a></strong> for all three —
+including email — and guidance on which to choose.</p>
 <hr />
 <h2 id="reading-mail">Reading Mail</h2>
 <h3 id="opening-a-message">Opening a Message</h3>
@@ -1118,19 +1123,21 @@ contact details, and organize contacts into groups. An
 the account name for synced ones.</p>
 <h3 id="syncing-contacts-from-your-accounts">Syncing Contacts from Your
 Accounts</h3>
-<p>QuickMail can fill the address book from the contacts and prior
-recipients already stored in your Microsoft and Google accounts, so the
-people your account knows are available for autocomplete when you
-address a message.</p>
+<p>QuickMail can fill the address book from the contacts already stored
+in your Microsoft, Google, and iCloud accounts, so the people your
+account knows are available for autocomplete when you address a
+message.</p>
 <ul>
-<li><strong>Turn it on per account.</strong> When adding a Microsoft or
-Google account, check <strong>Sync contacts from this account</strong>
-in the Add Account dialog before you sign in. For an account you already
-have, open <strong>Settings → Accounts</strong>, edit the account, and
+<li><strong>Turn it on per account.</strong> When adding a Microsoft,
+Google, or iCloud account, check <strong>Sync contacts from this
+account</strong> in the Add Account dialog. For an account you already
+have, open <strong>Settings → Accounts</strong>, select the account, and
 check the same box — it takes effect immediately, with no separate Save
 step. Enabling sync asks your account for read-only access to your
 contacts (for Google this is part of the normal sign-in; for Microsoft
-it is granted right after sign-in).</li>
+it is granted right after sign-in; <strong>for iCloud it uses the
+app-specific password you already entered</strong>, so there is no extra
+prompt).</li>
 <li><strong>Synced contacts are read-only.</strong> They come from the
 server into QuickMail only — QuickMail never writes changes back to your
 account. Synced people appear in the list but cannot be edited or
@@ -1144,8 +1151,9 @@ the <strong>Sync Contacts Now</strong> command in the Command
 Palette.</li>
 </ul>
 <p>Contact sync is one-directional and read-only in this release: no
-changes are written back, and iCloud/CardDAV accounts are not yet
-supported.</p>
+changes are written back. For Microsoft and Google it also pulls the
+people you’ve recently emailed; iCloud brings in your saved contacts
+(its CardDAV service has no separate “recent recipients” list).</p>
 <h3 id="groups">Groups</h3>
 <p>Groups let you write to multiple people with a single address. Select
 a group in the address book and press Enter to expand it and see its
@@ -1262,31 +1270,427 @@ to jump to it directly.</p>
 to that view immediately.</p>
 <hr />
 <h2 id="calendar">Calendar</h2>
-<p>QuickMail tracks upcoming appointments drawn from meeting-invitation
-emails (<code>.ics</code> attachments) in your mailbox. This is not a
-general-purpose calendar — it exists so that once you accept a meeting
-invitation in QuickMail, you have a place to see what you accepted.</p>
-<p>A <strong>Calendar</strong> node appears in the folder tree. Select
-it to replace the message list with a list of upcoming events, sorted by
-date and time.</p>
+<p>QuickMail has a full, keyboard-first calendar. You can create and
+edit your own appointments, keep repeating events, get reminders,
+respond to meeting invitations, and — if you connect an online account —
+see and (for some providers) change the events already on your
+Microsoft, Google, or iCloud calendar. Everything is stored locally so
+the calendar works offline.</p>
+<p>This page is long because the calendar does a lot. If you just want
+the essentials: press <strong>Ctrl+Shift+C</strong> to open the
+calendar, use the <strong>Up and Down arrows</strong> to move through
+your events, and on any appointment press <strong>Tab</strong> once for
+a details box with everything about it or <strong>Enter</strong> to open
+the full appointment. Press <strong>N</strong> to create a new one. The
+rest of this page fills in the detail, including a clear list of <a
+href="#what-the-calendar-does-and-does-not-do">what the calendar does
+and does not do</a>.</p>
+<h3 id="opening-the-calendar">Opening the Calendar</h3>
+<p>There are two ways in:</p>
 <ul>
-<li><strong>Arrow keys</strong> move through the event list.</li>
-<li><strong>Enter</strong> opens the email the selected event came from.
-If that message is no longer in your local cache, QuickMail announces
-this and does nothing rather than attempting a failing fetch.</li>
-<li><strong>T</strong> filters the list to today’s events.</li>
-<li><strong>F5</strong> refreshes the calendar.</li>
-<li><strong>F6</strong> cycles to the next pane as usual.</li>
+<li>Press <strong>Ctrl+Shift+C</strong> from anywhere in the main
+window.</li>
+<li>Select the <strong>Calendar</strong> node in the folder tree. It
+sits alongside your mail folders.</li>
 </ul>
-<h3 id="responding-to-invitations">Responding to Invitations</h3>
-<p>Open a meeting invitation email as you would any message. Below the
-invitation details (organizer, time, location, description), the message
-body shows three response links: <strong>Accept</strong>,
-<strong>Tentative</strong>, and <strong>Decline</strong>. Activating one
-records your response and updates the Calendar immediately — no restart
-or refresh needed. These links are not shown on a cancellation notice.
-When you receive an updated or cancelled invitation, the corresponding
-calendar entry updates or is removed automatically.</p>
+<p>Either way, the message list is replaced by your list of events, and
+a small toolbar appears above it with buttons for the views, date
+navigation, and creating or editing appointments. Everything on that
+toolbar has a keyboard shortcut too, listed at the end of this page.</p>
+<blockquote>
+<p>The calendar needs QuickMail’s local cache, so it is <strong>not
+available when you run QuickMail in online mode</strong>
+(<code>--online</code>). In that mode the calendar announces that it is
+unavailable.</p>
+</blockquote>
+<h3 id="calendars-sources">Calendars (sources)</h3>
+<p>Expand the <strong>Calendar</strong> node in the folder tree to
+choose which events you are looking at:</p>
+<ul>
+<li><strong>All Calendars</strong> — everything, merged together.</li>
+<li><strong>Local Calendar</strong> — only the appointments you created
+in QuickMail, stored on this computer.</li>
+<li><strong>One entry per account</strong> — the events from each
+account you turned calendar sync on for (see <a
+href="#connecting-an-online-calendar">Connecting an online
+calendar</a>). Selecting the account shows all of its calendars
+merged.</li>
+<li><strong>Each calendar under an account</strong> — if an account has
+more than one calendar (for example iCloud’s Home, Family, and Work, or
+several Google or Outlook calendars), each appears as its own node
+beneath the account, so you can look at just that one.</li>
+</ul>
+<p>Selecting a source filters the list to it. “All Calendars” is the
+usual choice for day-to-day use.</p>
+<h3 id="the-four-views">The four views</h3>
+<p>Your events can be shown four ways. Switch between them with the
+toolbar buttons or these keys while the event list has focus:</p>
+<ul>
+<li><strong>Agenda</strong> (press <strong>A</strong>) — a running list
+of upcoming events, oldest first. This is the default and the simplest
+to browse. Press <strong>T</strong> to filter it down to just today, and
+<strong>T</strong> again to show everything.</li>
+<li><strong>Day</strong> (press <strong>D</strong>) — a single day’s
+events.</li>
+<li><strong>Week</strong> (press <strong>W</strong>) — one week,
+starting on whatever your Windows region setting uses as the first day
+of the week.</li>
+<li><strong>Month</strong> (press <strong>M</strong>) — a grid of the
+whole month. Arrow keys move day by day and week by week; press
+<strong>Enter</strong> on a day to open that day in Day view.</li>
+</ul>
+<p>The header above the list always tells you which view and which
+period you are looking at (for example, “Week of March 9 to March
+15”).</p>
+<h3 id="moving-around-the-calendar">Moving around the calendar</h3>
+<p>In Day, Week, and Month views:</p>
+<ul>
+<li><strong>Ctrl+Left</strong> and <strong>Ctrl+Right</strong> move to
+the previous or next day, week, or month (whichever view you are
+in).</li>
+<li><strong>T</strong> jumps back to today.</li>
+<li><strong>Ctrl+G</strong> opens <strong>Go to Date</strong>: type or
+pick a date, then press <strong>Go</strong>. Day, Week, and Month views
+keep their view and recenter on the date you chose; from the Agenda
+list, Go to Date switches to Day view for that date. A <strong>Go To
+Date…</strong> button on the toolbar does the same thing.</li>
+</ul>
+<p>(In Agenda view there is no “previous/next period” — the list is
+already continuous — so <strong>Ctrl+Left/Right</strong> do nothing
+there, and <strong>T</strong> toggles the today filter instead of
+jumping.)</p>
+<h3 id="reading-an-appointment">Reading an appointment</h3>
+<p>Move through the list with the <strong>Up and Down arrows</strong>.
+The list has <strong>Subject</strong>, <strong>When</strong>,
+<strong>Status</strong>, and <strong>Calendar</strong> columns; the
+Calendar column shows which calendar the appointment belongs to — for
+example <strong>Apple: Family</strong>, or <strong>Local</strong> for an
+appointment you created here. Each row is announced as a short summary
+that includes the calendar — for example, “Team standup, today 10:00 to
+10:30, Accepted. Location: Zoom, calendar Apple: Family.”</p>
+<p>From any event you have two quick ways to see more:</p>
+<ul>
+<li>Press <strong>Tab</strong> once to move into a <strong>details
+box</strong> below the list that shows the full appointment (title,
+when, whether it repeats, location, and for meeting invitations the
+organizer and your response status), read from the top so a screen
+reader can review it line by line.</li>
+<li>Press <strong>Enter</strong> to act on the appointment. On an
+invitation you <strong>haven’t answered yet</strong>, Enter opens a
+short menu — <strong>Accept</strong>, <strong>Tentative</strong>,
+<strong>Decline</strong>, or <strong>Open full appointment</strong> — so
+you can respond right from the calendar (see below). On your own
+appointment, Enter opens the editor; on an invitation you’ve already
+answered, it opens the source email.</li>
+</ul>
+<p>If you prefer each row spoken with field labels (“Subject …, when …,
+location …”) instead of the concise form, turn on <strong>Show field
+labels in the calendar event list</strong> in <strong>Settings →
+General</strong>. It takes effect immediately.</p>
+<h3 id="responding-to-a-meeting-invitation">Responding to a meeting
+invitation</h3>
+<p>Invitations you receive by email show in the calendar with a
+<strong>Pending</strong> status until you answer them. You can respond
+without opening the email:</p>
+<ol type="1">
+<li>Arrow to the pending invitation and press <strong>Enter</strong>. A
+menu opens with focus on the first choice.</li>
+<li>Choose <strong>Accept</strong>, <strong>Tentative</strong>, or
+<strong>Decline</strong> — or <strong>Open full appointment</strong> to
+read the original email instead. Press <strong>Escape</strong> to close
+the menu without responding.</li>
+</ol>
+<p>QuickMail sends your reply to the organizer from the account that
+received the invitation and updates the appointment’s status, so it no
+longer shows as pending. Accept, Tentative, and Decline are also in the
+Command Palette (<strong>Ctrl+Shift+P</strong>) when a pending
+invitation is selected.</p>
+<h3 id="creating-an-appointment">Creating an appointment</h3>
+<p>Press <strong>N</strong> (or the <strong>New</strong> toolbar button)
+to open the appointment editor. It is a normal window you can tab
+through:</p>
+<ul>
+<li><strong>Title</strong> — required.</li>
+<li><strong>All day</strong> — check this for an all-day event; the time
+fields then switch off.</li>
+<li><strong>Starts / Ends</strong> — a date and a time for each. You can
+type the time naturally: “9”, “9:00”, “9:00 AM”, or “14:30” all work. If
+you leave the end time blank, QuickMail uses 30 minutes after the
+start.</li>
+<li><strong>Location</strong> — optional.</li>
+<li><strong>Repeat</strong> — leave as “Does not repeat” for a one-off,
+or set up a repeating appointment (see below).</li>
+<li><strong>Notes</strong> — free text.</li>
+<li><strong>Calendar</strong> — when you have a Microsoft, Google, or
+iCloud account connected, a picker lets you choose where the new
+appointment is saved: your <strong>Local Calendar</strong> or a
+connected account. For iCloud the picker lists each of your Apple
+calendars (Home, Family, …) so you can choose which one. With no
+connected calendar this picker does not appear and everything is saved
+locally.</li>
+</ul>
+<p>Press <strong>Enter</strong> (or the <strong>Save</strong> button) to
+save, or <strong>Escape</strong> to cancel.</p>
+<h3 id="repeating-appointments">Repeating appointments</h3>
+<p>In the editor’s <strong>Repeat</strong> field choose Daily, Weekly,
+Monthly, or Yearly. You can then set:</p>
+<ul>
+<li><strong>Every N</strong> — for example “every 2 weeks.”</li>
+<li><strong>Until</strong> — an optional date the repetition stops
+on.</li>
+<li><strong>On days</strong> (Weekly only) — check the days of the week
+it should fall on. Leave them all unchecked to repeat on the same
+weekday as the start date.</li>
+</ul>
+<p>When you later edit or delete one occurrence of a repeating
+appointment, QuickMail asks whether you mean <strong>this event
+only</strong> or <strong>all events in the series</strong>:</p>
+<ul>
+<li><strong>This event only</strong> — changes (or removes) just that
+one date and leaves the rest of the series alone.</li>
+<li><strong>All events in the series</strong> — changes (or removes) the
+whole repeating appointment.</li>
+</ul>
+<h3 id="editing-and-deleting">Editing and deleting</h3>
+<ul>
+<li>Press <strong>E</strong> (or the <strong>Edit</strong> button) to
+edit the selected appointment.</li>
+<li>Press <strong>Delete</strong> (or the <strong>Delete</strong>
+button) to delete it. QuickMail always confirms before deleting.</li>
+</ul>
+<p>What you can change depends on where the appointment lives:</p>
+<ul>
+<li><strong>Your own (Local Calendar) appointments</strong> — fully
+editable and deletable.</li>
+<li><strong>Single events from a connected Microsoft, Google, or iCloud
+calendar</strong> — editable and deletable; your change is sent back to
+that account.</li>
+<li><strong>Repeating events from a connected online calendar</strong> —
+read-only for now; QuickMail tells you so rather than changing
+them.</li>
+<li><strong>Meeting invitations</strong> — read-only. QuickMail explains
+why instead of failing silently.</li>
+</ul>
+<p>If saving a change to an online account ever fails, QuickMail saves
+your appointment to the Local Calendar instead so your work is never
+lost, and tells you it did.</p>
+<h3 id="reminders">Reminders</h3>
+<p>Reminders are <strong>off by default</strong>. To turn them on, open
+<strong>Settings → General</strong>, check <strong>Remind me before
+appointments</strong>, and set the <strong>Minutes before</strong> value
+(10 by default). When a reminder is due, QuickMail shows a Windows
+notification and announces it, telling you how long until the
+appointment and where it is. Each reminder fires once per session.</p>
+<p>There is a single reminder lead time for all appointments;
+per-appointment reminder times and snoozing are not offered.</p>
+<h3 id="exporting-an-appointment">Exporting an appointment</h3>
+<p>To share an appointment as a standard calendar file, select it and
+choose <strong>Export Appointment as .ics</strong> from the command
+palette (<strong>Ctrl+Shift+P</strong>) or the toolbar/menu. QuickMail
+writes a <code>.ics</code> file you can send to someone or import
+elsewhere. (Exporting one occurrence of a repeating appointment exports
+the whole series.) This action has no default keyboard shortcut, but you
+can assign one in <strong>Settings → Keyboard</strong>.</p>
+<h3 id="searching-your-appointments">Searching your appointments</h3>
+<p>Press <strong>Ctrl+Shift+S</strong> while the calendar is open to
+search. Type to filter the list by title, location, or notes; the count
+of matches is announced as you type. Press <strong>Escape</strong> to
+clear the search and return to the full list.</p>
+<h3 id="responding-to-meeting-invitations">Responding to meeting
+invitations</h3>
+<p>When you open an email that contains a meeting invitation, QuickMail
+adds an event card to the top of the message with three buttons:
+<strong>Accept</strong>, <strong>Tentative</strong>, and
+<strong>Decline</strong>. Choosing one sends your reply to the organizer
+and updates your calendar right away — no restart or refresh needed. If
+the invitation has been cancelled by the organizer, the card says so
+instead of offering buttons, and the matching calendar entry is removed.
+From the calendar list, pressing <strong>Enter</strong> on an
+invitation-based event opens the original email it came from.</p>
+<h3 id="connecting-an-online-calendar">Connecting an online
+calendar</h3>
+<p>Calendars connect <strong>per account</strong>, the same way contact
+sync does. When you add an email account — or later, in <strong>Manage
+Accounts</strong> — check <strong>Sync calendar from this
+account</strong> and QuickMail shows that account’s calendar in the
+Calendar view. Nothing is synced until you check the box, and unchecking
+it removes that account’s events again. The checkbox is offered for the
+providers QuickMail can read:</p>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 22%" />
+<col style="width: 54%" />
+<col style="width: 9%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Provider</th>
+<th>See your events</th>
+<th>Create / edit / delete from QuickMail</th>
+<th>Setup</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Local Calendar</strong></td>
+<td>— (they live here)</td>
+<td>Full</td>
+<td>Nothing to set up; it is always there.</td>
+</tr>
+<tr class="even">
+<td><strong>Microsoft</strong> (Outlook.com, Microsoft 365)</td>
+<td>Yes</td>
+<td>Yes, for single (non-repeating) events</td>
+<td>Check <strong>Sync calendar from this account</strong>. Microsoft
+asks once for calendar permission.</td>
+</tr>
+<tr class="odd">
+<td><strong>Google</strong></td>
+<td>Yes</td>
+<td>Yes, for single (non-repeating) events</td>
+<td>Check <strong>Sync calendar from this account</strong>. Permission
+was granted when you signed in for mail.</td>
+</tr>
+<tr class="even">
+<td><strong>iCloud</strong></td>
+<td>Yes</td>
+<td>Yes, for single (non-repeating) events</td>
+<td>Check <strong>Sync calendar from this account</strong>. QuickMail
+uses the app-specific password you already entered for the account — no
+separate setup. When you create an appointment you can choose which
+iCloud calendar (Home, Family, …) it goes on.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Turning it on for an account you already have:</strong> open
+<strong>Manage Accounts</strong>, select the account, and check
+<strong>Sync calendar from this account</strong>. It applies immediately
+— a <strong>Calendar → [account]</strong> node appears in the folder
+tree and the events sync in the background. Unchecking it removes
+them.</p>
+<p>Connected calendars refresh automatically in the background (roughly
+every 15 minutes, and once shortly after startup). Press
+<strong>F5</strong> to refresh on demand, or use <strong>Sync Calendars
+Now</strong> from the command palette. Syncing is a one-directional
+download plus, for Microsoft and Google, the single-event write-back
+described above; it never opens a sign-in prompt on its own — if an
+account needs you to sign in again for calendar access, QuickMail tells
+you.</p>
+<h3 id="what-the-calendar-does-and-does-not-do">What the calendar does
+and does not do</h3>
+<p>To set expectations clearly:</p>
+<p><strong>It does:</strong></p>
+<ul>
+<li>Let you create, edit, and delete your own appointments, including
+all-day and repeating ones.</li>
+<li>Show four views (Agenda, Day, Week, Month) and jump to any
+date.</li>
+<li>Remind you before appointments (when you turn reminders on).</li>
+<li>Respond to meeting invitations and keep your reply in sync.</li>
+<li>Download events from Microsoft, Google, and iCloud calendars, and
+create, edit, and delete single (non-repeating) events on any of
+them.</li>
+<li>Export any appointment as a <code>.ics</code> file.</li>
+</ul>
+<p><strong>It does not (yet):</strong></p>
+<ul>
+<li>Work in online mode — it needs the local cache.</li>
+<li>Send <strong>repeating</strong> appointments to an online account
+(repeating appointments are saved to the Local Calendar).</li>
+<li>Edit or delete <strong>repeating</strong> events that came from an
+online calendar (repeating server events are read-only).</li>
+<li>Connect calendars from generic CalDAV servers other than iCloud
+(Fastmail, Nextcloud, and the like).</li>
+<li>Subscribe to public <code>.ics</code> calendar feeds (holidays,
+sports schedules, and the like).</li>
+<li>Offer multiple named calendars, calendar colors, per-appointment
+reminder times, or reminder snoozing.</li>
+</ul>
+<p>By default, invitations you have <strong>declined</strong> are
+hidden. Showing them is an advanced option set in the configuration file
+(<code>ShowDeclinedEvents</code>) and takes effect after a restart.</p>
+<p>Repeating appointments are expanded for browsing from about a week
+ago through the next twelve months; events far outside that window may
+not appear in the continuous Agenda list until you navigate to their
+date.</p>
+<h3 id="calendar-keyboard-shortcuts">Calendar keyboard shortcuts</h3>
+<p>These work while the calendar list (or, where noted, the Month grid)
+has focus:</p>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 44%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Ctrl+Shift+C</code></td>
+<td>Open the Calendar</td>
+</tr>
+<tr class="even">
+<td><code>A</code> / <code>D</code> / <code>W</code> /
+<code>M</code></td>
+<td>Agenda / Day / Week / Month view</td>
+</tr>
+<tr class="odd">
+<td><code>T</code></td>
+<td>Today (filter to today in Agenda; jump to today in
+Day/Week/Month)</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+Left</code> / <code>Ctrl+Right</code></td>
+<td>Previous / next day, week, or month</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+G</code></td>
+<td>Go to Date</td>
+</tr>
+<tr class="even">
+<td><code>Enter</code></td>
+<td>Respond to a pending invitation (Accept / Tentative / Decline menu);
+or edit your own appointment; or open an answered invitation’s source
+email; or (in Month view) open the selected day</td>
+</tr>
+<tr class="odd">
+<td><code>N</code></td>
+<td>New appointment</td>
+</tr>
+<tr class="even">
+<td><code>E</code></td>
+<td>Edit appointment</td>
+</tr>
+<tr class="odd">
+<td><code>Delete</code></td>
+<td>Delete appointment</td>
+</tr>
+<tr class="even">
+<td><code>Ctrl+Shift+S</code></td>
+<td>Search appointments</td>
+</tr>
+<tr class="odd">
+<td><code>Escape</code></td>
+<td>Clear search / leave the calendar</td>
+</tr>
+<tr class="even">
+<td><code>F5</code></td>
+<td>Refresh</td>
+</tr>
+<tr class="odd">
+<td><code>F6</code></td>
+<td>Move to the next pane</td>
+</tr>
+</tbody>
+</table>
+<p>Export as <code>.ics</code>, and the invitation responses (Accept,
+Tentative, Decline), are available from the command palette
+(<strong>Ctrl+Shift+P</strong>) and have no default key until you assign
+one.</p>
 <hr />
 <h2 id="notifications">Notifications</h2>
 <p>New-mail notifications and the option to keep QuickMail running in
@@ -1348,6 +1752,96 @@ cycle through your available themes.</li>
 href="#mail-rules">Rules Manager</a>.</li>
 <li><strong>Command Palette…</strong> (<code>Ctrl+Shift+P</code>)</li>
 </ul>
+<hr />
+<h2 id="reporting-issues">Reporting Issues</h2>
+<p>QuickMail improves because people report problems and suggest
+changes. There are <strong>three</strong> ways to do it. They mostly
+differ in one thing: <strong>whether you can be contacted for
+follow-up</strong>. Pick whichever fits.</p>
+<table>
+<colgroup>
+<col style="width: 14%" />
+<col style="width: 20%" />
+<col style="width: 32%" />
+<col style="width: 32%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Way</th>
+<th>Where</th>
+<th>Follow-up?</th>
+<th>Best when</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>1. Report a Bug → Send</strong></td>
+<td>Help menu, in QuickMail</td>
+<td>No</td>
+<td>You want to report a problem but don’t want any follow-up.</td>
+</tr>
+<tr class="even">
+<td><strong>2. Report a Bug → Copy report and open GitHub</strong></td>
+<td>Help menu, in QuickMail</td>
+<td>Yes (via GitHub)</td>
+<td>You have a GitHub account and want automatic filing plus direct
+contact.</td>
+</tr>
+<tr class="odd">
+<td><strong>3. Email</strong></td>
+<td><code>quickmailissues@theideaplace.net</code></td>
+<td>Yes (by email)</td>
+<td>You’d rather use email and want a personal reply.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="report-a-bug-send-it-directly-no-account-needed-anonymous">1.
+Report a Bug — Send it directly (no account needed, anonymous)</h3>
+<p>Choose <strong>Report a Bug</strong> from the <strong>Help</strong>
+menu (it’s also in the command palette). A report window opens with a
+<strong>Summary</strong> and — all optional — <strong>What
+happened</strong>, <strong>What you expected</strong>, and <strong>Steps
+to reproduce</strong>. A <strong>Preview</strong> area always shows
+exactly what will be sent, built fresh from those fields as you
+type.</p>
+<p>Press <strong>Send</strong>. QuickMail files the report for you and
+shows a link to the issue it created.</p>
+<p>Because a Send report includes <strong>no email address or other
+identifying information</strong>, there is no way for anyone to follow
+up with you about it. Choose this option when you want to report
+something but <strong>don’t want any direct follow-up</strong>.</p>
+<h3
+id="report-a-bug-copy-report-and-open-github-filed-under-your-account">2.
+Report a Bug — Copy report and open GitHub (filed under your
+account)</h3>
+<p>In the same <strong>Report a Bug</strong> window, choose <strong>Copy
+report and open GitHub</strong> instead of Send. QuickMail copies the
+report to your clipboard and opens a pre-filled new-issue page on
+GitHub. You submit it there under <strong>your own GitHub
+account</strong>, so your GitHub contact information is attached and
+you’ll be notified as the issue is discussed.</p>
+<p>Choose this option when you <strong>have a GitHub account</strong>
+and want automatic bug reporting <strong>plus</strong> the ability to be
+contacted and to follow along.</p>
+<h3 id="email-us-personal-follow-up">3. Email us (personal
+follow-up)</h3>
+<p>If you’d rather not use the in-app tool at all, email <strong><a
+href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a></strong>.
+Describe the problem in your own words — the more detail (what you did,
+what happened, what you expected), the better.</p>
+<p>Choose this option when you <strong>don’t mind sending an
+email</strong> and want a <strong>personal follow-up</strong>.</p>
+<h3 id="whats-included-in-a-report-and-whats-never-included">What’s
+included in a report — and what’s never included</h3>
+<p>Alongside what you type, an in-app report (options 1 and 2) adds a
+short <strong>Environment</strong> section so a problem can be
+reproduced in the right context: the QuickMail version, your Windows
+version, the .NET runtime version, the active color theme, the current
+view, and the current sort order.</p>
+<p><strong>No message content, email addresses, account settings,
+passwords, or log file content is ever collected or sent.</strong> The
+Preview shows the full report verbatim, so you always see exactly what
+is included before it leaves your computer.</p>
 <hr />
 <h2 id="settings">Settings</h2>
 <p>Press <strong>Ctrl+,</strong> to open Settings.</p>
@@ -1768,10 +2262,14 @@ they have no default keyboard shortcut. <strong>Manage Themes</strong>,
 <strong>Next Theme</strong>, <strong>Previous Theme</strong>, and
 <strong>Report a Bug</strong> are likewise command-palette-only unless
 you assign a shortcut yourself in Settings → Keyboard.</p>
-<p><strong>Calendar list</strong> (when the Calendar folder is
-selected): <code>T</code> filters to today’s events; <code>Enter</code>
-opens the source invitation email; <code>F5</code> refreshes; arrow keys
-browse.</p>
+<p><strong>Calendar</strong> (<code>Ctrl+Shift+C</code> to open):
+<code>A</code>/<code>D</code>/<code>W</code>/<code>M</code> switch
+views, <code>T</code> goes to today,
+<code>Ctrl+Left</code>/<code>Ctrl+Right</code> move between periods,
+<code>Ctrl+G</code> goes to a date,
+<code>N</code>/<code>E</code>/<code>Delete</code> create/edit/delete
+appointments, and <code>Ctrl+Shift+S</code> searches. See the <a
+href="#calendar">Calendar</a> section for the full list.</p>
 <h3 id="tabs-1">Tabs</h3>
 <table>
 <thead>

@@ -37,19 +37,21 @@ contact details, and organize contacts into groups. An
 the account name for synced ones.</p>
 <h3 id="syncing-contacts-from-your-accounts">Syncing Contacts from Your
 Accounts</h3>
-<p>QuickMail can fill the address book from the contacts and prior
-recipients already stored in your Microsoft and Google accounts, so the
-people your account knows are available for autocomplete when you
-address a message.</p>
+<p>QuickMail can fill the address book from the contacts already stored
+in your Microsoft, Google, and iCloud accounts, so the people your
+account knows are available for autocomplete when you address a
+message.</p>
 <ul>
-<li><strong>Turn it on per account.</strong> When adding a Microsoft or
-Google account, check <strong>Sync contacts from this account</strong>
-in the Add Account dialog before you sign in. For an account you already
-have, open <strong>Settings → Accounts</strong>, edit the account, and
+<li><strong>Turn it on per account.</strong> When adding a Microsoft,
+Google, or iCloud account, check <strong>Sync contacts from this
+account</strong> in the Add Account dialog. For an account you already
+have, open <strong>Settings → Accounts</strong>, select the account, and
 check the same box — it takes effect immediately, with no separate Save
 step. Enabling sync asks your account for read-only access to your
 contacts (for Google this is part of the normal sign-in; for Microsoft
-it is granted right after sign-in).</li>
+it is granted right after sign-in; <strong>for iCloud it uses the
+app-specific password you already entered</strong>, so there is no extra
+prompt).</li>
 <li><strong>Synced contacts are read-only.</strong> They come from the
 server into QuickMail only — QuickMail never writes changes back to your
 account. Synced people appear in the list but cannot be edited or
@@ -63,8 +65,9 @@ the <strong>Sync Contacts Now</strong> command in the Command
 Palette.</li>
 </ul>
 <p>Contact sync is one-directional and read-only in this release: no
-changes are written back, and iCloud/CardDAV accounts are not yet
-supported.</p>
+changes are written back. For Microsoft and Google it also pulls the
+people you’ve recently emailed; iCloud brings in your saved contacts
+(its CardDAV service has no separate “recent recipients” list).</p>
 <h3 id="groups">Groups</h3>
 <p>Groups let you write to multiple people with a single address. Select
 a group in the address book and press Enter to expand it and see its
