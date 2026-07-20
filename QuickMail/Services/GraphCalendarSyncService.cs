@@ -622,7 +622,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // Dispatch order mirrors the read path (SyncOneAccountAsync): Graph → Google → iCloud.
         if (IsGoogleEligible(account))
         {
-            await _google!.DeleteEventAsync(account.Username, evt.Uid, ct);
+            await _google!.DeleteEventAsync(account.Username, evt.Uid, GoogleCalendarId(evt), ct);
             await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
             LogService.Log($"CalendarSync: deleted Google event on {account.AccountLabel} ({evt.Uid}).");
             return;
@@ -641,10 +641,17 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 
     // ── Google write path ────────────────────────────────────────────────────────
 
+    // Target the calendar the event actually lives on. A blank CalendarId (e.g. a brand-new
+    // event whose save target is the account's default) falls back to "primary". Using this for
+    // update/delete is the fix for events on secondary Google calendars, which 404 against primary.
+    private static string GoogleCalendarId(CalendarEvent evt)
+        => string.IsNullOrWhiteSpace(evt.CalendarId) ? "primary" : evt.CalendarId;
+
     private async Task<CalendarEvent> CreateGoogleEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
     {
-        var created = await _google!.CreateEventAsync(account.Username, BuildGoogleWriteBody(evt), ct);
-        var mapped = MapGoogleEvent(created, account.Id);
+        var calId = GoogleCalendarId(evt);
+        var created = await _google!.CreateEventAsync(account.Username, BuildGoogleWriteBody(evt), calId, ct);
+        var mapped = MapGoogleEvent(created, account.Id, calId, evt.CalendarName);
         await _store.UpsertCalendarEventAsync(mapped);
         LogService.Log($"CalendarSync: created Google event on {account.AccountLabel} ({mapped.Uid}).");
         return mapped;
@@ -652,8 +659,9 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
 
     private async Task<CalendarEvent> UpdateGoogleEventAsync(AccountModel account, CalendarEvent evt, CancellationToken ct)
     {
-        var updated = await _google!.UpdateEventAsync(account.Username, evt.Uid, BuildGoogleWriteBody(evt), ct);
-        var mapped = MapGoogleEvent(updated, account.Id);
+        var calId = GoogleCalendarId(evt);
+        var updated = await _google!.UpdateEventAsync(account.Username, evt.Uid, BuildGoogleWriteBody(evt), calId, ct);
+        var mapped = MapGoogleEvent(updated, account.Id, calId, evt.CalendarName);
         await _store.UpsertCalendarEventAsync(mapped);
         LogService.Log($"CalendarSync: updated Google event on {account.AccountLabel} ({mapped.Uid}).");
         return mapped;

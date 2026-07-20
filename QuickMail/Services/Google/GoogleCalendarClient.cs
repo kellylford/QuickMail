@@ -123,26 +123,34 @@ public sealed class GoogleCalendarClient : IDisposable
         return all;
     }
 
-    // ── Write path (single events on the primary calendar) ──────────────────────
+    // ── Write path (single events, targeting the event's own calendar) ──────────
+    // calendarId defaults to "primary" but MUST be the calendar the event actually lives on:
+    // the read path enumerates every calendar in the account, so an event on a secondary
+    // calendar can only be patched/deleted through that calendar's id. Targeting "primary"
+    // for such an event returns 404 and surfaces as "could not update the online calendar".
 
-    /// <summary>Creates an event (<c>POST calendars/primary/events</c>) and returns the server's copy.</summary>
+    /// <summary>Creates an event (<c>POST calendars/{calendarId}/events</c>) and returns the server's copy.</summary>
     internal Task<GoogleCalendarEvent> CreateEventAsync(
-        string username, GoogleEventWriteBody body, CancellationToken ct = default)
-        => SendWriteAsync(username, HttpMethod.Post, "calendars/primary/events", body, ct);
+        string username, GoogleEventWriteBody body, string calendarId = "primary", CancellationToken ct = default)
+        => SendWriteAsync(username, HttpMethod.Post,
+                          $"calendars/{Uri.EscapeDataString(calendarId)}/events", body, ct);
 
-    /// <summary>Patches an event (<c>PATCH calendars/primary/events/{id}</c>) and returns the server's copy.
+    /// <summary>Patches an event (<c>PATCH calendars/{calendarId}/events/{id}</c>) and returns the server's copy.
     /// Omitted (null) body fields are left unchanged on the server.</summary>
     internal Task<GoogleCalendarEvent> UpdateEventAsync(
-        string username, string eventId, GoogleEventWriteBody body, CancellationToken ct = default)
+        string username, string eventId, GoogleEventWriteBody body,
+        string calendarId = "primary", CancellationToken ct = default)
         => SendWriteAsync(username, HttpMethod.Patch,
-                          $"calendars/primary/events/{Uri.EscapeDataString(eventId)}", body, ct);
+                          $"calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}", body, ct);
 
-    /// <summary>Deletes an event (<c>DELETE calendars/primary/events/{id}</c>).</summary>
-    internal async Task DeleteEventAsync(string username, string eventId, CancellationToken ct = default)
+    /// <summary>Deletes an event (<c>DELETE calendars/{calendarId}/events/{id}</c>).</summary>
+    internal async Task DeleteEventAsync(
+        string username, string eventId, string calendarId = "primary", CancellationToken ct = default)
     {
         var token = await _oauth.GetAccessTokenAsync(username, ct);
         using var req = new HttpRequestMessage(
-            HttpMethod.Delete, $"{BaseUrl}/calendars/primary/events/{Uri.EscapeDataString(eventId)}");
+            HttpMethod.Delete,
+            $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var resp = await _http.SendAsync(req, ct);
