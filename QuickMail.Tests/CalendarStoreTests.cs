@@ -545,4 +545,57 @@ public class CalendarStoreTests : IDisposable
         Assert.Single(events);
         Assert.Equal(CalendarResponseStatus.Cancelled, events[0].ResponseStatus);
     }
+
+    // ── Invite card survives caching (regression for #297) ───────────────────────
+    // A meeting invite showed its Accept/Decline card only on the first (in-memory) open, then lost
+    // it once the row was cached, because the raw calendar_ics was not persisted. These pin the
+    // cache-served reconstruction: when calendar_ics IS stored, a cache-served open must rebuild a
+    // non-null CalendarInvite; when it's absent, the invite is null (no phantom card).
+
+    [Fact]
+    public async Task LoadDetail_WithCalendarIcs_ReconstructsInviteOnCacheServedOpen()
+    {
+        var accountId = Guid.NewGuid();
+        await _store.UpsertSummariesAsync(new[] { new MailMessageSummary
+        {
+            MessageId = "msg-invite", AccountId = accountId, FolderName = "INBOX",
+            From = "org@example.com", Subject = "Lunch invite", Date = DateTimeOffset.UtcNow,
+        }});
+        await _store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "msg-invite", AccountId = accountId, FolderName = "INBOX",
+            From = "org@example.com", Subject = "Lunch invite", Date = DateTimeOffset.UtcNow,
+            CalendarIcs = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:lunch-1\r\n" +
+                          "SUMMARY:Lunch\r\nDTSTART:20260801T160000Z\r\nEND:VEVENT\r\nEND:VCALENDAR",
+        });
+
+        var loaded = await _store.LoadDetailAsync(accountId, "INBOX", "msg-invite");
+
+        Assert.NotNull(loaded);
+        Assert.NotNull(loaded!.CalendarInvite);          // the Accept/Decline card would render
+        Assert.Equal("lunch-1", loaded.CalendarInvite!.Uid);
+        Assert.Equal("Lunch", loaded.CalendarInvite.Summary);
+    }
+
+    [Fact]
+    public async Task LoadDetail_WithoutCalendarIcs_HasNoInvite()
+    {
+        var accountId = Guid.NewGuid();
+        await _store.UpsertSummariesAsync(new[] { new MailMessageSummary
+        {
+            MessageId = "msg-plain", AccountId = accountId, FolderName = "INBOX",
+            From = "a@example.com", Subject = "Hello", Date = DateTimeOffset.UtcNow,
+        }});
+        await _store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "msg-plain", AccountId = accountId, FolderName = "INBOX",
+            From = "a@example.com", Subject = "Hello", Date = DateTimeOffset.UtcNow,
+            PlainTextBody = "just a message",
+        });
+
+        var loaded = await _store.LoadDetailAsync(accountId, "INBOX", "msg-plain");
+
+        Assert.NotNull(loaded);
+        Assert.Null(loaded!.CalendarInvite);
+    }
 }
