@@ -84,6 +84,12 @@ The list also stays visible while a message is still loading, and if a message f
 
 ---
 
+## Fixed: The compose preview window no longer opens blank
+
+Previewing the formatted (Markdown) version of a message you are composing opened a blank window on current WebView2 runtimes. The preview now renders your formatted message as expected.
+
+---
+
 ## Accessibility
 
 - The entire calendar is keyboard-only and screen-reader-first: every view, the appointment editor, Go to Date, search, and the invitation response buttons are reachable without a mouse and announced. Each event row is spoken as a concise summary by default; turn on **Show field labels in the calendar event list** in Settings for a labeled reading ("Subject …, when …, location …") instead. The details area is read from the top so you can review an appointment line by line.
@@ -159,6 +165,17 @@ Thank you, as always, to everyone who contributes to QuickMail through code, bug
 - The content region is now a two-row `Grid` whose row sizes swap on a new `IsMessageListAreaVisible` VM flag via `BoolToGridLengthConverter`. The flag is `!(MessageOpenMode == Tab && ActiveTab is MessageTabViewModel && IsMessageOpen)` — the `IsMessageOpen` term keeps the list visible during the async body load and if the load fails/returns null, so a slow or failed open never blanks the pane (Feature Checklist rule 4). `CycleFocusAsync` gates the message-list F6 stop on the same flag; the window-level **Escape** handler routes to `ActivateMessageListTab()` (revealing the list, leaving the tab open) in Tab mode instead of `CloseReadingPane`.
 - Reading-Pane and Window layouts are byte-for-byte equivalent (the flag is always true outside Tab mode). Independent review caught and fixed the transient/failed-load blank-pane case before merge. Adds `TabModeMessageListVisibilityTests` (8 cases).
 - Brian Vogel's #177 review also surfaced two still-parked, pre-existing items — the Reading-Pane reading pane not being resizable, and account deletion triggering repeated re-auth prompts — neither of which is addressed here.
+
+### Calendar fixes & polish (#290, #291, #293, #297)
+
+- **#290** — switching calendar views (A/D/W/M) now moves keyboard focus into the new view, so the arrow keys work immediately instead of needing a Tab-away-and-back. `CalendarViewModel.SwitchView` raises `ListFocusRequested`.
+- **#291** — with calendar field labels off (concise mode), event rows carry **no** field labels at all (comma-separated values only); the appointment editor shows the event's calendar in a read-only, tab-reachable field. `CalendarEvent.DisplayLine` drops the `Location:`/`Organizer:` labels; `EventEditorViewModel` exposes the calendar label.
+- **#293** — Google events on a **secondary** calendar can now be deleted/edited: the write path (`GoogleCalendarClient` create/update/delete) was hardcoded to `calendars/primary/events` and 404'd on any other calendar; it now targets the event's own `CalendarId` (URL-escaped, `primary` fallback). Adding an account now triggers an immediate calendar sync (`TriggerCalendarSyncSoon`) so its sub-calendars appear right away instead of only after the next 15-minute pass or a restart. Also fixes tests writing into the user's real `quickmail.log` (a `[ModuleInitializer]` redirects test logging to a temp dir).
+- **#297** — the meeting-invite Accept/Decline card now persists across opens. `ImapMailService.GetMessageDetailCoreAsync` set `CalendarInvite` (parsed, in-memory) but not `CalendarIcs` (the raw text the local store caches), so once the background prefetch cached the row the card vanished on every later cache-served open — a prefetch-vs-open race that looked account-dependent. Now the raw ICS is persisted.
+
+### Markdown preview window opened blank (#301)
+
+- `MarkdownPreviewWindow`'s `NavigationStarting` handler cancelled every navigation except `about:`, which cancelled its own `data:text/html` content — how current WebView2 runtimes deliver `NavigateToString` — leaving a blank `about:blank` page. It now allows `data:` through (as `MessageWindow` already does); external `http`/`https`/`mailto` links still route to the default browser and the content stays CSP-locked in `BuildHtml`.
 
 ---
 
