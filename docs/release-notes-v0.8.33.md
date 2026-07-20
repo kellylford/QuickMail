@@ -54,6 +54,10 @@ Nothing syncs until you check the box, and unchecking it removes that account's 
 
 Press **Ctrl+Shift+S** to search your appointments by title, location, or notes. Export any appointment as a standard `.ics` file from the command palette.
 
+### Feedback welcome
+
+Feedback on the calendar user experience and any issues you encounter with calendar management is welcome. Testing across a range of appointment types and calendar accounts has been conducted but this is a large surface area. Please see the Reporting Issues section for ways to report issues in general or provide feedback on the calendar experience.
+
 ---
 
 ## New: More reliable new-mail sync
