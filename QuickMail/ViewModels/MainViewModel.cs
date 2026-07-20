@@ -6176,6 +6176,70 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
+        await SendIcsReplyForAsync(invite, account, partStat, actionLabel,
+            MessageDetail!.MessageId, MessageDetail!.FolderName);
+    }
+
+    /// <summary>
+    /// Responds to a pending meeting invitation directly from the calendar list (Accept / Tentative /
+    /// Decline) without opening the source email. Loads the invite from its source message (local
+    /// cache first, IMAP fallback) and routes the reply through the account that RECEIVED the invite
+    /// (<paramref name="evt"/>.AccountId) \u2014 never a default account (see issue #296).
+    /// </summary>
+    public async Task RespondToCalendarInviteAsync(CalendarEvent evt, string partStat, string actionLabel)
+    {
+        if (evt == null) return;
+
+        if (string.IsNullOrEmpty(evt.SourceMessageId))
+        {
+            Announce("The original invitation email is no longer available, so a response can't be sent.",
+                     AnnouncementCategory.Result);
+            return;
+        }
+
+        // Route strictly through the account that received the invite (#296 wrong-account routing).
+        var account = Accounts.FirstOrDefault(a => a.Id == evt.AccountId);
+        if (account == null)
+        {
+            Announce("Cannot send calendar response: account not found.", AnnouncementCategory.Result);
+            return;
+        }
+
+        MailMessageDetail? detail;
+        try
+        {
+            detail = await _localStore.LoadDetailAsync(evt.AccountId, evt.SourceFolder, evt.SourceMessageId)
+                     ?? await _imap.GetMessageDetailAsync(evt.AccountId, evt.SourceFolder, evt.SourceMessageId);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("RespondToCalendarInvite: load source", ex);
+            Announce("The original invitation email couldn't be opened, so a response can't be sent.",
+                     AnnouncementCategory.Result);
+            return;
+        }
+
+        var invite = detail?.CalendarInvite;
+        if (invite == null)
+        {
+            Announce("The original invitation email is no longer available, so a response can't be sent.",
+                     AnnouncementCategory.Result);
+            return;
+        }
+
+        await SendIcsReplyForAsync(invite, account, partStat, actionLabel,
+            evt.SourceMessageId, evt.SourceFolder);
+    }
+
+    /// <summary>
+    /// Core ICS reply logic shared by the reading-pane RSVP buttons and the calendar-list response
+    /// menu. Generates the REPLY, sends it from <paramref name="account"/> (the account that RECEIVED
+    /// the invite \u2014 never a default), announces the outcome, and updates the calendar row's
+    /// response status so the calendar reflects the reply immediately.
+    /// </summary>
+    private async Task SendIcsReplyForAsync(IcsModel invite, AccountModel account, string partStat,
+        string actionLabel, string sourceMessageId, string sourceFolder)
+    {
         try
         {
             var attendeeName = account.SenderDisplayName;
@@ -6216,8 +6280,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     EndTimeTicks     = invite.EndTime?.ToUniversalTime().Ticks,
                     Sequence         = invite.Sequence,
                     Method           = invite.Method,
-                    SourceMessageId  = MessageDetail!.MessageId,
-                    SourceFolder     = MessageDetail!.FolderName,
+                    SourceMessageId  = sourceMessageId,
+                    SourceFolder     = sourceFolder,
                     ResponseStatus   = status,
                 };
                 await _calendarService.UpsertEventAsync(evt);

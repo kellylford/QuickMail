@@ -29,4 +29,40 @@ public class CalendarEventTests
         Assert.Contains(nameof(CalendarEvent.ResponseStatus), raisedProperties);
         Assert.Contains(nameof(CalendarEvent.DisplayLine), raisedProperties);
     }
+
+    [Theory]
+    // A harvested invite (real account, not graph) that is still Pending is the only pending invite.
+    [InlineData(false, CalendarResponseStatus.Pending, true)]
+    [InlineData(false, CalendarResponseStatus.Accepted, false)]
+    [InlineData(false, CalendarResponseStatus.Declined, false)]
+    [InlineData(false, CalendarResponseStatus.Tentative, false)]
+    [InlineData(false, CalendarResponseStatus.Cancelled, false)]
+    // Server-synced (graph) rows are never pending invites even at Pending status.
+    [InlineData(true, CalendarResponseStatus.Pending, false)]
+    public void IsPendingInvite_TrueOnlyForUnansweredHarvestedInvite(
+        bool isGraph, CalendarResponseStatus status, bool expected)
+    {
+        var evt = new CalendarEvent
+        {
+            Uid = "e1",
+            AccountId = Guid.NewGuid(),   // real (non-empty) account => not user-created
+            IsGraph = isGraph,
+            ResponseStatus = status,
+        };
+
+        Assert.Equal(expected, evt.IsPendingInvite);
+    }
+
+    [Fact]
+    public void IsPendingInvite_FalseForUserCreatedAppointment()
+    {
+        var evt = new CalendarEvent
+        {
+            Uid = "local-1",
+            AccountId = CalendarEvent.LocalAccountId,   // user-created
+            ResponseStatus = CalendarResponseStatus.Pending,
+        };
+
+        Assert.False(evt.IsPendingInvite);
+    }
 }
