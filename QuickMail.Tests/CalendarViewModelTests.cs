@@ -73,17 +73,21 @@ public class CalendarViewModelTests
     }
 
     [Fact]
-    public async Task FieldLabels_Off_StampsDataOnlyAccessibleName()
+    public async Task FieldLabels_Off_StampsDataOnlyAccessibleName_NoFieldLabelWords()
     {
-        var vm = MakeVm(new List<CalendarEvent> { MakeEvent("e1", DateTime.Today.AddHours(10)) },
-                        showFieldLabels: false);
+        var evt = MakeEvent("e1", DateTime.Today.AddHours(10));
+        evt.Location = "Erin's Snug Irish Pub";
+        var vm = MakeVm(new List<CalendarEvent> { evt }, showFieldLabels: false);
         await vm.LoadAsync();
 
         var name = vm.VisibleEvents[0].AccessibleName;
-        // Concise (no field labels) base line, with the calendar source appended for accessibility (#1).
+        // Concise mode carries NO field-label words — not "Subject", "Location:", or "calendar".
         Assert.StartsWith(vm.VisibleEvents[0].DisplayLine, name);
         Assert.DoesNotContain("Subject ", name);
-        Assert.Contains(", calendar ", name);
+        Assert.DoesNotContain("Location:", name);
+        Assert.DoesNotContain("calendar ", name);
+        Assert.Contains("Erin's Snug Irish Pub", name);   // location value present, just no label
+        Assert.EndsWith(", Account", name);               // calendar source appended as a bare value
     }
 
     [Fact]
