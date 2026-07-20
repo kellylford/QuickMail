@@ -51,9 +51,16 @@ sealed class StubImapMailService : IMailService
 
 sealed class StubSmtpService : ISendMailService
 {
+    /// <summary>Records every ICS reply sent, so tests can assert which account it was routed from.</summary>
+    public List<(AccountModel Account, string Ics, string OrganizerEmail)> SentReplies { get; } = new();
+
     public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
-        string organizerEmail, CancellationToken ct = default) => Task.CompletedTask;
+        string organizerEmail, CancellationToken ct = default)
+    {
+        SentReplies.Add((account, icsReplyContent, organizerEmail));
+        return Task.CompletedTask;
+    }
 }
 
 sealed class StubAccountService : IAccountService
@@ -118,7 +125,10 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task UpdatePreviewsBatchAsync(Guid accountId, string folderName, IEnumerable<(string MessageId, string Preview)> updates) => Task.CompletedTask;
     public Task<bool> HasSummariesMissingRecipientsAsync() => Task.FromResult(false);
     public Task UpsertDetailAsync(MailMessageDetail detail) => Task.CompletedTask;
-    public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
+    /// <summary>When set, <see cref="LoadDetailAsync"/> returns this seeded detail (tests use it to
+    /// stand in for a cached invite email); otherwise it returns null like the real cache-miss path.</summary>
+    public MailMessageDetail? SeededDetail { get; set; }
+    public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult(SeededDetail);
     public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
     public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);

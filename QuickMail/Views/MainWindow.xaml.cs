@@ -1231,6 +1231,30 @@ public partial class MainWindow : Window
             execute: () => _vm.CalendarVm?.ExportEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
 
+        // ── Respond to a pending invitation (Enter opens the menu; these are the palette entries) ──
+        // No default key: Enter (calendar.openSourceMessage) shows the response menu, which is the
+        // primary entry point. These keep the actions discoverable and rebindable in the palette.
+        bool PendingInviteFocused() =>
+            CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent?.IsPendingInvite == true;
+        void RespondSelected(string partStat, string actionLabel)
+        {
+            var evt = _vm.CalendarVm?.SelectedEvent;
+            if (evt != null) _ = _vm.RespondToCalendarInviteAsync(evt, partStat, actionLabel);
+        }
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.acceptInvite", category: "Calendar", title: "Accept Invitation",
+            execute: () => RespondSelected("ACCEPTED", "accepted"),
+            isAvailable: PendingInviteFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.tentativeInvite", category: "Calendar", title: "Tentative Invitation",
+            execute: () => RespondSelected("TENTATIVE", "tentatively accepted"),
+            isAvailable: PendingInviteFocused));
+        _registry.Register(new CommandDefinition(
+            id: "calendar.declineInvite", category: "Calendar", title: "Decline Invitation",
+            execute: () => RespondSelected("DECLINED", "declined"),
+            isAvailable: PendingInviteFocused));
+
         // No default key: Ctrl+Shift+S (view.search) routes here while the calendar is open,
         // so search is ONE gesture app-wide. Palette entry + rebindable id kept.
         _registry.Register(new CommandDefinition(
@@ -2253,6 +2277,16 @@ public partial class MainWindow : Window
     {
         var evt = _vm.CalendarVm?.SelectedEvent;
         if (evt == null) return;
+
+        // A pending meeting invitation opens an RSVP context menu (Accept / Tentative / Decline /
+        // Open full appointment) so the user can respond without leaving the calendar to find the
+        // source email. Every other row keeps its existing behaviour.
+        if (evt.IsPendingInvite)
+        {
+            ShowInviteResponseMenu(evt);
+            return;
+        }
+
         // Harvested email invites open their source message; everything else routes through
         // EditEvent, which itself edits what is editable (local rows, single Microsoft/Google
         // events) and announces the right read-only message otherwise — so Enter and E always
@@ -2261,6 +2295,70 @@ public partial class MainWindow : Window
             _vm.CalendarVm?.OpenSourceMessageCommand.Execute(evt);
         else
             _vm.CalendarVm?.EditEventCommand.Execute(evt);
+    }
+
+    /// <summary>
+    /// Shows the RSVP context menu for a pending meeting invitation, anchored below the focused
+    /// calendar row. Accept / Tentative / Decline send the response through the VM (from the account
+    /// that received the invite); "Open full appointment" opens the source email. Focus returns to
+    /// the calendar list when the menu closes. UI-only concern (menu + keyboard + focus) — the
+    /// respond logic itself lives in the ViewModel.
+    /// </summary>
+    private void ShowInviteResponseMenu(CalendarEvent evt)
+    {
+        var menu = new ContextMenu();
+
+        MenuItem Item(string header, RoutedEventHandler onClick)
+        {
+            var mi = new MenuItem { Header = header };
+            mi.Click += onClick;
+            return mi;
+        }
+
+        menu.Items.Add(Item("Accept", async (_, _) =>
+        {
+            await _vm.RespondToCalendarInviteAsync(evt, "ACCEPTED", "accepted");
+            FocusCalendarList();
+        }));
+        menu.Items.Add(Item("Tentative", async (_, _) =>
+        {
+            await _vm.RespondToCalendarInviteAsync(evt, "TENTATIVE", "tentatively accepted");
+            FocusCalendarList();
+        }));
+        menu.Items.Add(Item("Decline", async (_, _) =>
+        {
+            await _vm.RespondToCalendarInviteAsync(evt, "DECLINED", "declined");
+            FocusCalendarList();
+        }));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Open full appointment", (_, _) =>
+            _vm.CalendarVm?.OpenSourceMessageCommand.Execute(evt)));
+
+        // Anchor below the focused row when we can obtain its container; otherwise the list itself.
+        UIElement target = CalendarList;
+        if (CalendarList.SelectedIndex >= 0
+            && CalendarList.ItemContainerGenerator.ContainerFromIndex(CalendarList.SelectedIndex) is ListBoxItem row)
+            target = row;
+
+        menu.PlacementTarget = target;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.Closed += (_, _) => Dispatcher.InvokeAsync(FocusCalendarList, DispatcherPriority.Input);
+
+        // A ContextMenu opened programmatically (IsOpen = true) does not reliably land keyboard focus
+        // on the first item the way a right-click does — so a screen reader may not announce the menu.
+        // Focus the first item explicitly once the menu is up so the user hears "Accept" straight away.
+        menu.Opened += (_, _) => Dispatcher.InvokeAsync(() =>
+        {
+            if (menu.ItemContainerGenerator.ContainerFromIndex(0) is MenuItem first)
+            {
+                first.Focus();
+                Keyboard.Focus(first);
+            }
+        }, DispatcherPriority.Input);
+
+        // Short Hint (respects the user's hint preference) — the menu items self-voice on focus.
+        AccessibilityHelper.Announce(this, "Respond to invitation.", category: AnnouncementCategory.Hint);
+        menu.IsOpen = true;
     }
 
     /// <summary>Opens the modeless appointment editor and restores focus to the list on close.</summary>

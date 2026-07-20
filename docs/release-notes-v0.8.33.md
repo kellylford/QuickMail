@@ -39,6 +39,8 @@ Turn on **Remind me before appointments** in **Settings → General** and choose
 
 Open an email that contains a meeting invitation and QuickMail adds an event card to the top with **Accept**, **Tentative**, and **Decline** buttons. Choosing one replies to the organizer and updates your calendar right away. Cancellations remove the matching entry automatically.
 
+You can also respond straight from the calendar: an invitation you haven't answered shows as **Pending**, and pressing **Enter** on it opens a short menu — **Accept**, **Tentative**, **Decline**, or **Open full appointment** — so you can reply without leaving the calendar to find the email.
+
 ### Connect an online calendar — per account
 
 Calendars connect **per account**, just like contact sync. When you add an account — or later, in **Manage Accounts** — check **Sync calendar from this account** and QuickMail shows that account's calendar:
@@ -181,3 +183,8 @@ Full details, including exactly what a report contains (and what it never contai
 ### Markdown preview window opened blank (#301)
 
 - `MarkdownPreviewWindow`'s `NavigationStarting` handler cancelled every navigation except `about:`, which cancelled its own `data:text/html` content — how current WebView2 runtimes deliver `NavigateToString` — leaving a blank `about:blank` page. It now allows `data:` through (as `MessageWindow` already does); external `http`/`https`/`mailto` links still route to the default browser and the content stays CSP-locked in `BuildHtml`.
+
+### Respond to invitations from the calendar
+
+- Pressing **Enter** on a pending email invitation in the calendar (new `CalendarEvent.IsPendingInvite` = `!IsUserCreated && !IsGraph && ResponseStatus == Pending`) opens a `ContextMenu` (Accept / Tentative / Decline / — / Open full appointment) instead of jumping to the source email. The menu is anchored to the focused row and, because a programmatically-opened `ContextMenu` doesn't reliably focus its first item, an `Opened` handler focuses "Accept" so a screen reader announces it; `Closed` returns focus to the list. Every non-pending row keeps its prior Enter dispatch (edit / open source / drill day).
+- `MainViewModel.SendIcsReply` was refactored into a shared `SendIcsReplyForAsync(invite, account, partStat, actionLabel, sourceMessageId, sourceFolder)`; the reading-pane card and the new `RespondToCalendarInviteAsync(evt, partStat, actionLabel)` both call it. The calendar path loads the invite's source message (`LoadDetailAsync` → `GetMessageDetailAsync` fallback), replies **from the account that received the invite** (`evt.AccountId` — not any default, guarding against the #296 mis-routing), announces the result, and updates the row's response status. Palette commands `calendar.acceptInvite` / `calendar.tentativeInvite` / `calendar.declineInvite` (no default key) are available when a pending invitation is selected. Tests: reply routes from the receiving account and updates status; empty-source guard; `IsPendingInvite` predicate.

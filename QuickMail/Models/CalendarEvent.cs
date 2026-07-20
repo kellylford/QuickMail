@@ -140,6 +140,14 @@ public partial class CalendarEvent : ObservableObject
     /// <summary>True when the organizer cancelled the event (ICS METHOD:CANCEL).</summary>
     public bool IsCancelled => ResponseStatus == CalendarResponseStatus.Cancelled;
 
+    /// <summary>
+    /// True when this is a harvested email invitation the user has not yet responded to — a pending
+    /// RSVP: not user-authored, not a server-synced row, still <see cref="CalendarResponseStatus.Pending"/>.
+    /// Enter on such a row opens the Accept / Tentative / Decline response menu instead of the source email.
+    /// </summary>
+    public bool IsPendingInvite =>
+        !IsUserCreated && !IsGraph && ResponseStatus == CalendarResponseStatus.Pending;
+
     /// <summary>Start time as a nullable DateTime (local), for display and sorting.</summary>
     public DateTime? StartTime => StartTimeTicks.HasValue
         ? new DateTime(StartTimeTicks.Value, DateTimeKind.Utc).ToLocalTime()

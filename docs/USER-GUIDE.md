@@ -597,9 +597,18 @@ Move through the list with the **Up and Down arrows**. The list has **Subject**,
 From any event you have two quick ways to see more:
 
 - Press **Tab** once to move into a **details box** below the list that shows the full appointment (title, when, whether it repeats, location, and for meeting invitations the organizer and your response status), read from the top so a screen reader can review it line by line.
-- Press **Enter** to open the full appointment: your own appointments open in the editor, and a meeting invitation opens its source email.
+- Press **Enter** to act on the appointment. On an invitation you **haven't answered yet**, Enter opens a short menu — **Accept**, **Tentative**, **Decline**, or **Open full appointment** — so you can respond right from the calendar (see below). On your own appointment, Enter opens the editor; on an invitation you've already answered, it opens the source email.
 
 If you prefer each row spoken with field labels ("Subject …, when …, location …") instead of the concise form, turn on **Show field labels in the calendar event list** in **Settings → General**. It takes effect immediately.
+
+### Responding to a meeting invitation
+
+Invitations you receive by email show in the calendar with a **Pending** status until you answer them. You can respond without opening the email:
+
+1. Arrow to the pending invitation and press **Enter**. A menu opens with focus on the first choice.
+2. Choose **Accept**, **Tentative**, or **Decline** — or **Open full appointment** to read the original email instead. Press **Escape** to close the menu without responding.
+
+QuickMail sends your reply to the organizer from the account that received the invitation and updates the appointment's status, so it no longer shows as pending. Accept, Tentative, and Decline are also in the Command Palette (**Ctrl+Shift+P**) when a pending invitation is selected.
 
 ### Creating an appointment
 
@@ -712,7 +721,7 @@ These work while the calendar list (or, where noted, the Month grid) has focus:
 | `T` | Today (filter to today in Agenda; jump to today in Day/Week/Month) |
 | `Ctrl+Left` / `Ctrl+Right` | Previous / next day, week, or month |
 | `Ctrl+G` | Go to Date |
-| `Enter` | Open an invitation's source email, edit your own appointment, or (in Month view) open the selected day |
+| `Enter` | Respond to a pending invitation (Accept / Tentative / Decline menu); or edit your own appointment; or open an answered invitation's source email; or (in Month view) open the selected day |
 | `N` | New appointment |
 | `E` | Edit appointment |
 | `Delete` | Delete appointment |
