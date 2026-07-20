@@ -133,8 +133,23 @@ jobs:
             }
           }
 
+      # Package version: from the tag on a tag push, otherwise from the csproj <Version>
+      # so a manual workflow_dispatch run can build the exact same installer without a tag.
+      - name: Determine package version
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        id: ver
+        shell: pwsh
+        run: |
+          if ('${{ github.ref }}' -like 'refs/tags/v*') {
+            $v = '${{ github.ref_name }}'.TrimStart('v')
+          } else {
+            $v = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath "/Project/PropertyGroup/Version").Node.InnerText
+          }
+          "version=$v" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Packaging version $v"
+
       - name: Install vpk
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         run: dotnet tool install -g vpk
 
       # Fetch the previous release's Velopack assets so vpk pack can generate a delta
@@ -143,7 +158,7 @@ jobs:
       # continue-on-error covers the first Velopack release, where the latest GitHub
       # release predates Velopack and has no assets for vpk to download.
       - name: Download previous release for delta generation
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         continue-on-error: true
         shell: pwsh
         run: vpk download github --repoUrl https://github.com/kellylford/QuickMail --token ${{ secrets.GITHUB_TOKEN }} --outputDir installer/Output/Releases
@@ -156,10 +171,10 @@ jobs:
       # %LocalAppData% so background updates never need elevation. vpk requires the
       # license file to carry a .txt/.md/.rtf extension, hence the copy.
       - name: Pack Velopack release
-        if: startsWith(github.ref, 'refs/tags/v')
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         shell: pwsh
         run: |
-          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $version = '${{ steps.ver.outputs.version }}'
           Copy-Item LICENSE installer/velopack/license.txt
           vpk pack --packId QuickMail --packVersion $version --packDir publish `
             --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
@@ -179,6 +194,23 @@ jobs:
           # the folder and is uploaded with the rest: vpk pack bakes an entry for every
           # package it saw into RELEASES/releases.win.json, so deleting the file would
           # publish feed metadata referencing an asset the release does not carry.
+
+      # On a manual workflow_dispatch run (no tag), publish the packed installer and
+      # update-feed files as a downloadable build artifact instead of a GitHub Release.
+      # This yields the exact same MSI/packages a real release would ship, for testing.
+      - name: Upload installer artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v7
+        with:
+          name: QuickMail-installer
+          path: |
+            installer/Output/Releases/QuickMail-*-win.msi
+            installer/Output/Releases/*.nupkg
+            installer/Output/Releases/RELEASES
+            installer/Output/Releases/releases.win.json
+            installer/Output/Releases/assets.win.json
+          if-no-files-found: error
+          retention-days: 7
 
       # Create a GitHub Release when a version tag is pushed (e.g. v1.2.0)
       # Release notes are read from docs/release-notes-<tag>.md if present,
