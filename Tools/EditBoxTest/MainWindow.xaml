@@ -1,0 +1,76 @@
+<Window x:Class="EditBoxTest.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Edit Box Test (QuickMail #300 repro)"
+        Width="700" Height="660"
+        WindowStartupLocation="CenterScreen"
+        PreviewKeyDown="Window_PreviewKeyDown">
+
+    <!-- This window mirrors how QuickMail's compose editors are built:
+         a plain multiline TextBox (like BodyBox) and a RichTextBox (like
+         RichBodyBox), with WPF spell-check enabled in code at Background
+         priority. Text input goes through WPF's Text Services Framework
+         (TSF) exactly as in QuickMail.
+
+         Two toggles are provided for diagnosing issue #300:
+           - Disable input method (TSF): flips InputMethod.IsInputMethodEnabled
+             on both editors. (Candidate fix #1 — observed to make no difference.)
+           - Enable spell-check: WPF spell-check runs the NL speller over TSF and
+             is a suspect for forcing the TSF composition path. Toggle it to see
+             whether NVDA per-word echo returns with it off. -->
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,10">
+            Type a sentence such as "hello this is just a quick test" then a period,
+            with NVDA keyboard echo set to Words.
+            Alt+1 = plain body, Alt+2 = rich body, Alt+3 = TSF checkbox, Alt+4 = spell-check checkbox.
+        </TextBlock>
+
+        <!-- Plain body: mirrors QuickMail BodyBox -->
+        <Label Grid.Row="1" Target="{Binding ElementName=BodyBox}"
+               Content="_Plain body (TextBox)"/>
+        <TextBox Grid.Row="2"
+                 x:Name="BodyBox"
+                 AutomationProperties.Name="Plain body"
+                 AcceptsReturn="True" AcceptsTab="True"
+                 TextWrapping="Wrap"
+                 IsInactiveSelectionHighlightEnabled="True"
+                 VerticalScrollBarVisibility="Auto"
+                 Margin="0,0,0,12"/>
+
+        <!-- Rich body: mirrors QuickMail RichBodyBox -->
+        <Label Grid.Row="3" Target="{Binding ElementName=RichBodyBox}"
+               Content="_Rich body (RichTextBox)"/>
+        <RichTextBox Grid.Row="4"
+                     x:Name="RichBodyBox"
+                     AutomationProperties.Name="Rich body"
+                     AcceptsReturn="True" AcceptsTab="True"
+                     IsInactiveSelectionHighlightEnabled="True"
+                     VerticalScrollBarVisibility="Auto"
+                     Margin="0,0,0,12"/>
+
+        <CheckBox Grid.Row="5"
+                  x:Name="DisableImeCheck"
+                  Margin="0,0,0,6"
+                  Content="_Disable input method (TSF) on both editors — candidate fix #1 (observed: no effect)"
+                  Checked="DisableImeCheck_Changed"
+                  Unchecked="DisableImeCheck_Changed"/>
+
+        <CheckBox Grid.Row="6"
+                  x:Name="SpellCheckCheck"
+                  IsChecked="True"
+                  Content="Enable _spell-check on both editors (as QuickMail does) — uncheck to test whether it forces the TSF path"
+                  Checked="SpellCheckCheck_Changed"
+                  Unchecked="SpellCheckCheck_Changed"/>
+    </Grid>
+</Window>
