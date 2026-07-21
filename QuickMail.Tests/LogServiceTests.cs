@@ -35,6 +35,10 @@ public sealed class LogServiceTests : IDisposable
         LogService.Enabled   = _savedEnabled;
         LogService.DebugMode = _savedDebugMode;
         LogService.Format    = _savedFormat;
+        // Restore logging to the shared test-redirect dir BEFORE deleting ours. Otherwise LogService
+        // is left pointing at _tempDir; the next test to log recreates it (via Directory.CreateDirectory
+        // in LogService.Log), leaking a qm-log-test-* folder every run — hundreds piled up in %TEMP%.
+        LogService.Configure(TestLogRedirect.Dir);
         try { Directory.Delete(_tempDir, recursive: true); } catch { }
     }
 

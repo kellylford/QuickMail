@@ -17,11 +17,15 @@ namespace QuickMail.Tests;
 /// </summary>
 internal static class TestLogRedirect
 {
+    /// <summary>The single shared temp log dir for the whole test run. Tests that reconfigure
+    /// LogService to their own dir must restore it here on teardown (see LogServiceTests.Dispose),
+    /// or later tests recreate the just-deleted per-test dir and leak it.</summary>
+    internal static readonly string Dir = Path.Combine(Path.GetTempPath(), "QuickMailTestLogs");
+
     [ModuleInitializer]
     internal static void Redirect()
     {
-        var dir = Path.Combine(Path.GetTempPath(), "QuickMailTestLogs");
-        Directory.CreateDirectory(dir);
-        LogService.Configure(dir);
+        Directory.CreateDirectory(Dir);
+        LogService.Configure(Dir);
     }
 }
