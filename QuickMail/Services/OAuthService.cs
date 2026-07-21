@@ -70,7 +70,8 @@ public class OAuthService : IOAuthService
     // Requested only when the user adds a Microsoft calendar. NOTE: work/school accounts sign in with
     // `.default`, so for them Calendars.ReadWrite must ALSO be declared on the app registration (see
     // docs/ENTRA-APP-REGISTRATION.md §3); this explicit array is what personal (MSA) accounts request.
-    // Forward-declared now so M4 has the scope wired; not yet requested by any code path.
+    // In use by GraphCalendarSyncService (#282): reads /me/calendars and /me/events and creates
+    // events, so the ReadWrite (not just Read) scope is required.
     public static readonly string[] GraphCalendarScopes =
     [
         "https://graph.microsoft.com/Calendars.ReadWrite",
