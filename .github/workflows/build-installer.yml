@@ -58,7 +58,9 @@ jobs:
           "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
 
       - name: Publish
-        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/
+        # -warnaserror: fail the build on any warning, matching quickmail.yml. An
+        # installer should never be cut from a tree that has regressed on warnings.
+        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
         # PublishSingleFile, SelfContained, RuntimeIdentifier, ReadyToRun are set in .csproj
 
       - name: Install vpk

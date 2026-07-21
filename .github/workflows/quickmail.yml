@@ -103,7 +103,10 @@ jobs:
           retention-days: 7
 
       - name: Publish
-        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/
+        # -warnaserror: CI fails on ANY compiler/analyzer warning so a warning can never
+        # land on main or ship in a release. Local build.bat stays permissive for WIP;
+        # this is the enforcement point. Keep the tree warning-free or the build breaks.
+        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
         # PublishSingleFile, SelfContained, RuntimeIdentifier, ReadyToRun are set in .csproj
 
       - name: Upload artifact
