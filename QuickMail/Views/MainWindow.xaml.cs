@@ -1082,7 +1082,7 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.archive", category: "Mail", title: "Archive",
             execute: () => _vm.ArchiveMessageCommand.Execute(null),
-            defaultKey: Key.Back, defaultModifiers: ModifierKeys.None,
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.HasSelectedMessage
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()
@@ -2573,6 +2573,12 @@ public partial class MainWindow : Window
             await OpenMessageFromListAsync(summary);
     }
 
+    // Alt+Delete = Archive (issue #318). Holding Alt makes WPF report the key via SystemKey rather
+    // than Key, so normalize before comparing. Used by the message list and all three group trees.
+    private static bool IsArchiveGesture(KeyEventArgs e) =>
+        (e.Key == Key.System ? e.SystemKey : e.Key) == Key.Delete
+        && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
+
     // Enter on a message: load body; Delete: delete all selected messages;
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -2621,7 +2627,7 @@ public partial class MainWindow : Window
             await _vm.DeleteMessagesAsync(toDelete);
             FocusMessageListFirstItem();
         }
-        else if (e.Key == Key.Back && MessageList.SelectedItems.Count > 0)
+        else if (IsArchiveGesture(e) && MessageList.SelectedItems.Count > 0)
         {
             // Archive the whole selection (issue #318), mirroring the Delete branch above.
             e.Handled = true;
@@ -3843,7 +3849,7 @@ public partial class MainWindow : Window
                 await _vm.DeleteMessagesAsync(group.Messages);
             }
         }
-        else if (e.Key == Key.Back)
+        else if (IsArchiveGesture(e))
         {
             // Archive (issue #318), mirroring the Delete branch: a message node archives that message;
             // a conversation node archives the whole conversation. Focus lands via LandOn* after the
@@ -4447,7 +4453,7 @@ public partial class MainWindow : Window
                 await _vm.DeleteSenderGroupCommand.ExecuteAsync(group);
             }
         }
-        else if (e.Key == Key.Back)
+        else if (IsArchiveGesture(e))
         {
             // Archive (issue #318), mirroring the Delete branch above.
             e.Handled = true;
@@ -4622,7 +4628,7 @@ public partial class MainWindow : Window
                 await _vm.DeleteToGroupCommand.ExecuteAsync(group);
             }
         }
-        else if (e.Key == Key.Back)
+        else if (IsArchiveGesture(e))
         {
             // Archive (issue #318), mirroring the Delete branch above.
             e.Handled = true;

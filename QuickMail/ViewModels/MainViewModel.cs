@@ -1528,13 +1528,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             isAvailable: () => HasSelectedMessage));
 
         // Archive (issue #318) — moves the selection to the account's Archive folder instead of
-        // deleting. Default gesture Backspace, the complement of Delete. Like mail.delete this base
-        // registration is overridden in MainWindow with a focus-aware guard so the message list and
-        // group trees can archive the whole selection/group via their PreviewKeyDown handlers.
+        // deleting. Default gesture Alt+Delete (Outlook's archive shortcut), a deliberate sibling of
+        // Delete that never collides with text editing. Like mail.delete this base registration is
+        // overridden in MainWindow with a focus-aware guard so the message list and group trees can
+        // archive the whole selection/group via their PreviewKeyDown handlers.
         registry.Register(new CommandDefinition(
             id: "mail.archive", category: "Mail", title: "Archive",
             execute: () => ArchiveMessageCommand.Execute(null),
-            defaultKey: Key.Back, defaultModifiers: ModifierKeys.None,
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(

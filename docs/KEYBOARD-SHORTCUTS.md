@@ -21,7 +21,7 @@
 | Ctrl+Shift+R | `mail.replyAll` | Reply All |
 | Ctrl+F | `mail.forward` | Forward |
 | Delete | `mail.delete` | Delete |
-| Backspace | `mail.archive` | Archive (move to the account's Archive folder) |
+| Alt+Delete | `mail.archive` | Archive (move to the account's Archive folder) |
 | Ctrl+Q | `mail.markRead` | Mark as Read |
 | F5 | `mail.refresh` | Refresh |
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
