@@ -63,8 +63,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private CancellationTokenSource? _connectCts;
     private CancellationTokenSource? _folderCts;
     private CancellationTokenSource? _messageLoadCts;
-    private CancellationTokenSource? _messageActionCts;
     private CancellationTokenSource? _flagActionCts;
+
+    // Message actions (delete/move) each get their own token linked to this shutdown source instead
+    // of sharing one replaceable CTS. Sharing meant a second Delete/Move cancelled the previous one's
+    // in-flight IMAP work mid-operation (issue #311: a rapid series of deletes aborted each other,
+    // surfacing as "Delete may not have completed"). Cancelled only at shutdown, in Dispose.
+    private readonly CancellationTokenSource _messageActionShutdownCts = new();
     private CancellationTokenSource? _prefetchCts;
 
     private const int PrefetchRadiusAroundOpen = 5;
@@ -105,7 +110,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DrainCts(ref _connectCts);
         DrainCts(ref _folderCts);
         DrainCts(ref _messageLoadCts);
-        DrainCts(ref _messageActionCts);
+        try { _messageActionShutdownCts.Cancel(); _messageActionShutdownCts.Dispose(); } catch { /* best effort at shutdown */ }
         DrainCts(ref _flagActionCts);
         DrainCts(ref _prefetchCts);
         DrainCts(ref _bgSyncCts);
@@ -4428,7 +4433,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var affectedFolders = new List<(Guid AccountId, MailFolderModel Folder)>();
         try
         {
-            ReplaceCts(ref _messageActionCts, out var ct);
+            // Own token per delete — a second Delete keystroke no longer cancels this one's in-flight
+            // IMAP work (which surfaced as "Delete may not have completed"). Deletes run concurrently;
+            // the connection pool handles it. Cancels only at app shutdown. (#311)
+            using var actionCts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+            var ct = actionCts.Token;
 
             var groups = toDelete.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
@@ -5493,7 +5502,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsBusy     = true;
         try
         {
-            ReplaceCts(ref _messageActionCts, out var ct);
+            // Own token per move (same rationale as delete) — a follow-up action no longer cancels
+            // this move's in-flight IMAP work. Cancels only at app shutdown. (#311)
+            using var actionCts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+            var ct = actionCts.Token;
 
             var groups = messages.GroupBy(m => (m.AccountId, m.FolderName));
             foreach (var group in groups)
