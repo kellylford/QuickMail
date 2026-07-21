@@ -472,16 +472,35 @@ private static readonly string[] Scopes =
 public Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default);
 
 // IMAP caller passes the IMAP scopes (above)
-// Graph caller passes:
+// Graph caller passes the Graph delegated scopes (see the table below):
 //   ["https://graph.microsoft.com/Mail.ReadWrite",
 //    "https://graph.microsoft.com/Mail.Send",
 //    "https://graph.microsoft.com/MailboxSettings.Read",
+//    "https://graph.microsoft.com/User.Read",
+//    "https://graph.microsoft.com/User.ReadBasic.All",
 //    "offline_access"]
 ```
 
+**Graph delegated permissions — complete list.** All delegated (the app acts as the signed-in user), and all user-consentable by default:
+
+| Permission | Why it's needed | Consent |
+|---|---|---|
+| `User.Read` | Sign-in identity probe (`GET /me`) | User |
+| `Mail.ReadWrite` | Read messages + folders, and all mutations (mark read/unread, move, delete, save/edit drafts, folder CRUD) | User |
+| `Mail.Send` | Send messages | User |
+| `MailboxSettings.Read` | Mailbox settings (time zone, display name) | User |
+| `User.ReadBasic.All` | **Directory / GAL lookup** — search and read other org users' basic profile (name, email) for recipient autocomplete or finding a user/mailbox | User — but the permission a locked-down tenant is most likely to gate behind **admin** consent |
+| `offline_access` | Refresh tokens (long-lived sign-in without re-prompting) | User (OIDC) |
+| `openid`, `profile` | OIDC sign-in — added automatically by MSAL | User |
+
+Notes:
+- **Directory-search alternative:** `People.Read` (`GET /me/people?$search=...`) returns relevance-ranked people across the directory *and* the user's personal contacts — often the better fit for compose autocomplete. `User.ReadBasic.All` is the minimal raw "search the directory" permission (`GET /users?$search=...` with the `ConsistencyLevel: eventual` header). Pick one; both are delegated and user-consentable.
+- **Admin consent:** every permission above is user-consentable by default, so most users just click "allow." Directory-read (`User.ReadBasic.All` / `People.Read`) is the one a security-conscious tenant is most likely to require an admin to approve — handled by the admin-consent flow (graceful `AADSTS65001` / `90094` error + admin-consent URL; see shared-mailboxes spec §6.3).
+- **Not a Graph permission:** the shared-mailbox feature (Issue #31) additionally needs `EWS.AccessAsUser.All` on the **Office 365 Exchange Online** resource — used by Autodiscover, not Graph. It is a separate entry in the same app registration.
+
 The MSAL token cache stores tokens per-scope automatically — no token-cache collision between an account that has both IMAP and Graph scopes.
 
-**App registration:** the existing MSAL `ClientId = "bcdc84f1-d37c-4581-b14a-a01f7b3a1312"` must have `Mail.ReadWrite`, `Mail.Send`, `MailboxSettings.Read` added as delegated permissions in its Azure registration. Maintainer action required before PR 4 lands.
+**App registration & consent model:** the existing MSAL `ClientId = "bcdc84f1-d37c-4581-b14a-a01f7b3a1312"` must have the delegated permissions from the table above added in its Azure registration (plus `EWS.AccessAsUser.All` for the shared-mailbox feature). This is a **one-time, app-wide maintainer action** — there is a single app registration (QuickMail's own identity, living in the maintainer's tenant), *not* one per mailbox or per user-tenant. Adding scopes is *declaration*; each signing-in user's home tenant simply *consents* at sign-in (Entra auto-creates a service principal there), so **end users never create or edit an app registration**. The only real friction is tenant policy: orgs that disable user consent need a one-time **admin approval** (handle the `AADSTS65001` / `AADSTS90094` error with a clear message + an admin-consent URL); an "unverified publisher" warning is resolved by **publisher verification** on the registration; and a locked-down tenant that blocks the shared app can fall back to a **per-account custom client ID** (deferred power-user option). The registration must be **multi-tenant + personal Microsoft accounts** for any non-maintainer user to connect at all. App registrations are Microsoft-only — Gmail/other IMAP are unaffected. (Full treatment: `shared-mailboxes-pm-dev-spec.md` §6.2–6.3; the identical model governs both these Graph `Mail.*` scopes and the EWS scope there.) Maintainer action required before PR 4 lands.
 
 ### 9.4 New-mail notifications: polling, not webhooks
 
