@@ -235,7 +235,7 @@ public partial class CalendarViewModel : ObservableObject
     /// "AccountLabel: CalendarName" (e.g. "Apple: Family") for a tagged server calendar, or the
     /// account label alone when the row has no specific calendar (e.g. a harvested invitation).
     /// </summary>
-    private string SourceLabelFor(CalendarEvent e, IReadOnlyDictionary<Guid, string> labels)
+    private static string SourceLabelFor(CalendarEvent e, Dictionary<Guid, string> labels)
     {
         if (e.AccountId == CalendarEvent.LocalAccountId) return "Local";
         var acct = labels.TryGetValue(e.AccountId, out var label) && !string.IsNullOrWhiteSpace(label)

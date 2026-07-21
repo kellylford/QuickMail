@@ -63,7 +63,7 @@ public partial class GoogleOAuthService : IGoogleOAuthService
         _credentialService = credentialService;
     }
 
-    private static GoogleAuthorizationCodeFlow CreateFlow(string[] scopes, IDataStore? dataStore = null)
+    private static GoogleAuthorizationCodeFlow CreateFlow(string[]? scopes, IDataStore? dataStore = null)
     {
         return new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
         {
