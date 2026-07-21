@@ -19,18 +19,20 @@ internal static class AccessibilityHelper
 {
     private const string ActivityId = "QuickMailAnnouncement";
 
-    private static bool _masterEnabled  = true;
-    private static bool _hintsEnabled   = true;
-    private static bool _statusEnabled  = true;
-    private static bool _resultsEnabled = true;
+    private static bool _masterEnabled         = true;
+    private static bool _hintsEnabled          = true;
+    private static bool _statusEnabled         = true;
+    private static bool _resultsEnabled        = true;
+    private static bool _messageActionsEnabled = true;
 
     /// <summary>Called on startup and after every settings save so changes apply immediately.</summary>
     public static void Configure(ConfigModel config)
     {
-        _masterEnabled  = config.CustomAnnouncements;
-        _hintsEnabled   = config.AnnounceHints;
-        _statusEnabled  = config.AnnounceStatus;
-        _resultsEnabled = config.AnnounceResults;
+        _masterEnabled         = config.CustomAnnouncements;
+        _hintsEnabled          = config.AnnounceHints;
+        _statusEnabled         = config.AnnounceStatus;
+        _resultsEnabled        = config.AnnounceResults;
+        _messageActionsEnabled = config.AnnounceMessageActions;
     }
 
     /// <summary>
@@ -87,10 +89,11 @@ internal static class AccessibilityHelper
 
     private static bool IsCategoryEnabled(AnnouncementCategory c) => c switch
     {
-        AnnouncementCategory.Hint   => _hintsEnabled,
-        AnnouncementCategory.Status => _statusEnabled,
-        AnnouncementCategory.Result => _resultsEnabled,
-        _                           => true
+        AnnouncementCategory.Hint          => _hintsEnabled,
+        AnnouncementCategory.Status        => _statusEnabled,
+        AnnouncementCategory.Result        => _resultsEnabled,
+        AnnouncementCategory.MessageAction => _messageActionsEnabled,
+        _                                  => true
     };
 
     // ── Debug input trace ────────────────────────────────────────────────────

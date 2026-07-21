@@ -261,6 +261,7 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+Shift+R` | Reply All |
 | `Ctrl+F` | Forward |
 | `Delete` | Delete |
+| `Alt+Delete` | Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
 
@@ -277,6 +278,16 @@ Press `Ctrl+Q` to mark the selected message or messages as read. Messages are al
 ### Deleting Messages
 
 Press **Delete**. Deleted messages go to Trash. Press `Ctrl+Shift+E` to empty the Trash for the selected account.
+
+### Archiving Messages
+
+Press **Alt+Delete** to archive the selected message — move it to your account's Archive folder instead of deleting it. Use this for mail you want out of your inbox but want to keep. **Delete** is unchanged and still moves messages to Trash.
+
+Archiving works from every view. In the **From**, **To**, and **Conversations** groupings, archiving a group moves the whole group at once, the same way Delete does. Archive is also on the message context menu (Shift+F10) and in the command palette, and the **Alt+Delete** shortcut can be changed in **Settings → Keyboard**.
+
+**Each account archives to its own folder** — there is no single shared Archive folder. QuickMail uses the folder your provider marks as the Archive folder automatically, so most accounts need no setup. To choose a different folder, select a folder in the folder tree, open its context menu (Shift+F10), and choose **Set as Archive Folder**; choose **Use Automatic Archive Folder** to return to the automatic one.
+
+Gmail has no dedicated Archive folder — its archive is **All Mail**. To archive Gmail messages, set **[Gmail]/All Mail** as that account's Archive folder; archiving then removes the message from the inbox, which is exactly what archiving means in Gmail. If an account has no Archive folder and you have not set one, QuickMail tells you rather than doing nothing.
 
 ### Tabs
 
@@ -887,6 +898,7 @@ Control which categories of announcements QuickMail makes:
 | Announce hints | Instructional tips ("Press Escape to return") |
 | Announce status | Background progress (sync, loading, connection state) |
 | Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
+| Announce delete and archive actions | Delete and archive outcomes ("1 message archived"). Turn off to stop these from interrupting the screen reader as it reads the next message; failures are still announced |
 | Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
 | Announce flag status | Flag name prepended to message row when navigating the list |
 | Announce spelling suggestions | Suggestions included when a misspelling is announced |
@@ -981,6 +993,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+R` | Reply All |
 | `Ctrl+F` | Forward |
 | `Delete` | Delete |
+| `Alt+Delete` | Archive (move to the account's Archive folder) |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+A` | Select all messages (message list) |
 | `Alt+Enter` | Message properties |

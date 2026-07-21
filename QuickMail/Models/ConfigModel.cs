@@ -101,6 +101,13 @@ public class ConfigModel
     /// <summary>Announce action results (search counts, move/delete confirmations).</summary>
     public bool AnnounceResults { get; set; } = true;
 
+    /// <summary>
+    /// Announce the outcome of common message commands — delete and archive (issue #317). Split out
+    /// from <see cref="AnnounceStatus"/> so users can silence this frequent chatter (it can interrupt
+    /// the screen reader reading the next message) without muting sync/loading progress. On by default.
+    /// </summary>
+    public bool AnnounceMessageActions { get; set; } = true;
+
     /// <summary>Announce spelling errors while typing (before the word is complete). Default off.</summary>
     public bool AnnounceSpellingWhileTyping { get; set; } = false;
 

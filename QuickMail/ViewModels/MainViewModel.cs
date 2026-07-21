@@ -583,6 +583,28 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _statusText = "Ready";
 
+    /// <summary>
+    /// Category the View should use when announcing the *current* <see cref="StatusText"/> change to a
+    /// screen reader. A one-shot override: <see cref="SetStatus"/> sets it, assigns StatusText (whose
+    /// change the View handles synchronously and reads this value), then resets it to
+    /// <see cref="AnnouncementCategory.Status"/>. So a plain <c>StatusText = …</c> always announces as
+    /// Status, while delete/archive route their chatter through <see cref="AnnouncementCategory.MessageAction"/>
+    /// so it can be silenced independently (issue #317).
+    /// </summary>
+    public AnnouncementCategory StatusAnnouncementCategory { get; private set; } = AnnouncementCategory.Status;
+
+    /// <summary>
+    /// Sets the visible status text and tags the accompanying announcement with <paramref name="category"/>.
+    /// See <see cref="StatusAnnouncementCategory"/> for why the reset is safe (StatusText's PropertyChanged
+    /// fires synchronously, so the View captures the category before this method returns).
+    /// </summary>
+    private void SetStatus(string text, AnnouncementCategory category)
+    {
+        StatusAnnouncementCategory = category;
+        StatusText = text;
+        StatusAnnouncementCategory = AnnouncementCategory.Status;
+    }
+
     [ObservableProperty]
     private string _rulesStatusText = string.Empty;
 
@@ -4394,7 +4416,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var minIdx = toDelete.Min(m => Messages.IndexOf(m));
         var label  = toDelete.Count == 1 ? "message" : $"{toDelete.Count} messages";
-        StatusText    = $"Deleting {label}…";
+        // Delete/archive progress + outcome go through the MessageAction category (issue #317) so users
+        // can silence this frequent chatter — it can interrupt the screen reader reading the next message.
+        SetStatus($"Deleting {label}…", AnnouncementCategory.MessageAction);
         IsBusy        = true;
         MessageDetail = null;
         IsMessageOpen = false;
@@ -4487,19 +4511,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ScheduleFolderCountRefresh(acctId);
 
             var count = toDelete.Count;
-            StatusText = Messages.Count > 0
+            SetStatus(Messages.Count > 0
                 ? $"{count} {(count == 1 ? "message" : "messages")} deleted."
-                : $"{count} {(count == 1 ? "message" : "messages")} deleted. Folder is now empty.";
+                : $"{count} {(count == 1 ? "message" : "messages")} deleted. Folder is now empty.",
+                AnnouncementCategory.MessageAction);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Delete cancelled.";
+            SetStatus("Delete cancelled.", AnnouncementCategory.MessageAction);
         }
         catch (Exception ex)
         {
-            // Honest uncertainty message — the delete may have partially or fully succeeded.
-            StatusText = "Delete may not have completed — refreshing.";
-            Announce("Delete may not have completed — refreshing.", AnnouncementCategory.Result);
+            // Honest uncertainty message — the delete may have partially or fully succeeded. Kept as a
+            // Result (not MessageAction) so the failure is still heard even if delete/archive chatter is off.
+            SetStatus("Delete may not have completed — refreshing.", AnnouncementCategory.Result);
             LogService.Log("DeleteMessages", ex);
 
             // Schedule targeted sync of affected folders to reconcile the UI with server state.
@@ -4608,17 +4633,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (plan.Count == 0)
         {
             if (anyMissingArchive)
-            {
-                StatusText = "No Archive folder for this account. Right-click a folder and choose Set as Archive Folder.";
-                Announce(StatusText, AnnouncementCategory.Result);
-            }
+                // Setup guidance stays a Result (not MessageAction): if archive silently did nothing,
+                // the user must hear why even if delete/archive chatter is turned off.
+                SetStatus("No Archive folder for this account. Right-click a folder and choose Set as Archive Folder.",
+                    AnnouncementCategory.Result);
             return;
         }
 
         var actionable = plan.SelectMany(p => p.Group).ToList();
         var minIdx = actionable.Min(m => Messages.IndexOf(m));
         var label  = actionable.Count == 1 ? "message" : $"{actionable.Count} messages";
-        StatusText    = $"Archiving {label}…";
+        SetStatus($"Archiving {label}…", AnnouncementCategory.MessageAction);
         IsBusy        = true;
         MessageDetail = null;
         IsMessageOpen = false;
@@ -4685,17 +4710,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ScheduleFolderCountRefresh(acctId);
 
             var count = actionable.Count;
-            StatusText = $"{count} {(count == 1 ? "message" : "messages")} archived.";
-            Announce(StatusText, AnnouncementCategory.Result);
+            SetStatus($"{count} {(count == 1 ? "message" : "messages")} archived.",
+                AnnouncementCategory.MessageAction);
         }
         catch (OperationCanceledException)
         {
-            StatusText = "Archive cancelled.";
+            SetStatus("Archive cancelled.", AnnouncementCategory.MessageAction);
         }
         catch (Exception ex)
         {
-            StatusText = "Archive may not have completed — refreshing.";
-            Announce("Archive may not have completed — refreshing.", AnnouncementCategory.Result);
+            // Kept as a Result (not MessageAction) so the failure is heard even if archive chatter is off.
+            SetStatus("Archive may not have completed — refreshing.", AnnouncementCategory.Result);
             LogService.Log("ArchiveMessages", ex);
 
             // Reconcile the affected source folders with server state after a short delay.

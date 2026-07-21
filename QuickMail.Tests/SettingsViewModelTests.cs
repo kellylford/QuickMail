@@ -241,6 +241,27 @@ public class SettingsViewModelTests
         Assert.False(vmLoad.AnnounceFlagStatus);
     }
 
+    [Fact]
+    public void AnnounceMessageActions_DefaultsToTrue()
+    {
+        // Issue #317: delete/archive announcements are on by default.
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        Assert.True(vm.AnnounceMessageActions);
+    }
+
+    [Fact]
+    public void AnnounceMessageActions_LoadAndSave_RoundTrips()
+    {
+        var configService = new StubConfigService();
+
+        var vmSave = new SettingsViewModel(configService, new StubCommandRegistry());
+        vmSave.AnnounceMessageActions = false;
+        vmSave.SaveCommand.Execute(null);
+
+        var vmLoad = new SettingsViewModel(configService, new StubCommandRegistry());
+        Assert.False(vmLoad.AnnounceMessageActions);
+    }
+
     // ── Logging ────────────────────────────────────────────────────────────────────
 
     [Fact]

@@ -48,6 +48,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _announceResults;
 
     [ObservableProperty]
+    private bool _announceMessageActions;
+
+    [ObservableProperty]
     private bool _announceSpellingWhileTyping;
 
     [ObservableProperty]
@@ -266,6 +269,7 @@ public partial class SettingsViewModel : ObservableObject
         AnnounceHints       = cfg.AnnounceHints;
         AnnounceStatus      = cfg.AnnounceStatus;
         AnnounceResults     = cfg.AnnounceResults;
+        AnnounceMessageActions = cfg.AnnounceMessageActions;
         AnnounceSpellingWhileTyping      = cfg.AnnounceSpellingWhileTyping;
         AnnounceSpellingWhileNavigating  = cfg.AnnounceSpellingWhileNavigating;
         AnnounceSpellingSuggestions      = cfg.AnnounceSpellingSuggestions;
@@ -338,6 +342,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.AnnounceHints       = AnnounceHints;
         cfg.AnnounceStatus      = AnnounceStatus;
         cfg.AnnounceResults     = AnnounceResults;
+        cfg.AnnounceMessageActions = AnnounceMessageActions;
         cfg.AnnounceSpellingWhileTyping      = AnnounceSpellingWhileTyping;
         cfg.AnnounceSpellingWhileNavigating  = AnnounceSpellingWhileNavigating;
         cfg.AnnounceSpellingSuggestions      = AnnounceSpellingSuggestions;
