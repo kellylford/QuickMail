@@ -98,8 +98,10 @@ public class GraphMailServiceTests
         Assert.Equal(SpecialFolderKind.Sent, sent.Kind);
         Assert.True(sent.ExcludeFromAllMail);
 
+        // "Archive" maps to SpecialFolderKind.Archive via the display-name fallback (issue #318).
+        // It is NOT excluded from the All Mail aggregate — archived mail should remain visible there.
         var archive = folders.Single(f => f.FullName == "f3");
-        Assert.Equal(SpecialFolderKind.None, archive.Kind);
+        Assert.Equal(SpecialFolderKind.Archive, archive.Kind);
         Assert.False(archive.ExcludeFromAllMail);
     }
 

@@ -251,4 +251,29 @@ public class CommandRegistryTests
         Assert.Equal("help.userGuide", registry.FindByGesture(Key.F1, ModifierKeys.None)!.Id);
         Assert.NotNull(registry.FindById("help.about"));
     }
+
+    [Fact]
+    public void MainViewModel_RegistersArchiveCommand_OnBackspace_InMailCategory()
+    {
+        // Issue #318: Archive is a first-class command so it appears in the Command Palette and the
+        // keyboard-customisation dialog, and is rebindable. Default gesture is Backspace.
+        var registry = new CommandRegistry();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            new StubConfigService(), registry, new StubViewService(), new StubRuleService(),
+            new StubSmtpService());
+        Assert.NotNull(vm);
+
+        var cmd = registry.FindById("mail.archive");
+        Assert.NotNull(cmd);
+        Assert.Equal("Mail", cmd!.Category);
+        Assert.Equal("Archive", cmd.Title);
+        Assert.Equal(Key.Back, cmd.DefaultKey);
+        Assert.Equal(ModifierKeys.None, cmd.DefaultModifiers);
+
+        // Backspace resolves to Archive; Delete still resolves to Delete (the two are distinct).
+        Assert.Equal("mail.archive", registry.FindByGesture(Key.Back, ModifierKeys.None)!.Id);
+        Assert.Equal("mail.delete",  registry.FindByGesture(Key.Delete, ModifierKeys.None)!.Id);
+    }
 }
