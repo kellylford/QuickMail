@@ -1,0 +1,110 @@
+name: Build Installer (on demand)
+
+# Manual-only: build the full MSI installer for whatever branch you pick in the
+# "Run workflow" dropdown, WITHOUT publishing a GitHub release. The installer is
+# uploaded as a run artifact you can download and test.
+#
+# Why this exists: the real Google OAuth client id/secret and the bug-report token
+# live only in GitHub Actions secrets. A locally built installer compiles against the
+# placeholder credentials in the working tree, so Google account sign-in does not work.
+# Only a CI build injects the real secrets, so this is the way to get a testable
+# installer before you are ready to cut a release.
+#
+# Publishing a release is still the job of .github/workflows/quickmail.yml, which runs
+# only on a pushed v* tag. This workflow never creates a release.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      # Inject the real Google OAuth credentials from repo secrets — the whole reason
+      # this workflow exists. Mirrors the step in quickmail.yml.
+      - name: Write Google OAuth credentials
+        shell: pwsh
+        env:
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class GoogleOAuthService
+          {
+              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
+              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
+
+      - name: Write bug-report credentials
+        shell: pwsh
+        env:
+          BUG_REPORT_TOKEN: ${{ secrets.BUG_REPORT_TOKEN }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class BugReportService
+          {
+              private const string AppOwnedToken = "$env:BUG_REPORT_TOKEN";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+
+      - name: Publish
+        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/
+        # PublishSingleFile, SelfContained, RuntimeIdentifier, ReadyToRun are set in .csproj
+
+      - name: Install vpk
+        run: dotnet tool install -g vpk
+
+      # No tag to read from on a manual run, so the package version comes from the
+      # csproj <Version>. This produces a full package only (no delta) — a delta needs
+      # the previous release's assets, which only matters for the published update feed,
+      # not for a standalone test installer.
+      - name: Determine package version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath '/Project/PropertyGroup/Version').Node.InnerText
+          if (-not $version) { throw "Could not read <Version> from QuickMail/QuickMail.csproj." }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "Package version: $version"
+
+      # Identical vpk pack invocation to the release workflow so the test installer
+      # behaves exactly like a shipped one (wizard pages, per-user install, WebView2
+      # on demand). Only difference: no `vpk download github` beforehand, so this is a
+      # full package with no delta.
+      - name: Pack Velopack installer
+        shell: pwsh
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          Copy-Item LICENSE installer/velopack/license.txt
+          vpk pack --packId QuickMail --packVersion $version --packDir publish `
+            --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
+            --shortcuts StartMenuRoot --outputDir installer/Output/Releases `
+            --framework webview2 `
+            --msi --instLocation PerUser `
+            --instWelcome installer/velopack/welcome.txt `
+            --instLicense installer/velopack/license.txt `
+            --instConclusion installer/velopack/conclusion.txt
+          # vpk always emits QuickMail-win.msi with no version in the name; rename it so
+          # the downloaded installer is identifiable in your Downloads folder.
+          Rename-Item installer/Output/Releases/QuickMail-win.msi "QuickMail-$version-win.msi"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: QuickMail-${{ steps.version.outputs.version }}-installer
+          # The MSI is the full installer; the portable exe is bundled for convenience.
+          path: |
+            installer/Output/Releases/QuickMail-*-win.msi
+            publish/QuickMail.exe
+          if-no-files-found: error
+          retention-days: 14
