@@ -49,6 +49,24 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void AnnounceMessageActions_DefaultsOn_AndRoundTrips()
+    {
+        // Issue #317: delete/archive announcements get their own toggle, on by default, and must
+        // survive a real INI write→read (it's written under [global], like the other announce keys).
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        Assert.True(service.Load().AnnounceMessageActions); // on by default
+
+        var config = service.Load();
+        config.AnnounceMessageActions = false;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.False(reloaded.AnnounceMessageActions);
+    }
+
+    [Fact]
     public void NotifyOnNewMail_DefaultsOff_AndRoundTrips()
     {
         var profile = MakeTempProfile();

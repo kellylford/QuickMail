@@ -270,6 +270,13 @@
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce outcomes such as search result counts and move confirmations"/>
 
+                                <CheckBox Content="Announce _delete and archive actions"
+                                          IsChecked="{Binding AnnounceMessageActions, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Announce delete and archive outcomes"/>
+                                <TextBlock Text="Turn off to stop delete and archive announcements from interrupting the next message."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,0,0,8"/>
+
                                 <CheckBox Content="Announce spelling errors _when typing"
                                           IsChecked="{Binding AnnounceSpellingWhileTyping, Mode=TwoWay}"
                                           Margin="16,4,0,0"

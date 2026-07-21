@@ -247,6 +247,7 @@ public class ConfigService : IConfigService
                     case "announcehints":        config.AnnounceHints        = ParseBool(value); break;
                     case "announcestatus":       config.AnnounceStatus       = ParseBool(value); break;
                     case "announceresults":      config.AnnounceResults      = ParseBool(value); break;
+                    case "announcemessageactions": config.AnnounceMessageActions = ParseBool(value); break;
                     case "announcespellingwhiletyping":      config.AnnounceSpellingWhileTyping      = ParseBool(value); break;
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
@@ -481,6 +482,11 @@ public class ConfigService : IConfigService
         sb.AppendLine($"AnnounceResults = {(config.AnnounceResults ? "on" : "off")}");
         sb.AppendLine("# Announce action outcomes such as search result counts and move confirmations.");
         sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AnnounceMessageActions = {(config.AnnounceMessageActions ? "on" : "off")}");
+        sb.AppendLine("# Announce delete and archive outcomes (e.g. \"1 message archived\"). Split from");
+        sb.AppendLine("# AnnounceStatus so this frequent chatter can be silenced on its own. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"AnnounceSpellingWhileTyping = {(config.AnnounceSpellingWhileTyping ? "on" : "off")}");

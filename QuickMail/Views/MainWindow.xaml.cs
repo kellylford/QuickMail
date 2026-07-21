@@ -176,6 +176,9 @@ public partial class MainWindow : Window
     // "12 messages", …) coalesce into a single final reading by the screen reader.
     private DispatcherTimer? _statusAnnounceTimer;
     private string? _pendingStatusText;
+    // Category captured at queue time (issue #317) so delete/archive chatter announces under the
+    // MessageAction toggle while sync/loading updates stay Status. Last queued write wins.
+    private AnnouncementCategory _pendingStatusCategory = AnnouncementCategory.Status;
     private static readonly TimeSpan StatusAnnounceDebounce = TimeSpan.FromMilliseconds(500);
 
     // Debounces search result-count announcements so rapid keystrokes coalesce.
@@ -549,7 +552,7 @@ public partial class MainWindow : Window
             }
 
             if (e.PropertyName == nameof(MainViewModel.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
-                QueueStatusAnnounce(vm.StatusText);
+                QueueStatusAnnounce(vm.StatusText, vm.StatusAnnouncementCategory);
 
             if (e.PropertyName == nameof(MainViewModel.SearchAnnouncement) && !string.IsNullOrEmpty(vm.SearchAnnouncement))
                 QueueSearchAnnounce(vm.SearchAnnouncement);
@@ -800,10 +803,11 @@ public partial class MainWindow : Window
     // Debounced UIA notification for rapid status-text changes during sync. Multiple
     // per-folder updates ("5 messages", "12 messages", …) are coalesced so the screen
     // reader hears only the final count once sync settles.
-    private void QueueStatusAnnounce(string text)
+    private void QueueStatusAnnounce(string text, AnnouncementCategory category = AnnouncementCategory.Status)
     {
         if (string.IsNullOrEmpty(text)) return;
-        _pendingStatusText = text;
+        _pendingStatusText     = text;
+        _pendingStatusCategory = category;   // captured now; the VM resets its one-shot override after this returns
 
         if (_statusAnnounceTimer == null)
         {
@@ -811,10 +815,11 @@ public partial class MainWindow : Window
             _statusAnnounceTimer.Tick += (_, _) =>
             {
                 _statusAnnounceTimer!.Stop();
-                var pending = _pendingStatusText;
+                var pending  = _pendingStatusText;
+                var category = _pendingStatusCategory;
                 _pendingStatusText = null;
                 if (!string.IsNullOrEmpty(pending))
-                    AccessibilityHelper.Announce(this, pending, category: AnnouncementCategory.Status);
+                    AccessibilityHelper.Announce(this, pending, category: category);
             };
         }
 
