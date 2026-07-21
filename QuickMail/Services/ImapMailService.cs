@@ -1585,6 +1585,7 @@ public class ImapMailService : IMailService, IChangeNotifier
         if ((attrs & FolderAttributes.Junk)   != 0) return SpecialFolderKind.Junk;
         if ((attrs & FolderAttributes.Sent)   != 0) return SpecialFolderKind.Sent;
         if ((attrs & FolderAttributes.Drafts) != 0) return SpecialFolderKind.Drafts;
+        if ((attrs & FolderAttributes.Archive) != 0) return SpecialFolderKind.Archive;
         // Gmail virtual folders (\All, \Important, \Flagged). Recognized so the deduplicator can
         // deprioritize them as the representative copy. Not excluded from sync — [Gmail]/All Mail
         // is the sole home of archived mail.
@@ -1598,6 +1599,8 @@ public class ImapMailService : IMailService, IChangeNotifier
             leaf.Equals("Spam",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Junk;
         if (leaf.Equals("Sent",   StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Sent;
         if (leaf.Equals("Drafts", StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Drafts;
+        if (leaf.Equals("Archive",  StringComparison.OrdinalIgnoreCase) ||
+            leaf.Equals("Archived", StringComparison.OrdinalIgnoreCase)) return SpecialFolderKind.Archive;
         return SpecialFolderKind.None;
     }
 

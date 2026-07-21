@@ -66,6 +66,15 @@ public partial class AccountModel : ObservableObject
     /// </summary>
     public string Signature { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Full name of the folder the Archive action moves messages to for this account (issue #318).
+    /// Null or empty means "auto-detect": QuickMail uses the folder the server flags as the special
+    /// Archive folder (IMAP \Archive / Graph "archive"). Set explicitly from the folder tree's
+    /// "Set as Archive Folder" command to override the auto-detected target. Per-account — there is
+    /// deliberately no global archive folder.
+    /// </summary>
+    public string? ArchiveFolderFullName { get; set; }
+
     // ── Runtime-only status (not serialized, updated after each connection) ──────
 
     [ObservableProperty]

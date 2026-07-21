@@ -1527,6 +1527,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             defaultKey: Key.Delete, defaultModifiers: ModifierKeys.None,
             isAvailable: () => HasSelectedMessage));
 
+        // Archive (issue #318) — moves the selection to the account's Archive folder instead of
+        // deleting. Default gesture Alt+Delete (Outlook's archive shortcut), a deliberate sibling of
+        // Delete that never collides with text editing. Like mail.delete this base registration is
+        // overridden in MainWindow with a focus-aware guard so the message list and group trees can
+        // archive the whole selection/group via their PreviewKeyDown handlers.
+        registry.Register(new CommandDefinition(
+            id: "mail.archive", category: "Mail", title: "Archive",
+            execute: () => ArchiveMessageCommand.Execute(null),
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => HasSelectedMessage));
+
         registry.Register(new CommandDefinition(
             id: "mail.refresh", category: "Mail", title: "Refresh",
             // RefreshAsync itself delegates to the calendar's refresh while it's the active
@@ -4521,6 +4532,200 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    // ── Archive (issue #318) ──────────────────────────────────────────────────────
+
+    [RelayCommand]
+    private async Task ArchiveMessageAsync()
+    {
+        if (SelectedMessage == null) return;
+        await ArchiveMessagesAsync([SelectedMessage]);
+    }
+
+    /// <summary>
+    /// Resolves the Archive destination folder for an account (issue #318): an explicit per-account
+    /// override (<see cref="AccountModel.ArchiveFolderFullName"/>) wins, otherwise the folder the
+    /// server flags as <see cref="SpecialFolderKind.Archive"/>. Returns null when neither exists —
+    /// the caller then guides the user to pick one rather than silently doing nothing.
+    /// </summary>
+    private MailFolderModel? ResolveArchiveFolder(Guid accountId)
+    {
+        if (!_cachedFolders.TryGetValue(accountId, out var folders)) return null;
+
+        var overrideName = Accounts.FirstOrDefault(a => a.Id == accountId)?.ArchiveFolderFullName;
+        if (!string.IsNullOrEmpty(overrideName))
+        {
+            var match = folders.FirstOrDefault(f =>
+                f.FullName.Equals(overrideName, StringComparison.OrdinalIgnoreCase));
+            if (match != null) return match;
+            // The override points at a folder that no longer exists — fall through to auto-detect.
+        }
+
+        return folders.FirstOrDefault(f => f.Kind == SpecialFolderKind.Archive);
+    }
+
+    /// <summary>True when the given account currently has a resolvable Archive folder.</summary>
+    public bool HasArchiveFolder(Guid accountId) => ResolveArchiveFolder(accountId) != null;
+
+    /// <summary>
+    /// Sets (or clears, when <paramref name="fullName"/> is null/empty) the per-account Archive folder
+    /// and persists it to accounts.json. Invoked from the folder tree's Set / Use-automatic Archive
+    /// commands. There is deliberately no global archive folder — this is per account.
+    /// </summary>
+    public void SetArchiveFolder(Guid accountId, string? fullName)
+    {
+        var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+        if (account == null) return;
+        account.ArchiveFolderFullName = string.IsNullOrEmpty(fullName) ? null : fullName;
+        _accountService.SaveAccounts([.. Accounts]);
+    }
+
+    /// <summary>
+    /// Moves the given messages to each account's Archive folder (issue #318). Mirrors the optimistic
+    /// UI of <see cref="DeleteMessagesAsync"/> — messages vanish immediately, focus lands on the next
+    /// item — but the server operation is a move (like <see cref="MoveSelectedMessagesToFolderAsync"/>),
+    /// so folder counts are reconciled via <see cref="ScheduleFolderCountRefresh"/> and the account
+    /// unread total is left untouched (archived mail still belongs to the account). Messages are
+    /// grouped by (account, source folder) so a single call on a From/To/conversation group archives
+    /// the whole group across every account it spans. Messages already in their Archive folder are
+    /// skipped; messages whose account has no Archive folder are left in place and surface guidance.
+    /// </summary>
+    public async Task ArchiveMessagesAsync(IReadOnlyList<MailMessageSummary> toArchive)
+    {
+        if (toArchive.Count == 0) return;
+
+        // Build the per-group plan up front so we only touch messages we can actually archive.
+        var plan = new List<(IGrouping<(Guid AccountId, string FolderName), MailMessageSummary> Group, MailFolderModel Dest)>();
+        bool anyMissingArchive = false;
+        foreach (var group in toArchive.GroupBy(m => (m.AccountId, m.FolderName)))
+        {
+            var dest = ResolveArchiveFolder(group.Key.AccountId);
+            if (dest == null) { anyMissingArchive = true; continue; }
+            // Already in the archive folder → nothing to do.
+            if (dest.FullName.Equals(group.Key.FolderName, StringComparison.OrdinalIgnoreCase)) continue;
+            plan.Add((group, dest));
+        }
+
+        if (plan.Count == 0)
+        {
+            if (anyMissingArchive)
+            {
+                StatusText = "No Archive folder for this account. Right-click a folder and choose Set as Archive Folder.";
+                Announce(StatusText, AnnouncementCategory.Result);
+            }
+            return;
+        }
+
+        var actionable = plan.SelectMany(p => p.Group).ToList();
+        var minIdx = actionable.Min(m => Messages.IndexOf(m));
+        var label  = actionable.Count == 1 ? "message" : $"{actionable.Count} messages";
+        StatusText    = $"Archiving {label}…";
+        IsBusy        = true;
+        MessageDetail = null;
+        IsMessageOpen = false;
+
+        // ── Step 1: Remove from UI immediately (same optimistic pattern as delete) ──
+        foreach (var msg in actionable)
+            Messages.Remove(msg);
+
+        // Drop from _rawMessages too so a filter/search re-apply before the next sync can't
+        // resurrect an archived message (delete does the same).
+        var actionableKeys = new HashSet<(string, Guid, string)>(
+            actionable.Select(m => (m.MessageId, m.AccountId, m.FolderName)));
+        _rawMessages.RemoveAll(m => actionableKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
+
+        RebuildActiveGroupView();
+
+        if (ViewMode == ViewMode.Messages && Messages.Count > 0)
+        {
+            var landIdx = Math.Max(0, Math.Min(minIdx, Messages.Count - 1));
+            SelectedMessage = Messages[landIdx];
+            MessageListFocusRequested?.Invoke();
+        }
+        else
+        {
+            // From/To/Conversations focus is handled by the caller's LandOn*AfterRebuild. Clearing
+            // SelectedMessage keeps HasSelectedMessage=false so the global Archive/Delete hotkeys
+            // don't steal the next keypress and act on a single message. (Same rationale as delete.)
+            SelectedMessage = null;
+        }
+
+        // ── Step 2: IMAP move + local store cleanup ──
+        var affectedFolders = new List<(Guid AccountId, MailFolderModel Folder)>();
+        try
+        {
+            // Own token per archive (same rationale as delete/move) — a follow-up action no longer
+            // cancels this archive's in-flight IMAP work. Cancels only at app shutdown. (#311)
+            using var actionCts = CancellationTokenSource.CreateLinkedTokenSource(_messageActionShutdownCts.Token);
+            var ct = actionCts.Token;
+
+            foreach (var (group, dest) in plan)
+            {
+                var uids = group.Select(m => m.MessageId).ToList();
+
+                if (_cachedFolders.TryGetValue(group.Key.AccountId, out var acctFolders))
+                {
+                    var sourceFolder = acctFolders.FirstOrDefault(f =>
+                        f.FullName.Equals(group.Key.FolderName, StringComparison.OrdinalIgnoreCase));
+                    if (sourceFolder != null)
+                        affectedFolders.Add((group.Key.AccountId, sourceFolder));
+                }
+
+                await _imap.MoveMessagesAsync(
+                    group.Key.AccountId, group.Key.FolderName, uids, dest.FullName, ct);
+
+                if (!OnlineMode)
+                    await _localStore.DeleteSummariesAsync(group.Key.AccountId, group.Key.FolderName, uids);
+            }
+
+            // Archiving an unread message changes the source and destination folder counts; refresh
+            // after the move lands (only when an unread message actually moved). The account unread
+            // total is unchanged — the message is still in the account, just a different folder.
+            if (actionable.Any(m => !m.IsRead))
+                foreach (var acctId in actionable.Select(m => m.AccountId).Distinct())
+                    ScheduleFolderCountRefresh(acctId);
+
+            var count = actionable.Count;
+            StatusText = $"{count} {(count == 1 ? "message" : "messages")} archived.";
+            Announce(StatusText, AnnouncementCategory.Result);
+        }
+        catch (OperationCanceledException)
+        {
+            StatusText = "Archive cancelled.";
+        }
+        catch (Exception ex)
+        {
+            StatusText = "Archive may not have completed — refreshing.";
+            Announce("Archive may not have completed — refreshing.", AnnouncementCategory.Result);
+            LogService.Log("ArchiveMessages", ex);
+
+            // Reconcile the affected source folders with server state after a short delay.
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(5000);
+                foreach (var (accountId, folder) in affectedFolders)
+                {
+                    if (_bgSyncCts?.Token.IsCancellationRequested ?? true) break;
+                    try
+                    {
+                        if (OnlineMode)
+                            await _syncService.SyncOneFolderOnlineAsync(
+                                Accounts.FirstOrDefault(a => a.Id == accountId) ?? Accounts.First(),
+                                folder, CancellationToken.None);
+                        else
+                            await _syncService.SyncOneFolderAsync(
+                                Accounts.FirstOrDefault(a => a.Id == accountId) ?? Accounts.First(),
+                                folder, CancellationToken.None);
+                    }
+                    catch (Exception syncEx) { LogService.Log("Archive reconciliation sync failed", syncEx); }
+                }
+            });
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     // ── Compose / accounts ───────────────────────────────────────────────────────
 
     public event Action<ComposeModel>? ComposeRequested;
@@ -5638,6 +5843,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         await DeleteMessagesAsync(group.Messages);
     }
 
+    [RelayCommand]
+    private async Task ArchiveConversationAsync(ConversationGroup? group)
+    {
+        if (group == null || group.Messages.Count == 0) return;
+        await ArchiveMessagesAsync(group.Messages);
+    }
+
     // ── ToGroup commands ──────────────────────────────────────────────────────
 
     [RelayCommand]
@@ -5645,6 +5857,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (group == null || group.Messages.Count == 0) return;
         await DeleteMessagesAsync(group.Messages);
+    }
+
+    [RelayCommand]
+    private async Task ArchiveToGroupAsync(SenderGroup? group)
+    {
+        if (group == null || group.Messages.Count == 0) return;
+        await ArchiveMessagesAsync(group.Messages);
     }
 
 #pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
@@ -5764,6 +5983,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (group == null || group.Messages.Count == 0) return;
         await DeleteMessagesAsync(group.Messages);
+    }
+
+    [RelayCommand]
+    private async Task ArchiveSenderGroupAsync(SenderGroup? group)
+    {
+        if (group == null || group.Messages.Count == 0) return;
+        await ArchiveMessagesAsync(group.Messages);
     }
 
     // ── View mode command ─────────────────────────────────────────────────────

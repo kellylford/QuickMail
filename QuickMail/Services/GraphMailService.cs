@@ -43,6 +43,7 @@ public class GraphMailService : IMailService
         ("drafts",       SpecialFolderKind.Drafts),
         ("deleteditems", SpecialFolderKind.Trash),
         ("junkemail",    SpecialFolderKind.Junk),
+        ("archive",      SpecialFolderKind.Archive),
     };
 
     public GraphMailService(IOAuthService oauth, IConfigService? config = null, HttpClient? http = null)
@@ -431,6 +432,7 @@ public class GraphMailService : IMailService
         "drafts" => SpecialFolderKind.Drafts,
         "deleted items" or "trash" => SpecialFolderKind.Trash,
         "junk email" or "junk" => SpecialFolderKind.Junk,
+        "archive" => SpecialFolderKind.Archive,
         _ => SpecialFolderKind.None,
     };
 

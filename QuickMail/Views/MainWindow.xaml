@@ -55,6 +55,10 @@
                       AutomationProperties.Name="Delete All from Sender"
                       Command="{Binding DeleteSenderGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Header="A_rchive All from Sender"
+                      AutomationProperties.Name="Archive All from Sender"
+                      Command="{Binding ArchiveSenderGroupCommand}"
+                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
             <MenuItem Header="Flag_s"
                       Tag="FlagsSubmenu"
@@ -103,6 +107,10 @@
             <MenuItem Header="_Delete All to Recipient"
                       AutomationProperties.Name="Delete All to Recipient"
                       Command="{Binding DeleteToGroupCommand}"
+                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Header="A_rchive All to Recipient"
+                      AutomationProperties.Name="Archive All to Recipient"
+                      Command="{Binding ArchiveToGroupCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
             <MenuItem Header="Flag_s"
@@ -154,6 +162,10 @@
                       AutomationProperties.Name="Delete Conversation"
                       Command="{Binding DeleteConversationCommand}"
                       CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+            <MenuItem Header="A_rchive Conversation"
+                      AutomationProperties.Name="Archive Conversation"
+                      Command="{Binding ArchiveConversationCommand}"
+                      CommandParameter="{Binding PlacementTarget.SelectedItem, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
             <Separator/>
             <MenuItem Header="Flag_s"
                       Tag="FlagsSubmenu"
@@ -200,6 +212,10 @@
             <MenuItem Header="_Delete"
                       AutomationProperties.Name="Delete"
                       Click="MessageContextMenu_Delete_Click"/>
+            <MenuItem Header="_Archive"
+                      InputGestureText="Alt+Del"
+                      AutomationProperties.Name="Archive"
+                      Click="MessageContextMenu_Archive_Click"/>
             <Separator/>
             <MenuItem Header="Flag_s"
                       Tag="FlagsSubmenu"
@@ -227,6 +243,13 @@
             <MenuItem Header="_Copy Folder…"
                       AutomationProperties.Name="Copy Folder"
                       Click="FolderContextMenu_CopyFolder_Click"/>
+            <Separator/>
+            <MenuItem Header="Set as _Archive Folder"
+                      AutomationProperties.Name="Set as Archive Folder"
+                      Click="FolderContextMenu_SetArchive_Click"/>
+            <MenuItem Header="Use A_utomatic Archive Folder"
+                      AutomationProperties.Name="Use Automatic Archive Folder"
+                      Click="FolderContextMenu_ClearArchive_Click"/>
             <Separator/>
             <MenuItem Header="_Delete Folder"
                       AutomationProperties.Name="Delete Folder"
@@ -286,6 +309,9 @@
                 <MenuItem Header="_Delete"
                           Command="{Binding DeleteMessageCommand}"
                           InputGestureText="Del"/>
+                <MenuItem Header="_Archive"
+                          Command="{Binding ArchiveMessageCommand}"
+                          InputGestureText="Alt+Del"/>
                 <MenuItem Header="Empty _Trash"
                           Command="{Binding EmptyTrashCommand}"
                           InputGestureText="Ctrl+Shift+E"/>

@@ -1075,6 +1075,19 @@ public partial class MainWindow : Window
                 && !IsGroupTreeFocused()
                 && !FolderList.IsKeyboardFocusWithin)); // folder.delete owns Delete in the folder tree
 
+        // Archive (issue #318) — same override rationale as mail.delete above: when the message list
+        // has a multi-selection, or a group tree has focus, the control's own PreviewKeyDown handler
+        // archives the whole selection/group (and lands focus correctly), so this registry command
+        // bows out of those contexts. It stays available for single-selection / reading-pane focus.
+        _registry.Register(new CommandDefinition(
+            id: "mail.archive", category: "Mail", title: "Archive",
+            execute: () => _vm.ArchiveMessageCommand.Execute(null),
+            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => _vm.HasSelectedMessage
+                && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
+                && !IsGroupTreeFocused()
+                && !FolderList.IsKeyboardFocusWithin));
+
         // New Folder — creates a folder under the folder-tree selection (or the selected account's
         // root when nothing folder-specific is selected). Registered so it appears in the Command
         // Palette and keyboard customizations; before this the only entry point was the folder
@@ -2560,6 +2573,12 @@ public partial class MainWindow : Window
             await OpenMessageFromListAsync(summary);
     }
 
+    // Alt+Delete = Archive (issue #318). Holding Alt makes WPF report the key via SystemKey rather
+    // than Key, so normalize before comparing. Used by the message list and all three group trees.
+    private static bool IsArchiveGesture(KeyEventArgs e) =>
+        (e.Key == Key.System ? e.SystemKey : e.Key) == Key.Delete
+        && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
+
     // Enter on a message: load body; Delete: delete all selected messages;
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.
     private async void MessageList_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -2606,6 +2625,16 @@ public partial class MainWindow : Window
                 .ToList();
             LogService.Debug($"Delete key: SelectedItems.Count={MessageList.SelectedItems.Count} toDelete={toDelete.Count}");
             await _vm.DeleteMessagesAsync(toDelete);
+            FocusMessageListFirstItem();
+        }
+        else if (IsArchiveGesture(e) && MessageList.SelectedItems.Count > 0)
+        {
+            // Archive the whole selection (issue #318), mirroring the Delete branch above.
+            e.Handled = true;
+            var toArchive = MessageList.SelectedItems
+                .OfType<MailMessageSummary>()
+                .ToList();
+            await _vm.ArchiveMessagesAsync(toArchive);
             FocusMessageListFirstItem();
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down) && Keyboard.Modifiers == ModifierKeys.Shift)
@@ -3820,6 +3849,35 @@ public partial class MainWindow : Window
                 await _vm.DeleteMessagesAsync(group.Messages);
             }
         }
+        else if (IsArchiveGesture(e))
+        {
+            // Archive (issue #318), mirroring the Delete branch: a message node archives that message;
+            // a conversation node archives the whole conversation. Focus lands via LandOn* after the
+            // rebuild, exactly as Delete does.
+            e.Handled = true;
+            if (ConversationTree.SelectedItem is MailMessageSummary toArchive)
+            {
+                var parentGroup = _vm.Conversations.FirstOrDefault(g => g.Messages.Contains(toArchive));
+                var groupIdx    = parentGroup != null ? _vm.Conversations.IndexOf(parentGroup) : 0;
+                _vm.SelectedMessage = toArchive;
+                if (parentGroup != null && parentGroup.Messages.Count > 1)
+                {
+                    int msgIdx = 0;
+                    for (int i = 0; i < parentGroup.Messages.Count; i++)
+                        if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
+                    LandOnConversationMessageAfterRebuild(parentGroup.NormalizedSubject, msgIdx, groupIdx);
+                }
+                else
+                    LandOnConversationAfterRebuild(groupIdx);
+                await _vm.ArchiveMessageCommand.ExecuteAsync(null);
+            }
+            else if (ConversationTree.SelectedItem is ConversationGroup group)
+            {
+                var targetIdx = _vm.Conversations.IndexOf(group);
+                LandOnConversationAfterRebuild(targetIdx);   // register before the rebuild fires
+                await _vm.ArchiveMessagesAsync(group.Messages);
+            }
+        }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
                  && Keyboard.Modifiers == ModifierKeys.None
                  && ConversationTree.Items.Count == 0)
@@ -4395,6 +4453,33 @@ public partial class MainWindow : Window
                 await _vm.DeleteSenderGroupCommand.ExecuteAsync(group);
             }
         }
+        else if (IsArchiveGesture(e))
+        {
+            // Archive (issue #318), mirroring the Delete branch above.
+            e.Handled = true;
+            if (SenderGroupTree.SelectedItem is MailMessageSummary toArchive)
+            {
+                var parentGroup = _vm.SenderGroups.FirstOrDefault(g => g.Messages.Contains(toArchive));
+                var groupIdx    = parentGroup != null ? _vm.SenderGroups.IndexOf(parentGroup) : 0;
+                _vm.SelectedMessage = toArchive;
+                if (parentGroup != null && parentGroup.Messages.Count > 1)
+                {
+                    int msgIdx = 0;
+                    for (int i = 0; i < parentGroup.Messages.Count; i++)
+                        if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
+                    LandOnSenderMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                }
+                else
+                    LandOnSenderGroupAfterRebuild(groupIdx);
+                await _vm.ArchiveMessageCommand.ExecuteAsync(null);
+            }
+            else if (SenderGroupTree.SelectedItem is SenderGroup group)
+            {
+                var targetIdx = _vm.SenderGroups.IndexOf(group);
+                LandOnSenderGroupAfterRebuild(targetIdx);   // register before the rebuild fires
+                await _vm.ArchiveSenderGroupCommand.ExecuteAsync(group);
+            }
+        }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
                  && Keyboard.Modifiers == ModifierKeys.None
                  && SenderGroupTree.Items.Count == 0)
@@ -4541,6 +4626,33 @@ public partial class MainWindow : Window
                 var targetIdx = _vm.ToGroups.IndexOf(group);
                 LandOnToGroupAfterRebuild(targetIdx);
                 await _vm.DeleteToGroupCommand.ExecuteAsync(group);
+            }
+        }
+        else if (IsArchiveGesture(e))
+        {
+            // Archive (issue #318), mirroring the Delete branch above.
+            e.Handled = true;
+            if (ToGroupTree.SelectedItem is MailMessageSummary toArchive)
+            {
+                var parentGroup = _vm.ToGroups.FirstOrDefault(g => g.Messages.Contains(toArchive));
+                var groupIdx    = parentGroup != null ? _vm.ToGroups.IndexOf(parentGroup) : 0;
+                _vm.SelectedMessage = toArchive;
+                if (parentGroup != null && parentGroup.Messages.Count > 1)
+                {
+                    int msgIdx = 0;
+                    for (int i = 0; i < parentGroup.Messages.Count; i++)
+                        if (parentGroup.Messages[i] == toArchive) { msgIdx = i; break; }
+                    LandOnToMessageAfterRebuild(parentGroup.SenderKey, msgIdx, groupIdx);
+                }
+                else
+                    LandOnToGroupAfterRebuild(groupIdx);
+                await _vm.ArchiveMessageCommand.ExecuteAsync(null);
+            }
+            else if (ToGroupTree.SelectedItem is SenderGroup group)
+            {
+                var targetIdx = _vm.ToGroups.IndexOf(group);
+                LandOnToGroupAfterRebuild(targetIdx);
+                await _vm.ArchiveToGroupCommand.ExecuteAsync(group);
             }
         }
         else if ((e.Key == Key.Up || e.Key == Key.Down || e.Key == Key.Left || e.Key == Key.Right)
@@ -5138,6 +5250,32 @@ public partial class MainWindow : Window
             await DeleteFolderWithFocusAsync(node);
     }
 
+    // ── Archive folder assignment (issue #318) ────────────────────────────────
+    // Per-account, no global archive folder. "Set as Archive Folder" stores the folder's FullName on
+    // its account; "Use Automatic Archive Folder" clears it so QuickMail falls back to the server's
+    // flagged Archive folder. Both are keyboard-reachable from the folder tree context menu.
+    private void FolderContextMenu_SetArchive_Click(object sender, RoutedEventArgs e)
+    {
+        var node = GetContextMenuFolderNode(sender);
+        if (node is null || node.IsHeader || node.Folder is not { } folder ||
+            folder.AccountId == Guid.Empty || folder.FullName.Length == 0 || folder.FullName[0] == '\0')
+            return;
+        _vm.SetArchiveFolder(folder.AccountId, folder.FullName);
+        AccessibilityHelper.Announce(this,
+            $"{folder.DisplayName} set as the Archive folder for this account.",
+            category: AnnouncementCategory.Result);
+    }
+
+    private void FolderContextMenu_ClearArchive_Click(object sender, RoutedEventArgs e)
+    {
+        var node = GetContextMenuFolderNode(sender);
+        if (node?.Folder is not { } folder || folder.AccountId == Guid.Empty) return;
+        _vm.SetArchiveFolder(folder.AccountId, null);
+        AccessibilityHelper.Announce(this,
+            "This account will use its automatic Archive folder.",
+            category: AnnouncementCategory.Result);
+    }
+
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
     // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.
     private async Task DeleteFolderWithFocusAsync(FolderTreeNode node)
@@ -5487,6 +5625,25 @@ public partial class MainWindow : Window
         await _vm.DeleteMessagesAsync(messages);
 
         // Land focus the same way the Move context-menu handler does.
+        if (_vm.IsConversationsView)
+            LandOnConversationAfterRebuild(0);
+        else if (_vm.IsFromView)
+            LandOnSenderGroupAfterRebuild(0);
+        else if (_vm.IsToView)
+            LandOnToGroupAfterRebuild(0);
+        else
+            FocusMessageListFirstItem();
+    }
+
+    // Context-menu Archive — acts on the whole selection, mirroring the Delete context-menu handler
+    // (issue #318). Focus lands the same way afterwards.
+    private async void MessageContextMenu_Archive_Click(object sender, RoutedEventArgs e)
+    {
+        var messages = GetSelectedMessages();
+        if (messages.Count == 0) return;
+
+        await _vm.ArchiveMessagesAsync(messages);
+
         if (_vm.IsConversationsView)
             LandOnConversationAfterRebuild(0);
         else if (_vm.IsFromView)
