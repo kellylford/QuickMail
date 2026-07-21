@@ -130,14 +130,25 @@ accounts (which use `.default`) get one re-consent prompt on next interactive si
 accounts are unaffected (they request `Contacts.Read` / `People.Read` explicitly through the
 contact-consent flow, independent of `.default`).
 
-**Code audit (2026-07-14):** this list was checked against every Graph, IMAP, and SMTP call in
-the codebase. It is **complete** — no code path needs a permission that is missing here. Two
-entries are deliberate forward declarations for features that are specced but not yet implemented
-(the "declare before GA" strategy above): `MailboxSettings.ReadWrite` (server-side rules —
-`RuleService` is currently 100% local, no `messageRule` call exists) and `User.ReadBasic.All`
-(directory recipient lookup — `ContactService` is currently 100% local, no `/users` or `/people`
-call exists). No POP3 or EWS code exists, so `POP.AccessAsUser.All` and `EWS.AccessAsUser.All`
-are correctly absent. Re-run this audit when a feature adds a new Graph endpoint category.
+**Code audit (2026-07-21):** this list was re-checked against every Graph, IMAP, and SMTP call in
+the codebase (supersedes the 2026-07-14 audit, which predated contact and calendar sync). It is
+**complete** — no code path needs a permission missing here, and every declared scope is either in
+use or a documented forward declaration.
+
+- **In use:** `Mail.ReadWrite` / `Mail.Send` (Graph mail backend), `User.Read` (resolve the
+  signed-in address), `Contacts.Read` (the read half of `Contacts.ReadWrite` — `/me/contacts`) and
+  `People.Read` (`/me/people`) via contact sync (#256), and `Calendars.ReadWrite`
+  (`/me/calendars` + `/me/events`, including event creation) via `GraphCalendarSyncService` (#282);
+  plus the two Exchange Online scopes for the IMAP/SMTP backend.
+- **Deliberate forward declarations** (specced but not yet implemented; the "declare before GA"
+  strategy above): `MailboxSettings.ReadWrite` (server-side rules — `RuleService` is still 100%
+  local, no `messageRule` call exists); `User.ReadBasic.All` (Graph `/users` directory lookup — no
+  such call exists; contact sync reaches people via `/me/people` + `/me/contacts`, which are
+  governed by `People.Read` / `Contacts.Read`, **not** `/users`); and the **write half** of
+  `Contacts.ReadWrite` (no code writes contacts yet).
+
+No POP3 or EWS code exists, so `POP.AccessAsUser.All` and `EWS.AccessAsUser.All` are correctly
+absent. Re-run this audit when a feature adds a new Graph endpoint category.
 
 ---
 
