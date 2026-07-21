@@ -78,8 +78,8 @@ declared scopes). Both must still be declared here.
 | `Mail.ReadWrite` | Read/move/flag/delete mail; save drafts (Graph backend) |
 | `Mail.Send` | Send mail (Graph backend) |
 | `Calendars.ReadWrite` | Calendar sync — read/create/update/delete events (full-calendar spec M4). Added 2026-07-16 via the §7 device-code runbook (scope id `1ec239c2-d7c9-4623-a91a-a9775856bb36`). Code side: `OAuthService.GraphCalendarScopes` (explicit scope for personal accounts; work/school gets it via `.default`). |
-| `Contacts.ReadWrite` | **Forward declaration — no feature consumes it yet.** Reserved for server/personal contact sync into `ContactService`. Added 2026-07-21 via the §7 device-code runbook (scope id `d56682ec-c09e-4743-aaf4-1a3aac4caa21`). No code side yet: work/school accounts request it automatically via `.default`; personal accounts won't request it until it is added to `OAuthService.GraphMailScopesPersonal`. |
-| `People.Read` | **Forward declaration — no feature consumes it yet.** Reserved for relevance-ranked recipient autocomplete (People API). Added 2026-07-21 via the §7 device-code runbook (scope id `ba47897c-39ec-4d83-8086-ee8256fa737d`). No code side yet; same `.default`-vs-personal-scope note as `Contacts.ReadWrite`. |
+| `Contacts.ReadWrite` | Contact sync (#256, shipped v0.8.32) reads saved contacts from `/me/contacts`. The code requests only **`Contacts.Read`** (`OAuthService.GraphContactScopes`, read-only) — the **write half is a deliberate forward declaration** for a future two-way contact sync; no code path writes contacts yet. Scope id `d56682ec-c09e-4743-aaf4-1a3aac4caa21`, added 2026-07-21 via the §7 device-code runbook. Work/school accounts get the full `ReadWrite` via `.default`; personal accounts request the read-only `Contacts.Read` explicitly through the separate contact-consent flow. |
+| `People.Read` | **In use** — contact sync (#256, shipped v0.8.32) reads relevance-ranked prior recipients from `/me/people` (`OAuthService.GraphContactScopes`). Scope id `ba47897c-39ec-4d83-8086-ee8256fa737d`, added 2026-07-21 via the §7 device-code runbook; the registration had drifted without it, so work/school `.default` sign-ins couldn't acquire it silently until now. Personal accounts request it explicitly. |
 | `MailboxSettings.ReadWrite` | Server-side Inbox rules (messageRule API). **Superset of `MailboxSettings.Read`** — declare ReadWrite, not Read. |
 | `User.Read` | Resolve the signed-in user's address/profile |
 | `User.ReadBasic.All` | Resolve other users (recipient display names) |
@@ -115,15 +115,20 @@ may show bare GUIDs (`652390e4-…` = IMAP.AccessAsUser.All, `258f6531-…` = SM
 names — this is cosmetic. Because the declared set changed, accounts that consented before this
 date will be re-prompted on their next interactive sign-in.
 
-**Forward scopes added (2026-07-21):** `Contacts.ReadWrite` and `People.Read` were added via the §7
-device-code runbook (`PATCH /applications/{id}`, whole-set replace) as deliberate forward
-declarations — no code path consumes either yet (see the §3 table rows). This makes the full
-declared Graph set nine scopes (the six functional ones + `offline_access` + `Calendars.ReadWrite`
-+ these two). Note: `People.Read` had been present as *drift* at the 2026-07-14 reconciliation and
-was removed then; its reappearance here is intentional, not a regression. As with any set change,
-already-consented work/school accounts (which use `.default`) get one re-consent prompt on next
-interactive sign-in; personal accounts are unaffected until the scopes are added to
-`OAuthService.GraphMailScopesPersonal`.
+**Scopes added (2026-07-21):** `Contacts.ReadWrite` and `People.Read` were added via the §7
+device-code runbook (`PATCH /applications/{id}`, whole-set replace). This **corrected pre-existing
+drift**: contact sync (#256, shipped v0.8.32) reads `/me/contacts` and `/me/people` via
+`OAuthService.GraphContactScopes` (`Contacts.Read` + `People.Read`), but the registration declared
+neither — so work/school accounts, which acquire via `.default`, couldn't get them silently.
+`People.Read` and the **read half** of `Contacts.ReadWrite` are now actively used; the **write
+half** of `Contacts.ReadWrite` is a deliberate forward declaration for a future two-way contact
+sync (no code writes contacts yet). This makes the full declared Graph set nine scopes (the six
+functional ones + `offline_access` + `Calendars.ReadWrite` + these two). Note: `People.Read` had
+been present as *drift* at the 2026-07-14 reconciliation and was removed then; its reappearance
+here is intentional, not a regression. As with any set change, already-consented work/school
+accounts (which use `.default`) get one re-consent prompt on next interactive sign-in; personal
+accounts are unaffected (they request `Contacts.Read` / `People.Read` explicitly through the
+contact-consent flow, independent of `.default`).
 
 **Code audit (2026-07-14):** this list was checked against every Graph, IMAP, and SMTP call in
 the codebase. It is **complete** — no code path needs a permission that is missing here. Two
