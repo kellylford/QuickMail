@@ -1555,7 +1555,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // is overridden in MainWindow with a focus-aware guard so the message list and group trees
         // can archive the whole selection/group via their PreviewKeyDown handlers.
         registry.Register(new CommandDefinition(
-            id: "mail.archive", category: "Mail", title: "Archive",
+            id: "mail.archive", category: "Mail", title: "Move to Archive",
             execute: () => ArchiveMessageCommand.Execute(null),
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => HasSelectedMessage));

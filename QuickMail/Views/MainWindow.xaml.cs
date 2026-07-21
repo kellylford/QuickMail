@@ -1085,7 +1085,7 @@ public partial class MainWindow : Window
         // archives the whole selection/group (and lands focus correctly), so this registry command
         // bows out of those contexts. It stays available for single-selection / reading-pane focus.
         _registry.Register(new CommandDefinition(
-            id: "mail.archive", category: "Mail", title: "Archive",
+            id: "mail.archive", category: "Mail", title: "Move to Archive",
             execute: () => _vm.ArchiveMessageCommand.Execute(null),
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.HasSelectedMessage

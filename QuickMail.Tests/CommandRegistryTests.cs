@@ -270,7 +270,7 @@ public class CommandRegistryTests
         var cmd = registry.FindById("mail.archive");
         Assert.NotNull(cmd);
         Assert.Equal("Mail", cmd!.Category);
-        Assert.Equal("Archive", cmd.Title);
+        Assert.Equal("Move to Archive", cmd.Title);
         Assert.Equal(Key.M, cmd.DefaultKey);
         Assert.Equal(ModifierKeys.Control | ModifierKeys.Shift, cmd.DefaultModifiers);
 
