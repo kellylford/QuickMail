@@ -456,21 +456,21 @@ public class ImapMailService : IMailService, IChangeNotifier
         finally { await folder.CloseAsync(false, ct); }
     }
 
-    public async Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
-    {
-        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
-        var client = lease.Client;
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+    public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) =>
+        // Retry once on a fresh connection if the pooled one was silently dropped (issue #311).
+        ExecuteWithReconnectAsync(accountId, ImapLeasePriority.Foreground, async (client, token) =>
         {
-            var uidList = messageIds.Select(ToUid).ToList();
-            var trash   = await FindSpecialFolderAsync(client, ct, SpecialFolder.Trash);
-            if (trash != null) await folder.MoveToAsync(uidList, trash, ct);
-            else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+            var folder = await client.GetFolderAsync(folderName, token);
+            await folder.OpenAsync(FolderAccess.ReadWrite, token);
+            try
+            {
+                var uidList = messageIds.Select(ToUid).ToList();
+                var trash   = await FindSpecialFolderAsync(client, token, SpecialFolder.Trash);
+                if (trash != null) await folder.MoveToAsync(uidList, trash, token);
+                else               await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, token);
+            }
+            finally { await folder.CloseAsync(false, token); }
+        }, ct);
 
     public async Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
     {
@@ -763,14 +763,39 @@ public class ImapMailService : IMailService, IChangeNotifier
     {
         // The change-notifier router fans the full account list out to every notifier; IMAP IDLE only
         // handles IMAP accounts (a Graph account here would spin up a doomed IMAP connection).
-        foreach (var account in accounts.Where(a => a.BackendKind == BackendKind.ImapSmtp))
+        var desired = accounts
+            .Where(a => a.BackendKind == BackendKind.ImapSmtp)
+            .Select(a => a.Id)
+            .ToList();
+
+        // Watchers self-exit without removing their _idleCts entry, so a cancelled/finished entry can
+        // linger. Purge those first, disposing the dead CTS, so the remaining keys are exactly the
+        // live watchers — that makes the reconcile below an accurate start/stop diff.
+        foreach (var kv in _idleCts.ToArray())
         {
-            // Cancel any existing watcher for this account.
-            if (_idleCts.TryRemove(account.Id, out var old))
+            if (kv.Value.IsCancellationRequested && _idleCts.TryRemove(kv.Key, out var dead))
+            {
+                try { dead.Dispose(); } catch { }
+            }
+        }
+
+        // Only start watchers for accounts that just joined, and stop watchers for accounts that left.
+        // Crucially, an account that already has a live watcher is left untouched — restarting every
+        // account's IDLE connection whenever the set changes is what made adding one account
+        // disconnect the others (regression of #126). See WatcherReconciler.
+        var (toStart, toStop) = WatcherReconciler.Reconcile(_idleCts.Keys, desired);
+
+        foreach (var accountId in toStop)
+        {
+            if (_idleCts.TryRemove(accountId, out var old))
             {
                 try { old.Cancel(); old.Dispose(); } catch { }
             }
+        }
 
+        var toStartSet = new HashSet<Guid>(toStart);
+        foreach (var account in accounts.Where(a => toStartSet.Contains(a.Id)))
+        {
             var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
             _idleCts[account.Id] = linked;
 
@@ -964,6 +989,46 @@ public class ImapMailService : IMailService, IChangeNotifier
         }
 
         return await pool.RentAsync(priority, ct);
+    }
+
+    // True for exceptions that mean "the connection is gone" (as opposed to a genuine server-side
+    // rejection of a valid command). Per MailKit's author: IOException always disconnects the client,
+    // ImapProtocolException usually does, and ServiceNotConnectedException is thrown when a command is
+    // issued on an already-dead client. These are the drops worth transparently retrying.
+    private static bool IsConnectionDrop(Exception ex) =>
+        ex is ServiceNotConnectedException or IOException or ImapProtocolException or SocketException;
+
+    /// <summary>
+    /// Runs an IMAP operation, retrying once on a freshly leased client if the first attempt fails
+    /// because the pooled connection had been silently dropped. MailKit does not auto-reconnect and
+    /// its <c>IsConnected</c> is a cached flag, so a hot-reused connection (younger than the pool's
+    /// 30s stale-probe threshold) can be dead on arrival. Without this, the first such drop surfaces
+    /// to the user — e.g. issue #311's "Delete may not have completed." The dead client is discarded
+    /// when its lease returns, so the retry gets a newly created/authenticated connection.
+    /// Use only for operations that are safe to repeat (moves/deletes by UID are: a UID already gone
+    /// from the source folder is simply ignored on the retry).
+    /// </summary>
+    private async Task ExecuteWithReconnectAsync(
+        Guid accountId, ImapLeasePriority priority,
+        Func<ImapClient, CancellationToken, Task> operation, CancellationToken ct)
+    {
+        const int maxAttempts = 2;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                using var lease = await RentClientAsync(accountId, priority, ct);
+                await operation(lease.Client, ct);
+                return;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) when (attempt < maxAttempts && IsConnectionDrop(ex))
+            {
+                LogService.Log(
+                    $"IMAP op dropped (attempt {attempt}/{maxAttempts}) — reconnecting and retrying: " +
+                    $"{ex.GetType().Name}: {ex.Message}");
+            }
+        }
     }
 
     private async Task<ImapClient> CreateAuthenticatedClientAsync(
@@ -1558,20 +1623,20 @@ public class ImapMailService : IMailService, IChangeNotifier
                     ? mb.Name
                     : a.ToString()));
 
-    public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
-    {
-        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Foreground, ct);
-        var client = lease.Client;
-        var folder = await client.GetFolderAsync(folderName, ct);
-        await folder.OpenAsync(FolderAccess.ReadWrite, ct);
-        try
+    public Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default) =>
+        // Retry once on a fresh connection if the pooled one was silently dropped (issue #311).
+        ExecuteWithReconnectAsync(accountId, ImapLeasePriority.Foreground, async (client, token) =>
         {
-            var uidList = messageIds.Select(ToUid).ToList();
-            await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, ct);
-            await folder.ExpungeAsync(ct);
-        }
-        finally { await folder.CloseAsync(false, ct); }
-    }
+            var folder = await client.GetFolderAsync(folderName, token);
+            await folder.OpenAsync(FolderAccess.ReadWrite, token);
+            try
+            {
+                var uidList = messageIds.Select(ToUid).ToList();
+                await folder.AddFlagsAsync(uidList, MessageFlags.Deleted, true, token);
+                await folder.ExpungeAsync(token);
+            }
+            finally { await folder.CloseAsync(false, token); }
+        }, ct);
 
     public async Task NoOpAsync(Guid accountId, CancellationToken ct = default)
     {
