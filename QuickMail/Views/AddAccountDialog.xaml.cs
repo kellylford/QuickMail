@@ -23,6 +23,20 @@ public partial class AddAccountDialog : Window
             else if (e.PropertyName == nameof(vm.IsBusy))
                 OnIsBusyChanged();
         };
+        // #202: a different identity than the one entered completed sign-in (usually an admin approving
+        // consent). Warn with a focus-grabbing dialog rather than a passing status line, since a screen
+        // reader can miss the soft cue — the account is intentionally left bound to the entered user.
+        vm.SignInIdentityMismatch += WarnIdentityMismatch;
+    }
+
+    private void WarnIdentityMismatch(string entered, string actual)
+    {
+        MessageBox.Show(this,
+            $"You entered {entered}, but sign-in completed as {actual}.\n\n" +
+            "This usually happens when an administrator signs in to approve access for your " +
+            $"organization. The account was not changed. Please sign in again as {entered}.",
+            "Different account signed in",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
