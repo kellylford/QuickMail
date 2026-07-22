@@ -253,11 +253,12 @@ public class CommandRegistryTests
     }
 
     [Fact]
-    public void MainViewModel_RegistersArchiveCommand_OnAltDelete_InMailCategory()
+    public void MainViewModel_RegistersArchiveCommand_OnCtrlShiftM_InMailCategory()
     {
         // Issue #318: Archive is a first-class command so it appears in the Command Palette and the
-        // keyboard-customisation dialog, and is rebindable. Default gesture is Alt+Delete (Outlook's
-        // archive shortcut) — deliberately not a bare text-editing key like Backspace.
+        // keyboard-customisation dialog, and is rebindable. Default gesture is Ctrl+Shift+M —
+        // deliberately not Alt+Delete, which collides with the screen-reader "announce cursor
+        // position" command.
         var registry = new CommandRegistry();
         var vm = new MainViewModel(
             new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
@@ -269,12 +270,12 @@ public class CommandRegistryTests
         var cmd = registry.FindById("mail.archive");
         Assert.NotNull(cmd);
         Assert.Equal("Mail", cmd!.Category);
-        Assert.Equal("Archive", cmd.Title);
-        Assert.Equal(Key.Delete, cmd.DefaultKey);
-        Assert.Equal(ModifierKeys.Alt, cmd.DefaultModifiers);
+        Assert.Equal("Move to Archive", cmd.Title);
+        Assert.Equal(Key.M, cmd.DefaultKey);
+        Assert.Equal(ModifierKeys.Control | ModifierKeys.Shift, cmd.DefaultModifiers);
 
-        // Alt+Delete resolves to Archive; bare Delete still resolves to Delete (the two are distinct).
-        Assert.Equal("mail.archive", registry.FindByGesture(Key.Delete, ModifierKeys.Alt)!.Id);
+        // Ctrl+Shift+M resolves to Archive; Delete still resolves to Delete (the two are distinct).
+        Assert.Equal("mail.archive", registry.FindByGesture(Key.M, ModifierKeys.Control | ModifierKeys.Shift)!.Id);
         Assert.Equal("mail.delete",  registry.FindByGesture(Key.Delete, ModifierKeys.None)!.Id);
     }
 }

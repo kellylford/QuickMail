@@ -1085,9 +1085,9 @@ public partial class MainWindow : Window
         // archives the whole selection/group (and lands focus correctly), so this registry command
         // bows out of those contexts. It stays available for single-selection / reading-pane focus.
         _registry.Register(new CommandDefinition(
-            id: "mail.archive", category: "Mail", title: "Archive",
+            id: "mail.archive", category: "Mail", title: "Move to Archive",
             execute: () => _vm.ArchiveMessageCommand.Execute(null),
-            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.Alt,
+            defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.HasSelectedMessage
                 && !(IsMessageListFocused() && MessageList.SelectedItems.Count > 1)
                 && !IsGroupTreeFocused()
@@ -2578,11 +2578,13 @@ public partial class MainWindow : Window
             await OpenMessageFromListAsync(summary);
     }
 
-    // Alt+Delete = Archive (issue #318). Holding Alt makes WPF report the key via SystemKey rather
-    // than Key, so normalize before comparing. Used by the message list and all three group trees.
+    // Ctrl+Shift+M = Archive (issue #318). Used by the message list and all three group trees when
+    // the registry command bows out (multi-selection / group-tree focus). No Alt, so no SystemKey
+    // normalization is needed — the key arrives as Key.M directly.
     private static bool IsArchiveGesture(KeyEventArgs e) =>
-        (e.Key == Key.System ? e.SystemKey : e.Key) == Key.Delete
-        && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt;
+        e.Key == Key.M
+        && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Shift | ModifierKeys.Alt))
+           == (ModifierKeys.Control | ModifierKeys.Shift);
 
     // Enter on a message: load body; Delete: delete all selected messages;
     // Shift+Up/Down: extend consecutive selection without opening the reading pane.

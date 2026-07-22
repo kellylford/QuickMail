@@ -261,7 +261,7 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+Shift+R` | Reply All |
 | `Ctrl+F` | Forward |
 | `Delete` | Delete |
-| `Alt+Delete` | Archive |
+| `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
 
@@ -281,9 +281,9 @@ Press **Delete**. Deleted messages go to Trash. Press `Ctrl+Shift+E` to empty th
 
 ### Archiving Messages
 
-Press **Alt+Delete** to archive the selected message — move it to your account's Archive folder instead of deleting it. Use this for mail you want out of your inbox but want to keep. **Delete** is unchanged and still moves messages to Trash.
+Press **Ctrl+Shift+M** to archive the selected message — move it to your account's Archive folder instead of deleting it. Use this for mail you want out of your inbox but want to keep. **Delete** is unchanged and still moves messages to Trash.
 
-Archiving works from every view. In the **From**, **To**, and **Conversations** groupings, archiving a group moves the whole group at once, the same way Delete does. Archive is also on the message context menu (Shift+F10) and in the command palette, and the **Alt+Delete** shortcut can be changed in **Settings → Keyboard**.
+The command is named **Move to Archive** — it is on the message menu and the message context menu (Shift+F10), and in the command palette. Archiving works from every view. In the **From**, **To**, and **Conversations** groupings, archiving a group moves the whole group at once, the same way Delete does. The **Ctrl+Shift+M** shortcut can be changed in **Settings → Keyboard**.
 
 **Each account archives to its own folder** — there is no single shared Archive folder. QuickMail uses the folder your provider marks as the Archive folder automatically, so most accounts need no setup. To choose a different folder, select a folder in the folder tree, open its context menu (Shift+F10), and choose **Set as Archive Folder**; choose **Use Automatic Archive Folder** to return to the automatic one.
 
@@ -993,7 +993,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+Shift+R` | Reply All |
 | `Ctrl+F` | Forward |
 | `Delete` | Delete |
-| `Alt+Delete` | Archive (move to the account's Archive folder) |
+| `Ctrl+Shift+M` | Move to Archive (the account's Archive folder) |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+A` | Select all messages (message list) |
 | `Alt+Enter` | Message properties |

@@ -212,9 +212,9 @@
             <MenuItem Header="_Delete"
                       AutomationProperties.Name="Delete"
                       Click="MessageContextMenu_Delete_Click"/>
-            <MenuItem Header="_Archive"
-                      InputGestureText="Alt+Del"
-                      AutomationProperties.Name="Archive"
+            <MenuItem Header="Move to _Archive"
+                      InputGestureText="Ctrl+Shift+M"
+                      AutomationProperties.Name="Move to Archive"
                       Click="MessageContextMenu_Archive_Click"/>
             <Separator/>
             <MenuItem Header="Flag_s"
@@ -309,9 +309,9 @@
                 <MenuItem Header="_Delete"
                           Command="{Binding DeleteMessageCommand}"
                           InputGestureText="Del"/>
-                <MenuItem Header="_Archive"
+                <MenuItem Header="Move to _Archive"
                           Command="{Binding ArchiveMessageCommand}"
-                          InputGestureText="Alt+Del"/>
+                          InputGestureText="Ctrl+Shift+M"/>
                 <MenuItem Header="Empty _Trash"
                           Command="{Binding EmptyTrashCommand}"
                           InputGestureText="Ctrl+Shift+E"/>

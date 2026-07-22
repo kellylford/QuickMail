@@ -1550,14 +1550,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             isAvailable: () => HasSelectedMessage));
 
         // Archive (issue #318) — moves the selection to the account's Archive folder instead of
-        // deleting. Default gesture Alt+Delete (Outlook's archive shortcut), a deliberate sibling of
-        // Delete that never collides with text editing. Like mail.delete this base registration is
-        // overridden in MainWindow with a focus-aware guard so the message list and group trees can
-        // archive the whole selection/group via their PreviewKeyDown handlers.
+        // deleting. Default gesture Ctrl+Shift+M. (Not Alt+Delete: that collides with the common
+        // screen-reader "announce cursor position" command.) Like mail.delete this base registration
+        // is overridden in MainWindow with a focus-aware guard so the message list and group trees
+        // can archive the whole selection/group via their PreviewKeyDown handlers.
         registry.Register(new CommandDefinition(
-            id: "mail.archive", category: "Mail", title: "Archive",
+            id: "mail.archive", category: "Mail", title: "Move to Archive",
             execute: () => ArchiveMessageCommand.Execute(null),
-            defaultKey: Key.Delete, defaultModifiers: ModifierKeys.Alt,
+            defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => HasSelectedMessage));
 
         registry.Register(new CommandDefinition(
@@ -4635,7 +4635,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (anyMissingArchive)
                 // Setup guidance stays a Result (not MessageAction): if archive silently did nothing,
                 // the user must hear why even if delete/archive chatter is turned off.
-                SetStatus("No Archive folder for this account. Right-click a folder and choose Set as Archive Folder.",
+                SetStatus("No Archive folder for this account. Press Shift+F10 on a folder and choose Set as Archive Folder.",
                     AnnouncementCategory.Result);
             return;
         }
