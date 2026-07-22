@@ -115,10 +115,14 @@ work the same as in the main window:</p>
 <td>Delete</td>
 </tr>
 <tr class="odd">
+<td><code>Ctrl+Shift+M</code></td>
+<td>Move to Archive</td>
+</tr>
+<tr class="even">
 <td><code>Ctrl+Q</code></td>
 <td>Mark as Read</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+G</code></td>
 <td>Grab Addresses</td>
 </tr>
@@ -137,6 +141,33 @@ read. Messages are also marked read automatically when you open them
 <p>Press <strong>Delete</strong>. Deleted messages go to Trash. Press
 <code>Ctrl+Shift+E</code> to empty the Trash for the selected
 account.</p>
+<h3 id="archiving-messages">Archiving Messages</h3>
+<p>Press <strong>Ctrl+Shift+M</strong> to archive the selected message —
+move it to your account’s Archive folder instead of deleting it. Use
+this for mail you want out of your inbox but want to keep.
+<strong>Delete</strong> is unchanged and still moves messages to
+Trash.</p>
+<p>The command is named <strong>Move to Archive</strong> — it is on the
+message menu and the message context menu (Shift+F10), and in the
+command palette. Archiving works from every view. In the
+<strong>From</strong>, <strong>To</strong>, and
+<strong>Conversations</strong> groupings, archiving a group moves the
+whole group at once, the same way Delete does. The
+<strong>Ctrl+Shift+M</strong> shortcut can be changed in
+<strong>Settings → Keyboard</strong>.</p>
+<p><strong>Each account archives to its own folder</strong> — there is
+no single shared Archive folder. QuickMail uses the folder your provider
+marks as the Archive folder automatically, so most accounts need no
+setup. To choose a different folder, select a folder in the folder tree,
+open its context menu (Shift+F10), and choose <strong>Set as Archive
+Folder</strong>; choose <strong>Use Automatic Archive Folder</strong> to
+return to the automatic one.</p>
+<p>Gmail has no dedicated Archive folder — its archive is <strong>All
+Mail</strong>. To archive Gmail messages, set <strong>[Gmail]/All
+Mail</strong> as that account’s Archive folder; archiving then removes
+the message from the inbox, which is exactly what archiving means in
+Gmail. If an account has no Archive folder and you have not set one,
+QuickMail tells you rather than doing nothing.</p>
 <h3 id="tabs">Tabs</h3>
 <p>QuickMail can open messages in tabs, keeping multiple messages
 visible at once.</p>
