@@ -53,10 +53,17 @@ above; the embedded view intercepts that navigation internally (no loopback list
 
 ## 3. API permissions (delegated, Microsoft Graph + Exchange Online)
 
-Only the **Graph** backend uses the per-resource **`.default` scope** at sign-in
+The **Graph mail** backend uses the per-resource **`.default` scope** at **mail sign-in**
 (`https://graph.microsoft.com/.default`), which asks for **exactly the delegated Graph permissions
-declared here** — nothing more, no runtime incremental consent. See
-`docs/planning/oauth-default-scope-pm-dev-spec.md`.
+declared here** — nothing more. See `docs/planning/oauth-default-scope-pm-dev-spec.md`.
+
+> **`.default` is not the whole story.** Contact sync and calendar sync run **separate,
+> incremental consent flows** (`RequestContactsConsentAsync` / `RequestCalendarConsentAsync`) that
+> request **explicit** scopes — `Contacts.Read` + `People.Read`, and `Calendars.ReadWrite` — for
+> **every** account type, work/school included. They do **not** go through `.default`. AAD matches
+> the **exact requested scope string**, so each of those scopes must be declared here in its own
+> right; a broader relative is not a substitute (a granted `Contacts.ReadWrite` does **not** satisfy
+> an explicit `Contacts.Read` request). Getting this wrong is what caused #323.
 
 The **IMAP/SMTP-over-OAuth** path requests **explicit** scopes (`IMAP.AccessAsUser.All` + `SMTP.Send`),
 **not** `.default` — `.default` on `outlook.office.com` is invalid for personal Microsoft accounts and
@@ -96,12 +103,20 @@ Plus `offline_access` (refresh tokens) — a standard OIDC scope that **MSAL add
 the public-client desktop flow, so refresh tokens still issue even though the code now requests only
 `.default` (verified live). It is not listed in `OAuthService.cs` and needs no separate portal entry.
 
-> Because the app requests `.default`, adding a permission is **entirely a registration action**:
-> declare it in this list **and** re-grant admin consent in each admin-consent tenant. There is no
-> code scope list to update and no runtime consent prompt — a permission the code needs but that is
-> not declared+granted here surfaces as a feature-level `403`, not a consent dialog (§6). Declaring
-> a new scope **before** GA (while no account has consented yet) means the first consent captures it
-> and no one is ever re-prompted.
+> For scopes reached through **`.default`** (the mail path), adding a permission is **entirely a
+> registration action**: declare it in this list **and** re-grant admin consent in each
+> admin-consent tenant. There is no code scope list to update, and a permission the code needs but
+> that is not declared+granted here surfaces as a feature-level `403`. Declaring a new scope
+> **before** GA (while no account has consented yet) means the first consent captures it and no one
+> is ever re-prompted.
+>
+> **The explicitly-requested scopes behave differently and fail differently.** For contacts and
+> calendar (see the callout above), an undeclared or un-consented scope surfaces as a **consent
+> prompt** — and in an admin-consent tenant, as a dead-end "needs admin approval" wall — **not** as
+> a `403`. Adding one is still a registration action, but it also requires the scope string to match
+> what `OAuthService` requests exactly, so check `GraphContactScopes` / `GraphCalendarScopes` when
+> declaring it. If a sync feature dead-ends at an approval wall, suspect a missing **exact** scope
+> here before suspecting the code.
 
 **Live registration reconciled (2026-07-14):** the actual registration (tenant
 `793722c2-ea04-49a3-8183-af139211b24f`, app object `c9ca6292-3799-4b87-8e88-48ea7d04e692`) was
