@@ -20,6 +20,19 @@ public partial class AccountManagerDialog : Window
             if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
                 AccessibilityHelper.Announce(this, vm.StatusText, category: AnnouncementCategory.Status);
         };
+        // #202: warn with a focus-grabbing dialog when a different identity than the one entered signs
+        // in (typically an admin approving consent) — the account stays bound to the entered user.
+        vm.SignInIdentityMismatch += WarnIdentityMismatch;
+    }
+
+    private void WarnIdentityMismatch(string entered, string actual)
+    {
+        MessageBox.Show(this,
+            $"You entered {entered}, but sign-in completed as {actual}.\n\n" +
+            "This usually happens when an administrator signs in to approve access for your " +
+            $"organization. The account was not changed. Please sign in again as {entered}.",
+            "Different account signed in",
+            MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void Window_Loaded(object sender, RoutedEventArgs e)

@@ -133,6 +133,28 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// </summary>
     public bool? IsPersonalMicrosoftAccount { get; private set; }
 
+    /// <summary>
+    /// Raised when interactive sign-in completed as a DIFFERENT identity than the one entered (#202) —
+    /// typically an administrator signing in to grant consent in an admin-approval tenant. The View
+    /// surfaces a focus-grabbing warning in response; the account is deliberately NOT rebound to the
+    /// signed-in identity. Args are (enteredUsername, actualSignedInUsername).
+    /// </summary>
+    public event Action<string, string>? SignInIdentityMismatch;
+
+    /// <summary>
+    /// True when a non-empty entered username differs (case-insensitively) from the username that
+    /// actually signed in — the wrong-identity case #202 guards against. Raises
+    /// <see cref="SignInIdentityMismatch"/> as a side effect so the View can warn. An empty entered
+    /// username (the user let the provider choose the account) is never treated as a mismatch.
+    /// </summary>
+    private bool IsSignInIdentityMismatch(string entered, string actual)
+    {
+        if (string.IsNullOrWhiteSpace(entered)) return false;
+        if (string.Equals(entered.Trim(), actual, StringComparison.OrdinalIgnoreCase)) return false;
+        SignInIdentityMismatch?.Invoke(entered.Trim(), actual);
+        return true;
+    }
+
     [RelayCommand]
     private async Task SignInMicrosoftAsync()
     {
@@ -140,11 +162,26 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         StatusText = "Opening browser for Microsoft sign-in…";
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+            // #203: no app-imposed timeout. Sign-in renders in the embedded window the user can close
+            // to cancel (MSAL treats the close as a cancellation), so there is no reason to force-cancel
+            // after a few minutes — admin-consent tenants and screen-reader navigation legitimately take
+            // longer than the old 3-minute cutoff, which tore the window down mid-sign-in.
+            var entered = Username;
             var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Microsoft, BackendKind = BackendKind };
             var result = SyncContacts
-                ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, cts.Token)
-                : await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
+                ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, CancellationToken.None)
+                : await OAuthService.SignInInteractiveAsync(tempAccount, CancellationToken.None);
+
+            // #202: guard against a DIFFERENT identity completing sign-in than the one entered —
+            // typically an admin signing in to approve consent in an admin-approval tenant. Adopting
+            // that identity silently rebinds the account to the admin's mailbox (often not REST-enabled)
+            // and loses the intended user. Keep the entered username and warn instead of overwriting.
+            if (IsSignInIdentityMismatch(entered, result.Username))
+            {
+                StatusText = $"Signed in as {result.Username}, not {entered}. Account unchanged — please sign in as {entered}.";
+                return;
+            }
+
             Username = result.Username;
             IsPersonalMicrosoftAccount = result.IsPersonalMicrosoftAccount;
             StatusText = $"Signed in as {result.Username}";
@@ -166,12 +203,22 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         StatusText = "Opening browser for Google sign-in…";
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+            // #203: no app-imposed timeout — the user cancels by closing the sign-in window.
+            var entered = Username;
             var tempAccount = new AccountModel { Username = Username, AuthType = AuthType.OAuth2Google, BackendKind = BackendKind.ImapSmtp };
             // When contact sync is requested, Google grants mail + contacts in this single consent.
             var result = SyncContacts
-                ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, cts.Token)
-                : await OAuthService.SignInInteractiveAsync(tempAccount, cts.Token);
+                ? await OAuthService.SignInInteractiveWithContactsAsync(tempAccount, CancellationToken.None)
+                : await OAuthService.SignInInteractiveAsync(tempAccount, CancellationToken.None);
+
+            // #202: same wrong-identity guard as the Microsoft path — never silently adopt a different
+            // account than the one entered.
+            if (IsSignInIdentityMismatch(entered, result.Username))
+            {
+                StatusText = $"Signed in as {result.Username}, not {entered}. Account unchanged — please sign in as {entered}.";
+                return;
+            }
+
             Username = result.Username;
             StatusText = $"Signed in as {result.Username}";
         }
