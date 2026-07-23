@@ -260,8 +260,13 @@ public class ConfigFeatureGateTests
     }
 
     [Fact]
-    public void Default_GraphBackendOff()
-        => Assert.False(new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>())
+    public void Default_GraphBackendOn() // on by default from v0.8.35
+        => Assert.True(new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>())
+            .IsEnabled(FeatureFlag.GraphBackend));
+
+    [Fact]
+    public void Config_DisablesFlag() // now the meaningful override: turn the default off
+        => Assert.False(new ConfigFeatureGate(ConfigWith("GraphBackend", "false"), Array.Empty<string>())
             .IsEnabled(FeatureFlag.GraphBackend));
 
     [Fact]
