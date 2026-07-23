@@ -16,9 +16,16 @@ name: Build Installer (on demand)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read    # checkout
+  id-token: write   # OIDC token azure/login exchanges for Azure creds (signing)
+
 jobs:
   build-installer:
     runs-on: windows-latest
+    # Same azure-signing environment the release workflow uses, so the OIDC token
+    # subject matches the Azure federated credential. Unprotected; not a gate.
+    environment: azure-signing
 
     steps:
       - uses: actions/checkout@v7
@@ -83,15 +90,35 @@ jobs:
       # behaves exactly like a shipped one (wizard pages, per-user install, WebView2
       # on demand). Only difference: no `vpk download github` beforehand, so this is a
       # full package with no delta.
+      # --- Code signing (Azure Artifact Signing via GitHub OIDC) --------------
+      - name: Azure login (code signing)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Write signing metadata
+        shell: pwsh
+        run: |
+          $json = @{
+            Endpoint               = 'https://eus.codesigning.azure.net/'
+            CodeSigningAccountName = 'kellylford'
+            CertificateProfileName = 'kellyford-public'
+          } | ConvertTo-Json
+          [System.IO.File]::WriteAllText("$env:GITHUB_WORKSPACE\signing-metadata.json", $json)
+
       - name: Pack Velopack installer
         shell: pwsh
         run: |
           $version = '${{ steps.version.outputs.version }}'
           Copy-Item LICENSE installer/velopack/license.txt
+          # --azureTrustedSignFile signs the app binaries, Velopack Update/Setup, and the MSI.
           vpk pack --packId QuickMail --packVersion $version --packDir publish `
             --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
             --shortcuts StartMenuRoot --outputDir installer/Output/Releases `
             --framework webview2 `
+            --azureTrustedSignFile "$env:GITHUB_WORKSPACE\signing-metadata.json" `
             --msi --instLocation PerUser `
             --instWelcome installer/velopack/welcome.txt `
             --instLicense installer/velopack/license.txt `
@@ -99,6 +126,19 @@ jobs:
           # vpk always emits QuickMail-win.msi with no version in the name; rename it so
           # the downloaded installer is identifiable in your Downloads folder.
           Rename-Item installer/Output/Releases/QuickMail-win.msi "QuickMail-$version-win.msi"
+
+      # Sign the standalone portable exe (vpk signed the copies inside the package).
+      - name: Sign portable QuickMail.exe
+        uses: azure/artifact-signing-action@v2.0.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: kellylford
+          certificate-profile-name: kellyford-public
+          files-folder: ${{ github.workspace }}\publish
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7
