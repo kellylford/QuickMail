@@ -19,6 +19,8 @@ QuickMail now connects to **Microsoft 365 / Exchange Online** and **Outlook.com*
 
 Work or school (Microsoft 365) accounts frequently sit in organizations that require an administrator to approve a new app before anyone can sign in. If your sign-in stops at a **"needs admin approval"** message, that is expected — QuickMail needs a one-time approval from your organization's IT administrator. We've added a full **[For Microsoft 365 Administrators and Tenant Owners](https://kellylford.github.io/QuickMail/)** section to the User Guide explaining exactly what an admin needs to do (it takes a couple of minutes). Personal Outlook.com accounts are not affected.
 
+**Important for work and school accounts:** turning on Exchange support in QuickMail is only part of the process. Until your administrator or tenant owner completes the steps in the [administrator guide](https://kellylford.github.io/QuickMail/), QuickMail will not be able to connect to your work or school account. If you plan to use a Microsoft 365 account, share that guide with whoever manages your organization's Microsoft 365 tenant first.
+
 Prefer IMAP? You still can — choose **Standard IMAP/SMTP** and **Microsoft OAuth** as the authentication method. The new Microsoft 365 / Outlook.com option is simply the recommended path.
 
 ## New: Accept, Tentative, and Decline meeting invitations in Microsoft 365 mail
