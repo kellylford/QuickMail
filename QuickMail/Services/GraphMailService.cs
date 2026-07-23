@@ -208,8 +208,45 @@ public class GraphMailService : IMailService
                    "&$expand=attachments($select=id,name,contentType,size,isInline)";
         var m = await _client.GetAsync<GraphMessage>(Account(accountId), path, ct)
             ?? throw new InvalidOperationException($"Graph message {messageId} not found.");
-        return MapToDetail(m, accountId, folderName);
+        var detail = MapToDetail(m, accountId, folderName);
+        await TryAttachCalendarInviteAsync(accountId, messageId, m, detail, ct);
+        return detail;
     }
+
+    // Graph's message JSON never surfaces the text/calendar MIME part, so a meeting request arrives
+    // with no invite to drive the reading-pane Accept/Decline card. For those messages only, fetch
+    // the raw RFC 822 MIME ($value) and extract the ICS — reusing IcsModel and the existing IMAP RSVP
+    // flow (MainViewModel.RespondToCalendarInviteAsync). CalendarIcs is set alongside CalendarInvite so
+    // the invite survives caching (see the ImapMailService note; same prefetch-vs-open race). Issue #332.
+    private async Task TryAttachCalendarInviteAsync(
+        Guid accountId, string messageId, GraphMessage m, MailMessageDetail detail, CancellationToken ct)
+    {
+        if (!IsMeetingMessage(m.ODataType)) return;
+        try
+        {
+            var mime = await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", ct);
+            using var stream = new MemoryStream(mime);
+            var message = await MimeMessage.LoadAsync(stream, ct);
+            var calendar = message.BodyParts.OfType<TextPart>()
+                .FirstOrDefault(p => p.ContentType.IsMimeType("text", "calendar"));
+            if (calendar != null && !string.IsNullOrWhiteSpace(calendar.Text))
+            {
+                detail.CalendarIcs = calendar.Text;
+                detail.CalendarInvite = IcsModel.Parse(calendar.Text);
+            }
+        }
+        catch (Exception ex)
+        {
+            // A missing/garbled invite must never break opening the message — fall through to the
+            // normal (invite-less) detail, exactly as the IMAP path does on a parse failure.
+            LogService.Log($"GraphMailService: failed to fetch/parse calendar invite for {messageId}: {ex.Message}");
+        }
+    }
+
+    /// <summary>True when the message instance is a meeting-related derived type (invite, response,
+    /// or cancellation), signalled by Graph's <c>@odata.type</c> annotation.</summary>
+    private static bool IsMeetingMessage(string? odataType)
+        => odataType != null && odataType.Contains("eventMessage", StringComparison.OrdinalIgnoreCase);
 
     // Graph GET does not set the Seen flag, so prefetch is identical to a normal detail fetch.
     public Task<MailMessageDetail> PrefetchMessageDetailAsync(
