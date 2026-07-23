@@ -35,6 +35,14 @@ public class ConfigModel
     public string Sort { get; set; } = "dateDesc";
 
     /// <summary>
+    /// The folder QuickMail opens at startup, as an INI-safe token produced by MainViewModel's
+    /// startup-folder encoding ("#&lt;key&gt;" for a global virtual folder, "@&lt;accountId&gt;|&lt;fullName&gt;"
+    /// for a real folder). Empty = the default All Mail view. Set from the folder tree context menu,
+    /// not by hand. Issue #328.
+    /// </summary>
+    public string StartupFolder { get; set; } = string.Empty;
+
+    /// <summary>
     /// How many days of mail to sync. 0 = sync all mail (no date filter).
     /// Supported values: 7, 30, 180, 365, or 0 (all).
     /// </summary>
