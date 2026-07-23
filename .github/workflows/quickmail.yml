@@ -15,6 +15,13 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    # Runs in the `azure-signing` environment so the OIDC token's subject is
+    # repo:kellylford/QuickMail:environment:azure-signing, which the Azure
+    # federated credential trusts (wildcard tag subjects aren't supported in this
+    # tenant). This is ONLY a claim-matching mechanism, not a deployment gate — do
+    # not add protection rules to this environment or every build, including PRs,
+    # will require approval. Signing still only runs on v* tags (below).
+    environment: azure-signing
 
     steps:
       - uses: actions/checkout@v7
