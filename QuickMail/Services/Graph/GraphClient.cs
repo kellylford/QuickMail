@@ -233,8 +233,12 @@ public sealed class GraphClient : IDisposable
     {
         if (resp.IsSuccessStatusCode) return;
         var body = await resp.Content.ReadAsStringAsync(ct);
+        // Carry the status code on the exception (not just in the message text) so callers can
+        // branch on it without string-parsing — e.g. server rules mapping 403 to a typed
+        // consent-required exception. The message is unchanged.
         throw new HttpRequestException(
-            $"Graph request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}");
+            $"Graph request failed ({(int)resp.StatusCode} {resp.StatusCode}): {Truncate(body, 500)}",
+            inner: null, statusCode: resp.StatusCode);
     }
 
     private static string Truncate(string s, int max) => s.Length <= max ? s : s[..max];
