@@ -211,10 +211,6 @@ public class ConfigService : IConfigService
                             _               => "messages",
                         };
                         break;
-                    case "startupfolder":
-                        // Opaque INI-safe token (see MainViewModel startup-folder encoding); stored verbatim.
-                        config.StartupFolder = value;
-                        break;
                     case "syncdays":
                         if (int.TryParse(value, out var sd)) config.SyncDays = Math.Max(0, sd);
                         break;
@@ -387,12 +383,6 @@ public class ConfigService : IConfigService
         sb.AppendLine($"ViewMode = {config.ViewMode}");
         sb.AppendLine("# How to display the message list.");
         sb.AppendLine("# Values: messages (flat list), conversations (grouped by subject), from (grouped by sender).");
-        sb.AppendLine();
-
-        sb.AppendLine($"StartupFolder = {config.StartupFolder}");
-        sb.AppendLine("# The folder to open at startup. Empty = All Mail (the default).");
-        sb.AppendLine("# Set this from the folder tree context menu (\"Set as Startup Folder\") rather than by hand;");
-        sb.AppendLine("# it holds an internal token identifying the folder.");
         sb.AppendLine();
 
         sb.AppendLine($"SyncDays = {config.SyncDays}");
