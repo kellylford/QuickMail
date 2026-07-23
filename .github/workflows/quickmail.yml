@@ -8,6 +8,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: write   # create the GitHub release
+  id-token: write   # OIDC token azure/login exchanges for Azure creds (signing)
+
 jobs:
   build:
     runs-on: windows-latest
@@ -151,6 +155,31 @@ jobs:
         shell: pwsh
         run: vpk download github --repoUrl https://github.com/kellylford/QuickMail --token ${{ secrets.GITHUB_TOKEN }} --outputDir installer/Output/Releases
 
+      # --- Code signing (Azure Artifact Signing via GitHub OIDC) --------------
+      # azure/login exchanges the workflow OIDC token for Azure creds; Velopack's
+      # bundled signtool then authenticates through that `az` session
+      # (DefaultAzureCredential). No signing cert or long-lived secret is stored.
+      - name: Azure login (code signing)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # UTF-8 without BOM is required by Velopack's --azureTrustedSignFile reader;
+      # [IO.File]::WriteAllText writes exactly that.
+      - name: Write signing metadata
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $json = @{
+            Endpoint               = 'https://eus.codesigning.azure.net/'
+            CodeSigningAccountName = 'kellylford'
+            CertificateProfileName = 'kellyford-public'
+          } | ConvertTo-Json
+          [System.IO.File]::WriteAllText("$env:GITHUB_WORKSPACE\signing-metadata.json", $json)
+
       # --shortcuts StartMenuRoot: Start Menu entry only, no desktop shortcut
       # (matches the previous installer's default).
       # --msi builds the wizard installer (welcome, license acceptance, conclusion pages)
@@ -164,10 +193,13 @@ jobs:
         run: |
           $version = '${{ github.ref_name }}'.TrimStart('v')
           Copy-Item LICENSE installer/velopack/license.txt
+          # --azureTrustedSignFile signs the packaged app binaries, Velopack's
+          # Update.exe / Setup bootstrapper, and the MSI as they are produced.
           vpk pack --packId QuickMail --packVersion $version --packDir publish `
             --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
             --shortcuts StartMenuRoot --outputDir installer/Output/Releases `
             --framework webview2 `
+            --azureTrustedSignFile "$env:GITHUB_WORKSPACE\signing-metadata.json" `
             --msi --instLocation PerUser `
             --instWelcome installer/velopack/welcome.txt `
             --instLicense installer/velopack/license.txt `
@@ -182,6 +214,22 @@ jobs:
           # the folder and is uploaded with the rest: vpk pack bakes an entry for every
           # package it saw into RELEASES/releases.win.json, so deleting the file would
           # publish feed metadata referencing an asset the release does not carry.
+
+      # Sign the standalone portable exe that ships as its own release asset.
+      # Velopack signed the copies inside the package/MSI during pack, but not
+      # this pre-pack file, so it is signed after pack to avoid double-signing.
+      - name: Sign portable QuickMail.exe
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: azure/artifact-signing-action@v2.0.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: kellylford
+          certificate-profile-name: kellyford-public
+          files-folder: ${{ github.workspace }}\publish
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
 
       # Create a GitHub Release when a version tag is pushed (e.g. v1.2.0)
       # Release notes are read from docs/release-notes-<tag>.md if present,
