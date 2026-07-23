@@ -313,6 +313,7 @@ public partial class MainWindow : Window
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.AnnouncementRequested += (_, args) =>
             AccessibilityHelper.Announce(this, args.Text, interrupt: true, category: args.Category);
+        vm.OpenInviteResponded += OnOpenInviteResponded;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
         vm.ManageViewsRequested += (_, _) => OpenViewManager(createMode: false);
@@ -3205,6 +3206,20 @@ public partial class MainWindow : Window
             _vm.DeclineInviteCommand.Execute(null);
     }
 
+    // After a meeting response is sent for the open invite, fill the card's aria-live status region
+    // (updating an in-document live region is announced reliably even though focus is in the WebView2 —
+    // the host-window notification alone was getting dropped, #329) and leave a durable confirmation.
+    private async void OnOpenInviteResponded(string actionLabel, string eventTitle)
+    {
+        if (!_webViewReady || MessageBody.CoreWebView2 is null) return;
+        var confirmation = $"You {actionLabel} this meeting. Your reply was sent to the organizer.";
+        // JsonSerializer produces a safe, quoted JS string literal; textContent avoids any HTML injection.
+        var js = "(function(){var s=document.getElementById('qm-invite-status');" +
+                 "if(s){s.textContent=" + System.Text.Json.JsonSerializer.Serialize(confirmation) + ";}})();";
+        try { await MessageBody.CoreWebView2.ExecuteScriptAsync(js); }
+        catch (Exception ex) { LogService.Log("OnOpenInviteResponded", ex); }
+    }
+
     // Message content is untrusted; only allow-listed schemes (http/https/mailto)
     // may leave the app via ShellExecute. See ExternalUriPolicy.
     private static void OpenExternal(string uri) =>
@@ -5280,6 +5295,29 @@ public partial class MainWindow : Window
         _vm.SetArchiveFolder(folder.AccountId, null);
         AccessibilityHelper.Announce(this,
             "This account will use its automatic Archive folder.",
+            category: AnnouncementCategory.Result);
+    }
+
+    // ── Startup folder assignment (issue #328) ────────────────────────────────
+    // Global (not per-account): the chosen folder is opened at the next launch. Real folders and the
+    // global "All …" virtual folders are valid targets; account header rows are not.
+    private void FolderContextMenu_SetStartup_Click(object sender, RoutedEventArgs e)
+    {
+        var node = GetContextMenuFolderNode(sender);
+        if (node is null || node.IsHeader || node.Folder is not { } folder ||
+            folder.FullName.Length == 0)
+            return;
+        _vm.SetStartupFolder(folder);
+        AccessibilityHelper.Announce(this,
+            $"{folder.DisplayName} set as the startup folder.",
+            category: AnnouncementCategory.Result);
+    }
+
+    private void FolderContextMenu_ClearStartup_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.ClearStartupFolder();
+        AccessibilityHelper.Announce(this,
+            "Startup folder cleared. QuickMail will open to All Mail.",
             category: AnnouncementCategory.Result);
     }
 

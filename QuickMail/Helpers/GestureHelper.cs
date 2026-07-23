@@ -13,6 +13,18 @@ public static class GestureHelper
     private static readonly Dictionary<Key, string> _keyToName = BuildKeyToName();
     private static readonly Dictionary<string, Key> _nameToKey = BuildNameToKey();
 
+    /// <summary>
+    /// True for the modifier-less keys that may be bound as a bare shortcut: Delete, Backspace,
+    /// Insert, and F1–F24. Ordinary text keys (letters/digits/space) and the dialog-navigation
+    /// keys (Enter/Escape/Tab) are deliberately excluded, so capturing a shortcut can never turn
+    /// normal typing into a global hotkey. Both the capture dialog and <see cref="TryParse"/> use
+    /// this, so a bare binding round-trips through config. Bare Delete already ships as a default
+    /// (e.g. the delete-message command), which is why the capture UI must accept it too. See #330.
+    /// </summary>
+    public static bool IsBindableBareKey(Key key) =>
+        key is Key.Delete or Key.Back or Key.Insert
+            || (key >= Key.F1 && key <= Key.F24);
+
     public static string Format(Key key, ModifierKeys modifiers)
     {
         if (key == Key.None) return string.Empty;
@@ -43,7 +55,22 @@ public static class GestureHelper
         if (string.IsNullOrWhiteSpace(gesture)) return false;
 
         var parts = gesture.Split('+');
-        if (parts.Length < 2) return false;
+
+        // Bare single-key gesture (no modifier) — accepted only for the allowlisted keys, so a
+        // custom bare Delete/Backspace/Insert/F-key round-trips through config. See #330.
+        if (parts.Length == 1)
+        {
+            var bare = parts[0].Trim();
+            if ((_nameToKey.TryGetValue(bare, out key)
+                    || (Enum.TryParse(bare, ignoreCase: true, out key) && key != Key.None))
+                && IsBindableBareKey(key))
+            {
+                modifiers = ModifierKeys.None;
+                return true;
+            }
+            key = Key.None;
+            return false;
+        }
 
         for (int i = 0; i < parts.Length - 1; i++)
         {

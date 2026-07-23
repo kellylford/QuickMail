@@ -251,6 +251,13 @@
                       AutomationProperties.Name="Use Automatic Archive Folder"
                       Click="FolderContextMenu_ClearArchive_Click"/>
             <Separator/>
+            <MenuItem Header="Set as _Startup Folder"
+                      AutomationProperties.Name="Set as Startup Folder"
+                      Click="FolderContextMenu_SetStartup_Click"/>
+            <MenuItem Header="Clear Startup _Folder"
+                      AutomationProperties.Name="Clear Startup Folder"
+                      Click="FolderContextMenu_ClearStartup_Click"/>
+            <Separator/>
             <MenuItem Header="_Delete Folder"
                       AutomationProperties.Name="Delete Folder"
                       Click="FolderContextMenu_DeleteFolder_Click"/>
