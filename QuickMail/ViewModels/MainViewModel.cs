@@ -4616,7 +4616,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _startupFolderApplied;
 
     private static readonly MailFolderModel[] StartupVirtualFolders =
-        { AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder, AllTrashFolder };
+        { AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder, AllTrashFolder, AllFlaggedFolder };
 
     internal static string EncodeStartupFolderToken(MailFolderModel folder) =>
         folder.FullName.Length > 0 && folder.FullName[0] == '\0'
@@ -4662,9 +4662,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         cfg.StartupFolder = string.Empty;
         _configService.Save(cfg);
     }
-
-    /// <summary>True when a startup folder is configured (drives the "Clear" menu item's enabled state).</summary>
-    public bool HasStartupFolder => !string.IsNullOrEmpty(_configService.Load().StartupFolder);
 
     // Applies the configured startup folder exactly once per launch, right after the first post-connect
     // folder rebuild. Falls back to All Mail (no-op) if nothing is configured, the folder no longer
