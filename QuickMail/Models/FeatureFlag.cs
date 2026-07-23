@@ -8,7 +8,8 @@ public enum FeatureFlag
 {
     /// <summary>
     /// Enables Microsoft Graph as a mail-backend option in the Add Account dialog.
-    /// Default: false. Flip the default to true via a future joint-decision PR.
+    /// Default: true (on by default from v0.8.35). Disable in config.ini with
+    /// GraphBackend=false under [features], or at launch with --no-feature GraphBackend.
     /// </summary>
     GraphBackend,
 

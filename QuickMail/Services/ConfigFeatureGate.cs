@@ -15,7 +15,7 @@ public class ConfigFeatureGate : IFeatureGate
     /// <summary>Built-in defaults. Every flag MUST appear here.</summary>
     private static readonly Dictionary<FeatureFlag, bool> Defaults = new Dictionary<FeatureFlag, bool>
     {
-        [FeatureFlag.GraphBackend] = false,
+        [FeatureFlag.GraphBackend] = true,
         [FeatureFlag.GoogleAuth]   = true,
     };
 

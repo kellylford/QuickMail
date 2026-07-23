@@ -9,6 +9,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 - [System Requirements](#system-requirements)
 - [Installing and Updating QuickMail](#installing-and-updating-quickmail)
 - [Adding Accounts](#adding-accounts)
+- [For Exchange / Microsoft 365 Administrators](#for-exchange--microsoft-365-administrators)
 - [Main Window](#main-window)
 - [Reading Mail](#reading-mail)
 - [Composing Mail](#composing-mail)
@@ -32,7 +33,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Al
 
 - Windows 10 (1703 or later) or Windows 11
 - Microsoft Edge WebView2 Runtime (the installer adds this automatically when missing; included with Windows 11 and current Windows 10)
-- An IMAP/SMTP email account (Gmail, Outlook.com, Microsoft 365, or any standard IMAP provider)
+- An email account. QuickMail supports Microsoft 365 / Exchange Online and Outlook.com (through Microsoft 365 directly), Gmail, iCloud, and any standard IMAP/SMTP provider. Work or school Microsoft 365 accounts may first need approval from an organization administrator — see [For Exchange / Microsoft 365 Administrators](#for-exchange--microsoft-365-administrators).
 
 ---
 
@@ -105,13 +106,23 @@ Choose **Standard IMAP/SMTP** as the account type and fill in:
 
 Press **Verify** to test the connection before saving.
 
-### Microsoft Account (Outlook.com / Microsoft 365)
+### Microsoft 365 / Outlook.com
 
-Choose **Microsoft OAuth**. The server fields fill in automatically. Activate **Sign in with Microsoft** — your browser opens to a Microsoft sign-in page. Sign in and grant QuickMail permission, then close the browser window. Back in QuickMail, activate **Add Account**. Personal Microsoft accounts (Outlook.com, Hotmail, Live.com) and work or school accounts both sign in this way.
+QuickMail connects to Microsoft mailboxes — work or school **Microsoft 365 / Exchange Online** accounts and personal **Outlook.com / Hotmail / Live.com** accounts — through Microsoft 365 directly (the Microsoft Graph service), so there are no server names or ports to enter.
+
+1. In the Add Account dialog, set **Account type** to **Microsoft 365 / Outlook.com**. The IMAP/SMTP server fields disappear — a Microsoft account needs none.
+2. Activate **Sign in with Microsoft**. A Microsoft sign-in window opens inside QuickMail. Sign in and approve the permissions QuickMail requests; the window closes itself and returns you to the dialog.
+3. Activate **Add Account**.
+
+Sign in as **the same address you typed** into the account. If the account you sign in with does not match, QuickMail warns you and keeps the address you entered rather than silently switching to a different mailbox — this matters most in organizations where an administrator signs in at the approval screen.
+
+> **Work or school accounts may need your administrator's approval first.** Many organizations require an administrator to approve a new app for the whole organization before anyone can sign in. If your sign-in ends at a **"needs admin approval"** message with no way to continue, QuickMail is working correctly — your organization has not yet approved it. Send your IT administrator to [For Exchange / Microsoft 365 Administrators](#for-exchange--microsoft-365-administrators); once they approve QuickMail, sign-in works normally. Personal Outlook.com accounts are not affected and need no approval.
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
 To show this account's calendar in the Calendar view, check **Sync calendar from this account**. See the [Calendar](#calendar) section for details.
+
+**Prefer IMAP instead?** You can still connect a Microsoft account over IMAP/SMTP: choose **Standard IMAP/SMTP** as the account type and select **Microsoft OAuth** as the authentication method — the Outlook server settings fill in automatically. The Microsoft 365 / Outlook.com option above is the recommended choice for most people.
 
 ### Gmail (Google Account)
 
@@ -136,6 +147,70 @@ To bring in your iCloud data, check **Sync contacts from this account** and/or *
 ### Managing Accounts
 
 Open **Settings → Accounts** to rename, edit, or remove an account. Removing an account does not delete mail from the server. For OAuth accounts (Microsoft or Google), removing the account also clears the stored credential from Windows Credential Manager. Managing an account is also where you turn **Sync contacts from this account** (Microsoft/Google) and **Sync calendar from this account** (Microsoft, Google, or iCloud) on or off after the fact; each change applies immediately.
+
+---
+
+## For Exchange / Microsoft 365 Administrators
+
+This section is for the **IT administrator or tenant owner** of a Microsoft 365 organization whose users want to use QuickMail. **Personal Outlook.com / Hotmail / Live.com users do not need any of this** — it applies only to work or school (Microsoft 365 / Exchange Online) accounts.
+
+**The short version:** QuickMail is a Microsoft-registered desktop application that signs each user in to their own mailbox with their own credentials. Many organizations require an administrator to approve a new application once, for the whole organization, before users can sign in. Until you do, your users will hit a **"needs admin approval"** wall and cannot proceed. Granting approval is a one-time action and takes a couple of minutes.
+
+### What QuickMail is, in Microsoft terms
+
+- QuickMail is a **public client / desktop application** registered in Microsoft Entra ID (Azure AD). Your users authenticate against that single registration; there is nothing to deploy into your tenant.
+- It requests **delegated permissions only**. That means QuickMail acts **only as the signed-in user**, entirely within **that user's own mailbox**, and only while they are using the app. It holds **no application permissions** — it cannot run in the background, and it cannot read or send mail for any user who has not personally signed in.
+- Sign-in uses the modern authentication flow (OAuth 2.0 / MSAL). Passwords are never seen or stored by QuickMail; tokens live in Windows Credential Manager on the user's own PC and honour your Conditional Access and MFA policies.
+
+### App registration details
+
+| | |
+| --- | --- |
+| **Application (client) ID** | `bcdc84f1-d37c-4581-b14a-a01f7b3a1312` |
+| **Name in Enterprise applications** | QuickMail |
+| **Publisher** | Kelly Ford (the QuickMail project) |
+| **Supported accounts** | Work/school and personal Microsoft accounts |
+
+### Permissions QuickMail requests
+
+All are **delegated** (act as the signed-in user, in their own mailbox):
+
+| Permission | Why |
+| --- | --- |
+| `Mail.ReadWrite`, `Mail.Send` | Read, organize, delete, draft, and send the user's mail |
+| `Calendars.ReadWrite` | Read and update the user's own calendar (only if they enable calendar sync) |
+| `Contacts.Read`, `People.Read` | Read the user's own contacts and frequent correspondents (only if they enable contact sync) |
+| `MailboxSettings.ReadWrite` | The user's own mailbox settings, for a planned server-side rules feature |
+| `User.Read`, `User.ReadBasic.All` | Resolve the signed-in user and display recipient names |
+
+If users connect over IMAP/SMTP instead of the default Microsoft 365 option, two Exchange Online scopes (`IMAP.AccessAsUser.All`, `SMTP.Send`) are used as well.
+
+### How to approve QuickMail for your organization
+
+Any of these roles can grant approval — **Global Administrator is not required** (QuickMail has no application permissions): **Cloud Application Administrator**, **Application Administrator**, or **AI Administrator**.
+
+**Option A — Entra admin center.** Sign in at [entra.microsoft.com](https://entra.microsoft.com) → **Entra ID → Enterprise applications → QuickMail → Security → Permissions → "Grant admin consent for &lt;your organization&gt;"**, review the list, and approve. (If QuickMail is not yet listed under Enterprise applications, use Option B — the first admin consent creates it.)
+
+**Option B — one-click consent URL.** Sign in as one of the admin roles above and open:
+
+```
+https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312
+```
+
+Replace `organizations` with your tenant ID or a verified domain to target a specific tenant. Review the permission list Microsoft shows and approve. This grants consent tenant-wide in one step.
+
+After approval, your users sign in normally with no further prompts.
+
+### If you would rather not grant blanket approval
+
+- **Let users request it.** Enable the **admin consent workflow** (Entra ID → Enterprise applications → Consent and permissions → Admin consent settings). The dead-end prompt becomes a **"Request approval"** flow routed to reviewers you designate, so you approve per request instead of up front.
+- **You stay in control.** Because QuickMail uses delegated permissions and standard modern auth, your existing **Conditional Access**, MFA, device-compliance, and app-consent policies all apply. You can restrict or block QuickMail like any other enterprise application at any time.
+
+### Troubleshooting
+
+- **Users see "needs admin approval" with no continue button.** Your tenant requires admin consent and QuickMail has not been approved yet. Follow the steps above. This is expected until approval is granted.
+- **A user signed in successfully but delete or move fails with an error.** Their token predates a permission grant. Have them remove and re-add the account (or sign in again) to pick up a fresh token.
+- **You approved QuickMail but a newly added feature still prompts.** Admin consent covers the permissions declared at the moment it was granted. Re-grant consent (Option A or B) to pick up any newly requested permission.
 
 ---
 
