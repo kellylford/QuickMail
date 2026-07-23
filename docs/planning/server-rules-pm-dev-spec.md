@@ -35,7 +35,7 @@
 
 Microsoft 365 mailboxes support **server-side Inbox rules** — the rules that run on Microsoft's servers 24/7, even when QuickMail (or any client) is closed. Today QuickMail can neither show nor manage them; a user must leave for Outlook or the web to touch them.
 
-This feature adds **server-rule management to the existing Rules Manager**: the same accessible, keyboard-first window gains a clearly-labeled section that lists a Graph account's server rules and lets the user create, edit, enable/disable, reorder, and delete them via the Graph `messageRule` API. Server rules are **Graph-only** and, although they now share a window with client rules, remain **visibly and unmistakably distinct** from them (Section 3).
+This feature makes the Rules Manager **per-account** and adds server rules to it. Selecting an account shows **one list of that account's rules**: for a Microsoft 365 (Graph) account those are **server rules**, created, edited, reordered, enabled/disabled, and deleted via the Graph `messageRule` API; for any other account they are QuickMail's existing client rules. Every row states **where the rule runs**, so the two can never be confused, and a rule now belongs to exactly **one** account — the "All accounts" scope is retired (Section 3).
 
 The single largest design decision is **permission consent** (Section 4): managing rules requires upgrading one OAuth scope, which forces a re-consent for existing Graph accounts.
 
@@ -60,21 +60,34 @@ QuickMail already has a **client-side** rules feature (`RuleService`, `RulesMana
 | Run when app is closed | No | Yes |
 | Code surface | `RuleService` | New `IServerRuleService` / `GraphServerRuleService` |
 
-**Decision (revised 2026-07-23 — supersedes the earlier "separate window" decision):** Present both kinds in **one unified Rules Manager window**, split into two clearly-labeled tabs:
+**Decision (2026-07-23 — supersedes both the earlier "separate window" and the interim "two tabs" designs):** The Rules Manager becomes **per-account**, showing **one list of rules for the selected account**. Where a rule runs is a **property of the rule**, shown per row — not a separate window, and not a separate tab.
 
-- **"In QuickMail"** — the existing client rules (all accounts).
-- **"On the server"** — server rules (Graph accounts only; the tab is hidden when no Graph account exists).
+### 3.1 The model
 
-**Why this changed.** The original decision was a separate "Server Rules" window, on the grounds that blurring the two would be a correctness and trust problem. That risk is real but it is a **labeling** problem, not a **windowing** problem: users think "I want to manage my rules" and should find them all behind one door. Two windows named "Manage Rules" and "Manage Server Rules" is itself a discoverability trap.
+1. **Rules belong to exactly one account.** The "All accounts" scope is **removed** (see §3.2 for migration).
+2. **Selecting an account shows that account's rules, in one list.**
+3. **Placement is server-first.** For a Graph account a new rule is created as a **server rule**; for any other account it's a **client rule**. A Graph rule falls back to client only when the chosen action has no server equivalent (today that's just **Mark as unread**).
+4. **Every row states where it runs.** Rows are marked "runs on the server" / "runs in QuickMail", and the marker is part of the row's announced text.
 
-**How the trust concern is still satisfied.** The distinction must be carried by explicit, always-visible labeling rather than by window separation:
+### 3.2 Why this beats tabs
 
-1. Two **separate tabs** — a rule can never appear in both, and the user is always in exactly one.
-2. Tab labels state *where the rule runs*, not a technology name ("In QuickMail" / "On the server") — never a single merged list.
-3. Each tab shows a one-line explanation on entry, delivered as a `Hint` announcement (Section 14): *"These rules run in QuickMail while it's open."* / *"These rules run on Microsoft's servers, even when QuickMail is closed."*
-4. Creating/editing never crosses over: the editor opened from a tab only ever writes that tab's kind of rule.
+- **It matches how people think.** Users want "the rules for this mailbox", not "my two categories of rule".
+- **It matches Outlook**, which shows one per-account list with `(client-only)` markers — familiar territory.
+- **It removes the labeling burden.** The tab design needed constant care to stop users assuming client rules ran server-side. A per-row marker states the fact where the user is already looking.
+- **It survives new client-only actions.** The notification infrastructure (`INotificationService`, `WindowsToastNotificationService`) has now landed, so a "show a notification" action is plausible. Under tabs, adding such an action to an existing rule would make it *change tabs*. Under a per-row marker, it just changes its marker.
+- **"All accounts" was a false promise.** An all-accounts rule can never be a server rule, so the option offered something it couldn't deliver on Graph accounts.
 
-**Non-negotiable:** the two rule sets are never merged into one list, never share a single editor, and are never synchronized with each other (that remains out of scope, Section 18).
+### 3.3 Decided consequences
+
+| # | Decision |
+|---|---|
+| **D1 — Migration** | Existing "All accounts" rules are **duplicated into one rule per non-Graph account**. Graph accounts receive **none**. After migration no rule has a null `AccountId`, and the option disappears from the UI. |
+| **D2 — No client rules on Graph** | Graph support is new, so in practice none exist, and all-account rules explicitly do not propagate to Graph. **Residual:** a client rule *explicitly* scoped to a Graph account can exist today (the current picker lists Graph accounts). Such a rule is **kept, still runs, and is marked "runs in QuickMail"** — never silently deleted or auto-converted. |
+| **D3 — Placement** | Server-first: Graph → server rule; non-Graph → client rule; client fallback only when an action has no server equivalent. |
+| **D4 — Permission fallback** | If the tenant hasn't granted `MailboxSettings.ReadWrite`, server rules can't be listed or created. Show the **admin-directed message** (§4) *and* still allow the user to create a **client rule**, clearly marked. Never silently create client rules in place of server ones — that would leave stragglers behind once consent lands. |
+| **D5 — Ordering** | Server rules are listed in `sequence` order and reorderable with Move Up/Down. Client rules are grouped **below** them in their own group. **No reordering across the boundary** — server rules run at delivery and client rules later at sync, so they are not one execution chain and the list must never imply otherwise. |
+
+**Still non-negotiable:** the two kinds are never *synchronized* with each other, and there is no "copy this rule to the server" action in v1 (§18). Sharing a list is a presentation decision, not a merge.
 
 ---
 
@@ -227,13 +240,14 @@ public interface IServerRuleService
 
 ## 9. ViewModels
 
-The unified window hosts **two independent section ViewModels**. They are deliberately **not merged** — client-rule logic stays exactly as it is today, and server rules are purely additive:
+The window is **per-account**, so the VMs compose around a selected account rather than around two categories.
 
-- **`RulesManagerViewModel`** (existing, unchanged) — backs the **"In QuickMail"** tab. This spec requires no changes to it.
-- **`ServerRulesViewModel`** (new) — backs the **"On the server"** tab: the Graph account selector, the `ObservableCollection<ServerRuleModel>`, the selected rule, and `[RelayCommand]`s: `Refresh`, `CreateRule`, `EditRule`, `ToggleEnabled`, `MoveUp`, `MoveDown`, `DeleteRule`. No `MessageBox`/`Window` references (MVVM rule): confirmation and the admin-directed `403` are raised as events the View handles (`DeleteConfirmationRequested`, `WriteBlockedByPermission`).
-- **`ServerRuleEditorViewModel`** (new) — the create/edit form: name, enabled, the common-subset condition fields, the common-subset action fields, and a folder-picker hook for `moveToFolder`. Validation (name required; at least one action) exposed as error strings, mirroring `RulesManagerViewModel`'s validation pattern.
+- **`RulesWindowViewModel`** (new) — owns the **account selector** (all accounts, no "All accounts" entry) and, for the selected account, the combined rule list plus command routing. It applies **D3** — deciding whether a new or edited rule is a server rule or a client rule — and delegates persistence to the matching service. It holds no rule-matching logic of its own.
+- **`ServerRulesViewModel`** (new — *already implemented*) — the Graph side: `ObservableCollection<ServerRuleModel>`, selection, and `Refresh` / `CreateRule` / `EditRule` / `ToggleEnabled` / `MoveUp` / `MoveDown` / `DeleteRule`. It is **already per-account with no "All accounts" entry**, so this revision requires no change to it. No `MessageBox`/`Window` references (MVVM rule): delete confirmation and the admin-directed `403` are raised as events the View handles (`ConfirmDeleteRequested`, `WriteBlockedByPermission`).
+- **`ServerRuleEditorViewModel`** (new — *already implemented*) — create/edit form over the editable subset, with validation (name required; at least one action; folder required when Move to folder is chosen).
+- **`RulesManagerViewModel`** (existing) — the client side. **Changes required by this revision:** drop the "All accounts" entry from `AccountOptions`, and scope its list to the selected account (D1).
 
-A thin **`RulesWindowViewModel`** owns the two section VMs plus `HasGraphAccount` (drives server-tab visibility) and `SelectedTabIndex` (so a command can open the window directly on a given tab). It holds no rule logic of its own.
+The window VM exposes a **single list for display**, built by concatenating server rules in `sequence` order followed by client rules (**D5**). Every row carries a "runs where" marker used both visually and in its announced text.
 
 ---
 
@@ -241,27 +255,36 @@ A thin **`RulesWindowViewModel`** owns the two section VMs plus `HasGraphAccount
 
 **This section answers "how do we do the UI for seeing these rules?"**
 
-The existing **`RulesManagerWindow`** is **extended into the unified window** rather than a second window being created. Its current content becomes the first tab; server rules become the second.
+The existing **`RulesManagerWindow`** becomes the **per-account rules manager**. There is no second window and no tab control.
 
 ### 10.1 Layout
 
-A `TabControl` with two tabs:
+1. **Account row** — an "Account" `ComboBox` listing **all** accounts (no "All accounts"). Defaults to the account selected in the main window. A status line summarises the selection ("5 rules, 1 disabled").
+2. **Rule list** — one `ListView` showing the selected account's rules:
+   - **Server rules first**, in `sequence` order (Graph accounts only).
+   - **Client rules below**, in their own group (**D5**).
+   - Each row announces: name, enabled/disabled, **where it runs**, any markers ("read-only", "error"), and a one-line summary ("If from contains 'newsletter' → move to Archive").
+3. **Detail region** — read-only prose for the selected rule (10.2).
+4. **Editor** — a modeless child window for create/edit (10.4).
 
-1. **"In QuickMail"** — the existing client-rules UI, moved wholesale into this tab. **No behavioral change.**
-2. **"On the server"** — new:
-   - **Account row** — a Graph-account `ComboBox` labelled "Account" (shown only when >1 Graph account), plus a status line ("5 rules, 1 disabled").
-   - **Rule list** — a single-column `ListView` in `sequence` order. Each item announces name, enabled/disabled, and a one-line summary ("If from contains 'newsletter' → move to Archive"). Read-only rules marked "read-only"; errored rules marked "error".
-   - **Summary region** — read-only prose detail for the selected rule (see 10.2).
-
-The server tab is **hidden entirely when no Graph account exists** (`HasGraphAccount` false), so IMAP-only users see exactly today's window.
+For a non-Graph account the list contains only client rules, so the experience is essentially today's plus per-account scoping.
 
 ### 10.2 Seeing a rule's detail
 
-Selecting a rule updates a read-only **summary region** that spells out the full rule in prose, **including conditions/actions outside the editable subset** — so the user can *see* everything even when they can only edit the subset ("view fidelity, edit subset", Section 6.3).
+Selecting a rule updates a read-only **detail region** that spells out the full rule in prose, **including conditions/actions outside the editable subset** — so the user can *see* everything even when they can only edit the subset ("view fidelity, edit subset", Section 6.3).
 
-### 10.3 Tabs and the client/server distinction
+### 10.3 Showing where a rule runs
 
-Tab labels are the primary safeguard against conflating the two (Section 3). On entering a tab, announce a `Hint` stating where those rules run. `AutomationProperties.Name` on each tab is the **short label only** ("In QuickMail", "On the server") — no role name ("tab"), per the accessibility checklist; the screen reader supplies the role.
+The per-row marker replaces tab labels as the safeguard against conflating the two (Section 3). It must be:
+
+- **Part of the row's announced text**, not just a visual badge or icon — a screen-reader user must hear it without extra navigation. `ServerRuleModel.ToString()` and the client-rule row text both carry it.
+- **Phrased as behaviour, not technology** — "runs on the server" / "runs in QuickMail", never "Graph rule" / "IMAP rule".
+- Backed by a `Hint` on first focus of the list explaining the difference (§14).
+
+Where a rule's placement was **forced**, the detail region says so explicitly, so the user is never left wondering why a rule on their Microsoft 365 account runs in the app:
+
+- *"Runs in QuickMail because Mark as unread can't run on the server."* (D3 fallback)
+- *"Runs in QuickMail because your organization hasn't granted QuickMail permission to manage server rules."* (D4 fallback)
 
 ### 10.4 Modal vs. modeless (CLAUDE.md modal-dialog rule)
 
@@ -287,42 +310,43 @@ The rule editor contains editable `TextBox`es and opens over `MainWindow`, which
 
 Per the CLAUDE.md "Keyboard Shortcuts — Enforced" rule, **every user-facing action must be registered in `CommandRegistry`** — that registration is precisely what makes it appear in the main **Command Palette** (`Ctrl+Shift+P`) and the keyboard-customizations dialog.
 
-Because both rule kinds now live in one window, there are **two entry points into the same window**, differing only in which tab opens:
+With one window and one list, the two entry points differ only in **which account is selected**:
 
-- **`mail.rules`** (existing, `Ctrl+Shift+L`) — unchanged. Opens the unified window on the **"In QuickMail"** tab.
-- **`mail.serverRules`** (new) — opens the **same** window with the **"On the server"** tab selected.
+- **`mail.rules`** (existing, `Ctrl+Shift+L`) — opens the manager on the account currently selected in the main window.
+- **`mail.serverRules`** (new) — opens the **same** window with the **first Graph account** selected.
 
-Registering the second command is deliberate: a user searching the palette for "server rules" must find something. It costs nothing (no second window) and preserves discoverability that a tab alone would bury. Register in `MainViewModel.RegisterCommands`, next to `mail.rules`:
+The second command still earns its place: without it nothing in the palette answers a search for "server rules", and the concept would be discoverable only by browsing accounts. Under the per-account model it selects an *account*, not a tab. Register in `MainViewModel.RegisterCommands`, next to `mail.rules`:
 
 ```csharp
 registry.Register(new CommandDefinition(
     id: "mail.serverRules", category: "Mail", title: "Manage Server Rules",
-    execute: () => OpenRulesManager(RulesTab.Server),
+    execute: () => OpenRulesManager(preferGraphAccount: true),
     isAvailable: () => Accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph)));
 ```
 
 - **Category:** `Mail` (one of the allowed categories).
 - **Default key:** none assigned (avoids collision; `mail.rules` already owns `Ctrl+Shift+L`). Discoverable via the palette — which is exactly why palette registration is required even without a hotkey.
-- **`isAvailable`:** false when no Graph account exists, so IMAP-only users never see it (and the tab is hidden too).
-- Add a matching **menu item** (Mail menu) with no `InputGestureText`. The VM raises `RulesManagerRequested` carrying the target tab; `MainWindow` opens (or focuses) the window (extending the existing handler at `MainWindow.xaml.cs:248`).
+- **`isAvailable`:** false when no Graph account exists, so IMAP-only users never see it.
+- Add a matching **menu item** (Mail menu) with no `InputGestureText`. The VM raises `RulesManagerRequested` carrying the account to preselect; `MainWindow` opens (or focuses) the window (extending the existing handler at `MainWindow.xaml.cs:248`).
 
 ### 11.2 Window-level Command Palette (New Window Checklist)
 
-The unified window wires its **own** `Ctrl+Shift+P` palette containing **both** tabs' window-scoped actions, following the `ComposeWindow` pattern. Because two kinds of rule now coexist, **every palette entry must name its target unambiguously** — "New rule (in QuickMail)" vs. "New server rule", "Delete rule (in QuickMail)" vs. "Delete server rule". A bare "New rule" would be exactly the conflation Section 3 forbids.
+The window wires its **own** `Ctrl+Shift+P` palette with its scoped actions — New rule, Edit, Enable/Disable, Move Up, Move Down, Delete, Refresh, Close — following the `ComposeWindow` pattern.
 
-Server-rule entries are **unavailable** when no Graph account exists. The modeless editor likewise gets its own palette (Save, Cancel, pick folder).
+A welcome simplification over the tab design: because every action operates on **the selected account and the selected rule**, entries need **no disambiguating suffix**. Plain "New rule" is now unambiguous — D3 decides whether it becomes a server or client rule from the account and the chosen actions, and the result is announced. (Under tabs, each entry would have needed "(in QuickMail)" / "(server)" qualifiers.)
+
+The modeless editor gets its own palette (Save, Cancel, pick folder).
 
 ---
 
 ## 12. Keyboard Walkthrough (required)
 
 ### Path A — open and browse
-1. User presses `Ctrl+Shift+P`, types "server rules", activates **Manage Server Rules**. The Rules window opens with the **"On the server"** tab already selected and focus on the rule list. Announces: "On the server. 5 items. Rule 1 of 5: Newsletters, enabled," then the tab Hint: "These rules run on Microsoft's servers, even when QuickMail is closed."
-   - Opening via `Ctrl+Shift+L` / **Manage Rules** instead lands on the **"In QuickMail"** tab, with the Hint: "These rules run in QuickMail while it's open."
-2. User arrows down the list. Each item announces name, state, and summary.
-3. User presses `F6`. Focus moves to the **tab strip**: "On the server. 2 of 2." Left/Right arrows switch tabs; switching announces the new tab's Hint and then moves focus into that tab's rule list, so the user always knows which kind of rule they are looking at.
-4. `F6` again → account selector ("Account. Work."). `F6` again → summary region (full rule prose). `F6` again → back to the list.
-   - On the **"In QuickMail"** tab there is no account selector, so the ring is: tab strip ⇄ list ⇄ summary.
+1. User presses `Ctrl+Shift+L` (**Manage Rules**). The window opens on the account selected in the main window, with focus on the rule list. Announces: *"Rules for Work. 5 items. Rule 1 of 5: Newsletters, enabled, runs on the server. If subject contains 'digest' → move to Archive."* Then a Hint on first focus: *"Rules that run on the server keep working when QuickMail is closed. Rules that run in QuickMail apply only while it's open."*
+   - Opening via the palette entry **Manage Server Rules** instead preselects the first Graph account.
+2. User arrows down the list. Every row announces name, state, **where it runs**, any markers, and a one-line summary. Server rules come first, then client rules in their own group (D5).
+3. User presses `F6`. Focus moves to the **account selector**: *"Account. Work."* Changing the account reloads the list and announces the new count — the user is only ever looking at one account's rules.
+4. `F6` again → **detail region** (full rule prose, including anything QuickMail can't edit, and why a rule's placement was forced). `F6` again → back to the list.
 
 ### Path B — create
 1. From the list, user activates **New Rule** (palette or button). The editor opens modeless with focus on the Name field. Announces: "New server rule. Rule name. Edit."
@@ -345,13 +369,14 @@ Server-rule entries are **unavailable** when no Graph account exists. The modele
 
 ## 13. Infrastructure Changes (required)
 
-- **Existing window becomes tabbed:** `RulesManagerWindow` gains a `TabControl`; its current content moves into the **"In QuickMail"** tab with **no behavioral change**. Preferably also converted from `ShowDialog()` to modeless (§10.4).
-- **F6 ring (within the unified Rules window):** tab strip ⇄ rule list ⇄ [server tab only: account selector] ⇄ summary region. (The window's own ring; it does not touch `MainWindow`'s `CycleFocusAsync`.)
-- **Commands added to `CommandRegistry`:** `mail.serverRules` (category Mail, no default key, `isAvailable` = has Graph account). `mail.rules` is unchanged except that it now specifies a target tab. Window-scoped actions live in the window's own palette, **each labeled with its target** (§11.2).
-- **`AutomationProperties.Name` introduced:** "In QuickMail", "On the server", "Rule name", "Conditions", "Actions", "Move to folder", "Account". (Short labels only — no role names.)
-- **`AccessibilityHelper.Announce` calls added:** a per-tab entry Hint (**both** tabs — the client tab gains one it doesn't have today); create/update/delete/toggle Results; reorder Status; the insufficient-permission `403` path is a Hint. Each gated by the matching user config (`AnnounceHints` / `AnnounceResults` / `AnnounceStatus`).
-- **VM state:** new `RulesWindowViewModel` owns both section VMs (`HasGraphAccount`, `SelectedTabIndex`); `MainViewModel`'s `RulesManagerRequested` now carries a target tab. Existing `RulesManagerViewModel` is **unchanged**.
-- **`SelectorItemAccessibilityTests`:** add `ServerRuleModel` (every new Selector-bound type must be covered).
+- **Existing window becomes per-account:** `RulesManagerWindow` gains an account selector and a combined list; its client-rules UI is scoped to the selected account. Preferably also converted from `ShowDialog()` to modeless (§10.4).
+- **Rule-data migration (D1):** a one-time migration duplicates each "All accounts" rule into one rule per **non-Graph** account and eliminates the null-`AccountId` case. Must be **idempotent** and must not run twice over already-migrated data.
+- **F6 ring (within the Rules window):** rule list ⇄ account selector ⇄ detail region. (The window's own ring; it does not touch `MainWindow`'s `CycleFocusAsync`.)
+- **Commands added to `CommandRegistry`:** `mail.serverRules` (category Mail, no default key, `isAvailable` = has Graph account). `mail.rules` is unchanged apart from preselecting an account. Window-scoped actions live in the window's own palette (§11.2) — **no target suffixes needed** under this model.
+- **`AutomationProperties.Name` introduced:** "Account", "Rule name", "Conditions", "Actions", "Move to folder". (Short labels only — no role names.)
+- **`AccessibilityHelper.Announce` calls added:** a list-focus Hint explaining server-vs-in-app; create/update/delete/toggle Results; reorder Status; the **forced-placement explanations** (D3/D4) as Hints; the insufficient-permission `403` path as a Hint. Each gated by the matching user config (`AnnounceHints` / `AnnounceResults` / `AnnounceStatus`).
+- **VM state:** new `RulesWindowViewModel`; `MainViewModel`'s `RulesManagerRequested` carries an account to preselect. **`RulesManagerViewModel` changes** — the "All accounts" entry is removed and its list is scoped per account (D1).
+- **`SelectorItemAccessibilityTests`:** add `ServerRuleModel` and `ImportanceOption` (every new Selector-bound type must be covered).
 - **OAuth scope:** `MailboxSettings.ReadWrite` is declared on the app registration (source of truth); sign-in requests `https://graph.microsoft.com/.default`, so the token carries it once granted. See `oauth-default-scope-pm-dev-spec.md`.
 - **DI:** `IServerRuleService` / `GraphServerRuleService` constructed in `App.xaml.cs`, passed to `MainWindow` for window construction.
 
@@ -410,7 +435,8 @@ This is the single most important correctness decision; reviewers should confirm
 
 ## 18. Out of Scope (required)
 
-- **IMAP accounts** — no server-rule concept; the **"On the server" tab is hidden entirely**, so an IMAP-only user sees exactly today's window.
+- **IMAP accounts** — no server-rule concept; their rules are client rules only. An IMAP-only user sees essentially today's window plus per-account scoping.
+- **Converting existing client rules on a Graph account into server rules** — such a rule is kept, keeps running, and is marked "runs in QuickMail" (D2). No auto-conversion and no migration prompt in v1.
 - **Editing rules with predicates/actions outside the common subset** — view + toggle + delete only in v1 (Section 16).
 - **`exceptions`** authoring — preserved on round-trip but not editable in v1 (view-only in the summary).
 - **Categories management** (`assignCategories`/`categories`) beyond display.
@@ -424,6 +450,7 @@ This is the single most important correctness decision; reviewers should confirm
 ## 19. Open Questions
 
 1. ~~**Consent timing:**~~ **Resolved** — `MailboxSettings.ReadWrite` is captured up front, pre-GA, in a separate scope PR (see §4). No re-prompt for any user.
+1b. ~~**Presentation model** (separate window → tabs → ?):~~ **Resolved 2026-07-23** — a **single per-account list** with a per-row "runs where" marker, no tabs and no "All accounts" scope. Rationale and the five consequent decisions (D1–D5) are in §3.
 2. **Editor surface:** separate `ServerRuleEditorWindow` (recommended, matches compose) vs. inline panel in `ServerRulesWindow`.
 3. **Converting the existing window to modeless:** §10.4 recommends making the unified window modeless, because launching the new modeless editor from a `ShowDialog()` parent is the nested-message-loop pattern behind the GrabAddresses lockup. But `RulesManagerWindow` ships today as `ShowDialog()`, and converting it changes behavior for existing client-rules users (Escape / `IsCancel` must be rewired explicitly). **Convert as part of this work, or keep `ShowDialog()` and accept the modal-parent risk?** Recommend converting.
 4. **Toggle on read-only rules:** does Graph permit `isEnabled` PATCH on an `isReadOnly` rule? Confirm against a live mailbox before enabling that path.
