@@ -25,7 +25,7 @@
 
 </head>
 <body>
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="installing-and-updating-quickmail.html">Previous: Installing and Updating QuickMail</a> | <a href="main-window.html">Next: Main Window</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="installing-and-updating-quickmail.html">Previous: Installing and Updating QuickMail</a> | <a href="for-exchange--microsoft-365-administrators.html">Next: For Exchange / Microsoft 365 Administrators</a></div>
   <h1 id="adding-accounts">Adding Accounts</h1>
 <p>Open <strong>Settings → Accounts</strong> (<code>Ctrl+,</code> then
 navigate to Accounts) or press <strong>Ctrl+Shift+A</strong> from the
@@ -43,15 +43,39 @@ mail</li>
 </ul>
 <p>Press <strong>Verify</strong> to test the connection before
 saving.</p>
-<h3 id="microsoft-account-outlook.com-microsoft-365">Microsoft Account
-(Outlook.com / Microsoft 365)</h3>
-<p>Choose <strong>Microsoft OAuth</strong>. The server fields fill in
-automatically. Activate <strong>Sign in with Microsoft</strong> — your
-browser opens to a Microsoft sign-in page. Sign in and grant QuickMail
-permission, then close the browser window. Back in QuickMail, activate
-<strong>Add Account</strong>. Personal Microsoft accounts (Outlook.com,
-Hotmail, Live.com) and work or school accounts both sign in this
-way.</p>
+<h3 id="microsoft-365-outlook.com">Microsoft 365 / Outlook.com</h3>
+<p>QuickMail connects to Microsoft mailboxes — work or school
+<strong>Microsoft 365 / Exchange Online</strong> accounts and personal
+<strong>Outlook.com / Hotmail / Live.com</strong> accounts — through
+Microsoft 365 directly (the Microsoft Graph service), so there are no
+server names or ports to enter.</p>
+<ol type="1">
+<li>In the Add Account dialog, set <strong>Account type</strong> to
+<strong>Microsoft 365 / Outlook.com</strong>. The IMAP/SMTP server
+fields disappear — a Microsoft account needs none.</li>
+<li>Activate <strong>Sign in with Microsoft</strong>. A Microsoft
+sign-in window opens inside QuickMail. Sign in and approve the
+permissions QuickMail requests; the window closes itself and returns you
+to the dialog.</li>
+<li>Activate <strong>Add Account</strong>.</li>
+</ol>
+<p>Sign in as <strong>the same address you typed</strong> into the
+account. If the account you sign in with does not match, QuickMail warns
+you and keeps the address you entered rather than silently switching to
+a different mailbox — this matters most in organizations where an
+administrator signs in at the approval screen.</p>
+<blockquote>
+<p><strong>Work or school accounts may need your administrator’s
+approval first.</strong> Many organizations require an administrator to
+approve a new app for the whole organization before anyone can sign in.
+If your sign-in ends at a <strong>“needs admin approval”</strong>
+message with no way to continue, QuickMail is working correctly — your
+organization has not yet approved it. Send your IT administrator to <a
+href="#for-exchange--microsoft-365-administrators">For Exchange /
+Microsoft 365 Administrators</a>; once they approve QuickMail, sign-in
+works normally. Personal Outlook.com accounts are not affected and need
+no approval.</p>
+</blockquote>
 <p>To bring this account’s contacts into your address book, check
 <strong>Sync contacts from this account</strong> before signing in. See
 <a href="#syncing-contacts-from-your-accounts">Syncing Contacts from
@@ -59,6 +83,12 @@ Your Accounts</a>.</p>
 <p>To show this account’s calendar in the Calendar view, check
 <strong>Sync calendar from this account</strong>. See the <a
 href="#calendar">Calendar</a> section for details.</p>
+<p><strong>Prefer IMAP instead?</strong> You can still connect a
+Microsoft account over IMAP/SMTP: choose <strong>Standard
+IMAP/SMTP</strong> as the account type and select <strong>Microsoft
+OAuth</strong> as the authentication method — the Outlook server
+settings fill in automatically. The Microsoft 365 / Outlook.com option
+above is the recommended choice for most people.</p>
 <h3 id="gmail-google-account">Gmail (Google Account)</h3>
 <p>Enter your Gmail address in the <strong>Email / Username</strong>
 field — QuickMail then automatically selects Google authentication for
@@ -123,6 +153,6 @@ account</strong> (Microsoft, Google, or iCloud) on or off after the
 fact; each change applies immediately.</p>
 <hr />
 
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="installing-and-updating-quickmail.html">Previous: Installing and Updating QuickMail</a> | <a href="main-window.html">Next: Main Window</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="installing-and-updating-quickmail.html">Previous: Installing and Updating QuickMail</a> | <a href="for-exchange--microsoft-365-administrators.html">Next: For Exchange / Microsoft 365 Administrators</a></div>
 </body>
 </html>

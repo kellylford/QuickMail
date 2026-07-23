@@ -248,12 +248,12 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.34</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.35</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
-Windows. All features are reachable from the keyboard; no mouse is
-required.</p>
+Windows. Gmail, iCloud, Outlook.com, Microsoft 365, and IMAP/SMTP
+providers in general are all supported.</p>
 <hr />
 <h2 id="contents">Contents</h2>
 <ul>
@@ -261,6 +261,8 @@ required.</p>
 <li><a href="#installing-and-updating-quickmail">Installing and Updating
 QuickMail</a></li>
 <li><a href="#adding-accounts">Adding Accounts</a></li>
+<li><a href="#for-exchange--microsoft-365-administrators">For Exchange /
+Microsoft 365 Administrators</a></li>
 <li><a href="#main-window">Main Window</a></li>
 <li><a href="#reading-mail">Reading Mail</a></li>
 <li><a href="#composing-mail">Composing Mail</a></li>
@@ -287,8 +289,12 @@ Announcements</a></li>
 <li>Microsoft Edge WebView2 Runtime (the installer adds this
 automatically when missing; included with Windows 11 and current Windows
 10)</li>
-<li>An IMAP/SMTP email account (Gmail, Outlook.com, Microsoft 365, or
-any standard IMAP provider)</li>
+<li>An email account. QuickMail supports Microsoft 365 / Exchange Online
+and Outlook.com (through Microsoft 365 directly), Gmail, iCloud, and any
+standard IMAP/SMTP provider. Work or school Microsoft 365 accounts may
+first need approval from an organization administrator — see <a
+href="#for-exchange--microsoft-365-administrators">For Exchange /
+Microsoft 365 Administrators</a>.</li>
 </ul>
 <hr />
 <h2 id="installing-and-updating-quickmail">Installing and Updating
@@ -408,15 +414,39 @@ mail</li>
 </ul>
 <p>Press <strong>Verify</strong> to test the connection before
 saving.</p>
-<h3 id="microsoft-account-outlook.com-microsoft-365">Microsoft Account
-(Outlook.com / Microsoft 365)</h3>
-<p>Choose <strong>Microsoft OAuth</strong>. The server fields fill in
-automatically. Activate <strong>Sign in with Microsoft</strong> — your
-browser opens to a Microsoft sign-in page. Sign in and grant QuickMail
-permission, then close the browser window. Back in QuickMail, activate
-<strong>Add Account</strong>. Personal Microsoft accounts (Outlook.com,
-Hotmail, Live.com) and work or school accounts both sign in this
-way.</p>
+<h3 id="microsoft-365-outlook.com">Microsoft 365 / Outlook.com</h3>
+<p>QuickMail connects to Microsoft mailboxes — work or school
+<strong>Microsoft 365 / Exchange Online</strong> accounts and personal
+<strong>Outlook.com / Hotmail / Live.com</strong> accounts — through
+Microsoft 365 directly (the Microsoft Graph service), so there are no
+server names or ports to enter.</p>
+<ol type="1">
+<li>In the Add Account dialog, set <strong>Account type</strong> to
+<strong>Microsoft 365 / Outlook.com</strong>. The IMAP/SMTP server
+fields disappear — a Microsoft account needs none.</li>
+<li>Activate <strong>Sign in with Microsoft</strong>. A Microsoft
+sign-in window opens inside QuickMail. Sign in and approve the
+permissions QuickMail requests; the window closes itself and returns you
+to the dialog.</li>
+<li>Activate <strong>Add Account</strong>.</li>
+</ol>
+<p>Sign in as <strong>the same address you typed</strong> into the
+account. If the account you sign in with does not match, QuickMail warns
+you and keeps the address you entered rather than silently switching to
+a different mailbox — this matters most in organizations where an
+administrator signs in at the approval screen.</p>
+<blockquote>
+<p><strong>Work or school accounts may need your administrator’s
+approval first.</strong> Many organizations require an administrator to
+approve a new app for the whole organization before anyone can sign in.
+If your sign-in ends at a <strong>“needs admin approval”</strong>
+message with no way to continue, QuickMail is working correctly — your
+organization has not yet approved it. Send your IT administrator to <a
+href="#for-exchange--microsoft-365-administrators">For Exchange /
+Microsoft 365 Administrators</a>; once they approve QuickMail, sign-in
+works normally. Personal Outlook.com accounts are not affected and need
+no approval.</p>
+</blockquote>
 <p>To bring this account’s contacts into your address book, check
 <strong>Sync contacts from this account</strong> before signing in. See
 <a href="#syncing-contacts-from-your-accounts">Syncing Contacts from
@@ -424,6 +454,12 @@ Your Accounts</a>.</p>
 <p>To show this account’s calendar in the Calendar view, check
 <strong>Sync calendar from this account</strong>. See the <a
 href="#calendar">Calendar</a> section for details.</p>
+<p><strong>Prefer IMAP instead?</strong> You can still connect a
+Microsoft account over IMAP/SMTP: choose <strong>Standard
+IMAP/SMTP</strong> as the account type and select <strong>Microsoft
+OAuth</strong> as the authentication method — the Outlook server
+settings fill in automatically. The Microsoft 365 / Outlook.com option
+above is the recommended choice for most people.</p>
 <h3 id="gmail-google-account">Gmail (Google Account)</h3>
 <p>Enter your Gmail address in the <strong>Email / Username</strong>
 field — QuickMail then automatically selects Google authentication for
@@ -486,6 +522,155 @@ an account is also where you turn <strong>Sync contacts from this
 account</strong> (Microsoft/Google) and <strong>Sync calendar from this
 account</strong> (Microsoft, Google, or iCloud) on or off after the
 fact; each change applies immediately.</p>
+<hr />
+<h2 id="for-exchange-microsoft-365-administrators">For Exchange /
+Microsoft 365 Administrators</h2>
+<p>This section is for the <strong>IT administrator or tenant
+owner</strong> of a Microsoft 365 organization whose users want to use
+QuickMail. <strong>Personal Outlook.com / Hotmail / Live.com users do
+not need any of this</strong> — it applies only to work or school
+(Microsoft 365 / Exchange Online) accounts.</p>
+<p><strong>The short version:</strong> QuickMail is a
+Microsoft-registered desktop application that signs each user in to
+their own mailbox with their own credentials. Many organizations require
+an administrator to approve a new application once, for the whole
+organization, before users can sign in. Until you do, your users will
+hit a <strong>“needs admin approval”</strong> wall and cannot proceed.
+Granting approval is a one-time action and takes a couple of
+minutes.</p>
+<h3 id="what-quickmail-is-in-microsoft-terms">What QuickMail is, in
+Microsoft terms</h3>
+<ul>
+<li>QuickMail is a <strong>public client / desktop application</strong>
+registered in Microsoft Entra ID (Azure AD). Your users authenticate
+against that single registration; there is nothing to deploy into your
+tenant.</li>
+<li>It requests <strong>delegated permissions only</strong>. That means
+QuickMail acts <strong>only as the signed-in user</strong>, entirely
+within <strong>that user’s own mailbox</strong>, and only while they are
+using the app. It holds <strong>no application permissions</strong> — it
+cannot run in the background, and it cannot read or send mail for any
+user who has not personally signed in.</li>
+<li>Sign-in uses the modern authentication flow (OAuth 2.0 / MSAL).
+Passwords are never seen or stored by QuickMail; tokens live in Windows
+Credential Manager on the user’s own PC and honour your Conditional
+Access and MFA policies.</li>
+</ul>
+<h3 id="app-registration-details">App registration details</h3>
+<table>
+<tbody>
+<tr class="odd">
+<td><strong>Application (client) ID</strong></td>
+<td><code>bcdc84f1-d37c-4581-b14a-a01f7b3a1312</code></td>
+</tr>
+<tr class="even">
+<td><strong>Name in Enterprise applications</strong></td>
+<td>QuickMail</td>
+</tr>
+<tr class="odd">
+<td><strong>Publisher</strong></td>
+<td>Kelly Ford (the QuickMail project)</td>
+</tr>
+<tr class="even">
+<td><strong>Supported accounts</strong></td>
+<td>Work/school and personal Microsoft accounts</td>
+</tr>
+</tbody>
+</table>
+<h3 id="permissions-quickmail-requests">Permissions QuickMail
+requests</h3>
+<p>All are <strong>delegated</strong> (act as the signed-in user, in
+their own mailbox):</p>
+<table>
+<colgroup>
+<col style="width: 50%" />
+<col style="width: 50%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Permission</th>
+<th>Why</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Mail.ReadWrite</code>, <code>Mail.Send</code></td>
+<td>Read, organize, delete, draft, and send the user’s mail</td>
+</tr>
+<tr class="even">
+<td><code>Calendars.ReadWrite</code></td>
+<td>Read and update the user’s own calendar (only if they enable
+calendar sync)</td>
+</tr>
+<tr class="odd">
+<td><code>Contacts.Read</code>, <code>People.Read</code></td>
+<td>Read the user’s own contacts and frequent correspondents (only if
+they enable contact sync)</td>
+</tr>
+<tr class="even">
+<td><code>MailboxSettings.ReadWrite</code></td>
+<td>The user’s own mailbox settings, for a planned server-side rules
+feature</td>
+</tr>
+<tr class="odd">
+<td><code>User.Read</code>, <code>User.ReadBasic.All</code></td>
+<td>Resolve the signed-in user and display recipient names</td>
+</tr>
+</tbody>
+</table>
+<p>If users connect over IMAP/SMTP instead of the default Microsoft 365
+option, two Exchange Online scopes (<code>IMAP.AccessAsUser.All</code>,
+<code>SMTP.Send</code>) are used as well.</p>
+<h3 id="how-to-approve-quickmail-for-your-organization">How to approve
+QuickMail for your organization</h3>
+<p>Any of these roles can grant approval — <strong>Global Administrator
+is not required</strong> (QuickMail has no application permissions):
+<strong>Cloud Application Administrator</strong>, <strong>Application
+Administrator</strong>, or <strong>AI Administrator</strong>.</p>
+<p><strong>Option A — Entra admin center.</strong> Sign in at <a
+href="https://entra.microsoft.com">entra.microsoft.com</a> →
+<strong>Entra ID → Enterprise applications → QuickMail → Security →
+Permissions → “Grant admin consent for &lt;your
+organization&gt;”</strong>, review the list, and approve. (If QuickMail
+is not yet listed under Enterprise applications, use Option B — the
+first admin consent creates it.)</p>
+<p><strong>Option B — one-click consent URL.</strong> Sign in as one of
+the admin roles above and open:</p>
+<pre><code>https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312</code></pre>
+<p>Replace <code>organizations</code> with your tenant ID or a verified
+domain to target a specific tenant. Review the permission list Microsoft
+shows and approve. This grants consent tenant-wide in one step.</p>
+<p>After approval, your users sign in normally with no further
+prompts.</p>
+<h3 id="if-you-would-rather-not-grant-blanket-approval">If you would
+rather not grant blanket approval</h3>
+<ul>
+<li><strong>Let users request it.</strong> Enable the <strong>admin
+consent workflow</strong> (Entra ID → Enterprise applications → Consent
+and permissions → Admin consent settings). The dead-end prompt becomes a
+<strong>“Request approval”</strong> flow routed to reviewers you
+designate, so you approve per request instead of up front.</li>
+<li><strong>You stay in control.</strong> Because QuickMail uses
+delegated permissions and standard modern auth, your existing
+<strong>Conditional Access</strong>, MFA, device-compliance, and
+app-consent policies all apply. You can restrict or block QuickMail like
+any other enterprise application at any time.</li>
+</ul>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul>
+<li><strong>Users see “needs admin approval” with no continue
+button.</strong> Your tenant requires admin consent and QuickMail has
+not been approved yet. Follow the steps above. This is expected until
+approval is granted.</li>
+<li><strong>A user signed in successfully but delete or move fails with
+an error.</strong> Their token predates a permission grant. Have them
+remove and re-add the account (or sign in again) to pick up a fresh
+token.</li>
+<li><strong>You approved QuickMail but a newly added feature still
+prompts.</strong> Admin consent covers the permissions declared at the
+moment it was granted. Re-grant consent (Option A or B) to pick up any
+newly requested permission.</li>
+</ul>
 <hr />
 <h2 id="main-window">Main Window</h2>
 <p>The main window has four panes reachable by pressing
@@ -2078,18 +2263,18 @@ documented JSON text file. Duplicate a built-in theme, choose
 editor. Colors are hex values like <code>#3D5A80</code>; any color you
 leave out is filled in from the built-in Light or Dark theme (whichever
 the file’s <code>base</code> names). A typical minimal theme:</p>
-<div class="sourceCode" id="cb1"><pre
-class="sourceCode json"><code class="sourceCode json"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;formatVersion&quot;</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;my-theme&quot;</span><span class="fu">,</span></span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;My Theme&quot;</span><span class="fu">,</span></span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;base&quot;</span><span class="fu">:</span> <span class="st">&quot;light&quot;</span><span class="fu">,</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;colors&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
-<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;accent&quot;</span><span class="fu">:</span> <span class="st">&quot;#8F4531&quot;</span><span class="fu">,</span></span>
-<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;windowBackground&quot;</span><span class="fu">:</span> <span class="st">&quot;#FBF7F2&quot;</span></span>
-<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">},</span></span>
-<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;typography&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;fontFamily&quot;</span><span class="fu">:</span> <span class="st">&quot;Segoe UI&quot;</span><span class="fu">,</span> <span class="dt">&quot;baseFontSize&quot;</span><span class="fu">:</span> <span class="dv">13</span> <span class="fu">}</span></span>
-<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre
+class="sourceCode json"><code class="sourceCode json"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;formatVersion&quot;</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;id&quot;</span><span class="fu">:</span> <span class="st">&quot;my-theme&quot;</span><span class="fu">,</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;name&quot;</span><span class="fu">:</span> <span class="st">&quot;My Theme&quot;</span><span class="fu">,</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;base&quot;</span><span class="fu">:</span> <span class="st">&quot;light&quot;</span><span class="fu">,</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;colors&quot;</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;accent&quot;</span><span class="fu">:</span> <span class="st">&quot;#8F4531&quot;</span><span class="fu">,</span></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">&quot;windowBackground&quot;</span><span class="fu">:</span> <span class="st">&quot;#FBF7F2&quot;</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>  <span class="fu">},</span></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">&quot;typography&quot;</span><span class="fu">:</span> <span class="fu">{</span> <span class="dt">&quot;fontFamily&quot;</span><span class="fu">:</span> <span class="st">&quot;Segoe UI&quot;</span><span class="fu">,</span> <span class="dt">&quot;baseFontSize&quot;</span><span class="fu">:</span> <span class="dv">13</span> <span class="fu">}</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
 <p>The full color token list: <code>windowBackground</code>,
 <code>surfaceBackground</code>, <code>chromeBackground</code>,
 <code>inputBackground</code>, <code>border</code>,
