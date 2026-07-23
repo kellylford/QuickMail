@@ -9,7 +9,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [System Requirements](#system-requirements)
 - [Installing and Updating QuickMail](#installing-and-updating-quickmail)
 - [Adding Accounts](#adding-accounts)
-- [For Exchange / Microsoft 365 Administrators](#for-exchange--microsoft-365-administrators)
+- [For Microsoft 365 Administrators and Tenant Owners](#for-microsoft-365-administrators-and-tenant-owners)
 - [Main Window](#main-window)
 - [Reading Mail](#reading-mail)
 - [Composing Mail](#composing-mail)
@@ -33,7 +33,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 
 - Windows 10 (1703 or later) or Windows 11
 - Microsoft Edge WebView2 Runtime (the installer adds this automatically when missing; included with Windows 11 and current Windows 10)
-- An email account. QuickMail supports Microsoft 365 / Exchange Online and Outlook.com (through Microsoft 365 directly), Gmail, iCloud, and any standard IMAP/SMTP provider. Work or school Microsoft 365 accounts may first need approval from an organization administrator — see [For Exchange / Microsoft 365 Administrators](#for-exchange--microsoft-365-administrators).
+- An email account. QuickMail supports Microsoft 365 / Exchange Online and Outlook.com (through Microsoft 365 directly), Gmail, iCloud, and any standard IMAP/SMTP provider. Work or school Microsoft 365 accounts may first need approval from an organization administrator — see [For Microsoft 365 Administrators and Tenant Owners](#for-microsoft-365-administrators-and-tenant-owners).
 
 ---
 
@@ -116,7 +116,7 @@ QuickMail connects to Microsoft mailboxes — work or school **Microsoft 365 / E
 
 Sign in as **the same address you typed** into the account. If the account you sign in with does not match, QuickMail warns you and keeps the address you entered rather than silently switching to a different mailbox — this matters most in organizations where an administrator signs in at the approval screen.
 
-> **Work or school accounts may need your administrator's approval first.** Many organizations require an administrator to approve a new app for the whole organization before anyone can sign in. If your sign-in ends at a **"needs admin approval"** message with no way to continue, QuickMail is working correctly — your organization has not yet approved it. Send your IT administrator to [For Exchange / Microsoft 365 Administrators](#for-exchange--microsoft-365-administrators); once they approve QuickMail, sign-in works normally. Personal Outlook.com accounts are not affected and need no approval.
+> **Work or school accounts may need your administrator's approval first.** Many organizations require an administrator to approve a new app for the whole organization before anyone can sign in. If your sign-in ends at a **"needs admin approval"** message with no way to continue, QuickMail is working correctly — your organization has not yet approved it. Send your IT administrator to [For Microsoft 365 Administrators and Tenant Owners](#for-microsoft-365-administrators-and-tenant-owners); once they approve QuickMail, sign-in works normally. Personal Outlook.com accounts are not affected and need no approval.
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
@@ -150,9 +150,9 @@ Open **Settings → Accounts** to rename, edit, or remove an account. Removing a
 
 ---
 
-## For Exchange / Microsoft 365 Administrators
+## For Microsoft 365 Administrators and Tenant Owners
 
-This section is for the **IT administrator or tenant owner** of a Microsoft 365 organization whose users want to use QuickMail. **Personal Outlook.com / Hotmail / Live.com users do not need any of this** — it applies only to work or school (Microsoft 365 / Exchange Online) accounts.
+This section is for whoever **owns or administers** a Microsoft 365 organization whose users want to use QuickMail — a tenant owner can make these changes; a dedicated IT administrator is not required. **Personal Outlook.com / Hotmail / Live.com users do not need any of this** — it applies only to work or school (Microsoft 365 / Exchange Online) accounts.
 
 **The short version:** QuickMail is a Microsoft-registered desktop application that signs each user in to their own mailbox with their own credentials. Many organizations require an administrator to approve a new application once, for the whole organization, before users can sign in. Until you do, your users will hit a **"needs admin approval"** wall and cannot proceed. Granting approval is a one-time action and takes a couple of minutes.
 
