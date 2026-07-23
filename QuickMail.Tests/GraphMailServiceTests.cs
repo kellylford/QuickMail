@@ -236,6 +236,129 @@ public class GraphMailServiceTests
         Assert.Equal(1234, att.FileSize);
     }
 
+    // A raw RFC 822 meeting request whose text/calendar part carries the invite. CRLF line endings
+    // so MimeKit and the ICS parser see well-formed content regardless of the test file's encoding.
+    private static string MeetingRequestMime() => string.Join("\r\n", new[]
+    {
+        "From: Org <org@contoso.com>",
+        "To: me@contoso.com",
+        "Subject: Lunch",
+        "MIME-Version: 1.0",
+        "Content-Type: multipart/alternative; boundary=\"b\"",
+        "",
+        "--b",
+        "Content-Type: text/plain; charset=utf-8",
+        "",
+        "You're invited to lunch.",
+        "--b",
+        "Content-Type: text/calendar; method=REQUEST; charset=utf-8",
+        "",
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "METHOD:REQUEST",
+        "BEGIN:VEVENT",
+        "UID:lunch-1",
+        "SUMMARY:Lunch",
+        "DTSTART:20260722T170000Z",
+        "DTEND:20260722T180000Z",
+        "ORGANIZER;CN=Org:mailto:org@contoso.com",
+        "END:VEVENT",
+        "END:VCALENDAR",
+        "--b--",
+        "",
+    });
+
+    [Fact]
+    public async Task GetMessageDetailAsync_MeetingRequest_ExtractsCalendarInviteFromRawMime()
+    {
+        // A meeting-request message is a derived type; Graph annotates it with @odata.type. The
+        // message JSON has no text/calendar part, so the service must fetch the raw MIME ($value)
+        // and extract the ICS — lighting up the reading-pane Accept/Decline card. Issue #332.
+        const string detail = """
+            {"id":"m1","@odata.type":"#microsoft.graph.eventMessageRequest","subject":"Lunch",
+             "body":{"contentType":"html","content":"<p>invite</p>"},
+             "from":{"emailAddress":{"address":"org@contoso.com"}},
+             "toRecipients":[{"emailAddress":{"address":"me@contoso.com"}}],
+             "ccRecipients":[],"receivedDateTime":"2026-07-22T00:00:00Z","isRead":false,"hasAttachments":false}
+            """;
+        var (svc, handler) = Make(url =>
+              url.Contains("/me?")   ? (HttpStatusCode.OK, MeJson)
+            : url.Contains("$value") ? (HttpStatusCode.OK, MeetingRequestMime())
+            : (HttpStatusCode.OK, detail));
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var d = await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+
+        Assert.Contains(handler.Requests, u => u.Contains("/messages/m1/$value"));
+        Assert.NotNull(d.CalendarInvite);
+        Assert.Equal("lunch-1", d.CalendarInvite!.Uid);
+        Assert.Equal("Lunch", d.CalendarInvite.Summary);
+        Assert.Equal("REQUEST", d.CalendarInvite.Method);
+        Assert.Contains("BEGIN:VCALENDAR", d.CalendarIcs); // raw ICS persisted so the invite survives caching
+    }
+
+    [Fact]
+    public async Task GetMessageDetailAsync_OrdinaryMessage_DoesNotFetchRawMime()
+    {
+        // No @odata.type annotation → ordinary mail → no $value round-trip and no invite card.
+        const string detail = """
+            {"id":"m1","subject":"Hello",
+             "body":{"contentType":"html","content":"<p>Hi</p>"},
+             "from":{"emailAddress":{"address":"alice@x.com"}},
+             "toRecipients":[{"emailAddress":{"address":"me@x.com"}}],
+             "ccRecipients":[],"receivedDateTime":"2024-01-02T03:04:05Z","isRead":true,"hasAttachments":false}
+            """;
+        var (svc, handler) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, detail));
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var d = await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+
+        Assert.DoesNotContain(handler.Requests, u => u.Contains("$value"));
+        Assert.Null(d.CalendarInvite);
+        Assert.Equal(string.Empty, d.CalendarIcs);
+    }
+
+    [Fact]
+    public async Task GetMessageDetailAsync_MeetingMessageWithoutCalendarPart_OpensWithoutInvite()
+    {
+        // A meeting-typed message whose raw MIME carries no text/calendar part (e.g. a malformed or
+        // partial invite, or an .ics delivered only as an application/ics attachment). The $value
+        // fetch still happens, but extraction finds nothing and must fall through cleanly: the
+        // message opens with no invite card rather than throwing. Guards the calendar == null branch.
+        const string detail = """
+            {"id":"m1","@odata.type":"#microsoft.graph.eventMessageRequest","subject":"Lunch",
+             "body":{"contentType":"html","content":"<p>invite</p>"},
+             "from":{"emailAddress":{"address":"org@contoso.com"}},
+             "toRecipients":[{"emailAddress":{"address":"me@contoso.com"}}],
+             "ccRecipients":[],"receivedDateTime":"2026-07-22T00:00:00Z","isRead":false,"hasAttachments":false}
+            """;
+        var noCalendarMime = string.Join("\r\n", new[]
+        {
+            "From: Org <org@contoso.com>",
+            "To: me@contoso.com",
+            "Subject: Lunch",
+            "MIME-Version: 1.0",
+            "Content-Type: text/plain; charset=utf-8",
+            "",
+            "You're invited to lunch, but the calendar part is missing.",
+            "",
+        });
+        var (svc, handler) = Make(url =>
+              url.Contains("/me?")   ? (HttpStatusCode.OK, MeJson)
+            : url.Contains("$value") ? (HttpStatusCode.OK, noCalendarMime)
+            : (HttpStatusCode.OK, detail));
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var d = await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+
+        Assert.Contains(handler.Requests, u => u.Contains("/messages/m1/$value")); // meeting type still triggers the fetch
+        Assert.Null(d.CalendarInvite);                                             // …but no invite is surfaced
+        Assert.Equal(string.Empty, d.CalendarIcs);
+    }
+
     [Fact]
     public async Task GetMessagesSinceDateAsync_AddsReceivedDateTimeFilter()
     {

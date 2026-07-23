@@ -73,6 +73,14 @@ internal sealed class GraphAttachment
 
 internal sealed class GraphMessage
 {
+    /// <summary>
+    /// OData type annotation. For a meeting-request message the instance is a derived type
+    /// (<c>#microsoft.graph.eventMessageRequest</c> / <c>eventMessageResponse</c> /
+    /// <c>eventMessage</c>), which Graph's minimal metadata emits here because it differs from the
+    /// base <c>message</c> type. Absent (null) for ordinary mail. Used to decide whether to fetch
+    /// the raw MIME and extract the ICS invite (issue #332).
+    /// </summary>
+    [JsonPropertyName("@odata.type")] public string? ODataType { get; set; }
     [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
     [JsonPropertyName("subject")] public string? Subject { get; set; }
     [JsonPropertyName("bodyPreview")] public string? BodyPreview { get; set; }
