@@ -1,6 +1,6 @@
 # QuickMail User Guide
 
-QuickMail is a keyboard and screen reader friendly email program for Windows. All features are reachable from the keyboard; no mouse is required.
+QuickMail is a keyboard and screen reader friendly email program for Windows. Gmail, iCloud, Outlook.com, Microsoft 365, and IMAP/SMTP providers in general are all supported.
 
 ---
 
