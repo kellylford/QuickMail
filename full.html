@@ -248,7 +248,7 @@
 </head>
 <body>
 <header id="title-block-header">
-<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.35</p>
+<h1 class="title">QuickMail User Guide</h1><p class="version">Version 0.8.36</p>
 </header>
 <h1 id="quickmail-user-guide">QuickMail User Guide</h1>
 <p>QuickMail is a keyboard and screen reader friendly email program for
@@ -784,8 +784,24 @@ any part of a command name to find it. Press Enter to run it. This is
 the fastest way to discover and run any action in the app.</p>
 <h3 id="keyboard-customization">Keyboard Customization</h3>
 <p>Open <strong>Settings → Keyboard</strong> to reassign any shortcut to
-a different key. Type in the field for a command to capture a new key
-combination. Changes take effect immediately and survive restarts.</p>
+a different key. Select a command’s field and press the key combination
+you want — QuickMail captures it, shows you what it heard, and asks you
+to confirm with <strong>OK</strong>, pick another with
+<strong>Change</strong>, or <strong>Cancel</strong>. If the combination
+is already assigned to something else, a warning names the existing
+command so you can decide whether to reassign it. Changes take effect
+immediately and survive restarts.</p>
+<p><strong>Bare keys as shortcuts.</strong> You can assign a shortcut
+with no modifier key using <strong>Delete, Backspace, Insert, or any
+function key (F1–F24)</strong> — for example, bare
+<strong>Delete</strong> to delete a message, or <strong>F5</strong> to
+sync. (Bare <strong>Delete</strong> ships as a default binding for
+exactly this reason.) Plain letters, digits, and the Spacebar cannot be
+bound on their own — they would swallow ordinary typing — so pair them
+with <strong>Ctrl</strong>, <strong>Alt</strong>, or
+<strong>Shift</strong>. <strong>Enter</strong>, <strong>Escape</strong>,
+and <strong>Tab</strong> are reserved for navigating dialogs and are
+never captured as shortcuts.</p>
 <h3 id="checking-for-updates">Checking for Updates</h3>
 <p>QuickMail checks for a newer release in the background each time it
 starts. The top entry of the <strong>Help</strong> menu always shows the
@@ -918,10 +934,57 @@ work the same as in the main window:</p>
 <td><code>Ctrl+Shift+G</code></td>
 <td>Grab Addresses</td>
 </tr>
+<tr class="even">
+<td><code>Alt+A</code></td>
+<td>Focus the attachment list</td>
+</tr>
 </tbody>
 </table>
 <p>Deleting a message from its window closes the window and returns
 focus to the originating position in the message list.</p>
+<h3 id="attachments-on-a-received-message">Attachments on a Received
+Message</h3>
+<p>When a message has attachments, they appear in an <strong>attachments
+list</strong> just below the header fields (Subject, From, To, Date).
+This works the same way in all three reading modes — reading pane, tab,
+and window.</p>
+<p>Reach the attachment list in either of two ways:</p>
+<ul>
+<li>Press <strong>Alt+A</strong> to jump straight to it from anywhere in
+the open message. If the message has no attachments, QuickMail announces
+“No attachments.”</li>
+<li>Press <strong>Shift+Tab</strong> from the message body to step back
+into the header area; when the message has attachments, focus lands on
+the attachment list.</li>
+</ul>
+<p>Once focus is on the list, arrow between attachments and use:</p>
+<table>
+<colgroup>
+<col style="width: 55%" />
+<col style="width: 44%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Shortcut</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Enter</code></td>
+<td>Open the selected attachment</td>
+</tr>
+<tr class="even">
+<td><code>Alt+Enter</code></td>
+<td>Show the attachment’s properties</td>
+</tr>
+<tr class="odd">
+<td><code>Shift+F10</code> (or the Menu key)</td>
+<td>Open the context menu: <strong>Save…</strong>, <strong>Save
+All…</strong>, <strong>Open</strong></td>
+</tr>
+</tbody>
+</table>
 <h3 id="message-properties">Message Properties</h3>
 <p>Press <strong>Alt+Enter</strong> on any message to open a properties
 window showing sender, recipients, date, size, and flags.</p>
@@ -1505,6 +1568,17 @@ Inboxes), a message filter, and optionally a date limit. Assign a hotkey
 to jump to it directly.</p>
 <p>Press the assigned hotkey from anywhere in the main window to switch
 to that view immediately.</p>
+<h3 id="choose-what-opens-at-startup">Choose what opens at startup</h3>
+<p>By default QuickMail opens to <strong>All Mail</strong>. To make it
+open somewhere else — your Inbox, a specific folder, or any saved view —
+select the <strong>Default view (applied on startup)</strong> checkbox
+for that view in the View Manager. QuickMail then opens to that view,
+and the folder it targets, each time it starts. Only one view can be the
+default at a time; choosing a new default clears the previous one.</p>
+<p>So to open directly into a particular folder on launch: navigate to
+that folder, choose <strong>Save View…</strong> from the
+<strong>View</strong> menu, then mark the new view as the default in the
+View Manager.</p>
 <hr />
 <h2 id="calendar">Calendar</h2>
 <p>QuickMail has a full, keyboard-first calendar. You can create and
@@ -2074,7 +2148,8 @@ included in a report — and what’s never included</h3>
 short <strong>Environment</strong> section so a problem can be
 reproduced in the right context: the QuickMail version, your Windows
 version, the .NET runtime version, the active color theme, the current
-view, and the current sort order.</p>
+view, the current sort order, and the message open mode (reading pane,
+tab, or window).</p>
 <p><strong>No message content, email addresses, account settings,
 passwords, or log file content is ever collected or sent.</strong> The
 Preview shows the full report verbatim, so you always see exactly what
