@@ -793,6 +793,7 @@ public partial class MainWindow : Window
         // them explicitly on a real main-window close, the same way compose windows are handled.
         foreach (var w in _openMessageWindows.ToList())
             w.Close();
+        _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
         _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
@@ -5793,7 +5794,12 @@ public partial class MainWindow : Window
             return removed.Count;
         };
 
-        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders) { Owner = this };
+        // No Owner (issue #347): an owned window nests under MainWindow in the UIA tree, so some
+        // screen readers read the topmost ancestor's title (the main window) instead of "Rules
+        // Manager". Leaving it unowned makes it an independent peer that reads its own title — the
+        // same fix compose and standalone message windows use. Unowned windows aren't auto-closed
+        // with the main window, so it's tracked in _rulesWindow and closed in OnClosed.
+        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders);
         _rulesWindow = dialog;
 
         // Modeless (.Show, NOT .ShowDialog). Opening this window modally over MainWindow's

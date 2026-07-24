@@ -6,7 +6,7 @@
         AutomationProperties.Name="Rules Manager"
         Width="750" Height="560"
         MinWidth="600" MinHeight="440"
-        WindowStartupLocation="CenterOwner"
+        WindowStartupLocation="CenterScreen"
         ResizeMode="CanResizeWithGrip"
         WindowStyle="SingleBorderWindow"
         Background="{DynamicResource Theme.WindowBackground}"
