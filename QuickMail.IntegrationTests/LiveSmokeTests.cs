@@ -62,6 +62,15 @@ public sealed class LiveSmokeTests
         await imap.ConnectAsync(account, password, ct);
         try
         {
+            // Best-effort sweep of leftovers from earlier runs (a message that arrived after a
+            // previous run's poll window lingers otherwise — inert, but no reason to keep it).
+            var stale = (await imap.GetMessageSummariesAsync(account.Id, "INBOX", 50, ct))
+                .Where(s => s.Subject.StartsWith("[quickmail-live-smoke", StringComparison.Ordinal))
+                .Select(s => s.MessageId)
+                .ToList();
+            if (stale.Count > 0)
+                await imap.PermanentlyDeleteBatchAsync(account.Id, "INBOX", stale, ct);
+
             // Real servers deliver in seconds-to-a-minute; poll generously but boundedly.
             var messageId = await PollForSubjectAsync(imap, account.Id, subject, ct);
             Assert.NotNull(messageId);
@@ -130,6 +139,8 @@ public sealed class LiveSmokeTests
     private static async Task<string?> FindSubjectOnceAsync(
         ImapMailService imap, Guid accountId, string subject, CancellationToken ct)
     {
+        // Scans only the newest 50 summaries — fine for the DEDICATED smoke mailbox this tier
+        // assumes; a busy shared mailbox could push our message past the window and flake.
         var summaries = await imap.GetMessageSummariesAsync(accountId, "INBOX", 50, ct);
         return summaries.FirstOrDefault(s => s.Subject.Contains(subject, StringComparison.Ordinal))?.MessageId;
     }

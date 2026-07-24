@@ -120,6 +120,8 @@ jobs:
           if ($existing) {
             gh issue comment $existing --body $body
           } else {
-            gh issue create --title $title --label bug `
+            # No --label: a deleted label would make issue creation itself fail, silently
+            # degrading the one reporting path this workflow exists to provide.
+            gh issue create --title $title `
               --body "The scheduled live-account smoke test is failing. Latest: $body`n`nThis issue is updated by .github/workflows/live-smoke.yml; close it when the smoke run is green again."
           }

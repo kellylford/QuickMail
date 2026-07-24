@@ -86,6 +86,10 @@ Setup (repository secrets): `LIVE_IMAP_HOST`, `LIVE_USER`, `LIVE_PASSWORD` requi
 — the suite writes to and deletes from the real INBOX. On failure the workflow comments on (or
 creates) a "Live smoke failing" issue.
 
+Privacy note: the uploaded trx artifact can embed the IMAP **hostname** in connect-failure
+messages (GitHub's secret masking does not reach inside artifacts). Passwords never appear,
+but pick a smoke host you don't mind naming in a downloadable artifact.
+
 ## Writing integration tests
 
 - Join the collection: `[Collection(GreenMailCollection.Name)]`, take `GreenMailFixture` in the
