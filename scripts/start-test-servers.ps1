@@ -59,11 +59,27 @@ if (-not $JavaExe -or -not (Test-Path $JavaExe)) {
 }
 
 # ── Download GreenMail standalone jar (cached) ─────────────────────────────────
+# SHA-256 of the pinned default version; CI executes this jar, so the download is
+# integrity-checked. Bumping -GreenMailVersion requires updating the hash (compute it and
+# cross-check against Maven Central's published .sha1 for the new jar).
+$knownJarHashes = @{
+    "2.1.11" = "DB075010CD803CF936051C5BF4D7457126E7E9E0D0CC114BAA2E97222FC2B732"
+}
 $jar = Join-Path $serversDir "greenmail-standalone-$GreenMailVersion.jar"
 if (-not (Test-Path $jar)) {
     $url = "https://repo1.maven.org/maven2/com/icegreen/greenmail-standalone/$GreenMailVersion/greenmail-standalone-$GreenMailVersion.jar"
     Write-Host "Downloading GreenMail $GreenMailVersion from Maven Central..."
     Invoke-WebRequest -Uri $url -OutFile $jar -UseBasicParsing
+}
+if ($knownJarHashes.ContainsKey($GreenMailVersion)) {
+    $actual = (Get-FileHash $jar -Algorithm SHA256).Hash
+    if ($actual -ne $knownJarHashes[$GreenMailVersion]) {
+        Remove-Item $jar -Force -Confirm:$false
+        Write-Error ("GreenMail jar checksum mismatch for $GreenMailVersion " +
+                     "(got $actual). Deleted the file; re-run to retry the download.")
+    }
+} else {
+    Write-Warning "No pinned SHA-256 for GreenMail $GreenMailVersion - skipping integrity check."
 }
 
 # ── Start ──────────────────────────────────────────────────────────────────────
