@@ -20,7 +20,9 @@ namespace QuickMail.Services.Graph;
 /// </summary>
 public sealed class GraphClient : IDisposable
 {
-    private const string BaseUrl = "https://graph.microsoft.com/v1.0";
+    // Production default; overridable so tests can point the client at an in-process fake
+    // (WireMock) HTTP server — see live-content testing plan (issue #304), Tier 2.
+    private readonly string _baseUrl;
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     private readonly IOAuthService _oauth;
@@ -28,9 +30,10 @@ public sealed class GraphClient : IDisposable
     private readonly bool _ownsHttp;
     private readonly TimeSpan _retryDelayWhenNoHeader;
 
-    public GraphClient(IOAuthService oauth, HttpClient? http = null, TimeSpan? defaultRetryDelay = null)
+    public GraphClient(IOAuthService oauth, HttpClient? http = null, TimeSpan? defaultRetryDelay = null, string? baseUrl = null)
     {
         _oauth = oauth;
+        _baseUrl = baseUrl ?? "https://graph.microsoft.com/v1.0";
         _http = http ?? new HttpClient();
         _ownsHttp = http is null;
         // Used only when a 429 response omits a Retry-After header. Injectable so tests don't wait.
@@ -197,7 +200,7 @@ public sealed class GraphClient : IDisposable
         AccountModel account, HttpMethod method, string pathOrUrl, Func<HttpContent>? contentFactory, string[]? scopes, bool silentOnly,
         IReadOnlyDictionary<string, string>? headers, CancellationToken ct)
     {
-        var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : BaseUrl + pathOrUrl;
+        var url = pathOrUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase) ? pathOrUrl : _baseUrl + pathOrUrl;
 
         // Up to 3 attempts to ride out HTTP 429 throttling.
         for (int attempt = 0; ; attempt++)
