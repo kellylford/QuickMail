@@ -55,7 +55,13 @@ public partial class KeyCaptureDialog : Window
             return;
 
         var modifiers = Keyboard.Modifiers;
-        if (modifiers == ModifierKeys.None) return;
+
+        // A modifier-less press is accepted only for keys that make sense as a bare shortcut
+        // (Delete, Backspace, Insert, F1–F24) — bare Delete already ships as a default binding,
+        // so the capture UI must be able to reproduce it (#330). Bare letters/digits/space and the
+        // dialog-navigation keys (Enter/Escape/Tab) fall through to normal handling instead of
+        // becoming a global hotkey.
+        if (modifiers == ModifierKeys.None && !GestureHelper.IsBindableBareKey(e.Key)) return;
 
         _capturedKey       = e.Key;
         _capturedModifiers = modifiers;
