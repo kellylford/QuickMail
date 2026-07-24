@@ -629,6 +629,12 @@ Open the **View Manager** from the **View** menu or the command palette. Create 
 
 Press the assigned hotkey from anywhere in the main window to switch to that view immediately.
 
+### Choose what opens at startup
+
+By default QuickMail opens to **All Mail**. To make it open somewhere else — your Inbox, a specific folder, or any saved view — select the **Default view (applied on startup)** checkbox for that view in the View Manager. QuickMail then opens to that view, and the folder it targets, each time it starts. Only one view can be the default at a time; choosing a new default clears the previous one.
+
+So to open directly into a particular folder on launch: navigate to that folder, choose **Save View…** from the **View** menu, then mark the new view as the default in the View Manager.
+
 ---
 
 ## Calendar
