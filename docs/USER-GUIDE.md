@@ -160,7 +160,7 @@ This section is for whoever **owns or administers** a Microsoft 365 organization
 
 - QuickMail is a **public client / desktop application** registered in Microsoft Entra ID (Azure AD). Your users authenticate against that single registration; there is nothing to deploy into your tenant.
 - It requests **delegated permissions only**. That means QuickMail acts **only as the signed-in user**, entirely within **that user's own mailbox**, and only while they are using the app. It holds **no application permissions** — it cannot run in the background, and it cannot read or send mail for any user who has not personally signed in.
-- Sign-in uses the modern authentication flow (OAuth 2.0 / MSAL). Passwords are never seen or stored by QuickMail; tokens live in Windows Credential Manager on the user's own PC and honour your Conditional Access and MFA policies.
+- Sign-in uses the modern authentication flow (OAuth 2.0 / MSAL). Passwords are never seen or stored by QuickMail; access tokens are held in an encrypted cache on the user's own PC, protected by Windows DPAPI and readable only by that user's Windows account. (Where a user connects over IMAP/SMTP with a password instead, that password is stored in Windows Credential Manager.) Sign-in honours your Conditional Access and MFA policies.
 
 ### App registration details
 
@@ -187,7 +187,7 @@ If users connect over IMAP/SMTP instead of the default Microsoft 365 option, two
 
 ### How to approve QuickMail for your organization
 
-Any of these roles can grant approval — **Global Administrator is not required** (QuickMail has no application permissions): **Cloud Application Administrator**, **Application Administrator**, or **AI Administrator**.
+Any of these roles can grant approval — **Global Administrator is not required**: **Cloud Application Administrator** or **Application Administrator**.
 
 **Option A — Entra admin center.** Sign in at [entra.microsoft.com](https://entra.microsoft.com) → **Entra ID → Enterprise applications → QuickMail → Security → Permissions → "Grant admin consent for &lt;your organization&gt;"**, review the list, and approve. (If QuickMail is not yet listed under Enterprise applications, use Option B — the first admin consent creates it.)
 
@@ -196,6 +196,8 @@ Any of these roles can grant approval — **Global Administrator is not required
 ```
 https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312
 ```
+
+**Open this in a private/InPrivate browser window.** A cached Microsoft sign-in session will skip the consent screen and send you straight to an error page (see Troubleshooting).
 
 Replace `organizations` with your tenant ID or a verified domain to target a specific tenant. Review the permission list Microsoft shows and approve. This grants consent tenant-wide in one step.
 
@@ -209,6 +211,8 @@ After approval, your users sign in normally with no further prompts.
 ### Troubleshooting
 
 - **Users see "needs admin approval" with no continue button.** Your tenant requires admin consent and QuickMail has not been approved yet. Follow the steps above. This is expected until approval is granted.
+- **The consent link opens, asks you to sign in, then goes straight to an error page with no permissions to approve.** Your browser is reusing a cached Microsoft sign-in session, which skips the consent screen. **Open the link in a private/InPrivate browser window** and sign in fresh — the permission list will appear. This also applies to the "Grant admin consent" button in the Entra portal.
+- **After approving, the browser shows "can't reach this page" at `http://localhost`.** That is expected and means it worked. QuickMail is a desktop app, so Microsoft redirects to a local address with nothing listening. Your approval is recorded *before* that redirect. Confirm it under **Enterprise applications → QuickMail → Security → Permissions**, which will now list the granted permissions.
 - **A user signed in successfully but delete or move fails with an error.** Their token predates a permission grant. Have them remove and re-add the account (or sign in again) to pick up a fresh token.
 - **You approved QuickMail but a newly added feature still prompts.** Admin consent covers the permissions declared at the moment it was granted. Re-grant consent (Option A or B) to pick up any newly requested permission.
 
