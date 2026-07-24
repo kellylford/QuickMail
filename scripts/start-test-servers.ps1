@@ -150,12 +150,22 @@ if (-not $python) {
     Write-Error "Python not found on PATH. Install Python 3 (needed for Radicale). See docs/TESTING-INTEGRATION.md."
 }
 
+# EAP guard: under Windows PowerShell 5.1, EAP=Stop turns a native command's redirected
+# stderr into a terminating NativeCommandError — the probe's ModuleNotFoundError traceback
+# would kill the script HERE, before the pip install it exists to trigger. pip likewise
+# writes warnings to stderr, so both run under Continue; $LASTEXITCODE still decides.
+$prevEap = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
 $installed = & python -c "import radicale; print(radicale.VERSION)" 2>$null
 if ($LASTEXITCODE -ne 0 -or $installed -ne $RadicaleVersion) {
     Write-Host "Installing Radicale $RadicaleVersion via pip..."
     & python -m pip install --user --quiet "radicale==$RadicaleVersion"
-    if ($LASTEXITCODE -ne 0) { Write-Error "pip install radicale==$RadicaleVersion failed." }
+    if ($LASTEXITCODE -ne 0) {
+        $ErrorActionPreference = $prevEap
+        Write-Error "pip install radicale==$RadicaleVersion failed."
+    }
 }
+$ErrorActionPreference = $prevEap
 
 $alreadyRunning = $false
 if (Test-Path $radicalePidFile) {
