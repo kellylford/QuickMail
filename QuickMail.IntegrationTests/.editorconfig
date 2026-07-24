@@ -1,0 +1,8 @@
+# Analyzer adjustments for the integration test project only.
+root = false
+
+[*.cs]
+# Underscore-separated test method names are idiomatic xUnit (matches QuickMail.Tests style).
+dotnet_diagnostic.CA1707.severity = none
+# Test helpers read better as instance members alongside the fixtures that use them.
+dotnet_diagnostic.CA1822.severity = none

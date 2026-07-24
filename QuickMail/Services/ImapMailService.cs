@@ -363,9 +363,10 @@ public class ImapMailService : IMailService, IChangeNotifier
 
             var attachments = ExtractAttachments(s.Body);
 
-            // Detect and parse text/calendar MIME parts (ICS calendar invites).
-            IcsModel? calendarInvite = null;
-            var calendarIcsText = string.Empty;
+            // Detect text/calendar MIME parts (ICS calendar invites). Only the fetch is done
+            // here; parsing and field assignment live in PopulateCalendar so the invariant
+            // "CalendarInvite set => CalendarIcs set" is enforced (and testable) in one place.
+            string? rawCalendarIcs = null;
             var calendarPart = FindCalendarPart(s.Body);
 
             if (calendarPart != null)
@@ -373,19 +374,16 @@ public class ImapMailService : IMailService, IChangeNotifier
                 try
                 {
                     var decoded = await folder.GetBodyPartAsync(mailKitUid, calendarPart, ct);
-                    if (decoded is TextPart tp && !string.IsNullOrWhiteSpace(tp.Text))
-                    {
-                        calendarIcsText = tp.Text;
-                        calendarInvite = IcsModel.Parse(tp.Text);
-                    }
+                    if (decoded is TextPart tp)
+                        rawCalendarIcs = tp.Text;
                 }
                 catch (Exception ex)
                 {
-                    LogService.Log($"ImapMailService: failed to parse calendar part for UID {messageId}: {ex.Message}");
+                    LogService.Log($"ImapMailService: failed to fetch calendar part for UID {messageId}: {ex.Message}");
                 }
             }
 
-            return new MailMessageDetail
+            var detail = new MailMessageDetail
             {
                 MessageId     = messageId,
                 AccountId     = accountId,
@@ -401,19 +399,41 @@ public class ImapMailService : IMailService, IChangeNotifier
                 PlainTextBody = plainText,
                 HtmlBody      = htmlText,
                 Attachments   = attachments,
-                CalendarInvite = calendarInvite,
-                // Persist the RAW ICS too, not just the parsed CalendarInvite. CalendarInvite lives
-                // only in memory; CalendarIcs is the column the local store caches. Without this, a
-                // freshly fetched invite shows its Accept/Decline card (CalendarInvite is set), but
-                // the moment the row is cached — which prefetch does almost immediately — the stored
-                // calendar_ics is empty, so every later cache-served open reconstructs a null invite
-                // and the card silently vanishes. This is the root cause of invites "randomly" not
-                // being acceptable across accounts (it was really a prefetch-vs-open race).
-                CalendarIcs   = calendarIcsText,
                 DraftComposeMode = ParseComposeMode(s.Headers?["X-QuickMail-Compose-Mode"]),
             };
+
+            PopulateCalendar(detail, rawCalendarIcs);
+            return detail;
         }
         finally { await folder.CloseAsync(false, ct); }
+    }
+
+    /// <summary>
+    /// Populates <see cref="MailMessageDetail.CalendarIcs"/> and
+    /// <see cref="MailMessageDetail.CalendarInvite"/> from a raw <c>text/calendar</c> body.
+    /// Invariant: <c>CalendarInvite</c> is never set without <c>CalendarIcs</c>. CalendarInvite
+    /// lives only in memory; CalendarIcs is the column the local store caches. Persisting the
+    /// parse result without the raw text means a freshly fetched invite shows its Accept/Decline
+    /// card, but the moment the row is cached — which prefetch does almost immediately — the
+    /// stored calendar_ics is empty, so every later cache-served open reconstructs a null invite
+    /// and the card silently vanishes (the root cause of #297, really a prefetch-vs-open race).
+    /// </summary>
+    internal static void PopulateCalendar(MailMessageDetail detail, string? rawIcs)
+    {
+        if (string.IsNullOrWhiteSpace(rawIcs))
+            return;
+
+        detail.CalendarIcs = rawIcs;
+        try
+        {
+            detail.CalendarInvite = IcsModel.Parse(rawIcs);
+        }
+        catch (Exception ex)
+        {
+            // Raw ICS stays cached even when parsing fails, so a later fix to the parser
+            // retroactively revives the invite card for already-cached rows.
+            LogService.Log($"ImapMailService: failed to parse calendar part for UID {detail.MessageId}: {ex.Message}");
+        }
     }
 
     // ── Mutations ────────────────────────────────────────────────────────────────

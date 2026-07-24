@@ -13,6 +13,83 @@ permissions:
   id-token: write   # OIDC token azure/login exchanges for Azure creds (signing)
 
 jobs:
+  # Protocol integration tests against a local GreenMail server (IMAP/SMTP), per
+  # docs/planning/live-content-testing-plan.md (issue #304). Runs in parallel with the
+  # build job. GreenMail runs as a native Java process because the app's net8.0-windows
+  # TFM requires a Windows runner, and Docker service containers are Linux-only.
+  integration:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+
+      # The gitignored credential partial classes are required to compile QuickMail.csproj.
+      # Same generation as the build job; the values themselves are never used by these tests.
+      - name: Write Google OAuth credentials
+        shell: pwsh
+        env:
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class GoogleOAuthService
+          {
+              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
+              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
+
+      - name: Write bug-report credentials
+        shell: pwsh
+        env:
+          BUG_REPORT_TOKEN: ${{ secrets.BUG_REPORT_TOKEN }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class BugReportService
+          {
+              private const string AppOwnedToken = "$env:BUG_REPORT_TOKEN";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+
+      - name: Cache GreenMail jar
+        uses: actions/cache@v4
+        with:
+          path: .testservers/greenmail-standalone-*.jar
+          key: greenmail-standalone-2.1.11
+
+      # Java (Temurin) is preinstalled on windows-latest; the script finds it via JAVA_HOME.
+      - name: Start test servers
+        shell: pwsh
+        run: ./scripts/start-test-servers.ps1
+
+      - name: Integration tests
+        shell: pwsh
+        env:
+          # Flips server-absence from skip to FAIL: in CI a missing server is an
+          # infrastructure error and must never look like a passing run.
+          QUICKMAIL_IT_SERVERS: '1'
+        run: |
+          dotnet test QuickMail.IntegrationTests/QuickMail.IntegrationTests.csproj -c Release `
+            --logger "trx;LogFileName=integration-results.trx"
+
+      - name: Upload integration test results and server logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: integration-results
+          path: |
+            QuickMail.IntegrationTests/TestResults/integration-results.trx
+            .testservers/*.log
+            .testservers/*.log.err
+          if-no-files-found: warn
+          retention-days: 7
+
   build:
     runs-on: windows-latest
     # Runs in the `azure-signing` environment so the OIDC token's subject is

@@ -6308,6 +6308,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Builds an accessible HTML event card for display in the WebView2 reading pane.
     /// The card is prepended to the message body HTML by the View.
     /// </summary>
+    /// <summary>
+    /// Raised to update the open invite card's in-document <c>aria-live</c> status region (issue #329).
+    /// Host-window announcements are unreliable while focus is inside the reading-pane WebView2, so a
+    /// reading-pane RSVP's sending / success / failure feedback is delivered here, inside the document
+    /// the screen reader is already reading. The View injects the text via <c>ExecuteScriptAsync</c>.
+    /// </summary>
+    public event Action<string>? OpenInviteCardStatus;
+
     public string BuildEventCardHtml()
     {
         var invite = MessageDetail?.CalendarInvite;
@@ -6403,6 +6411,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
             AppendButton("quickmail:ics-decline", "Decline invitation", "Decline",
                 Color("error", "#B3261E"), Color("errorBackground", "#FBEAE9"), last: true);
             sb.Append("</div>");
+
+            // Live status region for RSVP feedback (issue #329), updated in place via
+            // ExecuteScriptAsync so the result is announced from inside the document — a host-window
+            // notification is dropped while focus is in the WebView2. Empty until the user responds.
+            sb.Append("<div id=\"qm-invite-status\" aria-live=\"assertive\" aria-atomic=\"true\" " +
+                      "style=\"margin-top:8px;font-weight:600;\"></div>");
         }
 
         sb.Append("</div>");
@@ -6430,7 +6444,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task SendIcsReply(string partStat, string actionLabel)
     {
         var invite = MessageDetail?.CalendarInvite;
-        if (invite == null) return;
+        if (invite == null)
+        {
+            // The card is shown but the invite data isn't available (e.g. a cache-served reopen before
+            // reconstruction). Say so instead of returning silently (#329). The card is what's focused,
+            // so route it through the card's live region as well as the host announce.
+            const string msg = "This invitation can't be answered right now. Open it again from the message list and try once it has loaded.";
+            OpenInviteCardStatus?.Invoke(msg);
+            Announce(msg, AnnouncementCategory.Result);
+            return;
+        }
 
         var account = Accounts.FirstOrDefault(a => a.Id == MessageDetail!.AccountId);
         if (account == null)
@@ -6503,6 +6526,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task SendIcsReplyForAsync(IcsModel invite, AccountModel account, string partStat,
         string actionLabel, string sourceMessageId, string sourceFolder)
     {
+        // Feedback for a reading-pane RSVP goes through the card's in-document live region (#329), but
+        // only while the reading pane still shows THIS invite \u2014 if the user navigated away during the
+        // send, or this reply came from the calendar list, we must not write into a different card.
+        void CardStatus(string text)
+        {
+            if (MessageDetail?.CalendarInvite is { } open &&
+                string.Equals(open.Uid, invite.Uid, StringComparison.Ordinal))
+                OpenInviteCardStatus?.Invoke(text);
+        }
+
+        CardStatus("Sending your reply\u2026");
+
         try
         {
             var attendeeName = account.SenderDisplayName;
@@ -6514,6 +6549,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             var eventTitle = invite.Summary ?? "calendar event";
             Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
+
+            // Say what actually happened: accepting/tentative also adds the event to the calendar
+            // (the upsert below); declining only sends the reply. This is the reliable, in-document
+            // confirmation the reporter was missing (#329).
+            CardStatus(partStat == "DECLINED"
+                ? $"You {actionLabel} this meeting. Your reply was sent to the organizer."
+                : $"You {actionLabel} this meeting. It's been added to your calendar, and your reply was sent to the organizer.");
 
             // Update the calendar event's response status so the calendar pane reflects the reply.
             if (_calendarService != null && !string.IsNullOrEmpty(invite.Uid))
@@ -6559,6 +6601,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             LogService.Log($"SendIcsReply ({partStat})", ex);
             Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
+            // A failed send would otherwise be silent in the reading pane too (host announce dropped),
+            // and the buttons remain so the user can retry.
+            CardStatus("Couldn't send your reply. You can try again.");
         }
     }
 

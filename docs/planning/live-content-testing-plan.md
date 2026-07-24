@@ -351,6 +351,13 @@ only if justified afterward.
 - **GreenMail IDLE fidelity** — the one dependency assumption that needs the
   Phase-1 spike to verify before Phase 2 commits to it (fallback named in
   §4.2).
+- **GreenMail multipart section fetch (found in the Phase-1 spike):** GreenMail's
+  `BODY[n.MIME]` response omits the terminating blank line after the MIME
+  headers, so MailKit decodes nested body parts to empty entities (verified on
+  1.6.15 and 2.1.11 via protocol log). Single-part messages work correctly.
+  Mitigation: body-reading tests seed single-part messages; multipart-dependent
+  tests are checked in `Skip`-annotated so the gap stays visible. Details in
+  `docs/TESTING-INTEGRATION.md`.
 - **Windows-runner process management** — background Java/Python processes
   must be health-checked (wait-for-port) and their logs uploaded on failure,
   or a hung server becomes an undiagnosable red build. Budgeted into §4.6.
