@@ -147,6 +147,17 @@ public partial class RulesManagerViewModel : ObservableObject
         Announce("New rule created. Enter a name and conditions.", AnnouncementCategory.Hint);
     }
 
+    /// <summary>
+    /// Adds a rule prefilled from a message (e.g. Ctrl+Shift+T) and selects it. Mirrors the
+    /// constructor's prefill path, for when the (modeless) window is already open.
+    /// </summary>
+    public void AddPrefilledRule(MailRule template)
+    {
+        Rules.Add(template);
+        SelectedRule = template;
+        Announce("New rule added from message. Edit its name and conditions.", AnnouncementCategory.Hint);
+    }
+
     [RelayCommand]
     private void DeleteRule()
     {

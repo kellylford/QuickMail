@@ -5756,12 +5756,19 @@ public partial class MainWindow : Window
     private void OpenRulesManager(MailRule? template = null)
     {
         // Single-instance: this window is modeless (see below), so a second open request
-        // would otherwise stack another copy. Bring the existing one forward instead.
-        if (_rulesWindow is { IsLoaded: true })
+        // would otherwise stack another copy. Bring the existing one forward — and if this
+        // request carries a rule prefilled from the current message (Ctrl+Shift+T), add it
+        // to the open window rather than silently dropping it.
+        if (_rulesWindow is { IsLoaded: true } existing)
         {
-            _rulesWindow.Activate();
+            if (template != null) existing.PrefillFromTemplate(template);
+            existing.Activate();
             return;
         }
+
+        // Remember what had focus so we can restore it when the (modeless) window closes;
+        // modal ShowDialog() returned focus to the owner automatically, Show() does not.
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
 
         var accounts = _vm.Accounts.ToList();
         var selectedMessages = _vm.Messages.ToList();
@@ -5784,6 +5791,11 @@ public partial class MainWindow : Window
         dialog.Closed += (_, _) =>
         {
             _rulesWindow = null;
+
+            // Return focus to where it was before opening (falling back to the message list);
+            // Show() does not restore owner focus the way ShowDialog() did.
+            Activate();
+            (previousFocus ?? MessageList).Focus();
 
             // Refresh the rules status text now that the window has closed.
             _vm.UpdateRulesStatusText();

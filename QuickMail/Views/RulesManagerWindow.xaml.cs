@@ -66,6 +66,16 @@ public partial class RulesManagerWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// Adds a rule prefilled from a message and focuses the list. Called when Ctrl+Shift+T is
+    /// pressed while this (modeless) window is already open, so the template isn't dropped.
+    /// </summary>
+    public void PrefillFromTemplate(MailRule template)
+    {
+        _vm.AddPrefilledRule(template);
+        RuleListBox.Focus();
+    }
+
     private bool OnConfirmDeleteRequested(string message, string title)
     {
         return MessageBox.Show(
