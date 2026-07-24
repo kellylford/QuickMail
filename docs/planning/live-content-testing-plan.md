@@ -2,7 +2,7 @@
 
 **Issue:** [#304](https://github.com/kellylford/QuickMail/issues/304) — Testing infrastructure: local IMAP/SMTP + CalDAV/CardDAV harness and testable seams for calendar/mail
 **Cross-referenced issues:** #126, #268, #278, #293, #294, #296, #297, #311, #312, #313, #314
-**Status:** Proposed — not yet implemented
+**Status:** Implemented — Phases 1–5 merged 2026-07-24 (PRs #354, #360, #361, #362, #363). Tier 3 activation awaits the LIVE_* repository secrets (see docs/TESTING-INTEGRATION.md).
 **Date:** 2026-07-24
 
 ## 1. Problem
