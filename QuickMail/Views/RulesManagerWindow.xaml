@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:QuickMail.Views"
         Title="Rules Manager"
+        AutomationProperties.Name="Rules Manager"
         Width="750" Height="560"
         MinWidth="600" MinHeight="440"
         WindowStartupLocation="CenterOwner"
@@ -51,28 +52,42 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
-                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+                <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
                     <Button Content="New Rule" Command="{Binding NewRuleCommand}"
-                            Width="80" Height="26" Margin="0,0,6,0"
+                            Width="80" Height="26" Margin="0,0,6,6"
                             AutomationProperties.Name="Create new rule"/>
                     <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
-                            Width="60" Height="26"
+                            Width="60" Height="26" Margin="0,0,6,6"
                             AutomationProperties.Name="Delete selected rule"/>
-                </StackPanel>
+                    <Button Content="Run on Existing Mail" Command="{Binding RunOnExistingCommand}"
+                            Height="26" Padding="8,0" Margin="0,0,0,6"
+                            AutomationProperties.Name="Run all rules on existing mail now"/>
+                </WrapPanel>
 
                 <ListBox Grid.Row="1"
                          x:Name="RuleListBox"
                          ItemsSource="{Binding Rules}"
                          SelectedItem="{Binding SelectedRule}"
-                         DisplayMemberPath="Name"
                          AutomationProperties.Name="Rules list">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="6,4"/>
-                            <Setter Property="AutomationProperties.Name"
-                                    Value="{Binding Name}"/>
                         </Style>
                     </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <!-- AccessibleName on the template root gives one utterance (rule +
+                                 account, honouring the field-labels setting) instead of the two
+                                 TextBlocks being read as separate cells; mirrors the address-book
+                                 contact row. The visual shows the account dimmed. -->
+                            <StackPanel Orientation="Horizontal"
+                                        AutomationProperties.Name="{Binding AccessibleName}">
+                                <TextBlock Text="{Binding Name}"/>
+                                <TextBlock Text="{Binding AccountDisplay}"
+                                           Opacity="0.6" Margin="12,0,0,0"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
                 </ListBox>
             </Grid>
 
@@ -211,11 +226,14 @@
 
                     <!-- Target folder -->
                     <TextBlock Text="Target folder"/>
+                    <!-- Accessible name tracks the chosen folder (issue #344): a static name made
+                         a screen reader always say "Choose target folder" even after a folder was
+                         picked. PickFolder raises PropertyChanged(SelectedRule), refreshing both. -->
                     <Button Content="{Binding SelectedRule.TargetFolder, TargetNullValue=Choose Folder…, FallbackValue=Choose Folder…}"
                             Command="{Binding PickFolderCommand}"
                             Width="140" Height="26" Margin="0,2,0,8"
                             HorizontalAlignment="Left"
-                            AutomationProperties.Name="Choose target folder"/>
+                            AutomationProperties.Name="{Binding SelectedRule.TargetFolder, TargetNullValue=Choose target folder, FallbackValue=Choose target folder}"/>
                     <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
                                KeyboardNavigation.IsTabStop="False"
                                AutomationProperties.LiveSetting="Assertive">

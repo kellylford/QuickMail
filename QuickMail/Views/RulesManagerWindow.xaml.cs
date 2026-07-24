@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using QuickMail.Models;
@@ -43,8 +44,28 @@ public partial class RulesManagerWindow : Window
         vm.AnnouncementRequested += OnAnnouncementRequested;
         vm.PickFolderRequested += OnPickFolderRequested;
 
-        // Focus the rule list on open
-        Loaded += (_, _) => RuleListBox.Focus();
+        // Focus the first rule in the list on open (issue #348). Focusing the ListBox alone does
+        // not reliably move keyboard focus onto an item for some screen readers, so focus the
+        // first item's container directly.
+        Loaded += (_, _) => FocusFirstRule();
+    }
+
+    private void FocusFirstRule()
+    {
+        if (RuleListBox.Items.Count == 0)
+        {
+            RuleListBox.Focus();
+            return;
+        }
+
+        if (RuleListBox.SelectedIndex < 0)
+            RuleListBox.SelectedIndex = 0;
+
+        RuleListBox.UpdateLayout();
+        if (RuleListBox.ItemContainerGenerator.ContainerFromIndex(RuleListBox.SelectedIndex) is ListBoxItem item)
+            item.Focus();
+        else
+            RuleListBox.Focus();
     }
 
     private string? OnPickFolderRequested()

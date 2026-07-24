@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
@@ -14,6 +15,8 @@ public partial class RulesManagerViewModel : ObservableObject
     private readonly IRuleService _ruleService;
     private readonly IEnumerable<AccountModel> _accounts;
     private readonly IEnumerable<MailMessageSummary>? _selectedMessagesForTest;
+    private readonly Dictionary<Guid, string> _accountLabels = [];
+    private readonly bool _showFieldLabels;
 
     // ── Events (View subscribes) ────────────────────────────────────────────
 
@@ -29,23 +32,40 @@ public partial class RulesManagerViewModel : ObservableObject
     /// <summary>Raised when the View should open a folder picker for the target folder.</summary>
     public event Func<string?>? PickFolderRequested;
 
+    /// <summary>
+    /// Raised when the user asks to run all enabled rules against existing cached mail. The owner
+    /// (which holds the local store) performs the run and returns how many messages were moved or
+    /// deleted. Rules already run automatically when the window closes; this makes that explicit and
+    /// on-demand (issue #346).
+    /// </summary>
+    public event Func<Task<int>>? RunOnExistingRequested;
+
     // ── Constructor ─────────────────────────────────────────────────────────
 
     public RulesManagerViewModel(
         IRuleService ruleService,
         IEnumerable<AccountModel> accounts,
         MailRule? prefillTemplate = null,
-        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null)
+        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null,
+        IConfigService? configService = null)
     {
         _ruleService = ruleService;
         _accounts = accounts;
         _selectedMessagesForTest = selectedMessagesForTest;
 
+        // Account id → label, so each rule row can show which account it applies to.
+        foreach (var a in _accounts)
+            _accountLabels[a.Id] = a.AccountLabel;
+
+        _showFieldLabels = configService?.Load().RuleListShowFieldLabels ?? false;
+
         var rules = _ruleService.LoadRules();
+        foreach (var r in rules) StampDisplay(r);
         Rules = new ObservableCollection<MailRule>(rules);
 
         if (prefillTemplate != null)
         {
+            StampDisplay(prefillTemplate);
             Rules.Add(prefillTemplate);
             SelectedRule = prefillTemplate;
             Announce("New rule created from message. Fill in the action and save.",
@@ -142,6 +162,7 @@ public partial class RulesManagerViewModel : ObservableObject
     private void NewRule()
     {
         var rule = new MailRule { Name = "New rule" };
+        StampDisplay(rule);
         Rules.Add(rule);
         SelectedRule = rule;
         Announce("New rule created. Enter a name and conditions.", AnnouncementCategory.Hint);
@@ -153,9 +174,40 @@ public partial class RulesManagerViewModel : ObservableObject
     /// </summary>
     public void AddPrefilledRule(MailRule template)
     {
+        StampDisplay(template);
         Rules.Add(template);
         SelectedRule = template;
         Announce("New rule added from message. Edit its name and conditions.", AnnouncementCategory.Hint);
+    }
+
+    /// <summary>
+    /// Resolves the account scope and composes the list row's accessible name for a rule. Concise
+    /// by default ("Newsletters, IdeaPlace"), or labeled when the <c>RuleListShowFieldLabels</c>
+    /// setting is on ("Rule Newsletters, account IdeaPlace"). Mirrors the address-book contact list.
+    /// </summary>
+    private void StampDisplay(MailRule rule)
+    {
+        rule.AccountDisplay = rule.AccountId is { } id && _accountLabels.TryGetValue(id, out var label)
+            ? label
+            : "All accounts";
+
+        var name = string.IsNullOrWhiteSpace(rule.Name) ? "Unnamed rule" : rule.Name;
+        rule.AccessibleName = _showFieldLabels
+            ? $"Rule {name}, account {rule.AccountDisplay}"
+            : $"{name}, {rule.AccountDisplay}";
+    }
+
+    /// <summary>
+    /// Re-renders a list row after its in-place fields changed. <see cref="MailRule"/> raises no
+    /// change notification, so re-assigning the slot triggers a Replace and regenerates that one
+    /// container (so a renamed rule or a changed account shows immediately).
+    /// </summary>
+    private void RefreshRow(MailRule rule)
+    {
+        var index = Rules.IndexOf(rule);
+        if (index < 0) return;
+        Rules[index] = rule;
+        SelectedRule = rule;   // Replace clears selection; restore it
     }
 
     [RelayCommand]
@@ -184,6 +236,8 @@ public partial class RulesManagerViewModel : ObservableObject
         if (!Validate(SelectedRule)) return;
 
         _ruleService.SaveRules(Rules.ToList());
+        StampDisplay(SelectedRule);
+        RefreshRow(SelectedRule);   // reflect a renamed rule or changed account in the list row
         StatusText = $"Rule '{SelectedRule.Name}' saved.";
         Announce($"Rule '{SelectedRule.Name}' saved.", AnnouncementCategory.Result);
     }
@@ -215,6 +269,38 @@ public partial class RulesManagerViewModel : ObservableObject
     private void Close()
     {
         CloseRequested?.Invoke();
+    }
+
+    /// <summary>
+    /// Runs all enabled rules against existing cached mail on demand and reports the outcome, so the
+    /// user isn't left wondering whether saving a rule did anything to messages already in the
+    /// mailbox (issue #346). The owner performs the work (it holds the local store); the count is
+    /// messages moved or deleted — actions like Mark as read still apply but aren't counted here.
+    /// </summary>
+    [RelayCommand]
+    private async Task RunOnExistingAsync()
+    {
+        if (RunOnExistingRequested is null) return;
+
+        StatusText = "Running rules on existing mail…";
+        Announce(StatusText, AnnouncementCategory.Status);
+
+        int affected;
+        try
+        {
+            affected = await RunOnExistingRequested.Invoke();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Couldn't run rules on existing mail: {ex.Message}";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return;
+        }
+
+        StatusText = affected > 0
+            ? $"Applied rules to existing mail: {affected} message{(affected == 1 ? "" : "s")} moved or deleted."
+            : "Applied rules to existing mail.";
+        Announce(StatusText, AnnouncementCategory.Result);
     }
 
     [RelayCommand]
