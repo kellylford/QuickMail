@@ -63,18 +63,18 @@ jobs:
           path: .testservers/greenmail-standalone-*.jar
           key: greenmail-standalone-2.1.11
 
+      # Server start and tests MUST share one step: the Windows runner kills a step's child
+      # processes at the step boundary, so a server started in its own step is dead before
+      # the next step runs (observed: "GreenMail ready" then unreachable 90s later).
       # Java (Temurin) is preinstalled on windows-latest; the script finds it via JAVA_HOME.
-      - name: Start test servers
-        shell: pwsh
-        run: ./scripts/start-test-servers.ps1
-
-      - name: Integration tests
+      - name: Start test servers and run integration tests
         shell: pwsh
         env:
           # Flips server-absence from skip to FAIL: in CI a missing server is an
           # infrastructure error and must never look like a passing run.
           QUICKMAIL_IT_SERVERS: '1'
         run: |
+          ./scripts/start-test-servers.ps1
           dotnet test QuickMail.IntegrationTests/QuickMail.IntegrationTests.csproj -c Release `
             --logger "trx;LogFileName=integration-results.trx"
 
@@ -88,6 +88,9 @@ jobs:
             .testservers/*.log
             .testservers/*.log.err
           if-no-files-found: warn
+          # .testservers/ is a dot-folder; without this the server logs are silently
+          # excluded from the artifact (upload-artifact skips hidden paths by default).
+          include-hidden-files: true
           retention-days: 7
 
   build:
