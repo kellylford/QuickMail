@@ -27,6 +27,8 @@
          Product version and screen readers report programmatically — so suppress it. -->
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <AnalysisMode>Recommended</AnalysisMode>
+    <!-- Audit transitive packages too (default is direct-only); vulnerable deps warn at restore/build. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
     <!-- Single-file publish: native DLLs (WebView2Loader, SQLite) extract to temp on first run -->
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
@@ -59,7 +61,13 @@
     <PackageReference Include="AdysTech.CredentialManager" Version="3.1.0" />
     <PackageReference Include="Google.Apis.Auth" Version="1.75.0" />
     <PackageReference Include="Markdig" Version="1.3.2" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <!-- Transitive-vulnerability overrides. SQLitePCLRaw.bundle_e_sqlite3: Microsoft.Data.Sqlite
+         still pins 2.1.11, whose bundled SQLite is vulnerable (GHSA-2m69-gcr7-jv3q); 2.1.12 ships
+         the fixed SQLite. System.Drawing.Common: Microsoft.Toolkit.Uwp.Notifications 7.1.3 (its
+         final release) pins 4.7.0, vulnerable to GHSA-rxg9-xrhp-64gj; 4.7.2 is the patched build. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+    <PackageReference Include="System.Drawing.Common" Version="4.7.2" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="MailKit" Version="4.17.0" />
     <PackageReference Include="Microsoft.Identity.Client" Version="4.85.2" />
