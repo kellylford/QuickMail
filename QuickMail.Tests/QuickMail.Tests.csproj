@@ -20,6 +20,8 @@
          null-dereference risks before they become runtime crashes. -->
     <WarningsAsErrors>CS8602;CS8604;CS8618</WarningsAsErrors>
     <AnalysisMode>Recommended</AnalysisMode>
+    <!-- Audit transitive packages too (default is direct-only); vulnerable deps warn at restore/build. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
   </PropertyGroup>
 
   <ItemGroup>
