@@ -8,7 +8,7 @@
         MinWidth="600" MinHeight="440"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResizeWithGrip"
-        WindowStyle="ToolWindow"
+        WindowStyle="SingleBorderWindow"
         Background="{DynamicResource Theme.WindowBackground}"
         Foreground="{DynamicResource Theme.TextPrimary}"
         FontFamily="{DynamicResource Theme.FontFamily}"
@@ -72,16 +72,17 @@
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="6,4"/>
+                            <!-- The screen reader reads the row from the ListBoxItem's own Name, not
+                                 from a child element's AutomationProperties.Name (verified by
+                                 SelectorItemAccessibilityTests against the live peer). So the composed
+                                 "name, account" (honouring the field-labels setting) must sit on the
+                                 container. The template below is visual only. -->
+                            <Setter Property="AutomationProperties.Name" Value="{Binding AccessibleName}"/>
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <!-- AccessibleName on the template root gives one utterance (rule +
-                                 account, honouring the field-labels setting) instead of the two
-                                 TextBlocks being read as separate cells; mirrors the address-book
-                                 contact row. The visual shows the account dimmed. -->
-                            <StackPanel Orientation="Horizontal"
-                                        AutomationProperties.Name="{Binding AccessibleName}">
+                            <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="{Binding Name}"/>
                                 <TextBlock Text="{Binding AccountDisplay}"
                                            Opacity="0.6" Margin="12,0,0,0"/>
