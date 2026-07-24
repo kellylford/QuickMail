@@ -484,6 +484,33 @@ public class RulesManagerViewModelTests
         Assert.Contains("IdeaPlace", vm.SelectedRule.AccessibleName);
     }
 
+    [Fact]
+    public void NewRule_PrefersTheDefaultAccount_OverTheFirst()
+    {
+        var first = new AccountModel { Id = Guid.NewGuid(), AccountName = "First", IsDefault = false };
+        var preferred = new AccountModel { Id = Guid.NewGuid(), AccountName = "Preferred", IsDefault = true };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [first, preferred]);
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.Equal(preferred.Id, vm.SelectedRule!.AccountId);   // default account, not the first
+    }
+
+    [Fact]
+    public void HasSelectedRule_FalseWithNoRules_TrueAfterNew()
+    {
+        // Drives the editor's IsEnabled so, with no rules, the per-rule fields (incl. the Account
+        // combo) are dropped from the tab order instead of presenting a blank live control.
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
+
+        Assert.False(vm.HasSelectedRule);   // no rules → nothing selected
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.True(vm.HasSelectedRule);
+    }
+
     // ── Run on existing mail (issue #346) ───────────────────────────────────────
 
     [Fact]

@@ -102,7 +102,10 @@
                           Focusable="False"
                           KeyboardNavigation.TabNavigation="Continue"
                           KeyboardNavigation.IsTabStop="False">
-                <StackPanel Margin="12,0,0,0">
+                <!-- Disabled when no rule is selected (e.g. no rules yet): the fields bind to
+                     SelectedRule.* and would otherwise be live-but-blank, so a keyboard/screen-reader
+                     user could tab onto an empty Account combo with nothing behind it. -->
+                <StackPanel Margin="12,0,0,0" IsEnabled="{Binding HasSelectedRule}">
                     <!-- Rule Name -->
                     <TextBlock Text="Rule Name" FontWeight="SemiBold" Margin="0,8,0,2"/>
                     <TextBox Text="{Binding SelectedRule.Name, UpdateSourceTrigger=PropertyChanged}"

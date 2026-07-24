@@ -82,7 +82,16 @@ public partial class RulesManagerViewModel : ObservableObject
     public ObservableCollection<MailRule> Rules { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedRule))]
     private MailRule? _selectedRule;
+
+    /// <summary>
+    /// True when a rule is selected. The View gates the editor panel on this so that, when there are
+    /// no rules, the per-rule fields (which bind to <c>SelectedRule.*</c>) are disabled and dropped
+    /// from the tab order — otherwise a screen-reader user tabs onto a live-but-blank Account combo
+    /// with nothing behind it.
+    /// </summary>
+    public bool HasSelectedRule => SelectedRule is not null;
 
     /// <summary>
     /// Account options for the ComboBox. Every rule belongs to exactly one account — the "All
@@ -91,6 +100,14 @@ public partial class RulesManagerViewModel : ObservableObject
     /// </summary>
     public List<AccountOption> AccountOptions =>
         _accounts.Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel }).ToList();
+
+    /// <summary>
+    /// The account a new rule is scoped to by default: the Account Manager default account, or — when
+    /// none is marked default (e.g. a single-account profile) — the first account. Null only when
+    /// there are no accounts at all.
+    /// </summary>
+    private Guid? DefaultAccountId =>
+        _accounts.FirstOrDefault(a => a.IsDefault)?.Id ?? _accounts.FirstOrDefault()?.Id;
 
     /// <summary>Action options for the ComboBox.</summary>
     public static List<ActionOption> ActionOptions => new()
@@ -164,9 +181,10 @@ public partial class RulesManagerViewModel : ObservableObject
     private void NewRule()
     {
         // A rule must be scoped to an account now that "All accounts" is gone (#333 D1); default to
-        // the first account so the rule is valid immediately. (No accounts is a degenerate state in
-        // which rules aren't usable anyway.)
-        var rule = new MailRule { Name = "New rule", AccountId = _accounts.FirstOrDefault()?.Id };
+        // the Account Manager default account (or the sole account) so the rule is valid immediately
+        // and the Account combo lands on a real selection rather than blank. (No accounts is a
+        // degenerate state in which rules aren't usable anyway.)
+        var rule = new MailRule { Name = "New rule", AccountId = DefaultAccountId };
         StampDisplay(rule);
         Rules.Add(rule);
         SelectedRule = rule;
