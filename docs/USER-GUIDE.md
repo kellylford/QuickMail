@@ -281,7 +281,9 @@ Press **Ctrl+Shift+P** to open the command palette. Type any part of a command n
 
 ### Keyboard Customization
 
-Open **Settings → Keyboard** to reassign any shortcut to a different key. Type in the field for a command to capture a new key combination. Changes take effect immediately and survive restarts.
+Open **Settings → Keyboard** to reassign any shortcut to a different key. Select a command's field and press the key combination you want — QuickMail captures it, shows you what it heard, and asks you to confirm with **OK**, pick another with **Change**, or **Cancel**. If the combination is already assigned to something else, a warning names the existing command so you can decide whether to reassign it. Changes take effect immediately and survive restarts.
+
+**Bare keys as shortcuts.** You can assign a shortcut with no modifier key using **Delete, Backspace, Insert, or any function key (F1–F24)** — for example, bare **Delete** to delete a message, or **F5** to sync. (Bare **Delete** ships as a default binding for exactly this reason.) Plain letters, digits, and the Spacebar cannot be bound on their own — they would swallow ordinary typing — so pair them with **Ctrl**, **Alt**, or **Shift**. **Enter**, **Escape**, and **Tab** are reserved for navigating dialogs and are never captured as shortcuts.
 
 ### Checking for Updates
 
