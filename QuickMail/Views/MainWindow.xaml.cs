@@ -5751,8 +5751,25 @@ public partial class MainWindow : Window
             _vm.SelectViewCommand.Execute(viewToApply.Id.ToString());
     }
 
+    private RulesManagerWindow? _rulesWindow;
+
     private void OpenRulesManager(MailRule? template = null)
     {
+        // Single-instance: this window is modeless (see below), so a second open request
+        // would otherwise stack another copy. Bring the existing one forward — and if this
+        // request carries a rule prefilled from the current message (Ctrl+Shift+T), add it
+        // to the open window rather than silently dropping it.
+        if (_rulesWindow is { IsLoaded: true } existing)
+        {
+            if (template != null) existing.PrefillFromTemplate(template);
+            existing.Activate();
+            return;
+        }
+
+        // Remember what had focus so we can restore it when the (modeless) window closes;
+        // modal ShowDialog() returned focus to the owner automatically, Show() does not.
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+
         var accounts = _vm.Accounts.ToList();
         var selectedMessages = _vm.Messages.ToList();
 
@@ -5762,32 +5779,51 @@ public partial class MainWindow : Window
             selectedMessagesForTest: selectedMessages);
 
         var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders) { Owner = this };
-        dialog.ShowDialog();
+        _rulesWindow = dialog;
 
-        // Refresh the rules status text after the dialog closes
-        _vm.UpdateRulesStatusText();
-
-        // Apply rules to existing cached mail so newly created/edited rules
-        // take effect immediately without waiting for the next sync.
-        _ = Task.Run(async () =>
+        // Modeless (.Show, NOT .ShowDialog). Opening this window modally over MainWindow's
+        // live WebView2 reading pane hard-deadlocks the UI thread when a screen reader focuses
+        // one of its editable TextBoxes — e.g. arrow to a rule and Tab into the Name field.
+        // That is the GrabAddresses lockup class: a modal nested message loop + editable text +
+        // out-of-process WebView2 UIA provider + screen reader combine into a cross-apartment
+        // STA wait that never resolves. See CLAUDE.md "Modal Dialog Rules". Because Show() does
+        // not block, the after-close work runs from the Closed handler rather than inline.
+        dialog.Closed += (_, _) =>
         {
-            try
+            _rulesWindow = null;
+
+            // Return focus to where it was before opening (falling back to the message list);
+            // Show() does not restore owner focus the way ShowDialog() did.
+            Activate();
+            (previousFocus ?? MessageList).Focus();
+
+            // Refresh the rules status text now that the window has closed.
+            _vm.UpdateRulesStatusText();
+
+            // Apply rules to existing cached mail so newly created/edited rules
+            // take effect immediately without waiting for the next sync.
+            _ = Task.Run(async () =>
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
-                if (removed.Count > 0)
+                try
                 {
-                    await Dispatcher.InvokeAsync(() =>
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
+                    if (removed.Count > 0)
                     {
-                        _vm.RefreshCommand.Execute(null);
-                    });
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            _vm.RefreshCommand.Execute(null);
+                        });
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                LogService.Log("ApplyRulesToExisting failed", ex);
-            }
-        });
+                catch (Exception ex)
+                {
+                    LogService.Log("ApplyRulesToExisting failed", ex);
+                }
+            });
+        };
+
+        dialog.Show();
     }
 
     private void RulesStatusButton_Click(object sender, RoutedEventArgs e) => OpenRulesManager();

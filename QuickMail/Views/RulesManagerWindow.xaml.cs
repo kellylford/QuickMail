@@ -66,6 +66,16 @@ public partial class RulesManagerWindow : Window
         Close();
     }
 
+    /// <summary>
+    /// Adds a rule prefilled from a message and focuses the list. Called when Ctrl+Shift+T is
+    /// pressed while this (modeless) window is already open, so the template isn't dropped.
+    /// </summary>
+    public void PrefillFromTemplate(MailRule template)
+    {
+        _vm.AddPrefilledRule(template);
+        RuleListBox.Focus();
+    }
+
     private bool OnConfirmDeleteRequested(string message, string title)
     {
         return MessageBox.Show(
@@ -88,6 +98,26 @@ public partial class RulesManagerWindow : Window
         if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control)
         {
             _vm.NewRuleCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnPreviewKeyDown(KeyEventArgs e)
+    {
+        base.OnPreviewKeyDown(e);
+        if (e.Handled) return;
+
+        // This window is shown modeless (see MainWindow.OpenRulesManager) to avoid the
+        // modal-over-WebView2 dispatcher deadlock. A modeless window has no DialogResult,
+        // so the Close button's IsCancel="True" no longer closes it on Escape — wire that
+        // explicitly here. Step aside when an open combo dropdown needs Escape to dismiss
+        // itself, so we don't steal it (matches ComposeWindow's guard).
+        if (e.Key == Key.Escape)
+        {
+            if (AccountScopeCombo.IsDropDownOpen || ActionCombo.IsDropDownOpen)
+                return;
+
+            Close();
             e.Handled = true;
         }
     }
