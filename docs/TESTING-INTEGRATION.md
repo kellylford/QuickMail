@@ -12,11 +12,14 @@ message, so running `dotnet test` on the whole solution stays green on any machi
 
 - **Java 11+** (any JRE — Temurin recommended). The server script finds it via `JAVA_HOME`,
   `PATH`, or an explicit `-JavaExe` argument.
+- **Python 3 with pip** — for Radicale (CalDAV/CardDAV). The script pip-installs the pinned
+  Radicale version on first run.
 
 ## Running locally
 
 ```powershell
 # one-time per session: start GreenMail (IMAP 127.0.0.1:3143, SMTP 127.0.0.1:3025)
+# and Radicale (CalDAV/CardDAV 127.0.0.1:5232)
 .\scripts\start-test-servers.ps1
 
 # run the integration suite
@@ -32,6 +35,14 @@ The script downloads the pinned GreenMail standalone jar from Maven Central once
 GreenMail runs with **auth disabled**: any username/password authenticates and mailboxes are
 created on first use. Tests create unique per-run users (`<prefix>-<guid>@greenmail.test`), so
 no server-side user configuration exists and tests never collide.
+
+Radicale runs with **auth-type `none`** (same idea: any credentials work; each user owns the
+`/<user>/` collection hierarchy) and is launched through `scripts/radicale-launcher.py`, which
+works around a Radicale-on-Windows startup crash: its symlink-support probe catches only
+`PermissionError`, but an unprivileged Windows `os.symlink` raises `OSError` (WinError 1314).
+The shim makes the probe fail soft (symlink support is an optional storage optimization).
+Tests create collections explicitly via `RadicaleFixture.CreateCalendarAsync` /
+`CreateAddressbookAsync` and seed events/contacts with raw `PUT`s.
 
 ## CI
 
