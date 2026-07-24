@@ -7,6 +7,7 @@ using System.Windows.Controls;
 using System.Windows.Threading;
 using QuickMail.Models;
 using QuickMail.ViewModels;
+using QuickMail.Views;
 using Xunit;
 
 namespace QuickMail.Tests;
@@ -102,6 +103,38 @@ public class SelectorItemAccessibilityTests
 
         var group = new GroupModel { Name = "Team" };
         Assert.Equal(group.Display, group.ToString());
+    }
+
+    // End-to-end against the REAL RulesManagerWindow: what a screen reader actually speaks for a
+    // rule row must be "name, account" (issue: account-in-row not announced). Reads the live
+    // ListBoxItemAutomationPeer name — the ground truth, not the eyeballed template.
+    [StaFact]
+    public void RulesManagerWindow_RuleRow_ItemPeerName_IncludesAccount()
+    {
+        var acctId = Guid.NewGuid();
+        var accounts = new[] { new AccountModel { Id = acctId, AccountName = "IdeaPlace" } };
+        var stub = new StubRuleService { LoadedRules = [new MailRule { Name = "Newsletters", AccountId = acctId }] };
+        var vm = new RulesManagerViewModel(stub, accounts);
+
+        var window = new RulesManagerWindow(vm, accounts, new Dictionary<Guid, List<MailFolderModel>>())
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+        };
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+
+            var list = (ListBox)window.FindName("RuleListBox");
+            var names = (UIElementAutomationPeer.CreatePeerForElement(list).GetChildren() ?? new List<AutomationPeer>())
+                .OfType<ListBoxItemAutomationPeer>()
+                .Select(p => p.GetName())
+                .ToList();
+
+            Assert.Contains("Newsletters, IdeaPlace", names);
+        }
+        finally { window.Close(); }
     }
 
     [Fact]

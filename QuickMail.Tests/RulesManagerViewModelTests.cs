@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -425,5 +426,83 @@ public class RulesManagerViewModelTests
         Assert.Null(options[0].Id); // "All accounts" has null Id
         Assert.Equal("All accounts", options[0].DisplayName);
         Assert.Equal(account.Id, options[1].Id);
+    }
+
+    // ── Account-in-row display (rule name, account) ─────────────────────────────
+
+    [Fact]
+    public void RuleRows_StampAccountScope_ConciseByDefault()
+    {
+        var acctId = Guid.NewGuid();
+        var accounts = new[] { new AccountModel { Id = acctId, AccountName = "IdeaPlace" } };
+        var stub = new StubRuleService
+        {
+            LoadedRules =
+            [
+                new MailRule { Name = "Newsletters", AccountId = acctId },
+                new MailRule { Name = "Global" }, // null AccountId → All accounts
+            ],
+        };
+
+        var vm = new RulesManagerViewModel(stub, accounts);
+
+        var scoped = vm.Rules.First(r => r.Name == "Newsletters");
+        var global = vm.Rules.First(r => r.Name == "Global");
+
+        Assert.Equal("IdeaPlace", scoped.AccountDisplay);
+        Assert.Equal("All accounts", global.AccountDisplay);
+        Assert.Equal("Newsletters, IdeaPlace", scoped.AccessibleName);   // concise, no field labels
+        Assert.Equal("Global, All accounts", global.AccessibleName);
+    }
+
+    [Fact]
+    public void RuleRows_UseFieldLabels_WhenConfigured()
+    {
+        var acctId = Guid.NewGuid();
+        var accounts = new[] { new AccountModel { Id = acctId, AccountName = "IdeaPlace" } };
+        var cfg = new StubConfigService();
+        cfg.Save(new ConfigModel { RuleListShowFieldLabels = true });
+        var stub = new StubRuleService { LoadedRules = [new MailRule { Name = "Newsletters", AccountId = acctId }] };
+
+        var vm = new RulesManagerViewModel(stub, accounts, configService: cfg);
+
+        Assert.Equal("Rule Newsletters, account IdeaPlace", vm.Rules.Single().AccessibleName);
+    }
+
+    [Fact]
+    public void NewRule_IsStampedWithAllAccounts()
+    {
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.Equal("All accounts", vm.SelectedRule!.AccountDisplay);
+        Assert.Contains("All accounts", vm.SelectedRule.AccessibleName);
+    }
+
+    // ── Run on existing mail (issue #346) ───────────────────────────────────────
+
+    [Fact]
+    public async Task RunOnExisting_InvokesOwner_AndReportsCount()
+    {
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
+        var invoked = false;
+        vm.RunOnExistingRequested += () => { invoked = true; return Task.FromResult(3); };
+
+        await vm.RunOnExistingCommand.ExecuteAsync(null);
+
+        Assert.True(invoked);
+        Assert.Contains("3 messages moved or deleted", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task RunOnExisting_ZeroMoved_StillConfirms()
+    {
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
+        vm.RunOnExistingRequested += () => Task.FromResult(0);
+
+        await vm.RunOnExistingCommand.ExecuteAsync(null);
+
+        Assert.Contains("Applied rules to existing mail", vm.StatusText);
     }
 }

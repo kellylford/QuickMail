@@ -332,6 +332,11 @@
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Show field labels in the calendar event list accessible names"/>
 
+                                <CheckBox Content="Show field labels in the r_ules list"
+                                          IsChecked="{Binding RuleListShowFieldLabels, Mode=TwoWay}"
+                                          Margin="16,4,0,0"
+                                          AutomationProperties.Name="Show field labels in the rules list accessible names"/>
+
                                 <CheckBox Content="Remind me before appoin_tments"
                                           IsChecked="{Binding CalendarReminders, Mode=TwoWay}"
                                           Margin="16,4,0,0"

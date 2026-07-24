@@ -19,6 +19,8 @@ QuickMail now connects to **Microsoft 365 / Exchange Online** and **Outlook.com*
 
 Work or school (Microsoft 365) accounts frequently sit in organizations that require an administrator to approve a new app before anyone can sign in. If your sign-in stops at a **"needs admin approval"** message, that is expected — QuickMail needs a one-time approval from your organization's IT administrator. We've added a full **[For Microsoft 365 Administrators and Tenant Owners](https://kellylford.github.io/QuickMail/)** section to the User Guide explaining exactly what an admin needs to do (it takes a couple of minutes). Personal Outlook.com accounts are not affected.
 
+**Important for work and school accounts:** turning on Exchange support in QuickMail is only part of the process. Until your administrator or tenant owner completes the steps in the [administrator guide](https://kellylford.github.io/QuickMail/), QuickMail will not be able to connect to your work or school account. If you plan to use a Microsoft 365 account, share that guide with whoever manages your organization's Microsoft 365 tenant first.
+
 Prefer IMAP? You still can — choose **Standard IMAP/SMTP** and **Microsoft OAuth** as the authentication method. The new Microsoft 365 / Outlook.com option is simply the recommended path.
 
 ## New: Accept, Tentative, and Decline meeting invitations in Microsoft 365 mail
@@ -26,18 +28,6 @@ Prefer IMAP? You still can — choose **Standard IMAP/SMTP** and **Microsoft OAu
 When you open a meeting invitation in a Microsoft 365 / Outlook.com mailbox, QuickMail now adds the same **Accept / Tentative / Decline** card to the top of the message that IMAP accounts have had — choose a response and QuickMail sends your reply to the organizer and updates your calendar. Cancelled invitations say so instead of offering buttons.
 
 Note for this first release: responding notifies the organizer and updates your calendar **inside QuickMail**. Your response is not yet written back to the Microsoft 365 server calendar, so other clients (Outlook on the web, your phone) may still show the meeting as unanswered. Fuller server-side handling is planned for a later release.
-
-## New: Choose which folder opens at startup
-
-QuickMail has always opened to All Mail. Now you can pick any folder to open at launch instead: from the folder tree, open a folder's context menu (Applications key or Shift+F10) and choose **Set as Startup Folder**. Choose **Clear Startup Folder** to go back to opening All Mail. Your choice takes effect the next time you start QuickMail; if that folder no longer exists, QuickMail simply opens All Mail. (#328)
-
-## Fixed: clearer feedback when you respond to a meeting invitation
-
-Pressing **Accept**, **Tentative**, or **Decline** on a meeting invitation now confirms what happened. QuickMail announces that it is sending your response, and once sent, the invitation card itself shows a confirmation ("You accepted this meeting. Your reply was sent to the organizer.") that stays on screen. Previously the confirmation could be missed entirely. (#329)
-
-## Fixed: Delete and Backspace can now be assigned as shortcuts
-
-You can now assign a bare **Delete** or **Backspace** key (as well as **Insert** and the function keys) as a keyboard shortcut in **Settings → Keyboard customizations** — previously the shortcut editor ignored any key pressed without Ctrl, Shift, or Alt, which meant you could not, for example, move the delete-message shortcut and reassign plain Delete to another command. If you ever get stuck, selecting a command and choosing **Restore Default** always puts its original shortcut back. (#330)
 
 ## Fixed: signing in as the wrong account, and sign-in timeouts
 
@@ -73,6 +63,3 @@ Per-PR technical changelog for this release (changes since the v0.8.34 tag):
 - **Sign-in identity mismatch guard + interactive sign-in timeout removed** (#202, #203, #322). Interactive sign-in no longer rebinds the account to a different identity than the one entered (raises `SignInIdentityMismatch`, surfaced as a focus-grabbing warning in both account dialogs); the 3-/5-minute `CancellationTokenSource` on the interactive path is dropped. `AccountEditorSignInTests` added.
 - **Docs: Entra scope guidance corrected** after #323 (`Contacts.Read` requested explicitly; `.default` contradictions removed). Commits 6a35f65, 8366fcc.
 - **User Guide:** rewrote the Microsoft account instructions around the Microsoft 365 / Outlook.com account type and added a **For Microsoft 365 Administrators and Tenant Owners** section (admin consent, delegated permissions, roles, one-click consent URL, troubleshooting).
-- **Configurable startup folder** (#328). New `ConfigModel.StartupFolder` (INI-safe token: `#<key>` for a global virtual folder, `@<accountId>|<fullName>` for a real folder); folder-tree context commands **Set as Startup Folder** / **Clear Startup Folder**; applied once per launch in `ConnectAllAccountsAsync` right after the first post-connect `RebuildFolderListFromCache` (earliest point real folders resolve), with graceful fallback to All Mail. Tests in `StartupFolderTests`.
-- **Invite-response feedback** (#329). `SendIcsReplyForAsync` now announces "Sending…" before the network send and raises `OpenInviteResponded` on success; `BuildEventCardHtml` gained an `aria-live` status region that `MainWindow.OnOpenInviteResponded` fills via `ExecuteScriptAsync` (announced reliably from inside the WebView2, unlike a host-window notification while focus is in the document). The silent null-invite return now announces instead. Tests in `InviteCardTests`.
-- **Bare-key shortcuts** (#330). `GestureHelper.IsBindableBareKey` (Delete/Backspace/Insert/F1–F24) gates both `KeyCaptureDialog.CaptureKey` and single-token `GestureHelper.TryParse`, so a bare key can be captured and round-trips through config. Fixes the asymmetry where bare Delete shipped as a default the capture UI could not reproduce. Tests in `GestureHelperTests`.

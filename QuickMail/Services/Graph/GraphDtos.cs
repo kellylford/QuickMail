@@ -1,8 +1,33 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace QuickMail.Services.Graph;
+
+/// <summary>
+/// A server-side Inbox rule (<c>GET/POST/PATCH/DELETE /me/mailFolders/inbox/messageRules</c>).
+/// <para>
+/// <b>conditions / actions / exceptions are kept as raw <see cref="JsonElement"/> deliberately.</b>
+/// Graph <c>PATCH</c> <i>replaces</i> these complex objects wholesale rather than merging individual
+/// predicates, so a model that only understands a subset would silently drop predicates the user set
+/// in Outlook. Retaining the raw JSON lets us (a) decide whether a rule is fully representable before
+/// allowing an edit, and (b) render the complete rule to the user even when it isn't editable.
+/// See <c>docs/planning/server-rules-pm-dev-spec.md</c> §16.
+/// </para>
+/// </summary>
+internal sealed class GraphMessageRule
+{
+    [JsonPropertyName("id")] public string Id { get; set; } = string.Empty;
+    [JsonPropertyName("displayName")] public string? DisplayName { get; set; }
+    [JsonPropertyName("sequence")] public int Sequence { get; set; }
+    [JsonPropertyName("isEnabled")] public bool IsEnabled { get; set; }
+    [JsonPropertyName("isReadOnly")] public bool IsReadOnly { get; set; }
+    [JsonPropertyName("hasError")] public bool HasError { get; set; }
+    [JsonPropertyName("conditions")] public JsonElement? Conditions { get; set; }
+    [JsonPropertyName("actions")] public JsonElement? Actions { get; set; }
+    [JsonPropertyName("exceptions")] public JsonElement? Exceptions { get; set; }
+}
 
 /// <summary>Paging envelope for a Microsoft Graph collection response.</summary>
 internal sealed class GraphCollection<T>

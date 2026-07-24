@@ -35,14 +35,6 @@ public class ConfigModel
     public string Sort { get; set; } = "dateDesc";
 
     /// <summary>
-    /// The folder QuickMail opens at startup, as an INI-safe token produced by MainViewModel's
-    /// startup-folder encoding ("#&lt;key&gt;" for a global virtual folder, "@&lt;accountId&gt;|&lt;fullName&gt;"
-    /// for a real folder). Empty = the default All Mail view. Set from the folder tree context menu,
-    /// not by hand. Issue #328.
-    /// </summary>
-    public string StartupFolder { get; set; } = string.Empty;
-
-    /// <summary>
     /// How many days of mail to sync. 0 = sync all mail (no date filter).
     /// Supported values: 7, 30, 180, 365, or 0 (all).
     /// </summary>
@@ -150,6 +142,14 @@ public class ConfigModel
     /// how the message and contact lists read. Mirrors <see cref="ContactListShowFieldLabels"/>.
     /// </summary>
     public bool CalendarListShowFieldLabels { get; set; } = false;
+
+    /// <summary>
+    /// When true, the rules list speaks field labels in each row's accessible name
+    /// ("Rule … account …"); when false (default) it speaks concise data only
+    /// ("Newsletters, IdeaPlace"), matching how the contact and calendar lists read.
+    /// Mirrors <see cref="ContactListShowFieldLabels"/>.
+    /// </summary>
+    public bool RuleListShowFieldLabels { get; set; } = false;
 
     /// <summary>
     /// Fire a notification before each appointment. OFF by default (opt-in, per the

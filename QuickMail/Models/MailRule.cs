@@ -1,4 +1,5 @@
 using System;
+using System.Text.Json.Serialization;
 
 namespace QuickMail.Models;
 
@@ -17,7 +18,25 @@ public class MailRule
     // A screen reader reads a data-bound Selector item's UIA Name from ToString()
     // (DisplayMemberPath only sets the visual). Without this the Rules list announces
     // "QuickMail.Models.MailRule" for every row. See CLAUDE.md.
+    // The Rules list itself binds AutomationProperties.Name to AccessibleName below (so
+    // it can include the account and honour the field-labels setting); ToString() remains
+    // for any other Selector that binds MailRule without a template.
     public override string ToString() => Name;
+
+    /// <summary>
+    /// Display-only, resolved by <c>RulesManagerViewModel</c> — never serialized. The account
+    /// scope shown in the list row: an account's label, or "All accounts" for an unscoped rule.
+    /// </summary>
+    [JsonIgnore]
+    public string AccountDisplay { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Display-only, resolved by <c>RulesManagerViewModel</c> — never serialized. The composed
+    /// row accessible name (rule + account), labeled or concise per the <c>RuleListShowFieldLabels</c>
+    /// setting, surfaced via <c>AutomationProperties.Name</c> on the list row.
+    /// </summary>
+    [JsonIgnore]
+    public string AccessibleName { get; set; } = string.Empty;
 
     /// <summary>When false, the rule is skipped during evaluation.</summary>
     public bool IsEnabled { get; set; } = true;

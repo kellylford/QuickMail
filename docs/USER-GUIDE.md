@@ -160,7 +160,7 @@ This section is for whoever **owns or administers** a Microsoft 365 organization
 
 - QuickMail is a **public client / desktop application** registered in Microsoft Entra ID (Azure AD). Your users authenticate against that single registration; there is nothing to deploy into your tenant.
 - It requests **delegated permissions only**. That means QuickMail acts **only as the signed-in user**, entirely within **that user's own mailbox**, and only while they are using the app. It holds **no application permissions** — it cannot run in the background, and it cannot read or send mail for any user who has not personally signed in.
-- Sign-in uses the modern authentication flow (OAuth 2.0 / MSAL). Passwords are never seen or stored by QuickMail; tokens live in Windows Credential Manager on the user's own PC and honour your Conditional Access and MFA policies.
+- Sign-in uses the modern authentication flow (OAuth 2.0 / MSAL). Passwords are never seen or stored by QuickMail; access tokens are held in an encrypted cache on the user's own PC, protected by Windows DPAPI and readable only by that user's Windows account. (Where a user connects over IMAP/SMTP with a password instead, that password is stored in Windows Credential Manager.) Sign-in honours your Conditional Access and MFA policies.
 
 ### App registration details
 
@@ -187,7 +187,7 @@ If users connect over IMAP/SMTP instead of the default Microsoft 365 option, two
 
 ### How to approve QuickMail for your organization
 
-Any of these roles can grant approval — **Global Administrator is not required** (QuickMail has no application permissions): **Cloud Application Administrator**, **Application Administrator**, or **AI Administrator**.
+Any of these roles can grant approval — **Global Administrator is not required**: **Cloud Application Administrator** or **Application Administrator**.
 
 **Option A — Entra admin center.** Sign in at [entra.microsoft.com](https://entra.microsoft.com) → **Entra ID → Enterprise applications → QuickMail → Security → Permissions → "Grant admin consent for &lt;your organization&gt;"**, review the list, and approve. (If QuickMail is not yet listed under Enterprise applications, use Option B — the first admin consent creates it.)
 
@@ -196,6 +196,8 @@ Any of these roles can grant approval — **Global Administrator is not required
 ```
 https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312
 ```
+
+**Open this in a private/InPrivate browser window.** A cached Microsoft sign-in session will skip the consent screen and send you straight to an error page (see Troubleshooting).
 
 Replace `organizations` with your tenant ID or a verified domain to target a specific tenant. Review the permission list Microsoft shows and approve. This grants consent tenant-wide in one step.
 
@@ -209,6 +211,8 @@ After approval, your users sign in normally with no further prompts.
 ### Troubleshooting
 
 - **Users see "needs admin approval" with no continue button.** Your tenant requires admin consent and QuickMail has not been approved yet. Follow the steps above. This is expected until approval is granted.
+- **The consent link opens, asks you to sign in, then goes straight to an error page with no permissions to approve.** Your browser is reusing a cached Microsoft sign-in session, which skips the consent screen. **Open the link in a private/InPrivate browser window** and sign in fresh — the permission list will appear. This also applies to the "Grant admin consent" button in the Entra portal.
+- **After approving, the browser shows "can't reach this page" at `http://localhost`.** That is expected and means it worked. QuickMail is a desktop app, so Microsoft redirects to a local address with nothing listening. Your approval is recorded *before* that redirect. Confirm it under **Enterprise applications → QuickMail → Security → Permissions**, which will now list the granted permissions.
 - **A user signed in successfully but delete or move fails with an error.** Their token predates a permission grant. Have them remove and re-add the account (or sign in again) to pick up a fresh token.
 - **You approved QuickMail but a newly added feature still prompts.** Admin consent covers the permissions declared at the moment it was granted. Re-grant consent (Option A or B) to pick up any newly requested permission.
 
@@ -246,10 +250,6 @@ Create a new folder in any of these ways:
 
 The new folder is created under the folder currently selected in the folder tree, or under the account root when a header or nothing is selected.
 
-### Startup Folder
-
-By default QuickMail opens to **All Mail**. To open a different folder at launch, select it in the folder tree, press **Shift+F10** (or the Applications key) for its context menu, and choose **Set as Startup Folder**. The next time you start QuickMail it opens to that folder. Choose **Clear Startup Folder** from the same menu to return to opening All Mail. You can pick a real folder (such as an account's Inbox) or one of the "All …" views. If the folder you chose no longer exists — for example the account was removed — QuickMail quietly opens All Mail instead.
-
 ### Moving and Copying Messages
 
 Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy. If you need a destination that does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and move into it without leaving the dialog.
@@ -282,8 +282,6 @@ Press **Ctrl+Shift+P** to open the command palette. Type any part of a command n
 ### Keyboard Customization
 
 Open **Settings → Keyboard** to reassign any shortcut to a different key. Type in the field for a command to capture a new key combination. Changes take effect immediately and survive restarts.
-
-Most shortcuts use a modifier (Ctrl, Shift, or Alt) with another key, but you can also assign a bare **Delete**, **Backspace**, or **Insert** key, or a function key (**F1**–**F24**), with no modifier. Other single keys on their own (letters, digits, Space, Enter, Escape, Tab) are reserved and cannot be captured. If you ever change a shortcut and want it back the way it shipped, select the command and choose **Restore Default**.
 
 ### Checking for Updates
 
@@ -631,6 +629,12 @@ Open the **View Manager** from the **View** menu or the command palette. Create 
 
 Press the assigned hotkey from anywhere in the main window to switch to that view immediately.
 
+### Choose what opens at startup
+
+By default QuickMail opens to **All Mail**. To make it open somewhere else — your Inbox, a specific folder, or any saved view — select the **Default view (applied on startup)** checkbox for that view in the View Manager. QuickMail then opens to that view, and the folder it targets, each time it starts. Only one view can be the default at a time; choosing a new default clears the previous one.
+
+So to open directly into a particular folder on launch: navigate to that folder, choose **Save View…** from the **View** menu, then mark the new view as the default in the View Manager.
+
 ---
 
 ## Calendar
@@ -759,7 +763,7 @@ Press **Ctrl+Shift+S** while the calendar is open to search. Type to filter the 
 
 ### Responding to meeting invitations
 
-When you open an email that contains a meeting invitation, QuickMail adds an event card to the top of the message with three buttons: **Accept**, **Tentative**, and **Decline**. Choosing one sends your reply to the organizer and updates your calendar right away — no restart or refresh needed. QuickMail tells you it is sending your response, and once it is sent the card shows a confirmation that stays in place, such as "You accepted this meeting. Your reply was sent to the organizer." If the invitation has been cancelled by the organizer, the card says so instead of offering buttons, and the matching calendar entry is removed. From the calendar list, pressing **Enter** on an invitation-based event opens the original email it came from.
+When you open an email that contains a meeting invitation, QuickMail adds an event card to the top of the message with three buttons: **Accept**, **Tentative**, and **Decline**. Choosing one sends your reply to the organizer and updates your calendar right away — no restart or refresh needed. If the invitation has been cancelled by the organizer, the card says so instead of offering buttons, and the matching calendar entry is removed. From the calendar list, pressing **Enter** on an invitation-based event opens the original email it came from.
 
 ### Connecting an online calendar
 

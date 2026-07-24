@@ -224,10 +224,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         DisplayName = "Calendar"
     };
 
-    // Per-source calendar children under the Calendar node: " Calendar:{guid}" for one
+    // Per-source calendar children under the Calendar node: "\u0000Calendar:{guid}" for one
     // account, "local" for locally-authored appointments, "all" for the merged view, and
     // "{guid}|{escapedCalId}" for a single specific calendar of that account.
-    internal const string CalendarSourcePrefix = " Calendar:";
+    internal const string CalendarSourcePrefix = "\u0000Calendar:";
 
     /// <summary>True for the Calendar node or any of its per-source children.</summary>
     internal static bool IsCalendarFolderName(string? fullName) =>
@@ -2654,9 +2654,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         IsBusy = false;
         RebuildFolderListFromCache();
-        // Real folders exist only now (post-connect), so a configured startup folder (#328) is applied
-        // here — the earliest point it can resolve — not in InitialLoadAsync. Runs once per launch.
-        await ApplyStartupFolderOnceAsync();
         StatusText = _cachedFolders.Count > 0
             ? $"{_cachedFolders.Count} of {Accounts.Count} account(s) connected."
             : "No accounts could be connected.";
@@ -4607,86 +4604,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _accountService.SaveAccounts([.. Accounts]);
     }
 
-    // ── Startup folder (issue #328) ───────────────────────────────────────────────
-    // The folder opened at launch is stored in config.ini, which cannot hold the NUL-prefixed
-    // virtual-folder sentinels, so it is persisted as an INI-safe token:
-    //   "#<key>"                     — a global virtual folder (its FullName minus the leading NUL)
-    //   "@<accountId:N>|<fullName>"  — a real per-account folder
-    // Only the global virtual folders and real folders are offered as startup targets.
-    private bool _startupFolderApplied;
-
-    private static readonly MailFolderModel[] StartupVirtualFolders =
-        { AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder, AllTrashFolder, AllFlaggedFolder };
-
-    internal static string EncodeStartupFolderToken(MailFolderModel folder) =>
-        folder.FullName.Length > 0 && folder.FullName[0] == '\0'
-            ? "#" + folder.FullName[1..]
-            : "@" + folder.AccountId.ToString("N") + "|" + folder.FullName;
-
-    private MailFolderModel? ResolveStartupFolder(string token)
-    {
-        if (string.IsNullOrEmpty(token)) return null;
-
-        if (token[0] == '#')
-        {
-            var fullName = "\0" + token[1..];
-            return StartupVirtualFolders.FirstOrDefault(
-                f => string.Equals(f.FullName, fullName, StringComparison.Ordinal));
-        }
-        if (token[0] == '@')
-        {
-            var sep = token.IndexOf('|');
-            if (sep < 0) return null;
-            if (!Guid.TryParseExact(token[1..sep], "N", out var accountId)) return null;
-            var fullName = token[(sep + 1)..];
-            return _cachedFolders.TryGetValue(accountId, out var folders)
-                ? folders.FirstOrDefault(f => string.Equals(f.FullName, fullName, StringComparison.Ordinal))
-                : null;
-        }
-        return null;
-    }
-
-    /// <summary>Persists <paramref name="folder"/> as the startup folder (folder tree context command).</summary>
-    public void SetStartupFolder(MailFolderModel folder)
-    {
-        if (folder is null || folder.IsHeader) return;
-        var cfg = _configService.Load();
-        cfg.StartupFolder = EncodeStartupFolderToken(folder);
-        _configService.Save(cfg);
-    }
-
-    /// <summary>Clears the startup folder, so launch returns to the default All Mail view.</summary>
-    public void ClearStartupFolder()
-    {
-        var cfg = _configService.Load();
-        cfg.StartupFolder = string.Empty;
-        _configService.Save(cfg);
-    }
-
-    // Applies the configured startup folder exactly once per launch, right after the first post-connect
-    // folder rebuild. Falls back to All Mail (no-op) if nothing is configured, the folder no longer
-    // exists, or the user already navigated away during connect — so it can never strand startup.
-    private async Task ApplyStartupFolderOnceAsync()
-    {
-        if (_startupFolderApplied) return;
-        _startupFolderApplied = true;
-
-        var token = _configService.Load().StartupFolder;
-        if (string.IsNullOrEmpty(token)) return;
-
-        // Respect a folder the user already chose while connecting.
-        if (SelectedFolder != null &&
-            !string.Equals(SelectedFolder.FullName, AllMailFolder.FullName, StringComparison.Ordinal))
-            return;
-
-        var folder = ResolveStartupFolder(token);
-        if (folder == null ||
-            string.Equals(folder.FullName, AllMailFolder.FullName, StringComparison.Ordinal))
-            return;
-
-        await SelectFolderAsync(folder);
-    }
-
     /// <summary>
     /// Moves the given messages to each account's Archive folder (issue #318). Mirrors the optimistic
     /// UI of <see cref="DeleteMessagesAsync"/> — messages vanish immediately, focus lands on the next
@@ -4847,13 +4764,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event Action? ManageAccountsRequested;
     public event Action? MessageListFocusRequested;
     public event EventHandler<(string Text, AnnouncementCategory Category)>? AnnouncementRequested;
-
-    /// <summary>
-    /// Raised after a meeting response is sent for the invite currently open in the reading pane, so
-    /// the View can update the in-WebView2 event card in place. Args: (actionLabel, eventTitle) — e.g.
-    /// ("accepted", "Team standup"). See MainWindow.OnOpenInviteResponded and issue #329.
-    /// </summary>
-    public event Action<string, string>? OpenInviteResponded;
     public event EventHandler? RulesManagerRequested;
     public event EventHandler<MailRule>? CreateRuleFromMessageRequested;
     public event EventHandler? TutorialRequested;
@@ -6398,6 +6308,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Builds an accessible HTML event card for display in the WebView2 reading pane.
     /// The card is prepended to the message body HTML by the View.
     /// </summary>
+    /// <summary>
+    /// Raised to update the open invite card's in-document <c>aria-live</c> status region (issue #329).
+    /// Host-window announcements are unreliable while focus is inside the reading-pane WebView2, so a
+    /// reading-pane RSVP's sending / success / failure feedback is delivered here, inside the document
+    /// the screen reader is already reading. The View injects the text via <c>ExecuteScriptAsync</c>.
+    /// </summary>
+    public event Action<string>? OpenInviteCardStatus;
+
     public string BuildEventCardHtml()
     {
         var invite = MessageDetail?.CalendarInvite;
@@ -6493,14 +6411,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             AppendButton("quickmail:ics-decline", "Decline invitation", "Decline",
                 Color("error", "#B3261E"), Color("errorBackground", "#FBEAE9"), last: true);
             sb.Append("</div>");
-        }
 
-        // Empty aria-live region, filled after a response completes (see MainWindow.OnOpenInviteResponded).
-        // Because it lives inside the document the screen reader is already reading, updating it is
-        // announced reliably — unlike a host-window notification raised while focus is in the WebView2,
-        // which is what made responses feel silent (#329). It also leaves a durable, re-readable
-        // confirmation in the card.
-        sb.Append($"<div id=\"qm-invite-status\" role=\"status\" aria-live=\"assertive\" style=\"margin-top:8px;font-weight:600;color:{Color("success", "#2E6B3E")};\"></div>");
+            // Live status region for RSVP feedback (issue #329), updated in place via
+            // ExecuteScriptAsync so the result is announced from inside the document — a host-window
+            // notification is dropped while focus is in the WebView2. Empty until the user responds.
+            sb.Append("<div id=\"qm-invite-status\" aria-live=\"assertive\" aria-atomic=\"true\" " +
+                      "style=\"margin-top:8px;font-weight:600;\"></div>");
+        }
 
         sb.Append("</div>");
         return sb.ToString();
@@ -6529,11 +6446,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var invite = MessageDetail?.CalendarInvite;
         if (invite == null)
         {
-            // The card was shown but the invite data isn't available (e.g. a cache-served reopen before
-            // reconstruction). Say so instead of silently doing nothing — the old silent return is what
-            // made Accept feel like it "did nothing" (#329).
-            Announce("This invitation can't be answered right now. Open it again from the message list and try once it has loaded.",
-                     AnnouncementCategory.Result);
+            // The card is shown but the invite data isn't available (e.g. a cache-served reopen before
+            // reconstruction). Say so instead of returning silently (#329). The card is what's focused,
+            // so route it through the card's live region as well as the host announce.
+            const string msg = "This invitation can't be answered right now. Open it again from the message list and try once it has loaded.";
+            OpenInviteCardStatus?.Invoke(msg);
+            Announce(msg, AnnouncementCategory.Result);
             return;
         }
 
@@ -6608,12 +6526,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private async Task SendIcsReplyForAsync(IcsModel invite, AccountModel account, string partStat,
         string actionLabel, string sourceMessageId, string sourceFolder)
     {
+        // Feedback for a reading-pane RSVP goes through the card's in-document live region (#329), but
+        // only while the reading pane still shows THIS invite \u2014 if the user navigated away during the
+        // send, or this reply came from the calendar list, we must not write into a different card.
+        void CardStatus(string text)
+        {
+            if (MessageDetail?.CalendarInvite is { } open &&
+                string.Equals(open.Uid, invite.Uid, StringComparison.Ordinal))
+                OpenInviteCardStatus?.Invoke(text);
+        }
+
+        CardStatus("Sending your reply\u2026");
+
         try
         {
-            // Immediate feedback: the send is a network round-trip, so without this the user gets no
-            // acknowledgement until it completes (a large part of why Accept felt unresponsive, #329).
-            Announce($"Sending your {actionLabel} response\u2026", AnnouncementCategory.Status);
-
             var attendeeName = account.SenderDisplayName;
             var attendeeEmail = account.Username;
             var icsContent = invite.GenerateReply(attendeeEmail, attendeeName, partStat);
@@ -6624,12 +6550,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var eventTitle = invite.Summary ?? "calendar event";
             Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
 
-            // If this reply was for the invite currently open in the reading pane, update its card in
-            // place (durable confirmation + an in-document aria-live announcement that is heard even
-            // though focus is inside the WebView2). See MainWindow.OnOpenInviteResponded.
-            if (IsMessageOpen && MessageDetail?.CalendarInvite != null &&
-                string.Equals(MessageDetail.CalendarInvite.Uid, invite.Uid, StringComparison.Ordinal))
-                OpenInviteResponded?.Invoke(actionLabel, eventTitle);
+            // Say what actually happened. The event is upserted to the calendar for every response
+            // (the block below runs regardless of partStat, so the calendar reflects the reply), but
+            // the decline MESSAGE omits the calendar line — telling someone who declined "it's on your
+            // calendar" would read oddly. This is the reliable, in-document confirmation the reporter
+            // was missing (#329).
+            CardStatus(partStat == "DECLINED"
+                ? $"You {actionLabel} this meeting. Your reply was sent to the organizer."
+                : $"You {actionLabel} this meeting. It's been added to your calendar, and your reply was sent to the organizer.");
 
             // Update the calendar event's response status so the calendar pane reflects the reply.
             if (_calendarService != null && !string.IsNullOrEmpty(invite.Uid))
@@ -6675,6 +6603,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             LogService.Log($"SendIcsReply ({partStat})", ex);
             Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
+            // A failed send would otherwise be silent in the reading pane too (host announce dropped),
+            // and the buttons remain so the user can retry.
+            CardStatus("Couldn't send your reply. You can try again.");
         }
     }
 

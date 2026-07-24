@@ -313,7 +313,7 @@ public partial class MainWindow : Window
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.AnnouncementRequested += (_, args) =>
             AccessibilityHelper.Announce(this, args.Text, interrupt: true, category: args.Category);
-        vm.OpenInviteResponded += OnOpenInviteResponded;
+        vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
         vm.ManageViewsRequested += (_, _) => OpenViewManager(createMode: false);
@@ -794,6 +794,7 @@ public partial class MainWindow : Window
         // them explicitly on a real main-window close, the same way compose windows are handled.
         foreach (var w in _openMessageWindows.ToList())
             w.Close();
+        _rulesWindow?.Close(); // unowned (#347), so not auto-closed with the main window
         _trayIcon?.Dispose(); // remove the tray icon so it doesn't linger after exit
         // Cancels all in-flight VM operations (sync, prefetch, loads) and releases
         // their CTS handles. OnClosed, not OnClosing — the close cannot be cancelled here.
@@ -3196,6 +3197,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
+    // Update the open invite card's aria-live status region in place (#329). Because the region lives
+    // in the document the screen reader is already reading, updating its text is announced reliably —
+    // unlike a host-window notification, which is dropped while focus is inside the WebView2. The
+    // reading-pane document persists across the RSVP because the quickmail: navigation is cancelled.
+    private async void OnOpenInviteCardStatus(string text)
+    {
+        if (!_webViewReady || MessageBody.CoreWebView2 is null) return;
+        // JsonSerializer yields a safe, quoted JS string literal; textContent prevents HTML injection.
+        var js = "(function(){var s=document.getElementById('qm-invite-status');" +
+                 "if(s){s.textContent=" + System.Text.Json.JsonSerializer.Serialize(text) + ";}})();";
+        try { await MessageBody.CoreWebView2.ExecuteScriptAsync(js); }
+        catch (Exception ex) { LogService.Log("OnOpenInviteCardStatus", ex); }
+    }
+
     private void HandleQuickMailUri(string uri)
     {
         if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
@@ -3204,20 +3219,6 @@ public partial class MainWindow : Window
             _vm.TentativeInviteCommand.Execute(null);
         else if (uri.StartsWith("quickmail:ics-decline", StringComparison.OrdinalIgnoreCase))
             _vm.DeclineInviteCommand.Execute(null);
-    }
-
-    // After a meeting response is sent for the open invite, fill the card's aria-live status region
-    // (updating an in-document live region is announced reliably even though focus is in the WebView2 —
-    // the host-window notification alone was getting dropped, #329) and leave a durable confirmation.
-    private async void OnOpenInviteResponded(string actionLabel, string eventTitle)
-    {
-        if (!_webViewReady || MessageBody.CoreWebView2 is null) return;
-        var confirmation = $"You {actionLabel} this meeting. Your reply was sent to the organizer.";
-        // JsonSerializer produces a safe, quoted JS string literal; textContent avoids any HTML injection.
-        var js = "(function(){var s=document.getElementById('qm-invite-status');" +
-                 "if(s){s.textContent=" + System.Text.Json.JsonSerializer.Serialize(confirmation) + ";}})();";
-        try { await MessageBody.CoreWebView2.ExecuteScriptAsync(js); }
-        catch (Exception ex) { LogService.Log("OnOpenInviteResponded", ex); }
     }
 
     // Message content is untrusted; only allow-listed schemes (http/https/mailto)
@@ -5298,29 +5299,6 @@ public partial class MainWindow : Window
             category: AnnouncementCategory.Result);
     }
 
-    // ── Startup folder assignment (issue #328) ────────────────────────────────
-    // Global (not per-account): the chosen folder is opened at the next launch. Real folders and the
-    // global "All …" virtual folders are valid targets; account header rows are not.
-    private void FolderContextMenu_SetStartup_Click(object sender, RoutedEventArgs e)
-    {
-        var node = GetContextMenuFolderNode(sender);
-        if (node is null || node.IsHeader || node.Folder is not { } folder ||
-            folder.FullName.Length == 0)
-            return;
-        _vm.SetStartupFolder(folder);
-        AccessibilityHelper.Announce(this,
-            $"{folder.DisplayName} set as the startup folder.",
-            category: AnnouncementCategory.Result);
-    }
-
-    private void FolderContextMenu_ClearStartup_Click(object sender, RoutedEventArgs e)
-    {
-        _vm.ClearStartupFolder();
-        AccessibilityHelper.Announce(this,
-            "Startup folder cleared. QuickMail will open to All Mail.",
-            category: AnnouncementCategory.Result);
-    }
-
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
     // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.
     private async Task DeleteFolderWithFocusAsync(FolderTreeNode node)
@@ -5789,43 +5767,99 @@ public partial class MainWindow : Window
             _vm.SelectViewCommand.Execute(viewToApply.Id.ToString());
     }
 
+    private RulesManagerWindow? _rulesWindow;
+
     private void OpenRulesManager(MailRule? template = null)
     {
+        // Single-instance: this window is modeless (see below), so a second open request
+        // would otherwise stack another copy. Bring the existing one forward — and if this
+        // request carries a rule prefilled from the current message (Ctrl+Shift+T), add it
+        // to the open window rather than silently dropping it.
+        if (_rulesWindow is { IsLoaded: true } existing)
+        {
+            if (template != null) existing.PrefillFromTemplate(template);
+            existing.Activate();
+            return;
+        }
+
+        // Remember what had focus so we can restore it when the (modeless) window closes;
+        // modal ShowDialog() returned focus to the owner automatically, Show() does not.
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+
         var accounts = _vm.Accounts.ToList();
         var selectedMessages = _vm.Messages.ToList();
 
         var rulesVm = new RulesManagerViewModel(
             _ruleService, accounts,
             prefillTemplate: template,
-            selectedMessagesForTest: selectedMessages);
+            selectedMessagesForTest: selectedMessages,
+            configService: _configService);
 
-        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders) { Owner = this };
-        dialog.ShowDialog();
-
-        // Refresh the rules status text after the dialog closes
-        _vm.UpdateRulesStatusText();
-
-        // Apply rules to existing cached mail so newly created/edited rules
-        // take effect immediately without waiting for the next sync.
-        _ = Task.Run(async () =>
+        // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner
+        // performs the run and returns how many messages were moved or deleted for the VM to report.
+        // ApplyRulesToExisting loads all cached summaries and matches every rule against them, so run
+        // it off the UI thread (as the on-close path does) to keep the dispatcher responsive.
+        rulesVm.RunOnExistingRequested += async () =>
         {
-            try
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            var removed = await Task.Run(
+                () => _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token));
+            if (removed.Count > 0)
+                _vm.RefreshCommand.Execute(null);   // back on the UI thread after the await
+            return removed.Count;
+        };
+
+        // No Owner (issue #347): an owned window nests under MainWindow in the UIA tree, so some
+        // screen readers read the topmost ancestor's title (the main window) instead of "Rules
+        // Manager". Leaving it unowned makes it an independent peer that reads its own title — the
+        // same fix compose and standalone message windows use. Unowned windows aren't auto-closed
+        // with the main window, so it's tracked in _rulesWindow and closed in OnClosed.
+        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders);
+        _rulesWindow = dialog;
+
+        // Modeless (.Show, NOT .ShowDialog). Opening this window modally over MainWindow's
+        // live WebView2 reading pane hard-deadlocks the UI thread when a screen reader focuses
+        // one of its editable TextBoxes — e.g. arrow to a rule and Tab into the Name field.
+        // That is the GrabAddresses lockup class: a modal nested message loop + editable text +
+        // out-of-process WebView2 UIA provider + screen reader combine into a cross-apartment
+        // STA wait that never resolves. See CLAUDE.md "Modal Dialog Rules". Because Show() does
+        // not block, the after-close work runs from the Closed handler rather than inline.
+        dialog.Closed += (_, _) =>
+        {
+            _rulesWindow = null;
+
+            // Return focus to where it was before opening (falling back to the message list);
+            // Show() does not restore owner focus the way ShowDialog() did.
+            Activate();
+            (previousFocus ?? MessageList).Focus();
+
+            // Refresh the rules status text now that the window has closed.
+            _vm.UpdateRulesStatusText();
+
+            // Apply rules to existing cached mail so newly created/edited rules
+            // take effect immediately without waiting for the next sync.
+            _ = Task.Run(async () =>
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
-                if (removed.Count > 0)
+                try
                 {
-                    await Dispatcher.InvokeAsync(() =>
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                    var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
+                    if (removed.Count > 0)
                     {
-                        _vm.RefreshCommand.Execute(null);
-                    });
+                        await Dispatcher.InvokeAsync(() =>
+                        {
+                            _vm.RefreshCommand.Execute(null);
+                        });
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                LogService.Log("ApplyRulesToExisting failed", ex);
-            }
-        });
+                catch (Exception ex)
+                {
+                    LogService.Log("ApplyRulesToExisting failed", ex);
+                }
+            });
+        };
+
+        dialog.Show();
     }
 
     private void RulesStatusButton_Click(object sender, RoutedEventArgs e) => OpenRulesManager();
