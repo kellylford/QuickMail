@@ -416,16 +416,16 @@ public class RulesManagerViewModelTests
     }
 
     [Fact]
-    public void AccountOptions_IncludesAllAccountsFirst()
+    public void AccountOptions_ListsAccountsOnly_NoAllAccountsEntry()
     {
+        // "All accounts" was retired (#333 D1): every rule is scoped to one account, so the options
+        // are real accounts only — no null-Id entry that would let a user create an unscoped rule.
         var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
         var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
 
         var options = vm.AccountOptions;
-        Assert.True(options.Count >= 2);
-        Assert.Null(options[0].Id); // "All accounts" has null Id
-        Assert.Equal("All accounts", options[0].DisplayName);
-        Assert.Equal(account.Id, options[1].Id);
+        Assert.DoesNotContain(options, o => o.Id is null);
+        Assert.Equal(account.Id, Assert.Single(options).Id);
     }
 
     // ── Account-in-row display (rule name, account) ─────────────────────────────
@@ -470,14 +470,18 @@ public class RulesManagerViewModelTests
     }
 
     [Fact]
-    public void NewRule_IsStampedWithAllAccounts()
+    public void NewRule_DefaultsToFirstAccount()
     {
-        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
+        // With "All accounts" retired (#333 D1), a new rule is scoped to an account immediately
+        // rather than left unscoped.
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "IdeaPlace" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
 
         vm.NewRuleCommand.Execute(null);
 
-        Assert.Equal("All accounts", vm.SelectedRule!.AccountDisplay);
-        Assert.Contains("All accounts", vm.SelectedRule.AccessibleName);
+        Assert.Equal(account.Id, vm.SelectedRule!.AccountId);
+        Assert.Equal("IdeaPlace", vm.SelectedRule.AccountDisplay);
+        Assert.Contains("IdeaPlace", vm.SelectedRule.AccessibleName);
     }
 
     // ── Run on existing mail (issue #346) ───────────────────────────────────────

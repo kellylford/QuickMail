@@ -84,11 +84,13 @@ public partial class RulesManagerViewModel : ObservableObject
     [ObservableProperty]
     private MailRule? _selectedRule;
 
-    /// <summary>Account options for the ComboBox. First item is "All accounts" (null).</summary>
+    /// <summary>
+    /// Account options for the ComboBox. Every rule belongs to exactly one account — the "All
+    /// accounts" scope was retired (#333 D1), so this lists real accounts only and a new rule can no
+    /// longer be created unscoped.
+    /// </summary>
     public List<AccountOption> AccountOptions =>
-        new[] { new AccountOption { Id = null, DisplayName = "All accounts" } }
-        .Concat(_accounts.Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel }))
-        .ToList();
+        _accounts.Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel }).ToList();
 
     /// <summary>Action options for the ComboBox.</summary>
     public static List<ActionOption> ActionOptions => new()
@@ -161,7 +163,10 @@ public partial class RulesManagerViewModel : ObservableObject
     [RelayCommand]
     private void NewRule()
     {
-        var rule = new MailRule { Name = "New rule" };
+        // A rule must be scoped to an account now that "All accounts" is gone (#333 D1); default to
+        // the first account so the rule is valid immediately. (No accounts is a degenerate state in
+        // which rules aren't usable anyway.)
+        var rule = new MailRule { Name = "New rule", AccountId = _accounts.FirstOrDefault()?.Id };
         StampDisplay(rule);
         Rules.Add(rule);
         SelectedRule = rule;
