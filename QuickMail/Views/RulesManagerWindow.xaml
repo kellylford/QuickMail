@@ -120,7 +120,8 @@
                     <Separator Margin="0,0,0,6"/>
 
                     <TextBlock Text="Account"/>
-                    <ComboBox ItemsSource="{Binding AccountOptions}"
+                    <ComboBox x:Name="AccountScopeCombo"
+                              ItemsSource="{Binding AccountOptions}"
                               SelectedValue="{Binding SelectedRule.AccountId}"
                               SelectedValuePath="Id"
                               Style="{StaticResource RuleComboBox}"
@@ -200,7 +201,8 @@
                     <TextBlock Text="Action" FontWeight="SemiBold" Margin="0,12,0,4"/>
                     <Separator Margin="0,0,0,6"/>
 
-                    <ComboBox ItemsSource="{Binding ActionOptions}"
+                    <ComboBox x:Name="ActionCombo"
+                              ItemsSource="{Binding ActionOptions}"
                               SelectedValue="{Binding SelectedRule.Action}"
                               SelectedValuePath="Action"
                               DisplayMemberPath="DisplayName"
