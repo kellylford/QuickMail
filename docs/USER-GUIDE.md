@@ -343,8 +343,26 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
+| `Alt+A` | Focus the attachment list |
 
 Deleting a message from its window closes the window and returns focus to the originating position in the message list.
+
+### Attachments on a Received Message
+
+When a message has attachments, they appear in an **attachments list** just below the header fields (Subject, From, To, Date). This works the same way in all three reading modes — reading pane, tab, and window.
+
+Reach the attachment list in either of two ways:
+
+- Press **Alt+A** to jump straight to it from anywhere in the open message. If the message has no attachments, QuickMail announces "No attachments."
+- Press **Shift+Tab** from the message body to step back into the header area; when the message has attachments, focus lands on the attachment list.
+
+Once focus is on the list, arrow between attachments and use:
+
+| Shortcut | Action |
+|----------|--------|
+| `Enter` | Open the selected attachment |
+| `Alt+Enter` | Show the attachment's properties |
+| `Shift+F10` (or the Menu key) | Open the context menu: **Save…**, **Save All…**, **Open** |
 
 ### Message Properties
 
@@ -903,7 +921,7 @@ Choose this option when you **don't mind sending an email** and want a **persona
 
 ### What's included in a report — and what's never included
 
-Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view, and the current sort order.
+Alongside what you type, an in-app report (options 1 and 2) adds a short **Environment** section so a problem can be reproduced in the right context: the QuickMail version, your Windows version, the .NET runtime version, the active color theme, the current view, the current sort order, and the message open mode (reading pane, tab, or window).
 
 **No message content, email addresses, account settings, passwords, or log file content is ever collected or sent.** The Preview shows the full report verbatim, so you always see exactly what is included before it leaves your computer.
 

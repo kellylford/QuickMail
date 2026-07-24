@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 
@@ -73,10 +73,28 @@ jobs:
           # Flips server-absence from skip to FAIL: in CI a missing server is an
           # infrastructure error and must never look like a passing run.
           QUICKMAIL_IT_SERVERS: '1'
+        # Like the build job, pass/fail is decided from the trx counters, not just the exit
+        # code: if test discovery ever breaks (adapter/package regression), VSTest exits 0
+        # with zero tests executed — that must fail, not silently pass. No teardown-crash
+        # tolerance here (no WPF STA facts in this project), so a non-zero exit still fails.
         run: |
           ./scripts/start-test-servers.ps1
           dotnet test QuickMail.IntegrationTests/QuickMail.IntegrationTests.csproj -c Release `
             --logger "trx;LogFileName=integration-results.trx"
+          $testExit = $LASTEXITCODE
+          $trx = "QuickMail.IntegrationTests/TestResults/integration-results.trx"
+          if (-not (Test-Path $trx)) {
+            Write-Error "No trx produced at $trx (dotnet test exit=$testExit); failing."
+            exit 1
+          }
+          [xml]$doc = Get-Content $trx
+          $c = $doc.TestRun.ResultSummary.Counters
+          Write-Host "trx counters: total=$($c.total) passed=$($c.passed) failed=$($c.failed) error=$($c.error) (dotnet test exit=$testExit)"
+          if ([int]$c.total -le 0) {
+            Write-Error "No integration tests were executed; failing."
+            exit 1
+          }
+          exit $testExit
 
       - name: Upload integration test results and server logs
         if: always()
@@ -106,7 +124,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '8.0.x'
 

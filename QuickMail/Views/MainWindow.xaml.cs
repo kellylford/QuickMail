@@ -313,6 +313,7 @@ public partial class MainWindow : Window
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.AnnouncementRequested += (_, args) =>
             AccessibilityHelper.Announce(this, args.Text, interrupt: true, category: args.Category);
+        vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
         vm.ManageViewsRequested += (_, _) => OpenViewManager(createMode: false);
@@ -1135,6 +1136,17 @@ public partial class MainWindow : Window
             execute: () => { if (_vm.ShowTabStrip) TabStrip.Focus(); },
             defaultKey: Key.T, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => _vm.ShowTabStrip));
+
+        // Focus Attachment List (Alt+A, issue #350) — jumps straight to the reading-pane/tab
+        // attachment list of the open message, so attachments are reachable without Tabbing
+        // through the header fields (or, for window mode, MessageWindow's own copy of this command).
+        // Available only when the open message actually has attachments; announces otherwise so
+        // the keypress is never silently ignored.
+        _registry.Register(new CommandDefinition(
+            id: "view.focusAttachments", category: "View", title: "Focus Attachment List",
+            execute: FocusAttachmentList,
+            defaultKey: Key.A, defaultModifiers: ModifierKeys.Alt,
+            isAvailable: () => _vm.IsMessageOpen));
 
         // ── Tab & Window Management commands ─────────────────────────────────────
         _registry.Register(new CommandDefinition(
@@ -2921,6 +2933,7 @@ public partial class MainWindow : Window
                 +"else if(e.key==='F6'){window.chrome.webview.postMessage(e.shiftKey?'shift-f6':'f6');e.preventDefault();}"
                 +"else if(e.ctrlKey&&(e.key==='2'||e.key==='y'||e.key==='Y')){window.chrome.webview.postMessage('focus-folders');e.preventDefault();}"
                 +"else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}"
+                +"else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}"
                 +"else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
                 +"});");
 
@@ -2937,6 +2950,8 @@ public partial class MainWindow : Window
                     Dispatcher.InvokeAsync(FocusFolderTree, DispatcherPriority.Input);
                 else if (msg == "shift-tab")
                     Dispatcher.InvokeAsync(FocusLastHeaderField, DispatcherPriority.Input);
+                else if (msg == "focus-attachments")
+                    Dispatcher.InvokeAsync(FocusAttachmentList, DispatcherPriority.Input);
                 else if (msg == "ctrl-w")
                     Dispatcher.InvokeAsync(
                         () => _registry.FindByGesture(Key.W, ModifierKeys.Control)?.Execute(),
@@ -3196,6 +3211,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
+    // Update the open invite card's aria-live status region in place (#329). Because the region lives
+    // in the document the screen reader is already reading, updating its text is announced reliably —
+    // unlike a host-window notification, which is dropped while focus is inside the WebView2. The
+    // reading-pane document persists across the RSVP because the quickmail: navigation is cancelled.
+    private async void OnOpenInviteCardStatus(string text)
+    {
+        if (!_webViewReady || MessageBody.CoreWebView2 is null) return;
+        // JsonSerializer yields a safe, quoted JS string literal; textContent prevents HTML injection.
+        var js = "(function(){var s=document.getElementById('qm-invite-status');" +
+                 "if(s){s.textContent=" + System.Text.Json.JsonSerializer.Serialize(text) + ";}})();";
+        try { await MessageBody.CoreWebView2.ExecuteScriptAsync(js); }
+        catch (Exception ex) { LogService.Log("OnOpenInviteCardStatus", ex); }
+    }
+
     private void HandleQuickMailUri(string uri)
     {
         if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
@@ -3225,6 +3254,24 @@ public partial class MainWindow : Window
             {
                 LogService.Log("MessageBody_GotKeyboardFocus", ex);
             }
+        }
+    }
+
+    // Alt+A (view.focusAttachments, issue #350): move focus to the open message's attachment
+    // list. GotKeyboardFocus selects the first item so the screen reader lands on an attachment,
+    // not the empty list shell. When the message has none, announce it rather than moving focus
+    // to a collapsed control the user can't see.
+    private void FocusAttachmentList()
+    {
+        if (ReadingPaneAttachmentList.Visibility == Visibility.Visible
+            && ReadingPaneAttachmentList.Items.Count > 0)
+        {
+            ReadingPaneAttachmentList.Focus();
+        }
+        else
+        {
+            AccessibilityHelper.Announce(this, "No attachments.",
+                interrupt: true, category: AnnouncementCategory.Result);
         }
     }
 

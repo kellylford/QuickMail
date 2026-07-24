@@ -30,6 +30,10 @@ public sealed class InvitePersistenceTests : IDisposable
 
     public void Dispose()
     {
+        // Microsoft.Data.Sqlite pools connections by default, which keeps the .db file
+        // locked past the last connection's dispose — without draining the pool first,
+        // the delete fails every run and temp profile dirs accumulate.
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         try { Directory.Delete(_profileDir, recursive: true); } catch { }
     }
 

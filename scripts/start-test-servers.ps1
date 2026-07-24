@@ -21,6 +21,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Windows PowerShell 5.1 may default to TLS 1.0/1.1, which Maven Central rejects.
+if ($PSVersionTable.PSVersion.Major -lt 6) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+}
 $repoRoot   = Split-Path -Parent $PSScriptRoot
 $serversDir = Join-Path $repoRoot ".testservers"
 $pidFile    = Join-Path $serversDir "greenmail.pid"
