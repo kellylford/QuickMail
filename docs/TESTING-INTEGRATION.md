@@ -72,6 +72,20 @@ Consequences for this suite:
 - Multipart-heavy coverage belongs to a future tier (recorded IMAP fixtures or a
   spec-compliant server), tracked in the live-content testing plan.
 
+## Live smoke tier (real account, scheduled)
+
+`LiveSmokeTests` (trait `Category=LiveSmoke`) runs a minimal slice — connect/list, and a
+send-to-self round-trip that deletes what it sent — against a **real** mail account, driven by
+`.github/workflows/live-smoke.yml` (weekly cron + manual dispatch; never a PR gate). The tests
+skip everywhere the `LIVE_*` environment variables are absent, so they are a no-op locally and
+in the per-PR integration job.
+
+Setup (repository secrets): `LIVE_IMAP_HOST`, `LIVE_USER`, `LIVE_PASSWORD` required;
+`LIVE_IMAP_PORT` (993), `LIVE_IMAP_SSL` (1), `LIVE_SMTP_HOST` (=IMAP host), `LIVE_SMTP_PORT`
+(587), `LIVE_SMTP_SSL` (0 = STARTTLS) optional. Use a **dedicated mailbox on an owned domain**
+— the suite writes to and deletes from the real INBOX. On failure the workflow comments on (or
+creates) a "Live smoke failing" issue.
+
 ## Writing integration tests
 
 - Join the collection: `[Collection(GreenMailCollection.Name)]`, take `GreenMailFixture` in the

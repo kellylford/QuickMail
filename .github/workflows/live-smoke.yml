@@ -1,0 +1,125 @@
+# Tier 3 of the live-content testing plan (issue #304): a small smoke suite against a REAL
+# mail account on a Kelly-owned domain. Runs weekly and on demand — never on PRs, never a
+# required check (real servers bring rate limits and flakiness; GreenMail covers the per-PR
+# regression surface). Skips cleanly when the LIVE_* secrets are absent (e.g. forks).
+#
+# Required repository secrets (see docs/TESTING-INTEGRATION.md):
+#   LIVE_IMAP_HOST   IMAP server hostname
+#   LIVE_USER        full account/login (also the self-send address)
+#   LIVE_PASSWORD    account password or app password
+# Optional (with defaults): LIVE_IMAP_PORT (993), LIVE_IMAP_SSL (1),
+#   LIVE_SMTP_HOST (=LIVE_IMAP_HOST), LIVE_SMTP_PORT (587), LIVE_SMTP_SSL (0 = STARTTLS).
+name: Live Smoke
+
+on:
+  schedule:
+    - cron: '0 11 * * 1'   # Mondays 11:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write   # failure reporting (see last step)
+
+# One run at a time: two concurrent runs would race in the same real mailbox.
+concurrency:
+  group: live-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '8.0.x'
+
+      # The gitignored credential partial classes are required to compile QuickMail.csproj.
+      - name: Write Google OAuth credentials
+        shell: pwsh
+        env:
+          GOOGLE_CLIENT_ID:     ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class GoogleOAuthService
+          {
+              private const string ClientId     = "$env:GOOGLE_CLIENT_ID";
+              private const string ClientSecret = "$env:GOOGLE_CLIENT_SECRET";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/GoogleOAuthService.Credentials.cs" -Encoding UTF8
+
+      - name: Write bug-report credentials
+        shell: pwsh
+        env:
+          BUG_REPORT_TOKEN: ${{ secrets.BUG_REPORT_TOKEN }}
+        run: |
+          @"
+          namespace QuickMail.Services;
+          public partial class BugReportService
+          {
+              private const string AppOwnedToken = "$env:BUG_REPORT_TOKEN";
+          }
+          "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
+
+      - name: Run live smoke tests
+        shell: pwsh
+        env:
+          LIVE_IMAP_HOST: ${{ secrets.LIVE_IMAP_HOST }}
+          LIVE_IMAP_PORT: ${{ secrets.LIVE_IMAP_PORT }}
+          LIVE_IMAP_SSL:  ${{ secrets.LIVE_IMAP_SSL }}
+          LIVE_SMTP_HOST: ${{ secrets.LIVE_SMTP_HOST }}
+          LIVE_SMTP_PORT: ${{ secrets.LIVE_SMTP_PORT }}
+          LIVE_SMTP_SSL:  ${{ secrets.LIVE_SMTP_SSL }}
+          LIVE_USER:      ${{ secrets.LIVE_USER }}
+          LIVE_PASSWORD:  ${{ secrets.LIVE_PASSWORD }}
+          QUICKMAIL_LIVE_RUN_ID: ${{ github.run_id }}
+        run: |
+          if (-not $env:LIVE_IMAP_HOST) {
+            Write-Host "LIVE_* secrets not configured - nothing to smoke-test. Exiting green."
+            exit 0
+          }
+          dotnet test QuickMail.IntegrationTests/QuickMail.IntegrationTests.csproj -c Release `
+            --filter "Category=LiveSmoke" `
+            --logger "trx;LogFileName=live-smoke.trx"
+          $testExit = $LASTEXITCODE
+          $trx = "QuickMail.IntegrationTests/TestResults/live-smoke.trx"
+          if (-not (Test-Path $trx)) { Write-Error "No trx produced (exit=$testExit)."; exit 1 }
+          [xml]$doc = Get-Content $trx
+          $c = $doc.TestRun.ResultSummary.Counters
+          Write-Host "trx counters: total=$($c.total) passed=$($c.passed) failed=$($c.failed) error=$($c.error)"
+          # Secrets are set, so the suite must actually RUN — all-skipped means the env
+          # plumbing broke, which must not look like a healthy smoke pass.
+          if ([int]$c.passed -le 0) { Write-Error "No live smoke tests passed (all skipped/failed)."; exit 1 }
+          exit $testExit
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: live-smoke-results
+          path: QuickMail.IntegrationTests/TestResults/live-smoke.trx
+          if-no-files-found: ignore
+          retention-days: 30
+
+      # Drift is only useful if someone sees it: on failure, comment on (or create) the
+      # tracking issue instead of relying on anyone watching the Actions tab.
+      - name: Report failure on tracking issue
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $title = "Live smoke failing"
+          $runUrl = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+          $existing = gh issue list --state open --search "in:title `"$title`"" --json number --jq ".[0].number"
+          $body = "Live smoke run failed: $runUrl (see the live-smoke-results artifact)."
+          if ($existing) {
+            gh issue comment $existing --body $body
+          } else {
+            gh issue create --title $title --label bug `
+              --body "The scheduled live-account smoke test is failing. Latest: $body`n`nThis issue is updated by .github/workflows/live-smoke.yml; close it when the smoke run is green again."
+          }
