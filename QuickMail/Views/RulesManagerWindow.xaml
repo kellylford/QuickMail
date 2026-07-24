@@ -72,16 +72,16 @@
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="6,4"/>
-                            <!-- Accessible name carries rule + account (and honours the
-                                 field-labels setting); the visual template below shows the
-                                 same, with the account dimmed. -->
-                            <Setter Property="AutomationProperties.Name"
-                                    Value="{Binding AccessibleName}"/>
                         </Style>
                     </ListBox.ItemContainerStyle>
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <StackPanel Orientation="Horizontal">
+                            <!-- AccessibleName on the template root gives one utterance (rule +
+                                 account, honouring the field-labels setting) instead of the two
+                                 TextBlocks being read as separate cells; mirrors the address-book
+                                 contact row. The visual shows the account dimmed. -->
+                            <StackPanel Orientation="Horizontal"
+                                        AutomationProperties.Name="{Binding AccessibleName}">
                                 <TextBlock Text="{Binding Name}"/>
                                 <TextBlock Text="{Binding AccountDisplay}"
                                            Opacity="0.6" Margin="12,0,0,0"/>

@@ -5781,12 +5781,15 @@ public partial class MainWindow : Window
 
         // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner
         // performs the run and returns how many messages were moved or deleted for the VM to report.
+        // ApplyRulesToExisting loads all cached summaries and matches every rule against them, so run
+        // it off the UI thread (as the on-close path does) to keep the dispatcher responsive.
         rulesVm.RunOnExistingRequested += async () =>
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
+            var removed = await Task.Run(
+                () => _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token));
             if (removed.Count > 0)
-                await Dispatcher.InvokeAsync(() => _vm.RefreshCommand.Execute(null));
+                _vm.RefreshCommand.Execute(null);   // back on the UI thread after the await
             return removed.Count;
         };
 
