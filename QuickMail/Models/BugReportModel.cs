@@ -26,4 +26,11 @@ public sealed class BugReportContext
     public string Theme { get; set; } = string.Empty;
     public string View { get; set; } = string.Empty;
     public string Sort { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Where messages open (Reading pane / Tab / Window) — the Windowing "Message Open Mode"
+    /// setting. Included because it has no PII and is often central to reproducing a report
+    /// (e.g. attachment behaviour differs by mode; see issue #350).
+    /// </summary>
+    public string MessageOpenMode { get; set; } = string.Empty;
 }

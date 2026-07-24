@@ -130,6 +130,11 @@ public partial class MessageWindow : Window
             isAvailable: () => _vm.CanNavigateNext));
 
         _localRegistry.Register(new CommandDefinition(
+            id: "window.focusAttachments", category: "View", title: "Focus Attachment List",
+            execute: FocusAttachmentList,
+            defaultKey: Key.A, defaultModifiers: ModifierKeys.Alt));
+
+        _localRegistry.Register(new CommandDefinition(
             id: "window.moveToMainWindow", category: "View", title: "Move to Main Window",
             execute: () => _vm.MoveToMainWindowCommand.Execute(null)));
 
@@ -164,6 +169,7 @@ public partial class MessageWindow : Window
                 "else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}" +
                 "else if(e.key==='F6'&&!e.shiftKey){window.chrome.webview.postMessage('f6');e.preventDefault();}" +
                 "else if(e.key==='F6'&&e.shiftKey){window.chrome.webview.postMessage('shift-f6');e.preventDefault();}" +
+                "else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
                 "});");
 
@@ -175,6 +181,7 @@ public partial class MessageWindow : Window
                     case "escape":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "shift-tab":  Dispatcher.InvokeAsync(FocusLastHeaderField,  DispatcherPriority.Input); break;
+                    case "focus-attachments": Dispatcher.InvokeAsync(FocusAttachmentList, DispatcherPriority.Input); break;
                     case "f6":         Dispatcher.InvokeAsync(() => CycleFocus(true),  DispatcherPriority.Input); break;
                     case "shift-f6":   Dispatcher.InvokeAsync(() => CycleFocus(false), DispatcherPriority.Input); break;
                 }
@@ -522,6 +529,11 @@ public partial class MessageWindow : Window
             TogglePlainTextView();
             e.Handled = true;
         }
+        else if (key == Key.A && mod == ModifierKeys.Alt)
+        {
+            FocusAttachmentList();
+            e.Handled = true;
+        }
         else if (key == Key.P && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             OpenCommandPalette();
@@ -604,7 +616,34 @@ public partial class MessageWindow : Window
         }
     }
 
-    private void FocusLastHeaderField() => SubjectField.Focus();
+    // Alt+A (window.focusAttachments, issue #350): move focus to this message's attachment list.
+    // GotKeyboardFocus selects the first item so the screen reader lands on an attachment rather
+    // than the empty list shell. When the message has none, announce it instead of moving focus
+    // to a collapsed control.
+    private void FocusAttachmentList()
+    {
+        if (AttachmentList.Visibility == Visibility.Visible && AttachmentList.Items.Count > 0)
+        {
+            AttachmentList.Focus();
+        }
+        else
+        {
+            AccessibilityHelper.Announce(this, "No attachments.",
+                interrupt: true, category: AnnouncementCategory.Result);
+        }
+    }
+
+    // Shift+Tab from the WebView2 body lands on the last visible header stop: the attachment
+    // list when the message has attachments (issue #350), otherwise the Date field. Previously
+    // this always jumped to Subject (the first field), leaving attachments unreachable by
+    // Shift+Tab in window mode.
+    private void FocusLastHeaderField()
+    {
+        if (AttachmentList.Visibility == Visibility.Visible && AttachmentList.Items.Count > 0)
+            AttachmentList.Focus();
+        else
+            DateField.Focus();
+    }
 
     private void OnMoveToMainWindowRequested(MessageWindowViewModel vm)
     {

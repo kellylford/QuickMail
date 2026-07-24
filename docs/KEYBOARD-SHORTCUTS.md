@@ -43,6 +43,7 @@
 | *(unassigned)* | `mail.tentativeInvite` | Tentatively Accept Invitation |
 | *(unassigned)* | `help.keyboardTutorial` | Keyboard Tutorial |
 | Ctrl+Shift+T | `view.focusTabs` | Focus Tab Strip |
+| Alt+A | `view.focusAttachments` | Focus Attachment List (of the open message) |
 | Alt+Enter | `view.showProperties` | View Properties |
 | Ctrl+Tab | `tabs.next` | Next Tab |
 | Ctrl+Shift+Tab | `tabs.previous` | Previous Tab |
