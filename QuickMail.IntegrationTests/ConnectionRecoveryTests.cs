@@ -56,7 +56,7 @@ public sealed class ConnectionRecoveryTests : IDisposable
             // Sever the pooled connection the way a server-side drop does. The next operation
             // rents a dead-on-arrival client (younger than the pool's stale-probe threshold, so
             // it is NOT probed) — exactly the #311 scenario.
-            _relay.KillActiveConnections();
+            Assert.True(_relay.KillActiveConnections() >= 1, "Kill hit no connections — nothing to recover from.");
 
             // Must not throw: ExecuteWithReconnectAsync retries once on a fresh connection.
             await imap.PermanentlyDeleteBatchAsync(account.Id, "INBOX", [summary.MessageId], ct);
@@ -88,19 +88,19 @@ public sealed class ConnectionRecoveryTests : IDisposable
             // client may fail — the guarantee under test is recovery: the dead client is
             // discarded when its lease returns, so a subsequent attempt gets a fresh
             // connection and succeeds (#268/#278/#313: recover, don't stay stuck/stale).
-            _relay.KillActiveConnections();
+            Assert.True(_relay.KillActiveConnections() >= 1, "Kill hit no connections — nothing to recover from.");
             var summaries = await RetryOnceAsync(
                 () => imap.GetMessageSummariesAsync(account.Id, "INBOX", 10, ct));
             Assert.Single(summaries);
             Assert.Equal(summary.MessageId, summaries[0].MessageId);
 
-            _relay.KillActiveConnections();
+            Assert.True(_relay.KillActiveConnections() >= 1, "Kill hit no connections — nothing to recover from.");
             var (total, unread) = await RetryOnceAsync(
                 () => imap.GetInboxStatusAsync(account.Id, ct));
             Assert.Equal(1, total);
             Assert.Equal(1, unread);
 
-            _relay.KillActiveConnections();
+            Assert.True(_relay.KillActiveConnections() >= 1, "Kill hit no connections — nothing to recover from.");
             var detail = await RetryOnceAsync(
                 () => imap.GetMessageDetailAsync(account.Id, "INBOX", summary.MessageId, ct));
             Assert.Contains("survives drops", detail.PlainTextBody);

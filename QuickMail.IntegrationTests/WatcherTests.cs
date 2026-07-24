@@ -62,7 +62,7 @@ public sealed class WatcherTests : IDisposable
 
             imap.StartWatchers([a1, a2], ct);
             await WaitUntilAsync(() => r1.TotalAccepted == pool1 + 1 && r2.TotalAccepted == pool2 + 1,
-                TimeSpan.FromSeconds(15), "watchers for accounts 1 and 2 never connected");
+                TimeSpan.FromSeconds(15), "watchers for accounts 1 and 2 never connected", ct);
             var watched1 = r1.TotalAccepted;
             var watched2 = r2.TotalAccepted;
 
@@ -73,7 +73,7 @@ public sealed class WatcherTests : IDisposable
             var pool3 = r3.TotalAccepted;
             imap.StartWatchers([a1, a2, a3], ct);
             await WaitUntilAsync(() => r3.TotalAccepted == pool3 + 1,
-                TimeSpan.FromSeconds(15), "watcher for account 3 never connected");
+                TimeSpan.FromSeconds(15), "watcher for account 3 never connected", ct);
 
             // Settle window: a restart of watchers 1/2 would show up as extra accepts.
             await Task.Delay(TimeSpan.FromSeconds(2), ct);
@@ -106,7 +106,7 @@ public sealed class WatcherTests : IDisposable
             var pool = relay.TotalAccepted;
             imap.StartWatchers([account], ct);
             await WaitUntilAsync(() => relay.TotalAccepted == pool + 1,
-                TimeSpan.FromSeconds(15), "watcher never connected");
+                TimeSpan.FromSeconds(15), "watcher never connected", ct);
             // Brief grace so the watcher is inside IdleAsync before mail arrives.
             await Task.Delay(TimeSpan.FromSeconds(1), ct);
 
@@ -147,12 +147,12 @@ public sealed class WatcherTests : IDisposable
             var pool = relay.TotalAccepted;
             imap.StartWatchers([account], ct);
             await WaitUntilAsync(() => relay.TotalAccepted == pool + 1,
-                TimeSpan.FromSeconds(15), "watcher never connected");
+                TimeSpan.FromSeconds(15), "watcher never connected", ct);
             await Task.Delay(TimeSpan.FromSeconds(1), ct);
 
             // Drop the watcher's socket: IdleAsync faults, the first retry marks the account
             // unreachable (#314 — the UI 'connected' state must track real socket outcomes).
-            relay.KillActiveConnections();
+            Assert.True(relay.KillActiveConnections() >= 1, "Kill hit no connections — nothing to recover from.");
             var downWinner = await Task.WhenAny(gotDown.Task, Task.Delay(TimeSpan.FromSeconds(15), ct));
             Assert.True(downWinner == gotDown.Task, "No unreachable event after the watcher socket was severed.");
 
@@ -179,13 +179,13 @@ public sealed class WatcherTests : IDisposable
 
     // ── Helpers ──────────────────────────────────────────────────────────────────
 
-    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string failure)
+    private static async Task WaitUntilAsync(Func<bool> condition, TimeSpan timeout, string failure, CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
         while (stopwatch.Elapsed < timeout)
         {
             if (condition()) return;
-            await Task.Delay(100);
+            await Task.Delay(100, ct);
         }
         throw new TimeoutException(failure);
     }

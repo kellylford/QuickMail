@@ -44,17 +44,24 @@ public sealed class TcpRelay : IDisposable
     public int LiveConnectionCount => _live.Count;
 
     /// <summary>
-    /// Abruptly closes both sides of every in-flight connection. The listener stays up, so
-    /// clients can reconnect — this simulates a server-side drop, not an outage.
+    /// Abruptly closes both sides of every in-flight connection and returns how many pairs
+    /// were killed. The listener stays up, so clients can reconnect — this simulates a
+    /// server-side drop, not an outage. Callers should assert the count is at least 1: a kill
+    /// that hit nothing means the connection under test was already gone, and the "recovery"
+    /// being asserted would silently degrade into a happy-path test.
     /// </summary>
-    public void KillActiveConnections()
+    public int KillActiveConnections()
     {
+        var killed = 0;
         foreach (var (id, pair) in _live.ToArray())
         {
-            _live.TryRemove(id, out _);
+            if (!_live.TryRemove(id, out _))
+                continue;
+            killed++;
             try { pair.Client.Close(); } catch { }
             try { pair.Server.Close(); } catch { }
         }
+        return killed;
     }
 
     private async Task AcceptLoopAsync()
@@ -78,8 +85,11 @@ public sealed class TcpRelay : IDisposable
         var server = new TcpClient();
         try
         {
-            await server.ConnectAsync(_targetHost, _targetPort, _cts.Token);
+            // Register BEFORE the target connect so a kill issued the instant a connection is
+            // counted in TotalAccepted can't slip through the accept→connect window. Closing a
+            // not-yet-connected TcpClient is safe.
             _live[id] = (client, server);
+            await server.ConnectAsync(_targetHost, _targetPort, _cts.Token);
 
             var upstream   = PumpAsync(client, server);
             var downstream = PumpAsync(server, client);
@@ -109,11 +119,16 @@ public sealed class TcpRelay : IDisposable
         catch { /* closed/killed — RelayAsync's finally tears the pair down */ }
     }
 
+    private bool _disposed;
+
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         _cts.Cancel();
         try { _listener.Stop(); } catch { }
         KillActiveConnections();
         _cts.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
