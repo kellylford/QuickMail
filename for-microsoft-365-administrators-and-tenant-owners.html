@@ -56,9 +56,12 @@ using the app. It holds <strong>no application permissions</strong> — it
 cannot run in the background, and it cannot read or send mail for any
 user who has not personally signed in.</li>
 <li>Sign-in uses the modern authentication flow (OAuth 2.0 / MSAL).
-Passwords are never seen or stored by QuickMail; tokens live in Windows
-Credential Manager on the user’s own PC and honour your Conditional
-Access and MFA policies.</li>
+Passwords are never seen or stored by QuickMail; access tokens are held
+in an encrypted cache on the user’s own PC, protected by Windows DPAPI
+and readable only by that user’s Windows account. (Where a user connects
+over IMAP/SMTP with a password instead, that password is stored in
+Windows Credential Manager.) Sign-in honours your Conditional Access and
+MFA policies.</li>
 </ul>
 <h3 id="app-registration-details">App registration details</h3>
 <table>
@@ -128,9 +131,9 @@ option, two Exchange Online scopes (<code>IMAP.AccessAsUser.All</code>,
 <h3 id="how-to-approve-quickmail-for-your-organization">How to approve
 QuickMail for your organization</h3>
 <p>Any of these roles can grant approval — <strong>Global Administrator
-is not required</strong> (QuickMail has no application permissions):
-<strong>Cloud Application Administrator</strong>, <strong>Application
-Administrator</strong>, or <strong>AI Administrator</strong>.</p>
+is not required</strong>: <strong>Cloud Application
+Administrator</strong> or <strong>Application
+Administrator</strong>.</p>
 <p><strong>Option A — Entra admin center.</strong> Sign in at <a
 href="https://entra.microsoft.com">entra.microsoft.com</a> →
 <strong>Entra ID → Enterprise applications → QuickMail → Security →
@@ -141,6 +144,9 @@ first admin consent creates it.)</p>
 <p><strong>Option B — one-click consent URL.</strong> Sign in as one of
 the admin roles above and open:</p>
 <pre><code>https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312</code></pre>
+<p><strong>Open this in a private/InPrivate browser window.</strong> A
+cached Microsoft sign-in session will skip the consent screen and send
+you straight to an error page (see Troubleshooting).</p>
 <p>Replace <code>organizations</code> with your tenant ID or a verified
 domain to target a specific tenant. Review the permission list Microsoft
 shows and approve. This grants consent tenant-wide in one step.</p>
@@ -166,6 +172,20 @@ any other enterprise application at any time.</li>
 button.</strong> Your tenant requires admin consent and QuickMail has
 not been approved yet. Follow the steps above. This is expected until
 approval is granted.</li>
+<li><strong>The consent link opens, asks you to sign in, then goes
+straight to an error page with no permissions to approve.</strong> Your
+browser is reusing a cached Microsoft sign-in session, which skips the
+consent screen. <strong>Open the link in a private/InPrivate browser
+window</strong> and sign in fresh — the permission list will appear.
+This also applies to the “Grant admin consent” button in the Entra
+portal.</li>
+<li><strong>After approving, the browser shows “can’t reach this page”
+at <code>http://localhost</code>.</strong> That is expected and means it
+worked. QuickMail is a desktop app, so Microsoft redirects to a local
+address with nothing listening. Your approval is recorded
+<em>before</em> that redirect. Confirm it under <strong>Enterprise
+applications → QuickMail → Security → Permissions</strong>, which will
+now list the granted permissions.</li>
 <li><strong>A user signed in successfully but delete or move fails with
 an error.</strong> Their token predates a permission grant. Have them
 remove and re-add the account (or sign in again) to pick up a fresh
