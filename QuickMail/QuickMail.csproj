@@ -89,6 +89,7 @@
          OAuthService.DefaultScopesFor, MainViewModel.AccountsNeedingConnect) can be unit-tested
          without widening the public API. -->
     <InternalsVisibleTo Include="QuickMail.Tests" />
+    <InternalsVisibleTo Include="QuickMail.IntegrationTests" />
   </ItemGroup>
 
 </Project>

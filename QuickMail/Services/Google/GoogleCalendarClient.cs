@@ -23,7 +23,9 @@ namespace QuickMail.Services;
 /// </summary>
 public sealed class GoogleCalendarClient : IDisposable
 {
-    private const string BaseUrl = "https://www.googleapis.com/calendar/v3";
+    // Production default; overridable so tests can point the client at an in-process fake
+    // (WireMock) HTTP server — see live-content testing plan (issue #304), Tier 2.
+    private readonly string _baseUrl;
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
 
     // Write bodies omit null fields entirely: Google PATCH treats an explicit null as "clear this
@@ -38,9 +40,10 @@ public sealed class GoogleCalendarClient : IDisposable
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
 
-    public GoogleCalendarClient(IGoogleOAuthService oauth, HttpClient? http = null)
+    public GoogleCalendarClient(IGoogleOAuthService oauth, HttpClient? http = null, string? baseUrl = null)
     {
         _oauth    = oauth;
+        _baseUrl  = baseUrl ?? "https://www.googleapis.com/calendar/v3";
         _http     = http ?? new HttpClient();
         _ownsHttp = http is null;
     }
@@ -58,7 +61,7 @@ public sealed class GoogleCalendarClient : IDisposable
         do
         {
             var token = await _oauth.GetAccessTokenAsync(username, ct);
-            var url = $"{BaseUrl}/users/me/calendarList?maxResults=250" +
+            var url = $"{_baseUrl}/users/me/calendarList?maxResults=250" +
                       (string.IsNullOrEmpty(pageToken) ? string.Empty : $"&pageToken={Uri.EscapeDataString(pageToken)}");
 
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -100,7 +103,7 @@ public sealed class GoogleCalendarClient : IDisposable
         do
         {
             var token = await _oauth.GetAccessTokenAsync(username, ct);
-            var url = $"{BaseUrl}/{basePath}" +
+            var url = $"{_baseUrl}/{basePath}" +
                       (string.IsNullOrEmpty(pageToken) ? string.Empty : $"&pageToken={Uri.EscapeDataString(pageToken)}");
 
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
@@ -150,7 +153,7 @@ public sealed class GoogleCalendarClient : IDisposable
         var token = await _oauth.GetAccessTokenAsync(username, ct);
         using var req = new HttpRequestMessage(
             HttpMethod.Delete,
-            $"{BaseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}");
+            $"{_baseUrl}/calendars/{Uri.EscapeDataString(calendarId)}/events/{Uri.EscapeDataString(eventId)}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
 
         using var resp = await _http.SendAsync(req, ct);
@@ -167,7 +170,7 @@ public sealed class GoogleCalendarClient : IDisposable
         string username, HttpMethod method, string path, GoogleEventWriteBody body, CancellationToken ct)
     {
         var token = await _oauth.GetAccessTokenAsync(username, ct);
-        using var req = new HttpRequestMessage(method, $"{BaseUrl}/{path}");
+        using var req = new HttpRequestMessage(method, $"{_baseUrl}/{path}");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         req.Content = JsonContent.Create(body, options: WriteJsonOpts);
 
