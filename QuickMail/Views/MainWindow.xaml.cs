@@ -313,6 +313,7 @@ public partial class MainWindow : Window
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
         vm.AnnouncementRequested += (_, args) =>
             AccessibilityHelper.Announce(this, args.Text, interrupt: true, category: args.Category);
+        vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
         vm.ManageViewsRequested += (_, _) => OpenViewManager(createMode: false);
@@ -3196,6 +3197,20 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
+    // Update the open invite card's aria-live status region in place (#329). Because the region lives
+    // in the document the screen reader is already reading, updating its text is announced reliably —
+    // unlike a host-window notification, which is dropped while focus is inside the WebView2. The
+    // reading-pane document persists across the RSVP because the quickmail: navigation is cancelled.
+    private async void OnOpenInviteCardStatus(string text)
+    {
+        if (!_webViewReady || MessageBody.CoreWebView2 is null) return;
+        // JsonSerializer yields a safe, quoted JS string literal; textContent prevents HTML injection.
+        var js = "(function(){var s=document.getElementById('qm-invite-status');" +
+                 "if(s){s.textContent=" + System.Text.Json.JsonSerializer.Serialize(text) + ";}})();";
+        try { await MessageBody.CoreWebView2.ExecuteScriptAsync(js); }
+        catch (Exception ex) { LogService.Log("OnOpenInviteCardStatus", ex); }
+    }
+
     private void HandleQuickMailUri(string uri)
     {
         if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
