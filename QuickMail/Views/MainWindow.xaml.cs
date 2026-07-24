@@ -5776,7 +5776,19 @@ public partial class MainWindow : Window
         var rulesVm = new RulesManagerViewModel(
             _ruleService, accounts,
             prefillTemplate: template,
-            selectedMessagesForTest: selectedMessages);
+            selectedMessagesForTest: selectedMessages,
+            configService: _configService);
+
+        // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner
+        // performs the run and returns how many messages were moved or deleted for the VM to report.
+        rulesVm.RunOnExistingRequested += async () =>
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
+            if (removed.Count > 0)
+                await Dispatcher.InvokeAsync(() => _vm.RefreshCommand.Execute(null));
+            return removed.Count;
+        };
 
         var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders) { Owner = this };
         _rulesWindow = dialog;

@@ -144,6 +144,14 @@ public class ConfigModel
     public bool CalendarListShowFieldLabels { get; set; } = false;
 
     /// <summary>
+    /// When true, the rules list speaks field labels in each row's accessible name
+    /// ("Rule … account …"); when false (default) it speaks concise data only
+    /// ("Newsletters, IdeaPlace"), matching how the contact and calendar lists read.
+    /// Mirrors <see cref="ContactListShowFieldLabels"/>.
+    /// </summary>
+    public bool RuleListShowFieldLabels { get; set; } = false;
+
+    /// <summary>
     /// Fire a notification before each appointment. OFF by default (opt-in, per the
     /// announcement-infra convention for potentially intrusive features; full-calendar spec Q6).
     /// </summary>
