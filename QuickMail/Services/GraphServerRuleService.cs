@@ -102,6 +102,13 @@ public sealed class GraphServerRuleService : IServerRuleService
 
         // Sequence is 1-based on the server; assign positions in the given order. Only `sequence` is
         // sent, so the rest of each rule is untouched.
+        //
+        // NOT ATOMIC, and it can't be: Graph exposes no batch/transactional reorder, so this is N
+        // sequential PATCHes. A failure partway leaves the server partially reordered, and duplicate
+        // sequence values exist transiently mid-loop (Graph tolerates this — it resolves ordering on
+        // read). The caller rolls back its LOCAL order on failure, which does not undo PATCHes
+        // already applied server-side; the next refresh shows the server's true order. Accepted for
+        // v1: the blast radius is rule ordering, not rule content.
         for (var i = 0; i < ruleIdsInOrder.Count; i++)
         {
             ct.ThrowIfCancellationRequested();

@@ -34,6 +34,22 @@ internal static class ServerRuleMapper
         "moveToFolder", "markAsRead", "markImportance", "delete", "forwardTo", "stopProcessingRules",
     };
 
+    /// <summary>
+    /// Graph string predicates are <b>collections</b> — Outlook lets a user put several terms in one
+    /// (e.g. <c>subjectContains: ["invoice", "receipt"]</c>) — but the editor exposes a single value.
+    /// A rule carrying more than one term therefore is NOT fully representable: saving it would
+    /// PATCH back a one-element array and silently delete the rest. These are gated by cardinality
+    /// in <see cref="ToModel"/> even though the predicate name itself is supported.
+    /// <para>
+    /// Recipient collections (<c>fromAddresses</c>, <c>forwardTo</c>) are absent here on purpose —
+    /// they're modelled as full lists and round-trip completely.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> SingleValueStringPredicates = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "senderContains", "subjectContains", "bodyOrSubjectContains",
+    };
+
     /// <summary>Friendlier labels for the predicates/actions we don't support yet.</summary>
     private static readonly Dictionary<string, string> FriendlyNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -92,6 +108,15 @@ internal static class ServerRuleMapper
             {
                 if (!IsMeaningful(p.Value)) continue;
                 if (!SupportedConditions.Contains(p.Name)) { unsupported.Add(Friendly(p.Name)); continue; }
+
+                // The predicate NAME is supported, but its CARDINALITY may not be: the editor holds
+                // one value, so a multi-term predicate can't be rewritten without dropping terms.
+                // Gate it rather than truncate — silent data loss is exactly what §16 exists to stop.
+                if (SingleValueStringPredicates.Contains(p.Name) && HasMultipleValues(p.Value))
+                {
+                    unsupported.Add($"{Friendly(p.Name)} (multiple values)");
+                    continue;
+                }
 
                 switch (p.Name.ToLowerInvariant())
                 {
@@ -194,6 +219,13 @@ internal static class ServerRuleMapper
         JsonValueKind.Object => v.EnumerateObject().Any(),
         _ => true,
     };
+
+    /// <summary>
+    /// True when a string-collection predicate carries more than one term — the case the editor
+    /// cannot represent (see <see cref="SingleValueStringPredicates"/>).
+    /// </summary>
+    private static bool HasMultipleValues(JsonElement v)
+        => v.ValueKind == JsonValueKind.Array && v.GetArrayLength() > 1;
 
     /// <summary>Graph string predicates are collections; the editor exposes a single value.</summary>
     private static string? FirstString(JsonElement v) => v.ValueKind switch

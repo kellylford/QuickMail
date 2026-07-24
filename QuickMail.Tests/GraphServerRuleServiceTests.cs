@@ -160,6 +160,88 @@ public class GraphServerRuleServiceTests
         Assert.Contains("redirect to", rule.UnsupportedFields);
     }
 
+    [Theory]
+    [InlineData("subjectContains")]
+    [InlineData("senderContains")]
+    [InlineData("bodyOrSubjectContains")]
+    public async Task List_MultiValueStringPredicate_IsViewOnly(string predicate)
+    {
+        // Graph string predicates are COLLECTIONS; the editor holds a single value. Before this
+        // gating, such a rule mapped as "fully editable" while keeping only the first term, so
+        // renaming it and saving would PATCH back a one-element array and silently delete the rest —
+        // the exact §16 data-loss the design exists to prevent, at the cardinality level rather than
+        // the predicate-name level.
+        var handler = new RecordingHandler(Json(Collection(
+            $$"""
+            { "id": "r1", "displayName": "Multi", "sequence": 1, "isEnabled": true,
+              "conditions": { "{{predicate}}": ["invoice", "receipt"] },
+              "actions": { "markAsRead": true } }
+            """)));
+
+        var rule = (await Service(handler).ListAsync(_accountId)).Single();
+
+        Assert.False(rule.IsFullyEditable);
+        Assert.Contains(rule.UnsupportedFields, f => f.Contains("multiple values", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task List_SingleValueStringPredicate_StaysEditable()
+    {
+        // Control for the theory above: one term is representable, so editing stays available.
+        var handler = new RecordingHandler(Json(Collection(
+            """
+            { "id": "r1", "displayName": "Single", "sequence": 1, "isEnabled": true,
+              "conditions": { "subjectContains": ["invoice"] },
+              "actions": { "markAsRead": true } }
+            """)));
+
+        var rule = (await Service(handler).ListAsync(_accountId)).Single();
+
+        Assert.True(rule.IsFullyEditable);
+        Assert.Equal("invoice", rule.SubjectContains);
+    }
+
+    [Fact]
+    public async Task MultiValueRule_CannotBeSavedThroughUpdate()
+    {
+        // End-to-end guard: the gating above must actually block the write path, so the extra terms
+        // can never be dropped even if a caller ignores IsFullyEditable in the UI.
+        var handler = new RecordingHandler(Json(Collection(
+            """
+            { "id": "r1", "displayName": "Multi", "sequence": 1, "isEnabled": true,
+              "conditions": { "subjectContains": ["invoice", "receipt"] },
+              "actions": { "markAsRead": true } }
+            """)));
+        var svc = Service(handler);
+        var rule = (await svc.ListAsync(_accountId)).Single();
+
+        rule.DisplayName = "Renamed";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => svc.UpdateAsync(_accountId, rule));
+
+        Assert.Single(handler.Methods);                 // only the initial GET
+        Assert.DoesNotContain("PATCH", handler.Methods);
+    }
+
+    [Fact]
+    public async Task List_MultiValueRecipientCollection_StaysEditable()
+    {
+        // fromAddresses/forwardTo are modelled as full lists, so multiple values round-trip fine —
+        // the cardinality gate must not over-trigger on them.
+        var handler = new RecordingHandler(Json(Collection(
+            """
+            { "id": "r1", "displayName": "Two senders", "sequence": 1, "isEnabled": true,
+              "conditions": { "fromAddresses": [
+                  { "emailAddress": { "address": "a@contoso.com" } },
+                  { "emailAddress": { "address": "b@contoso.com" } } ] },
+              "actions": { "markAsRead": true } }
+            """)));
+
+        var rule = (await Service(handler).ListAsync(_accountId)).Single();
+
+        Assert.True(rule.IsFullyEditable);
+        Assert.Equal(["a@contoso.com", "b@contoso.com"], rule.FromAddresses);
+    }
+
     [Fact]
     public async Task List_RuleWithExceptions_IsViewOnly()
     {
