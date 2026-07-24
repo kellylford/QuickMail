@@ -87,6 +87,36 @@ QuickMail already has a **client-side** rules feature (`RuleService`, `RulesMana
 | **D4 — Permission fallback** | If the tenant hasn't granted `MailboxSettings.ReadWrite`, server rules can't be listed or created. Show the **admin-directed message** (§4) *and* still allow the user to create a **client rule**, clearly marked. Never silently create client rules in place of server ones — that would leave stragglers behind once consent lands. |
 | **D5 — Ordering** | Server rules are listed in `sequence` order and reorderable with Move Up/Down. Client rules are grouped **below** them in their own group. **No reordering across the boundary** — server rules run at delivery and client rules later at sync, so they are not one execution chain and the list must never imply otherwise. |
 
+#### D1 — how idempotency is achieved
+
+"Must be idempotent" is a requirement, not a design, so the mechanism is pinned here. Rules carry no "migrated" marker today, and adding a per-rule flag would persist migration bookkeeping into user data forever.
+
+**Mechanism: the absence of any null-`AccountId` rule *is* the completion signal.** The migration is defined as "eliminate null `AccountId`", so its own postcondition tells you it has run:
+
+```
+migrate():
+    unscoped = rules.Where(r => r.AccountId is null)
+    if unscoped is empty: return          # already migrated (or nothing to do) — no-op
+    targets = accounts.Where(a => a.BackendKind != MicrosoftGraph)
+    for each rule in unscoped:
+        for each account in targets:
+            add copy of rule with AccountId = account.Id and a NEW Guid Id
+        remove rule
+    save()
+```
+
+Properties this gives us:
+
+- **Naturally idempotent.** A second run finds no unscoped rules and does nothing. No flag to get out of sync with reality.
+- **Correct on a fresh profile.** No rules → no unscoped rules → no-op.
+- **Safe if interrupted.** Save once at the end (`SaveRules` already writes atomically via `AtomicFile`), so the file is either fully migrated or untouched — never half-duplicated.
+- **Runs at load**, in `RuleService.LoadRules()`, before any consumer sees the list, so no caller can observe a null `AccountId`.
+
+**Edge cases, decided:**
+- **No non-Graph accounts exist** (Graph-only user): the unscoped rules have no valid target. They are **dropped**, because per D2 they must not apply to Graph accounts and a null scope no longer exists. This is destructive, so it must be **logged**, and the release notes must call it out.
+- **Copies get fresh `Id`s** — reusing the original `Guid` across N copies would break selection and delete-by-id.
+- **A rule already scoped to a Graph account is left alone** (D2 residual): it keeps running and is marked "runs in QuickMail".
+
 **Still non-negotiable:** the two kinds are never *synchronized* with each other, and there is no "copy this rule to the server" action in v1 (§18). Sharing a list is a presentation decision, not a merge.
 
 ---
@@ -264,6 +294,8 @@ The existing **`RulesManagerWindow`** becomes the **per-account rules manager**.
    - **Server rules first**, in `sequence` order (Graph accounts only).
    - **Client rules below**, in their own group (**D5**).
    - Each row announces: name, enabled/disabled, **where it runs**, any markers ("read-only", "error"), and a one-line summary ("If from contains 'newsletter' → move to Archive").
+
+   **A client rule on a Graph account** (the D2 residual, or a D3/D4 fallback) appears in the **client group below the server rules**, marked "runs in QuickMail". It is **not reorderable into the server sequence**: Move Up/Down operate only within the server group, because `sequence` is a server-side field with no client counterpart, and the two groups are not one execution chain. Attempting to move a client rule past the boundary is a no-op, and the group headings ("Runs on the server" / "Runs in QuickMail") make the boundary audible when arrowing through the list.
 3. **Detail region** — read-only prose for the selected rule (10.2).
 4. **Editor** — a modeless child window for create/edit (10.4).
 
@@ -452,6 +484,6 @@ This is the single most important correctness decision; reviewers should confirm
 1. ~~**Consent timing:**~~ **Resolved** — `MailboxSettings.ReadWrite` is captured up front, pre-GA, in a separate scope PR (see §4). No re-prompt for any user.
 1b. ~~**Presentation model** (separate window → tabs → ?):~~ **Resolved 2026-07-23** — a **single per-account list** with a per-row "runs where" marker, no tabs and no "All accounts" scope. Rationale and the five consequent decisions (D1–D5) are in §3.
 2. **Editor surface:** separate `ServerRuleEditorWindow` (recommended, matches compose) vs. inline panel in `ServerRulesWindow`.
-3. **Converting the existing window to modeless:** §10.4 recommends making the unified window modeless, because launching the new modeless editor from a `ShowDialog()` parent is the nested-message-loop pattern behind the GrabAddresses lockup. But `RulesManagerWindow` ships today as `ShowDialog()`, and converting it changes behavior for existing client-rules users (Escape / `IsCancel` must be rewired explicitly). **Convert as part of this work, or keep `ShowDialog()` and accept the modal-parent risk?** Recommend converting.
+3. ~~**Converting the existing window to modeless:**~~ **Resolved 2026-07-23 (maintainer sign-off).** `RulesManagerWindow` **is converted to modeless** as part of this work. Launching the new modeless editor from a `ShowDialog()` parent, over the live WebView2 reading pane, is the exact nested-message-loop shape behind the GrabAddresses lockup, and CLAUDE.md already codifies modeless-with-editable-text as the required pattern. The Escape / `IsCancel` rewiring is well understood (compose already does it), and accepting the modal-parent risk to avoid that rewiring was judged a bad trade. Implementation must wire Cancel and a guarded `PreviewKeyDown` Escape handler to `Close()` — the guard so Escape isn't stolen from an open ComboBox dropdown.
 4. **Toggle on read-only rules:** does Graph permit `isEnabled` PATCH on an `isReadOnly` rule? Confirm against a live mailbox before enabling that path.
 5. **Reorder UX:** Move Up/Down (recommended, simplest for keyboard) vs. an explicit sequence editor.
