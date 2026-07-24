@@ -196,6 +196,7 @@ public class BugReportServiceTests
             Theme = "Parchment",
             View  = "Unread (Conversations)",
             Sort  = "Newest First",
+            MessageOpenMode = "Window",
         };
 
         var text = service.BuildReportText(report);
@@ -203,6 +204,25 @@ public class BugReportServiceTests
         Assert.Contains("Theme: Parchment", text);
         Assert.Contains("View: Unread (Conversations)", text);
         Assert.Contains("Sort: Newest First", text);
+        Assert.Contains("Message open mode: Window", text);
+    }
+
+    [Fact]
+    public void BuildReportText_OmitsMessageOpenMode_WhenContextValueEmpty()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.OK), out _);
+        var report = SampleReport();
+        report.Context = new BugReportContext
+        {
+            Theme = "Parchment",
+            View  = "All (Messages)",
+            Sort  = "Newest First",
+            // MessageOpenMode stays empty
+        };
+
+        var text = service.BuildReportText(report);
+
+        Assert.DoesNotContain("Message open mode:", text);
     }
 
     [Fact]

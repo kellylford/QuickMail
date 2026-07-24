@@ -141,6 +141,8 @@ public partial class BugReportService : IBugReportService, IDisposable
             sb.AppendLine($"- Theme: {ctx.Theme}");
             sb.AppendLine($"- View: {ctx.View}");
             sb.AppendLine($"- Sort: {ctx.Sort}");
+            if (!string.IsNullOrWhiteSpace(ctx.MessageOpenMode))
+                sb.AppendLine($"- Message open mode: {ctx.MessageOpenMode}");
         }
 
         return sb.ToString();

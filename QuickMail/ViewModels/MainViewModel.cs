@@ -547,6 +547,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             MessageSort.FlaggedFirst    => "Flagged First",
             _                           => ActiveSort.ToString(),
         },
+        MessageOpenMode = MessageOpenMode switch
+        {
+            Models.MessageOpenMode.ReadingPane => "Reading pane",
+            Models.MessageOpenMode.Tab         => "Tab",
+            Models.MessageOpenMode.Window      => "Window",
+            _                                  => MessageOpenMode.ToString(),
+        },
     };
 
     private string ViewModeName => ViewMode switch
