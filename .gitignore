@@ -50,5 +50,5 @@ installer/velopack/license.txt
 *.trx
 QuickMail.Tests/TestResults/
 
-# Local test mail servers (GreenMail jars, logs)
+# Local integration-test servers (GreenMail jar cache, logs, pids)
 .testservers/
