@@ -6550,9 +6550,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var eventTitle = invite.Summary ?? "calendar event";
             Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
 
-            // Say what actually happened: accepting/tentative also adds the event to the calendar
-            // (the upsert below); declining only sends the reply. This is the reliable, in-document
-            // confirmation the reporter was missing (#329).
+            // Say what actually happened. The event is upserted to the calendar for every response
+            // (the block below runs regardless of partStat, so the calendar reflects the reply), but
+            // the decline MESSAGE omits the calendar line — telling someone who declined "it's on your
+            // calendar" would read oddly. This is the reliable, in-document confirmation the reporter
+            // was missing (#329).
             CardStatus(partStat == "DECLINED"
                 ? $"You {actionLabel} this meeting. Your reply was sent to the organizer."
                 : $"You {actionLabel} this meeting. It's been added to your calendar, and your reply was sent to the organizer.");
