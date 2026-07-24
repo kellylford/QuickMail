@@ -225,6 +225,29 @@ public class ServerRulesViewModelTests
     }
 
     [Fact]
+    public async Task ToggleEnabled_RaisesCollectionChange_SoTheRowTextRefreshes()
+    {
+        // A row's announced text comes from ServerRuleModel.ToString(), which a ListView evaluates
+        // once per container. The model raises no change notification, so without re-assigning the
+        // slot the row would keep announcing "enabled" after the user disabled it.
+        var svc = new FakeServerRuleService { Stored = [Rule("a", "Alpha", enabled: true)] };
+        var vm = Vm(svc);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        var replaced = false;
+        vm.Rules.CollectionChanged += (_, e) =>
+        {
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace) replaced = true;
+        };
+
+        await vm.ToggleEnabledCommand.ExecuteAsync(null);
+
+        Assert.True(replaced);
+        Assert.Contains("disabled", vm.Rules[0].ToString());
+        Assert.Same(vm.Rules[0], vm.SelectedRule);   // selection survives the replace
+    }
+
+    [Fact]
     public async Task ToggleEnabled_IsAllowedOnRulesWeCannotEdit()
     {
         // Enable/disable only PATCHes isEnabled, so it stays safe for rules outside the subset.

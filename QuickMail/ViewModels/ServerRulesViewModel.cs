@@ -80,6 +80,13 @@ public partial class ServerRulesViewModel : ObservableObject
     /// Editing is blocked for read-only rules and for rules using predicates/actions we can't
     /// represent — saving those would replace the server's richer object with our narrower one and
     /// silently drop the user's other predicates (spec §16).
+    /// <para>
+    /// <b>Deliberately NOT wired to the commands' <c>CanExecute</c>.</b> A disabled control is
+    /// announced only as unavailable, which tells a screen-reader user nothing about <i>why</i> a
+    /// rule on their own mailbox can't be edited. Instead the commands stay executable and explain
+    /// the reason when invoked (see <see cref="EditRule"/>), which is the accessible behaviour. XAML
+    /// may still bind visual affordances to this property.
+    /// </para>
     /// </summary>
     public bool CanEditSelected => SelectedRule is { IsFullyEditable: true, IsReadOnly: false };
 
@@ -175,6 +182,7 @@ public partial class ServerRulesViewModel : ObservableObject
         {
             await _service.SetEnabledAsync(accountId, rule.Id, target, ct);
             rule.IsEnabled = target;
+            RefreshRow(rule);
             OnPropertyChanged(nameof(DetailText));
             Announce(target ? "Rule enabled." : "Rule disabled.", AnnouncementCategory.Result);
         });
@@ -212,6 +220,29 @@ public partial class ServerRulesViewModel : ObservableObject
     }
 
     // ── Internals ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Forces the list row to re-render after the rule was mutated in place.
+    /// <para>
+    /// A row's displayed <i>and announced</i> text comes from <see cref="ServerRuleModel.ToString()"/>,
+    /// which a <c>ListView</c> evaluates when it realises the container. <see cref="ServerRuleModel"/>
+    /// is a plain model (like <see cref="MailRule"/>) and raises no change notification, so mutating
+    /// <c>IsEnabled</c> alone would leave the row still reading "enabled" after the user disabled it.
+    /// Re-assigning the slot raises a Replace notification, which regenerates that one container.
+    /// </para>
+    /// <para>
+    /// Chosen over making the model observable because <c>ToString()</c> composes several properties;
+    /// per-property notification would not cause WPF to re-evaluate it anyway.
+    /// </para>
+    /// </summary>
+    private void RefreshRow(ServerRuleModel rule)
+    {
+        var index = Rules.IndexOf(rule);
+        if (index < 0) return;
+
+        Rules[index] = rule;
+        SelectedRule = rule;   // Replace clears selection; put it back so focus doesn't jump
+    }
 
     private async Task MoveAsync(int delta, CancellationToken ct)
     {
