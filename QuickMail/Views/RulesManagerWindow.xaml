@@ -102,10 +102,13 @@
                           Focusable="False"
                           KeyboardNavigation.TabNavigation="Continue"
                           KeyboardNavigation.IsTabStop="False">
-                <!-- Disabled when no rule is selected (e.g. no rules yet): the fields bind to
-                     SelectedRule.* and would otherwise be live-but-blank, so a keyboard/screen-reader
-                     user could tab onto an empty Account combo with nothing behind it. -->
-                <StackPanel Margin="12,0,0,0" IsEnabled="{Binding HasSelectedRule}">
+                <StackPanel Margin="12,0,0,0">
+                  <!-- Fields disabled when no rule is selected (e.g. no rules yet): they bind to
+                       SelectedRule.* and would otherwise be live-but-blank, so a keyboard/screen-reader
+                       user could tab onto an empty Account combo with nothing behind it. The button row
+                       below stays OUTSIDE this so Close is always available; Test/Save gate themselves
+                       via CanExecute. -->
+                  <StackPanel IsEnabled="{Binding HasSelectedRule}">
                     <!-- Rule Name -->
                     <TextBlock Text="Rule Name" FontWeight="SemiBold" Margin="0,8,0,2"/>
                     <TextBox Text="{Binding SelectedRule.Name, UpdateSourceTrigger=PropertyChanged}"
@@ -254,6 +257,8 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
+                  </StackPanel>
+                  <!-- End of the fields panel; buttons below stay enabled. -->
 
                     <!-- Buttons -->
                     <StackPanel Orientation="Horizontal" Margin="0,16,0,0">

@@ -511,6 +511,54 @@ public class RulesManagerViewModelTests
         Assert.True(vm.HasSelectedRule);
     }
 
+    [Fact]
+    public void DeleteSaveTest_AreDisabled_UntilARuleIsSelected()
+    {
+        // With no rule selected, these commands have nothing to act on — they must be disabled so a
+        // screen-reader user isn't offered "Delete selected rule" / "Test rule" with no rule.
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
+
+        Assert.False(vm.DeleteRuleCommand.CanExecute(null));
+        Assert.False(vm.SaveRuleCommand.CanExecute(null));
+        Assert.False(vm.TestRuleCommand.CanExecute(null));
+
+        vm.NewRuleCommand.Execute(null);   // now a rule is selected
+
+        Assert.True(vm.DeleteRuleCommand.CanExecute(null));
+        Assert.True(vm.SaveRuleCommand.CanExecute(null));
+        Assert.True(vm.TestRuleCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void RunOnExisting_IsDisabled_WhenThereAreNoRules()
+    {
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
+
+        Assert.False(vm.RunOnExistingCommand.CanExecute(null));   // nothing to run
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.True(vm.RunOnExistingCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void DeletingTheLastRule_DisablesRunOnExistingAgain()
+    {
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var stub = new StubRuleService { LoadedRules = [new MailRule { Name = "Only", AccountId = account.Id }] };
+        var vm = new RulesManagerViewModel(stub, accounts: [account]);
+        vm.ConfirmDeleteRequested += (_, _) => true;
+
+        Assert.True(vm.RunOnExistingCommand.CanExecute(null));
+
+        vm.DeleteRuleCommand.Execute(null);
+
+        Assert.False(vm.RunOnExistingCommand.CanExecute(null));   // list is empty again
+        Assert.False(vm.DeleteRuleCommand.CanExecute(null));
+    }
+
     // ── Run on existing mail (issue #346) ───────────────────────────────────────
 
     [Fact]

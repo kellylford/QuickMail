@@ -63,6 +63,13 @@ public partial class RulesManagerViewModel : ObservableObject
         foreach (var r in rules) StampDisplay(r);
         Rules = new ObservableCollection<MailRule>(rules);
 
+        // "Run on Existing Mail" acts on the whole list, so it enables/disables with rule count.
+        Rules.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(HasRules));
+            RunOnExistingCommand.NotifyCanExecuteChanged();
+        };
+
         if (prefillTemplate != null)
         {
             StampDisplay(prefillTemplate);
@@ -83,15 +90,22 @@ public partial class RulesManagerViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedRule))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteRuleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SaveRuleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TestRuleCommand))]
     private MailRule? _selectedRule;
 
     /// <summary>
     /// True when a rule is selected. The View gates the editor panel on this so that, when there are
     /// no rules, the per-rule fields (which bind to <c>SelectedRule.*</c>) are disabled and dropped
     /// from the tab order — otherwise a screen-reader user tabs onto a live-but-blank Account combo
-    /// with nothing behind it.
+    /// with nothing behind it. Delete/Save/Test are gated on it too, so they don't offer an action
+    /// with no rule to act on.
     /// </summary>
     public bool HasSelectedRule => SelectedRule is not null;
+
+    /// <summary>True when the list has any rules — gates "Run on Existing Mail".</summary>
+    public bool HasRules => Rules.Count > 0;
 
     /// <summary>
     /// Account options for the ComboBox. Every rule belongs to exactly one account — the "All
@@ -233,7 +247,7 @@ public partial class RulesManagerViewModel : ObservableObject
         SelectedRule = rule;   // Replace clears selection; restore it
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasSelectedRule))]
     private void DeleteRule()
     {
         if (SelectedRule == null) return;
@@ -251,7 +265,7 @@ public partial class RulesManagerViewModel : ObservableObject
         Announce($"Rule '{name}' deleted.", AnnouncementCategory.Result);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasSelectedRule))]
     private void SaveRule()
     {
         if (SelectedRule == null) return;
@@ -265,7 +279,7 @@ public partial class RulesManagerViewModel : ObservableObject
         Announce($"Rule '{SelectedRule.Name}' saved.", AnnouncementCategory.Result);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasSelectedRule))]
     private void TestRule()
     {
         if (SelectedRule == null || _selectedMessagesForTest == null)
@@ -300,7 +314,7 @@ public partial class RulesManagerViewModel : ObservableObject
     /// mailbox (issue #346). The owner performs the work (it holds the local store); the count is
     /// messages moved or deleted — actions like Mark as read still apply but aren't counted here.
     /// </summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(HasRules))]
     private async Task RunOnExistingAsync()
     {
         if (RunOnExistingRequested is null) return;
