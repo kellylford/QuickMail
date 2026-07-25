@@ -317,6 +317,36 @@ public class ServerRulesViewModelTests
     }
 
     [Fact]
+    public async Task Refresh_ResolvesMoveAndCopyFolderNames_FromCachedFolders()
+    {
+        var rule = new ServerRuleModel
+        {
+            Id = "r1", DisplayName = "Filer",
+            MoveToFolderId = "graph-id-move",
+            CopyToFolderId = "graph-id-copy",
+            SubjectContains = "x",
+        };
+        var svc = new FakeServerRuleService { Stored = [rule] };
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [_accountId] =
+            [
+                new MailFolderModel { FullName = "graph-id-move", DisplayName = "Archive" },
+                new MailFolderModel { FullName = "graph-id-copy", DisplayName = "Backups" },
+            ],
+        };
+        var vm = new ServerRulesViewModel(svc, [GraphAccount()], folders);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        var loaded = vm.Rules.Single();
+        Assert.Equal("Archive", loaded.MoveToFolderName);
+        Assert.Equal("Backups", loaded.CopyToFolderName);
+        Assert.Contains("move to Archive", loaded.OneLineSummary());
+        Assert.Contains("copy to Backups", loaded.OneLineSummary());
+    }
+
+    [Fact]
     public void HasGraphAccount_FalseWithoutAGraphAccount()
     {
         var imap = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.ImapSmtp, Username = "u@e.com" };

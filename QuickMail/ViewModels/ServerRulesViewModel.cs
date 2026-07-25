@@ -41,9 +41,15 @@ public partial class ServerRulesViewModel : ObservableObject
 
     // ── Construction ────────────────────────────────────────────────────────
 
-    public ServerRulesViewModel(IServerRuleService service, IEnumerable<AccountModel> graphAccounts)
+    private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>>? _foldersByAccount;
+
+    public ServerRulesViewModel(
+        IServerRuleService service,
+        IEnumerable<AccountModel> graphAccounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null)
     {
         _service = service;
+        _foldersByAccount = foldersByAccount;
 
         AccountOptions = graphAccounts
             .Where(a => a.BackendKind == BackendKind.MicrosoftGraph)
@@ -51,6 +57,23 @@ public partial class ServerRulesViewModel : ObservableObject
             .ToList();
 
         _selectedAccount = AccountOptions.FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Fills in the display names for a rule's move/copy target folders. Graph rules carry only the
+    /// opaque folder ID; the cached folder list maps that ID (stored as <c>FullName</c>) to a
+    /// readable name. Best-effort — a target not in the cached set (e.g. a rarely-synced subfolder)
+    /// falls back to "another folder".
+    /// </summary>
+    private void ResolveFolderNames(ServerRuleModel rule)
+    {
+        if (SelectedAccount?.Id is not Guid accountId) return;
+        if (_foldersByAccount is null || !_foldersByAccount.TryGetValue(accountId, out var folders)) return;
+
+        if (!string.IsNullOrWhiteSpace(rule.MoveToFolderId))
+            rule.MoveToFolderName = folders.FirstOrDefault(f => f.FullName == rule.MoveToFolderId)?.DisplayName;
+        if (!string.IsNullOrWhiteSpace(rule.CopyToFolderId))
+            rule.CopyToFolderName = folders.FirstOrDefault(f => f.FullName == rule.CopyToFolderId)?.DisplayName;
     }
 
     // ── State ───────────────────────────────────────────────────────────────
@@ -112,14 +135,22 @@ public partial class ServerRulesViewModel : ObservableObject
 
             var previouslySelected = SelectedRule?.Id;
             Rules.Clear();
-            foreach (var r in rules) Rules.Add(r);
+            foreach (var r in rules)
+            {
+                ResolveFolderNames(r);
+                Rules.Add(r);
+            }
 
             SelectedRule = Rules.FirstOrDefault(r => r.Id == previouslySelected) ?? Rules.FirstOrDefault();
 
             var disabled = Rules.Count(r => !r.IsEnabled);
+            var notEditable = Rules.Count(r => !r.IsFullyEditable);
             StatusText = Rules.Count == 0
                 ? "No server rules."
-                : $"{Rules.Count} rule{(Rules.Count == 1 ? "" : "s")}" + (disabled > 0 ? $", {disabled} disabled." : ".");
+                : $"{Rules.Count} rule{(Rules.Count == 1 ? "" : "s")}"
+                  + (disabled > 0 ? $", {disabled} disabled" : "")
+                  + (notEditable > 0 ? $", {notEditable} not editable in QuickMail" : "")
+                  + ".";
             Announce(StatusText, AnnouncementCategory.Status);
         }
         catch (ServerRuleConsentRequiredException ex)

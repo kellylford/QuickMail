@@ -36,6 +36,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <Grid Grid.Row="0">
@@ -278,10 +279,62 @@
             </ScrollViewer>
         </Grid>
 
+        <!-- Read-only server-rules peek (#333). Its DataContext is set to a ServerRulesViewModel in
+             code-behind, so bindings here resolve against THAT, not the client-rules VM. Collapsed
+             unless the account has server rules; editing/creating lands in a follow-up. -->
+        <Border x:Name="ServerRulesSection" Grid.Row="1" Visibility="Collapsed"
+                Margin="0,10,0,0" Padding="8" BorderThickness="1"
+                BorderBrush="{DynamicResource Theme.Border}">
+            <StackPanel>
+                <TextBlock Text="Server rules (run on Microsoft 365, even when QuickMail is closed) — read-only for now"
+                           FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                <!-- Focusable (F6 ring) so a screen-reader user can move to it and re-read the count
+                     on demand; IsTabStop=False keeps it out of the Tab order. -->
+                <TextBlock x:Name="ServerRulesStatusText" Text="{Binding StatusText}" Margin="0,0,0,6"
+                           Focusable="True" KeyboardNavigation.IsTabStop="False"
+                           AutomationProperties.Name="{Binding StatusText}"
+                           AutomationProperties.LiveSetting="Polite"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="260"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ListBox Grid.Column="0" x:Name="ServerRulesListBox"
+                             MaxHeight="150"
+                             ItemsSource="{Binding Rules}"
+                             SelectedItem="{Binding SelectedRule}"
+                             AutomationProperties.Name="Server rules list">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="6,4"/>
+                                <!-- Row announced from ServerRuleModel.ToString() (name, state, where, summary). -->
+                                <Setter Property="AutomationProperties.Name" Value="{Binding}"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+
+                    <!-- Read-only detail for the selected server rule (full prose, incl. any not-editable
+                         note). AcceptsReturn makes it a MULTI-LINE text control so a screen reader can
+                         arrow through every line, not just the first. -->
+                    <TextBox Grid.Column="2" x:Name="ServerRulesDetailBox"
+                             Text="{Binding DetailText, Mode=OneWay}"
+                             IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" MaxHeight="150"
+                             Background="Transparent" BorderThickness="0"
+                             AutomationProperties.Name="Selected server rule details"/>
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- Status bar -->
-        <StatusBar Grid.Row="1" Margin="0,8,0,0">
+        <StatusBar Grid.Row="2" Margin="0,8,0,0">
             <StatusBarItem>
-                <TextBlock Text="{Binding StatusText}"
+                <TextBlock x:Name="MainStatusText" Text="{Binding StatusText}"
+                           Focusable="True" KeyboardNavigation.IsTabStop="False"
+                           AutomationProperties.Name="{Binding StatusText}"
                            AutomationProperties.LiveSetting="Polite"/>
             </StatusBarItem>
         </StatusBar>

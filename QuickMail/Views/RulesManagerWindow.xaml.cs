@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
+using System.Windows.Media;
 using QuickMail.Models;
 using QuickMail.ViewModels;
 
@@ -27,15 +28,19 @@ public partial class RulesManagerWindow : Window
     private readonly IEnumerable<AccountModel> _accounts;
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>> _cachedFolders;
 
+    private readonly ServerRulesViewModel? _serverRulesVm;
+
     public RulesManagerWindow(
         RulesManagerViewModel vm,
         IEnumerable<AccountModel> accounts,
-        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        ServerRulesViewModel? serverRulesVm = null)
     {
         InitializeComponent();
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
+        _serverRulesVm = serverRulesVm;
         DataContext = vm;
 
         // Wire VM events
@@ -44,10 +49,78 @@ public partial class RulesManagerWindow : Window
         vm.AnnouncementRequested += OnAnnouncementRequested;
         vm.PickFolderRequested += OnPickFolderRequested;
 
-        // Focus the first rule in the list on open (issue #348). Focusing the ListBox alone does
-        // not reliably move keyboard focus onto an item for some screen readers, so focus the
-        // first item's container directly.
-        Loaded += (_, _) => FocusFirstRule();
+        // Read-only server-rules section (#333): a distinct sub-tree with its own DataContext so its
+        // bindings resolve against the ServerRulesViewModel rather than the client-rules VM. Hidden
+        // entirely when there's no Graph account.
+        if (_serverRulesVm is not null)
+        {
+            ServerRulesSection.DataContext = _serverRulesVm;
+            ServerRulesSection.Visibility = Visibility.Visible;
+            _serverRulesVm.AnnouncementRequested += OnAnnouncementRequested;
+            _serverRulesVm.WriteBlockedByPermission += OnServerRulesPermissionMessage;
+            // Load the account's server rules, THEN decide focus — landing focus on the list that
+            // actually holds the user's rules (they may have only server rules, no client rules).
+            Loaded += async (_, _) =>
+            {
+                await _serverRulesVm.RefreshCommand.ExecuteAsync(null);
+                FocusInitialList();
+            };
+        }
+        else
+        {
+            // No server rules in play: original behaviour — focus the client rule list on open (#348).
+            Loaded += (_, _) => FocusFirstRule();
+        }
+    }
+
+    /// <summary>
+    /// Lands focus on whichever list has content. A Graph account with no client rules would
+    /// otherwise open onto the empty client list and sound empty while the user's (server) rules sit
+    /// in the section below.
+    /// </summary>
+    private void FocusInitialList()
+    {
+        if (RuleListBox.Items.Count > 0 || ServerRulesListBox.Items.Count == 0)
+        {
+            FocusFirstRule();
+            return;
+        }
+
+        ServerRulesListBox.SelectedIndex = 0;
+        ServerRulesListBox.UpdateLayout();
+        if (ServerRulesListBox.ItemContainerGenerator.ContainerFromIndex(0) is ListBoxItem item)
+            item.Focus();
+        else
+            ServerRulesListBox.Focus();
+    }
+
+    private void OnServerRulesPermissionMessage(string message)
+        => AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Hint);
+
+    /// <summary>Moves keyboard focus to the next (or previous) window pane for F6 / Shift+F6.</summary>
+    private void CyclePane(bool forward)
+    {
+        // Only include panes that are actually present/visible.
+        var stops = new List<UIElement> { RuleListBox };
+        if (_serverRulesVm is not null && ServerRulesSection.Visibility == Visibility.Visible)
+        {
+            stops.Add(ServerRulesListBox);
+            stops.Add(ServerRulesDetailBox);
+            stops.Add(ServerRulesStatusText);
+        }
+        stops.Add(MainStatusText);
+
+        // Find where focus currently sits (walk up from the focused element to a known pane).
+        var current = -1;
+        for (var node = Keyboard.FocusedElement as DependencyObject; node is not null; node = VisualTreeHelper.GetParent(node))
+        {
+            if (node is UIElement el && (current = stops.IndexOf(el)) >= 0) break;
+        }
+
+        var next = current < 0
+            ? 0
+            : (current + (forward ? 1 : stops.Count - 1)) % stops.Count;
+        stops[next].Focus();
     }
 
     private void FocusFirstRule()
@@ -133,6 +206,16 @@ public partial class RulesManagerWindow : Window
         // so the Close button's IsCancel="True" no longer closes it on Escape — wire that
         // explicitly here. Step aside when an open combo dropdown needs Escape to dismiss
         // itself, so we don't steal it (matches ComposeWindow's guard).
+        // F6 / Shift+F6 cycle between the window's panes (New Window Checklist). Stops are the client
+        // rule list, the server-rules list and detail (when shown), and the status line — so a
+        // keyboard/screen-reader user can reach every region, including the status to re-read counts.
+        if (e.Key == Key.F6)
+        {
+            CyclePane(forward: (Keyboard.Modifiers & ModifierKeys.Shift) == 0);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.Escape)
         {
             if (AccountScopeCombo.IsDropDownOpen || ActionCombo.IsDropDownOpen)
@@ -149,6 +232,11 @@ public partial class RulesManagerWindow : Window
         _vm.ConfirmDeleteRequested -= OnConfirmDeleteRequested;
         _vm.AnnouncementRequested -= OnAnnouncementRequested;
         _vm.PickFolderRequested -= OnPickFolderRequested;
+        if (_serverRulesVm is not null)
+        {
+            _serverRulesVm.AnnouncementRequested -= OnAnnouncementRequested;
+            _serverRulesVm.WriteBlockedByPermission -= OnServerRulesPermissionMessage;
+        }
         base.OnClosed(e);
     }
 }

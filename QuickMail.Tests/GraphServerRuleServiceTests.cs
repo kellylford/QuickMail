@@ -134,14 +134,65 @@ public class GraphServerRuleServiceTests
         var handler = new RecordingHandler(Json(Collection(
             """
             { "id": "r1", "displayName": "Complex", "sequence": 1, "isEnabled": true,
-              "conditions": { "subjectContains": ["x"], "bodyContains": ["secret"] },
+              "conditions": { "subjectContains": ["x"], "headerContains": ["X-Spam"] },
               "actions": { "markAsRead": true } }
             """)));
 
         var rule = (await Service(handler).ListAsync(_accountId)).Single();
 
         Assert.False(rule.IsFullyEditable);
-        Assert.Contains("body contains", rule.UnsupportedFields);
+        Assert.Contains("header contains", rule.UnsupportedFields);
+    }
+
+    [Fact]
+    public async Task List_BodyContainsAndSentToAddresses_AreEditable_AndRoundTrip()
+    {
+        // #333: these two conditions were added to the supported subset (they cover every rule that
+        // was previously flagged on a real O365 mailbox). Read them, and prove Create writes them
+        // back so an edit can't drop them.
+        var handler = new RecordingHandler(
+            Json(Collection(
+                """
+                { "id": "r1", "displayName": "Boards", "sequence": 1, "isEnabled": true,
+                  "conditions": { "subjectContains": ["Agenda"], "bodyContains": ["PTAC"],
+                                  "sentToAddresses": [ { "emailAddress": { "address": "board@contoso.com" } } ] },
+                  "actions": { "moveToFolder": "F", "stopProcessingRules": true } }
+                """)),
+            Json("""{ "id": "new", "displayName": "Boards" }"""));
+        var svc = Service(handler);
+
+        var rule = (await svc.ListAsync(_accountId)).Single();
+        Assert.True(rule.IsFullyEditable);                       // no longer flagged
+        Assert.Empty(rule.UnsupportedFields);
+        Assert.Equal("PTAC", rule.BodyContains);
+        Assert.Equal("board@contoso.com", Assert.Single(rule.SentToAddresses));
+
+        await svc.CreateAsync(_accountId, rule);
+        var body = handler.Bodies.Last()!;
+        Assert.Contains("bodyContains", body);
+        Assert.Contains("sentToAddresses", body);
+        Assert.Contains("board@contoso.com", body);
+    }
+
+    [Fact]
+    public async Task List_CopyToFolder_IsEditable_AndRoundTrips()
+    {
+        var handler = new RecordingHandler(
+            Json(Collection(
+                """
+                { "id": "r1", "displayName": "Archive copy", "sequence": 1, "isEnabled": true,
+                  "conditions": { "subjectContains": ["x"] },
+                  "actions": { "copyToFolder": "FolderZ" } }
+                """)),
+            Json("""{ "id": "new" }"""));
+        var svc = Service(handler);
+
+        var rule = (await svc.ListAsync(_accountId)).Single();
+        Assert.True(rule.IsFullyEditable);
+        Assert.Equal("FolderZ", rule.CopyToFolderId);
+
+        await svc.CreateAsync(_accountId, rule);
+        Assert.Contains("copyToFolder", handler.Bodies.Last()!);
     }
 
     [Fact]
@@ -163,6 +214,7 @@ public class GraphServerRuleServiceTests
     [Theory]
     [InlineData("subjectContains")]
     [InlineData("senderContains")]
+    [InlineData("bodyContains")]
     [InlineData("bodyOrSubjectContains")]
     public async Task List_MultiValueStringPredicate_IsViewOnly(string predicate)
     {
@@ -442,6 +494,16 @@ public class GraphServerRuleServiceTests
         Assert.Contains("subject contains 'digest'", text);
         Assert.Contains("move to Archive", text);
         Assert.DoesNotContain("ServerRuleModel", text);  // never the type name
+    }
+
+    [Fact]
+    public void ToString_MarksNotEditableRules_SoTheListRowAnnouncesIt()
+    {
+        var editable = new ServerRuleModel { DisplayName = "Simple", SubjectContains = "x", MarkAsRead = true };
+        var notEditable = new ServerRuleModel { DisplayName = "Complex", IsFullyEditable = false, UnsupportedFields = ["body contains"] };
+
+        Assert.DoesNotContain("not editable", editable.ToString(), StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("not editable in QuickMail", notEditable.ToString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

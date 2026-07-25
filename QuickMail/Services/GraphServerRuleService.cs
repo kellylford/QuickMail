@@ -50,6 +50,11 @@ public sealed class GraphServerRuleService : IServerRuleService
                         .ToList();
         LogService.Debug($"ServerRules: listed {rules.Count} rule(s) for {account.Username} " +
                          $"({rules.Count(r => !r.IsFullyEditable)} not fully editable)");
+        // Diagnostic (/debug only): name the specific unsupported field(s) per flagged rule so a
+        // gap in the supported subset can be identified. Field NAMES only — not the raw predicate
+        // values, which would put mail subjects/addresses in the log.
+        foreach (var r in rules.Where(x => !x.IsFullyEditable))
+            LogService.Debug($"ServerRules: not-editable '{r.DisplayName}' unsupported=[{string.Join(", ", r.UnsupportedFields)}]");
         return rules;
     }
 

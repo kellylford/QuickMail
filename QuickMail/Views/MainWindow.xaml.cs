@@ -195,6 +195,7 @@ public partial class MainWindow : Window
     private readonly ILocalStoreService _localStore;
     private readonly IViewService _viewService;
     private readonly IRuleService _ruleService;
+    private readonly IServerRuleService? _serverRuleService;
     private readonly ITemplateService _templateService;
     private readonly IFlagService? _flagService;
     private readonly ICustomDictionaryService? _customDictionary;
@@ -258,7 +259,8 @@ public partial class MainWindow : Window
         IBugReportService? bugReportService = null,
         INotificationService? notificationService = null,
         IContactSyncService? contactSyncService = null,
-        IGraphCalendarSyncService? graphCalendarSyncService = null)
+        IGraphCalendarSyncService? graphCalendarSyncService = null,
+        IServerRuleService? serverRuleService = null)
     {
         _vm = vm;
         _notificationService = notificationService;
@@ -271,6 +273,7 @@ public partial class MainWindow : Window
         _contactService = contactService;
         _contactSyncService = contactSyncService;
         _graphCalendarSyncService = graphCalendarSyncService;
+        _serverRuleService = serverRuleService;
         _configService = configService;
         _localStore = localStore;
         _viewService = viewService;
@@ -5846,7 +5849,13 @@ public partial class MainWindow : Window
         // Manager". Leaving it unowned makes it an independent peer that reads its own title — the
         // same fix compose and standalone message windows use. Unowned windows aren't auto-closed
         // with the main window, so it's tracked in _rulesWindow and closed in OnClosed.
-        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders);
+        // Read-only server-rules peek (#333): when a Graph account exists, surface its Exchange
+        // messageRules in the Rules Manager so the user can see them. Editing lands in a follow-up.
+        ServerRulesViewModel? serverRulesVm = null;
+        if (_serverRuleService != null && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
+            serverRulesVm = new ServerRulesViewModel(_serverRuleService, accounts, _vm.CachedFolders);
+
+        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm);
         _rulesWindow = dialog;
 
         // Modeless (.Show, NOT .ShowDialog). Opening this window modally over MainWindow's
