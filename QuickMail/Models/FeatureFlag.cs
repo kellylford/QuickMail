@@ -18,4 +18,13 @@ public enum FeatureFlag
     /// Default: true. Disable in config.ini with GoogleAuth=false under [features].
     /// </summary>
     GoogleAuth,
+
+    /// <summary>
+    /// Shows server-side (Exchange/Graph) Inbox rules in the Rules Manager for Microsoft 365
+    /// accounts (#333). Default: false while the feature is built out — enable at launch with
+    /// --feature ServerRules or in config.ini with ServerRules=true under [features]. Flip the
+    /// default to true via a joint-decision PR once create/edit/delete and the unified per-account
+    /// window are complete.
+    /// </summary>
+    ServerRules,
 }

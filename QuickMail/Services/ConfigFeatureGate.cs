@@ -17,6 +17,7 @@ public class ConfigFeatureGate : IFeatureGate
     {
         [FeatureFlag.GraphBackend] = true,
         [FeatureFlag.GoogleAuth]   = true,
+        [FeatureFlag.ServerRules]  = false,   // off until server-rule editing + unified window ship (#333)
     };
 
     private readonly Dictionary<string, string> _configFlags;

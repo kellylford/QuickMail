@@ -5852,7 +5852,9 @@ public partial class MainWindow : Window
         // Read-only server-rules peek (#333): when a Graph account exists, surface its Exchange
         // messageRules in the Rules Manager so the user can see them. Editing lands in a follow-up.
         ServerRulesViewModel? serverRulesVm = null;
-        if (_serverRuleService != null && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
+        if (_serverRuleService != null
+            && _featureGate.IsEnabled(FeatureFlag.ServerRules)
+            && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
             serverRulesVm = new ServerRulesViewModel(_serverRuleService, accounts, _vm.CachedFolders);
 
         var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm);
