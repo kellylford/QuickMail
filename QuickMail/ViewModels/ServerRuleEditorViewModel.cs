@@ -59,8 +59,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
             SenderContains = rule.SenderContains ?? string.Empty,
             FromAddresses = string.Join(", ", rule.FromAddresses),
+            SentToAddresses = string.Join(", ", rule.SentToAddresses),
             SubjectContains = rule.SubjectContains ?? string.Empty,
             BodyOrSubjectContains = rule.BodyOrSubjectContains ?? string.Empty,
+            BodyContains = rule.BodyContains ?? string.Empty,
             SentToMe = rule.SentToMe,
             SentOnlyToMe = rule.SentOnlyToMe,
             HasAttachments = rule.HasAttachments,
@@ -68,6 +70,9 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             MoveToFolder = !string.IsNullOrWhiteSpace(rule.MoveToFolderId),
             MoveToFolderId = rule.MoveToFolderId,
             MoveToFolderName = rule.MoveToFolderName,
+            CopyToFolder = !string.IsNullOrWhiteSpace(rule.CopyToFolderId),
+            CopyToFolderId = rule.CopyToFolderId,
+            CopyToFolderName = rule.CopyToFolderName,
             MarkAsRead = rule.MarkAsRead,
             Delete = rule.Delete,
             ForwardTo = string.Join(", ", rule.ForwardTo),
@@ -89,8 +94,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     // Conditions
     [ObservableProperty] private string _senderContains = string.Empty;
     [ObservableProperty] private string _fromAddresses = string.Empty;
+    [ObservableProperty] private string _sentToAddresses = string.Empty;
     [ObservableProperty] private string _subjectContains = string.Empty;
     [ObservableProperty] private string _bodyOrSubjectContains = string.Empty;
+    [ObservableProperty] private string _bodyContains = string.Empty;
     [ObservableProperty] private bool _sentToMe;
     [ObservableProperty] private bool _sentOnlyToMe;
     [ObservableProperty] private bool _hasAttachments;
@@ -102,6 +109,11 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     private bool _moveToFolder;
     [ObservableProperty] private string? _moveToFolderId;
     [ObservableProperty] private string? _moveToFolderName;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCopyToFolderSelected))]
+    private bool _copyToFolder;
+    [ObservableProperty] private string? _copyToFolderId;
+    [ObservableProperty] private string? _copyToFolderName;
     [ObservableProperty] private bool _markAsRead;
     [ObservableProperty] private ImportanceOption _selectedMarkImportance = ImportanceOptions[0];
     [ObservableProperty] private bool _delete;
@@ -109,6 +121,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty] private bool _stopProcessingRules;
 
     public bool IsMoveToFolderSelected => MoveToFolder;
+    public bool IsCopyToFolderSelected => CopyToFolder;
 
     // Validation surfaces
     [ObservableProperty] private string _nameError = string.Empty;
@@ -137,6 +150,16 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void PickCopyFolder()
+    {
+        if (PickFolderRequested?.Invoke() is not { } picked) return;
+        CopyToFolderId = picked.Id;
+        CopyToFolderName = picked.Name;
+        CopyToFolder = true;
+        FolderError = string.Empty;
+    }
+
+    [RelayCommand]
     private void Save()
     {
         if (!Validate()) return;
@@ -158,8 +181,10 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
         SenderContains = Blank(SenderContains),
         FromAddresses = SplitAddresses(FromAddresses),
+        SentToAddresses = SplitAddresses(SentToAddresses),
         SubjectContains = Blank(SubjectContains),
         BodyOrSubjectContains = Blank(BodyOrSubjectContains),
+        BodyContains = Blank(BodyContains),
         SentToMe = SentToMe,
         SentOnlyToMe = SentOnlyToMe,
         HasAttachments = HasAttachments,
@@ -167,6 +192,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
         MoveToFolderId = MoveToFolder ? MoveToFolderId : null,
         MoveToFolderName = MoveToFolder ? MoveToFolderName : null,
+        CopyToFolderId = CopyToFolder ? CopyToFolderId : null,
+        CopyToFolderName = CopyToFolder ? CopyToFolderName : null,
         MarkAsRead = MarkAsRead,
         MarkImportance = SelectedMarkImportance?.Value,
         Delete = Delete,
@@ -198,6 +225,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             valid = false;
         }
 
+        if (CopyToFolder && string.IsNullOrWhiteSpace(CopyToFolderId))
+        {
+            FolderError = "Choose a folder for the Copy to folder action.";
+            valid = false;
+        }
+
         if (!HasAnyAction())
         {
             ActionsError = "Choose at least one action.";
@@ -215,6 +248,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     private bool HasAnyAction()
         => (MoveToFolder && !string.IsNullOrWhiteSpace(MoveToFolderId))
+           || (CopyToFolder && !string.IsNullOrWhiteSpace(CopyToFolderId))
            || MarkAsRead
            || Delete
            || StopProcessingRules

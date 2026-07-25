@@ -415,8 +415,10 @@ public class ServerRulesViewModelTests
     }
 
     [Fact]
-    public void Editor_ForEdit_RoundTripsFields()
+    public void Editor_ForEdit_RoundTripsFields_IncludingBodyContainsSentToAndCopy()
     {
+        // Covers the fields added in #333 (bodyContains, sentToAddresses, copyToFolder) — an edit
+        // must carry them through, not drop them (the §16 data-loss trap).
         var original = new ServerRuleModel
         {
             Id = "r1",
@@ -425,26 +427,44 @@ public class ServerRulesViewModelTests
             IsEnabled = false,
             SenderContains = "boss",
             SubjectContains = "urgent",
+            BodyContains = "invoice",
+            SentToAddresses = ["team@contoso.com", "ops@contoso.com"],
             SentOnlyToMe = true,
             Importance = "high",
             MoveToFolderId = "folder-1",
             MoveToFolderName = "Priority",
+            CopyToFolderId = "folder-2",
+            CopyToFolderName = "Backups",
             StopProcessingRules = true,
             IsFullyEditable = true,
         };
 
-        var editor = ServerRuleEditorViewModel.ForEdit(original);
-        var result = editor.ToModel();
+        var result = ServerRuleEditorViewModel.ForEdit(original).ToModel();
 
         Assert.Equal("r1", result.Id);
         Assert.Equal(3, result.Sequence);
         Assert.Equal("Alpha", result.DisplayName);
         Assert.False(result.IsEnabled);
         Assert.Equal("boss", result.SenderContains);
+        Assert.Equal("urgent", result.SubjectContains);
+        Assert.Equal("invoice", result.BodyContains);
+        Assert.Equal(["team@contoso.com", "ops@contoso.com"], result.SentToAddresses);
         Assert.True(result.SentOnlyToMe);
         Assert.Equal("high", result.Importance);
         Assert.Equal("folder-1", result.MoveToFolderId);
+        Assert.Equal("folder-2", result.CopyToFolderId);
         Assert.True(result.StopProcessingRules);
+    }
+
+    [Fact]
+    public void Editor_CopyToFolderWithoutAFolder_IsInvalid()
+    {
+        var editor = ServerRuleEditorViewModel.ForNew();
+        editor.Name = "Copier";
+        editor.CopyToFolder = true;   // checked, but no folder picked
+
+        Assert.False(editor.Validate());
+        Assert.Contains("folder", editor.FolderError, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
