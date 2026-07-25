@@ -144,6 +144,20 @@ public class RuleMigrationTests : IDisposable
     }
 
     [Fact]
+    public void EmptyAccountList_SkipsMigration_KeepsUnscopedRule()
+    {
+        // An empty account read can be transient; migrating would drop every unscoped rule. So with
+        // an account service present but returning no accounts, the migration defers (rule kept, not
+        // dropped) rather than treating "no accounts" like a Graph-only profile. (Review of #364.)
+        SeedRules(Unscoped("Global"));
+
+        var rules = ServiceWith().LoadRules();   // FixedAccountService with zero accounts
+
+        var rule = Assert.Single(rules);
+        Assert.Null(rule.AccountId);
+    }
+
+    [Fact]
     public void NoAccountService_LeavesUnscopedRulesUntouched()
     {
         // The test-only path: without an account context there's nothing to migrate against, so an

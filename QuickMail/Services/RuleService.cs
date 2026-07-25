@@ -79,9 +79,14 @@ public class RuleService : IRuleService
         if (_accountService is null) return;                    // no account context (some unit tests)
         if (_cache.All(r => r.AccountId is not null)) return;   // already migrated / nothing unscoped
 
-        var targets = _accountService.LoadAccounts()
-            .Where(a => a.BackendKind != BackendKind.MicrosoftGraph)
-            .ToList();
+        var accounts = _accountService.LoadAccounts();
+        // Never migrate against an EMPTY account list: it would drop every unscoped rule, and an empty
+        // read can be transient (startup ordering, a locked/corrupt accounts.json). Defer until
+        // accounts exist. A genuine Graph-only profile still drops below (accounts present, but none
+        // non-Graph) — the drop path only fires when there is real account context. (Review of #364.)
+        if (accounts.Count == 0) return;
+
+        var targets = accounts.Where(a => a.BackendKind != BackendKind.MicrosoftGraph).ToList();
 
         var migrated = new List<MailRule>(_cache.Count);
         int converted = 0, dropped = 0;

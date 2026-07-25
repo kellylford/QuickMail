@@ -39,6 +39,12 @@ Several fixes to the Rules Manager (Tools → Rules…, `Ctrl+Shift+L`):
 - Screen readers now read the Rules Manager's own window title correctly. (#347)
 - Added a field-labels display option and other row-level accessibility refinements. (#344, #346, #348)
 
+**Mail rules are now per-account.** The "All accounts" rule option has been replaced by scoping each rule to a specific account. This happens automatically the first time rules load after updating:
+
+- Existing "All accounts" rules are **copied to each of your standard (IMAP/SMTP) accounts**, so they keep working exactly as before.
+- **If you use *only* Microsoft 365 accounts**, any old "All accounts" rules are **removed** — those rules run inside QuickMail, and Microsoft 365 accounts are moving to server-side rules instead. If you had such rules, recreate them scoped to the account you want. (This affects very few people; every removal is recorded in the log.)
+- New rules now ask which account they apply to (defaulting to your default account) instead of offering "All accounts". (#333)
+
 ---
 
 ## Under the Hood
