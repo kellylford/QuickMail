@@ -1,0 +1,30 @@
+# QuickMail v0.8.37 Release Notes
+
+## Download
+
+Two options are available for v0.8.37:
+
+| Download | When to use |
+|----------|-------------|
+| **`QuickMail-win.msi`** — Windows installer | Recommended for most users. A standard setup wizard with license agreement; installs per-user with no elevation required, adds the WebView2 Runtime if missing, and enables automatic updates. |
+| **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run. |
+
+Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
+
+---
+
+## Fixed: typing a letter jumps to a contact in the address book
+
+With focus on the address book's contact list, typing a letter did nothing. Now it jumps to the first contact starting with that letter, the same way lists behave elsewhere in Windows. Type several letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with it. Contacts saved without a name are matched on their address. The **Groups** and **Group members** lists work the same way. (#371)
+
+---
+
+## Reporting Issues
+
+Found a problem or have a suggestion? There are three ways to reach us — pick the one that fits:
+
+1. **Report a Bug → Send** (Help menu, inside QuickMail). Files the report for you anonymously — it includes no email address or other identifying information, so there is no way to follow up with you. **Best when you don't want any follow-up.**
+2. **Report a Bug → Copy report and open GitHub** (Help menu). Opens a pre-filled issue that you submit under your own GitHub account, so your GitHub contact information is attached. **Best when you have a GitHub account and want automatic filing plus direct contact.**
+3. **Email** [quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net). **Best when you don't mind sending email and want a personal follow-up.**
+
+Full details, including exactly what a report contains (and what it never contains), are in the [Reporting Issues section of the User Guide](https://kellylford.github.io/QuickMail/reporting-issues.html).
