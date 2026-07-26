@@ -569,6 +569,146 @@ public class ServerRulesViewModelTests
         Assert.True(result.StopProcessingRules);
     }
 
+    // ── Classification: server vs client (spec §20.3) ───────────────────────
+
+    [Fact]
+    public void Classify_SimpleRuleOnGraphAccount_IsServerRule()
+    {
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "Move digests";
+        e.SubjectContains = "digest";
+        e.MoveToFolder = true; e.MoveToFolderId = "f1";
+
+        var result = e.Classify(accountSupportsServerRules: true);
+
+        Assert.Equal(RuleRunsWhere.Server, result.Kind);
+        Assert.False(result.IsConflict);
+    }
+
+    [Fact]
+    public void Classify_MarkAsUnreadOnGraphAccount_IsClientRule_WithReason()
+    {
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "Keep unread";
+        e.SubjectContains = "later";
+        e.MarkAsUnread = true;   // the only client-only action today
+
+        var result = e.Classify(accountSupportsServerRules: true);
+
+        Assert.Equal(RuleRunsWhere.Client, result.Kind);
+        Assert.Contains("Mark as unread", result.ClientReason);
+    }
+
+    [Fact]
+    public void Classify_SimpleRuleOnNonGraphAccount_IsClientRule()
+    {
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "IMAP rule";
+        e.SubjectContains = "news";
+        e.MarkAsRead = true;
+
+        var result = e.Classify(accountSupportsServerRules: false);
+
+        Assert.Equal(RuleRunsWhere.Client, result.Kind);
+        Assert.Contains("server-side", result.ClientReason);
+    }
+
+    [Fact]
+    public void Classify_ClientOnlyActionPlusServerOnlyCondition_IsConflict()
+    {
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "Impossible";
+        e.MarkAsUnread = true;                 // client-only action
+        e.SelectedImportance = ServerRuleEditorViewModel.ImportanceOptions.First(o => o.Value == "high"); // server-only condition
+
+        var result = e.Classify(accountSupportsServerRules: true);
+
+        Assert.Null(result.Kind);
+        Assert.True(result.IsConflict);
+        Assert.Contains("Mark as unread", result.ConflictError);
+        Assert.Contains("importance", result.ConflictError);
+    }
+
+    [Fact]
+    public void Classify_ServerOnlyActionOnNonGraphAccount_IsConflict()
+    {
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "Copy on IMAP";
+        e.CopyToFolder = true; e.CopyToFolderId = "f2";   // server-only action, no client equivalent
+
+        var result = e.Classify(accountSupportsServerRules: false);
+
+        Assert.True(result.IsConflict);
+        Assert.Contains("Copy to folder", result.ConflictError);
+    }
+
+    [Fact]
+    public void Classify_MultipleActionsWithoutClientOnly_StaysServer()
+    {
+        // Several actions is fine for a server rule; only a client-only capability forces client.
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "Multi";
+        e.SubjectContains = "x";
+        e.MarkAsRead = true;
+        e.MoveToFolder = true; e.MoveToFolderId = "f1";
+
+        Assert.Equal(RuleRunsWhere.Server, e.Classify(accountSupportsServerRules: true).Kind);
+    }
+
+    // ── Client-rule conversion (spec §20.4) ─────────────────────────────────
+
+    [Fact]
+    public void ToClientRule_MapsConditionsAndMoveAction()
+    {
+        var accountId = Guid.NewGuid();
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "  From Bob  ";
+        e.SenderContains = "bob@x.com";
+        e.SubjectContains = "report";
+        e.HasAttachments = true;
+        e.MoveToFolder = true; e.MoveToFolderId = "Inbox/Reports";
+
+        var rule = e.ToClientRule(accountId);
+
+        Assert.Equal("From Bob", rule.Name);   // trimmed
+        Assert.Equal(accountId, rule.AccountId);
+        Assert.True(rule.UseFromCondition);
+        Assert.Equal("bob@x.com", rule.FromContains);
+        Assert.True(rule.UseSubjectCondition);
+        Assert.Equal("report", rule.SubjectContains);
+        Assert.False(rule.UseToCondition);
+        Assert.True(rule.MustHaveAttachments);
+        Assert.Equal(RuleAction.MoveToFolder, rule.Action);
+        Assert.Equal("Inbox/Reports", rule.TargetFolder);
+    }
+
+    [Theory]
+    [InlineData(true, false, false, RuleAction.MarkAsUnread)]
+    [InlineData(false, true, false, RuleAction.Delete)]
+    [InlineData(false, false, true, RuleAction.MarkAsRead)]
+    public void ToClientRule_MapsTheSingleAction(bool unread, bool delete, bool read, RuleAction expected)
+    {
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "Act";
+        e.SubjectContains = "x";
+        e.MarkAsUnread = unread; e.Delete = delete; e.MarkAsRead = read;
+
+        Assert.Equal(expected, e.ToClientRule(Guid.NewGuid()).Action);
+    }
+
+    [Fact]
+    public void ToClientRule_SingleFromAddress_BecomesFromContains()
+    {
+        var e = ServerRuleEditorViewModel.ForNew();
+        e.Name = "One sender";
+        e.FromAddresses = "alice@x.com";
+        e.MarkAsRead = true;
+
+        var rule = e.ToClientRule(Guid.NewGuid());
+        Assert.True(rule.UseFromCondition);
+        Assert.Equal("alice@x.com", rule.FromContains);
+    }
+
     [Fact]
     public void Editor_ForNew_LeavesAdvancedCollapsed()
         => Assert.False(ServerRuleEditorViewModel.ForNew().IsAdvancedExpanded);

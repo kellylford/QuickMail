@@ -128,6 +128,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty] private string? _copyToFolderId;
     [ObservableProperty] private string? _copyToFolderName;
     [ObservableProperty] private bool _markAsRead;
+    /// <summary>Client-only action — Microsoft 365 server rules have no "mark as unread" (spec §20.2).</summary>
+    [ObservableProperty] private bool _markAsUnread;
     [ObservableProperty] private ImportanceOption _selectedMarkImportance = ImportanceOptions[0];
     [ObservableProperty] private bool _delete;
     [ObservableProperty] private string _forwardTo = string.Empty;
@@ -234,6 +236,49 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         RawExceptions = _rawExceptions,
     };
 
+    /// <summary>
+    /// Assembles a client-side <see cref="MailRule"/> from the client-representable subset of the
+    /// form (spec §20.4). Only valid when <see cref="IsClientRepresentable"/> holds — the caller
+    /// guarantees a single From/To value and exactly one action, so the mapping is lossless. The
+    /// client engine treats a condition as active only when its flag is set AND it has a value, so
+    /// empty conditions are simply switched off.
+    /// </summary>
+    public MailRule ToClientRule(Guid accountId)
+    {
+        var fromAddrs = SplitAddresses(FromAddresses);
+        var from = !string.IsNullOrWhiteSpace(SenderContains) ? SenderContains.Trim()
+                 : fromAddrs.Count == 1 ? fromAddrs[0]
+                 : null;
+        var to = SplitAddresses(SentToAddresses) is { Count: 1 } toList ? toList[0] : null;
+        var subject = Blank(SubjectContains);
+        var body = Blank(BodyContains);
+
+        return new MailRule
+        {
+            Name = Name.Trim(),
+            IsEnabled = IsEnabled,
+            AccountId = accountId,
+
+            UseFromCondition = from is not null, FromContains = from,
+            UseToCondition = to is not null, ToContains = to,
+            UseSubjectCondition = subject is not null, SubjectContains = subject,
+            UseBodyCondition = body is not null, BodyContains = body,
+            MustHaveAttachments = HasAttachments,
+
+            Action = ClientAction(),
+            TargetFolder = MoveToFolder ? MoveToFolderId : null,
+        };
+    }
+
+    /// <summary>The single client action in use (IsClientRepresentable guarantees exactly one).</summary>
+    private RuleAction ClientAction()
+    {
+        if (MoveToFolder) return RuleAction.MoveToFolder;
+        if (Delete) return RuleAction.Delete;
+        if (MarkAsUnread) return RuleAction.MarkAsUnread;
+        return RuleAction.MarkAsRead;
+    }
+
     public bool Validate()
     {
         NameError = FolderError = ActionsError = string.Empty;
@@ -272,6 +317,104 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         return valid;
     }
 
+    // ── Classification: server vs client (spec §20.3) ───────────────────────
+
+    /// <summary>
+    /// Decides where the rule runs. A Graph account gets a server rule unless the rule uses a
+    /// client-only capability; otherwise (or on a non-Graph account) it's a client rule, with a
+    /// reason for the save dialog. A rule that fits neither — a client-only action combined with a
+    /// server-only condition/action — is a conflict the user must resolve. Assumes the rule already
+    /// passed <see cref="Validate"/> (so it has at least one action).
+    /// </summary>
+    public RuleClassification Classify(bool accountSupportsServerRules)
+    {
+        if (accountSupportsServerRules && IsServerRepresentable)
+            return new RuleClassification { Kind = RuleRunsWhere.Server };
+
+        if (IsClientRepresentable)
+        {
+            var reason = accountSupportsServerRules
+                ? $"it uses {Join(ClientOnlyFeaturesUsed())}, which Microsoft 365 server rules don't support"
+                : "this account doesn't support server-side rules";
+            return new RuleClassification { Kind = RuleRunsWhere.Client, ClientReason = reason };
+        }
+
+        // Representable by neither: a client-only action combined with a server-only condition/action,
+        // or a server-only feature on a non-Graph account.
+        var serverOnly = ServerOnlyFeaturesUsed();
+        var clientOnly = ClientOnlyFeaturesUsed();
+        var conflict = accountSupportsServerRules && clientOnly.Count > 0
+            ? $"{Join(clientOnly)} only works in a QuickMail rule, but {Join(serverOnly)} only works in a server rule. Remove one to save."
+            : $"This account only supports QuickMail rules, but {Join(serverOnly)} isn't available in a QuickMail rule. Remove it to save.";
+        return new RuleClassification { ConflictError = conflict };
+    }
+
+    /// <summary>True when the rule uses no client-only capability, so the server can express it.</summary>
+    public bool IsServerRepresentable => ClientOnlyFeaturesUsed().Count == 0;
+
+    /// <summary>
+    /// True when every condition and action fits the client rule model (a near-subset of the server
+    /// model): no server-only condition/action, single From/To value, exactly one action.
+    /// </summary>
+    public bool IsClientRepresentable
+        => ServerOnlyFeaturesUsed().Count == 0 && ClientEligibleActionCount() == 1;
+
+    /// <summary>Client-only capabilities in use — the server has no equivalent (spec §20.2). Extend
+    /// as more client-only options are added (play sound, notify, …).</summary>
+    private List<string> ClientOnlyFeaturesUsed()
+    {
+        var f = new List<string>();
+        if (MarkAsUnread) f.Add("Mark as unread");
+        return f;
+    }
+
+    /// <summary>
+    /// Features only a server rule can express, so any of them blocks representing the rule as a
+    /// client rule: conditions with no client equivalent, the client's single-value From/To limits,
+    /// server-only actions, and the client's one-action limit.
+    /// </summary>
+    private List<string> ServerOnlyFeaturesUsed()
+    {
+        var f = new List<string>();
+
+        // Conditions with no client equivalent.
+        if (!string.IsNullOrWhiteSpace(BodyOrSubjectContains)) f.Add("the subject-or-body condition");
+        if (SentToMe) f.Add("the “sent to me” condition");
+        if (SentOnlyToMe) f.Add("the “sent only to me” condition");
+        if (SelectedImportance?.Value is not null) f.Add("the importance condition");
+
+        // A client rule has a single From and a single To field.
+        var fromAddrs = SplitAddresses(FromAddresses);
+        if (fromAddrs.Count > 1) f.Add("multiple From addresses");
+        if (!string.IsNullOrWhiteSpace(SenderContains) && fromAddrs.Count > 0)
+            f.Add("both Sender-contains and From-addresses");
+        if (SplitAddresses(SentToAddresses).Count > 1) f.Add("multiple Sent-to addresses");
+
+        // Actions with no client equivalent.
+        if (CopyToFolder) f.Add("Copy to folder");
+        if (SelectedMarkImportance?.Value is not null) f.Add("Set importance");
+        if (SplitAddresses(ForwardTo).Count > 0) f.Add("Forward");
+        if (StopProcessingRules) f.Add("Stop processing more rules");
+
+        // A client rule performs exactly one action.
+        if (ClientEligibleActionCount() > 1) f.Add("more than one action");
+
+        return f;
+    }
+
+    /// <summary>Count of actions that a client rule could carry (it allows exactly one).</summary>
+    private int ClientEligibleActionCount()
+    {
+        var n = 0;
+        if (MarkAsRead) n++;
+        if (MarkAsUnread) n++;
+        if (MoveToFolder) n++;
+        if (Delete) n++;
+        return n;
+    }
+
+    private static string Join(List<string> items) => string.Join(", ", items);
+
     /// <summary>
     /// True when any field that lives in the Advanced section is set — used to auto-expand it when
     /// editing. Keep this list in sync with the Advanced group in ServerRuleEditorWindow.xaml.
@@ -291,6 +434,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
         => (MoveToFolder && !string.IsNullOrWhiteSpace(MoveToFolderId))
            || (CopyToFolder && !string.IsNullOrWhiteSpace(CopyToFolderId))
            || MarkAsRead
+           || MarkAsUnread
            || Delete
            || StopProcessingRules
            || !string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value)
@@ -305,6 +449,22 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             : text.Split([',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                   .Where(s => s.Length > 0)
                   .ToList();
+}
+
+/// <summary>Where a rule executes: on the Microsoft 365 server, or inside QuickMail.</summary>
+public enum RuleRunsWhere { Server, Client }
+
+/// <summary>
+/// Result of classifying a rule (spec §20.3). Exactly one of these holds: <see cref="Kind"/> is
+/// Server; <see cref="Kind"/> is Client with a <see cref="ClientReason"/> for the save dialog; or
+/// <see cref="ConflictError"/> is set (the rule fits neither and must be changed before saving).
+/// </summary>
+public sealed record RuleClassification
+{
+    public RuleRunsWhere? Kind { get; init; }
+    public string? ClientReason { get; init; }
+    public string? ConflictError { get; init; }
+    public bool IsConflict => ConflictError is not null;
 }
 
 /// <summary>
