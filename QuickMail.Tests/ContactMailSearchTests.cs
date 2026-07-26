@@ -160,6 +160,65 @@ public class ContactMailSearchTests
         Assert.Equal("1", vm.Messages[0].MessageId);
     }
 
+    // ── Closing the results ──────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ShowContactMail_MarksTheViewAsContactMail()
+    {
+        var vm = MakeVm(Corpus);
+        await vm.InitialLoadAsync();
+        Assert.False(vm.IsContactMailView);
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From);
+
+        Assert.True(vm.IsContactMailView);
+    }
+
+    [Fact]
+    public async Task CloseContactMail_ReturnsToTheFolderTheSearchStartedFrom()
+    {
+        var vm = MakeVm(Corpus);
+        await vm.InitialLoadAsync();
+        var startedIn = vm.SelectedFolder;
+        Assert.NotNull(startedIn);
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From);
+        await vm.CloseContactMailCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsContactMailView);
+        Assert.Equal(startedIn!.FullName, vm.SelectedFolder?.FullName);
+        Assert.Equal(Corpus.Length, vm.Messages.Count);
+    }
+
+    [Fact]
+    public async Task CloseContactMail_AfterASecondSearch_StillReturnsToTheOriginalFolder()
+    {
+        // Searching again from inside a results view must not make the previous search the
+        // place we go back to — one close always lands back in real mail.
+        var vm = MakeVm(Corpus);
+        await vm.InitialLoadAsync();
+        var startedIn = vm.SelectedFolder;
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From);
+        await vm.ShowContactMailAsync("ann@x.com", MainViewModel.ContactMailDirection.From);
+        await vm.CloseContactMailCommand.ExecuteAsync(null);
+
+        Assert.False(vm.IsContactMailView);
+        Assert.Equal(startedIn?.FullName, vm.SelectedFolder?.FullName);
+    }
+
+    [Fact]
+    public async Task CloseContactMail_OutsideTheResultsView_DoesNothing()
+    {
+        var vm = MakeVm(Corpus);
+        await vm.InitialLoadAsync();
+        var before = vm.SelectedFolder;
+
+        await vm.CloseContactMailCommand.ExecuteAsync(null);
+
+        Assert.Same(before, vm.SelectedFolder);
+    }
+
     [Theory]
     // Whole-address hits, in every shape a header puts them in.
     [InlineData("Bob Baker <bob@example.com>",            "bob@example.com", true)]

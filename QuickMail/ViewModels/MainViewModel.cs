@@ -501,6 +501,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(HasSelectedFolder))]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
     [NotifyPropertyChangedFor(nameof(IsCalendarView))]
+    [NotifyPropertyChangedFor(nameof(IsContactMailView))]
     private MailFolderModel? _selectedFolder;
 
     [ObservableProperty]
@@ -4160,8 +4161,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public Task ShowContactMailAsync(string address, ContactMailDirection direction, string? label = null)
     {
         if (string.IsNullOrWhiteSpace(address)) return Task.CompletedTask;
+        // Remember where to go back to when the results are closed. Searching again from
+        // inside a results view keeps the original folder as the destination, so one Escape
+        // always lands back in real mail rather than in the previous search.
+        if (!IsContactMailView) _contactMailReturnFolder = SelectedFolder;
         return SelectFolderAsync(
             CreateContactMailVirtualFolder(address.Trim(), direction, label));
+    }
+
+    /// <summary>True while the message list is showing contact-mail results (issue #370).</summary>
+    public bool IsContactMailView =>
+        SelectedFolder != null && TryGetContactMailFromSentinel(SelectedFolder.FullName, out _, out _);
+
+    // The folder the user was in when the contact-mail search started; null when the search
+    // began before any folder was open (a fresh profile), in which case closing goes to All Mail.
+    private MailFolderModel? _contactMailReturnFolder;
+
+    /// <summary>
+    /// Closes the contact-mail results and returns to the folder the search started from
+    /// (All Mail if there wasn't one), re-fetching it exactly as selecting it would.
+    /// </summary>
+    [RelayCommand]
+    public async Task CloseContactMailAsync()
+    {
+        if (!IsContactMailView) return;
+        var back = _contactMailReturnFolder ?? AllMailFolder;
+        _contactMailReturnFolder = null;
+        await SelectFolderAsync(back);
     }
 
     private async Task FetchContactMailAsync(string address, ContactMailDirection direction)
