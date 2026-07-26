@@ -17,7 +17,9 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 Select someone in the address book, press **Shift+F10**, and choose **Find mail from this contact** or **Find mail to this contact**. The address book closes and the message list fills with the matches, newest first, drawn from every account and folder QuickMail has cached — not just the folder you were in. Focus lands on the message list and the count is announced ("12 messages from Bob Baker."), and the window title reads **Mail from Bob Baker** so the results are easy to tell apart from a folder.
 
-Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, so you can give them a keyboard shortcut in Settings → Keyboard. (#370)
+Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, so you can give them a keyboard shortcut in Settings → Keyboard.
+
+Two things to know about the results: mail older than your sync range is not stored locally, so it is not searched, and **Find mail to this contact** matches the To line — a message where the person was only in Cc does not appear. (#370)
 
 ## Fixed: typing a letter jumps to a contact in the address book
 
