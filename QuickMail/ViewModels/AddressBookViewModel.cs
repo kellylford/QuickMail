@@ -28,6 +28,9 @@ public partial class AddressBookViewModel : ObservableObject
     private Action<ContactModel>? _ccInsertAction;
     private Action<ContactModel>? _bccInsertAction;
 
+    private Action<ContactModel>? _searchFromAction;
+    private Action<ContactModel>? _searchToAction;
+
     /// <summary>
     /// Raised by destructive operations (e.g. delete group) so the View can
     /// show a MessageBox and return the user's choice. The VM never touches
@@ -57,6 +60,26 @@ public partial class AddressBookViewModel : ObservableObject
         _ccInsertAction = ccAction;
         _bccInsertAction = bccAction;
         OnPropertyChanged(nameof(HasInsertActions));
+    }
+
+    /// <summary>
+    /// True when the host window can show mail for a contact (issue #370). Only the main
+    /// window sets these — the address book opened from a compose window has no message list
+    /// to show results in, so it hides the two "Find mail…" actions entirely.
+    /// </summary>
+    public bool HasSearchActions => _searchFromAction != null && _searchToAction != null;
+
+    /// <summary>
+    /// Supplies the "find mail from / to this contact" actions. The host decides what a search
+    /// means and when to run it — the address book only reports which contact was chosen.
+    /// </summary>
+    public void SetSearchActions(
+        Action<ContactModel> searchFromAction,
+        Action<ContactModel> searchToAction)
+    {
+        _searchFromAction = searchFromAction;
+        _searchToAction   = searchToAction;
+        OnPropertyChanged(nameof(HasSearchActions));
     }
 
     public AddressBookViewModel(
@@ -109,6 +132,7 @@ public partial class AddressBookViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasSelectedContact))]
     [NotifyPropertyChangedFor(nameof(CanEditContact))]
     [NotifyPropertyChangedFor(nameof(CanDeleteContact))]
+    [NotifyPropertyChangedFor(nameof(CanFindMailForContact))]
     private ContactModel? _selectedContact;
 
     public bool HasSelectedContact => SelectedContact != null;
@@ -326,6 +350,31 @@ public partial class AddressBookViewModel : ObservableObject
 
     [RelayCommand]
     private void AddToBcc() { if (SelectedContact is { } c) _bccInsertAction?.Invoke(c); }
+
+    // ── Find mail for a contact (issue #370) ─────────────────────────────────
+    // A contact with no address cannot be searched for, so both commands no-op on one
+    // rather than handing the host an empty string to search with.
+
+    [RelayCommand]
+    private void FindMailFromContact()
+    {
+        if (SelectedContact is { } c && !string.IsNullOrWhiteSpace(c.EmailAddress))
+            _searchFromAction?.Invoke(c);
+    }
+
+    [RelayCommand]
+    private void FindMailToContact()
+    {
+        if (SelectedContact is { } c && !string.IsNullOrWhiteSpace(c.EmailAddress))
+            _searchToAction?.Invoke(c);
+    }
+
+    /// <summary>
+    /// True when the two "Find mail…" actions are usable: the host wired them up and the
+    /// selected contact has an address to search for.
+    /// </summary>
+    public bool CanFindMailForContact =>
+        HasSearchActions && SelectedContact is { } c && !string.IsNullOrWhiteSpace(c.EmailAddress);
 
     // ── Group commands ───────────────────────────────────────────────────────
 

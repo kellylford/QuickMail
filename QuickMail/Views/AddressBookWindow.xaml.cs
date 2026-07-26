@@ -92,6 +92,21 @@ public partial class AddressBookWindow : Window
             execute: () => _vm.CancelEditCommand.Execute(null),
             isAvailable: () => MainTabs.SelectedIndex == 0 && _vm.IsEditingContact));
 
+        // Find mail from / to the selected contact (issue #370). No default key — the actions
+        // live on the contact list's context menu (Shift+F10) and in the palette, and can be
+        // given a shortcut from Settings → Keyboard like any other registered command.
+        _registry.Register(new CommandDefinition(
+            id: "contacts.findMailFrom", category: "Contacts", title: "Find Mail From Contact",
+            defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+            execute: () => _vm.FindMailFromContactCommand.Execute(null),
+            isAvailable: () => MainTabs.SelectedIndex == 0 && _vm.CanFindMailForContact));
+
+        _registry.Register(new CommandDefinition(
+            id: "contacts.findMailTo", category: "Contacts", title: "Find Mail To Contact",
+            defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+            execute: () => _vm.FindMailToContactCommand.Execute(null),
+            isAvailable: () => MainTabs.SelectedIndex == 0 && _vm.CanFindMailForContact));
+
         // ── Groups tab commands ──────────────────────────────────────────────
 
         // Ctrl+Shift+N: switch to Groups tab and show the name entry area in create mode.
@@ -275,6 +290,21 @@ public partial class AddressBookWindow : Window
 
         var menu = ContactList.ContextMenu!;
         menu.Items.Clear();
+
+        // Find mail from / to this contact (issue #370). Present only when the host window
+        // can actually show results — the address book opened from Compose cannot.
+        if (_vm.CanFindMailForContact)
+        {
+            var fromItem = new System.Windows.Controls.MenuItem { Header = "Find mail _from this contact" };
+            fromItem.Click += (_, _) => _vm.FindMailFromContactCommand.Execute(null);
+            menu.Items.Add(fromItem);
+
+            var toItem = new System.Windows.Controls.MenuItem { Header = "Find mail _to this contact" };
+            toItem.Click += (_, _) => _vm.FindMailToContactCommand.Execute(null);
+            menu.Items.Add(toItem);
+
+            menu.Items.Add(new Separator());
+        }
 
         if (_vm.Groups.Count == 0)
         {

@@ -13,6 +13,12 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ---
 
+## New: find a contact's mail from the address book
+
+Select someone in the address book, press **Shift+F10**, and choose **Find mail from this contact** or **Find mail to this contact**. The address book closes and the message list fills with the matches, newest first, drawn from every account and folder QuickMail has cached — not just the folder you were in. Focus lands on the message list and the count is announced ("12 messages from Bob Baker."), and the window title reads **Mail from Bob Baker** so the results are easy to tell apart from a folder.
+
+Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, so you can give them a keyboard shortcut in Settings → Keyboard. (#370)
+
 ## Fixed: typing a letter jumps to a contact in the address book
 
 With focus on the address book's contact list, typing a letter did nothing. Now it jumps to the first contact starting with that letter, the same way lists behave elsewhere in Windows. Type several letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with it. Contacts saved without a name are matched on their address. The **Groups** and **Group members** lists work the same way. (#371)
