@@ -1148,6 +1148,19 @@ public partial class MainWindow : Window
             defaultKey: Key.A, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.IsMessageOpen));
 
+        // Close the contact-mail results (#370) and return to the folder the search started
+        // from, the way Escape leaves any other search. Registered rather than hardcoded so it
+        // reaches the palette and can be rebound. It is unavailable while the search box has
+        // focus, so Escape there still clears the text search first; and the Escape cases
+        // earlier in OnWindowKeyDown (open message, calendar) run before the registry, so
+        // Escape keeps its existing meanings and only falls through to this one when nothing
+        // else claims it.
+        _registry.Register(new CommandDefinition(
+            id: "view.closeContactMail", category: "View", title: "Close Contact Mail Results",
+            execute: () => CloseContactMailResultsAsync().LogFaults("close contact mail results"),
+            defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsContactMailView && !SearchBox.IsKeyboardFocusWithin));
+
         // ── Tab & Window Management commands ─────────────────────────────────────
         _registry.Register(new CommandDefinition(
             id: "tabs.next", category: "View", title: "Next Tab",
@@ -5544,6 +5557,26 @@ public partial class MainWindow : Window
             AccessibilityHelper.Announce(this, $"Could not search for mail {kind} {label}.",
                 interrupt: true, category: AnnouncementCategory.Result);
         }
+    }
+
+    private void CloseContactMailResults_Click(object sender, RoutedEventArgs e)
+        => CloseContactMailResultsAsync().LogFaults("close contact mail results");
+
+    /// <summary>
+    /// Leaves the contact-mail results view: back to the folder the search started from, focus
+    /// to the message list, and the destination announced with its count — the same shape as
+    /// clearing a message search.
+    /// </summary>
+    private async Task CloseContactMailResultsAsync()
+    {
+        if (!_vm.IsContactMailView) return;
+        await _vm.CloseContactMailCommand.ExecuteAsync(null);
+        ReturnFocusToMessageList();
+        var n     = _vm.Messages.Count;
+        var where = _vm.SelectedFolder?.DisplayName ?? "Mail";
+        AccessibilityHelper.Announce(this,
+            $"Search closed. {where}, {n} {(n == 1 ? "message" : "messages")}.",
+            interrupt: true, category: AnnouncementCategory.Result);
     }
 
     private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();

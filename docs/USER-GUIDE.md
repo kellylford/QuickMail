@@ -564,7 +564,9 @@ From the contact list, you can pull up everything a person sent you, or everythi
 
 Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, and you can assign them a keyboard shortcut in Settings → Keyboard.
 
-The search covers every account and folder QuickMail has cached — not just the folder you were in. Mail older than your sync range is not stored locally, so it is not included. **Find mail to this contact** matches the To line, so a message where the person was only in Cc does not appear. To leave the results, select any folder in the folder tree.
+Press **Escape** with focus in the message list to close the results and go back to the folder you started from; the folder name and its message count are announced. A **Close** button at the top of the results does the same, and **Close Contact Mail Results** is in the Command Palette. Selecting any folder in the folder tree also leaves the results.
+
+The search covers every account and folder QuickMail has cached — not just the folder you were in. Mail older than your sync range is not stored locally, so it is not included. **Find mail to this contact** matches the To line, so a message where the person was only in Cc does not appear.
 
 ### Syncing Contacts from Your Accounts
 
@@ -1133,6 +1135,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `F1` | User Guide |
 | `Shift+,` | First message in group |
 | `Shift+.` | Last message in group |
+| `Escape` | Close contact mail results (message list focus) |
 
 **Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, and **Report a Bug** are likewise command-palette-only unless you assign a shortcut yourself in Settings → Keyboard.
 
