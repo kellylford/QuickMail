@@ -287,6 +287,70 @@ public partial class MainViewModel : ObservableObject, IDisposable
     internal const string ViewPrefix    = "\u0000View:";
     internal const string ViewAllPrefix = "\u0000ViewAll:";
 
+    // Sentinel prefix for the "mail from / to this contact" results view launched from the
+    // address book (issue #370), e.g. ContactMailPrefix + "from|bob%40example.com". The address
+    // is percent-escaped so a '|' inside it can never be mistaken for the field separator.
+    internal const string ContactMailPrefix = "\u0000ContactMail:";
+
+    /// <summary>Which header the contact-mail results view matches an address against.</summary>
+    public enum ContactMailDirection
+    {
+        /// <summary>Mail the contact sent (matches the From header).</summary>
+        From,
+        /// <summary>Mail addressed to the contact (matches the To header).</summary>
+        To,
+    }
+
+    /// <summary>
+    /// Builds the virtual folder that shows every cached message from (or to) one address.
+    /// <paramref name="label"/> is the contact's display name when there is one; it appears in
+    /// the window title and status bar, while the sentinel always carries the raw address.
+    /// </summary>
+    public static MailFolderModel CreateContactMailVirtualFolder(
+        string address, ContactMailDirection direction, string? label = null)
+    {
+        var who  = string.IsNullOrWhiteSpace(label) ? address : label!.Trim();
+        var kind = direction == ContactMailDirection.From ? "from" : "to";
+        return new MailFolderModel
+        {
+            FullName    = $"{ContactMailPrefix}{kind}|{Uri.EscapeDataString(address)}",
+            DisplayName = $"Mail {kind} {who}",
+        };
+    }
+
+    /// <summary>
+    /// Extracts the address and direction from a contact-mail sentinel. Returns false for any
+    /// other folder name, so callers can use it as the branch test for this view.
+    /// </summary>
+    private static bool TryGetContactMailFromSentinel(
+        string? fullName, out string address, out ContactMailDirection direction)
+    {
+        address   = string.Empty;
+        direction = ContactMailDirection.From;
+        if (fullName == null || !fullName.StartsWith(ContactMailPrefix, StringComparison.Ordinal))
+            return false;
+
+        var tail = fullName[ContactMailPrefix.Length..];
+        var sep  = tail.IndexOf('|', StringComparison.Ordinal);
+        if (sep <= 0) return false;
+
+        direction = tail[..sep].Equals("to", StringComparison.Ordinal)
+            ? ContactMailDirection.To
+            : ContactMailDirection.From;
+        address = Uri.UnescapeDataString(tail[(sep + 1)..]);
+        return address.Length > 0;
+    }
+
+    /// <summary>
+    /// True when the message's From (or To) header mentions the address. Substring matching is
+    /// deliberate: both headers carry a display name alongside the address, and To holds a list.
+    /// </summary>
+    private static bool MatchesContactAddress(
+        MailMessageSummary msg, string address, ContactMailDirection direction) =>
+        direction == ContactMailDirection.From
+            ? msg.From.Contains(address, StringComparison.OrdinalIgnoreCase)
+            : msg.To.Contains(address, StringComparison.OrdinalIgnoreCase);
+
     private static bool TryGetViewIdFromSentinel(string? fullName, out Guid viewId)
     {
         if (fullName != null &&
@@ -343,6 +407,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Saved-view sentinels.
         if (TryGetViewIdFromSentinel(folder.FullName, out _))    return true;
         if (TryGetViewAllIdFromSentinel(folder.FullName, out _)) return true;
+
+        // Address-book "mail from / to this contact" results (#370).
+        if (TryGetContactMailFromSentinel(folder.FullName, out _, out _)) return true;
 
         if (folder.AccountId != Guid.Empty) return false;
 
@@ -2123,6 +2190,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     .Select(f => (kvp.Key, f.FullName.ToUpperInvariant()))));
             relevant = incoming.Where(m =>
                 matchingFolderKeys.Contains((m.AccountId, m.FolderName.ToUpperInvariant())));
+        }
+        else if (TryGetContactMailFromSentinel(selected.FullName, out var contactAddress, out var contactDirection))
+        {
+            // Contact mail results (#370) — only accept messages that still match the address.
+            relevant = incoming.Where(m => MatchesContactAddress(m, contactAddress, contactDirection));
         }
         else if (!selected.IsHeader && selected.AccountId != Guid.Empty)
         {
@@ -3962,6 +4034,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
         if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
+        if (TryGetContactMailFromSentinel(folder.FullName, out var contactAddress, out var contactDirection))
+            return FetchContactMailAsync(contactAddress, contactDirection);
 
         // Saved-view sentinels — re-fetch without resetting mode/filter/sort
         if (TryGetViewIdFromSentinel(folder.FullName, out var viewId) ||
@@ -4036,6 +4110,94 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             LogService.Log("FetchAllFlagged failed", ex);
             StatusText = "Could not load flagged messages.";
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Opens the "mail from / to this contact" results view for an address (issue #370): every
+    /// message in the local cache whose From (or To) header mentions it, across all accounts and
+    /// folders. Called from the address book; also the entry point for any future caller.
+    /// Reuses <see cref="SelectFolderAsync"/> so filter/search/view state is reset exactly the
+    /// same way navigating to any other folder resets it.
+    /// </summary>
+    public Task ShowContactMailAsync(string address, ContactMailDirection direction, string? label = null)
+    {
+        if (string.IsNullOrWhiteSpace(address)) return Task.CompletedTask;
+        return SelectFolderAsync(
+            CreateContactMailVirtualFolder(address.Trim(), direction, label));
+    }
+
+    private async Task FetchContactMailAsync(string address, ContactMailDirection direction)
+    {
+        var loadVersion    = Interlocked.Increment(ref _folderLoadVersion);
+        var expectedFolder = SelectedFolder;
+        var kind           = direction == ContactMailDirection.From ? "from" : "to";
+        Messages.Clear();
+        StatusText = $"Searching for mail {kind} {address}…";
+        IsBusy = true;
+
+        _folderCts?.Cancel();
+        ReplaceCts(ref _folderCts, out var ct);
+
+        try
+        {
+            List<MailMessageSummary> all;
+            if (OnlineMode)
+            {
+                // In --online mode there is no cache to search, so sweep every non-excluded
+                // folder across all accounts and match client-side — same shape as All Flagged.
+                all = new List<MailMessageSummary>();
+                foreach (var account in Accounts)
+                {
+                    if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+                    foreach (var folder in folders)
+                    {
+                        if (folder.ExcludeFromAllMail) continue;
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var msgs = _syncDays > 0
+                                ? await _imap.GetMessagesSinceDateAsync(
+                                    account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                                : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
+                            all.AddRange(msgs.Where(m => MatchesContactAddress(m, address, direction)));
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            LogService.Log($"FetchContactMail online {account.DisplayName}/{folder.DisplayName}", ex);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                all = await _localStore.LoadAllSummariesAsync();
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            var matches = all.Where(m => MatchesContactAddress(m, address, direction)).ToList();
+            await ResolveFlagNamesAsync(matches);
+            SetMessages(matches.OrderByDescending(m => m.Date).ToList());
+            var n = Messages.Count;
+            StatusText = n == 0
+                ? $"No messages {kind} {address}."
+                : $"{n} {(n == 1 ? "message" : "messages")} {kind} {address}.";
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "Contact mail search cancelled.";
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("FetchContactMail failed", ex);
+            StatusText = $"Could not search for mail {kind} {address}.";
         }
         finally
         {

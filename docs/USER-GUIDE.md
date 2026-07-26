@@ -550,6 +550,18 @@ Press **Ctrl+Shift+B** to open the address book.
 
 The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
 
+### Finding Mail From or To a Contact
+
+From the contact list, you can pull up everything a person sent you, or everything you addressed to them.
+
+1. Select the contact and press **Shift+F10** (or the Applications key) to open the context menu.
+2. Choose **Find mail from this contact** or **Find mail to this contact**.
+3. The address book closes and the message list fills with the matches, newest first. Focus moves to the message list and the count is announced — for example, "12 messages from Bob Baker." The window title shows **Mail from Bob Baker** so you can tell the results apart from a folder.
+
+Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, and you can assign them a keyboard shortcut in Settings → Keyboard.
+
+The search covers every account and folder QuickMail has cached — not just the folder you were in. Mail older than your sync range is not stored locally, so it is not included. To leave the results, select any folder in the folder tree.
+
 ### Syncing Contacts from Your Accounts
 
 QuickMail can fill the address book from the contacts already stored in your Microsoft, Google, and iCloud accounts, so the people your account knows are available for autocomplete when you address a message.

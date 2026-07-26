@@ -5487,8 +5487,63 @@ public partial class MainWindow : Window
             ccAction:  c => GetOrOpenCompose().AddCcAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
             bccAction: c => GetOrOpenCompose().AddBccAddress(c.DisplayName ?? string.Empty, c.EmailAddress));
 
-        var win = new AddressBookWindow(vm) { Owner = this };
+        // "Find mail from / to this contact" (issue #370). The results replace this window's
+        // message list, which must not be touched while the address book's modal message loop
+        // is still running (see the modal-dialog rules in CLAUDE.md). So the action only
+        // records the request and closes the address book; the search runs below, once
+        // ShowDialog has returned and the nested loop is gone.
+        ContactModel? searchContact = null;
+        var searchDirection = MainViewModel.ContactMailDirection.From;
+        AddressBookWindow? win = null;
+        vm.SetSearchActions(
+            searchFromAction: c =>
+            {
+                searchContact   = c;
+                searchDirection = MainViewModel.ContactMailDirection.From;
+                win?.Close();
+            },
+            searchToAction: c =>
+            {
+                searchContact   = c;
+                searchDirection = MainViewModel.ContactMailDirection.To;
+                win?.Close();
+            });
+
+        win = new AddressBookWindow(vm) { Owner = this };
         win.ShowDialog();
+
+        if (searchContact is { } contact && !string.IsNullOrWhiteSpace(contact.EmailAddress))
+            _ = ShowContactMailAsync(contact, searchDirection);
+    }
+
+    /// <summary>
+    /// Loads the "mail from / to this contact" results view, moves focus to the message list,
+    /// and announces the count. Fire-and-forget from <see cref="OpenAddressBook"/>, so it
+    /// swallows nothing silently — a failure is logged and surfaced in the status bar by the VM.
+    /// </summary>
+    private async Task ShowContactMailAsync(ContactModel contact, MainViewModel.ContactMailDirection direction)
+    {
+        var label = string.IsNullOrWhiteSpace(contact.DisplayName)
+            ? contact.EmailAddress
+            : contact.DisplayName;
+        var kind = direction == MainViewModel.ContactMailDirection.From ? "from" : "to";
+        try
+        {
+            await _vm.ShowContactMailAsync(contact.EmailAddress, direction, label);
+            ReturnFocusToMessageList();
+            var n = _vm.Messages.Count;
+            AccessibilityHelper.Announce(this,
+                n == 0
+                    ? $"No messages {kind} {label}."
+                    : $"{n} {(n == 1 ? "message" : "messages")} {kind} {label}.",
+                interrupt: true, category: AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"ShowContactMail {kind}", ex);
+            AccessibilityHelper.Announce(this, $"Could not search for mail {kind} {label}.",
+                interrupt: true, category: AnnouncementCategory.Result);
+        }
     }
 
     private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();
