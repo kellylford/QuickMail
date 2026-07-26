@@ -160,6 +160,40 @@ public class ContactMailSearchTests
         Assert.Equal("1", vm.Messages[0].MessageId);
     }
 
+    [Theory]
+    // Whole-address hits, in every shape a header puts them in.
+    [InlineData("Bob Baker <bob@example.com>",            "bob@example.com", true)]
+    [InlineData("bob@example.com",                        "bob@example.com", true)]
+    [InlineData("BOB@EXAMPLE.COM",                        "bob@example.com", true)]
+    [InlineData("ann@x.com, bob@example.com, cy@x.com",   "bob@example.com", true)]
+    [InlineData("\"Baker, Bob\" <bob@example.com>",       "bob@example.com", true)]
+    // Partial hits that a plain substring test would wrongly report.
+    [InlineData("notbob@example.com",                     "bob@example.com", false)]
+    [InlineData("bob@example.com.au",                     "bob@example.com", false)]
+    [InlineData("bob@example.common",                     "bob@example.com", false)]
+    [InlineData("ann@x.com",                              "bob@example.com", false)]
+    [InlineData("",                                       "bob@example.com", false)]
+    public void HeaderNamesAddress_MatchesWholeAddressesOnly(string header, string address, bool expected)
+        => Assert.Equal(expected, MainViewModel.HeaderNamesAddress(header, address));
+
+    [Fact]
+    public async Task ShowContactMail_DoesNotMatchALongerAddress()
+    {
+        var messages = new[]
+        {
+            Msg("1", "Impostor <notbob@example.com>", "kelly@example.com"),
+            Msg("2", "Bob <bob@example.com.au>",      "kelly@example.com"),
+            Msg("3", "Bob <bob@example.com>",         "kelly@example.com"),
+        };
+        var vm = MakeVm(messages);
+        await vm.InitialLoadAsync();
+
+        await vm.ShowContactMailAsync("bob@example.com", MainViewModel.ContactMailDirection.From);
+
+        Assert.Single(vm.Messages);
+        Assert.Equal("3", vm.Messages[0].MessageId);
+    }
+
     // ── Address book side ────────────────────────────────────────────────────
 
     [Fact]

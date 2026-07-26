@@ -560,7 +560,7 @@ From the contact list, you can pull up everything a person sent you, or everythi
 
 Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, and you can assign them a keyboard shortcut in Settings → Keyboard.
 
-The search covers every account and folder QuickMail has cached — not just the folder you were in. Mail older than your sync range is not stored locally, so it is not included. To leave the results, select any folder in the folder tree.
+The search covers every account and folder QuickMail has cached — not just the folder you were in. Mail older than your sync range is not stored locally, so it is not included. **Find mail to this contact** matches the To line, so a message where the person was only in Cc does not appear. To leave the results, select any folder in the folder tree.
 
 ### Syncing Contacts from Your Accounts
 

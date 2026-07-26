@@ -342,14 +342,46 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// True when the message's From (or To) header mentions the address. Substring matching is
-    /// deliberate: both headers carry a display name alongside the address, and To holds a list.
+    /// True when the message's From (or To) header names this address. The headers are display
+    /// strings — a name plus an address, and a whole list of them for To — so the address is
+    /// looked for inside them rather than compared whole.
     /// </summary>
     private static bool MatchesContactAddress(
         MailMessageSummary msg, string address, ContactMailDirection direction) =>
-        direction == ContactMailDirection.From
-            ? msg.From.Contains(address, StringComparison.OrdinalIgnoreCase)
-            : msg.To.Contains(address, StringComparison.OrdinalIgnoreCase);
+        HeaderNamesAddress(
+            direction == ContactMailDirection.From ? msg.From : msg.To,
+            address);
+
+    /// <summary>
+    /// True when <paramref name="header"/> contains <paramref name="address"/> as a whole address
+    /// rather than as part of a longer one. A plain substring test would report a match for
+    /// "bob@example.com" in both "notbob@example.com" and "bob@example.com.au", so each hit has to
+    /// sit on an address boundary — anything but an address character on either side, which is what
+    /// the surrounding "&lt;", "&gt;", quotes, commas, and spaces in a header supply.
+    /// </summary>
+    internal static bool HeaderNamesAddress(string header, string address)
+    {
+        if (string.IsNullOrEmpty(header) || string.IsNullOrEmpty(address)) return false;
+
+        var i = header.IndexOf(address, StringComparison.OrdinalIgnoreCase);
+        while (i >= 0)
+        {
+            var end = i + address.Length;
+            if ((i == 0 || !IsAddressChar(header[i - 1])) &&
+                (end >= header.Length || !IsAddressChar(header[end])))
+                return true;
+            if (i + 1 >= header.Length) break;
+            i = header.IndexOf(address, i + 1, StringComparison.OrdinalIgnoreCase);
+        }
+        return false;
+    }
+
+    // Characters that can appear inside an address (RFC 5322 atext plus '.' and '@'). Seeing one
+    // immediately before or after a hit means the hit is only part of a longer address.
+    private static bool IsAddressChar(char c) =>
+        char.IsLetterOrDigit(c) ||
+        c is '.' or '@' or '-' or '_' or '+' or '%' or '!' or '#' or '$' or '&' or '\''
+          or '*' or '/' or '=' or '?' or '^' or '`' or '{' or '|' or '}' or '~';
 
     private static bool TryGetViewIdFromSentinel(string? fullName, out Guid viewId)
     {
