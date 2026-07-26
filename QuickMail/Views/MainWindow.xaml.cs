@@ -5518,8 +5518,8 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Loads the "mail from / to this contact" results view, moves focus to the message list,
-    /// and announces the count. Fire-and-forget from <see cref="OpenAddressBook"/>, so it
-    /// swallows nothing silently — a failure is logged and surfaced in the status bar by the VM.
+    /// and announces the count. Fire-and-forget from <see cref="OpenAddressBook"/>: a failure
+    /// is logged and announced rather than left as a silently empty list.
     /// </summary>
     private async Task ShowContactMailAsync(ContactModel contact, MainViewModel.ContactMailDirection direction)
     {
