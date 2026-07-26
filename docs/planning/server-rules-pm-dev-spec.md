@@ -487,3 +487,99 @@ This is the single most important correctness decision; reviewers should confirm
 3. ~~**Converting the existing window to modeless:**~~ **Resolved 2026-07-23 (maintainer sign-off).** `RulesManagerWindow` **is converted to modeless** as part of this work. Launching the new modeless editor from a `ShowDialog()` parent, over the live WebView2 reading pane, is the exact nested-message-loop shape behind the GrabAddresses lockup, and CLAUDE.md already codifies modeless-with-editable-text as the required pattern. The Escape / `IsCancel` rewiring is well understood (compose already does it), and accepting the modal-parent risk to avoid that rewiring was judged a bad trade. Implementation must wire Cancel and a guarded `PreviewKeyDown` Escape handler to `Close()` — the guard so Escape isn't stolen from an open ComboBox dropdown.
 4. **Toggle on read-only rules:** does Graph permit `isEnabled` PATCH on an `isReadOnly` rule? Confirm against a live mailbox before enabling that path.
 5. **Reorder UX:** Move Up/Down (recommended, simplest for keyboard) vs. an explicit sequence editor.
+
+---
+
+## 20. Unified New/Create — one button, auto-classify (2026-07-25)
+
+Supersedes the two-entry-point interim (separate client "New Rule" + server
+"New"). Decision by Tim 2026-07-25: **one "New rule" button**; the app decides
+server vs client automatically. Full auto-classify chosen (not
+account-decides) because **more client-only capabilities are coming**
+(play a sound / desktop notification / etc.), so the classifier must generalise
+beyond today's single client-only action.
+
+### 20.1 Layout (the landing experience)
+
+- **Account picker is the first focusable control** in the Rules Manager — Tim's
+  ask: "the first place a person lands." It governs everything below.
+- **One rules list** for the selected account: server + client rules together,
+  each row marked where it runs ("on server" / "in QuickMail") per §10.3.
+- **One "New rule" button** + Edit / Delete / Enable-Disable / Move. Edit/Delete/
+  toggle/move route to the correct service by the row's actual kind.
+- Account capability: a **Microsoft 365 (Graph)** account can hold server *and*
+  client rules; an **IMAP** account, client rules only.
+
+### 20.2 Capability facts (why the classifier is shaped this way)
+
+A client rule (`MailRule`) is **almost a strict subset** of a server rule:
+- Client conditions: From / To / Subject / Body **contains** (single substring
+  each), Has attachments. All are server-expressible too.
+- Client actions: Mark read, **Mark _unread_**, Move, Delete — **exactly one**.
+- The **only** thing a client rule does that a server rule cannot: **Mark as
+  unread** (today). Server additionally has address lists, sent-to/only-to-me,
+  importance, subject-or-body, copy, forward, set-importance, stop, and
+  **multiple** actions.
+
+### 20.3 Classification algorithm (on Save)
+
+Let `serverOk` = account supports server rules (Graph). Compute two flags from
+the editor's field values:
+
+- **ServerRepresentable** = uses **no client-only feature**. Client-only feature
+  set (extensible): `MarkAsUnread` (+ future: play sound, notify, …). Conditions
+  never block server (server ⊇ client conditions).
+- **ClientRepresentable** = every used condition AND action is client-expressible:
+  - No server-only **condition**: subject-or-body, sent-to-me, sent-only-to-me,
+    importance-is ⇒ not client-representable.
+  - "From" collapses to one field: at most one of {Sender contains, From
+    addresses}, and From-addresses has ≤1 entry. Sent-to-addresses ≤1 entry.
+  - Exactly **one** action, from {Mark read, Mark unread, Move, Delete}. Any of
+    copy / forward / set-importance / stop, or >1 action ⇒ not client-representable.
+
+Decision:
+1. `serverOk && ServerRepresentable` → **server rule** (silent; the expected path).
+2. else if `ClientRepresentable` → **client rule**. Show an **informational
+   dialog on save** (Tim's requirement): e.g. *"Saved as a QuickMail rule (runs
+   only while QuickMail is open) because it uses Mark as unread, which Microsoft
+   365 server rules don't support."* For an IMAP account the reason is *"this
+   account has no server-side rules."*
+3. else → **conflict** (representable by neither): a **validation error**, not a
+   silent choice — e.g. *"Mark as unread only works in a QuickMail rule, but the
+   'importance' condition only works in a server rule. Remove one to save."*
+   (This happens only when a server-only condition is combined with a client-only
+   action.)
+
+### 20.4 Editor & conversions
+
+- The editor becomes the **unified rule editor** (rename `ServerRuleEditor*` →
+  `RuleEditor*` when convenient; not required for correctness). It exposes the
+  server field set (§ existing Common/Advanced) **plus** client-only actions,
+  starting with **Mark as unread** (Advanced → actions). Future client-only
+  options slot in beside it and register in the client-only feature set (20.3).
+- `ToServerModel()` (exists) builds the `ServerRuleModel`. New `ToClientRule(Guid
+  accountId)` builds a `MailRule` from the client-representable subset (map From→
+  FromContains, Sent-to→ToContains, Subject→SubjectContains, Body→BodyContains,
+  Has-attachments→MustHaveAttachments, the single action→RuleAction, Move target→
+  TargetFolder). Only ever called when ClientRepresentable holds, so no lossy
+  conversion.
+- Save routes by classification: server → `GraphServerRuleService`; client →
+  `RuleService`.
+
+### 20.5 Build phases (each independently safe; feature stays gated)
+
+1. **Classifier engine** — pure, unit-tested: ServerRepresentable /
+   ClientRepresentable / conflict, from editor field values. No UI change. Add
+   `MarkAsUnread` to the editor VM (not yet in XAML).
+2. **ToClientRule conversion** + unit tests (round-trip the client subset).
+3. **Save routing + client-save dialog + conflict validation** wired into the
+   unified editor; add Mark-as-unread to the editor XAML (Advanced actions).
+4. **Layout unification** — account picker as first landing control; single
+   merged list (server + client rows, "runs where" marker); single New button;
+   Edit/Delete/toggle/move route by row kind; retire the two-section split and
+   the cross-labeled client "New Rule" / server "New" buttons.
+
+### 20.6 Out of scope (unchanged, reaffirmed)
+
+No copy/convert between server and client, no sync between the two sets (§18).
+Auto-classify picks a kind at creation; it never migrates an existing rule.

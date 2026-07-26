@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace QuickMail.Models;
 
@@ -18,7 +19,7 @@ namespace QuickMail.Models;
 /// in Outlook (spec §16, the central correctness risk).
 /// </para>
 /// </summary>
-public sealed class ServerRuleModel
+public sealed partial class ServerRuleModel : ObservableObject
 {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
@@ -26,7 +27,18 @@ public sealed class ServerRuleModel
     /// <summary>Execution order on the server. Lower runs first.</summary>
     public int Sequence { get; set; }
 
-    public bool IsEnabled { get; set; } = true;
+    /// <summary>
+    /// Observable so a list row's announced text updates in place when the rule is toggled — without
+    /// re-inserting the item (which would disturb a screen reader's focus). <see cref="RowText"/> is
+    /// what the list binds its accessible name to; notifying it fires the UIA change the reader needs.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RowText))]
+    private bool _isEnabled = true;
+
+    /// <summary>The list row's accessible/display text (same as <see cref="ToString"/>), as a
+    /// change-notifying property so a toggle re-announces the new state.</summary>
+    public string RowText => ToString();
 
     /// <summary>Server-set: the rule cannot be modified (edit/delete blocked).</summary>
     public bool IsReadOnly { get; set; }

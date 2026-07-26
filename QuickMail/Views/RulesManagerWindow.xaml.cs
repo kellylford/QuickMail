@@ -7,7 +7,9 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -58,6 +60,9 @@ public partial class RulesManagerWindow : Window
             ServerRulesSection.Visibility = Visibility.Visible;
             _serverRulesVm.AnnouncementRequested += OnAnnouncementRequested;
             _serverRulesVm.WriteBlockedByPermission += OnServerRulesPermissionMessage;
+            _serverRulesVm.EditorRequested += OnServerRuleEditorRequested;
+            _serverRulesVm.ConfirmDeleteRequested += OnServerRuleConfirmDelete;
+            _serverRulesVm.FocusSelectedRuleRequested += OnFocusSelectedServerRule;
             // Load the account's server rules, THEN decide focus — landing focus on the list that
             // actually holds the user's rules (they may have only server rules, no client rules).
             Loaded += async (_, _) =>
@@ -97,6 +102,81 @@ public partial class RulesManagerWindow : Window
     private void OnServerRulesPermissionMessage(string message)
         => AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Hint);
 
+    // Server-rule create/edit: open the modeless editor. Persistence is already wired by the list VM
+    // (it hooked the editor's Saved event before raising this), so the window only shows the form.
+    // Modeless (not ShowDialog) is deliberate — a modal editor with editable text over the live
+    // WebView2 reading pane is the GrabAddresses freeze scenario (spec §10.4). Activate() foregrounds
+    // it and its Loaded handler focuses the Name field, so keyboard focus lands in the editor
+    // immediately without the user tabbing to it.
+    private void OnServerRuleEditorRequested(ServerRuleEditorViewModel editorVm)
+    {
+        var editor = new ServerRuleEditorWindow(editorVm, _accounts, _cachedFolders) { Owner = this };
+        editor.Show();
+        editor.Activate();
+    }
+
+    // Return keyboard focus to the selected server rule after a toggle/move/delete, so the user isn't
+    // left on a button and the screen reader re-reads the row (with its updated state/position).
+    private void OnFocusSelectedServerRule()
+        // Deferred to Input priority so it runs AFTER the context menu has fully closed (which itself
+        // restores focus) and after any layout from a move. Otherwise focus can land before the
+        // container is realized and end up on the bare ListBox — where arrow keys escape to sibling
+        // controls instead of navigating items.
+        => Dispatcher.BeginInvoke(new Action(FocusSelectedServerRuleNow), DispatcherPriority.Input);
+
+    private void FocusSelectedServerRuleNow()
+    {
+        if (_serverRulesVm?.SelectedRule is not { } rule) return;
+        var index = ServerRulesListBox.Items.IndexOf(rule);
+        if (index < 0) return;
+
+        ServerRulesListBox.ScrollIntoView(rule);
+        ServerRulesListBox.UpdateLayout();
+        // Focus the actual item container — never the bare ListBox (arrow keys escape from there).
+        if (ServerRulesListBox.ItemContainerGenerator.ContainerFromIndex(index) is ListBoxItem item)
+        {
+            item.Focus();
+            Keyboard.Focus(item);
+        }
+    }
+
+    private bool OnServerRuleConfirmDelete(string message, string title)
+        => MessageBox.Show(this, message, title, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+
+    // List-local keys for the server rules list (window-scoped, same pattern as Enter-to-edit; these
+    // are not Command Palette / CommandRegistry shortcuts):
+    //   Enter  → edit the selected rule (default action)
+    //   Space  → enable/disable the selected rule
+    //   Delete → delete the selected rule
+    // The commands carry their own read-only/representability guards, so these no-op on rules that
+    // can't take the action.
+    private void ServerRulesListBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (_serverRulesVm is null) return;
+        switch (e.Key)
+        {
+            case Key.Enter:
+                Invoke(_serverRulesVm.EditRuleCommand);
+                e.Handled = true;
+                break;
+            case Key.Space:
+                Invoke(_serverRulesVm.ToggleEnabledCommand);
+                e.Handled = true;
+                break;
+            case Key.Delete:
+                Invoke(_serverRulesVm.DeleteRuleCommand);
+                e.Handled = true;
+                break;
+        }
+
+        // Respect the command's CanExecute so a key does nothing on a rule where the button/menu item
+        // is disabled (e.g. Delete/Space on a read-only rule) — Execute() alone bypasses CanExecute.
+        static void Invoke(System.Windows.Input.ICommand cmd)
+        {
+            if (cmd.CanExecute(null)) cmd.Execute(null);
+        }
+    }
+
     /// <summary>Moves keyboard focus to the next (or previous) window pane for F6 / Shift+F6.</summary>
     private void CyclePane(bool forward)
     {
@@ -104,6 +184,8 @@ public partial class RulesManagerWindow : Window
         var stops = new List<UIElement> { RuleListBox };
         if (_serverRulesVm is not null && ServerRulesSection.Visibility == Visibility.Visible)
         {
+            if (ServerAccountPicker.Visibility == Visibility.Visible)
+                stops.Add(ServerAccountCombo);   // only present when there's >1 Graph account
             stops.Add(ServerRulesListBox);
             stops.Add(ServerRulesDetailBox);
             stops.Add(ServerRulesStatusText);
@@ -236,6 +318,9 @@ public partial class RulesManagerWindow : Window
         {
             _serverRulesVm.AnnouncementRequested -= OnAnnouncementRequested;
             _serverRulesVm.WriteBlockedByPermission -= OnServerRulesPermissionMessage;
+            _serverRulesVm.EditorRequested -= OnServerRuleEditorRequested;
+            _serverRulesVm.ConfirmDeleteRequested -= OnServerRuleConfirmDelete;
+            _serverRulesVm.FocusSelectedRuleRequested -= OnFocusSelectedServerRule;
         }
         base.OnClosed(e);
     }

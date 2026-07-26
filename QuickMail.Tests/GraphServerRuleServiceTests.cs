@@ -422,20 +422,30 @@ public class GraphServerRuleServiceTests
     }
 
     [Fact]
-    public async Task Reorder_AssignsSequentialPositions()
+    public async Task Reorder_PatchesOnlyChangedRules_LeavingUntouchedRulesAlone()
     {
-        var handler = new RecordingHandler(Json("{}"), Json("{}"), Json("{}"));
+        // Rules a=1, b=2, c=3. Swap the first two → [b, a, c]. Only b and a change position;
+        // c keeps sequence 3 and must NOT be PATCHed. This is what stops a server-protected rule
+        // elsewhere in the list (which 400s on any PATCH) from poisoning an unrelated move.
+        var a = new ServerRuleModel { Id = "a", Sequence = 1 };
+        var b = new ServerRuleModel { Id = "b", Sequence = 2 };
+        var c = new ServerRuleModel { Id = "c", Sequence = 3 };
+        var handler = new RecordingHandler(Json("{}"), Json("{}"));
 
-        await Service(handler).ReorderAsync(_accountId, ["c", "a", "b"]);
+        await Service(handler).ReorderAsync(_accountId, new[] { b, a, c });
 
-        Assert.Equal(3, handler.Urls.Count);
+        Assert.Equal(2, handler.Urls.Count);
         Assert.All(handler.Methods, m => Assert.Equal("PATCH", m));
-        Assert.EndsWith("/messageRules/c", handler.Urls[0]);
+        Assert.EndsWith("/messageRules/b", handler.Urls[0]);
         Assert.Contains("\"sequence\":1", handler.Bodies[0]!);
         Assert.EndsWith("/messageRules/a", handler.Urls[1]);
         Assert.Contains("\"sequence\":2", handler.Bodies[1]!);
-        Assert.EndsWith("/messageRules/b", handler.Urls[2]);
-        Assert.Contains("\"sequence\":3", handler.Bodies[2]!);
+        Assert.DoesNotContain(handler.Urls, u => u.EndsWith("/messageRules/c"));
+
+        // Local models reflect the sequence values the server was told.
+        Assert.Equal(1, b.Sequence);
+        Assert.Equal(2, a.Sequence);
+        Assert.Equal(3, c.Sequence);
     }
 
     [Fact]

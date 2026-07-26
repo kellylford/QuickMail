@@ -341,6 +341,18 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void ServerRuleEditorWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var window = new ServerRuleEditorWindow(
+            ServerRuleEditorViewModel.ForNew(),
+            new List<AccountModel>(),
+            new Dictionary<Guid, List<MailFolderModel>>());
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
     public void GroupManagerWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

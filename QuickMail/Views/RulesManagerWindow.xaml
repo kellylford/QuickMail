@@ -286,14 +286,43 @@
                 Margin="0,10,0,0" Padding="8" BorderThickness="1"
                 BorderBrush="{DynamicResource Theme.Border}">
             <StackPanel>
-                <TextBlock Text="Server rules (run on Microsoft 365, even when QuickMail is closed) — read-only for now"
+                <TextBlock Text="Server rules (run on Microsoft 365, even when QuickMail is closed)"
                            FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6"/>
+
+                <!-- Account picker: which Microsoft 365 account's rules are shown/created. Seeded to
+                     the account the user is currently in (see ServerRulesViewModel ctor). Shown only
+                     when there's more than one Graph account (a single account needs no choice). -->
+                <StackPanel x:Name="ServerAccountPicker" Margin="0,0,0,6"
+                            Visibility="{Binding ShowAccountSelector, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="Account"/>
+                    <ComboBox x:Name="ServerAccountCombo"
+                              ItemsSource="{Binding AccountOptions}"
+                              SelectedItem="{Binding SelectedAccount}"
+                              Margin="0,2,0,0" AutomationProperties.Name="Account for server rules"/>
+                </StackPanel>
+
                 <!-- Focusable (F6 ring) so a screen-reader user can move to it and re-read the count
                      on demand; IsTabStop=False keeps it out of the Tab order. -->
                 <TextBlock x:Name="ServerRulesStatusText" Text="{Binding StatusText}" Margin="0,0,0,6"
                            Focusable="True" KeyboardNavigation.IsTabStop="False"
                            AutomationProperties.Name="{Binding StatusText}"
                            AutomationProperties.LiveSetting="Polite"/>
+
+                <WrapPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button Content="New" Command="{Binding CreateRuleCommand}"
+                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New server rule"/>
+                    <Button Content="Edit" Command="{Binding EditRuleCommand}"
+                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected server rule"/>
+                    <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
+                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected server rule"/>
+                    <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"
+                            Height="26" Padding="10,0" Margin="0,0,6,4"
+                            AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected server rule}"/>
+                    <Button Content="Move Up" Command="{Binding MoveUpCommand}"
+                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected server rule up"/>
+                    <Button Content="Move Down" Command="{Binding MoveDownCommand}"
+                            Height="26" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected server rule down"/>
+                </WrapPanel>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="260"/>
@@ -305,14 +334,30 @@
                              MaxHeight="150"
                              ItemsSource="{Binding Rules}"
                              SelectedItem="{Binding SelectedRule}"
-                             AutomationProperties.Name="Server rules list">
+                             AutomationProperties.Name="Server rules list"
+                             KeyDown="ServerRulesListBox_KeyDown"
+                             VirtualizingPanel.IsVirtualizing="False">
                         <ListBox.ItemContainerStyle>
                             <Style TargetType="ListBoxItem">
                                 <Setter Property="Padding" Value="6,4"/>
-                                <!-- Row announced from ServerRuleModel.ToString() (name, state, where, summary). -->
-                                <Setter Property="AutomationProperties.Name" Value="{Binding}"/>
+                                <!-- Bound to RowText (a change-notifying alias of ToString) so a toggle
+                                     re-announces the new enabled/disabled state without re-inserting the row. -->
+                                <Setter Property="AutomationProperties.Name" Value="{Binding RowText}"/>
                             </Style>
                         </ListBox.ItemContainerStyle>
+                        <ListBox.ContextMenu>
+                            <!-- A ContextMenu lives in its own popup tree, so it doesn't inherit the
+                                 ListBox's DataContext; point it at the ListBox (its PlacementTarget). -->
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem Header="New rule" Command="{Binding CreateRuleCommand}"/>
+                                <MenuItem Header="Edit" Command="{Binding EditRuleCommand}"/>
+                                <MenuItem Header="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"/>
+                                <MenuItem Header="Move up" Command="{Binding MoveUpCommand}"/>
+                                <MenuItem Header="Move down" Command="{Binding MoveDownCommand}"/>
+                                <Separator/>
+                                <MenuItem Header="Delete" Command="{Binding DeleteRuleCommand}"/>
+                            </ContextMenu>
+                        </ListBox.ContextMenu>
                     </ListBox>
 
                     <!-- Read-only detail for the selected server rule (full prose, incl. any not-editable

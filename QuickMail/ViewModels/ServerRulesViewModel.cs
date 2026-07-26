@@ -39,6 +39,13 @@ public partial class ServerRulesViewModel : ObservableObject
     /// <summary>The View should open the rule editor (modeless) for this prepared editor VM.</summary>
     public event Action<ServerRuleEditorViewModel>? EditorRequested;
 
+    /// <summary>
+    /// After an action that changed a rule in place (toggle, move, delete), the View should return
+    /// keyboard focus to the selected rule in the list — so the user isn't stranded on a button, and
+    /// (for toggle) the screen reader re-announces the updated row when focus lands back on it.
+    /// </summary>
+    public event Action? FocusSelectedRuleRequested;
+
     // ── Construction ────────────────────────────────────────────────────────
 
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>>? _foldersByAccount;
@@ -46,7 +53,8 @@ public partial class ServerRulesViewModel : ObservableObject
     public ServerRulesViewModel(
         IServerRuleService service,
         IEnumerable<AccountModel> graphAccounts,
-        IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null)
+        IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null,
+        Guid? preferredAccountId = null)
     {
         _service = service;
         _foldersByAccount = foldersByAccount;
@@ -56,7 +64,12 @@ public partial class ServerRulesViewModel : ObservableObject
             .Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel })
             .ToList();
 
-        _selectedAccount = AccountOptions.FirstOrDefault();
+        // Land on the account the user is currently in (the inbox they opened the Rules Manager from)
+        // rather than always the first Graph account — otherwise opening from the Guest inbox would
+        // show icanbrew's rules. Falls back to the first account when there's no current-account
+        // context (e.g. an aggregate/unified view at the top of the tree).
+        _selectedAccount = AccountOptions.FirstOrDefault(o => o.Id == preferredAccountId)
+                           ?? AccountOptions.FirstOrDefault();
     }
 
     /// <summary>
@@ -93,7 +106,23 @@ public partial class ServerRulesViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(CanEditSelected))]
     [NotifyPropertyChangedFor(nameof(CanModifySelected))]
     [NotifyPropertyChangedFor(nameof(DetailText))]
+    [NotifyPropertyChangedFor(nameof(ToggleEnabledLabel))]
+    [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
+    [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
+    [NotifyCanExecuteChangedFor(nameof(EditRuleCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ToggleEnabledCommand))]
+    [NotifyCanExecuteChangedFor(nameof(DeleteRuleCommand))]
     private ServerRuleModel? _selectedRule;
+
+    /// <summary>Enable/Disable button text: "Enable" for a disabled rule, "Disable" for an enabled one.</summary>
+    public string ToggleEnabledLabel => SelectedRule?.IsEnabled == true ? "Disable" : "Enable";
+
+    /// <summary>Move Up is invalid for the first rule, a server read-only rule, or none selected.
+    /// A read-only rule can't be re-sequenced (Graph refuses the PATCH), so gate it like Edit/Delete.</summary>
+    public bool CanMoveUp => SelectedRule is { IsReadOnly: false } r && Rules.IndexOf(r) > 0;
+
+    /// <summary>Move Down is invalid for the last rule, a server read-only rule, or none selected.</summary>
+    public bool CanMoveDown => SelectedRule is { IsReadOnly: false } r && Rules.IndexOf(r) is var i && i >= 0 && i < Rules.Count - 1;
 
     [ObservableProperty] private AccountOption? _selectedAccount;
     [ObservableProperty] private string _statusText = string.Empty;
@@ -104,16 +133,20 @@ public partial class ServerRulesViewModel : ObservableObject
     /// represent — saving those would replace the server's richer object with our narrower one and
     /// silently drop the user's other predicates (spec §16).
     /// <para>
-    /// <b>Deliberately NOT wired to the commands' <c>CanExecute</c>.</b> A disabled control is
-    /// announced only as unavailable, which tells a screen-reader user nothing about <i>why</i> a
-    /// rule on their own mailbox can't be edited. Instead the commands stay executable and explain
-    /// the reason when invoked (see <see cref="EditRule"/>), which is the accessible behaviour. XAML
-    /// may still bind visual affordances to this property.
+    /// Wired to <c>EditRuleCommand.CanExecute</c> so the Edit button and context-menu item are
+    /// <b>disabled</b> for these rules. (Tim's call, 2026-07-25, reversing the earlier
+    /// keep-enabled-and-explain design: he runs with announcements off, so an explain-on-invoke is
+    /// inaudible — a pressable item that silently fails is worse than a disabled one. The list row
+    /// already states "read-only" / "not editable in QuickMail", so the reason is still conveyed.)
     /// </para>
     /// </summary>
     public bool CanEditSelected => SelectedRule is { IsFullyEditable: true, IsReadOnly: false };
 
-    /// <summary>Toggle/reorder/delete only need the rule to be writable, not fully representable.</summary>
+    /// <summary>
+    /// Toggle/reorder/delete only need the rule to be writable, not fully representable. Wired to
+    /// those commands' <c>CanExecute</c> so they're disabled for read-only rules (see
+    /// <see cref="CanEditSelected"/> for the rationale).
+    /// </summary>
     public bool CanModifySelected => SelectedRule is { IsReadOnly: false };
 
     /// <summary>Full prose for the detail region, including parts QuickMail can't edit.</summary>
@@ -176,61 +209,53 @@ public partial class ServerRulesViewModel : ObservableObject
         if (SelectedAccount?.Id is not Guid accountId) return;
 
         var editor = ServerRuleEditorViewModel.ForNew();
-        editor.Saved += async rule => await SaveNewAsync(accountId, rule);
+        editor.Saved += rule => SaveNewAsync(accountId, rule);
         EditorRequested?.Invoke(editor);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEditSelected))]
     private void EditRule()
     {
         if (SelectedAccount?.Id is not Guid accountId) return;
         if (SelectedRule is not { } rule) return;
-
-        if (!CanEditSelected)
-        {
-            var why = rule.IsReadOnly
-                ? "This rule is read-only on the server and can't be changed here."
-                : "This rule uses conditions or actions QuickMail can't edit yet. You can enable, disable, or delete it here, or edit it in Outlook.";
-            StatusText = why;
-            Announce(why, AnnouncementCategory.Hint);
-            return;
-        }
+        if (!CanEditSelected) return;   // defensive; the command is disabled for these rules
 
         var editor = ServerRuleEditorViewModel.ForEdit(rule);
-        editor.Saved += async updated => await SaveExistingAsync(accountId, updated);
+        editor.Saved += updated => SaveExistingAsync(accountId, updated);
         EditorRequested?.Invoke(editor);
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModifySelected))]
     private async Task ToggleEnabledAsync(CancellationToken ct)
     {
         if (SelectedAccount?.Id is not Guid accountId) return;
         if (SelectedRule is not { } rule) return;
-        if (!CanModifySelected) return;
+        if (!CanModifySelected) return;   // defensive; the command is disabled for read-only rules
 
         var target = !rule.IsEnabled;
         await RunWriteAsync(async () =>
         {
             await _service.SetEnabledAsync(accountId, rule.Id, target, ct);
-            rule.IsEnabled = target;
-            RefreshRow(rule);
+            rule.IsEnabled = target;                   // observable → the row's RowText updates in place
             OnPropertyChanged(nameof(DetailText));
+            OnPropertyChanged(nameof(ToggleEnabledLabel));
             Announce(target ? "Rule enabled." : "Rule disabled.", AnnouncementCategory.Result);
+            // Focus returns to the row (so the new state is read) via RunWriteAsync's finally.
         });
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanMoveUp))]
     private Task MoveUpAsync(CancellationToken ct) => MoveAsync(-1, ct);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanMoveDown))]
     private Task MoveDownAsync(CancellationToken ct) => MoveAsync(+1, ct);
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanModifySelected))]
     private async Task DeleteRuleAsync(CancellationToken ct)
     {
         if (SelectedAccount?.Id is not Guid accountId) return;
         if (SelectedRule is not { } rule) return;
-        if (!CanModifySelected) return;
+        if (!CanModifySelected) return;   // defensive; the command is disabled for read-only rules
 
         var confirmed = ConfirmDeleteRequested?.Invoke(
             $"Delete server rule '{rule.DisplayName}'? It will stop running on the server.",
@@ -247,33 +272,11 @@ public partial class ServerRulesViewModel : ObservableObject
             SelectedRule = Rules.Count == 0 ? null : Rules[Math.Min(index, Rules.Count - 1)];
 
             Announce("Rule deleted.", AnnouncementCategory.Result);
+            // Focus moves to the newly-selected neighbour via RunWriteAsync's finally.
         });
     }
 
     // ── Internals ───────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Forces the list row to re-render after the rule was mutated in place.
-    /// <para>
-    /// A row's displayed <i>and announced</i> text comes from <see cref="ServerRuleModel.ToString()"/>,
-    /// which a <c>ListView</c> evaluates when it realises the container. <see cref="ServerRuleModel"/>
-    /// is a plain model (like <see cref="MailRule"/>) and raises no change notification, so mutating
-    /// <c>IsEnabled</c> alone would leave the row still reading "enabled" after the user disabled it.
-    /// Re-assigning the slot raises a Replace notification, which regenerates that one container.
-    /// </para>
-    /// <para>
-    /// Chosen over making the model observable because <c>ToString()</c> composes several properties;
-    /// per-property notification would not cause WPF to re-evaluate it anyway.
-    /// </para>
-    /// </summary>
-    private void RefreshRow(ServerRuleModel rule)
-    {
-        var index = Rules.IndexOf(rule);
-        if (index < 0) return;
-
-        Rules[index] = rule;
-        SelectedRule = rule;   // Replace clears selection; put it back so focus doesn't jump
-    }
 
     private async Task MoveAsync(int delta, CancellationToken ct)
     {
@@ -289,30 +292,46 @@ public partial class ServerRulesViewModel : ObservableObject
 
         await RunWriteAsync(async () =>
         {
-            await _service.ReorderAsync(accountId, Rules.Select(r => r.Id).ToList(), ct);
-
-            // Keep local sequence numbers consistent with what the server was just told.
-            for (var i = 0; i < Rules.Count; i++) Rules[i].Sequence = i + 1;
+            // Pass the models (each carries its current server Sequence). The service reassigns only
+            // the changed sequence values, so a server-protected rule elsewhere isn't PATCHed and
+            // can't 400 this move.
+            await _service.ReorderAsync(accountId, Rules.ToList(), ct);
 
             Announce($"Moved {(delta < 0 ? "up" : "down")}. Now {to + 1} of {Rules.Count}.",
                 AnnouncementCategory.Status);
+            // The rule's position changed → Move Up/Down availability may have flipped (now at an end).
+            MoveUpCommand.NotifyCanExecuteChanged();
+            MoveDownCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(CanMoveUp));
+            OnPropertyChanged(nameof(CanMoveDown));
+            // Focus follows the rule to its new position via RunWriteAsync's finally.
         }, onFailure: () => Rules.Move(to, from));   // put it back if the server refused
     }
 
-    private async Task SaveNewAsync(Guid accountId, ServerRuleModel rule)
+    /// <summary>Persists a new rule. Returns null on success, or an error message for the editor.</summary>
+    private async Task<string?> SaveNewAsync(Guid accountId, ServerRuleModel rule)
     {
-        await RunWriteAsync(async () =>
+        // Graph rejects sequence 0 (must be 1-based); a new rule goes to the end of the list.
+        rule.Sequence = Rules.Count + 1;
+
+        // focusSelectedAfter:false — the editor is still open during the write; don't pull focus to
+        // the list. On success we focus the new rule *after* the editor closes (below).
+        var error = await RunWriteAsync(async () =>
         {
             var created = await _service.CreateAsync(accountId, rule);
             Rules.Add(created);
             SelectedRule = created;
             Announce("Rule created.", AnnouncementCategory.Result);
-        });
+        }, focusSelectedAfter: false);
+
+        if (error is null) FocusSelectedRuleRequested?.Invoke();   // land on the new rule once the editor closes
+        return error;
     }
 
-    private async Task SaveExistingAsync(Guid accountId, ServerRuleModel rule)
+    /// <summary>Persists an edited rule. Returns null on success, or an error message for the editor.</summary>
+    private async Task<string?> SaveExistingAsync(Guid accountId, ServerRuleModel rule)
     {
-        await RunWriteAsync(async () =>
+        var error = await RunWriteAsync(async () =>
         {
             await _service.UpdateAsync(accountId, rule);
 
@@ -321,35 +340,55 @@ public partial class ServerRulesViewModel : ObservableObject
             SelectedRule = rule;
 
             Announce("Rule updated.", AnnouncementCategory.Result);
-        });
+        }, focusSelectedAfter: false);
+
+        if (error is null) FocusSelectedRuleRequested?.Invoke();
+        return error;
     }
 
     /// <summary>
     /// Runs a write, translating a permission refusal into the admin-directed path and never
-    /// swallowing other failures into a silent no-op.
+    /// swallowing other failures into a silent no-op. Returns null on success, or a user-facing
+    /// error message (which the editor shows when the write came from a Save).
     /// </summary>
-    private async Task RunWriteAsync(Func<Task> write, Action? onFailure = null)
+    /// <param name="focusSelectedAfter">
+    /// When true (the in-list actions: toggle/move/delete), focus returns to the selected rule so the
+    /// user isn't stranded on a button. Save paths pass false — the editor is still open during the
+    /// write and manages its own focus (staying on the error, or focusing the list after it closes).
+    /// </param>
+    private async Task<string?> RunWriteAsync(Func<Task> write, Action? onFailure = null, bool focusSelectedAfter = true)
     {
         IsBusy = true;
         try
         {
             await write();
+            return null;
         }
         catch (ServerRuleConsentRequiredException ex)
         {
             onFailure?.Invoke();
             HandlePermissionRefusal(ex);
+            return StatusText;
         }
         catch (Exception ex)
         {
             onFailure?.Invoke();
-            StatusText = ex.Message;
+            // Some rules (typically created by Outlook) can't be modified through the Graph API at
+            // all — the server returns ErrorNotSupportedMessageRule. Translate that into a plain,
+            // actionable message instead of surfacing raw HTTP/JSON.
+            StatusText = ex.Message.Contains("ErrorNotSupportedMessageRule", StringComparison.OrdinalIgnoreCase)
+                ? $"'{SelectedRule?.DisplayName}' can't be changed from QuickMail — edit it in Outlook."
+                : ex.Message;
             Announce(StatusText, AnnouncementCategory.Result);
             LogService.Log("ServerRules: write failed", ex);
+            return StatusText;
         }
         finally
         {
             IsBusy = false;
+            // Put keyboard focus back on the selected rule so the user isn't stranded on a button
+            // (and, after a failed move, so arrow keys stay in the list). Suppressed for Save paths.
+            if (focusSelectedAfter && SelectedRule is not null) FocusSelectedRuleRequested?.Invoke();
         }
     }
 

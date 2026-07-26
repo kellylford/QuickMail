@@ -32,8 +32,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     /// <summary>Ask the View to open the folder picker; returns the chosen folder id (or null).</summary>
     public event Func<(string Id, string Name)?>? PickFolderRequested;
 
-    /// <summary>Raised on a successful Save with the assembled rule. The owner persists it.</summary>
-    public event Action<ServerRuleModel>? Saved;
+    /// <summary>
+    /// Raised on Save with the assembled rule; the owner persists it and returns an error message on
+    /// failure (null on success). The editor stays open and shows the error when non-null, so a
+    /// rejected save never silently loses the form.
+    /// </summary>
+    public event Func<ServerRuleModel, Task<string?>>? Saved;
 
     /// <summary>Raised when the editor window should close (Save or Cancel).</summary>
     public event Action? CloseRequested;
@@ -83,6 +87,9 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             string.Equals(o.Value, rule.Importance, StringComparison.OrdinalIgnoreCase)) ?? ImportanceOptions[0];
         vm.SelectedMarkImportance = ImportanceOptions.FirstOrDefault(o =>
             string.Equals(o.Value, rule.MarkImportance, StringComparison.OrdinalIgnoreCase)) ?? ImportanceOptions[0];
+        // If the rule already uses any advanced field, open the Advanced section so editing never
+        // hides a populated field. A brand-new rule leaves it collapsed.
+        vm.IsAdvancedExpanded = vm.HasAdvancedContent();
         return vm;
     }
 
@@ -90,6 +97,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     [ObservableProperty] private string _name = string.Empty;
     [ObservableProperty] private bool _isEnabled = true;
+
+    /// <summary>
+    /// Whether the Advanced conditions/actions section is expanded. Collapsed for a new rule; opened
+    /// automatically when editing a rule that already uses an advanced field (see <see cref="ForEdit"/>).
+    /// </summary>
+    [ObservableProperty] private bool _isAdvancedExpanded;
 
     // Conditions
     [ObservableProperty] private string _senderContains = string.Empty;
@@ -127,6 +140,8 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [ObservableProperty] private string _nameError = string.Empty;
     [ObservableProperty] private string _folderError = string.Empty;
     [ObservableProperty] private string _actionsError = string.Empty;
+    /// <summary>A server-side save failure (e.g. Graph rejected the rule), shown on the form.</summary>
+    [ObservableProperty] private string _saveError = string.Empty;
 
     /// <summary>Importance choices for both the condition and the action ComboBoxes.</summary>
     public static List<ImportanceOption> ImportanceOptions { get; } =
@@ -160,11 +175,22 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Save()
+    private async Task Save()
     {
         if (!Validate()) return;
-        Saved?.Invoke(ToModel());
-        CloseRequested?.Invoke();
+        SaveError = string.Empty;
+
+        // The owner persists and returns null on success, or an error to display. Close only on
+        // success — a failed save keeps the form (and the user's input) and shows why.
+        var error = Saved is null ? null : await Saved.Invoke(ToModel());
+        if (string.IsNullOrEmpty(error))
+        {
+            CloseRequested?.Invoke();
+            return;
+        }
+
+        SaveError = error;
+        AnnouncementRequested?.Invoke(error, AnnouncementCategory.Result);
     }
 
     [RelayCommand]
@@ -245,6 +271,21 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
         return valid;
     }
+
+    /// <summary>
+    /// True when any field that lives in the Advanced section is set — used to auto-expand it when
+    /// editing. Keep this list in sync with the Advanced group in ServerRuleEditorWindow.xaml.
+    /// </summary>
+    private bool HasAdvancedContent()
+        => !string.IsNullOrWhiteSpace(SenderContains)
+           || !string.IsNullOrWhiteSpace(SentToAddresses)
+           || !string.IsNullOrWhiteSpace(BodyOrSubjectContains)
+           || !string.IsNullOrWhiteSpace(BodyContains)
+           || SentToMe || SentOnlyToMe || HasAttachments
+           || !string.IsNullOrWhiteSpace(SelectedImportance?.Value)
+           || CopyToFolder
+           || !string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value)
+           || !string.IsNullOrWhiteSpace(ForwardTo);
 
     private bool HasAnyAction()
         => (MoveToFolder && !string.IsNullOrWhiteSpace(MoveToFolderId))

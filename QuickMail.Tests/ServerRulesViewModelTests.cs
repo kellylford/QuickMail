@@ -62,10 +62,10 @@ public class ServerRulesViewModelTests
             return Task.CompletedTask;
         }
 
-        public Task ReorderAsync(Guid accountId, IReadOnlyList<string> ruleIdsInOrder, CancellationToken ct = default)
+        public Task ReorderAsync(Guid accountId, IReadOnlyList<ServerRuleModel> rulesInOrder, CancellationToken ct = default)
         {
             Calls.Add("reorder");
-            LastReorder = ruleIdsInOrder;
+            LastReorder = rulesInOrder.Select(r => r.Id).ToList();
             if (ThrowOnWrite is not null) throw ThrowOnWrite;
             return Task.CompletedTask;
         }
@@ -88,6 +88,21 @@ public class ServerRulesViewModelTests
 
     private ServerRulesViewModel Vm(FakeServerRuleService svc, params AccountModel[] accounts)
         => new(svc, accounts.Length > 0 ? accounts : [GraphAccount()]);
+
+    [Fact]
+    public void Ctor_DefaultsToPreferredAccount_WhenProvided()
+    {
+        var first = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph, Username = "a@x.com", AccountName = "A" };
+        var second = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph, Username = "b@x.com", AccountName = "B" };
+
+        // Opening from the second account's inbox should land on the second account, not the first.
+        var vm = new ServerRulesViewModel(new FakeServerRuleService(), [first, second], null, second.Id);
+        Assert.Equal(second.Id, vm.SelectedAccount?.Id);
+
+        // No current-account context (e.g. an aggregate view) → fall back to the first account.
+        var fallback = new ServerRulesViewModel(new FakeServerRuleService(), [first, second], null, null);
+        Assert.Equal(first.Id, fallback.SelectedAccount?.Id);
+    }
 
     private static ServerRuleModel Rule(string id, string name, bool enabled = true,
         bool editable = true, bool readOnly = false) => new()
@@ -162,19 +177,32 @@ public class ServerRulesViewModelTests
     }
 
     [Fact]
-    public async Task EditRule_OnNonEditableRule_DoesNotOpenEditor_AndExplainsWhy()
+    public async Task EditRule_OnNonEditableRule_IsDisabled_AndDoesNotOpenEditor()
     {
         var svc = new FakeServerRuleService { Stored = [Rule("a", "Complex", editable: false)] };
         var vm = Vm(svc);
         await vm.RefreshCommand.ExecuteAsync(null);
 
+        // Edit is disabled (not pressable) for a rule we can't fully represent — the user runs with
+        // announcements off, so a disabled control is clearer than a pressable one that silently fails.
+        Assert.False(vm.EditRuleCommand.CanExecute(null));
+
         var opened = false;
         vm.EditorRequested += _ => opened = true;
-
-        vm.EditRuleCommand.Execute(null);
-
+        vm.EditRuleCommand.Execute(null);   // force-invoke: the defensive guard still blocks it
         Assert.False(opened);
-        Assert.Contains("Outlook", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task ToggleAndDelete_AreDisabled_ForServerReadOnlyRule()
+    {
+        var svc = new FakeServerRuleService { Stored = [Rule("ro", "Protected", readOnly: true)] };
+        var vm = Vm(svc);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.False(vm.ToggleEnabledCommand.CanExecute(null));
+        Assert.False(vm.DeleteRuleCommand.CanExecute(null));
+        Assert.False(vm.EditRuleCommand.CanExecute(null));
     }
 
     [Fact]
@@ -209,6 +237,28 @@ public class ServerRulesViewModelTests
         Assert.Equal(string.Empty, editor.Name);
     }
 
+    [Fact]
+    public async Task CreateRule_OnEmptyAccount_AssignsSequence1_NotZero()
+    {
+        // Graph rejects sequence 0 with MessageRuleValidationError; a new rule must get a 1-based
+        // sequence. On an account with no rules yet, the first new rule is sequence 1.
+        var svc = new FakeServerRuleService();
+        var vm = Vm(svc);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.CreateRuleCommand.Execute(null);
+
+        editor!.Name = "First rule";
+        editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("create", svc.Calls);
+        Assert.Single(vm.Rules);
+        Assert.Equal(1, vm.Rules[0].Sequence);
+    }
+
     // ── Toggle / delete / reorder ───────────────────────────────────────────────
 
     [Fact]
@@ -225,26 +275,27 @@ public class ServerRulesViewModelTests
     }
 
     [Fact]
-    public async Task ToggleEnabled_RaisesCollectionChange_SoTheRowTextRefreshes()
+    public async Task ToggleEnabled_UpdatesRowText_InPlace_ViaNotification()
     {
-        // A row's announced text comes from ServerRuleModel.ToString(), which a ListView evaluates
-        // once per container. The model raises no change notification, so without re-assigning the
-        // slot the row would keep announcing "enabled" after the user disabled it.
+        // The row's accessible name is bound to ServerRuleModel.RowText, which change-notifies when
+        // IsEnabled flips. So a toggle re-announces the new state WITHOUT re-inserting the row (which
+        // would disturb a screen reader's focus). Re-assigning the same object into the collection
+        // was a no-op for the WPF generator, which is why the row didn't refresh before.
         var svc = new FakeServerRuleService { Stored = [Rule("a", "Alpha", enabled: true)] };
         var vm = Vm(svc);
         await vm.RefreshCommand.ExecuteAsync(null);
 
-        var replaced = false;
-        vm.Rules.CollectionChanged += (_, e) =>
-        {
-            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Replace) replaced = true;
-        };
+        var rule = vm.Rules[0];
+        var rowTextChanged = false;
+        rule.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ServerRuleModel.RowText)) rowTextChanged = true; };
 
         await vm.ToggleEnabledCommand.ExecuteAsync(null);
 
-        Assert.True(replaced);
-        Assert.Contains("disabled", vm.Rules[0].ToString());
-        Assert.Same(vm.Rules[0], vm.SelectedRule);   // selection survives the replace
+        Assert.False(rule.IsEnabled);
+        Assert.True(rowTextChanged);                     // UIA gets the change the screen reader needs
+        Assert.Contains("disabled", rule.RowText);
+        Assert.Same(vm.Rules[0], vm.SelectedRule);       // no re-insert; selection undisturbed
+        Assert.Equal("Enable", vm.ToggleEnabledLabel);   // button now offers the opposite action
     }
 
     [Fact]
@@ -290,6 +341,50 @@ public class ServerRulesViewModelTests
     }
 
     [Fact]
+    public async Task MoveUpDown_AreDisabled_AtTheEnds()
+    {
+        var svc = new FakeServerRuleService { Stored = [Rule("a", "Alpha"), Rule("b", "Beta"), Rule("c", "Gamma")] };
+        var vm = Vm(svc);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        // First rule selected: can't move up.
+        Assert.False(vm.CanMoveUp);
+        Assert.True(vm.CanMoveDown);
+        Assert.False(vm.MoveUpCommand.CanExecute(null));
+        Assert.True(vm.MoveDownCommand.CanExecute(null));
+
+        // Last rule selected: can't move down.
+        vm.SelectedRule = vm.Rules[2];
+        Assert.True(vm.CanMoveUp);
+        Assert.False(vm.CanMoveDown);
+        Assert.False(vm.MoveDownCommand.CanExecute(null));
+
+        // Middle: both.
+        vm.SelectedRule = vm.Rules[1];
+        Assert.True(vm.CanMoveUp);
+        Assert.True(vm.CanMoveDown);
+    }
+
+    [Fact]
+    public async Task MoveUpDown_AreDisabled_ForServerReadOnlyRule()
+    {
+        // A read-only rule (e.g. "Delete Pokémon messages") can't be re-sequenced by the API; Move
+        // must be gated like Edit/Delete even when it's in the middle of the list.
+        var svc = new FakeServerRuleService
+        {
+            Stored = [Rule("a", "Alpha"), Rule("ro", "Protected", readOnly: true), Rule("c", "Gamma")],
+        };
+        var vm = Vm(svc);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        vm.SelectedRule = vm.Rules[1];   // the read-only rule, mid-list
+        Assert.False(vm.CanMoveUp);
+        Assert.False(vm.CanMoveDown);
+        Assert.False(vm.MoveUpCommand.CanExecute(null));
+        Assert.False(vm.MoveDownCommand.CanExecute(null));
+    }
+
+    [Fact]
     public async Task MoveDown_ReordersAndSendsNewOrder()
     {
         var svc = new FakeServerRuleService { Stored = [Rule("a", "Alpha"), Rule("b", "Beta")] };
@@ -300,7 +395,8 @@ public class ServerRulesViewModelTests
 
         Assert.Equal(["b", "a"], vm.Rules.Select(r => r.Id));
         Assert.Equal(["b", "a"], svc.LastReorder);
-        Assert.Equal([1, 2], vm.Rules.Select(r => r.Sequence));
+        // Sequence-value reassignment is the service's job (verified in GraphServerRuleServiceTests);
+        // the VM only owns the visible order and the service call.
     }
 
     [Fact]
@@ -391,7 +487,7 @@ public class ServerRulesViewModelTests
     }
 
     [Fact]
-    public void Editor_Save_RaisesSavedWithAssembledRule_AndCloses()
+    public async Task Editor_Save_RaisesSavedWithAssembledRule_AndCloses()
     {
         var editor = ServerRuleEditorViewModel.ForNew();
         editor.Name = "  Newsletters  ";
@@ -401,10 +497,10 @@ public class ServerRulesViewModelTests
 
         ServerRuleModel? saved = null;
         var closed = false;
-        editor.Saved += r => saved = r;
+        editor.Saved += r => { saved = r; return Task.FromResult<string?>(null); };   // null = success
         editor.CloseRequested += () => closed = true;
 
-        editor.SaveCommand.Execute(null);
+        await editor.SaveCommand.ExecuteAsync(null);
 
         Assert.NotNull(saved);
         Assert.Equal("Newsletters", saved!.DisplayName);      // trimmed
@@ -412,6 +508,23 @@ public class ServerRulesViewModelTests
         Assert.Equal(["a@b.com", "c@d.com", "e@f.com"], saved.ForwardTo);
         Assert.True(saved.IsFullyEditable);
         Assert.True(closed);
+    }
+
+    [Fact]
+    public async Task Editor_Save_WhenOwnerReportsError_StaysOpen_AndShowsError()
+    {
+        var editor = ServerRuleEditorViewModel.ForNew();
+        editor.Name = "Nope";
+        editor.MarkAsRead = true;
+
+        var closed = false;
+        editor.Saved += _ => Task.FromResult<string?>("Graph rejected the rule.");   // non-null = failure
+        editor.CloseRequested += () => closed = true;
+
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(closed);                                   // editor stays open on failure
+        Assert.Equal("Graph rejected the rule.", editor.SaveError);
     }
 
     [Fact]
@@ -454,6 +567,29 @@ public class ServerRulesViewModelTests
         Assert.Equal("folder-1", result.MoveToFolderId);
         Assert.Equal("folder-2", result.CopyToFolderId);
         Assert.True(result.StopProcessingRules);
+    }
+
+    [Fact]
+    public void Editor_ForNew_LeavesAdvancedCollapsed()
+        => Assert.False(ServerRuleEditorViewModel.ForNew().IsAdvancedExpanded);
+
+    [Fact]
+    public void Editor_ForEdit_ExpandsAdvanced_WhenRuleUsesAnAdvancedField()
+    {
+        // "Sender contains" lives in the Advanced section; editing a rule that uses it must open
+        // Advanced so the populated field isn't hidden.
+        var withAdvanced = ServerRuleEditorViewModel.ForEdit(new ServerRuleModel
+        {
+            Id = "r1", DisplayName = "Alpha", SenderContains = "boss", MarkAsRead = true,
+        });
+        Assert.True(withAdvanced.IsAdvancedExpanded);
+
+        // A rule using only common fields keeps Advanced collapsed.
+        var commonOnly = ServerRuleEditorViewModel.ForEdit(new ServerRuleModel
+        {
+            Id = "r2", DisplayName = "Beta", SubjectContains = "invoice", MarkAsRead = true,
+        });
+        Assert.False(commonOnly.IsAdvancedExpanded);
     }
 
     [Fact]

@@ -3431,7 +3431,13 @@ public partial class MainWindow : Window
     {
         LogService.Debug($"[FOCUS] Activated lastPane={_paneIndexBeforeDeactivation} {FocusInfo()}");
         if (_paneIndexBeforeDeactivation == 3 || _paneIndexBeforeDeactivation == 4)
-            Dispatcher.InvokeAsync(ReturnFocusToMessageList, DispatcherPriority.Input);
+            // Re-check IsActive at callback time: a transient activation (e.g. a modeless child of the
+            // Rules Manager closing and briefly bouncing foreground through here) must NOT pull focus
+            // into this window's message list when another window ends up active. Otherwise this
+            // unconditionally steals focus from the Rules Manager's rule list. (#333)
+            Dispatcher.InvokeAsync(
+                () => { if (IsActive) ReturnFocusToMessageList(); },
+                DispatcherPriority.Input);
     }
 
     // Routes focus to whichever message panel is currently visible.
@@ -5855,7 +5861,11 @@ public partial class MainWindow : Window
         if (_serverRuleService != null
             && _featureGate.IsEnabled(FeatureFlag.ServerRules)
             && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
-            serverRulesVm = new ServerRulesViewModel(_serverRuleService, accounts, _vm.CachedFolders);
+            // Seed the picker with the account the user is currently in, so the Rules Manager opens
+            // on that account's rules rather than always the first Graph account (#333). Null on
+            // aggregate views → VM falls back to the first account.
+            serverRulesVm = new ServerRulesViewModel(
+                _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id);
 
         var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm);
         _rulesWindow = dialog;
