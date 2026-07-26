@@ -13,6 +13,14 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ---
 
+## Changed: mail rules are now per-account
+
+The "All accounts" rule option has been replaced by scoping each rule to a specific account. This happens automatically the first time rules load after updating:
+
+- Existing "All accounts" rules are **copied to each of your standard (IMAP/SMTP) accounts**, so they keep working exactly as before.
+- **If you use *only* Microsoft 365 accounts**, any old "All accounts" rules are **removed** — those rules run inside QuickMail, and Microsoft 365 accounts are moving to server-side rules instead. If you had such rules, recreate them scoped to the account you want. (This affects very few people; every removal is recorded in the log.)
+- New rules now ask which account they apply to (defaulting to your default account) instead of offering "All accounts". (#333)
+
 ## New: find a contact's mail from the address book
 
 Select someone in the address book, press **Shift+F10**, and choose **Find mail from this contact** or **Find mail to this contact**. The address book closes and the message list fills with the matches, newest first, drawn from every account and folder QuickMail has cached — not just the folder you were in. Focus lands on the message list and the count is announced ("12 messages from Bob Baker."), and the window title reads **Mail from Bob Baker** so the results are easy to tell apart from a folder.
