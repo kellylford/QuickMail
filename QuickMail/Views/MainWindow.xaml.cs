@@ -5513,7 +5513,7 @@ public partial class MainWindow : Window
         win.ShowDialog();
 
         if (searchContact is { } contact && !string.IsNullOrWhiteSpace(contact.EmailAddress))
-            _ = ShowContactMailAsync(contact, searchDirection);
+            ShowContactMailAsync(contact, searchDirection).LogFaults("contact mail search");
     }
 
     /// <summary>
