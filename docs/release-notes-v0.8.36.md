@@ -47,7 +47,7 @@ Several fixes to the Rules Manager (Tools → Rules…, `Ctrl+Shift+L`):
 
 ---
 
-## Under the Hood
+## Internal
 
 - **Bug reports now include the message open mode.** In-app bug reports (Help → Report a Bug) add the current reading mode — reading pane, tab, or window — to the Environment section, so mode-specific problems like the attachment issue above can be reproduced in the right context. As before, reports never include message content, addresses, or credentials. (#350)
 - **Security: updated vulnerable transitive NuGet packages** and enabled transitive dependency auditing so future advisories surface at build time.

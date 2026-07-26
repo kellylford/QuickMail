@@ -1148,6 +1148,19 @@ public partial class MainWindow : Window
             defaultKey: Key.A, defaultModifiers: ModifierKeys.Alt,
             isAvailable: () => _vm.IsMessageOpen));
 
+        // Close the contact-mail results (#370) and return to the folder the search started
+        // from, the way Escape leaves any other search. Registered rather than hardcoded so it
+        // reaches the palette and can be rebound. It is unavailable while the search box has
+        // focus, so Escape there still clears the text search first; and the Escape cases
+        // earlier in OnWindowKeyDown (open message, calendar) run before the registry, so
+        // Escape keeps its existing meanings and only falls through to this one when nothing
+        // else claims it.
+        _registry.Register(new CommandDefinition(
+            id: "view.closeContactMail", category: "View", title: "Close Contact Mail Results",
+            execute: () => CloseContactMailResultsAsync().LogFaults("close contact mail results"),
+            defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None,
+            isAvailable: () => _vm.IsContactMailView && !SearchBox.IsKeyboardFocusWithin));
+
         // ── Tab & Window Management commands ─────────────────────────────────────
         _registry.Register(new CommandDefinition(
             id: "tabs.next", category: "View", title: "Next Tab",
@@ -5487,8 +5500,83 @@ public partial class MainWindow : Window
             ccAction:  c => GetOrOpenCompose().AddCcAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
             bccAction: c => GetOrOpenCompose().AddBccAddress(c.DisplayName ?? string.Empty, c.EmailAddress));
 
-        var win = new AddressBookWindow(vm) { Owner = this };
+        // "Find mail from / to this contact" (issue #370). The results replace this window's
+        // message list, which must not be touched while the address book's modal message loop
+        // is still running (see the modal-dialog rules in CLAUDE.md). So the action only
+        // records the request and closes the address book; the search runs below, once
+        // ShowDialog has returned and the nested loop is gone.
+        ContactModel? searchContact = null;
+        var searchDirection = MainViewModel.ContactMailDirection.From;
+        AddressBookWindow? win = null;
+        vm.SetSearchActions(
+            searchFromAction: c =>
+            {
+                searchContact   = c;
+                searchDirection = MainViewModel.ContactMailDirection.From;
+                win?.Close();
+            },
+            searchToAction: c =>
+            {
+                searchContact   = c;
+                searchDirection = MainViewModel.ContactMailDirection.To;
+                win?.Close();
+            });
+
+        win = new AddressBookWindow(vm) { Owner = this };
         win.ShowDialog();
+
+        if (searchContact is { } contact && !string.IsNullOrWhiteSpace(contact.EmailAddress))
+            ShowContactMailAsync(contact, searchDirection).LogFaults("contact mail search");
+    }
+
+    /// <summary>
+    /// Loads the "mail from / to this contact" results view, moves focus to the message list,
+    /// and announces the count. Fire-and-forget from <see cref="OpenAddressBook"/>: a failure
+    /// is logged and announced rather than left as a silently empty list.
+    /// </summary>
+    private async Task ShowContactMailAsync(ContactModel contact, MainViewModel.ContactMailDirection direction)
+    {
+        var label = string.IsNullOrWhiteSpace(contact.DisplayName)
+            ? contact.EmailAddress
+            : contact.DisplayName;
+        var kind = direction == MainViewModel.ContactMailDirection.From ? "from" : "to";
+        try
+        {
+            await _vm.ShowContactMailAsync(contact.EmailAddress, direction, label);
+            ReturnFocusToMessageList();
+            var n = _vm.Messages.Count;
+            AccessibilityHelper.Announce(this,
+                n == 0
+                    ? $"No messages {kind} {label}."
+                    : $"{n} {(n == 1 ? "message" : "messages")} {kind} {label}.",
+                interrupt: true, category: AnnouncementCategory.Result);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"ShowContactMail {kind}", ex);
+            AccessibilityHelper.Announce(this, $"Could not search for mail {kind} {label}.",
+                interrupt: true, category: AnnouncementCategory.Result);
+        }
+    }
+
+    private void CloseContactMailResults_Click(object sender, RoutedEventArgs e)
+        => CloseContactMailResultsAsync().LogFaults("close contact mail results");
+
+    /// <summary>
+    /// Leaves the contact-mail results view: back to the folder the search started from, focus
+    /// to the message list, and the destination announced with its count — the same shape as
+    /// clearing a message search.
+    /// </summary>
+    private async Task CloseContactMailResultsAsync()
+    {
+        if (!_vm.IsContactMailView) return;
+        await _vm.CloseContactMailCommand.ExecuteAsync(null);
+        ReturnFocusToMessageList();
+        var n     = _vm.Messages.Count;
+        var where = _vm.SelectedFolder?.DisplayName ?? "Mail";
+        AccessibilityHelper.Announce(this,
+            $"Search closed. {where}, {n} {(n == 1 ? "message" : "messages")}.",
+            interrupt: true, category: AnnouncementCategory.Result);
     }
 
     private void MenuPlainText_Click(object sender, RoutedEventArgs e) => TogglePlainTextView();

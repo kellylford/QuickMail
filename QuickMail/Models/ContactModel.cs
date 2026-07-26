@@ -68,4 +68,16 @@ public class ContactModel
     public string Display => string.IsNullOrWhiteSpace(DisplayName)
         ? EmailAddress
         : $"{DisplayName} <{EmailAddress}>";
+
+    /// <summary>
+    /// Text WPF's <c>TextSearch</c> matches when the user types in a contact list
+    /// (issue #371). The name is what the user thinks of the contact as, so it comes
+    /// first; contacts stored with only an address (prior recipients) fall back to the
+    /// address so they are still reachable by typing. Must be a single value — a
+    /// <c>TextSearch.TextPath</c> binds to exactly one property.
+    /// </summary>
+    [JsonIgnore]
+    public string TypeAheadText => string.IsNullOrWhiteSpace(DisplayName)
+        ? EmailAddress
+        : DisplayName;
 }

@@ -15,6 +15,7 @@
 | Ctrl+Alt+3 | `view.focusMessages` | Focus Message List (always) |
 | F6 / Shift+F6 | *(hardcoded)* | Cycle panes |
 | Escape | *(hardcoded)* | Close reading pane |
+| Escape | `view.closeContactMail` | Close Contact Mail Results — dispatched only when no earlier Escape case claims the key (reading pane, calendar, tab mode) and the search box does not have focus |
 | Ctrl+Shift+P | *(hardcoded)* | Command Palette |
 | Ctrl+N | `mail.new` | New Message |
 | Ctrl+R | `mail.reply` | Reply |
