@@ -416,16 +416,16 @@ public class RulesManagerViewModelTests
     }
 
     [Fact]
-    public void AccountOptions_IncludesAllAccountsFirst()
+    public void AccountOptions_ListsAccountsOnly_NoAllAccountsEntry()
     {
+        // "All accounts" was retired (#333 D1): every rule is scoped to one account, so the options
+        // are real accounts only — no null-Id entry that would let a user create an unscoped rule.
         var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
         var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
 
         var options = vm.AccountOptions;
-        Assert.True(options.Count >= 2);
-        Assert.Null(options[0].Id); // "All accounts" has null Id
-        Assert.Equal("All accounts", options[0].DisplayName);
-        Assert.Equal(account.Id, options[1].Id);
+        Assert.DoesNotContain(options, o => o.Id is null);
+        Assert.Equal(account.Id, Assert.Single(options).Id);
     }
 
     // ── Account-in-row display (rule name, account) ─────────────────────────────
@@ -470,14 +470,93 @@ public class RulesManagerViewModelTests
     }
 
     [Fact]
-    public void NewRule_IsStampedWithAllAccounts()
+    public void NewRule_DefaultsToFirstAccount()
     {
-        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
+        // With "All accounts" retired (#333 D1), a new rule is scoped to an account immediately
+        // rather than left unscoped.
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "IdeaPlace" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
 
         vm.NewRuleCommand.Execute(null);
 
-        Assert.Equal("All accounts", vm.SelectedRule!.AccountDisplay);
-        Assert.Contains("All accounts", vm.SelectedRule.AccessibleName);
+        Assert.Equal(account.Id, vm.SelectedRule!.AccountId);
+        Assert.Equal("IdeaPlace", vm.SelectedRule.AccountDisplay);
+        Assert.Contains("IdeaPlace", vm.SelectedRule.AccessibleName);
+    }
+
+    [Fact]
+    public void NewRule_PrefersTheDefaultAccount_OverTheFirst()
+    {
+        var first = new AccountModel { Id = Guid.NewGuid(), AccountName = "First", IsDefault = false };
+        var preferred = new AccountModel { Id = Guid.NewGuid(), AccountName = "Preferred", IsDefault = true };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [first, preferred]);
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.Equal(preferred.Id, vm.SelectedRule!.AccountId);   // default account, not the first
+    }
+
+    [Fact]
+    public void HasSelectedRule_FalseWithNoRules_TrueAfterNew()
+    {
+        // Drives the editor's IsEnabled so, with no rules, the per-rule fields (incl. the Account
+        // combo) are dropped from the tab order instead of presenting a blank live control.
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
+
+        Assert.False(vm.HasSelectedRule);   // no rules → nothing selected
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.True(vm.HasSelectedRule);
+    }
+
+    [Fact]
+    public void DeleteSaveTest_AreDisabled_UntilARuleIsSelected()
+    {
+        // With no rule selected, these commands have nothing to act on — they must be disabled so a
+        // screen-reader user isn't offered "Delete selected rule" / "Test rule" with no rule.
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
+
+        Assert.False(vm.DeleteRuleCommand.CanExecute(null));
+        Assert.False(vm.SaveRuleCommand.CanExecute(null));
+        Assert.False(vm.TestRuleCommand.CanExecute(null));
+
+        vm.NewRuleCommand.Execute(null);   // now a rule is selected
+
+        Assert.True(vm.DeleteRuleCommand.CanExecute(null));
+        Assert.True(vm.SaveRuleCommand.CanExecute(null));
+        Assert.True(vm.TestRuleCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void RunOnExisting_IsDisabled_WhenThereAreNoRules()
+    {
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var vm = new RulesManagerViewModel(new StubRuleService(), accounts: [account]);
+
+        Assert.False(vm.RunOnExistingCommand.CanExecute(null));   // nothing to run
+
+        vm.NewRuleCommand.Execute(null);
+
+        Assert.True(vm.RunOnExistingCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void DeletingTheLastRule_DisablesRunOnExistingAgain()
+    {
+        var account = new AccountModel { Id = Guid.NewGuid(), AccountName = "Work" };
+        var stub = new StubRuleService { LoadedRules = [new MailRule { Name = "Only", AccountId = account.Id }] };
+        var vm = new RulesManagerViewModel(stub, accounts: [account]);
+        vm.ConfirmDeleteRequested += (_, _) => true;
+
+        Assert.True(vm.RunOnExistingCommand.CanExecute(null));
+
+        vm.DeleteRuleCommand.Execute(null);
+
+        Assert.False(vm.RunOnExistingCommand.CanExecute(null));   // list is empty again
+        Assert.False(vm.DeleteRuleCommand.CanExecute(null));
     }
 
     // ── Run on existing mail (issue #346) ───────────────────────────────────────

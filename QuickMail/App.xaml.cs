@@ -228,7 +228,8 @@ public partial class App : Application
             var contactService = _contactService;
             _templateService = new TemplateService(profile);
             var templateService = _templateService;
-            var ruleService = new RuleService(mailRouter, localStore, profile.ProfileDir);
+            // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).
+            var ruleService = new RuleService(mailRouter, localStore, profile.ProfileDir, accountService);
             var syncService = new SyncService(mailRouter, localStore, configService, ruleService);
 
             // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
