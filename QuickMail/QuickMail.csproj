@@ -54,6 +54,13 @@
          Both appends have to be off for the path to stop doubling. Nothing in build.bat, the
          workflows or installer/ keys off a bin/obj path containing the TFM. -->
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- Keep generated XAML sources out of the default Compile glob. The WPF temp project has its
+         own BaseIntermediateOutputPath, so the SDK's implicit "exclude my own obj" rule does not
+         cover THIS project's obj — every obj/Debug/**/*.g.cs is then included a second time and
+         the build dies with NETSDK1022 (Duplicate 'Compile' items).
+         FORWARD slashes matter: Dependabot builds on Linux, where a `bin\**` style pattern does
+         not match, which is why the first attempt at this (#383) had no effect. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
