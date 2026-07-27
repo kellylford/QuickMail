@@ -44,20 +44,33 @@ public sealed class LogServiceTests : IDisposable
 
     private string LogFile => Path.Combine(_tempDir, "quickmail.log");
 
+    /// <summary>
+    /// A marker unique to this test instance. LogService's target directory is static, so while
+    /// these tests point it at their own temp dir, any other test running in parallel that happens
+    /// to log (44 production files call LogService) writes into that same file. Asserting on bare
+    /// file existence therefore fails intermittently — roughly 2 runs in 7 — for reasons that have
+    /// nothing to do with the behaviour under test. Asserting on this marker instead tests the
+    /// actual contract ("did *our* message get written?") and is immune to the interference. (#377)
+    /// </summary>
+    private readonly string _marker = $"marker-{Guid.NewGuid():N}";
+
+    private bool LogContainsMarker() =>
+        File.Exists(LogFile) && File.ReadAllText(LogFile).Contains(_marker, StringComparison.Ordinal);
+
     [Fact]
     public void Log_WhenEnabled_WritesFile()
     {
         LogService.Enabled = true;
-        LogService.Log("hello");
-        Assert.True(File.Exists(LogFile));
+        LogService.Log(_marker);
+        Assert.True(LogContainsMarker());
     }
 
     [Fact]
     public void Log_WhenDisabled_DoesNotWriteFile()
     {
         LogService.Enabled = false;
-        LogService.Log("hello");
-        Assert.False(File.Exists(LogFile));
+        LogService.Log(_marker);
+        Assert.False(LogContainsMarker());
     }
 
     [Fact]
@@ -65,32 +78,36 @@ public sealed class LogServiceTests : IDisposable
     {
         LogService.Enabled   = false;
         LogService.DebugMode = true;
-        LogService.Log("hello");
-        Assert.True(File.Exists(LogFile));
+        LogService.Log(_marker);
+        Assert.True(LogContainsMarker());
     }
 
     [Fact]
     public void Log_ContainsMessage()
     {
-        LogService.Log("sync complete");
-        Assert.Contains("sync complete", File.ReadAllText(LogFile));
+        LogService.Log($"sync complete {_marker}");
+        Assert.Contains($"sync complete {_marker}", File.ReadAllText(LogFile), StringComparison.Ordinal);
     }
 
     [Fact]
     public void DeleteLog_RemovesExistingFile()
     {
-        LogService.Log("seed");
-        Assert.True(File.Exists(LogFile));
+        LogService.Log(_marker);
+        Assert.True(LogContainsMarker());
 
         LogService.DeleteLog();
 
-        Assert.False(File.Exists(LogFile));
+        // A parallel test may recreate the file immediately; what must be gone is our content.
+        Assert.False(LogContainsMarker());
     }
 
     [Fact]
     public void DeleteLog_WhenFileAbsent_DoesNotThrow()
     {
-        Assert.False(File.Exists(LogFile));
+        // Delete first so the second call is genuinely the file-absent case. The old version
+        // asserted the file did not exist up front, which a parallel test's write could falsify.
+        LogService.DeleteLog();
+
         var ex = Record.Exception(LogService.DeleteLog);
         Assert.Null(ex);
     }
@@ -98,12 +115,12 @@ public sealed class LogServiceTests : IDisposable
     [Fact]
     public void Log_AfterDelete_RecreatesFile()
     {
-        LogService.Log("first");
+        LogService.Log($"first {_marker}");
         LogService.DeleteLog();
 
-        LogService.Log("second");
+        LogService.Log($"second {_marker}");
 
         Assert.True(File.Exists(LogFile));
-        Assert.Contains("second", File.ReadAllText(LogFile));
+        Assert.Contains($"second {_marker}", File.ReadAllText(LogFile), StringComparison.Ordinal);
     }
 }
