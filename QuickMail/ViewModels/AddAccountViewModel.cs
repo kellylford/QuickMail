@@ -56,11 +56,23 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     /// </summary>
     public event Action<MailProvider>? ProviderApplied;
 
+    /// <summary>
+    /// True while this VM is assigning the provider because the typed address matched the catalog,
+    /// as opposed to the user picking one or a lookup finding one. Only a match-driven selection may
+    /// be undone by <see cref="ResetToUnknownProvider"/> — undoing a deliberate pick would fight the
+    /// user, e.g. choosing Outlook.com / Microsoft 365 and then typing a work address.
+    /// </summary>
+    private bool _assigningFromUsernameMatch;
+
+    private bool _providerCameFromUsernameMatch;
+
     protected override void OnSelectedProviderChangedInternal(MailProvider? value)
     {
+        _providerCameFromUsernameMatch = _assigningFromUsernameMatch;
         if (value is null) return;
 
         ApplyProvider(value);
+        PreferGraphForWorkOrSchoolMicrosoft();
         SyncBackendOptionToBackendKind();
         // Declared on this class, so the base class's [NotifyPropertyChangedFor] can't cover it.
         OnPropertyChanged(nameof(ShowConnectionMethod));
@@ -132,7 +144,42 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     /// </summary>
     public event Action<bool, string>? DiscoveryCompleted;
 
-    protected override void OnUsernameChangedInternal(string value) => MatchProviderFromUsername();
+    protected override void OnUsernameChangedInternal(string value)
+    {
+        MatchProviderFromUsername();
+        // The domain is what tells work-or-school apart from consumer, so re-evaluate as it is typed.
+        PreferGraphForWorkOrSchoolMicrosoft();
+    }
+
+    /// <summary>
+    /// A Microsoft account on a domain that is NOT one of Microsoft's own consumer domains is a work
+    /// or school tenant, and those must connect over Graph.
+    ///
+    /// The reason is the scopes. BackendKind ImapSmtp asks for
+    /// outlook.office.com/IMAP.AccessAsUser.All and SMTP.Send; Graph asks for
+    /// graph.microsoft.com/.default, which resolves to exactly the permissions the app registration
+    /// declares and a tenant admin has already consented to. Most tenants have not consented to the
+    /// IMAP/SMTP pair — many disable IMAP entirely — so leaving a work account on the IMAP backend
+    /// ends sign-in at "your administrator needs to make a change", for an account that signs in
+    /// perfectly well over Graph.
+    ///
+    /// Consumer Outlook.com/Hotmail/Live accounts are the opposite case: they have no admin-consent
+    /// model and work fine over IMAP+OAuth, so they keep the IMAP default. They are exactly the
+    /// domains listed on the Microsoft catalog entry, which is what this checks.
+    /// </summary>
+    private void PreferGraphForWorkOrSchoolMicrosoft()
+    {
+        if (SelectedProvider is not { } provider || provider.Id != ProviderCatalog.MicrosoftId) return;
+        if (string.IsNullOrWhiteSpace(Username)) return;
+        if (HostsUserEdited) return;                 // the user has taken over the servers
+        if (provider.MatchesEmail(Username)) return; // a consumer domain: IMAP is correct
+
+        var graph = AvailableBackends.FirstOrDefault(b => b.Kind == BackendKind.MicrosoftGraph);
+        if (graph is null) return;                   // Graph gated off — nothing better available
+        if (ReferenceEquals(graph, SelectedBackend)) return;
+
+        SelectedBackend = graph;
+    }
 
     /// <summary>
     /// Matches the address against the built-in catalog without touching the network. Runs on every
@@ -145,6 +192,10 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         var match = Catalog.MatchByEmail(Username);
         if (match is null)
         {
+            // Only undo a provider the address itself selected. A provider the user picked, or one a
+            // settings lookup found, stays — otherwise choosing Microsoft 365 and then typing a work
+            // address would silently throw the choice away.
+            if (!_providerCameFromUsernameMatch) return;
             // The address no longer matches. This is the correcting-a-typo case, and leaving the old
             // provider selected is how "kelly@gmail.com" edited into "kelly@theideaplace.net" ends up
             // saved with Gmail's servers — invisibly, because Advanced is collapsed, and with the
@@ -154,7 +205,10 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         }
 
         if (ReferenceEquals(match, SelectedProvider)) return;
-        SelectedProvider = match;
+
+        _assigningFromUsernameMatch = true;
+        try { SelectedProvider = match; }
+        finally { _assigningFromUsernameMatch = false; }
     }
 
     /// <summary>

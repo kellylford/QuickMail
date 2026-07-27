@@ -253,7 +253,17 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         var provider = Catalog.ById(settings.ProviderId);
         if (provider is not null)
         {
-            SelectedProvider = provider;
+            // Assign and stop. Assigning runs OnSelectedProviderChangedInternal, which applies the
+            // provider AND any backend preference the derived VM layers on top — a work-or-school
+            // Microsoft tenant moving to Graph, for instance. Calling ApplyProvider again here would
+            // re-apply the provider's DEFAULT backend and quietly undo that.
+            if (!ReferenceEquals(provider, SelectedProvider))
+            {
+                SelectedProvider = provider;
+                return true;
+            }
+
+            // Already selected, so no change notification will fire — apply it directly.
             return ApplyProvider(provider);
         }
 

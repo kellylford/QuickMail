@@ -233,6 +233,96 @@ public class AddAccountViewModelProviderTests
         Assert.Equal("smtp-mail.outlook.com", vm.SmtpHost);
     }
 
+    // ── Work-or-school Microsoft accounts must use Graph ─────────────────────────
+
+    [Theory]
+    [InlineData("kelly@icanbrew.com")]
+    [InlineData("kelly@contoso.co.uk")]
+    public void AMicrosoftAccountOnACustomDomainUsesGraph(string email)
+    {
+        // A work tenant on the IMAP backend asks for outlook.office.com/IMAP.AccessAsUser.All +
+        // SMTP.Send, which most tenants have never consented to — sign-in ends at "your
+        // administrator needs to make a change". Graph asks for graph.microsoft.com/.default, which
+        // is exactly what the admin already approved.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        vm.Username = email;
+
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.BackendKind);
+        Assert.Equal(AuthType.OAuth2Microsoft, vm.AuthType);
+    }
+
+    [Theory]
+    [InlineData("kelly@outlook.com")]
+    [InlineData("kelly@hotmail.com")]
+    [InlineData("kelly@live.com")]
+    public void AConsumerMicrosoftAccountKeepsTheImapBackend(string email)
+    {
+        // The opposite case: personal accounts have no admin-consent model and work fine over
+        // IMAP+OAuth, so moving them to Graph would be a behaviour change for no benefit.
+        var vm = NewVm();
+        vm.Username = email;
+
+        Assert.Equal(ProviderCatalog.MicrosoftId, vm.SelectedProvider!.Id);
+        Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+    }
+
+    [Fact]
+    public async Task ADiscoveredMicrosoftTenantEndsUpOnGraph()
+    {
+        // The reported path end to end: an M365 custom domain found by the realm tier must arrive at
+        // Graph, not at the IMAP backend that produces the admin-consent error.
+        var ms = Catalog.ById(ProviderCatalog.MicrosoftId)!;
+        var discover = new StubAutoDiscover(new DiscoveredSettings(
+            ms.ImapHost, ms.ImapPort, ms.ImapUseSsl, ms.SmtpHost, ms.SmtpPort, ms.SmtpUseSsl,
+            ms.Id, "icanbrew.com", DiscoverySource.MicrosoftRealm));
+        var vm = NewVm(discover);
+        vm.Username = "kelly@icanbrew.com";
+
+        await vm.DiscoverSettingsCommand.ExecuteAsync(null);
+
+        Assert.Equal(ProviderCatalog.MicrosoftId, vm.SelectedProvider!.Id);
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.BackendKind);
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.ToAccountModel().BackendKind);
+    }
+
+    [Fact]
+    public void WithGraphGatedOffAWorkAccountStaysOnImap()
+    {
+        // Nothing better is available; the account is still creatable, and the user finds out at
+        // sign-in as they did before.
+        var vm = NewVm(graph: false);
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        vm.Username = "kelly@icanbrew.com";
+
+        Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+    }
+
+    [Fact]
+    public void ChoosingMicrosoftThenTypingAWorkAddressKeepsTheChoice()
+    {
+        // The address matches no catalog domain, but the provider was picked deliberately — undoing
+        // it would throw the user's choice away mid-typing.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+
+        vm.Username = "kelly@icanbrew.com";
+
+        Assert.Equal(ProviderCatalog.MicrosoftId, vm.SelectedProvider!.Id);
+    }
+
+    [Fact]
+    public void AUserPickedProviderSurvivesEditingTheAddress()
+    {
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.YahooId);
+
+        vm.Username = "kelly@somewhere.example";
+
+        Assert.Equal(ProviderCatalog.YahooId, vm.SelectedProvider!.Id);
+        Assert.Equal("imap.mail.yahoo.com", vm.ImapHost);
+    }
+
     // ── Discovery ────────────────────────────────────────────────────────────────
 
     [Fact]
