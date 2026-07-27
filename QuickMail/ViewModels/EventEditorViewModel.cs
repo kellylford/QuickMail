@@ -180,10 +180,15 @@ public partial class EventEditorViewModel : ObservableObject
         _saveTargets = BuildSaveTargets(accountTargets);
         SaveTargetLabels = _saveTargets.ConvertAll(t => t.Label);
         var start = RoundUpToQuarterHour(defaultStart);
+        // Derive EndDate from the end instant, not from start.Date: the default half-hour can roll
+        // past midnight (23:45 + 30min), and pinning the end to the start's date then puts the end
+        // before the start, so TryBuildEvent rejects the untouched default. Mirrors the existing-
+        // event constructor below. (#378)
+        var end = start.AddMinutes(30);
         StartDate = start.Date;
         StartTime = start.ToString("t");
-        EndDate = start.Date;
-        EndTime = start.AddMinutes(30).ToString("t");
+        EndDate = end.Date;
+        EndTime = end.ToString("t");
     }
 
     private static List<CalendarSaveTarget> BuildSaveTargets(IReadOnlyList<CalendarSaveTarget>? accountTargets)
