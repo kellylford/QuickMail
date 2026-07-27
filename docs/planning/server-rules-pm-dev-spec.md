@@ -583,3 +583,58 @@ Decision:
 
 No copy/convert between server and client, no sync between the two sets (§18).
 Auto-classify picks a kind at creation; it never migrates an existing rule.
+
+---
+
+## 20.7 Phase 4 implementation notes — the unified list (2026-07-25)
+
+The refactor that merges the two-section Rules Manager into one account-scoped
+list. Touches shipped client-rule UI, so build it behind `FeatureFlag.ServerRules`
+(unified path only when on; old two-section path stays until the flag flips).
+
+### Row model
+`UnifiedRuleRow` wraps exactly one of `ServerRuleModel` / `MailRule`:
+- `RunsWhere` (Server | Client), `Name`, `IsEnabled`.
+- `RowText` (accessible name, also `ToString`): `"{Name}, {on server|in QuickMail}, {enabled|disabled}. {summary}"`.
+  Server summary reuses `ServerRuleModel.OneLineSummary()`; client summary is a
+  small formatter over the `MailRule` conditions/action.
+- The list is per-account, so the row carries no account label.
+
+### ViewModel
+`UnifiedRulesViewModel` owns the account picker and one `ObservableCollection<UnifiedRuleRow> Rules`.
+- Ctor takes `IRuleService` (client), `IServerRuleService?` (server; null when no
+  Graph account exists), accounts, cached folders.
+- `AccountOptions` = ALL accounts (Graph + IMAP). `SelectedAccount` seeded to the
+  current account (as the server picker already does).
+- On account change: load client rules for the account (RuleService) + server
+  rules if the account is Graph (GraphServerRuleService); merge into `Rules`
+  (server first by sequence, then client), each wrapped in a `UnifiedRuleRow`.
+- `AccountSupportsServerRules` = selected account is Graph → drives the New
+  classifier and gates server-only affordances.
+- CRUD routes by `SelectedRow.RunsWhere`:
+  - New → open the editor; on Save, `Classify(AccountSupportsServerRules)` →
+    server (GraphServerRuleService) or client (RuleService, + the "saved as a
+    QuickMail rule" dialog), or block on conflict. (This is where Phase 3 lands.)
+  - Edit/Delete/Enable-Disable → the matching service for the row's kind.
+  - Move (reorder) → **server rows only** (client rules have no ordering); gate
+    Move for client rows the way read-only rows are gated.
+
+### Window
+- Retire the two `Border` sections; one account picker (first focusable control,
+  first F6 stop) + one list + one button row (New/Edit/Delete/Enable-Disable/
+  Move Up/Move Down) + the detail pane.
+- Editor is a **single** F6 region (resolves Kelly's review item 4 for the
+  merged world).
+- **One** status-announcement mechanism (resolves Kelly's item 3): keep the
+  focusable status line for F6 re-read, drive updates through a single path — do
+  not pair `LiveSetting="Polite"` with an explicit `Announce` on the same text.
+  Confirm by listening once the unified line exists.
+- Retire the cross-labeled client "New Rule" / server "New"; the client
+  New-Rule focus bug disappears with the single New button.
+
+### Migration / base
+- Depends on #364's per-account client-rule scoping. Land order stays: #364 →
+  retarget #367 to `main` (no rebase). Main's address-book work touched
+  MainViewModel/MainWindow — expect conflicts to resolve at retarget.
+- Keep everything behind the flag; the unified list ships only when §20 is
+  complete and the flag flips.

@@ -451,9 +451,6 @@ public partial class ServerRuleEditorViewModel : ObservableObject
                   .ToList();
 }
 
-/// <summary>Where a rule executes: on the Microsoft 365 server, or inside QuickMail.</summary>
-public enum RuleRunsWhere { Server, Client }
-
 /// <summary>
 /// Result of classifying a rule (spec §20.3). Exactly one of these holds: <see cref="Kind"/> is
 /// Server; <see cref="Kind"/> is Client with a <see cref="ClientReason"/> for the save dialog; or
