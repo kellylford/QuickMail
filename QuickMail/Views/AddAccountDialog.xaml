@@ -19,7 +19,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
     </Window.Resources>
 
-    <Grid Margin="16">
+    <Grid Margin="16" GotKeyboardFocus="OnFieldFocused">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
@@ -51,7 +51,6 @@
                     <Label x:Name="LblPassword" Content="Pass_word:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,10,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                                 AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
                                  TabIndex="2"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
 
@@ -83,30 +82,28 @@
                 <TextBox x:Name="AccountNameBox"
                          Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         AutomationProperties.HelpText="What this account is called inside QuickMail. Leave blank to use your email address."
                          TabIndex="3"/>
 
                 <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
                 <TextBox x:Name="DisplayNameBox"
                          Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                         AutomationProperties.HelpText="The name recipients see on messages you send"
                          TabIndex="4"/>
 
                 <!-- Sync opt-ins stay on the main surface: they must be checked BEFORE sign-in so the
                      permission is part of the same consent (#256, #282). -->
-                <CheckBox Content="Sync _contacts from this account"
+                <CheckBox x:Name="SyncContactsCheckBox"
+                          Content="Sync _contacts from this account"
                           Visibility="{Binding ShowContactSyncOption, Converter={StaticResource BoolToVisibility}}"
                           IsChecked="{Binding SyncContacts, Mode=TwoWay}"
                           AutomationProperties.Name="Sync contacts from this account"
-                          AutomationProperties.HelpText="Check this before signing in to also grant read-only permission to read your contacts into the address book."
                           Margin="0,12,0,0" TabIndex="5"/>
 
-                <CheckBox Content="Sync ca_lendar from this account"
+                <CheckBox x:Name="SyncCalendarCheckBox"
+                          Content="Sync ca_lendar from this account"
                           Visibility="{Binding ShowCalendarSyncOption, Converter={StaticResource BoolToVisibility}}"
                           IsChecked="{Binding SyncCalendar, Mode=TwoWay}"
                           AutomationProperties.Name="Sync calendar from this account"
-                          AutomationProperties.HelpText="Show this account's calendar in the Calendar view. For Microsoft, grants calendar permission when you sign in; for iCloud, uses your app-specific password."
                           Margin="0,6,0,0" TabIndex="6"/>
 
                 <!-- OAuth sign-in stays on the main surface too: for an OAuth provider this is the
@@ -223,7 +220,6 @@
                         <TextBox x:Name="SignatureBox"
                                  Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblSignature}"
-                                 AutomationProperties.HelpText="This text is automatically added to the end of new messages, replies, and forwards"
                                  AcceptsReturn="True"
                                  TextWrapping="Wrap"
                                  MinHeight="60"

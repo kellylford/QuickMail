@@ -55,6 +55,33 @@ public partial class AccountManagerDialog : Window
             MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
+    /// <summary>
+    /// Speaks a field's usage hint on focus. Not AutomationProperties.HelpText: that is read by the
+    /// screen reader directly and so ignores the user's announcement preferences, where
+    /// AccessibilityHelper.Announce respects AnnounceHints.
+    /// </summary>
+    private void OnFieldFocused(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var hint = HintFor(e.NewFocus);
+        if (hint is not null)
+            AccessibilityHelper.Announce(this, hint, category: AnnouncementCategory.Hint);
+    }
+
+    private string? HintFor(IInputElement? focused)
+    {
+        if (ReferenceEquals(focused, AccountNameBox))
+            return "Leave blank to use your email address.";
+        if (ReferenceEquals(focused, PasswordBox))
+            return "Stored in Windows Credential Manager.";
+        if (ReferenceEquals(focused, SyncContactsCheckBox))
+            return "Pulls this account's contacts into the address book. Enabling asks for a one-time read-only permission.";
+        if (ReferenceEquals(focused, SyncCalendarCheckBox))
+            return "Shows this account's calendar in the Calendar view.";
+        if (ReferenceEquals(focused, SignatureBox))
+            return "Added to the end of new messages, replies, and forwards.";
+        return null;
+    }
+
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         if (_vm.Accounts.Count == 0)

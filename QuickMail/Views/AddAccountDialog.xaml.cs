@@ -95,6 +95,39 @@ public partial class AddAccountDialog : Window
         }), System.Windows.Threading.DispatcherPriority.Input);
     }
 
+    /// <summary>
+    /// Speaks a field's usage hint when it takes keyboard focus.
+    ///
+    /// These belong here rather than in AutomationProperties.HelpText. HelpText is read by the
+    /// screen reader directly, so it ignores the user's announcement preferences entirely;
+    /// AccessibilityHelper.Announce routes through AnnounceHints, so a user who has turned hints off
+    /// stops hearing them. Same rule as AutomationProperties.Name — instructions are announcements,
+    /// not labels.
+    /// </summary>
+    private void OnFieldFocused(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        var hint = HintFor(e.NewFocus);
+        if (hint is not null)
+            AccessibilityHelper.Announce(this, hint, category: AnnouncementCategory.Hint);
+    }
+
+    private string? HintFor(IInputElement? focused)
+    {
+        if (ReferenceEquals(focused, AccountNameBox))
+            return "Leave blank to use your email address.";
+        if (ReferenceEquals(focused, DisplayNameBox))
+            return "The name recipients see on messages you send.";
+        if (ReferenceEquals(focused, PasswordBox))
+            return "Stored in Windows Credential Manager.";
+        if (ReferenceEquals(focused, SyncContactsCheckBox))
+            return "Check this before signing in, so reading your contacts is part of the same permission.";
+        if (ReferenceEquals(focused, SyncCalendarCheckBox))
+            return "Shows this account's calendar in the Calendar view.";
+        if (ReferenceEquals(focused, SignatureBox))
+            return "Added to the end of new messages, replies, and forwards.";
+        return null;
+    }
+
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {
         // Land on the Provider picker: it is the choice that fills in everything below it, so it

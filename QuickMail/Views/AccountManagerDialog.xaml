@@ -19,7 +19,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
     </Window.Resources>
 
-    <Grid Margin="10">
+    <Grid Margin="10" GotKeyboardFocus="OnFieldFocused">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="180" MinWidth="120"/>
             <ColumnDefinition Width="*"/>
@@ -117,7 +117,6 @@
                     <Label x:Name="LblPassword" Content="Pass_word:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,8,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                                 AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
                                  TabIndex="3"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
 
@@ -160,11 +159,11 @@
                 <StackPanel Visibility="{Binding CanSyncContacts, Converter={StaticResource BoolToVisibility}}">
                     <Separator Margin="0,12,0,6"/>
                     <TextBlock Text="Contacts" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                    <CheckBox Content="Sync _contacts from this account"
+                    <CheckBox x:Name="SyncContactsCheckBox"
+                              Content="Sync _contacts from this account"
                               IsChecked="{Binding SyncContacts}"
                               Click="SyncContactsCheckBox_Click"
                               AutomationProperties.Name="Sync contacts from this account"
-                              AutomationProperties.HelpText="Pulls this account's contacts and the people you've emailed into the address book. Enabling asks for a one-time read-only permission."
                               Margin="0,0,0,4" TabIndex="6"/>
                 </StackPanel>
 
@@ -172,11 +171,11 @@
                 <StackPanel Visibility="{Binding CanSyncCalendar, Converter={StaticResource BoolToVisibility}}">
                     <Separator Margin="0,12,0,6"/>
                     <TextBlock Text="Calendar" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                    <CheckBox Content="Sync ca_lendar from this account"
+                    <CheckBox x:Name="SyncCalendarCheckBox"
+                              Content="Sync ca_lendar from this account"
                               IsChecked="{Binding SyncCalendar}"
                               Click="SyncCalendarCheckBox_Click"
                               AutomationProperties.Name="Sync calendar from this account"
-                              AutomationProperties.HelpText="Shows this account's calendar in the Calendar view. Microsoft asks for a one-time permission; iCloud uses your app-specific password."
                               Margin="0,0,0,4" TabIndex="7"/>
                 </StackPanel>
 
@@ -267,7 +266,6 @@
                         <TextBox x:Name="SignatureBox"
                                  Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblSignature}"
-                                 AutomationProperties.HelpText="This text is automatically added to the end of new messages, replies, and forwards"
                                  AcceptsReturn="True"
                                  TextWrapping="Wrap"
                                  MinHeight="60"
