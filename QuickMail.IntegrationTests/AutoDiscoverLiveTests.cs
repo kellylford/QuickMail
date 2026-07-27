@@ -56,8 +56,7 @@ public class AutoDiscoverLiveTests
         Assert.Equal(DiscoverySource.LocalCatalog, result!.Source);
     }
 
-    // A domain with no mail service and no Microsoft tenant must still come back empty, or the
-    // "appears to be Microsoft 365" suggestion would be worthless.
+    // A domain with no mail service must come back empty, or the detection is worthless.
     [Fact]
     [Trait("Category", "LiveDiscovery")]
     public async Task ADomainWithNoMailServiceReturnsNothing()
@@ -66,6 +65,39 @@ public class AutoDiscoverLiveTests
         using var svc = NewService();
 
         Assert.Null(await svc.DiscoverAsync("discover@wikipedia.org", CancellationToken.None));
+    }
+
+    // The regression that motivated switching from "does this domain have a Microsoft tenant" to
+    // "where does this domain's mail actually go". theideaplace.net kept its Entra ID tenant after
+    // its mail moved off Exchange Online, so the tenant question answered yes, Microsoft's servers
+    // were filled in, and the real password went to smtp-mail.outlook.com and came back 535.
+    // Its MX points at the domain itself, so the mail-hosting question gets it right.
+    [Fact]
+    [Trait("Category", "LiveDiscovery")]
+    public async Task ADomainThatLeftExchangeOnlineIsNotClaimedByMicrosoft()
+    {
+        Assert.SkipUnless(Enabled, "Set QUICKMAIL_LIVE_DISCOVERY=1 to run live discovery checks.");
+        using var svc = NewService();
+
+        var result = await svc.DiscoverAsync("discover@theideaplace.net", CancellationToken.None);
+
+        Assert.True(result is null || result.ProviderId != ProviderCatalog.MicrosoftId,
+            $"theideaplace.net was claimed by {result?.ProviderId} from {result?.Source}");
+    }
+
+    // A company that uses Microsoft 365 internally while running its own mail is the same class of
+    // false positive, and the one most likely to hit other users.
+    [Fact]
+    [Trait("Category", "LiveDiscovery")]
+    public async Task ATenantWhoseMailIsElsewhereIsNotClaimedByMicrosoft()
+    {
+        Assert.SkipUnless(Enabled, "Set QUICKMAIL_LIVE_DISCOVERY=1 to run live discovery checks.");
+        using var svc = NewService();
+
+        var result = await svc.DiscoverAsync("discover@fastmail.com", CancellationToken.None);
+
+        Assert.True(result is null || result.ProviderId != ProviderCatalog.MicrosoftId,
+            $"fastmail.com was claimed by {result?.ProviderId} from {result?.Source}");
     }
 
     [Fact]

@@ -268,8 +268,13 @@ public class AutoDiscoverServiceTests
         var svc = Build(handler);
 
         Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
-        // Bounded: 2 endpoints x (1 + MaxRedirects) plus the single ISPDB chain — nowhere near unbounded.
-        Assert.True(handler.Requests.Count < 20, $"unbounded redirect chase: {handler.Requests.Count} requests");
+
+        // Bounded, which is the point — a redirect loop must terminate rather than chase forever.
+        // The ceiling is (number of request sites) x (1 + MaxRedirects): ISPDB, two Autodiscover
+        // endpoints, and the MX and CNAME lookups, so 5 x 4.
+        const int ceiling = 5 * 4;
+        Assert.True(handler.Requests.Count <= ceiling,
+            $"unbounded redirect chase: {handler.Requests.Count} requests (ceiling {ceiling})");
     }
 
     // ── Tier 3: Exchange Autodiscover ────────────────────────────────────────────────
@@ -368,103 +373,146 @@ public class AutoDiscoverServiceTests
         Assert.Contains(handler.Requests, r => r.RequestUri!.Host == "contoso.com");
     }
 
-    // ── Tier 4: Microsoft sign-in realm ──────────────────────────────────────────────
+    // ── Tier 4: where DNS says the domain's mail is delivered ───────────────────────
 
-    private static string Realm(string nameSpaceType, string domainName) =>
-        $$"""{"State":4,"NameSpaceType":"{{nameSpaceType}}","DomainName":"{{domainName}}"}""";
+    private static string Dns(int type, params string[] data) =>
+        "{\"Status\":0,\"Answer\":[" +
+        string.Join(",", data.Select(d => $"{{\"name\":\"x\",\"type\":{type},\"data\":\"{d}\"}}")) +
+        "]}";
 
-    [Theory]
-    [InlineData("Managed")]
-    [InlineData("Federated")]   // an ADFS tenant is still Microsoft 365
-    public void ATenantOnItsOwnDomainIsIdentifiedAsMicrosoft(string nameSpaceType)
+    private static string MxJson(params string[] hosts) =>
+        Dns(15, hosts.Select(h => "10 " + h + ".").ToArray());
+
+    private static string CnameJson(string target) => Dns(5, target + ".");
+
+    private const string NoAnswer = """{"Status":3}""";
+
+    /// <summary>Routes ISPDB and Autodiscover to misses, and DNS to whatever the test supplies.</summary>
+    private static RecordingHandler DnsOnly(string? mx, string? cname = null)
     {
-        var parsed = AutoDiscoverService.ParseMicrosoftRealm(
-            Realm(nameSpaceType, "contoso.com"), "contoso.com", new ProviderCatalog());
-
-        Assert.NotNull(parsed);
-        Assert.Equal(ProviderCatalog.MicrosoftId, parsed!.ProviderId);
-        Assert.Equal(DiscoverySource.MicrosoftRealm, parsed.Source);
+        var handler = new RecordingHandler();
+        handler.Respond(req =>
+        {
+            var uri = req.RequestUri!;
+            if (uri.Host != "cloudflare-dns.com") return NotFound();
+            var query = uri.Query;
+            if (query.Contains("type=15", StringComparison.Ordinal)) return Ok(mx ?? NoAnswer);
+            if (query.Contains("type=5", StringComparison.Ordinal)) return Ok(cname ?? NoAnswer);
+            return Ok(NoAnswer);
+        });
+        return handler;
     }
 
-    // The trap: gmail.com and yahoo.com both answer "Federated" — but with DomainName "live.com",
-    // because they are being handed to the consumer Microsoft Account service, not to a tenant of
-    // their own. Matching on NameSpaceType alone would call every Gmail address Microsoft 365.
-    [Theory]
-    [InlineData("gmail.com", "Federated", "live.com")]
-    [InlineData("yahoo.com", "Federated", "live.com")]
-    public void AConsumerPassthroughIsNotTreatedAsATenant(string domain, string ns, string domainName)
-        => Assert.Null(AutoDiscoverService.ParseMicrosoftRealm(
-            Realm(ns, domainName), domain, new ProviderCatalog()));
-
     [Fact]
-    public void ADomainWithNoTenantIsRejected()
-        => Assert.Null(AutoDiscoverService.ParseMicrosoftRealm(
-            """{"State":4,"NameSpaceType":"Unknown"}""", "wikipedia.org", new ProviderCatalog()));
-
-    [Fact]
-    public void RealmJsonThatIsNotAnObjectIsRejected()
-        => Assert.Null(AutoDiscoverService.ParseMicrosoftRealm("[]", "contoso.com", new ProviderCatalog()));
-
-    [Fact]
-    public async Task MalformedRealmJsonSurfacesAsNotFoundNotAsAThrow()
+    public async Task AnMxUnderMicrosoftsMailProtectionSuffixIdentifiesMicrosoft()
     {
-        // What matters is the caller's experience: the dialog must reach "no settings found" and
-        // open manual entry, never see an exception escape.
-        var handler = new RecordingHandler();
-        handler.Respond(req => req.RequestUri!.Host == "login.microsoftonline.com"
-            ? Ok("not json at all")
-            : NotFound());
-        var svc = Build(handler);
+        var svc = Build(DnsOnly(MxJson("contoso-com.mail.protection.outlook.com")));
+
+        var result = await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
+
+        Assert.Equal(DiscoverySource.DnsMailHost, result!.Source);
+        Assert.Equal(ProviderCatalog.MicrosoftId, result.ProviderId);
+    }
+
+    // The regression that started this: a domain keeps its Microsoft tenant after its mail moves
+    // away. Asking "does this domain have a tenant" said yes and filled in Microsoft's servers, so
+    // the user's real password went to smtp-mail.outlook.com and came back 535. Asking where the mail
+    // is actually delivered gets it right.
+    [Theory]
+    [InlineData("theideaplace.net")]          // mail delivered to the domain itself
+    [InlineData("in1-smtp.messagingengine.com")]
+    [InlineData("mx.some-host.example")]
+    public async Task ADomainWhoseMailGoesElsewhereIsNotClaimedByMicrosoft(string mxHost)
+    {
+        var svc = Build(DnsOnly(MxJson(mxHost)));
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+    }
+
+    // Organisations commonly front Exchange Online with a filtering gateway, which replaces the MX
+    // while the mailboxes stay in Microsoft 365. The autodiscover CNAME still gives it away.
+    [Fact]
+    public async Task AMicrosoftAutodiscoverCnameIdentifiesMicrosoftEvenBehindAGatewayMx()
+    {
+        var svc = Build(DnsOnly(MxJson("mx1.filtering-gateway.example"),
+                                CnameJson("autodiscover.outlook.com")));
+
+        var result = await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
+
+        Assert.Equal(ProviderCatalog.MicrosoftId, result!.ProviderId);
+    }
+
+    [Theory]
+    [InlineData("aspmx.l.google.com")]
+    [InlineData("alt1.aspmx.l.google.com")]
+    [InlineData("gmail-smtp-in.l.google.com")]
+    public async Task AGoogleWorkspaceMxIdentifiesGmail(string mxHost)
+    {
+        var svc = Build(DnsOnly(MxJson(mxHost)));
+
+        var result = await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
+
+        Assert.Equal(ProviderCatalog.GmailId, result!.ProviderId);
+        Assert.Equal("imap.gmail.com", result.ImapHost);
+    }
+
+    [Fact]
+    public async Task NoMxAndNoCnameFindsNothing()
+    {
+        var svc = Build(DnsOnly(mx: null));
 
         Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
     }
 
     [Fact]
-    public async Task TheRealmTierOnlyRunsAfterTheOthersHaveMissed()
+    public async Task TheDnsTierSendsTheDomainButNotTheAddress()
     {
-        var handler = new RecordingHandler();
-        handler.Respond(req => req.RequestUri!.Host == "login.microsoftonline.com"
-            ? Ok(Realm("Managed", "contoso.com"))
-            : NotFound());
-        var svc = Build(handler);
-
-        var result = await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
-
-        Assert.Equal(DiscoverySource.MicrosoftRealm, result!.Source);
-        Assert.Equal(ProviderCatalog.MicrosoftId, result.ProviderId);
-
-        // ISPDB and both Autodiscover endpoints were tried first.
-        Assert.Contains(handler.Requests, r => r.RequestUri!.Host.Contains("thunderbird", StringComparison.Ordinal));
-        Assert.Contains(handler.Requests, r => r.RequestUri!.Host == "autodiscover.contoso.com");
-    }
-
-    [Fact]
-    public async Task TheRealmTierSendsTheDomainButNotTheAddress()
-    {
-        var handler = new RecordingHandler();
-        handler.Respond(req => req.RequestUri!.Host == "login.microsoftonline.com"
-            ? Ok(Realm("Managed", "contoso.com"))
-            : NotFound());
+        var handler = DnsOnly(MxJson("contoso-com.mail.protection.outlook.com"));
         var svc = Build(handler);
 
         await svc.DiscoverAsync("kelly.private@contoso.com", CancellationToken.None);
 
-        var realmUrl = handler.Requests.Single(r => r.RequestUri!.Host == "login.microsoftonline.com")
-                              .RequestUri!.ToString();
-        Assert.Contains("contoso.com", realmUrl, StringComparison.Ordinal);
-        Assert.DoesNotContain("kelly.private", realmUrl, StringComparison.OrdinalIgnoreCase);
+        foreach (var url in handler.Requests.Select(r => r.RequestUri!.ToString()))
+            Assert.DoesNotContain("kelly.private", url, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(handler.Requests, r => r.RequestUri!.Query.Contains("contoso.com", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task TheRealmTierIsSkippedWhenOnlineDiscoveryIsOff()
+    public async Task TheDnsTierIsSkippedWhenOnlineDiscoveryIsOff()
     {
-        var handler = new RecordingHandler();
-        handler.Respond(_ => Ok(Realm("Managed", "contoso.com")));
+        var handler = DnsOnly(MxJson("contoso-com.mail.protection.outlook.com"));
         var svc = Build(handler, autoDiscoverOnline: false);
 
         Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
         Assert.Empty(handler.Requests);
     }
+
+    [Fact]
+    public async Task MalformedDnsJsonSurfacesAsNotFoundNotAsAThrow()
+    {
+        var handler = new RecordingHandler();
+        handler.Respond(req => req.RequestUri!.Host == "cloudflare-dns.com" ? Ok("not json") : NotFound());
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(15, "10 mail.example.com.", "mail.example.com")]
+    [InlineData(15, "0 example.com.", "example.com")]
+    [InlineData(5, "autodiscover.outlook.com.", "autodiscover.outlook.com")]
+    public void DnsAnswerDataIsReducedToABareHost(int type, string data, string expected)
+    {
+        var parsed = AutoDiscoverService.ParseDnsAnswers(Dns(type, data), type);
+
+        Assert.Equal([expected], parsed);
+    }
+
+    [Fact]
+    public void DnsAnswersOfADifferentTypeAreIgnored()
+        => Assert.Empty(AutoDiscoverService.ParseDnsAnswers(Dns(1, "1.2.3.4"), DnsTypeMxForTest));
+
+    private const int DnsTypeMxForTest = 15;
 
     // ── Failure behavior ─────────────────────────────────────────────────────────────
 

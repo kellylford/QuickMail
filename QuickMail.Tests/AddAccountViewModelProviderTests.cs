@@ -270,12 +270,12 @@ public class AddAccountViewModelProviderTests
     [Fact]
     public async Task ADiscoveredMicrosoftTenantEndsUpOnGraph()
     {
-        // The reported path end to end: an M365 custom domain found by the realm tier must arrive at
+        // The reported path end to end: an M365 custom domain identified from DNS must arrive at
         // Graph, not at the IMAP backend that produces the admin-consent error.
         var ms = Catalog.ById(ProviderCatalog.MicrosoftId)!;
         var discover = new StubAutoDiscover(new DiscoveredSettings(
             ms.ImapHost, ms.ImapPort, ms.ImapUseSsl, ms.SmtpHost, ms.SmtpPort, ms.SmtpUseSsl,
-            ms.Id, "icanbrew.com", DiscoverySource.MicrosoftRealm));
+            ms.Id, "icanbrew.com", DiscoverySource.DnsMailHost));
         var vm = NewVm(discover);
         vm.Username = "kelly@icanbrew.com";
 

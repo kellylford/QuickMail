@@ -19,10 +19,11 @@ namespace QuickMail.Services;
 /// 2. Mozilla's autoconfig database (the one Thunderbird uses) — only the DOMAIN is sent.
 /// 3. The domain's own Exchange Autodiscover endpoint — the full address is sent, to that domain's
 ///    own server, exactly as Outlook does.
-/// 4. Microsoft's sign-in realm lookup — only the DOMAIN is sent, and the result is a suggestion
-///    rather than a configuration. Most Microsoft 365 customers use their own domain and publish no
-///    Autodiscover record QuickMail can reach, so without this tier they fall all the way through to
-///    "enter your IMAP host" — for an account that has no IMAP host to enter, only a sign-in.
+/// 4. The domain's public DNS — MX, and the autodiscover CNAME — over DNS-over-HTTPS, which says
+///    where the domain's mail is actually delivered. Only the DOMAIN is sent. Most Microsoft 365 and
+///    Google Workspace customers use their own domain and publish nothing tiers 2-3 can read, so
+///    without this they fall through to "enter your IMAP host" — for a mailbox whose only way in is
+///    a sign-in.
 ///
 /// Tiers 2-4 are skipped entirely when <see cref="ConfigModel.AutoDiscoverOnline"/> is off.
 /// A failure at any tier falls through to the next; exhausting all of them returns null rather than
@@ -170,72 +171,127 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
             .ConfigureAwait(false);
         if (exchange is not null) return exchange;
 
-        // Tier 4 — ask Microsoft whether the domain is a work-or-school tenant. Most Microsoft 365
-        // customers use their own domain and publish no Autodiscover record QuickMail can reach, so
-        // tiers 1-3 all miss them and the user is left staring at a demand for an IMAP host they
-        // have never been told. This tier is what turns that dead end back into "sign in".
-        var microsoft = await TryTierAsync(
-            () => QueryMicrosoftRealmAsync(domain, overall.Token), "Microsoft realm", domain)
+        // Tier 4 — ask the domain's own DNS where its mail is delivered. Most Microsoft 365 and
+        // Google Workspace customers use their own domain and publish no autoconfig or Autodiscover
+        // record QuickMail can reach, so tiers 1-3 all miss them and the user is left staring at a
+        // demand for an IMAP host that, for an OAuth mailbox, does not exist.
+        var mailHost = await TryTierAsync(
+            () => QueryMailHostDnsAsync(domain, overall.Token), "DNS mail host", domain)
             .ConfigureAwait(false);
-        if (microsoft is not null) return microsoft;
+        if (mailHost is not null) return mailHost;
 
         LogService.Debug($"AutoDiscover: no settings found for {domain}.");
         return null;
     }
 
-    // ── Tier 4: Microsoft sign-in realm ──────────────────────────────────────────────
-
-    private const string RealmUrlPrefix = "https://login.microsoftonline.com/getuserrealm.srf?login=";
+    // ── Tier 4: where the domain's DNS says its mail is delivered ────────────────────
 
     /// <summary>
-    /// Local part used for the realm query. The answer depends only on the domain, so sending a
-    /// fixed placeholder keeps the user's actual address off the wire — the same privacy bar as the
-    /// ISPDB tier, rather than the Autodiscover tier's.
+    /// DNS-over-HTTPS resolver. Used instead of a DNS library so this needs no new dependency, and
+    /// over HTTPS so the query is not readable on the path. Only the domain is sent.
     /// </summary>
-    private const string RealmProbeLocalPart = "discover";
+    private const string DohUrlPrefix = "https://cloudflare-dns.com/dns-query?name=";
 
-    private async Task<DiscoveredSettings?> QueryMicrosoftRealmAsync(string domain, CancellationToken ct)
+    private const int DnsTypeCname = 5;
+    private const int DnsTypeMx = 15;
+
+    /// <summary>Exchange Online delivers to a host under this suffix.</summary>
+    private const string MicrosoftMailHostSuffix = "mail.protection.outlook.com";
+
+    /// <summary>The standard Microsoft 365 autodiscover CNAME target.</summary>
+    private const string MicrosoftAutodiscoverTarget = "autodiscover.outlook.com";
+
+    private static readonly string[] GoogleMailHostSuffixes =
+        ["aspmx.l.google.com", "googlemail.com", "google.com"];
+
+    /// <summary>
+    /// Identifies the mail host from public DNS: an MX under Microsoft's mail-protection suffix, or
+    /// an autodiscover CNAME pointing at Microsoft. Either is a statement about where this domain's
+    /// mail actually lives, which is the question that matters and the one the previous
+    /// tenant-existence check got wrong.
+    ///
+    /// The CNAME is checked as well as MX because organisations commonly route inbound mail through
+    /// a filtering gateway, which replaces the MX while the mailboxes stay in Exchange Online.
+    /// </summary>
+    private async Task<DiscoveredSettings?> QueryMailHostDnsAsync(string domain, CancellationToken ct)
     {
         using var tier = CancellationTokenSource.CreateLinkedTokenSource(ct);
         tier.CancelAfter(TierTimeout);
 
-        var uri = new Uri($"{RealmUrlPrefix}{Uri.EscapeDataString($"{RealmProbeLocalPart}@{domain}")}&json=1");
-        var json = await SendFollowingHttpsRedirectsAsync(
-            () => new HttpRequestMessage(HttpMethod.Get, uri), uri, tier.Token).ConfigureAwait(false);
+        var mx = await LookupAsync(domain, DnsTypeMx, tier.Token).ConfigureAwait(false);
 
-        return json is null ? null : ParseMicrosoftRealm(json, domain, _catalog);
+        if (MatchesAnySuffix(mx, MicrosoftMailHostSuffix))
+            return FromProvider(ProviderCatalog.MicrosoftId, domain);
+
+        if (MatchesAnySuffix(mx, GoogleMailHostSuffixes))
+            return FromProvider(ProviderCatalog.GmailId, domain);
+
+        // MX said something else (or nothing). A Microsoft autodiscover CNAME still settles it.
+        var cname = await LookupAsync($"autodiscover.{domain}", DnsTypeCname, tier.Token).ConfigureAwait(false);
+        if (MatchesAnySuffix(cname, MicrosoftAutodiscoverTarget))
+            return FromProvider(ProviderCatalog.MicrosoftId, domain);
+
+        return null;
+    }
+
+    private DiscoveredSettings? FromProvider(string providerId, string domain)
+    {
+        var provider = _catalog.ById(providerId);
+        if (provider is null) return null;
+
+        return new DiscoveredSettings(
+            provider.ImapHost, provider.ImapPort, provider.ImapUseSsl,
+            provider.SmtpHost, provider.SmtpPort, provider.SmtpUseSsl,
+            provider.Id, domain, DiscoverySource.DnsMailHost);
+    }
+
+    private async Task<IReadOnlyList<string>> LookupAsync(string name, int type, CancellationToken ct)
+    {
+        var uri = new Uri($"{DohUrlPrefix}{Uri.EscapeDataString(name)}&type={type}");
+        var json = await SendFollowingHttpsRedirectsAsync(
+            () =>
+            {
+                var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                request.Headers.Accept.ParseAdd("application/dns-json");
+                return request;
+            },
+            uri, ct).ConfigureAwait(false);
+
+        return json is null ? [] : ParseDnsAnswers(json, type);
     }
 
     /// <summary>
-    /// Reads a getuserrealm response. Internal so it is testable without HTTP.
-    ///
-    /// Accepts only a "Managed" or "Federated" namespace WHOSE DomainName MATCHES the domain asked
-    /// about. That last condition is what keeps consumer addresses out: gmail.com and yahoo.com both
-    /// answer "Federated", but with DomainName "live.com" — they are being handed to the consumer
-    /// Microsoft Account service, not to a tenant of their own.
+    /// Pulls the record data out of a DNS-over-HTTPS JSON answer. Internal so it is testable without
+    /// a resolver. An MX record's data is "&lt;preference&gt; &lt;host&gt;."; a CNAME's is just the target.
     /// </summary>
-    internal static DiscoveredSettings? ParseMicrosoftRealm(string json, string domain, IProviderCatalog catalog)
+    internal static IReadOnlyList<string> ParseDnsAnswers(string json, int type)
     {
         using var doc = JsonDocument.Parse(json);
-        var root = doc.RootElement;
-        if (root.ValueKind != JsonValueKind.Object) return null;
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) return [];
+        if (!doc.RootElement.TryGetProperty("Answer", out var answers) ||
+            answers.ValueKind != JsonValueKind.Array)
+            return [];
 
-        var nameSpaceType = root.TryGetProperty("NameSpaceType", out var ns) ? ns.GetString() : null;
-        if (!string.Equals(nameSpaceType, "Managed", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(nameSpaceType, "Federated", StringComparison.OrdinalIgnoreCase))
-            return null;
+        var results = new List<string>();
+        foreach (var answer in answers.EnumerateArray())
+        {
+            if (answer.ValueKind != JsonValueKind.Object) continue;
+            if (!answer.TryGetProperty("type", out var t) || t.GetInt32() != type) continue;
+            if (!answer.TryGetProperty("data", out var d) || d.GetString() is not { } data) continue;
 
-        var domainName = root.TryGetProperty("DomainName", out var dn) ? dn.GetString() : null;
-        if (!string.Equals(domainName, domain, StringComparison.OrdinalIgnoreCase)) return null;
-
-        var microsoft = catalog.ById(ProviderCatalog.MicrosoftId);
-        if (microsoft is null) return null;
-
-        return new DiscoveredSettings(
-            microsoft.ImapHost, microsoft.ImapPort, microsoft.ImapUseSsl,
-            microsoft.SmtpHost, microsoft.SmtpPort, microsoft.SmtpUseSsl,
-            microsoft.Id, domain, DiscoverySource.MicrosoftRealm);
+            // "10 in1-smtp.messagingengine.com." -> "in1-smtp.messagingengine.com"
+            var host = data.Trim();
+            var space = host.LastIndexOf(' ');
+            if (space >= 0) host = host[(space + 1)..];
+            results.Add(host.TrimEnd('.'));
+        }
+        return results;
     }
+
+    private static bool MatchesAnySuffix(IReadOnlyList<string> hosts, params string[] suffixes) =>
+        hosts.Any(h => suffixes.Any(s =>
+            h.Equals(s, StringComparison.OrdinalIgnoreCase) ||
+            h.EndsWith("." + s, StringComparison.OrdinalIgnoreCase)));
 
     /// <summary>
     /// Runs one tier, swallowing every failure mode it can produce (DNS, TLS, 404, timeout,

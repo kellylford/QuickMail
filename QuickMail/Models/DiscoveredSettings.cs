@@ -13,13 +13,17 @@ public enum DiscoverySource
     ExchangeAutodiscover,
 
     /// <summary>
-    /// Microsoft's sign-in realm lookup said the domain has a Microsoft work-or-school tenant.
-    /// A suggestion, not a confirmation: the lookup answers "does this domain have an Entra ID
-    /// tenant", which is not quite the same as "this domain's mail is in Exchange Online" — a
-    /// company that runs its own mail but uses Microsoft 365 internally answers yes too. Callers
-    /// must present this tentatively and leave the user an obvious way to overrule it.
+    /// The domain's public DNS says where its mail is actually delivered — an MX host under
+    /// <c>mail.protection.outlook.com</c>, or an <c>autodiscover</c> CNAME to Microsoft.
+    ///
+    /// This deliberately asks about MAIL HOSTING rather than about the organisation. An earlier
+    /// version asked Microsoft's sign-in realm endpoint whether the domain had a tenant, which is a
+    /// different question with a different answer: a domain keeps its Entra ID tenant after its mail
+    /// moves elsewhere, and plenty of companies run their own mail while using Microsoft 365
+    /// internally. Both answered "yes" and got Microsoft's servers filled in, so the user's real
+    /// password was offered to smtp-mail.outlook.com and came back 535.
     /// </summary>
-    MicrosoftRealm,
+    DnsMailHost,
 }
 
 /// <summary>

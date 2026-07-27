@@ -270,17 +270,16 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
                            + "Otherwise enter your IMAP host under Advanced settings.";
                 DiscoveryCompleted?.Invoke(false, StatusText);
             }
-            else if (found.Source == DiscoverySource.MicrosoftRealm && ApplyDiscovered(found))
+            else if (found.Source == DiscoverySource.DnsMailHost && ApplyDiscovered(found))
             {
-                // Deliberately tentative. The realm lookup answers "does this domain have a Microsoft
-                // tenant", which a company running its own mail on Microsoft 365 internally also
-                // answers yes to. Selecting the provider puts Sign in with Microsoft in front of the
-                // user — which is the whole point — without claiming the settings are confirmed.
-                StatusText = $"{domain} appears to be a Microsoft 365 domain. Use Sign in with Microsoft, "
-                           + "or open Advanced settings to enter your own server settings.";
+                // Name the provider its DNS points at, and say what the evidence was — this came from
+                // where the domain delivers its mail, not from anything the user typed.
+                var provider = SelectedProvider?.DisplayName ?? found.DisplayName ?? domain;
+                StatusText = $"{domain} delivers its mail to {provider}, according to its DNS records. "
+                           + "Open Advanced settings if you would rather enter your own servers.";
                 DiscoveryCompleted?.Invoke(true, StatusText);
             }
-            else if (found.Source != DiscoverySource.MicrosoftRealm && ApplyDiscovered(found))
+            else if (found.Source != DiscoverySource.DnsMailHost && ApplyDiscovered(found))
             {
                 var label = string.IsNullOrWhiteSpace(found.DisplayName) ? domain : found.DisplayName;
                 // Name the hosts, not just the provider. These servers are about to receive the

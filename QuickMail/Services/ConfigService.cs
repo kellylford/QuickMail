@@ -405,9 +405,9 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"AutoDiscoverOnline = {(config.AutoDiscoverOnline ? "on" : "off")}");
         sb.AppendLine("# Let Add Account look up server settings on the network for an unrecognized domain.");
-        sb.AppendLine("# Only the domain is sent to Mozilla's autoconfig database and to Microsoft's");
-        sb.AppendLine("# work-or-school domain lookup; the full address is sent only to the domain's own");
-        sb.AppendLine("# Exchange Autodiscover endpoint, as Outlook does.");
+        sb.AppendLine("# Only the domain is sent to Mozilla's autoconfig database and to the DNS-over-HTTPS");
+        sb.AppendLine("# resolver used to read its MX record; the full address is sent only to the domain's");
+        sb.AppendLine("# own Exchange Autodiscover endpoint, as Outlook does.");
         sb.AppendLine("# When off, an unknown domain goes straight to manual entry. Values: on, off.");
         sb.AppendLine();
 
