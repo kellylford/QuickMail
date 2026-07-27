@@ -80,6 +80,39 @@ public class OAuthServiceScopeSelectionTests
         Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
     }
 
+    // ── First-connect (add-account) scopes ──────────────────────────────────
+    // Work/school must request EXPLICIT mail scopes at add-time, NOT `.default`, so the consent
+    // prompt fires on a tenant that hasn't consented yet (`.default` silently returns a partial token
+    // and the mail calls 403 with no prompt). Refresh afterwards still uses `.default`.
+
+    [Fact]
+    public void FirstConnect_WorkSchoolGraphAccount_UsesExplicitScopes_NotDefault()
+    {
+        var account = new AccountModel { BackendKind = BackendKind.MicrosoftGraph, Username = "user@contoso.com" };
+
+        Assert.Same(OAuthService.GraphMailScopesWork, OAuthService.FirstConnectScopesFor(account));
+        // The declared explicit scopes drive consent; `.default` (which doesn't prompt) is not used here.
+        Assert.Contains("https://graph.microsoft.com/Mail.ReadWrite", OAuthService.GraphMailScopesWork);
+        Assert.Contains("https://graph.microsoft.com/Mail.Send", OAuthService.GraphMailScopesWork);
+        Assert.DoesNotContain("https://graph.microsoft.com/.default", OAuthService.GraphMailScopesWork);
+        // Silent refresh still uses `.default`.
+        Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
+    }
+
+    [Fact]
+    public void FirstConnect_PersonalGraphAccount_UsesPersonalExplicitScopes()
+    {
+        var account = new AccountModel { BackendKind = BackendKind.MicrosoftGraph, Username = "me@outlook.com" };
+        Assert.Same(OAuthService.GraphMailScopesPersonal, OAuthService.FirstConnectScopesFor(account));
+    }
+
+    [Fact]
+    public void FirstConnect_ImapAccount_UsesImapScopes()
+    {
+        var account = new AccountModel { BackendKind = BackendKind.ImapSmtp, Username = "user@contoso.com" };
+        Assert.Same(OAuthService.ImapSmtpScopes, OAuthService.FirstConnectScopesFor(account));
+    }
+
     [Fact]
     public void ImapScopes_AreExplicit_NotDefault() // #239
     {

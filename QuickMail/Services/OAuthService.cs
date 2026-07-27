@@ -54,6 +54,23 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/User.Read",
     ];
 
+    // First-connect (add-account) scopes for WORK/SCHOOL Graph accounts. `.default` (used for the
+    // silent refreshes, see DefaultScopesFor) does NOT drive an interactive consent prompt on a
+    // tenant that hasn't consented yet — it silently returns a token with only what's already
+    // granted, so the mail calls then 403 (Authorization_RequestDenied) with no prompt at all. That's
+    // the exact symptom on a brand-new tenant. Requesting the explicit delegated mail scopes at
+    // add-time forces the consent screen, the same reason personal accounts use explicit scopes.
+    // All three are user-consentable and declared, so there's no admin-approval wall for non-admins
+    // and no requested-vs-declared re-prompt loop (#208). MailboxSettings.ReadWrite (server rules) is
+    // deliberately NOT requested here — it's admin-restricted; `.default` picks it up after admin
+    // consent, keeping add-time unblocked for ordinary users.
+    public static readonly string[] GraphMailScopesWork =
+    [
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/Mail.Send",
+        "https://graph.microsoft.com/User.Read",
+    ];
+
     // Read-only contact scopes for contact sync (issue #256). Explicit scopes (not `.default`) so
     // they work for BOTH personal and work/school Microsoft accounts — the same reasoning as the
     // personal-mail scopes above. Requested only when the user opts an account into contact sync.
@@ -109,6 +126,18 @@ public class OAuthService : IOAuthService
         // account hasn't been detected yet (first sign-in, or added before detection shipped).
         var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
         return isPersonal ? GraphMailScopesPersonal : GraphMailScopes;
+    }
+
+    // Scopes for the FIRST interactive sign-in (adding an account). Work/school uses EXPLICIT mail
+    // scopes here — not `.default` — so the consent prompt actually fires on a tenant that hasn't
+    // consented yet (see GraphMailScopesWork). Every silent refresh afterwards uses DefaultScopesFor
+    // (`.default`), which then succeeds against the grant this first consent created.
+    internal static string[] FirstConnectScopesFor(AccountModel account)
+    {
+        if (account.BackendKind != BackendKind.MicrosoftGraph)
+            return ImapSmtpScopes;
+        var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
+        return isPersonal ? GraphMailScopesPersonal : GraphMailScopesWork;
     }
 
     private readonly string _cacheDir;
@@ -243,7 +272,9 @@ public class OAuthService : IOAuthService
     }
 
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
-        => SignInInteractiveAsync(account, DefaultScopesFor(account), ct);
+        // Add-account entry point: use the first-connect scopes so work/school accounts are prompted
+        // to consent (a re-auth from GetAccessTokenAsync passes `.default` explicitly and is unaffected).
+        => SignInInteractiveAsync(account, FirstConnectScopesFor(account), ct);
 
     public async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
     {
