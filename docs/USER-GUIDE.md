@@ -115,10 +115,15 @@ QuickMail tries, in order:
 1. Its built-in list of providers. Instant, offline, and nothing leaves your computer.
 2. Mozilla's public autoconfig database — the one Thunderbird uses. Only the **domain** is sent, never your address.
 3. Your domain's own **Autodiscover** service, the same one Outlook uses. Your address is sent to your own mail provider's server.
+4. Microsoft's sign-in lookup, which reports whether the domain is a Microsoft 365 work or school domain. Only the **domain** is sent.
+
+Step 4 matters for business mail. Most Microsoft 365 customers use their own domain — `you@yourcompany.com` — and publish nothing that steps 2 and 3 can read. Without it, a perfectly ordinary work account ends at "enter your IMAP host", for an account that has no IMAP host to enter: the way in is a browser sign-in. When step 4 recognises your domain, QuickMail selects **Outlook.com / Microsoft 365** and offers **Sign in with Microsoft**.
+
+It says "appears to be" on purpose. The lookup can only tell that a domain belongs to a Microsoft tenant, which is also true of companies that run their own mail and use Microsoft 365 internally. If QuickMail guesses wrong, change the **Provider** back, or open **Advanced settings** and enter your own servers.
 
 When nothing is found, **Advanced settings** opens automatically and focus moves to the **IMAP host** field, so you can type the settings yourself. Anything you type by hand is kept — a later lookup never overwrites it.
 
-To turn off steps 2 and 3, set `AutoDiscoverOnline = off` in `config.ini`. The built-in provider list keeps working either way.
+To turn off steps 2, 3, and 4, set `AutoDiscoverOnline = off` in `config.ini`. The built-in provider list keeps working either way.
 
 ### Other (entering settings yourself)
 

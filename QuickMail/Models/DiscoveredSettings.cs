@@ -11,6 +11,15 @@ public enum DiscoverySource
 
     /// <summary>The domain's own Exchange Autodiscover endpoint.</summary>
     ExchangeAutodiscover,
+
+    /// <summary>
+    /// Microsoft's sign-in realm lookup said the domain has a Microsoft work-or-school tenant.
+    /// A suggestion, not a confirmation: the lookup answers "does this domain have an Entra ID
+    /// tenant", which is not quite the same as "this domain's mail is in Exchange Online" — a
+    /// company that runs its own mail but uses Microsoft 365 internally answers yes too. Callers
+    /// must present this tentatively and leave the user an obvious way to overrule it.
+    /// </summary>
+    MicrosoftRealm,
 }
 
 /// <summary>

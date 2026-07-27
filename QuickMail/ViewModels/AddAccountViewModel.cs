@@ -208,12 +208,25 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
 
             if (found is null)
             {
-                // Never a silent empty state: say what happened and open the fields to be filled in.
+                // Never a silent empty state: say what happened, name the routes that need no server
+                // settings at all, and open the fields to be filled in.
                 IsAdvancedExpanded = true;
-                StatusText = $"No settings found for {domain}. Advanced settings expanded — enter your IMAP host.";
+                StatusText = $"No settings found for {domain}. If this is a work or school Microsoft 365 "
+                           + "account, choose Outlook.com / Microsoft 365 as the provider and sign in. "
+                           + "Otherwise enter your IMAP host under Advanced settings.";
                 DiscoveryCompleted?.Invoke(false, StatusText);
             }
-            else if (ApplyDiscovered(found))
+            else if (found.Source == DiscoverySource.MicrosoftRealm && ApplyDiscovered(found))
+            {
+                // Deliberately tentative. The realm lookup answers "does this domain have a Microsoft
+                // tenant", which a company running its own mail on Microsoft 365 internally also
+                // answers yes to. Selecting the provider puts Sign in with Microsoft in front of the
+                // user — which is the whole point — without claiming the settings are confirmed.
+                StatusText = $"{domain} appears to be a Microsoft 365 domain. Use Sign in with Microsoft, "
+                           + "or open Advanced settings to enter your own server settings.";
+                DiscoveryCompleted?.Invoke(true, StatusText);
+            }
+            else if (found.Source != DiscoverySource.MicrosoftRealm && ApplyDiscovered(found))
             {
                 var label = string.IsNullOrWhiteSpace(found.DisplayName) ? domain : found.DisplayName;
                 // Name the hosts, not just the provider. These servers are about to receive the

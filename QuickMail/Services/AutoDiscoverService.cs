@@ -4,6 +4,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -12,26 +13,34 @@ using QuickMail.Models;
 namespace QuickMail.Services;
 
 /// <summary>
-/// Three-tier settings discovery for an email address.
+/// Four-tier settings discovery for an email address.
 ///
 /// 1. The built-in provider table — offline, instant, nothing leaves the machine.
 /// 2. Mozilla's autoconfig database (the one Thunderbird uses) — only the DOMAIN is sent.
 /// 3. The domain's own Exchange Autodiscover endpoint — the full address is sent, to that domain's
 ///    own server, exactly as Outlook does.
+/// 4. Microsoft's sign-in realm lookup — only the DOMAIN is sent, and the result is a suggestion
+///    rather than a configuration. Most Microsoft 365 customers use their own domain and publish no
+///    Autodiscover record QuickMail can reach, so without this tier they fall all the way through to
+///    "enter your IMAP host" — for an account that has no IMAP host to enter, only a sign-in.
 ///
-/// Tiers 2 and 3 are skipped entirely when <see cref="ConfigModel.AutoDiscoverOnline"/> is off.
-/// A failure at any tier falls through to the next; exhausting all three returns null rather than
+/// Tiers 2-4 are skipped entirely when <see cref="ConfigModel.AutoDiscoverOnline"/> is off.
+/// A failure at any tier falls through to the next; exhausting all of them returns null rather than
 /// throwing, because the caller's job is to surface "not found" and open manual entry.
 /// </summary>
 public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
 {
     private const string IspdbUrlPrefix = "https://autoconfig.thunderbird.net/v1.1/";
 
-    /// <summary>Per-tier budget. Three tiers plus overhead stay inside <see cref="OverallTimeout"/>.</summary>
-    private static readonly TimeSpan TierTimeout = TimeSpan.FromSeconds(5);
+    /// <summary>
+    /// Per-request budget. Kept modest because tier 3 tries two endpoints, so the sum has to leave
+    /// room for tier 4 inside <see cref="OverallTimeout"/>. In practice an absent Autodiscover host
+    /// fails on DNS almost immediately rather than burning its whole budget.
+    /// </summary>
+    private static readonly TimeSpan TierTimeout = TimeSpan.FromSeconds(4);
 
     /// <summary>Ceiling for the whole call, so a slow tier cannot hold the dialog indefinitely.</summary>
-    private static readonly TimeSpan OverallTimeout = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan OverallTimeout = TimeSpan.FromSeconds(15);
 
     private readonly IProviderCatalog _catalog;
     private readonly IConfigService _config;
@@ -161,8 +170,71 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
             .ConfigureAwait(false);
         if (exchange is not null) return exchange;
 
+        // Tier 4 — ask Microsoft whether the domain is a work-or-school tenant. Most Microsoft 365
+        // customers use their own domain and publish no Autodiscover record QuickMail can reach, so
+        // tiers 1-3 all miss them and the user is left staring at a demand for an IMAP host they
+        // have never been told. This tier is what turns that dead end back into "sign in".
+        var microsoft = await TryTierAsync(
+            () => QueryMicrosoftRealmAsync(domain, overall.Token), "Microsoft realm", domain)
+            .ConfigureAwait(false);
+        if (microsoft is not null) return microsoft;
+
         LogService.Debug($"AutoDiscover: no settings found for {domain}.");
         return null;
+    }
+
+    // ── Tier 4: Microsoft sign-in realm ──────────────────────────────────────────────
+
+    private const string RealmUrlPrefix = "https://login.microsoftonline.com/getuserrealm.srf?login=";
+
+    /// <summary>
+    /// Local part used for the realm query. The answer depends only on the domain, so sending a
+    /// fixed placeholder keeps the user's actual address off the wire — the same privacy bar as the
+    /// ISPDB tier, rather than the Autodiscover tier's.
+    /// </summary>
+    private const string RealmProbeLocalPart = "discover";
+
+    private async Task<DiscoveredSettings?> QueryMicrosoftRealmAsync(string domain, CancellationToken ct)
+    {
+        using var tier = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        tier.CancelAfter(TierTimeout);
+
+        var uri = new Uri($"{RealmUrlPrefix}{Uri.EscapeDataString($"{RealmProbeLocalPart}@{domain}")}&json=1");
+        var json = await SendFollowingHttpsRedirectsAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, uri), uri, tier.Token).ConfigureAwait(false);
+
+        return json is null ? null : ParseMicrosoftRealm(json, domain, _catalog);
+    }
+
+    /// <summary>
+    /// Reads a getuserrealm response. Internal so it is testable without HTTP.
+    ///
+    /// Accepts only a "Managed" or "Federated" namespace WHOSE DomainName MATCHES the domain asked
+    /// about. That last condition is what keeps consumer addresses out: gmail.com and yahoo.com both
+    /// answer "Federated", but with DomainName "live.com" — they are being handed to the consumer
+    /// Microsoft Account service, not to a tenant of their own.
+    /// </summary>
+    internal static DiscoveredSettings? ParseMicrosoftRealm(string json, string domain, IProviderCatalog catalog)
+    {
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object) return null;
+
+        var nameSpaceType = root.TryGetProperty("NameSpaceType", out var ns) ? ns.GetString() : null;
+        if (!string.Equals(nameSpaceType, "Managed", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(nameSpaceType, "Federated", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var domainName = root.TryGetProperty("DomainName", out var dn) ? dn.GetString() : null;
+        if (!string.Equals(domainName, domain, StringComparison.OrdinalIgnoreCase)) return null;
+
+        var microsoft = catalog.ById(ProviderCatalog.MicrosoftId);
+        if (microsoft is null) return null;
+
+        return new DiscoveredSettings(
+            microsoft.ImapHost, microsoft.ImapPort, microsoft.ImapUseSsl,
+            microsoft.SmtpHost, microsoft.SmtpPort, microsoft.SmtpUseSsl,
+            microsoft.Id, domain, DiscoverySource.MicrosoftRealm);
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -365,6 +366,104 @@ public class AutoDiscoverServiceTests
         Assert.Equal("mail.contoso.com", result!.ImapHost);
         Assert.Contains(handler.Requests, r => r.RequestUri!.Host == "autodiscover.contoso.com");
         Assert.Contains(handler.Requests, r => r.RequestUri!.Host == "contoso.com");
+    }
+
+    // ── Tier 4: Microsoft sign-in realm ──────────────────────────────────────────────
+
+    private static string Realm(string nameSpaceType, string domainName) =>
+        $$"""{"State":4,"NameSpaceType":"{{nameSpaceType}}","DomainName":"{{domainName}}"}""";
+
+    [Theory]
+    [InlineData("Managed")]
+    [InlineData("Federated")]   // an ADFS tenant is still Microsoft 365
+    public void ATenantOnItsOwnDomainIsIdentifiedAsMicrosoft(string nameSpaceType)
+    {
+        var parsed = AutoDiscoverService.ParseMicrosoftRealm(
+            Realm(nameSpaceType, "contoso.com"), "contoso.com", new ProviderCatalog());
+
+        Assert.NotNull(parsed);
+        Assert.Equal(ProviderCatalog.MicrosoftId, parsed!.ProviderId);
+        Assert.Equal(DiscoverySource.MicrosoftRealm, parsed.Source);
+    }
+
+    // The trap: gmail.com and yahoo.com both answer "Federated" — but with DomainName "live.com",
+    // because they are being handed to the consumer Microsoft Account service, not to a tenant of
+    // their own. Matching on NameSpaceType alone would call every Gmail address Microsoft 365.
+    [Theory]
+    [InlineData("gmail.com", "Federated", "live.com")]
+    [InlineData("yahoo.com", "Federated", "live.com")]
+    public void AConsumerPassthroughIsNotTreatedAsATenant(string domain, string ns, string domainName)
+        => Assert.Null(AutoDiscoverService.ParseMicrosoftRealm(
+            Realm(ns, domainName), domain, new ProviderCatalog()));
+
+    [Fact]
+    public void ADomainWithNoTenantIsRejected()
+        => Assert.Null(AutoDiscoverService.ParseMicrosoftRealm(
+            """{"State":4,"NameSpaceType":"Unknown"}""", "wikipedia.org", new ProviderCatalog()));
+
+    [Fact]
+    public void RealmJsonThatIsNotAnObjectIsRejected()
+        => Assert.Null(AutoDiscoverService.ParseMicrosoftRealm("[]", "contoso.com", new ProviderCatalog()));
+
+    [Fact]
+    public async Task MalformedRealmJsonSurfacesAsNotFoundNotAsAThrow()
+    {
+        // What matters is the caller's experience: the dialog must reach "no settings found" and
+        // open manual entry, never see an exception escape.
+        var handler = new RecordingHandler();
+        handler.Respond(req => req.RequestUri!.Host == "login.microsoftonline.com"
+            ? Ok("not json at all")
+            : NotFound());
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task TheRealmTierOnlyRunsAfterTheOthersHaveMissed()
+    {
+        var handler = new RecordingHandler();
+        handler.Respond(req => req.RequestUri!.Host == "login.microsoftonline.com"
+            ? Ok(Realm("Managed", "contoso.com"))
+            : NotFound());
+        var svc = Build(handler);
+
+        var result = await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
+
+        Assert.Equal(DiscoverySource.MicrosoftRealm, result!.Source);
+        Assert.Equal(ProviderCatalog.MicrosoftId, result.ProviderId);
+
+        // ISPDB and both Autodiscover endpoints were tried first.
+        Assert.Contains(handler.Requests, r => r.RequestUri!.Host.Contains("thunderbird", StringComparison.Ordinal));
+        Assert.Contains(handler.Requests, r => r.RequestUri!.Host == "autodiscover.contoso.com");
+    }
+
+    [Fact]
+    public async Task TheRealmTierSendsTheDomainButNotTheAddress()
+    {
+        var handler = new RecordingHandler();
+        handler.Respond(req => req.RequestUri!.Host == "login.microsoftonline.com"
+            ? Ok(Realm("Managed", "contoso.com"))
+            : NotFound());
+        var svc = Build(handler);
+
+        await svc.DiscoverAsync("kelly.private@contoso.com", CancellationToken.None);
+
+        var realmUrl = handler.Requests.Single(r => r.RequestUri!.Host == "login.microsoftonline.com")
+                              .RequestUri!.ToString();
+        Assert.Contains("contoso.com", realmUrl, StringComparison.Ordinal);
+        Assert.DoesNotContain("kelly.private", realmUrl, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task TheRealmTierIsSkippedWhenOnlineDiscoveryIsOff()
+    {
+        var handler = new RecordingHandler();
+        handler.Respond(_ => Ok(Realm("Managed", "contoso.com")));
+        var svc = Build(handler, autoDiscoverOnline: false);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+        Assert.Empty(handler.Requests);
     }
 
     // ── Failure behavior ─────────────────────────────────────────────────────────────

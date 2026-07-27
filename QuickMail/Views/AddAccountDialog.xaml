@@ -129,8 +129,7 @@
                           Header="Ad_vanced settings"
                           IsExpanded="{Binding IsAdvancedExpanded, Mode=TwoWay}"
                           AutomationProperties.Name="Advanced settings"
-                          Margin="0,14,0,0"
-                          TabIndex="9">
+                          Margin="0,14,0,0">
                     <StackPanel Margin="0,8,0,0">
 
                         <!-- Connection method: only Microsoft has more than one, so only Microsoft is
@@ -144,7 +143,7 @@
                                       AutomationProperties.LabeledBy="{Binding ElementName=LblBackend}"
                                       AutomationProperties.Name="Connection method"
                                       Margin="0,0,0,8"
-                                      TabIndex="10"/>
+                                     />
                         </StackPanel>
 
                         <!-- Authentication — hidden for Microsoft 365 (Graph), which is always OAuth. -->
@@ -154,7 +153,7 @@
                                       SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
                                       AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
                                       AutomationProperties.Name="Authentication"
-                                      TabIndex="11">
+                                     >
                                 <ComboBoxItem>Password</ComboBoxItem>
                                 <ComboBoxItem>Microsoft OAuth2 (Outlook.com)</ComboBoxItem>
                                 <ComboBoxItem Visibility="{Binding ShowGoogleAuthOption, Converter={StaticResource BoolToVisibility}}">Google OAuth (Gmail)</ComboBoxItem>
@@ -172,23 +171,23 @@
                             <TextBox x:Name="ImapHostBox"
                                      Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
-                                     TabIndex="12"/>
+                                    />
 
                             <Label x:Name="LblImapPort" Content="IMAP _port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
                             <TextBox x:Name="ImapPortBox"
                                      Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
-                                     TabIndex="13"/>
+                                    />
 
                             <CheckBox Content="Use _SSL (port 993)"
                                       IsChecked="{Binding ImapUseSsl}"
                                       AutomationProperties.Name="IMAP use SSL"
-                                      Margin="0,6" TabIndex="14"/>
+                                      Margin="0,6"/>
 
                             <CheckBox Content="Accept _invalid certificates"
                                       IsChecked="{Binding ImapAcceptInvalidCert}"
                                       AutomationProperties.Name="IMAP accept invalid SSL certificates"
-                                      Margin="0,0,0,6" TabIndex="15"/>
+                                      Margin="0,0,0,6"/>
 
                             <Separator Margin="0,6"/>
 
@@ -198,23 +197,23 @@
                             <TextBox x:Name="SmtpHostBox"
                                      Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpHost}"
-                                     TabIndex="16"/>
+                                    />
 
                             <Label x:Name="LblSmtpPort" Content="SMTP po_rt:" Target="{Binding ElementName=SmtpPortBox}" Padding="0" Margin="0,6,0,2"/>
                             <TextBox x:Name="SmtpPortBox"
                                      Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
-                                     TabIndex="17"/>
+                                    />
 
                             <CheckBox Content="Implicit SSL on connect (port _465; uncheck for STARTTLS on port 587)"
                                       IsChecked="{Binding SmtpUseSsl}"
                                       AutomationProperties.Name="SMTP implicit SSL on connect"
-                                      Margin="0,6" TabIndex="18"/>
+                                      Margin="0,6"/>
 
                             <CheckBox Content="Accept invalid certi_ficates"
                                       IsChecked="{Binding SmtpAcceptInvalidCert}"
                                       AutomationProperties.Name="SMTP accept invalid SSL certificates"
-                                      Margin="0,0,0,6" TabIndex="19"/>
+                                      Margin="0,0,0,6"/>
                         </StackPanel>
 
                         <Separator Margin="0,6"/>
@@ -229,7 +228,7 @@
                                  TextWrapping="Wrap"
                                  MinHeight="60"
                                  VerticalScrollBarVisibility="Auto"
-                                 TabIndex="20"/>
+                                />
                     </StackPanel>
                 </Expander>
 
