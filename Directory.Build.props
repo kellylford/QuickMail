@@ -1,0 +1,30 @@
+<Project>
+
+  <!--
+    Keep bin/ and obj/ out of every project's default source globs.
+
+    This has to live here rather than in a .csproj: the SDK computes its default Compile items in
+    props that are imported at the TOP of an SDK-style project, so a DefaultItemExcludes set in the
+    project body is evaluated too late to affect them. Directory.Build.props is imported before
+    those props, so the exclusion actually applies. (Tried it in QuickMail.csproj first — #386 —
+    and Dependabot's log showed no change.)
+
+    Why it matters: WPF compiles XAML through a generated temporary project
+    (QuickMail_<hash>_wpftmp.csproj) that has its OWN BaseIntermediateOutputPath, so the SDK's
+    implicit "exclude my own obj" rule never covers QuickMail's obj. Every generated .g.cs there is
+    then picked up a second time by the default glob and the build fails with
+
+        error NETSDK1022: Duplicate 'Compile' items were included.
+
+    Ordinary local and CI builds survive this; Dependabot's clean-clone design-time build does not,
+    so dependency determination failed and NuGet version updates silently stopped being proposed
+    for six packages. See #382.
+
+    Forward slashes are deliberate — Dependabot builds on Linux, where a bin\** pattern matches
+    nothing. That is why the first attempt (#383) had no effect either.
+  -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin/**;obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+</Project>
