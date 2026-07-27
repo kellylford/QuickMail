@@ -49,6 +49,11 @@
          -o directory, and the RID itself still applies (still self-contained win-x64). Only the
          intermediate/bin layout loses its redundant win-x64 segment. -->
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+    <!-- Same reason, other half. Removing only the RID left obj/Debug/<TFM>/<TFM>/ — confirmed
+         from the Dependabot log after #384 — because the temp project re-appends the TFM too.
+         Both appends have to be off for the path to stop doubling. Nothing in build.bat, the
+         workflows or installer/ keys off a bin/obj path containing the TFM. -->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
