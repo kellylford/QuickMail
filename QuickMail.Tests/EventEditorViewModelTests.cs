@@ -11,6 +11,14 @@ namespace QuickMail.Tests;
 /// </summary>
 public class EventEditorViewModelTests
 {
+    /// <summary>
+    /// Fixed seed for tests that only need "some valid start time". Seeding these from
+    /// <c>DateTime.Now</c> made them fail for anyone running the suite late in the evening — the
+    /// default end rolls past midnight — so the time of day is pinned here instead. Tests that are
+    /// specifically about a time of day pass their own value. (#378)
+    /// </summary>
+    private static readonly DateTime FixedStart = new(2026, 7, 16, 9, 3, 0);
+
     [Fact]
     public void NewEditor_DefaultsToLocalAccountAndHalfHourSlot()
     {
@@ -28,10 +36,36 @@ public class EventEditorViewModelTests
         Assert.Equal(TimeSpan.FromMinutes(30), end - start);
     }
 
+    [Theory]
+    [InlineData(23, 38)]   // rounds to 23:45; end 00:15 the next day
+    [InlineData(23, 50)]   // start itself rounds over midnight to 00:00
+    [InlineData(23, 31)]
+    [InlineData(0, 0)]     // start of day, for contrast
+    public void NewEditor_LateInTheDay_DefaultsToAValidRange(int hour, int minute)
+    {
+        var vm = new EventEditorViewModel(new DateTime(2026, 7, 16, hour, minute, 0)) { Title = "Late" };
+
+        Assert.True(vm.TryBuildEvent(out var evt, out var error), error);
+        var start = new DateTime(evt.StartTimeTicks!.Value, DateTimeKind.Utc).ToLocalTime();
+        var end = new DateTime(evt.EndTimeTicks!.Value, DateTimeKind.Utc).ToLocalTime();
+        Assert.Equal(TimeSpan.FromMinutes(30), end - start);
+    }
+
+    [Fact]
+    public void NewEditor_WhenDefaultEndRollsPastMidnight_EndDateAdvancesADay()
+    {
+        // 23:38 rounds up to 23:45; the default half-hour lands at 00:15 the following day, so the
+        // end date must advance with it rather than staying on the start's date. (#378)
+        var vm = new EventEditorViewModel(new DateTime(2026, 7, 16, 23, 38, 0));
+
+        Assert.Equal(new DateTime(2026, 7, 16), vm.StartDate);
+        Assert.Equal(new DateTime(2026, 7, 17), vm.EndDate);
+    }
+
     [Fact]
     public void MissingTitle_FailsValidation()
     {
-        var vm = new EventEditorViewModel(DateTime.Now) { Title = "   " };
+        var vm = new EventEditorViewModel(FixedStart) { Title = "   " };
         Assert.False(vm.TryBuildEvent(out _, out var error));
         Assert.Contains("Title", error);
     }
@@ -54,10 +88,10 @@ public class EventEditorViewModelTests
     [Fact]
     public void InvalidStartTime_FailsWithFriendlyMessage()
     {
-        var vm = new EventEditorViewModel(DateTime.Now)
+        var vm = new EventEditorViewModel(FixedStart)
         {
             Title = "Bad time",
-            StartDate = DateTime.Today,
+            StartDate = FixedStart.Date,
             StartTime = "not a time",
         };
         Assert.False(vm.TryBuildEvent(out _, out var error));
@@ -116,7 +150,7 @@ public class EventEditorViewModelTests
     [Fact]
     public void AllDay_EndDateBeforeStart_FailsValidation()
     {
-        var vm = new EventEditorViewModel(DateTime.Now)
+        var vm = new EventEditorViewModel(FixedStart)
         {
             Title = "Bad range",
             IsAllDay = true,
@@ -130,7 +164,7 @@ public class EventEditorViewModelTests
     [Fact]
     public void Repeat_None_ProducesNoRecurrence()
     {
-        var vm = new EventEditorViewModel(DateTime.Now) { Title = "One-off", RepeatIndex = 0 };
+        var vm = new EventEditorViewModel(FixedStart) { Title = "One-off", RepeatIndex = 0 };
         Assert.False(vm.HasRepeat);
         Assert.True(vm.TryBuildEvent(out var evt, out _));
         Assert.Null(evt.RecurrenceRule);
@@ -178,10 +212,11 @@ public class EventEditorViewModelTests
     [Fact]
     public void Repeat_WeeklyNoDaysChecked_OmitsByDay()
     {
-        var vm = new EventEditorViewModel(DateTime.Now)
+        var vm = new EventEditorViewModel(FixedStart)
         {
             Title = "Simple weekly",
-            StartDate = DateTime.Today,
+            StartDate = FixedStart.Date,
+            EndDate = FixedStart.Date,
             StartTime = "9:00 AM",
             EndTime = "9:30 AM",
             RepeatIndex = 2,
@@ -193,10 +228,11 @@ public class EventEditorViewModelTests
     [Fact]
     public void Repeat_DayCheckboxesIgnored_WhenNotWeekly()
     {
-        var vm = new EventEditorViewModel(DateTime.Now)
+        var vm = new EventEditorViewModel(FixedStart)
         {
             Title = "Daily thing",
-            StartDate = DateTime.Today,
+            StartDate = FixedStart.Date,
+            EndDate = FixedStart.Date,
             StartTime = "9:00 AM",
             EndTime = "9:30 AM",
             RepeatIndex = 1,          // Daily
@@ -229,7 +265,7 @@ public class EventEditorViewModelTests
     [Fact]
     public void Repeat_UntilBeforeStart_FailsValidation()
     {
-        var vm = new EventEditorViewModel(DateTime.Now)
+        var vm = new EventEditorViewModel(FixedStart)
         {
             Title = "Bad repeat",
             StartDate = new DateTime(2026, 7, 14),
@@ -263,7 +299,7 @@ public class EventEditorViewModelTests
     [Fact]
     public void Save_RaisesSavedWithBuiltEvent()
     {
-        var vm = new EventEditorViewModel(DateTime.Now) { Title = "Lunch" };
+        var vm = new EventEditorViewModel(FixedStart) { Title = "Lunch" };
         CalendarEvent? captured = null;
         vm.Saved += e => captured = e;
 
@@ -276,7 +312,7 @@ public class EventEditorViewModelTests
     [Fact]
     public void Save_WithInvalidData_AnnouncesInsteadOfRaisingSaved()
     {
-        var vm = new EventEditorViewModel(DateTime.Now) { Title = "" };
+        var vm = new EventEditorViewModel(FixedStart) { Title = "" };
         var saved = false;
         string? announced = null;
         vm.Saved += _ => saved = true;
@@ -348,7 +384,7 @@ public class EventEditorViewModelTests
     [Fact]
     public void SaveTargets_NoAccounts_PickerHidden()
     {
-        var vm = new EventEditorViewModel(DateTime.Now);
+        var vm = new EventEditorViewModel(FixedStart);
         Assert.False(vm.ShowSaveTarget);
         Assert.Single(vm.SaveTargetLabels);
     }
