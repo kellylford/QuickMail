@@ -36,15 +36,19 @@
     <PublishReadyToRun>true</PublishReadyToRun>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-    <!-- Keep bin/ and obj/ out of the default source globs. WPF compiles XAML through a generated
-         temporary project (QuickMail_<hash>_wpftmp.csproj) that inherits these properties but has
-         its OWN BaseIntermediateOutputPath — so the SDK's built-in "exclude my own obj" rule no
-         longer covers THIS project's obj, and the .g.cs files already generated there get globbed
-         in as ordinary sources. Every XAML-generated type is then defined twice (CS0101 / CS0111 /
-         CS0102 / CS0579 on GeneratedInternalTypeHelper, App, TokenizedAddressBox, ...).
-         A normal build doesn't trip this, but Dependabot's clean-clone design-time build does: it
-         failed dependency determination, so NuGet updates silently stopped arriving (#382). -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
+    <!-- Do NOT put the RID in the bin/obj paths. Setting RuntimeIdentifier on a WPF project makes
+         the SDK's generated XAML temp project (QuickMail_<hash>_wpftmp.csproj) re-append the
+         TFM and RID to an intermediate path that already ends in them, producing
+         obj/Debug/<TFM>/<RID>/<TFM>/<RID>/ — the generated .g.cs files then exist at two depths
+         and every XAML-generated type is compiled twice (CS0101/CS0111/CS0102/CS0579 on
+         GeneratedInternalTypeHelper, App, TokenizedAddressBox, ...).
+         Local and CI builds happen to survive this; Dependabot's clean-clone design-time build
+         does not — it failed dependency determination, so NuGet updates silently stopped
+         arriving for six packages (#382). This is the documented workaround.
+         Publish output is unaffected: build.bat and both publishing workflows pass an explicit
+         -o directory, and the RID itself still applies (still self-contained win-x64). Only the
+         intermediate/bin layout loses its redundant win-x64 segment. -->
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
