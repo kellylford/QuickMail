@@ -195,6 +195,7 @@ public partial class MainWindow : Window
     private readonly ILocalStoreService _localStore;
     private readonly IViewService _viewService;
     private readonly IRuleService _ruleService;
+    private readonly IServerRuleService? _serverRuleService;
     private readonly ITemplateService _templateService;
     private readonly IFlagService? _flagService;
     private readonly ICustomDictionaryService? _customDictionary;
@@ -258,7 +259,8 @@ public partial class MainWindow : Window
         IBugReportService? bugReportService = null,
         INotificationService? notificationService = null,
         IContactSyncService? contactSyncService = null,
-        IGraphCalendarSyncService? graphCalendarSyncService = null)
+        IGraphCalendarSyncService? graphCalendarSyncService = null,
+        IServerRuleService? serverRuleService = null)
     {
         _vm = vm;
         _notificationService = notificationService;
@@ -271,6 +273,7 @@ public partial class MainWindow : Window
         _contactService = contactService;
         _contactSyncService = contactSyncService;
         _graphCalendarSyncService = graphCalendarSyncService;
+        _serverRuleService = serverRuleService;
         _configService = configService;
         _localStore = localStore;
         _viewService = viewService;
@@ -3441,7 +3444,13 @@ public partial class MainWindow : Window
     {
         LogService.Debug($"[FOCUS] Activated lastPane={_paneIndexBeforeDeactivation} {FocusInfo()}");
         if (_paneIndexBeforeDeactivation == 3 || _paneIndexBeforeDeactivation == 4)
-            Dispatcher.InvokeAsync(ReturnFocusToMessageList, DispatcherPriority.Input);
+            // Re-check IsActive at callback time: a transient activation (e.g. a modeless child of the
+            // Rules Manager closing and briefly bouncing foreground through here) must NOT pull focus
+            // into this window's message list when another window ends up active. Otherwise this
+            // unconditionally steals focus from the Rules Manager's rule list. (#333)
+            Dispatcher.InvokeAsync(
+                () => { if (IsActive) ReturnFocusToMessageList(); },
+                DispatcherPriority.Input);
     }
 
     // Routes focus to whichever message panel is currently visible.
@@ -5934,7 +5943,19 @@ public partial class MainWindow : Window
         // Manager". Leaving it unowned makes it an independent peer that reads its own title — the
         // same fix compose and standalone message windows use. Unowned windows aren't auto-closed
         // with the main window, so it's tracked in _rulesWindow and closed in OnClosed.
-        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders);
+        // Read-only server-rules peek (#333): when a Graph account exists, surface its Exchange
+        // messageRules in the Rules Manager so the user can see them. Editing lands in a follow-up.
+        ServerRulesViewModel? serverRulesVm = null;
+        if (_serverRuleService != null
+            && _featureGate.IsEnabled(FeatureFlag.ServerRules)
+            && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
+            // Seed the picker with the account the user is currently in, so the Rules Manager opens
+            // on that account's rules rather than always the first Graph account (#333). Null on
+            // aggregate views → VM falls back to the first account.
+            serverRulesVm = new ServerRulesViewModel(
+                _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id);
+
+        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm);
         _rulesWindow = dialog;
 
         // Modeless (.Show, NOT .ShowDialog). Opening this window modally over MainWindow's

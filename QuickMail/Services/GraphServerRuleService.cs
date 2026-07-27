@@ -50,6 +50,19 @@ public sealed class GraphServerRuleService : IServerRuleService
                         .ToList();
         LogService.Debug($"ServerRules: listed {rules.Count} rule(s) for {account.Username} " +
                          $"({rules.Count(r => !r.IsFullyEditable)} not fully editable)");
+        // Diagnostic (/debug only): name the specific unsupported field(s) per flagged rule so a
+        // gap in the supported subset can be identified. Field NAMES only — not the raw predicate
+        // values, which would put mail subjects/addresses in the log.
+        foreach (var r in rules.Where(x => !x.IsFullyEditable))
+            LogService.Debug($"ServerRules: not-editable '{r.DisplayName}' unsupported=[{string.Join(", ", r.UnsupportedFields)}]");
+        var disabled = rules.Where(r => !r.IsEnabled).Select(r => r.DisplayName).ToList();
+        if (disabled.Count > 0)
+            LogService.Debug($"ServerRules: disabled rules: {string.Join("; ", disabled)}");
+        // Server read-only rules are the ones the API refuses to move/edit/delete
+        // (ErrorNotSupportedMessageRule). Name them so a reorder/edit failure is easy to trace back.
+        var readOnly = rules.Where(r => r.IsReadOnly).Select(r => r.DisplayName).ToList();
+        if (readOnly.Count > 0)
+            LogService.Debug($"ServerRules: read-only rules: {string.Join("; ", readOnly)}");
         return rules;
     }
 
@@ -96,28 +109,37 @@ public sealed class GraphServerRuleService : IServerRuleService
         LogService.Log($"ServerRules: {(enabled ? "enabled" : "disabled")} rule {ruleId} for {account.Username}");
     }
 
-    public async Task ReorderAsync(Guid accountId, IReadOnlyList<string> ruleIdsInOrder, CancellationToken ct = default)
+    public async Task ReorderAsync(Guid accountId, IReadOnlyList<ServerRuleModel> rulesInOrder, CancellationToken ct = default)
     {
         var account = Account(accountId);
 
-        // Sequence is 1-based on the server; assign positions in the given order. Only `sequence` is
-        // sent, so the rest of each rule is untouched.
+        // Reassign which rule holds which sequence value, in the new order — WITHOUT renumbering the
+        // whole list. We keep the existing set of server sequence values and only PATCH the rules
+        // whose value actually changes. This is critical: a mailbox commonly contains a rule the
+        // server refuses to modify ("ErrorNotSupportedMessageRule"). A full 1..N re-sequence PATCHes
+        // every rule and 400s the moment it reaches that one — poisoning an otherwise valid move of
+        // an unrelated rule. By touching only the rules whose position changed (two, for a single
+        // Move up/down), a protected rule elsewhere is never sent a PATCH.
         //
-        // NOT ATOMIC, and it can't be: Graph exposes no batch/transactional reorder, so this is N
-        // sequential PATCHes. A failure partway leaves the server partially reordered, and duplicate
-        // sequence values exist transiently mid-loop (Graph tolerates this — it resolves ordering on
-        // read). The caller rolls back its LOCAL order on failure, which does not undo PATCHes
-        // already applied server-side; the next refresh shows the server's true order. Accepted for
-        // v1: the blast radius is rule ordering, not rule content.
-        for (var i = 0; i < ruleIdsInOrder.Count; i++)
+        // Still not atomic (Graph has no batch reorder) and a transient duplicate sequence can exist
+        // mid-loop — Graph tolerates that and resolves ordering on read. If a PATCH fails, the caller
+        // rolls back its LOCAL order; the next refresh reflects the server's true state.
+        var sortedSequences = rulesInOrder.Select(r => r.Sequence).OrderBy(s => s).ToList();
+        var patched = 0;
+        for (var i = 0; i < rulesInOrder.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            var body = new Dictionary<string, object?> { ["sequence"] = i + 1 };
-            var id = ruleIdsInOrder[i];
-            await GuardAsync(() => _client.PatchAsync(account, $"{RulesPath}/{Uri.EscapeDataString(id)}", body, ct));
+            var rule = rulesInOrder[i];
+            var target = sortedSequences[i];
+            if (rule.Sequence == target) continue;   // unchanged position → don't touch this rule
+
+            var body = new Dictionary<string, object?> { ["sequence"] = target };
+            await GuardAsync(() => _client.PatchAsync(account, $"{RulesPath}/{Uri.EscapeDataString(rule.Id)}", body, ct));
+            rule.Sequence = target;   // keep the local model in sync with what the server was told
+            patched++;
         }
 
-        LogService.Log($"ServerRules: reordered {ruleIdsInOrder.Count} rule(s) for {account.Username}");
+        LogService.Log($"ServerRules: reordered {rulesInOrder.Count} rule(s), {patched} PATCHed, for {account.Username}");
     }
 
     public async Task DeleteAsync(Guid accountId, string ruleId, CancellationToken ct = default)

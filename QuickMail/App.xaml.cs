@@ -230,6 +230,9 @@ public partial class App : Application
             var templateService = _templateService;
             // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).
             var ruleService = new RuleService(mailRouter, localStore, profile.ProfileDir, accountService);
+            // Server-side (Exchange/Graph) Inbox rules — read/manage a Graph account's messageRules.
+            // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
+            var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
             var syncService = new SyncService(mailRouter, localStore, configService, ruleService);
 
             // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
@@ -295,7 +298,7 @@ public partial class App : Application
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.

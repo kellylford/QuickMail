@@ -38,8 +38,12 @@ public interface IServerRuleService
     /// <summary>Enables or disables a rule. Safe even for rules outside the editable subset.</summary>
     Task SetEnabledAsync(Guid accountId, string ruleId, bool enabled, CancellationToken ct = default);
 
-    /// <summary>Rewrites execution order; the given ids are assigned sequences 1..n in order.</summary>
-    Task ReorderAsync(Guid accountId, IReadOnlyList<string> ruleIdsInOrder, CancellationToken ct = default);
+    /// <summary>
+    /// Applies the given rule order by reassigning the existing server sequence values in that order,
+    /// PATCHing only the rules whose sequence actually changes (so a server-protected rule elsewhere
+    /// in the list is never touched). Each model carries its current <see cref="ServerRuleModel.Sequence"/>.
+    /// </summary>
+    Task ReorderAsync(Guid accountId, IReadOnlyList<ServerRuleModel> rulesInOrder, CancellationToken ct = default);
 
     Task DeleteAsync(Guid accountId, string ruleId, CancellationToken ct = default);
 }

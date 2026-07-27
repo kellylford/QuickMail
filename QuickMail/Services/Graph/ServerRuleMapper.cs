@@ -24,14 +24,14 @@ internal static class ServerRuleMapper
     /// <summary>Condition predicates QuickMail can represent and therefore safely rewrite.</summary>
     internal static readonly HashSet<string> SupportedConditions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "senderContains", "fromAddresses", "subjectContains", "bodyOrSubjectContains",
-        "sentToMe", "sentOnlyToMe", "hasAttachments", "importance",
+        "senderContains", "fromAddresses", "sentToAddresses", "subjectContains", "bodyContains",
+        "bodyOrSubjectContains", "sentToMe", "sentOnlyToMe", "hasAttachments", "importance",
     };
 
     /// <summary>Actions QuickMail can represent and therefore safely rewrite.</summary>
     internal static readonly HashSet<string> SupportedActions = new(StringComparer.OrdinalIgnoreCase)
     {
-        "moveToFolder", "markAsRead", "markImportance", "delete", "forwardTo", "stopProcessingRules",
+        "moveToFolder", "copyToFolder", "markAsRead", "markImportance", "delete", "forwardTo", "stopProcessingRules",
     };
 
     /// <summary>
@@ -47,16 +47,14 @@ internal static class ServerRuleMapper
     /// </summary>
     private static readonly HashSet<string> SingleValueStringPredicates = new(StringComparer.OrdinalIgnoreCase)
     {
-        "senderContains", "subjectContains", "bodyOrSubjectContains",
+        "senderContains", "subjectContains", "bodyContains", "bodyOrSubjectContains",
     };
 
     /// <summary>Friendlier labels for the predicates/actions we don't support yet.</summary>
     private static readonly Dictionary<string, string> FriendlyNames = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["bodyContains"] = "body contains",
         ["headerContains"] = "header contains",
         ["recipientContains"] = "recipient contains",
-        ["sentToAddresses"] = "sent to specific addresses",
         ["sentCcMe"] = "sent CC to me",
         ["sentToOrCcMe"] = "sent to or CC me",
         ["notSentToMe"] = "not sent to me",
@@ -75,7 +73,6 @@ internal static class ServerRuleMapper
         ["isApprovalRequest"] = "approval request",
         ["isAutomaticReply"] = "automatic reply",
         ["isNonDeliveryReport"] = "non-delivery report",
-        ["copyToFolder"] = "copy to folder",
         ["forwardAsAttachmentTo"] = "forward as attachment",
         ["redirectTo"] = "redirect to",
         ["assignCategories"] = "assign categories",
@@ -122,8 +119,10 @@ internal static class ServerRuleMapper
                 {
                     case "sendercontains": m.SenderContains = FirstString(p.Value); break;
                     case "subjectcontains": m.SubjectContains = FirstString(p.Value); break;
+                    case "bodycontains": m.BodyContains = FirstString(p.Value); break;
                     case "bodyorsubjectcontains": m.BodyOrSubjectContains = FirstString(p.Value); break;
                     case "fromaddresses": m.FromAddresses = Recipients(p.Value); break;
+                    case "senttoaddresses": m.SentToAddresses = Recipients(p.Value); break;
                     case "senttome": m.SentToMe = p.Value.ValueKind == JsonValueKind.True; break;
                     case "sentonlytome": m.SentOnlyToMe = p.Value.ValueKind == JsonValueKind.True; break;
                     case "hasattachments": m.HasAttachments = p.Value.ValueKind == JsonValueKind.True; break;
@@ -142,6 +141,7 @@ internal static class ServerRuleMapper
                 switch (p.Name.ToLowerInvariant())
                 {
                     case "movetofolder": m.MoveToFolderId = p.Value.GetString(); break;
+                    case "copytofolder": m.CopyToFolderId = p.Value.GetString(); break;
                     case "markasread": m.MarkAsRead = p.Value.ValueKind == JsonValueKind.True; break;
                     case "markimportance": m.MarkImportance = p.Value.GetString(); break;
                     case "delete": m.Delete = p.Value.ValueKind == JsonValueKind.True; break;
@@ -177,8 +177,10 @@ internal static class ServerRuleMapper
         var conditions = new Dictionary<string, object?>();
         if (!string.IsNullOrWhiteSpace(rule.SenderContains)) conditions["senderContains"] = new[] { rule.SenderContains };
         if (!string.IsNullOrWhiteSpace(rule.SubjectContains)) conditions["subjectContains"] = new[] { rule.SubjectContains };
+        if (!string.IsNullOrWhiteSpace(rule.BodyContains)) conditions["bodyContains"] = new[] { rule.BodyContains };
         if (!string.IsNullOrWhiteSpace(rule.BodyOrSubjectContains)) conditions["bodyOrSubjectContains"] = new[] { rule.BodyOrSubjectContains };
         if (rule.FromAddresses.Count > 0) conditions["fromAddresses"] = rule.FromAddresses.Select(ToRecipient).ToArray();
+        if (rule.SentToAddresses.Count > 0) conditions["sentToAddresses"] = rule.SentToAddresses.Select(ToRecipient).ToArray();
         if (rule.SentToMe) conditions["sentToMe"] = true;
         if (rule.SentOnlyToMe) conditions["sentOnlyToMe"] = true;
         if (rule.HasAttachments) conditions["hasAttachments"] = true;
@@ -186,6 +188,7 @@ internal static class ServerRuleMapper
 
         var actions = new Dictionary<string, object?>();
         if (!string.IsNullOrWhiteSpace(rule.MoveToFolderId)) actions["moveToFolder"] = rule.MoveToFolderId;
+        if (!string.IsNullOrWhiteSpace(rule.CopyToFolderId)) actions["copyToFolder"] = rule.CopyToFolderId;
         if (rule.MarkAsRead) actions["markAsRead"] = true;
         if (!string.IsNullOrWhiteSpace(rule.MarkImportance)) actions["markImportance"] = rule.MarkImportance;
         if (rule.Delete) actions["delete"] = true;
