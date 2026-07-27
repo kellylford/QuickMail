@@ -58,7 +58,7 @@ jobs:
           "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
 
       - name: Cache GreenMail jar
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .testservers/greenmail-standalone-*.jar
           key: greenmail-standalone-2.1.11
