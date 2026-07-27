@@ -104,7 +104,8 @@ public class AccountManagerContactSyncScopeTests
     private static AccountManagerViewModel NewManager() =>
         new(new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
             new StubOAuthService(), new StubLocalStoreService(), new StubConfigService(),
-            new StubFeatureGate(), new StubContactSyncService());
+            new StubFeatureGate(), new ProviderCatalog(), autoDiscover: null, sendMail: null,
+            new StubContactSyncService());
 
     [Fact]
     public void CanSyncContacts_TrueForICloudAccount()

@@ -61,6 +61,17 @@ sealed class StubSmtpService : ISendMailService
         SentReplies.Add((account, icsReplyContent, organizerEmail));
         return Task.CompletedTask;
     }
+
+    /// <summary>Set to make Test Connection's SMTP leg report a failure.</summary>
+    public Exception? VerifyFailure { get; set; }
+
+    public int VerifyCalls { get; private set; }
+
+    public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default)
+    {
+        VerifyCalls++;
+        return VerifyFailure is null ? Task.CompletedTask : Task.FromException(VerifyFailure);
+    }
 }
 
 sealed class StubAccountService : IAccountService

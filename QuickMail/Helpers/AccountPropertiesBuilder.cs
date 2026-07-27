@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using QuickMail.Models;
+using QuickMail.Services;
 
 namespace QuickMail.Helpers;
 
@@ -42,7 +43,7 @@ public static class AccountPropertiesBuilder
                 {
                     AuthType.OAuth2Microsoft => "OAuth2 (Microsoft 365)",
                     AuthType.OAuth2Google    => "OAuth2 (Google / Gmail)",
-                    _ when account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase)
+                    _ when ProviderCatalog.IsICloud(account)
                                              => "App-Specific Password (iCloud)",
                     _                        => "Password (Windows Credential Manager)",
                 }),

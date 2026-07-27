@@ -221,6 +221,7 @@ public class ConfigService : IConfigService
                     case "initialsynccount":
                         if (int.TryParse(value, out var isc)) config.InitialSyncCount = Math.Max(0, isc);
                         break;
+                    case "autodiscoveronline": config.AutoDiscoverOnline = ParseBool(value); break;
                     case "graphpollseconds":
                         if (int.TryParse(value, out var gps)) config.GraphPollSeconds = Math.Clamp(gps, 30, 600);
                         break;
@@ -400,6 +401,13 @@ public class ConfigService : IConfigService
         sb.AppendLine($"InitialSyncCount = {config.InitialSyncCount}");
         sb.AppendLine("# Number of messages to fetch on the initial sync of a folder.");
         sb.AppendLine("# Default is 500. Set to 0 to fetch all messages in the folder.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AutoDiscoverOnline = {(config.AutoDiscoverOnline ? "on" : "off")}");
+        sb.AppendLine("# Let Add Account look up server settings on the network for an unrecognized domain.");
+        sb.AppendLine("# Only the domain is sent to Mozilla's autoconfig database; the full address is sent");
+        sb.AppendLine("# only to the domain's own Exchange Autodiscover endpoint, as Outlook does.");
+        sb.AppendLine("# When off, an unknown domain goes straight to manual entry. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"GraphPollSeconds = {Math.Clamp(config.GraphPollSeconds, 30, 600)}");

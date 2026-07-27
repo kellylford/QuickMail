@@ -40,7 +40,7 @@ public sealed class ContactSyncService : IContactSyncService
         // iCloud is keyed by IMAP host, not auth type: an iCloud account is a plain Password/IMAP
         // account, and CardDAV reuses that app-specific password. Check this before the auth switch.
         if (_iCloudSource != null &&
-            account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase))
+            ProviderCatalog.IsICloud(account))
             return _iCloudSource;
 
         return account.AuthType switch

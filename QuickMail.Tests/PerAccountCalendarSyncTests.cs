@@ -1,4 +1,5 @@
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 using Xunit;
 
@@ -12,7 +13,7 @@ namespace QuickMail.Tests;
 public class PerAccountCalendarSyncTests
 {
     private static AddAccountViewModel NewEditor() =>
-        new(new StubFeatureGate(), new StubImapMailService(), new StubOAuthService());
+        new(new StubFeatureGate(), new StubImapMailService(), new StubOAuthService(), new ProviderCatalog());
 
     [Fact]
     public void ShowCalendarSyncOption_TrueForMicrosoft()

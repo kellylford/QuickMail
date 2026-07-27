@@ -15,16 +15,25 @@ public class AddAccountViewModelGateTests
     private static AddAccountViewModel Make(bool graphEnabled)
     {
         var gate = new StubFeatureGate { [FeatureFlag.GraphBackend] = graphEnabled };
-        return new AddAccountViewModel(gate, new StubImapMailService(), new StubOAuthService());
+        return new AddAccountViewModel(gate, new StubImapMailService(), new StubOAuthService(), new ProviderCatalog());
+    }
+
+    private static AddAccountViewModel MakeMicrosoft(bool graphEnabled)
+    {
+        var vm = Make(graphEnabled);
+        // The connection-method combo lives in Advanced settings and is offered only for the
+        // Microsoft provider — every other provider has exactly one connection method.
+        vm.SelectedProvider = new ProviderCatalog().ById(ProviderCatalog.MicrosoftId);
+        return vm;
     }
 
     [Fact]
     public void GateOff_OffersOnlyImap()
     {
-        var vm = Make(graphEnabled: false);
+        var vm = MakeMicrosoft(graphEnabled: false);
         Assert.Single(vm.AvailableBackends);
         Assert.Equal(BackendKind.ImapSmtp, vm.AvailableBackends[0].Kind);
-        Assert.False(vm.ShowBackendPicker);
+        Assert.False(vm.ShowConnectionMethod);
         Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
         Assert.True(vm.IsImapBackend);
     }
@@ -32,12 +41,26 @@ public class AddAccountViewModelGateTests
     [Fact]
     public void GateOn_OffersBothBackends()
     {
-        var vm = Make(graphEnabled: true);
+        var vm = MakeMicrosoft(graphEnabled: true);
         Assert.Equal(2, vm.AvailableBackends.Count);
         Assert.Contains(vm.AvailableBackends, b => b.Kind == BackendKind.MicrosoftGraph);
-        Assert.True(vm.ShowBackendPicker);
-        // Default selection is still IMAP.
+        Assert.True(vm.ShowConnectionMethod);
+        // Default selection is still IMAP — picking the Microsoft provider must not silently move
+        // new accounts onto the Graph backend.
         Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+    }
+
+    [Fact]
+    public void ConnectionMethodIsHiddenForNonMicrosoftProviders()
+    {
+        var vm = Make(graphEnabled: true);
+        var catalog = new ProviderCatalog();
+
+        vm.SelectedProvider = catalog.ById(ProviderCatalog.GmailId);
+        Assert.False(vm.ShowConnectionMethod);
+
+        vm.SelectedProvider = catalog.Other;
+        Assert.False(vm.ShowConnectionMethod);
     }
 
     [Fact]

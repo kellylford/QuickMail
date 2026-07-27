@@ -3,7 +3,7 @@
 ## Service Layer
 
 **App.xaml.cs** is the manual DI composition root — no container. Services are wired in `OnStartup` in dependency order:
-`ProfileContext` → `AccountService` → `CredentialService` → `OAuthService` → `ImapService` → `SmtpService` → `ConfigService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
+`ProfileContext` → `AccountService` → `CredentialService` → `ConfigService` → `ProviderCatalog` → `AutoDiscoverService` → `OAuthService` → `ImapService` → `SmtpService` → `LocalStoreService` → `ContactService` → `TemplateService` → `RuleService` → `SyncService` → `ViewService` → `CommandRegistry` → `MainViewModel` → `MainWindow`.
 
 Every service has a matching interface in `Services/I*.cs`, making them fully substitutable in tests.
 
@@ -15,7 +15,15 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 
 **OAuthService** wraps MSAL (`Microsoft.Identity.Client`) for Microsoft 365 / Outlook OAuth2. Token refresh is handled automatically; passwords for OAuth accounts are not stored in Credential Manager.
 
-**ConfigService** reads/writes `config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
+**ConfigService** reads/writes `config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, `AutoDiscoverOnline`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
+
+**ProviderCatalog** (`IProviderCatalog`) is the built-in table of well-known mail providers — Gmail, Outlook.com / Microsoft 365, Yahoo, iCloud, and an "Other" catch-all. Each `MailProvider` carries IMAP/SMTP hosts, ports, SSL modes, a default `AuthType` and `BackendKind`, and an optional app-password hint plus the URL where the user creates one. `MatchByEmail` maps an address's domain to a provider; `Resolve(AccountModel)` prefers the persisted `AccountModel.ProviderId` and falls back to matching the IMAP host, so accounts created before the catalog existed still resolve without a migration. A static `ProviderCatalog.IsICloud(account)` replaces what used to be an `ImapHost == "imap.mail.me.com"` comparison duplicated across six files.
+
+Values in the catalog are lifted verbatim from the host autofill that was previously hardcoded in `AddAccountViewModel`. Gmail deliberately defaults to `AuthType.Password` with an app-password hint (Google OAuth sign-in is blocked for new accounts, #369) while keeping `SupportsOAuth` true so the OAuth path stays reachable. Microsoft deliberately defaults to `BackendKind.ImapSmtp`, preserving the pre-catalog default for new accounts; Graph remains an opt-in "Connection method" under Advanced settings.
+
+**AutoDiscoverService** (`IAutoDiscoverService`) finds IMAP/SMTP settings for an address in three tiers, returning the first hit and `null` when all are exhausted: (1) the local `ProviderCatalog` — offline, instant, nothing leaves the machine; (2) Mozilla's autoconfig database at `autoconfig.thunderbird.net`, which receives only the domain; (3) the domain's own Exchange **Autodiscover** endpoint, tried at `autodiscover.<domain>` then `<domain>`, which receives the full address as Outlook does. Tiers 2 and 3 are skipped entirely when `AutoDiscoverOnline` is off. HTTPS only, redirects not followed (a redirect could downgrade to HTTP), 5 s per tier and 12 s overall, and every failure mode — DNS, TLS, 404, timeout, malformed XML — falls through to the next tier rather than propagating. It owns an `HttpClient` and is disposed in `App.OnExit`. The Autodiscover client here is also the prerequisite for shared-mailbox detection (#31).
+
+The XML parsers (`ParseIspdb`, `ParseAutodiscover`) are `internal static` so they are testable without HTTP; `AutoDiscoverServiceTests` drives them through a stub `HttpMessageHandler`.
 
 **ContactService** stores the address book in `contacts.json` and contact groups in `groups.json`. Both files share a single `SemaphoreSlim` load lock so concurrent group and contact writes cannot tear. Upserts by email address (case-insensitive); `SearchContactsAsync` returns up to 10 results ordered by `LastUsedTicks`. Contacts are auto-upserted when mail is sent.
 

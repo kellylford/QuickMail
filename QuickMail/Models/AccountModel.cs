@@ -18,6 +18,13 @@ public partial class AccountModel : ObservableObject
     public BackendKind BackendKind { get; set; } = BackendKind.ImapSmtp;
 
     /// <summary>
+    /// Id of the <see cref="MailProvider"/> this account was created from ("gmail", "icloud", …).
+    /// Null for accounts created before the provider catalog existed; <c>ProviderCatalog.Resolve</c>
+    /// falls back to matching the IMAP host in that case, so there is no migration step.
+    /// </summary>
+    public string? ProviderId { get; set; }
+
+    /// <summary>
     /// True if this is a personal Microsoft account (its MSAL tenant is the consumers tenant), null if
     /// not yet detected. Set from the token at Microsoft sign-in and used to pick explicit Graph scopes
     /// for consumer accounts — which is correct even on custom domains, where the email-domain guess

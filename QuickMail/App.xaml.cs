@@ -27,6 +27,7 @@ public partial class App : Application
     private ThemeService? _themeService;
     private BugReportService? _bugReportService;
     private WindowsToastNotificationService? _notificationService;
+    private AutoDiscoverService? _autoDiscoverService;
 
     // Owned by Main (acquired before WPF starts, disposed after Run returns); OnStartup
     // wires its activation signal to the main window.
@@ -192,6 +193,10 @@ public partial class App : Application
             var accountService    = new AccountService(profile);
             var credentialService = new CredentialService();
             var configService     = new ConfigService(profile);
+            // Provider presets + settings discovery for the Add Account dialog. The catalog is a
+            // pure lookup table; the discovery service owns an HttpClient, so it is disposed in OnExit.
+            var providerCatalog   = new ProviderCatalog();
+            _autoDiscoverService  = new AutoDiscoverService(providerCatalog, configService);
             var msOAuthService    = new OAuthService(profile);
             var googleOAuth       = new GoogleOAuthService(credentialService);
             var oauthService      = new OAuthRouter(msOAuthService, googleOAuth);
@@ -298,7 +303,7 @@ public partial class App : Application
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -340,6 +345,7 @@ public partial class App : Application
         _bugReportService?.Dispose();
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         _notificationService?.Dispose(); // unhooks the toast-activation static event
+        _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
         base.OnExit(e);
     }
 

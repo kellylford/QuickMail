@@ -68,6 +68,47 @@ public class SmtpService : ISendMailService
         }
     }
 
+    public async Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default)
+    {
+        if (account.BackendKind == BackendKind.MicrosoftGraph)
+        {
+            await _graphSmtp.VerifyAsync(account, password, ct);
+            return;
+        }
+
+        using var client = new SmtpClient();
+
+        if (account.SmtpAcceptInvalidCert)
+        {
+#pragma warning disable CA5359 // callback intentionally accepts any cert when the user enables SmtpAcceptInvalidCert
+            client.ServerCertificateValidationCallback = (_, _, _, _) => true;
+#pragma warning restore CA5359
+        }
+
+        // Same SSL and SASL selection as SendAsync — a verification that connected differently from
+        // the real send would prove nothing.
+        var ssl = account.SmtpUseSsl
+            ? SecureSocketOptions.SslOnConnect
+            : SecureSocketOptions.StartTlsWhenAvailable;
+
+        LogService.Log($"SmtpService: verifying {account.SmtpHost}:{account.SmtpPort} ssl={ssl}");
+        await client.ConnectAsync(account.SmtpHost, account.SmtpPort, ssl, ct);
+
+        if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
+        {
+            var token = await _oauth.GetAccessTokenAsync(account, ct);
+            await client.AuthenticateAsync(new SaslMechanismOAuth2(account.Username, token), ct);
+        }
+        else
+        {
+            await client.AuthenticateAsync(account.Username, password!, ct);
+        }
+
+        // Nothing is sent — authenticating is the whole proof.
+        await client.DisconnectAsync(true, ct);
+        LogService.Log("SmtpService: verify succeeded");
+    }
+
     public async Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
         string organizerEmail, CancellationToken ct = default)
     {

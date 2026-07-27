@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -16,6 +17,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 {
     protected IMailService MailService { get; }
     protected IOAuthService OAuthService { get; }
+    protected IProviderCatalog Catalog { get; }
+
+    /// <summary>
+    /// Used only to verify outgoing settings from Test Connection. Optional: when absent the SMTP
+    /// leg reports "not checked" rather than silently claiming success.
+    /// </summary>
+    protected ISendMailService? SendMailService { get; }
 
     [ObservableProperty] private string _accountName = string.Empty;
     [ObservableProperty] private string _displayName = string.Empty;
@@ -42,6 +50,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(AuthTypeIndex))]
     [NotifyPropertyChangedFor(nameof(ShowContactSyncOption))]
     [NotifyPropertyChangedFor(nameof(ShowCalendarSyncOption))]
+    [NotifyPropertyChangedFor(nameof(ShowAppPasswordHint))]
     private AuthType _authType = AuthType.Password;
 
     /// <summary>
@@ -69,8 +78,157 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// <summary>Calendar sync is offered for Microsoft, Google, and iCloud accounts.</summary>
     public bool ShowCalendarSyncOption => IsOAuth2 || IsGoogleOAuth || IsICloudAccount;
 
-    /// <summary>True when the IMAP host matches iCloud — drives the app-specific password hint.</summary>
-    public bool IsICloudAccount => ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// True when this is an iCloud account — drives contact/calendar sync eligibility. Checks the
+    /// selected provider first, and still falls back to the IMAP host so a user who picked "Other"
+    /// and typed the iCloud host by hand keeps the same options they had before the provider picker
+    /// existed.
+    /// </summary>
+    public bool IsICloudAccount =>
+        SelectedProvider?.Id == ProviderCatalog.ICloudId
+        || string.Equals(ImapHost, Catalog.ById(ProviderCatalog.ICloudId)?.ImapHost,
+                         StringComparison.OrdinalIgnoreCase);
+
+    // ── Provider selection and progressive disclosure ────────────────────────────
+
+    /// <summary>Providers offered in the picker, in display order.</summary>
+    public IReadOnlyList<MailProvider> Providers => Catalog.All;
+
+    /// <summary>
+    /// The provider this account is being created from or was created with. Selecting one fills
+    /// every server field, which is what keeps the Advanced settings expander closed.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsICloudAccount))]
+    [NotifyPropertyChangedFor(nameof(ShowContactSyncOption))]
+    [NotifyPropertyChangedFor(nameof(ShowCalendarSyncOption))]
+    [NotifyPropertyChangedFor(nameof(AppPasswordHint))]
+    [NotifyPropertyChangedFor(nameof(AppPasswordUrl))]
+    [NotifyPropertyChangedFor(nameof(ShowAppPasswordHint))]
+    private MailProvider? _selectedProvider;
+
+    /// <summary>
+    /// Whether the Advanced settings expander is open. Collapsed for a recognized provider, opened
+    /// when the user picks "Other" or discovery comes back empty and they must type settings in.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isAdvancedExpanded;
+
+    /// <summary>
+    /// Set once the user edits a server field by hand. Guards their edits: a later provider match or
+    /// discovery result must not silently overwrite hosts they deliberately typed.
+    /// </summary>
+    [ObservableProperty]
+    private bool _hostsUserEdited;
+
+    /// <summary>Warning shown above the password box for providers that need an app-specific password.</summary>
+    public string? AppPasswordHint => SelectedProvider?.AppPasswordHint;
+
+    /// <summary>Where to generate that app password. Rendered as a link beside the hint.</summary>
+    public string? AppPasswordUrl => SelectedProvider?.AppPasswordUrl;
+
+    /// <summary>
+    /// The hint only makes sense when a password is actually being entered — an OAuth account has no
+    /// password box to warn about.
+    /// </summary>
+    public bool ShowAppPasswordHint => IsPasswordAuth && SelectedProvider?.RequiresAppPassword == true;
+
+    /// <summary>
+    /// Applies a provider's known settings to the form. Returns false without touching anything for
+    /// the "Other" entry, which by definition has no settings to apply.
+    /// </summary>
+    protected bool ApplyProvider(MailProvider? provider)
+    {
+        if (provider is null) return false;
+
+        if (provider.IsOther)
+        {
+            // Nothing to fill in — open Advanced so the user can enter servers themselves. Their
+            // existing field values are deliberately left alone.
+            IsAdvancedExpanded = true;
+            return false;
+        }
+
+        var wasApplying = _applyingSettings;
+        _applyingSettings = true;
+        try
+        {
+            // ORDER MATTERS: BackendKind is assigned before AuthType because OnAuthTypeChangedInternal
+            // reads BackendKind. This is the same ordering hazard the old backend combo documented.
+            BackendKind = provider.DefaultBackend;
+            AuthType = provider.DefaultAuthType;
+
+            if (BackendKind == BackendKind.MicrosoftGraph)
+            {
+                // Graph authenticates via OAuth and needs no host configuration at all.
+                ImapHost = string.Empty;
+                SmtpHost = string.Empty;
+                Password = string.Empty;
+            }
+            else
+            {
+                ImapHost = provider.ImapHost;
+                ImapPort = provider.ImapPort;
+                ImapUseSsl = provider.ImapUseSsl;
+                ImapAcceptInvalidCert = false;
+                SmtpHost = provider.SmtpHost;
+                SmtpPort = provider.SmtpPort;
+                SmtpUseSsl = provider.SmtpUseSsl;
+                SmtpAcceptInvalidCert = false;
+            }
+
+            if (AuthType != AuthType.Password) Password = string.Empty;
+        }
+        finally
+        {
+            _applyingSettings = wasApplying;
+        }
+
+        // The settings came from the catalog, not the user, so a later match may still replace them.
+        HostsUserEdited = false;
+        IsAdvancedExpanded = false;
+        return true;
+    }
+
+    /// <summary>
+    /// Applies settings found by <see cref="IAutoDiscoverService"/>. Refuses to overwrite hosts the
+    /// user typed themselves. Returns false when the result was declined for that reason.
+    /// </summary>
+    protected bool ApplyDiscovered(DiscoveredSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        if (HostsUserEdited) return false;
+
+        // A catalog-backed result carries a provider, which brings its auth type and app-password
+        // hint along. A network-discovered one does not, so it stays on "Other" with password auth.
+        var provider = Catalog.ById(settings.ProviderId);
+        if (provider is not null)
+        {
+            SelectedProvider = provider;
+            return ApplyProvider(provider);
+        }
+
+        _applyingSettings = true;
+        try
+        {
+            ImapHost = settings.ImapHost;
+            ImapPort = settings.ImapPort;
+            ImapUseSsl = settings.ImapUseSsl;
+            ImapAcceptInvalidCert = false;
+            SmtpHost = settings.SmtpHost;
+            SmtpPort = settings.SmtpPort;
+            SmtpUseSsl = settings.SmtpUseSsl;
+            SmtpAcceptInvalidCert = false;
+        }
+        finally
+        {
+            _applyingSettings = false;
+        }
+
+        HostsUserEdited = false;
+        IsAdvancedExpanded = false;
+        return true;
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsGraphBackend))]
@@ -112,10 +270,55 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         };
     }
 
-    protected AccountEditorViewModel(IMailService mailService, IOAuthService oauth)
+    protected AccountEditorViewModel(
+        IMailService mailService,
+        IOAuthService oauth,
+        IProviderCatalog catalog,
+        ISendMailService? sendMail = null)
     {
         MailService = mailService;
         OAuthService = oauth;
+        Catalog = catalog;
+        SendMailService = sendMail;
+        // Assign the backing field, not the property: going through the setter would fire
+        // OnSelectedProviderChangedInternal, whose "Other" branch expands Advanced settings — so a
+        // brand-new dialog would open with every server field showing, which is the opposite of the
+        // point. Derived VMs move the selection once they know the account.
+        _selectedProvider = catalog.Other;
+    }
+
+    /// <summary>
+    /// Clears the host fields for a backend that has no use for them (Graph). Wrapped so the clear is
+    /// not mistaken for the user hand-editing a host — otherwise switching to Graph and back would
+    /// leave the fields permanently blank, because the restore path refuses to overwrite user edits.
+    /// </summary>
+    protected void ClearHostsForGraph()
+    {
+        _applyingSettings = true;
+        try
+        {
+            ImapHost = string.Empty;
+            SmtpHost = string.Empty;
+            Password = string.Empty;
+        }
+        finally
+        {
+            _applyingSettings = false;
+        }
+    }
+
+    /// <summary>
+    /// True while <see cref="ApplyProvider"/> / <see cref="ApplyDiscovered"/> are writing the form,
+    /// so those writes are not mistaken for the user hand-editing a host.
+    /// </summary>
+    private bool _applyingSettings;
+
+    partial void OnImapHostChanged(string value) => NoteHostEdit();
+    partial void OnSmtpHostChanged(string value) => NoteHostEdit();
+
+    private void NoteHostEdit()
+    {
+        if (!_applyingSettings) HostsUserEdited = true;
     }
 
     /// <summary>
@@ -125,6 +328,27 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     protected virtual void OnAuthTypeChangedInternal(AuthType value) { }
 
     partial void OnAuthTypeChanged(AuthType value) => OnAuthTypeChangedInternal(value);
+
+    /// <summary>
+    /// Called when <see cref="SelectedProvider"/> changes. Overridden in AddAccountViewModel to apply
+    /// the provider's settings; the Manager dialog only reflects the resolved provider, so its base
+    /// implementation does nothing. Uses the same *Internal indirection as
+    /// <see cref="OnAuthTypeChangedInternal"/> because the generated partial method belongs to this
+    /// class and cannot be implemented by a derived one.
+    /// </summary>
+    protected virtual void OnSelectedProviderChangedInternal(MailProvider? value) { }
+
+    partial void OnSelectedProviderChanged(MailProvider? value) => OnSelectedProviderChangedInternal(value);
+
+    /// <summary>
+    /// Called when <see cref="Username"/> changes. AddAccountViewModel overrides it to match the
+    /// address against the built-in provider table — an offline lookup, so it is safe to run on
+    /// every keystroke. Deliberately in the ViewModel rather than a View text-changed handler: the
+    /// provider must follow the address whoever sets it, including from a test.
+    /// </summary>
+    protected virtual void OnUsernameChangedInternal(string value) { }
+
+    partial void OnUsernameChanged(string value) => OnUsernameChangedInternal(value);
 
     /// <summary>
     /// Detected from the token at Microsoft sign-in (null until signed in). Carried to
@@ -232,22 +456,62 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Builds a throwaway account carrying the form's current values, for a connectivity probe.
+    /// Its Id is fresh so the probe never disturbs the real account's connection pool.
+    /// </summary>
+    private AccountModel BuildProbeAccount() => new()
+    {
+        Id = Guid.NewGuid(),
+        AccountName = $"Test ({Username})",
+        DisplayName = Username,
+        Username = Username,
+        AuthType = AuthType,
+        BackendKind = BackendKind,
+        ProviderId = SelectedProvider?.Id,
+        IsPersonalMicrosoftAccount = IsPersonalMicrosoftAccount,
+        ImapHost = ImapHost,
+        ImapPort = ImapPort,
+        ImapUseSsl = ImapUseSsl,
+        ImapAcceptInvalidCert = ImapAcceptInvalidCert,
+        SmtpHost = SmtpHost,
+        SmtpPort = SmtpPort,
+        SmtpUseSsl = SmtpUseSsl,
+        SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
+        Signature = Signature,
+    };
+
     [RelayCommand]
     private async Task TestConnectionAsync()
     {
-        // Branch on backend before the IMAP-specific validation. Graph accounts have no IMAP
-        // host/port; their connectivity probe (GET /me) lands with the Graph backend in PR 4.
+        // Graph has no host/port of its own: the backend's GET /me probe IS the connectivity check,
+        // so run it rather than telling the user to go press a different button.
         if (IsGraphBackend)
         {
-            // A Graph account is verified by the OAuth sign-in itself (it acquires a Graph token and
-            // populates the username from /me). There is no separate host/port to probe.
-            StatusText = "For Microsoft 365, use Sign in with Microsoft to verify access.";
-            return;
-        }
+            if (string.IsNullOrWhiteSpace(Username))
+            {
+                StatusText = "Sign in with Microsoft first, so there is an account to test.";
+                return;
+            }
 
-        if (IsGoogleOAuth)
-        {
-            StatusText = "For Gmail, use Sign in with Google to verify access.";
+            IsBusy = true;
+            StatusText = "Testing connection…";
+            var graphAccount = BuildProbeAccount();
+            try
+            {
+                using var graphCts = new CancellationTokenSource(ProbeTimeout);
+                await MailService.ConnectAsync(graphAccount, null, graphCts.Token);
+                await MailService.DisconnectAsync(graphAccount.Id, graphCts.Token);
+                StatusText = "Microsoft 365 connection successful.";
+            }
+            catch (Exception ex)
+            {
+                StatusText = $"Microsoft 365 connection failed: {ex.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
             return;
         }
 
@@ -259,40 +523,54 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
         IsBusy = true;
         StatusText = "Testing connection…";
-        var testAccountId = Guid.NewGuid();
+        var account = BuildProbeAccount();
+        var pwd = IsPasswordAuth ? Password : null;
         try
         {
-            var testAccount = new AccountModel
+            // Two independent legs, reported independently. Incoming can be perfect while outgoing
+            // is wrong — that combination used to pass Test Connection and then fail on first send,
+            // because only IMAP was ever probed.
+            var imapResult = await ProbeAsync(async ct =>
             {
-                Id = testAccountId,
-                AccountName = $"Test ({Username})",
-                DisplayName = Username,
-                Username = Username,
-                AuthType = AuthType,
-                BackendKind = BackendKind,
-                ImapHost = ImapHost,
-                ImapPort = ImapPort,
-                ImapUseSsl = ImapUseSsl,
-                ImapAcceptInvalidCert = ImapAcceptInvalidCert,
-                SmtpHost = SmtpHost,
-                SmtpPort = SmtpPort,
-                SmtpUseSsl = SmtpUseSsl,
-                SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
-                Signature = Signature
-            };
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            var pwd = IsPasswordAuth ? Password : null;
-            await MailService.ConnectAsync(testAccount, pwd, cts.Token);
-            await MailService.DisconnectAsync(testAccountId, cts.Token);
-            StatusText = "Connection successful!";
-        }
-        catch (Exception ex)
-        {
-            StatusText = $"Connection failed: {ex.Message}";
+                await MailService.ConnectAsync(account, pwd, ct);
+                await MailService.DisconnectAsync(account.Id, ct);
+            });
+
+            var smtpResult = string.IsNullOrWhiteSpace(SmtpHost)
+                ? "SMTP not configured."
+                : SendMailService is null
+                    ? "SMTP not checked."
+                    : await ProbeAsync(ct => SendMailService.VerifyAsync(account, pwd, ct));
+
+            StatusText = $"IMAP: {imapResult} SMTP: {smtpResult}";
         }
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Runs one connectivity probe and turns it into a short report line. Failures are reported, not
+    /// thrown, so a broken SMTP host still lets the IMAP result through.
+    /// </summary>
+    private static async Task<string> ProbeAsync(Func<CancellationToken, Task> probe)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(ProbeTimeout);
+            await probe(cts.Token);
+            return "OK.";
+        }
+        catch (OperationCanceledException)
+        {
+            return "timed out.";
+        }
+        catch (Exception ex)
+        {
+            return $"failed — {ex.Message}";
         }
     }
 }

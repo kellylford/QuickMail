@@ -205,4 +205,6 @@ internal sealed class NoOpGraphSendService : ISendMailService
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
         string organizerEmail, CancellationToken ct = default) =>
         throw new NotSupportedException("Graph send is not available in integration tests.");
+    public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default) =>
+        throw new NotSupportedException("Graph send is not available in integration tests.");
 }

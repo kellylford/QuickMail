@@ -44,6 +44,14 @@ public class ConfigModel
     public int MaxImapConnectionsPerAccount { get; set; } = 6;
 
     /// <summary>
+    /// Whether Add Account may look up server settings on the network for a domain the built-in
+    /// provider table does not recognize (Mozilla's autoconfig database, then the domain's own
+    /// Exchange Autodiscover endpoint). When off, only the offline provider table is consulted and
+    /// an unknown domain goes straight to manual entry. The built-in table always works either way.
+    /// </summary>
+    public bool AutoDiscoverOnline { get; set; } = true;
+
+    /// <summary>
     /// Number of messages to fetch on the initial sync of a folder (when no local UID exists).
     /// Default is 500. Set to 0 to fetch all messages in the folder.
     /// </summary>

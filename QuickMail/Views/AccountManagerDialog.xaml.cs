@@ -1,7 +1,11 @@
+using System;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Navigation;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 
 namespace QuickMail.Views;
@@ -66,6 +70,21 @@ public partial class AccountManagerDialog : Window
     {
         if (sender is PasswordBox pb)
             _vm.Password = pb.Password;
+    }
+
+    private void AppPasswordLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        // Open in the default browser rather than anything embedded — this is an external provider
+        // page where the user will sign in.
+        try
+        {
+            Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"AccountManagerDialog: failed to open app-password page — {ex.Message}");
+        }
+        e.Handled = true;
     }
 
     private void NewButton_Click(object sender, RoutedEventArgs e)

@@ -5,8 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Add Account"
-        Height="640" Width="420"
-        MinHeight="540" MinWidth="360"
+        Height="640" Width="440"
+        MinHeight="540" MinWidth="380"
         WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize"
         Loaded="Window_Loaded"
@@ -29,183 +29,209 @@
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
             <StackPanel>
 
-                <!-- Backend selector — shown only when the feature gate offers more than one backend.
-                     Default users (single backend) see no extra UI, identical to before. -->
-                <StackPanel Visibility="{Binding ShowBackendPicker, Converter={StaticResource BoolToVisibility}}">
-                    <Label x:Name="LblBackend" Content="Account _Type:" Target="{Binding ElementName=BackendComboBox}" Padding="0" Margin="0,0,0,2"/>
-                    <ComboBox x:Name="BackendComboBox"
-                              ItemsSource="{Binding AvailableBackends}"
-                              SelectedItem="{Binding SelectedBackend, Mode=TwoWay}"
-                              SelectionChanged="BackendComboBox_SelectionChanged"
-                              AutomationProperties.LabeledBy="{Binding ElementName=LblBackend}"
-                              TabIndex="0"/>
-                    <Separator Margin="0,12"/>
-                </StackPanel>
+                <!-- Provider first: choosing it fills in every server setting below, which is what
+                     keeps the Advanced expander closed for the common cases. -->
+                <Label x:Name="LblProvider" Content="_Provider:" Target="{Binding ElementName=ProviderComboBox}" Padding="0" Margin="0,0,0,2"/>
+                <ComboBox x:Name="ProviderComboBox"
+                          ItemsSource="{Binding Providers}"
+                          SelectedItem="{Binding SelectedProvider, Mode=TwoWay}"
+                          AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
+                          AutomationProperties.Name="Provider"
+                          TabIndex="0"/>
 
-                <TextBlock Text="Account Details" FontWeight="SemiBold" Margin="0,0,0,8"/>
-
-                <Label x:Name="LblAccountName" Content="Account _Name:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,4,0,2"/>
-                <TextBox x:Name="AccountNameBox"
-                         Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         TabIndex="1"/>
-
-                <Label x:Name="LblDisplayName" Content="Sender _Display Name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
-                <TextBox x:Name="DisplayNameBox"
-                         Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                         TabIndex="2"/>
-
-                <Label x:Name="LblUsername" Content="_Email / Username:" Target="{Binding ElementName=UsernameBox}" Padding="0" Margin="0,8,0,2"/>
+                <Label x:Name="LblUsername" Content="_Email address:" Target="{Binding ElementName=UsernameBox}" Padding="0" Margin="0,10,0,2"/>
                 <TextBox x:Name="UsernameBox"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
-                         TabIndex="3"/>
+                         LostFocus="UsernameBox_LostFocus"
+                         TabIndex="1"/>
 
-                <!-- Authentication type — hidden for Microsoft 365 (Graph), which is always OAuth. -->
-                <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
-                    <Label x:Name="LblAuthType" Content="_Authentication:" Target="{Binding ElementName=AuthTypeCombo}" Padding="0" Margin="0,8,0,2"/>
-                    <ComboBox x:Name="AuthTypeCombo"
-                              SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
-                              AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
-                              AutomationProperties.Name="Authentication method"
-                              TabIndex="4">
-                        <ComboBoxItem>Password</ComboBoxItem>
-                        <ComboBoxItem>Microsoft OAuth2 (Outlook.com)</ComboBoxItem>
-                        <ComboBoxItem Visibility="{Binding ShowGoogleAuthOption, Converter={StaticResource BoolToVisibility}}">Google OAuth (Gmail)</ComboBoxItem>
-                    </ComboBox>
-                </StackPanel>
-
-                <!-- Password panel (hidden for OAuth2) -->
+                <!-- Password (hidden for OAuth2) -->
                 <StackPanel Visibility="{Binding IsPasswordAuth, Converter={StaticResource BoolToVisibility}}">
-                    <Label x:Name="LblPassword" Content="_Password:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,0,0,2"/>
+                    <Label x:Name="LblPassword" Content="Pass_word:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,10,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
                                  AutomationProperties.HelpText="Password is stored in Windows Credential Manager"
-                                 TabIndex="5"
+                                 TabIndex="2"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
-                    <!-- iCloud app-specific password hint -->
-                    <Border Visibility="{Binding IsICloudAccount, Converter={StaticResource BoolToVisibility}}"
+
+                    <!-- App-specific password warning, driven by the selected provider (Gmail, Yahoo,
+                         iCloud). The same text is announced as a Hint when the provider changes, so it
+                         is deliberately not duplicated into any AutomationProperties.Name. -->
+                    <Border Visibility="{Binding ShowAppPasswordHint, Converter={StaticResource BoolToVisibility}}"
                             Background="{DynamicResource Theme.WarningBackground}"
                             BorderBrush="{DynamicResource Theme.Warning}"
                             BorderThickness="1"
                             Padding="8,6"
                             Margin="0,6,0,0">
-                        <TextBlock TextWrapping="Wrap"
-                                   AutomationProperties.Name="iCloud requires an app-specific password, not your Apple ID password. Generate one at appleid.apple.com under Sign-In and Security, App-Specific Passwords.">
-                            <Run FontWeight="SemiBold">iCloud requires an app-specific password.</Run>
-                            <Run>Do not enter your Apple ID password. Generate one at</Run>
-                            <Run FontWeight="SemiBold">appleid.apple.com</Run>
-                            <Run>under Sign-In &amp; Security &#x2192; App-Specific Passwords.</Run>
-                        </TextBlock>
+                        <StackPanel>
+                            <TextBlock Text="{Binding AppPasswordHint}"
+                                       TextWrapping="Wrap"
+                                       FontWeight="SemiBold"/>
+                            <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}"
+                                           RequestNavigate="AppPasswordLink_RequestNavigate"
+                                           AutomationProperties.Name="Create an app password">
+                                    <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
+                                </Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
                     </Border>
                 </StackPanel>
 
-                <!-- Microsoft OAuth2 sign-in panel -->
-                <!-- Contact sync (issue #256) — check before signing in so the contact permission is
-                     part of the same consent. Shown for any OAuth account. -->
+                <Label x:Name="LblAccountName" Content="Account _name:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,10,0,2"/>
+                <TextBox x:Name="AccountNameBox"
+                         Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
+                         AutomationProperties.HelpText="What this account is called inside QuickMail"
+                         TabIndex="3"/>
+
+                <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
+                <TextBox x:Name="DisplayNameBox"
+                         Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
+                         AutomationProperties.HelpText="The name recipients see on messages you send"
+                         TabIndex="4"/>
+
+                <!-- Sync opt-ins stay on the main surface: they must be checked BEFORE sign-in so the
+                     permission is part of the same consent (#256, #282). -->
                 <CheckBox Content="Sync _contacts from this account"
                           Visibility="{Binding ShowContactSyncOption, Converter={StaticResource BoolToVisibility}}"
                           IsChecked="{Binding SyncContacts, Mode=TwoWay}"
                           AutomationProperties.Name="Sync contacts from this account"
                           AutomationProperties.HelpText="Check this before signing in to also grant read-only permission to read your contacts into the address book."
-                          Margin="0,8,0,0" TabIndex="6"/>
+                          Margin="0,12,0,0" TabIndex="5"/>
 
-                <!-- Calendar sync (#282) — shown for Microsoft, Google, and iCloud accounts. -->
                 <CheckBox Content="Sync ca_lendar from this account"
                           Visibility="{Binding ShowCalendarSyncOption, Converter={StaticResource BoolToVisibility}}"
                           IsChecked="{Binding SyncCalendar, Mode=TwoWay}"
                           AutomationProperties.Name="Sync calendar from this account"
                           AutomationProperties.HelpText="Show this account's calendar in the Calendar view. For Microsoft, grants calendar permission when you sign in; for iCloud, uses your app-specific password."
-                          Margin="0,6,0,0" TabIndex="7"/>
+                          Margin="0,6,0,0" TabIndex="6"/>
 
-                <StackPanel Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
-                            Margin="0,4,0,0">
-                    <Button Content="Sign in with _Microsoft…"
-                            Command="{Binding SignInMicrosoftCommand}"
-                            AutomationProperties.Name="Sign in with Microsoft account in browser"
-                            HorizontalAlignment="Left" MinWidth="200" TabIndex="8"/>
-                </StackPanel>
+                <!-- OAuth sign-in stays on the main surface too: for an OAuth provider this is the
+                     primary action, not an advanced one. -->
+                <Button Content="Sign in with _Microsoft…"
+                        Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
+                        Command="{Binding SignInMicrosoftCommand}"
+                        AutomationProperties.Name="Sign in with Microsoft account in browser"
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,10,0,0" TabIndex="7"/>
 
-                <!-- Google OAuth sign-in panel -->
-                <StackPanel Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
-                            Margin="0,4,0,0">
-                    <Button Content="Sign in with _Google…"
-                            Command="{Binding SignInGoogleCommand}"
-                            AutomationProperties.Name="Sign in with Google account in browser"
-                            HorizontalAlignment="Left" MinWidth="200" TabIndex="9"/>
-                </StackPanel>
+                <Button Content="Sign in with _Google…"
+                        Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
+                        Command="{Binding SignInGoogleCommand}"
+                        AutomationProperties.Name="Sign in with Google account in browser"
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,10,0,0" TabIndex="8"/>
 
-                <!-- IMAP + SMTP server settings — collapsed for Microsoft Graph accounts,
-                     which authenticate via OAuth and need no host configuration. -->
-                <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
-                <Separator Margin="0,12"/>
+                <!-- Everything a recognized provider already answers for the user. Collapsed unless
+                     the provider is "Other" or discovery came back empty (VM.IsAdvancedExpanded). -->
+                <Expander x:Name="AdvancedExpander"
+                          Header="Ad_vanced settings"
+                          IsExpanded="{Binding IsAdvancedExpanded, Mode=TwoWay}"
+                          AutomationProperties.Name="Advanced settings"
+                          Margin="0,14,0,0"
+                          TabIndex="9">
+                    <StackPanel Margin="0,8,0,0">
 
-                <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <!-- Connection method: only Microsoft has more than one, so only Microsoft is
+                             asked. Hidden entirely when the Graph feature gate is off. -->
+                        <StackPanel Visibility="{Binding ShowConnectionMethod, Converter={StaticResource BoolToVisibility}}">
+                            <Label x:Name="LblBackend" Content="Connection _method:" Target="{Binding ElementName=BackendComboBox}" Padding="0" Margin="0,0,0,2"/>
+                            <ComboBox x:Name="BackendComboBox"
+                                      ItemsSource="{Binding AvailableBackends}"
+                                      SelectedItem="{Binding SelectedBackend, Mode=TwoWay}"
+                                      SelectionChanged="BackendComboBox_SelectionChanged"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=LblBackend}"
+                                      AutomationProperties.Name="Connection method"
+                                      Margin="0,0,0,8"
+                                      TabIndex="10"/>
+                        </StackPanel>
 
-                <Label x:Name="LblImapHost" Content="IMAP _Host:" Target="{Binding ElementName=ImapHostBox}" Padding="0" Margin="0,4,0,2"/>
-                <TextBox x:Name="ImapHostBox"
-                         Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
-                         TabIndex="10"/>
+                        <!-- Authentication — hidden for Microsoft 365 (Graph), which is always OAuth. -->
+                        <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
+                            <Label x:Name="LblAuthType" Content="_Authentication:" Target="{Binding ElementName=AuthTypeCombo}" Padding="0" Margin="0,0,0,2"/>
+                            <ComboBox x:Name="AuthTypeCombo"
+                                      SelectedIndex="{Binding AuthTypeIndex, Mode=TwoWay}"
+                                      AutomationProperties.LabeledBy="{Binding ElementName=LblAuthType}"
+                                      AutomationProperties.Name="Authentication"
+                                      TabIndex="11">
+                                <ComboBoxItem>Password</ComboBoxItem>
+                                <ComboBoxItem>Microsoft OAuth2 (Outlook.com)</ComboBoxItem>
+                                <ComboBoxItem Visibility="{Binding ShowGoogleAuthOption, Converter={StaticResource BoolToVisibility}}">Google OAuth (Gmail)</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
 
-                <Label x:Name="LblImapPort" Content="IMAP _Port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
-                <TextBox x:Name="ImapPortBox"
-                         Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
-                         TabIndex="11"/>
+                        <!-- IMAP + SMTP — collapsed for Microsoft Graph accounts, which authenticate
+                             via OAuth and need no host configuration. -->
+                        <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
+                            <Separator Margin="0,12"/>
 
-                <CheckBox Content="Use _SSL (port 993)"
-                          IsChecked="{Binding ImapUseSsl}"
-                          AutomationProperties.Name="IMAP use SSL"
-                          Margin="0,6" TabIndex="12"/>
+                            <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
-                <CheckBox Content="Accept _invalid certificates"
-                          IsChecked="{Binding ImapAcceptInvalidCert}"
-                          AutomationProperties.Name="IMAP accept invalid SSL certificates"
-                          Margin="0,0,0,6" TabIndex="13"/>
+                            <Label x:Name="LblImapHost" Content="IMAP _host:" Target="{Binding ElementName=ImapHostBox}" Padding="0" Margin="0,4,0,2"/>
+                            <TextBox x:Name="ImapHostBox"
+                                     Text="{Binding ImapHost, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=LblImapHost}"
+                                     TabIndex="12"/>
 
-                <Separator Margin="0,6"/>
+                            <Label x:Name="LblImapPort" Content="IMAP _port:" Target="{Binding ElementName=ImapPortBox}" Padding="0" Margin="0,6,0,2"/>
+                            <TextBox x:Name="ImapPortBox"
+                                     Text="{Binding ImapPort, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=LblImapPort}"
+                                     TabIndex="13"/>
 
-                <TextBlock Text="Outgoing Mail (SMTP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                            <CheckBox Content="Use _SSL (port 993)"
+                                      IsChecked="{Binding ImapUseSsl}"
+                                      AutomationProperties.Name="IMAP use SSL"
+                                      Margin="0,6" TabIndex="14"/>
 
-                <Label x:Name="LblSmtpHost" Content="SMTP H_ost:" Target="{Binding ElementName=SmtpHostBox}" Padding="0" Margin="0,4,0,2"/>
-                <TextBox x:Name="SmtpHostBox"
-                         Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpHost}"
-                         TabIndex="14"/>
+                            <CheckBox Content="Accept _invalid certificates"
+                                      IsChecked="{Binding ImapAcceptInvalidCert}"
+                                      AutomationProperties.Name="IMAP accept invalid SSL certificates"
+                                      Margin="0,0,0,6" TabIndex="15"/>
 
-                <Label x:Name="LblSmtpPort" Content="SMTP Po_rt:" Target="{Binding ElementName=SmtpPortBox}" Padding="0" Margin="0,6,0,2"/>
-                <TextBox x:Name="SmtpPortBox"
-                         Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
-                         TabIndex="15"/>
+                            <Separator Margin="0,6"/>
 
-                <CheckBox Content="Implicit _SSL on connect (port 465; uncheck for STARTTLS on port 587)"
-                          IsChecked="{Binding SmtpUseSsl}"
-                          AutomationProperties.Name="SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587."
-                          Margin="0,6" TabIndex="16"/>
+                            <TextBlock Text="Outgoing Mail (SMTP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
-                <CheckBox Content="Accept invalid certi_ficates"
-                          IsChecked="{Binding SmtpAcceptInvalidCert}"
-                          AutomationProperties.Name="SMTP accept invalid SSL certificates"
-                          Margin="0,0,0,6" TabIndex="17"/>
-                </StackPanel>
+                            <Label x:Name="LblSmtpHost" Content="SMTP h_ost:" Target="{Binding ElementName=SmtpHostBox}" Padding="0" Margin="0,4,0,2"/>
+                            <TextBox x:Name="SmtpHostBox"
+                                     Text="{Binding SmtpHost, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpHost}"
+                                     TabIndex="16"/>
 
-                <Separator Margin="0,6"/>
+                            <Label x:Name="LblSmtpPort" Content="SMTP po_rt:" Target="{Binding ElementName=SmtpPortBox}" Padding="0" Margin="0,6,0,2"/>
+                            <TextBox x:Name="SmtpPortBox"
+                                     Text="{Binding SmtpPort, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
+                                     TabIndex="17"/>
 
-                <!-- Signature -->
-                <TextBlock Text="Email Signature" FontWeight="SemiBold" Margin="0,0,0,6"/>
-                <Label x:Name="LblSignature" Content="_Signature (plain text, appended to new messages):" Target="{Binding ElementName=SignatureBox}" Padding="0" Margin="0,4,0,2"/>
-                <TextBox x:Name="SignatureBox"
-                         Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblSignature}"
-                         AutomationProperties.HelpText="This text is automatically added to the end of new messages, replies, and forwards"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         MinHeight="60"
-                         VerticalScrollBarVisibility="Auto"
-                         TabIndex="18"/>
+                            <CheckBox Content="Implicit SS_L on connect (port 465; uncheck for STARTTLS on port 587)"
+                                      IsChecked="{Binding SmtpUseSsl}"
+                                      AutomationProperties.Name="SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587."
+                                      Margin="0,6" TabIndex="18"/>
+
+                            <CheckBox Content="Accept invalid certi_ficates"
+                                      IsChecked="{Binding SmtpAcceptInvalidCert}"
+                                      AutomationProperties.Name="SMTP accept invalid SSL certificates"
+                                      Margin="0,0,0,6" TabIndex="19"/>
+                        </StackPanel>
+
+                        <Separator Margin="0,6"/>
+
+                        <TextBlock Text="Email Signature" FontWeight="SemiBold" Margin="0,0,0,6"/>
+                        <Label x:Name="LblSignature" Content="Si_gnature (plain text, appended to new messages):" Target="{Binding ElementName=SignatureBox}" Padding="0" Margin="0,4,0,2"/>
+                        <TextBox x:Name="SignatureBox"
+                                 Text="{Binding Signature, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.LabeledBy="{Binding ElementName=LblSignature}"
+                                 AutomationProperties.HelpText="This text is automatically added to the end of new messages, replies, and forwards"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 MinHeight="60"
+                                 VerticalScrollBarVisibility="Auto"
+                                 TabIndex="20"/>
+                    </StackPanel>
+                </Expander>
 
             </StackPanel>
         </ScrollViewer>
@@ -230,7 +256,7 @@
                     DockPanel.Dock="Right"
                     Content="_Test Connection"
                     Command="{Binding TestConnectionCommand}"
-                    AutomationProperties.Name="Test IMAP connection with current settings"
+                    AutomationProperties.Name="Test connection with current settings"
                     MinWidth="120" Margin="6,0,0,0"/>
             <Button DockPanel.Dock="Right"
                     Content="_Add Account"

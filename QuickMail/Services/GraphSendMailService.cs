@@ -27,6 +27,14 @@ public class GraphSendMailService : ISendMailService, IDisposable
         string organizerEmail, CancellationToken ct = default)
         => SendMimeAsync(account, MimeMessageBuilder.BuildIcsReply(account, icsReplyContent, organizerEmail), ct);
 
+    /// <summary>
+    /// No-op for Graph. There is no separate outgoing server to probe: sending uses the same token
+    /// and endpoint the mail backend's <c>GET /me</c> connectivity check already exercises, so
+    /// Test Connection verifies this path through <see cref="IMailService.ConnectAsync"/>.
+    /// </summary>
+    public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     private async Task SendMimeAsync(AccountModel account, MimeMessage message, CancellationToken ct)
     {
         // Graph /sendMail takes the MIME message base64-encoded as a text/plain body.

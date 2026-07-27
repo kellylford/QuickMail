@@ -27,6 +27,14 @@ public class SmtpServiceDispatchTests
             IcsCalled = true;
             return Task.CompletedTask;
         }
+
+        public bool VerifyCalled { get; private set; }
+
+        public Task VerifyAsync(AccountModel account, string? password, CancellationToken ct = default)
+        {
+            VerifyCalled = true;
+            return Task.CompletedTask;
+        }
     }
 
     [Fact]

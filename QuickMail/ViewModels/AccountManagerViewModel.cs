@@ -18,6 +18,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     private readonly IConfigService _configService;
     private readonly IOAuthService _oauth;
     private readonly IFeatureGate _featureGate;
+    private readonly IAutoDiscoverService? _autoDiscover;
+    private readonly ISendMailService? _sendMail;
     private readonly IContactSyncService? _contactSync;
     private readonly IGraphCalendarSyncService? _graphCalendarSync;
 
@@ -40,7 +42,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public bool CanSyncContacts =>
         _contactSync != null && SelectedAccount is { } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
-         || acct.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
+         || ProviderCatalog.IsICloud(acct));
 
     // SyncContacts / SyncCalendar are inherited from AccountEditorViewModel (shared with Add Account).
 
@@ -52,7 +54,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public bool CanSyncCalendar =>
         _graphCalendarSync != null && SelectedAccount is { } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
-         || acct.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
+         || ProviderCatalog.IsICloud(acct));
 
     public override bool ShowGoogleAuthOption => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
 
@@ -64,10 +66,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         ILocalStoreService localStore,
         IConfigService configService,
         IFeatureGate featureGate,
+        IProviderCatalog catalog,
+        IAutoDiscoverService? autoDiscover = null,
+        ISendMailService? sendMail = null,
         IContactSyncService? contactSync = null,
         IGraphCalendarSyncService? graphCalendarSync = null)
-        : base(imap, oauth)
+        : base(imap, oauth, catalog, sendMail)
     {
+        _autoDiscover   = autoDiscover;
+        _sendMail       = sendMail;
         _accountService = accountService;
         _credentials    = credentials;
         _oauth          = oauth;
@@ -82,6 +89,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     partial void OnSelectedAccountChanged(AccountModel? value)
     {
         if (value == null) return;
+        // Resolve before the field copy: accounts saved before the provider catalog existed have no
+        // ProviderId, so Resolve falls back to matching their IMAP host.
+        SelectedProvider = Catalog.Resolve(value);
         BackendKind = value.BackendKind; // drives IsGraphBackend/IsImapBackend → hides auth + IMAP/SMTP for Graph
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;
@@ -102,6 +112,11 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SyncContacts = value.SyncContacts;
         SyncCalendar = value.SyncCalendar;
         StatusText = string.Empty;
+        // These are the account's saved values, not something typed just now — clear the edit flag so
+        // switching between accounts doesn't look like a hand edit. Advanced starts collapsed; the
+        // user opens it when they want to see servers.
+        HostsUserEdited = false;
+        IsAdvancedExpanded = false;
     }
 
     /// <summary>
@@ -210,7 +225,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
-    public AddAccountViewModel CreateAddAccountViewModel() => new(_featureGate, MailService, OAuthService);
+    public AddAccountViewModel CreateAddAccountViewModel() =>
+        new(_featureGate, MailService, OAuthService, Catalog, _autoDiscover, _sendMail);
 
     public void CommitNewAccount(AccountModel account, string password)
     {
@@ -292,6 +308,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         account.SmtpUseSsl = SmtpUseSsl;
         account.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
         account.Signature = Signature;
+        // Backfill the provider on an account created before the catalog existed, so later lookups
+        // stop relying on the host fallback. The provider itself is read-only in this dialog.
+        account.ProviderId ??= SelectedProvider?.Id;
         // SyncContacts is NOT touched here — the checkbox applies itself immediately via
         // OnSyncContactsChanged (consent + persist), so Save never enables/disables it.
 
