@@ -28,9 +28,18 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(CanSyncContacts))]
     [NotifyPropertyChangedFor(nameof(CanSyncCalendar))]
+    [NotifyPropertyChangedFor(nameof(ShowTestConnection))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
+
+    /// <summary>
+    /// Test Connection tests IMAP with the current host/port, so it's shown only when an IMAP
+    /// account is actually selected — hidden when nothing is selected (nothing to test) and for
+    /// Graph accounts (OAuth, no IMAP host). In this dialog BackendKind only changes when the
+    /// selection does, so notifying on SelectedAccount covers the IsImapBackend half too.
+    /// </summary>
+    public bool ShowTestConnection => IsEditing && IsImapBackend;
 
     /// <summary>
     /// Contact sync (issue #256) is offered for Microsoft and Google (OAuth contact APIs), plus

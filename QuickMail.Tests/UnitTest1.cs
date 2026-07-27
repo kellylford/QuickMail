@@ -82,6 +82,31 @@ public class ViewModelConstructionTests
     }
 
     [Fact]
+    public void ShowTestConnection_OnlyWhenAnImapAccountIsSelected()
+    {
+        var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
+        var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
+        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate());
+
+        Assert.False(vm.ShowTestConnection);   // nothing selected — nothing to test
+
+        vm.SelectedAccount = new AccountModel
+        {
+            Id = Guid.NewGuid(), BackendKind = BackendKind.ImapSmtp, Username = "u@e.com", AuthType = AuthType.Password,
+        };
+        Assert.True(vm.ShowTestConnection);    // IMAP account selected
+
+        vm.SelectedAccount = new AccountModel
+        {
+            Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph, Username = "g@e.com", AuthType = AuthType.OAuth2Microsoft,
+        };
+        Assert.False(vm.ShowTestConnection);   // Graph account — OAuth, no IMAP to test
+
+        vm.SelectedAccount = null;
+        Assert.False(vm.ShowTestConnection);   // deselected again
+    }
+
+    [Fact]
     public void GroupManagerViewModel_ConstructsWithoutException()
     {
         var (_, _, _, _, _, _, _, contacts, _) = MakeServices();
