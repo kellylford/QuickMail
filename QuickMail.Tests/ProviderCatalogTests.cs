@@ -48,11 +48,20 @@ public class ProviderCatalogTests
         => Assert.Null(_catalog.MatchByEmail(email));
 
     [Fact]
-    public void Other_IsLastAndNeverMatchesByDomain()
+    public void Other_IsFirstAndNeverMatchesByDomain()
     {
-        Assert.Equal(ProviderCatalog.OtherId, _catalog.All[^1].Id);
+        // First, not last. The dialog opens on "Other", so parking it at the end of the list leaves
+        // Down arrow with nowhere to go and the real providers undiscoverable from the keyboard.
+        Assert.Equal(ProviderCatalog.OtherId, _catalog.All[0].Id);
         Assert.True(_catalog.Other.IsOther);
         Assert.False(_catalog.Other.MatchesEmail("anyone@anywhere.com"));
+    }
+
+    [Fact]
+    public void EveryOtherEntryFollowsAndIsARealProvider()
+    {
+        Assert.All(_catalog.All.Skip(1), p => Assert.False(p.IsOther));
+        Assert.True(_catalog.All.Count > 1, "the list must offer somewhere to arrow to");
     }
 
     [Fact]

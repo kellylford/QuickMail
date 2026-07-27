@@ -180,6 +180,49 @@ public class TestConnectionTests
         Assert.False(broken.IsBusy);
     }
 
+    // ── When the button is offered at all (Manage Accounts) ──────────────────────
+
+    private static AccountManagerViewModel NewManager() =>
+        new(new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
+            new StubOAuthService(), new StubLocalStoreService(), new StubConfigService(),
+            new StubFeatureGate(), Catalog);
+
+    [Fact]
+    public void TestConnectionIsHiddenWithNoAccountSelected()
+    {
+        // The form is disabled with nothing selected, but the button stayed visible because
+        // OnSelectedAccountChanged returns early on null and leaves BackendKind at its default.
+        Assert.False(NewManager().ShowTestConnection);
+    }
+
+    [Fact]
+    public void TestConnectionIsOfferedForASelectedImapAccount()
+    {
+        var vm = NewManager();
+        vm.SelectedAccount = new AccountModel
+        {
+            Id = Guid.NewGuid(), BackendKind = BackendKind.ImapSmtp,
+            Username = "kelly@example.com", AuthType = AuthType.Password,
+        };
+
+        Assert.True(vm.ShowTestConnection);
+    }
+
+    [Fact]
+    public void TestConnectionIsAlsoOfferedForASelectedGraphAccount()
+    {
+        // Graph accounts are probed via GET /me now, so hiding the button here would hide it
+        // precisely where it just started working.
+        var vm = NewManager();
+        vm.SelectedAccount = new AccountModel
+        {
+            Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph,
+            Username = "kelly@contoso.com", AuthType = AuthType.OAuth2Microsoft,
+        };
+
+        Assert.True(vm.ShowTestConnection);
+    }
+
     // ── Doubles ──────────────────────────────────────────────────────────────────
 
     private sealed class RecordingConnectMailService : StubImapMailServiceBase

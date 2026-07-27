@@ -30,9 +30,22 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(CanSyncContacts))]
     [NotifyPropertyChangedFor(nameof(CanSyncCalendar))]
+    [NotifyPropertyChangedFor(nameof(ShowTestConnection))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
+
+    /// <summary>
+    /// Test Connection is offered only when there is an account to test. With nothing selected the
+    /// form is disabled but the button used to stay visible, because OnSelectedAccountChanged
+    /// returns early on a null selection and leaves BackendKind at its default (found by
+    /// CityDweller, PR #388, from a screen-reader user working the add/manage flow).
+    ///
+    /// Deliberately NOT also gated on IsImapBackend. That gate made sense while Test Connection
+    /// could only probe IMAP, but it now probes Graph accounts too, via the backend's GET /me — so
+    /// hiding it for Microsoft 365 would hide it exactly where it just started working.
+    /// </summary>
+    public bool ShowTestConnection => IsEditing;
 
     /// <summary>
     /// Contact sync (issue #256) is offered for Microsoft and Google (OAuth contact APIs), plus

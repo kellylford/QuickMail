@@ -86,13 +86,16 @@ public sealed class ProviderCatalog : IProviderCatalog
         AppPasswordHint: null,
         AppPasswordUrl: null);
 
+    // "Other" comes FIRST, not last. The dialog opens with it selected, so if it sat at the end of
+    // the list pressing Down arrow would do nothing — the user would be parked on the one entry with
+    // no settings, with no obvious way to discover that the others exist.
     private static readonly MailProvider[] Catalog =
     [
+        OtherProvider,
         GmailProvider,
         MicrosoftProvider,
         YahooProvider,
         ICloudProvider,
-        OtherProvider,
     ];
 
     /// <summary>
