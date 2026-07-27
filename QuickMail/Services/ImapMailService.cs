@@ -1064,11 +1064,9 @@ public class ImapMailService : IMailService, IChangeNotifier
 #pragma warning restore CA5359
             }
 
-            var ssl = account.ImapUseSsl
-                ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTlsWhenAvailable;
+            var ssl = MailSecurity.ForImap(account);
 
-            LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={account.ImapUseSsl} auth={account.AuthType}");
+            LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={ssl} auth={account.AuthType}");
             LogService.Debug($"  user={account.Username}");
             await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
 
@@ -1113,6 +1111,10 @@ public class ImapMailService : IMailService, IChangeNotifier
         left.ImapHost == right.ImapHost &&
         left.ImapPort == right.ImapPort &&
         left.ImapUseSsl == right.ImapUseSsl &&
+        // Part of how the connection is made, not just of how it is labelled: a pooled client that
+        // negotiated under StartTlsWhenAvailable must not be reused for an account that now requires
+        // STARTTLS.
+        left.RequireStartTls == right.RequireStartTls &&
         left.ImapAcceptInvalidCert == right.ImapAcceptInvalidCert;
 
     private static AccountModel CloneAccount(AccountModel account) =>
@@ -1131,6 +1133,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             SmtpPort              = account.SmtpPort,
             SmtpUseSsl            = account.SmtpUseSsl,
             SmtpAcceptInvalidCert = account.SmtpAcceptInvalidCert,
+            RequireStartTls       = account.RequireStartTls,
             IsDefault             = account.IsDefault,
         };
 

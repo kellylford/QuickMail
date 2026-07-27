@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using MailKit.Security;
 using QuickMail.Models;
 using QuickMail.Services;
 using Xunit;
@@ -198,16 +199,69 @@ public class AutoDiscoverServiceTests
         Assert.Null(AutoDiscoverService.ParseAutodiscover(xml, "contoso.com", new ProviderCatalog()));
     }
 
+    // Replaces AutodiscoverOnPort143IsAcceptedAsStartTlsNotImplicitSsl, which asserted only that
+    // port 143 came back with ImapUseSsl false — and that flag alone used to mean
+    // StartTlsWhenAvailable, i.e. "connect in plaintext and authenticate anyway if the server
+    // advertises no STARTTLS". Accepting the port was never the problem; accepting it without
+    // requiring encryption was. The old test locked that in, so it is replaced rather than extended.
     [Fact]
-    public void AutodiscoverOnPort143IsAcceptedAsStartTlsNotImplicitSsl()
+    public void AutodiscoverOnPort143IsAcceptedButOnlyWithStartTlsRequired()
     {
         var xml = AutodiscoverImap.Replace("<Port>993</Port>", "<Port>143</Port>", StringComparison.Ordinal);
 
         var parsed = AutoDiscoverService.ParseAutodiscover(xml, "contoso.com", new ProviderCatalog());
 
         Assert.NotNull(parsed);
-        Assert.False(parsed!.ImapUseSsl);
+        Assert.False(parsed!.ImapUseSsl);      // 143 is STARTTLS, not implicit TLS
         Assert.Equal(143, parsed.ImapPort);
+        Assert.True(parsed.RequireStartTls);   // …and the negotiation is mandatory, not opportunistic
+        Assert.Equal(SecureSocketOptions.StartTls,
+            MailSecurity.Select(parsed.ImapUseSsl, parsed.RequireStartTls));
+    }
+
+    // Port 587 is the same hole on the outgoing leg: Autodiscover says "SSL on", the port says
+    // STARTTLS, and SmtpUseSsl false alone would have connected in the clear against a server that
+    // offers no STARTTLS.
+    [Fact]
+    public void AutodiscoverSmtpOnPort587AlsoRequiresStartTls()
+    {
+        var parsed = AutoDiscoverService.ParseAutodiscover(AutodiscoverImap, "contoso.com", new ProviderCatalog());
+
+        Assert.False(parsed!.SmtpUseSsl);
+        Assert.True(parsed.RequireStartTls);
+        Assert.Equal(SecureSocketOptions.StartTls,
+            MailSecurity.Select(parsed.SmtpUseSsl, parsed.RequireStartTls));
+    }
+
+    // The ISPDB path reaches the same place from socketType STARTTLS.
+    [Fact]
+    public void IspdbStartTlsRequiresTheNegotiationRatherThanPreferringIt()
+    {
+        var parsed = AutoDiscoverService.ParseIspdb(GmailIspdb, "example.edu");
+
+        Assert.False(parsed!.SmtpUseSsl);
+        Assert.True(parsed.RequireStartTls);
+    }
+
+    [Fact]
+    public async Task EverySourceOfDiscoveredSettingsRequiresEncryption()
+    {
+        // Whatever tier answers, the settings were chosen for the user rather than by them, so none
+        // of them may fall back to plaintext.
+        var catalog = await Build(new RecordingHandler()).DiscoverAsync("kelly@gmail.com", CancellationToken.None);
+        Assert.True(catalog!.RequireStartTls);
+
+        var ispdb = new RecordingHandler();
+        ispdb.Respond(req => req.RequestUri!.Host == "autoconfig.thunderbird.net" ? Ok(GmailIspdb) : NotFound());
+        Assert.True((await Build(ispdb).DiscoverAsync("kelly@example.edu", CancellationToken.None))!.RequireStartTls);
+
+        var autodiscover = new RecordingHandler();
+        autodiscover.Respond(req => req.RequestUri!.Host.Contains("thunderbird", StringComparison.Ordinal)
+            ? NotFound() : Ok(AutodiscoverImap));
+        Assert.True((await Build(autodiscover).DiscoverAsync("kelly@contoso.com", CancellationToken.None))!.RequireStartTls);
+
+        var dns = DnsOnly(MxJson("contoso-com.mail.protection.outlook.com"));
+        Assert.True((await Build(dns).DiscoverAsync("kelly@contoso.com", CancellationToken.None))!.RequireStartTls);
     }
 
     // ── Redirects ────────────────────────────────────────────────────────────────────
@@ -253,6 +307,150 @@ public class AutoDiscoverServiceTests
 
         Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
         Assert.DoesNotContain(handler.Requests, r => r.RequestUri!.Scheme == "http");
+    }
+
+    // ── Where a redirect is allowed to go ────────────────────────────────────────────
+
+    /// <summary>
+    /// 302s the Autodiscover endpoint to whatever host the test names, and answers everything else
+    /// with the Office 365 document — so if a hop is followed, it visibly succeeds.
+    /// </summary>
+    private static RecordingHandler RedirectingAutodiscover(string location, HttpStatusCode status = HttpStatusCode.Found)
+    {
+        var handler = new RecordingHandler();
+        handler.Respond(req =>
+        {
+            if (req.RequestUri!.Host.Contains("thunderbird", StringComparison.Ordinal)) return NotFound();
+            if (req.RequestUri.Host == "cloudflare-dns.com") return Ok(NoAnswer);
+            // The bare-domain endpoint answers nothing, so the redirect is the only route to a
+            // result and "no result" means the hop really was refused.
+            if (req.RequestUri.Host == "contoso.com") return NotFound();
+            if (req.RequestUri.Host == "autodiscover.contoso.com")
+            {
+                var moved = new HttpResponseMessage(status);
+                moved.Headers.Location = new Uri(location);
+                return moved;
+            }
+            return Ok(AutodiscoverOffice365);
+        });
+        return handler;
+    }
+
+    [Fact]
+    public async Task ARedirectToAnUnrelatedHostIsRefused()
+    {
+        // The response to an Autodiscover POST names the IMAP and SMTP hosts this account is about to
+        // send its password to. A 302 that hands that decision to an arbitrary third party is not a
+        // redirect, it is a handover, and the target's valid certificate says nothing about whether
+        // it speaks for contoso.com.
+        var handler = RedirectingAutodiscover("https://collector.example/autodiscover/autodiscover.xml");
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+        Assert.DoesNotContain(handler.Sent, r => r.Uri.Host == "collector.example");
+    }
+
+    [Fact]
+    public async Task TheAddressIsNeverSentToAHostOutsideTheQueriedDomain()
+    {
+        // The Autodiscover request body carries <EMailAddress>the user's full address</EMailAddress>,
+        // and newRequest() rebuilds that body on every hop. Following the redirect POSTed it to the
+        // redirect target.
+        var handler = RedirectingAutodiscover("https://collector.example/autodiscover/autodiscover.xml");
+        var svc = Build(handler);
+
+        await svc.DiscoverAsync("kelly.private@contoso.com", CancellationToken.None);
+
+        foreach (var sent in handler.Sent)
+        {
+            var isQueriedDomain = sent.Uri.Host == "contoso.com" || sent.Uri.Host.EndsWith(".contoso.com", StringComparison.Ordinal);
+            if (isQueriedDomain) continue;
+
+            Assert.DoesNotContain("kelly.private", sent.Uri.ToString(), StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("kelly.private", sent.Body ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    [Fact]
+    public async Task AFollowedRedirectDoesNotRepostTheAddress()
+    {
+        // The allowed Microsoft hop still must not carry the body onward: a 302 downgrades to GET,
+        // exactly as browsers and HttpClientHandler do for a cross-origin 301/302/303.
+        var handler = RedirectingAutodiscover("https://autodiscover-s.outlook.com/autodiscover/autodiscover.xml");
+        var svc = Build(handler);
+
+        await svc.DiscoverAsync("kelly.private@contoso.com", CancellationToken.None);
+
+        var hop = Assert.Single(handler.Sent.Where(r => r.Uri.Host == "autodiscover-s.outlook.com"));
+        Assert.Equal(HttpMethod.Get, hop.Method);
+        Assert.True(string.IsNullOrEmpty(hop.Body), $"the redirect re-sent a body: {hop.Body}");
+    }
+
+    [Fact]
+    public async Task ARedirectWithinTheQueriedDomainIsFollowed()
+    {
+        // A domain moving its own Autodiscover endpoint around inside itself is ordinary, and the
+        // address is going to that same domain either way.
+        var handler = RedirectingAutodiscover("https://mail.contoso.com/autodiscover/autodiscover.xml");
+        var svc = Build(handler);
+
+        var result = await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
+
+        Assert.Equal(ProviderCatalog.MicrosoftId, result!.ProviderId);
+        Assert.Contains(handler.Sent, r => r.Uri.Host == "mail.contoso.com");
+    }
+
+    [Fact]
+    public async Task A307ToAnAllowedHostKeepsThePostAndItsBody()
+    {
+        // 307 means "same method, same body" by definition, and the host it means it for has already
+        // been checked. Only 301/302/303 downgrade.
+        var handler = RedirectingAutodiscover("https://mail.contoso.com/autodiscover/autodiscover.xml",
+            HttpStatusCode.TemporaryRedirect);
+        var svc = Build(handler);
+
+        await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
+
+        var hop = Assert.Single(handler.Sent.Where(r => r.Uri.Host == "mail.contoso.com"));
+        Assert.Equal(HttpMethod.Post, hop.Method);
+        Assert.Contains("kelly@contoso.com", hop.Body!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnIspdbRedirectOffMozillasHostIsRefused()
+    {
+        // This tier queries one fixed, known host. A hop off it is not part of the protocol, and the
+        // document it would return decides the same servers Autodiscover's would.
+        var handler = new RecordingHandler();
+        handler.Respond(req =>
+        {
+            if (req.RequestUri!.Host != "autoconfig.thunderbird.net") return NotFound();
+            var moved = new HttpResponseMessage(HttpStatusCode.Found);
+            moved.Headers.Location = new Uri("https://mirror.example/v1.1/example.edu");
+            return moved;
+        });
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@example.edu", CancellationToken.None));
+        Assert.DoesNotContain(handler.Sent, r => r.Uri.Host == "mirror.example");
+    }
+
+    [Fact]
+    public async Task ADnsOverHttpsRedirectOffTheResolverIsRefused()
+    {
+        // Same reasoning: whoever answers the MX query picks the provider.
+        var handler = new RecordingHandler();
+        handler.Respond(req =>
+        {
+            if (req.RequestUri!.Host != "cloudflare-dns.com") return NotFound();
+            var moved = new HttpResponseMessage(HttpStatusCode.Found);
+            moved.Headers.Location = new Uri("https://resolver.example/dns-query?name=contoso.com&type=15");
+            return moved;
+        });
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+        Assert.DoesNotContain(handler.Sent, r => r.Uri.Host == "resolver.example");
     }
 
     [Fact]
@@ -456,6 +654,20 @@ public class AutoDiscoverServiceTests
         Assert.Equal("imap.gmail.com", result.ImapHost);
     }
 
+    [Theory]
+    [InlineData("not-really-mail.google.com")]
+    [InlineData("mx.storage.google.com")]
+    public async Task AnMxUnderGoogleComThatIsNotAGoogleMailHostIsNotClaimedAsGmail(string mxHost)
+    {
+        // The suffix list held a bare "google.com", so ANY host under the domain was read as
+        // "this domain's mail is Gmail" — and Gmail's servers, plus its app-password requirement,
+        // were filled in for a domain that never said so. Google Workspace delivery hosts are all
+        // under l.google.com.
+        var svc = Build(DnsOnly(MxJson(mxHost)));
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+    }
+
     [Fact]
     public async Task NoMxAndNoCnameFindsNothing()
     {
@@ -597,11 +809,18 @@ public class AutoDiscoverServiceTests
 
     private static HttpResponseMessage NotFound() => new(HttpStatusCode.NotFound);
 
+    /// <summary>One request as it actually went out. Captured at send time because the content is
+    /// disposed along with the request, so reading the body afterwards would throw.</summary>
+    private sealed record SentRequest(Uri Uri, HttpMethod Method, string? Body);
+
     private sealed class RecordingHandler : HttpMessageHandler
     {
         private Func<HttpRequestMessage, HttpResponseMessage> _responder = _ => new(HttpStatusCode.NotFound);
 
         public List<HttpRequestMessage> Requests { get; } = [];
+
+        /// <summary>Every request, with its method and body — what the redirect tests assert on.</summary>
+        public List<SentRequest> Sent { get; } = [];
 
         public void Respond(Func<HttpRequestMessage, HttpResponseMessage> responder) => _responder = responder;
 
@@ -609,6 +828,9 @@ public class AutoDiscoverServiceTests
         {
             ct.ThrowIfCancellationRequested();
             Requests.Add(request);
+            Sent.Add(new SentRequest(
+                request.RequestUri!, request.Method,
+                request.Content?.ReadAsStringAsync(ct).GetAwaiter().GetResult()));
             return Task.FromResult(_responder(request));
         }
     }

@@ -88,23 +88,77 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
     /// walk an HTTPS lookup down to plain HTTP), but treating every 30x as "nothing here" is wrong
     /// too — Microsoft 365 custom domains commonly answer Autodiscover with a 302 to
     /// autodiscover-s.outlook.com, and dropping it would make that whole path dead. So follow them
-    /// explicitly, and only to another HTTPS URL.
+    /// explicitly, to another HTTPS URL, and only to a host allowed by
+    /// <see cref="IsAllowedRedirectTarget"/>.
     /// </summary>
     private const int MaxRedirects = 3;
 
     /// <summary>
-    /// Issues a request, following 30x responses manually and refusing any hop that is not HTTPS.
-    /// Returns null when the chain ends in a non-success status or exceeds <see cref="MaxRedirects"/>.
+    /// Hosts a redirect may land on whatever domain is being queried. These exist for exactly one
+    /// case: a Microsoft 365 custom domain answers Autodiscover with a 302 to
+    /// autodiscover-s.outlook.com, which is under none of the queried domain's names. That case is
+    /// why redirect following was added at all, so it is allowed by name rather than by opening the
+    /// door to every host on the internet.
     /// </summary>
+    private static readonly string[] MicrosoftRedirectHosts =
+        ["outlook.com", "office365.com", "microsoftonline.com"];
+
+    /// <summary>
+    /// Whether a hop may be followed to <paramref name="next"/>, having just asked
+    /// <paramref name="from"/> while querying <paramref name="redirectScope"/>.
+    ///
+    /// This is the difference between a redirect and a hand-off. An Autodiscover request body
+    /// contains the user's full email address, and the response names the IMAP and SMTP hosts the
+    /// account is about to send its password to. Following an unrestricted 302 therefore lets
+    /// whoever answers for autodiscover.&lt;domain&gt; forward both the address and that decision to
+    /// any HTTPS server it likes. .NET's own HttpClientHandler strips the body and turns POST into
+    /// GET across a cross-origin 301/302/303 for the same reason.
+    ///
+    /// Allowed: the host just asked (or a subdomain of it), the queried domain or a subdomain of it,
+    /// and the Microsoft hosts above. The ISPDB and DNS-over-HTTPS tiers pass their own fixed
+    /// service host as the scope, so a hop off autoconfig.thunderbird.net or cloudflare-dns.com is
+    /// refused too.
+    /// </summary>
+    private static bool IsAllowedRedirectTarget(Uri next, Uri from, string redirectScope) =>
+        IsHostOrSubdomainOf(next.Host, from.Host) ||
+        IsHostOrSubdomainOf(next.Host, redirectScope) ||
+        MicrosoftRedirectHosts.Any(h => IsHostOrSubdomainOf(next.Host, h));
+
+    private static bool IsHostOrSubdomainOf(string host, string suffix) =>
+        host.Equals(suffix, StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith("." + suffix, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Issues a request, following 30x responses manually and refusing any hop that is not HTTPS or
+    /// is outside <paramref name="redirectScope"/>. Returns null when the chain ends in a non-success
+    /// status or exceeds <see cref="MaxRedirects"/>.
+    /// </summary>
+    /// <param name="redirectScope">
+    /// The domain a hop may stay within: the queried mail domain for Autodiscover, or the tier's own
+    /// fixed service host for ISPDB and DNS-over-HTTPS.
+    /// </param>
     private async Task<string?> SendFollowingHttpsRedirectsAsync(
-        Func<HttpRequestMessage> newRequest, Uri uri, CancellationToken ct)
+        Func<HttpRequestMessage> newRequest, Uri uri, string redirectScope, CancellationToken ct)
     {
         var target = uri;
+        var bodyDropped = false;
 
         for (var hop = 0; hop <= MaxRedirects; hop++)
         {
             using var request = newRequest();
             request.RequestUri = target;
+
+            if (bodyDropped)
+            {
+                // newRequest() rebuilds the original POST every hop, body included. After a
+                // 301/302/303 that body must not go out again, so downgrade to GET here — the same
+                // thing browsers and HttpClientHandler do.
+                request.Method = HttpMethod.Get;
+                var stale = request.Content;
+                request.Content = null;
+                stale?.Dispose();
+            }
+
             using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
 
             if (IsRedirect(response.StatusCode))
@@ -119,6 +173,18 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
                     LogService.Debug($"AutoDiscover: refusing non-HTTPS redirect to {next.Scheme}.");
                     return null;
                 }
+
+                if (!IsAllowedRedirectTarget(next, target, redirectScope))
+                {
+                    // The domain and the refused host are logged; the address never is.
+                    LogService.Debug(
+                        $"AutoDiscover: refusing redirect for {redirectScope} to unrelated host {next.Host}.");
+                    return null;
+                }
+
+                // 307/308 keep the method and body by definition, and the host they keep it for has
+                // just been checked. 301/302/303 do not.
+                bodyDropped = bodyDropped || DropsRequestBody(response.StatusCode);
                 target = next;
                 continue;
             }
@@ -134,6 +200,10 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
     private static bool IsRedirect(HttpStatusCode status) => status is
         HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther or
         HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
+
+    /// <summary>The statuses that turn the follow-up request into a bodyless GET.</summary>
+    private static bool DropsRequestBody(HttpStatusCode status) => status is
+        HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther;
 
     public async Task<DiscoveredSettings?> DiscoverAsync(string emailAddress, CancellationToken ct)
     {
@@ -201,8 +271,14 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
     /// <summary>The standard Microsoft 365 autodiscover CNAME target.</summary>
     private const string MicrosoftAutodiscoverTarget = "autodiscover.outlook.com";
 
+    /// <summary>
+    /// Where Google Workspace delivers mail. Deliberately NOT a bare "google.com": that matched every
+    /// host under the domain, so an MX of not-really-mail.google.com — or any other Google service
+    /// host a domain happens to point its MX at — was claimed as Gmail and filled in Gmail's servers.
+    /// The delivery hosts are all under l.google.com.
+    /// </summary>
     private static readonly string[] GoogleMailHostSuffixes =
-        ["aspmx.l.google.com", "googlemail.com", "google.com"];
+        ["aspmx.l.google.com", "l.google.com", "googlemail.com"];
 
     /// <summary>
     /// Identifies the mail host from public DNS: an MX under Microsoft's mail-protection suffix, or
@@ -255,7 +331,8 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
                 request.Headers.Accept.ParseAdd("application/dns-json");
                 return request;
             },
-            uri, ct).ConfigureAwait(false);
+            // The resolver is a fixed, known host, so it is also the only host a hop may reach.
+            uri, uri.Host, ct).ConfigureAwait(false);
 
         return json is null ? [] : ParseDnsAnswers(json, type);
     }
@@ -325,7 +402,8 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
 
         var url = new Uri(IspdbUrlPrefix + Uri.EscapeDataString(domain));
         var xml = await SendFollowingHttpsRedirectsAsync(
-            () => new HttpRequestMessage(HttpMethod.Get, url), url, tier.Token).ConfigureAwait(false);
+            // Mozilla's database is a fixed, known host; a hop off it is not part of this protocol.
+            () => new HttpRequestMessage(HttpMethod.Get, url), url, url.Host, tier.Token).ConfigureAwait(false);
 
         return xml is null ? null : ParseIspdb(xml, domain);
     }
@@ -411,7 +489,9 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
     private async Task<DiscoveredSettings?> QueryAutodiscoverAsync(string email, string domain, CancellationToken ct)
     {
         // The two endpoints Outlook tries, in the same order. HTTPS only — there is no HTTP fallback
-        // by design, and redirects are not followed (see CreateDefaultClient).
+        // by design. Redirects ARE followed, but by hand and under the restrictions in
+        // SendFollowingHttpsRedirectsAsync: HTTPS only, an allowed host only, and never re-sending
+        // the request body (which carries the user's address) after a 301/302/303.
         string[] endpoints =
         [
             $"https://autodiscover.{domain}/autodiscover/autodiscover.xml",
@@ -433,7 +513,7 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
                     {
                         Content = new StringContent(body, Encoding.UTF8, "text/xml"),
                     },
-                    uri, tier.Token).ConfigureAwait(false);
+                    uri, domain, tier.Token).ConfigureAwait(false);
                 if (xml is null) continue;
 
                 var parsed = ParseAutodiscover(xml, domain, _catalog);

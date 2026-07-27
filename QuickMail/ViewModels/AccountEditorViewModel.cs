@@ -121,6 +121,15 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _hostsUserEdited;
 
+    /// <summary>
+    /// Carried to <see cref="AccountModel.RequireStartTls"/>. True while the server settings are the
+    /// ones QuickMail supplied — from the built-in catalog or from a discovery result — so a leg that
+    /// is not implicit TLS must negotiate STARTTLS rather than silently fall back to plaintext.
+    /// Cleared the moment the user edits a server field by hand, because from then on the settings
+    /// are theirs and the permissive behavior is their call to make.
+    /// </summary>
+    public bool RequireStartTls { get; protected set; }
+
     /// <summary>Warning shown above the password box for providers that need an app-specific password.</summary>
     public string? AppPasswordHint => SelectedProvider?.AppPasswordHint;
 
@@ -189,8 +198,11 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             _applyingSettings = wasApplying;
         }
 
-        // The settings came from the catalog, not the user, so a later match may still replace them.
+        // The settings came from the catalog, not the user, so a later match may still replace them —
+        // and, for the same reason, encryption on them is required rather than merely attempted.
+        // Every catalog provider genuinely offers implicit TLS or STARTTLS on the ports listed.
         HostsUserEdited = false;
+        RequireStartTls = true;
         if (collapseAdvanced) IsAdvancedExpanded = false;
         return true;
     }
@@ -225,6 +237,8 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         }
 
         HostsUserEdited = false;
+        // Back to no known-good settings at all, so nothing is being required of a server yet.
+        RequireStartTls = false;
 
         // Assigning the provider runs the normal "user picked Other" path, which opens Advanced
         // settings. That is right when the user chose Other deliberately and wrong here — this fires
@@ -282,6 +296,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         }
 
         HostsUserEdited = false;
+        // Discovery names these hosts, not the user, so encryption on them is mandatory: a server
+        // that offers no STARTTLS must fail the connection rather than take the password in the clear.
+        RequireStartTls = settings.RequireStartTls;
         IsAdvancedExpanded = false;
         return true;
     }
@@ -395,7 +412,12 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     private void NoteHostEdit()
     {
-        if (!_applyingSettings) HostsUserEdited = true;
+        if (_applyingSettings) return;
+        HostsUserEdited = true;
+        // These are now the user's settings, not ones QuickMail chose for them, so drop the
+        // requirement that a non-implicit-TLS leg must negotiate STARTTLS. Someone deliberately
+        // pointing QuickMail at their own server keeps the permissive behavior they had before.
+        RequireStartTls = false;
     }
 
     /// <summary>
@@ -592,6 +614,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         SmtpPort = SmtpPort,
         SmtpUseSsl = SmtpUseSsl,
         SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
+        // The probe must connect exactly as the saved account will, or "Test Connection: OK" is a
+        // claim about a different connection than the one the password will be sent over.
+        RequireStartTls = RequireStartTls,
         Signature = Signature,
     };
 

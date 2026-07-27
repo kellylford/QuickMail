@@ -36,6 +36,13 @@ public enum DiscoverySource
 /// in the combo. Null for network-discovered settings, which map to "Other".
 /// </param>
 /// <param name="DisplayName">Human-readable provider or domain name for announcements.</param>
+/// <param name="RequireStartTls">
+/// Carried to <see cref="AccountModel.RequireStartTls"/>. True for everything discovery produces:
+/// these hosts were chosen for the user rather than by them, so a non-implicit-TLS leg must
+/// negotiate STARTTLS or fail, instead of falling back to plaintext and offering the password to
+/// whatever answered. Defaulted rather than passed at every call site because there is no discovery
+/// result for which false would be correct — a tier that cannot promise encryption returns null.
+/// </param>
 public sealed record DiscoveredSettings(
     string ImapHost,
     int ImapPort,
@@ -45,4 +52,5 @@ public sealed record DiscoveredSettings(
     bool SmtpUseSsl,
     string? ProviderId,
     string? DisplayName,
-    DiscoverySource Source);
+    DiscoverySource Source,
+    bool RequireStartTls = true);

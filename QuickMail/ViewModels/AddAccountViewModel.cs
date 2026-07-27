@@ -329,6 +329,9 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         SmtpPort = SmtpPort,
         SmtpUseSsl = SmtpUseSsl,
         SmtpAcceptInvalidCert = SmtpAcceptInvalidCert,
+        // Persisted with the account: settings QuickMail supplied must keep requiring encryption
+        // every time the account connects, not only on the day it was created.
+        RequireStartTls = RequireStartTls,
         Signature = Signature,
         SyncContacts = SyncContacts && ShowContactSyncOption,
         SyncCalendar = SyncCalendar && ShowCalendarSyncOption,

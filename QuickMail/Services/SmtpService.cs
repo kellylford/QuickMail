@@ -36,9 +36,7 @@ public class SmtpService : ISendMailService
 #pragma warning restore CA5359
         }
 
-        var ssl = account.SmtpUseSsl
-            ? SecureSocketOptions.SslOnConnect
-            : SecureSocketOptions.StartTlsWhenAvailable;
+        var ssl = MailSecurity.ForSmtp(account);
 
         try
         {
@@ -87,9 +85,7 @@ public class SmtpService : ISendMailService
 
         // Same SSL and SASL selection as SendAsync — a verification that connected differently from
         // the real send would prove nothing.
-        var ssl = account.SmtpUseSsl
-            ? SecureSocketOptions.SslOnConnect
-            : SecureSocketOptions.StartTlsWhenAvailable;
+        var ssl = MailSecurity.ForSmtp(account);
 
         LogService.Log($"SmtpService: verifying {account.SmtpHost}:{account.SmtpPort} ssl={ssl}");
         await client.ConnectAsync(account.SmtpHost, account.SmtpPort, ssl, ct);
@@ -129,9 +125,7 @@ public class SmtpService : ISendMailService
 #pragma warning restore CA5359
         }
 
-        var ssl = account.SmtpUseSsl
-            ? SecureSocketOptions.SslOnConnect
-            : SecureSocketOptions.StartTlsWhenAvailable;
+        var ssl = MailSecurity.ForSmtp(account);
 
         try
         {

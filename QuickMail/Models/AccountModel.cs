@@ -47,6 +47,25 @@ public partial class AccountModel : ObservableObject
     public bool SmtpUseSsl { get; set; } = false; // STARTTLS on 587
     public bool SmtpAcceptInvalidCert { get; set; } = false;
 
+    /// <summary>
+    /// Encryption is mandatory on this account, not merely preferred.
+    ///
+    /// <see cref="ImapUseSsl"/> / <see cref="SmtpUseSsl"/> false means "STARTTLS", and it used to map
+    /// to MailKit's <c>StartTlsWhenAvailable</c> — which, when the server advertises no STARTTLS,
+    /// connects in PLAINTEXT and authenticates anyway. So "STARTTLS" was a label on the setting, not
+    /// a property of the connection: a host on port 143 that simply never offers STARTTLS receives
+    /// the password in the clear. With this flag set the connection uses <c>StartTls</c>, which
+    /// fails instead.
+    ///
+    /// Default false, so accounts already in accounts.json deserialize exactly as before. Set true
+    /// for server settings QuickMail chose on the user's behalf — the built-in provider catalog and
+    /// every discovery tier — because those hosts arrived over the network (or from a table) rather
+    /// than from the user, and a typosquatted responder naming a plaintext host must not be able to
+    /// harvest the password behind a collapsed Advanced expander. Settings the user typed in
+    /// Advanced settings keep the permissive behavior; that is their choice to make.
+    /// </summary>
+    public bool RequireStartTls { get; set; } = false;
+
     /// <summary>When true, this account is pre-selected when composing a new message.</summary>
     public bool IsDefault { get; set; } = false;
 

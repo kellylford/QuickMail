@@ -129,6 +129,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         // switching between accounts doesn't look like a hand edit. Advanced starts collapsed; the
         // user opens it when they want to see servers.
         HostsUserEdited = false;
+        // After the field copies above, because assigning a host or port clears this flag as a hand
+        // edit. Restoring the saved value is what stops merely opening an account in this dialog
+        // from downgrading it from "STARTTLS required" to "STARTTLS if the server feels like it".
+        RequireStartTls = value.RequireStartTls;
         IsAdvancedExpanded = false;
     }
 
@@ -320,6 +324,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         account.SmtpPort = SmtpPort;
         account.SmtpUseSsl = SmtpUseSsl;
         account.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
+        // Follows the fields: hand-editing a server in this dialog clears it, which is the user
+        // taking the settings over and with them the choice about fallback.
+        account.RequireStartTls = RequireStartTls;
         account.Signature = Signature;
         // Backfill the provider on an account created before the catalog existed, so later lookups
         // stop relying on the host fallback. The provider itself is read-only in this dialog.

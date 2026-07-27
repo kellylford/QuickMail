@@ -627,6 +627,82 @@ public class AddAccountViewModelProviderTests
         Assert.Equal(ProviderCatalog.YahooId, Catalog.Resolve(account).Id);
     }
 
+    // ── Transport security (who chose the servers decides the fallback) ──────────
+
+    [Fact]
+    public async Task DiscoveredServersReachTheSavedAccountRequiringStartTls()
+    {
+        // The settings arrived over the network on port 587, where SmtpUseSsl is false — which alone
+        // meant StartTlsWhenAvailable, i.e. "authenticate in plaintext if the server offers no
+        // STARTTLS". Whoever answered for this domain could therefore harvest the password, behind a
+        // collapsed Advanced expander that only said "Settings found".
+        var discover = new StubAutoDiscover(new DiscoveredSettings(
+            "mail.example.edu", 143, false, "smtp.example.edu", 587, false,
+            ProviderId: null, DisplayName: "Example University", DiscoverySource.Ispdb));
+        var vm = NewVm(discover);
+        vm.Username = "kelly@example.edu";
+
+        await vm.DiscoverSettingsCommand.ExecuteAsync(null);
+
+        Assert.True(vm.RequireStartTls);
+        Assert.True(vm.ToAccountModel().RequireStartTls);
+    }
+
+    [Fact]
+    public void AProviderFromTheCatalogAlsoRequiresStartTls()
+    {
+        // Gmail's SMTP entry is 587/STARTTLS. The catalog is QuickMail's choice, not the user's, and
+        // every provider in it genuinely offers STARTTLS or implicit TLS.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.GmailId);
+
+        Assert.False(vm.SmtpUseSsl);
+        Assert.True(vm.ToAccountModel().RequireStartTls);
+    }
+
+    [Fact]
+    public void ServersTypedByHandKeepThePermissiveBehaviour()
+    {
+        // Someone deliberately pointing QuickMail at their own server may still choose opportunistic
+        // STARTTLS. The restriction is on settings QuickMail accepted on their behalf.
+        var vm = NewVm();
+        vm.Username = "kelly@theideaplace.net";
+        vm.ImapHost = "mail.theideaplace.net";
+        vm.SmtpHost = "smtp.theideaplace.net";
+
+        Assert.False(vm.ToAccountModel().RequireStartTls);
+    }
+
+    [Fact]
+    public async Task EditingAServerAfterDiscoveryHandsTheChoiceBackToTheUser()
+    {
+        var discover = new StubAutoDiscover(new DiscoveredSettings(
+            "mail.example.edu", 993, true, "smtp.example.edu", 587, false,
+            null, "Example University", DiscoverySource.Ispdb));
+        var vm = NewVm(discover);
+        vm.Username = "kelly@example.edu";
+        await vm.DiscoverSettingsCommand.ExecuteAsync(null);
+        Assert.True(vm.RequireStartTls);
+
+        vm.SmtpHost = "relay.mine.example";   // typed in Advanced settings
+
+        Assert.False(vm.ToAccountModel().RequireStartTls);
+    }
+
+    [Fact]
+    public void CorrectingATypodAddressDropsTheRequirementWithTheServers()
+    {
+        // ResetToUnknownProvider blanks the hosts; leaving a requirement behind for servers that no
+        // longer exist would be state with nothing to apply to.
+        var vm = NewVm();
+        vm.Username = "kelly@gmail.com";
+        Assert.True(vm.RequireStartTls);
+
+        vm.Username = "kelly@theideaplace.net";
+
+        Assert.False(vm.RequireStartTls);
+    }
+
     [Fact]
     public void DisposeIsSafeToCallTwice()
     {
