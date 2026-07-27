@@ -13,6 +13,26 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ---
 
+## New: setting up an account asks for three things
+
+Adding an account used to ask for an IMAP host, port, SSL setting, and certificate rule, and then the same four again for SMTP — even when QuickMail already knew every one of those values. It now asks for a **provider**, your **email address**, and your **password**, and works the rest out.
+
+The dialog opens on a new **Provider** list: **Other**, **Gmail**, **Outlook.com / Microsoft 365**, **Yahoo Mail**, and **iCloud Mail**. Other is first rather than last, so Down arrow reaches the rest from where the dialog puts you. Choosing a provider fills in every server setting and says what it did; typing an address at one of them selects it for you, so most people never touch the list. Server names, ports, and SSL settings moved behind an **Advanced settings** expander that stays closed unless you need it — Tab reaches its header before its contents, so one keystroke moves past the whole thing.
+
+**Account name is now optional.** Leave it blank and the account is labelled with its email address.
+
+**An address QuickMail does not recognize gets looked up** when you leave the Email field. Four things are tried in turn: the built-in provider list (offline — nothing leaves your computer), Mozilla's public autoconfig database, your domain's own Autodiscover service, and finally your domain's public DNS records, which say where its mail is actually delivered. Only the **domain** is sent for the second and fourth; the third sends your address to your own provider's server, exactly as Outlook does. That last step is what makes ordinary business mail work: most Microsoft 365 and Google Workspace customers use their own domain and publish nothing the earlier steps can read, and a work mailbox has no IMAP host to type — the way in is a sign-in. When nothing is found at all, Advanced settings opens and focus moves to the **IMAP host** field, with a message naming the sign-in route for a work or school account. Set `AutoDiscoverOnline = off` in `config.ini` to skip everything but the built-in list.
+
+**Gmail now defaults to an app password.** Google sign-in is currently blocked for new QuickMail accounts, so the app password is the path that works today, and the dialog links straight to the page where you create one. Google sign-in stays available under **Advanced settings → Authentication**. Yahoo Mail and iCloud Mail need app passwords too, and say so above the password box. (#369)
+
+**Work or school Microsoft 365 accounts connect through Microsoft 365 directly.** An address on your organization's own domain now moves onto that connection method as you type it, instead of being left on IMAP — where sign-in ended at "your administrator needs to make a change" for a mailbox that signs in perfectly well the other way. Personal Outlook.com, Hotmail, and Live.com accounts are unaffected and stay on IMAP.
+
+**Test Connection checks both halves of your mail.** Incoming and outgoing are probed separately and reported separately — "IMAP: OK. SMTP: OK." A working inbox with a misconfigured send server used to pass this test and then fail on your first message. Microsoft 365 accounts can be tested now as well. The button is on the Manage Accounts window too, so it is as useful on an account that has stopped working as on one you are setting up.
+
+Manage Accounts gained the same **Advanced settings** expander, so an account that is working needs no scrolling past hosts and ports to reach the settings people actually change, and it shows which provider the account belongs to.
+
+The [Accounts section of the User Guide](https://kellylford.github.io/QuickMail/accounts.html) covers the whole lifecycle — choosing a provider, adding an account, entering settings by hand, testing, editing, and removing.
+
 ## Changed: mail rules are now per-account
 
 The "All accounts" rule option has been replaced by scoping each rule to a specific account. This happens automatically the first time rules load after updating:
