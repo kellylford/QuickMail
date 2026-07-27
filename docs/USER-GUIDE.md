@@ -101,7 +101,7 @@ For most accounts you only need three things: your provider, your email address,
 1. The dialog opens on the **Provider** list, which starts on **Other**. Press Down arrow to move through **Gmail**, **Outlook.com / Microsoft 365**, **Yahoo Mail**, and **iCloud Mail**.
 2. Tab to **Email address** and type it. If your address belongs to one of the listed providers, QuickMail selects that provider for you — you can skip step 1 entirely.
 3. Tab to **Password** and enter it. Several providers need an **app password** rather than your normal one; QuickMail says so above the box and links to the page where you create it.
-4. **Account name** and **Sender display name** are filled in for you and can be changed.
+4. **Account name** and **Sender display name** are optional. Leave the account name blank and QuickMail labels the account with your email address.
 5. Press **Add Account**.
 
 Server names, ports, and SSL settings live under **Advanced settings**, which stays closed unless you need it.

@@ -83,7 +83,7 @@
                 <TextBox x:Name="AccountNameBox"
                          Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         AutomationProperties.HelpText="What this account is called inside QuickMail"
+                         AutomationProperties.HelpText="What this account is called inside QuickMail. Leave blank to use your email address."
                          TabIndex="3"/>
 
                 <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>

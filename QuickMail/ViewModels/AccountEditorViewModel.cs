@@ -217,11 +217,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             SmtpPort = 587;
             SmtpUseSsl = false;
             SmtpAcceptInvalidCert = false;
-
-            // The account name was auto-filled from the provider we are leaving. Anything the user
-            // typed themselves is left alone.
-            if (string.Equals(AccountName, previous.DisplayName, StringComparison.Ordinal))
-                AccountName = string.Empty;
+            // The account name is never touched here — nothing writes it but the user.
         }
         finally
         {

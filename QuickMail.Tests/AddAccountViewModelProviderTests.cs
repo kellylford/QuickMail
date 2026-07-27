@@ -90,15 +90,44 @@ public class AddAccountViewModelProviderTests
     }
 
     [Fact]
-    public void SelectingAProviderNamesTheAccountButNeverOverwritesATypedName()
+    public void ArrowingThroughTheProviderListNeverWritesTheAccountName()
+    {
+        // Selecting a provider fires for every item arrowed past. Filling the name in on the way
+        // through left a Microsoft account called "Gmail", because the second pass saw a non-blank
+        // box and declined to correct it. Nothing but the user writes this field now.
+        var vm = NewVm();
+
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.GmailId);
+        Assert.Equal(string.Empty, vm.AccountName);
+
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        Assert.Equal(string.Empty, vm.AccountName);
+    }
+
+    [Fact]
+    public void ANameTheUserTypedSurvivesEveryProviderChange()
     {
         var vm = NewVm();
-        vm.SelectedProvider = Catalog.ById(ProviderCatalog.ICloudId);
-        Assert.Equal("iCloud Mail", vm.AccountName);
-
         vm.AccountName = "Personal";
+
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.ICloudId);
         vm.SelectedProvider = Catalog.ById(ProviderCatalog.YahooId);
+        vm.Username = "kelly@gmail.com";
+
         Assert.Equal("Personal", vm.AccountName);
+    }
+
+    [Fact]
+    public void AnAccountWithNoNameIsLabelledByItsAddress()
+    {
+        // Why no placeholder is needed: the model already falls back to the address.
+        var vm = NewVm();
+        vm.Username = "kelly@gmail.com";
+
+        var account = vm.ToAccountModel();
+
+        Assert.Equal(string.Empty, account.AccountName);
+        Assert.Equal("kelly@gmail.com", account.AccountLabel);
     }
 
     // ── Typing an address ────────────────────────────────────────────────────────
@@ -163,18 +192,6 @@ public class AddAccountViewModelProviderTests
         Assert.Equal(ProviderCatalog.OtherId, vm.SelectedProvider!.Id);
         Assert.Equal(string.Empty, vm.ImapHost);
         Assert.Equal(string.Empty, vm.SmtpHost);
-    }
-
-    [Fact]
-    public void CorrectingTheAddressAlsoDropsTheAutoFilledAccountName()
-    {
-        var vm = NewVm();
-        vm.Username = "kelly@gmail.com";
-        Assert.Equal("Gmail", vm.AccountName);
-
-        vm.Username = "kelly@theideaplace.net";
-
-        Assert.Equal(string.Empty, vm.AccountName);
     }
 
     [Fact]

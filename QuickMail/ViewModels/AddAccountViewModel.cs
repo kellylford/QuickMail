@@ -77,11 +77,13 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         // Declared on this class, so the base class's [NotifyPropertyChangedFor] can't cover it.
         OnPropertyChanged(nameof(ShowConnectionMethod));
 
-        // Give the account a sensible name rather than leaving the user to invent one — but only
-        // when blank, so a name they already typed is never clobbered.
-        if (string.IsNullOrWhiteSpace(AccountName) && !value.IsOther)
-            AccountName = value.DisplayName;
-
+        // Deliberately NOT filling in the account name from the provider. Selecting a provider fires
+        // this for every item the user passes through — arrowing Other -> Gmail -> Microsoft wrote
+        // "Gmail" into the name box on the way past, and then declined to correct it because the box
+        // was no longer blank, leaving a Microsoft account called Gmail. Writing into a field the
+        // user is not looking at, as a side effect of changing a different one, is the whole
+        // problem. It bought nothing either way: AccountModel.AccountLabel already falls back to the
+        // email address when the name is blank.
         ProviderApplied?.Invoke(value);
     }
 
