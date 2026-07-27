@@ -202,7 +202,12 @@
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
                                     />
 
-                            <CheckBox Content="Implicit SSL on connect (port _465; uncheck for STARTTLS on port 587)"
+                            <!-- The ports live in the Content for sighted users and in a focus hint
+                                 (see HintFor) for everyone else: an explicit AutomationProperties.Name
+                                 overrides the Content, so they cannot be in the Name too — it has to
+                                 stay a short label. -->
+                            <CheckBox x:Name="SmtpImplicitSslCheckBox"
+                                      Content="Implicit SSL on connect (port _465; uncheck for STARTTLS on port 587)"
                                       IsChecked="{Binding SmtpUseSsl}"
                                       AutomationProperties.Name="SMTP implicit SSL on connect"
                                       Margin="0,6"/>
@@ -253,7 +258,8 @@
                     Command="{Binding TestConnectionCommand}"
                     AutomationProperties.Name="Test connection"
                     MinWidth="120" Margin="6,0,0,0"/>
-            <Button DockPanel.Dock="Right"
+            <Button x:Name="AddButton"
+                    DockPanel.Dock="Right"
                     Content="_Add Account"
                     IsDefault="True"
                     Click="AddButton_Click"

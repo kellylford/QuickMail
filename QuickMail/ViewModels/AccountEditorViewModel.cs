@@ -177,7 +177,12 @@ public abstract partial class AccountEditorViewModel : ObservableObject
                 // Graph authenticates via OAuth and needs no host configuration at all.
                 ImapHost = string.Empty;
                 SmtpHost = string.Empty;
-                Password = string.Empty;
+                // ClearPassword, not a bare assignment: a PasswordBox cannot be data-bound, so the
+                // View only learns the password is gone from the PasswordCleared event. Assigning
+                // the field directly cleared it silently AND made the ClearPassword call below a
+                // no-op (it returns early on an already-empty password), so the box kept showing
+                // dots for a password that no longer existed.
+                ClearPassword();
             }
             else
             {
@@ -450,6 +455,16 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     partial void OnUsernameChanged(string value) => OnUsernameChangedInternal(value);
 
     /// <summary>
+    /// Called after a Microsoft sign-in succeeds, with the answer MSAL's tenant id gives for
+    /// "is this a personal Microsoft account?" (#233). It is the only reliable source for that:
+    /// guessing from the domain is exactly what fails for a personal account on a vanity domain.
+    /// AddAccountViewModel overrides it to put such an account back on the IMAP backend, which the
+    /// domain guess had moved to Graph. Sign-in happens before the account is created, so the
+    /// correction lands in time.
+    /// </summary>
+    protected virtual void OnMicrosoftSignInCompleted(bool isPersonalAccount) { }
+
+    /// <summary>
     /// Detected from the token at Microsoft sign-in (null until signed in). Carried to
     /// <see cref="AccountModel.IsPersonalMicrosoftAccount"/> by the derived VM's ToAccountModel so
     /// scope selection is correct even for personal accounts on custom domains (#233).
@@ -507,6 +522,8 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
             Username = result.Username;
             IsPersonalMicrosoftAccount = result.IsPersonalMicrosoftAccount;
+            // AFTER Username, because assigning it re-runs the derived VM's address handling.
+            OnMicrosoftSignInCompleted(result.IsPersonalMicrosoftAccount);
             StatusText = $"Signed in as {result.Username}";
         }
         catch (Exception ex)
@@ -640,7 +657,6 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             {
                 using var graphCts = new CancellationTokenSource(ProbeTimeout);
                 await MailService.ConnectAsync(graphAccount, null, graphCts.Token);
-                await MailService.DisconnectAsync(graphAccount.Id, graphCts.Token);
                 StatusText = "Microsoft 365 connection successful.";
             }
             catch (Exception ex)
@@ -649,6 +665,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             }
             finally
             {
+                await ReleaseProbeAsync(graphAccount.Id);
                 IsBusy = false;
             }
             return;
@@ -669,11 +686,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             // Two independent legs, reported independently. Incoming can be perfect while outgoing
             // is wrong — that combination used to pass Test Connection and then fail on first send,
             // because only IMAP was ever probed.
-            var imapResult = await ProbeAsync(async ct =>
-            {
-                await MailService.ConnectAsync(account, pwd, ct);
-                await MailService.DisconnectAsync(account.Id, ct);
-            });
+            var imapResult = await ProbeAsync(ct => MailService.ConnectAsync(account, pwd, ct));
 
             var smtpResult = string.IsNullOrWhiteSpace(SmtpHost)
                 ? "SMTP not configured."
@@ -685,7 +698,32 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         }
         finally
         {
+            await ReleaseProbeAsync(account.Id);
             IsBusy = false;
+        }
+    }
+
+    /// <summary>
+    /// Ends a probe's connection, in a finally rather than on the success path.
+    ///
+    /// MailServiceRouter binds an account to a backend when it connects, so the Disconnect that
+    /// follows — which carries only a Guid — reaches the same backend. Releasing that binding is
+    /// the Disconnect's job, and <see cref="BuildProbeAccount"/> mints a fresh Guid for every
+    /// probe: a Test Connection that FAILED to connect and therefore skipped the disconnect left an
+    /// entry behind for the life of the process, once per press of the button.
+    /// </summary>
+    private async Task ReleaseProbeAsync(Guid probeId)
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(ProbeTimeout);
+            await MailService.DisconnectAsync(probeId, cts.Token);
+        }
+        catch (Exception ex)
+        {
+            // Not surfaced: the probe is finished either way and there is nothing for the user to
+            // act on. Logged rather than swallowed silently.
+            LogService.Log($"AccountEditor: probe disconnect failed — {ex.Message}");
         }
     }
 

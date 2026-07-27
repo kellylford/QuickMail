@@ -59,7 +59,7 @@ class StubImapMailServiceBase : IMailService
 
     public virtual Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default) => _inner.ConnectAsync(account, password, ct);
     public bool IsConnected(Guid accountId) => _inner.IsConnected(accountId);
-    public Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => _inner.DisconnectAsync(accountId, ct);
+    public virtual Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => _inner.DisconnectAsync(accountId, ct);
     public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => _inner.GetFoldersAsync(accountId, ct);
     public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => _inner.GetMessageSummariesAsync(accountId, folderName, maxMessages, ct);
     public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default) => _inner.GetMessagesSinceDateAsync(accountId, folderName, since, ct);
@@ -156,8 +156,19 @@ sealed class StubOAuthService : IOAuthService
     public Task<string> GetAccessTokenAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult(string.Empty);
     public Task<string> GetAccessTokenSilentAsync(AccountModel account, string[] scopes, CancellationToken ct = default) => Task.FromResult(string.Empty);
     public Task EnsureSilentTokenAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
-    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
-    public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(new OAuthResult(string.Empty, string.Empty));
+    /// <summary>
+    /// Username interactive sign-in completes as. Left null, sign-in returns an empty username —
+    /// which the editor VMs treat as a wrong-identity mismatch (#202) and abandon, so any test that
+    /// wants sign-in to SUCCEED must set this to the username it entered.
+    /// </summary>
+    public string? SignInUsername { get; set; }
+
+    /// <summary>What the token's tenant id says about the signed-in account (#233).</summary>
+    public bool SignInIsPersonalAccount { get; set; }
+
+    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
+    public Task<OAuthResult> SignInInteractiveWithContactsAsync(AccountModel account, CancellationToken ct = default) => Task.FromResult(SignInResult());
+    private OAuthResult SignInResult() => new(string.Empty, SignInUsername ?? string.Empty, SignInIsPersonalAccount);
     public Task RequestContactsConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
     public Task RequestCalendarConsentAsync(AccountModel account, CancellationToken ct = default) => Task.CompletedTask;
     public Task SignOutAsync(AccountModel account) => Task.CompletedTask;

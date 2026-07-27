@@ -23,6 +23,21 @@ public class AddAccountViewModelProviderTests
         new(new StubFeatureGate { [FeatureFlag.GraphBackend] = graph },
             new StubImapMailService(), new StubOAuthService(), Catalog, discover);
 
+    private static AddAccountViewModel NewVm(IOAuthService oauth, IMailService? mail = null) =>
+        new(new StubFeatureGate { [FeatureFlag.GraphBackend] = true },
+            mail ?? new StubImapMailService(), oauth, Catalog);
+
+    /// <summary>
+    /// Types an address the way the dialog does. UsernameBox binds with
+    /// UpdateSourceTrigger=PropertyChanged, so the ViewModel sees every PREFIX — "kelly@o" on the
+    /// way to "kelly@outlook.com" — not the finished address. Assigning the whole string at once is
+    /// what let a mid-typing bug hide from these tests.
+    /// </summary>
+    private static void TypeAddress(AddAccountViewModel vm, string address)
+    {
+        for (var i = 1; i <= address.Length; i++) vm.Username = address[..i];
+    }
+
     // ── Picking a provider ───────────────────────────────────────────────────────
 
     [Fact]
@@ -263,7 +278,8 @@ public class AddAccountViewModelProviderTests
         // is exactly what the admin already approved.
         var vm = NewVm();
         vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
-        vm.Username = email;
+        TypeAddress(vm, email);
+        vm.CommitUsername();   // the user leaves the address field: the address is now finished
 
         Assert.Equal(BackendKind.MicrosoftGraph, vm.BackendKind);
         Assert.Equal(AuthType.OAuth2Microsoft, vm.AuthType);
@@ -277,10 +293,153 @@ public class AddAccountViewModelProviderTests
     {
         // The opposite case: personal accounts have no admin-consent model and work fine over
         // IMAP+OAuth, so moving them to Graph would be a behaviour change for no benefit.
+        //
+        // Typed one character at a time, because that is what the dialog does and it is where this
+        // broke: "kelly@outlook.com" passes through "kelly@o", which matches no consumer domain and
+        // so read as a work tenant. The form switched to Graph and blanked the hosts, and nothing
+        // brought it back — the finished address selects the same provider, so the provider-changed
+        // path never ran again.
         var vm = NewVm();
-        vm.Username = email;
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+
+        TypeAddress(vm, email);
+        vm.CommitUsername();
 
         Assert.Equal(ProviderCatalog.MicrosoftId, vm.SelectedProvider!.Id);
+        Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+        Assert.Equal("outlook.office365.com", vm.ImapHost);
+        Assert.Equal("smtp-mail.outlook.com", vm.SmtpHost);
+    }
+
+    [Fact]
+    public void TypingAnAddressNeverChangesTheConnectionMethodMidWord()
+    {
+        // The domain only means something once the address is finished. Nothing about a half-typed
+        // one should reach the connection method — switching to Graph clears the hosts AND the
+        // password, and a user who is still typing has no idea it happened.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+
+        const string address = "kelly@outlook.com";
+        for (var i = 1; i <= address.Length; i++)
+        {
+            vm.Username = address[..i];
+            Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+            Assert.Equal("outlook.office365.com", vm.ImapHost);
+        }
+    }
+
+    [Fact]
+    public void EditingAWorkAddressBackToAConsumerOneReturnsToImap()
+    {
+        // Both directions, because the provider does not change between them: re-selecting the same
+        // Microsoft entry returns early, so this is the only thing that can put the hosts back.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        TypeAddress(vm, "kelly@icanbrew.com");
+        vm.CommitUsername();
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.BackendKind);
+
+        TypeAddress(vm, "kelly@outlook.com");
+        vm.CommitUsername();
+
+        Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+        Assert.Equal("outlook.office365.com", vm.ImapHost);
+    }
+
+    [Fact]
+    public void AConnectionMethodTheUserChoseSurvivesEditingTheAddress()
+    {
+        // The mirror of AUserPickedProviderSurvivesEditingTheAddress. Without it, one more keystroke
+        // in the address forced the account back onto Graph — and the user got no feedback, because
+        // the connection-method combo lives inside the collapsed Advanced expander.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        TypeAddress(vm, "kelly@contoso.com");
+        vm.CommitUsername();
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.BackendKind);
+
+        vm.SelectedBackend = vm.AvailableBackends.First(b => b.Kind == BackendKind.ImapSmtp);
+
+        TypeAddress(vm, "kelly2@contoso.com");
+        vm.CommitUsername();
+
+        Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+        Assert.Equal("outlook.office365.com", vm.ImapHost);
+    }
+
+    // ── Personal Microsoft accounts on a custom domain (#233) ────────────────────
+
+    [Fact]
+    public async Task APersonalMicrosoftAccountOnACustomDomainGoesBackToImapAtSignIn()
+    {
+        // The domain says work tenant; the token says personal. The token wins — it is the signal
+        // #233 added precisely because the domain guess fails on a vanity domain. On Graph such an
+        // account draws work scopes that under-deliver for it (#217, #239); on IMAP it is the path
+        // that worked before any of this existed.
+        var oauth = new StubOAuthService
+        {
+            SignInUsername = "kelly@theideaplace.net",
+            SignInIsPersonalAccount = true,
+        };
+        var vm = NewVm(oauth);
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        TypeAddress(vm, "kelly@theideaplace.net");
+        vm.CommitUsername();
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.BackendKind);   // the domain's guess
+
+        await vm.SignInMicrosoftCommand.ExecuteAsync(null);
+
+        Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+        // And the hosts are restored, not left blank by the trip through Graph.
+        Assert.Equal("outlook.office365.com", vm.ImapHost);
+        Assert.Equal("smtp-mail.outlook.com", vm.SmtpHost);
+
+        var account = vm.ToAccountModel();
+        Assert.Equal(BackendKind.ImapSmtp, account.BackendKind);
+        Assert.True(account.IsPersonalMicrosoftAccount);
+    }
+
+    [Fact]
+    public async Task AWorkMicrosoftAccountStaysOnGraphAfterSignIn()
+    {
+        // The other half: a real work tenant must not be dragged back to the IMAP backend whose
+        // scopes its administrator has never consented to.
+        var oauth = new StubOAuthService
+        {
+            SignInUsername = "kelly@icanbrew.com",
+            SignInIsPersonalAccount = false,
+        };
+        var vm = NewVm(oauth);
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        TypeAddress(vm, "kelly@icanbrew.com");
+        vm.CommitUsername();
+
+        await vm.SignInMicrosoftCommand.ExecuteAsync(null);
+
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.BackendKind);
+        Assert.Equal(BackendKind.MicrosoftGraph, vm.ToAccountModel().BackendKind);
+    }
+
+    [Fact]
+    public async Task AKnownPersonalAccountIsNotPushedBackToGraphByLaterTyping()
+    {
+        var oauth = new StubOAuthService
+        {
+            SignInUsername = "kelly@theideaplace.net",
+            SignInIsPersonalAccount = true,
+        };
+        var vm = NewVm(oauth);
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        TypeAddress(vm, "kelly@theideaplace.net");
+        vm.CommitUsername();
+        await vm.SignInMicrosoftCommand.ExecuteAsync(null);
+
+        // The user corrects the local part afterwards. The domain is still a custom one, but the
+        // account is still known to be personal.
+        TypeAddress(vm, "kelly.ford@theideaplace.net");
+        vm.CommitUsername();
+
         Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
     }
 
@@ -458,11 +617,21 @@ public class AddAccountViewModelProviderTests
     {
         // AsyncRelayCommand reports CanExecute=false while running by default, which silently
         // dropped the second lookup and let the first one's result win.
-        var vm = NewVm(new StubAutoDiscover(null));
+        //
+        // The stub BLOCKS until it is released, so the first lookup is provably still in flight
+        // when CanExecute is asked. A stub that completed synchronously answered for a command that
+        // had already finished, and passed whether or not AllowConcurrentExecutions was set.
+        var discover = new BlockingAutoDiscover();
+        var vm = NewVm(discover);
         vm.Username = "kelly@theideaplace.net";
 
         var first = vm.DiscoverSettingsCommand.ExecuteAsync(null);
+        await discover.Started;                  // inside DiscoverAsync, and not coming back yet
+        Assert.False(first.IsCompleted);
+
         Assert.True(vm.DiscoverSettingsCommand.CanExecute(null));
+
+        discover.Release();
         await first;
     }
 
@@ -610,6 +779,87 @@ public class AddAccountViewModelProviderTests
         Assert.Equal(string.Empty, vm.Password);
     }
 
+    /// <summary>
+    /// A provider that defaults to the Graph backend. No catalog entry does today, which is why the
+    /// bug below was unreachable rather than absent — the branch is live code either way.
+    /// Password auth deliberately, so ApplyProvider's trailing "OAuth needs no password" clear
+    /// cannot mask what the Graph branch itself does.
+    /// </summary>
+    private static readonly MailProvider GraphFirstProvider = new(
+        Id: "graph-first-test",
+        DisplayName: "Graph-first provider",
+        Domains: ["graphfirst.example"],
+        ImapHost: string.Empty, ImapPort: 993, ImapUseSsl: true,
+        SmtpHost: string.Empty, SmtpPort: 587, SmtpUseSsl: false,
+        DefaultAuthType: AuthType.Password,
+        SupportsOAuth: true,
+        DefaultBackend: BackendKind.MicrosoftGraph,
+        AppPasswordHint: null,
+        AppPasswordUrl: null);
+
+    [Fact]
+    public void AGraphProviderTellsTheViewItDroppedThePasswordAlreadyTyped()
+    {
+        var vm = NewVm();
+        vm.Password = "typed-before-switching";
+        var cleared = 0;
+        vm.PasswordCleared += () => cleared++;
+
+        vm.SelectedProvider = GraphFirstProvider;
+
+        // A PasswordBox cannot be data-bound, so assigning Password directly dropped it silently:
+        // the box kept showing dots for a password that no longer existed, and the account could be
+        // saved with none.
+        Assert.Equal(1, cleared);
+        Assert.Equal(string.Empty, vm.Password);
+    }
+
+    // ── Test Connection ──────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TestConnectionLeavesNothingBehindInTheRouter()
+    {
+        // Every probe carries a fresh Guid (BuildProbeAccount), and the router binds an account to a
+        // backend when it connects so the following Disconnect reaches the same one. Nothing in
+        // production ever unbound them, so the table grew by one entry per press of the button, for
+        // the life of the process.
+        var router = new MailServiceRouter([new StubImapMailService()]);
+        var vm = NewVm(new StubOAuthService(), router);
+        vm.Username = "kelly@theideaplace.net";
+        vm.ImapHost = "mail.theideaplace.net";
+        vm.Password = "hunter2";
+
+        await vm.TestConnectionCommand.ExecuteAsync(null);
+        await vm.TestConnectionCommand.ExecuteAsync(null);
+        await vm.TestConnectionCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, router.BoundAccountCount);
+    }
+
+    [Fact]
+    public async Task AFailedTestConnectionLeavesNothingBehindEither()
+    {
+        // The harder half: a probe that never connected skipped the disconnect entirely, so the
+        // binding its connect attempt created stayed forever.
+        var router = new MailServiceRouter([new RefusingMailService()]);
+        var vm = NewVm(new StubOAuthService(), router);
+        vm.Username = "kelly@theideaplace.net";
+        vm.ImapHost = "mail.theideaplace.net";
+        vm.Password = "hunter2";
+
+        await vm.TestConnectionCommand.ExecuteAsync(null);
+
+        Assert.Contains("failed", vm.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(0, router.BoundAccountCount);
+    }
+
+    /// <summary>A backend whose connect always fails, the way a wrong host or password does.</summary>
+    private sealed class RefusingMailService : StubImapMailServiceBase
+    {
+        public override Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
+            => Task.FromException(new InvalidOperationException("connection refused"));
+    }
+
     // ── Persistence ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -709,6 +959,28 @@ public class AddAccountViewModelProviderTests
         var vm = NewVm(new StubAutoDiscover(null));
         vm.Dispose();
         vm.Dispose();   // AddAccountDialog.OnClosed can fire after an explicit dispose
+    }
+
+    /// <summary>
+    /// A lookup that does not return until it is told to. Lets a test hold one call open and ask
+    /// questions about the command while it is genuinely running.
+    /// </summary>
+    private sealed class BlockingAutoDiscover : IAutoDiscoverService
+    {
+        private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<DiscoveredSettings?> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Completes once DiscoverAsync has been entered.</summary>
+        public Task Started => _started.Task;
+
+        /// <summary>Lets the blocked lookup finish, finding nothing.</summary>
+        public void Release() => _result.TrySetResult(null);
+
+        public Task<DiscoveredSettings?> DiscoverAsync(string emailAddress, CancellationToken ct)
+        {
+            _started.TrySetResult();
+            return _result.Task;
+        }
     }
 
     private sealed class StubAutoDiscover(DiscoveredSettings? result) : IAutoDiscoverService

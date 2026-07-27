@@ -15,6 +15,14 @@ public partial class AddAccountDialog : Window
     private readonly AddAccountViewModel _vm;
     private bool _restoreFocusToTestButton;
 
+    /// <summary>
+    /// Which announcement category the next StatusText change is spoken under. Status by default —
+    /// almost every message here is background progress ("Looking up settings…", "Signing in…").
+    /// A caller raises it to Result around its own assignment for a message that is the outcome of
+    /// something the user just did; see <see cref="AddButton_Click"/>.
+    /// </summary>
+    private AnnouncementCategory _statusCategory = AnnouncementCategory.Status;
+
     public AddAccountDialog(AddAccountViewModel vm)
     {
         _vm = vm;
@@ -23,7 +31,7 @@ public partial class AddAccountDialog : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
-                AccessibilityHelper.Announce(this, vm.StatusText, category: AnnouncementCategory.Status);
+                AccessibilityHelper.Announce(this, vm.StatusText, category: _statusCategory);
             else if (e.PropertyName == nameof(vm.IsBusy))
                 OnIsBusyChanged();
         };
@@ -106,10 +114,21 @@ public partial class AddAccountDialog : Window
     /// </summary>
     private void OnFieldFocused(object sender, KeyboardFocusChangedEventArgs e)
     {
+        // Keyboard focus arrives at the SAME control repeatedly through no action of the user's:
+        // the window is re-activated after the OAuth sign-in window closes, a ComboBox dropdown
+        // closes and hands focus back, a disabled button releases it. Repeating the hint each time
+        // is noise, so a hint is spoken only when the focused control actually changed.
+        var repeat = ReferenceEquals(e.NewFocus, _lastFocusHinted);
+        _lastFocusHinted = e.NewFocus;
+        if (repeat) return;
+
         var hint = HintFor(e.NewFocus);
         if (hint is not null)
             AccessibilityHelper.Announce(this, hint, category: AnnouncementCategory.Hint);
     }
+
+    /// <summary>The control the last focus hint was evaluated for. See <see cref="OnFieldFocused"/>.</summary>
+    private IInputElement? _lastFocusHinted;
 
     private string? HintFor(IInputElement? focused)
     {
@@ -123,6 +142,12 @@ public partial class AddAccountDialog : Window
             return "Check this before signing in, so reading your contacts is part of the same permission.";
         if (ReferenceEquals(focused, SyncCalendarCheckBox))
             return "Shows this account's calendar in the Calendar view.";
+        // The ports are in the checkbox's visible Content, but an explicit
+        // AutomationProperties.Name OVERRIDES that text — so without this the port guidance existed
+        // for sighted users only. It belongs in a hint rather than back in the Name, which must
+        // stay a short label.
+        if (ReferenceEquals(focused, SmtpImplicitSslCheckBox))
+            return "Checked uses port 465. Cleared uses STARTTLS on port 587.";
         if (ReferenceEquals(focused, SignatureBox))
             return "Added to the end of new messages, replies, and forwards.";
         return null;
@@ -169,6 +194,9 @@ public partial class AddAccountDialog : Window
     /// </summary>
     private void UsernameBox_LostFocus(object sender, RoutedEventArgs e)
     {
+        // Leaving the field is what says the address is finished, so it is also where the
+        // work-or-school-versus-consumer decision is made — never mid-word.
+        _vm.CommitUsername();
         if (_vm.DiscoverSettingsCommand.CanExecute(null))
             _vm.DiscoverSettingsCommand.Execute(null);
     }
@@ -205,9 +233,19 @@ public partial class AddAccountDialog : Window
         // The server fields live behind a collapsed expander now, so an incomplete account could
         // otherwise be saved without the user ever seeing what was missing. Refuse, say why (the
         // StatusText handler announces it), and put focus on the field that needs filling in.
+        // Add Account is the default button, so Enter can fire it straight from the address field —
+        // which never lost focus, so the address has not been treated as finished yet.
+        _vm.CommitUsername();
+
         if (!_vm.IsReadyToSave(out var problem))
         {
+            // A refused save is the outcome of the action the user just took, not background
+            // progress. Announcing it as Status means a user who has turned background-progress
+            // announcements off gets silence while focus jumps to a field, with no reason given.
+            _statusCategory = AnnouncementCategory.Result;
             _vm.StatusText = problem;
+            _statusCategory = AnnouncementCategory.Status;
+
             if (string.IsNullOrWhiteSpace(_vm.Username))
             {
                 UsernameBox.Focus();

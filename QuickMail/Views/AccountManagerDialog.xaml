@@ -29,7 +29,10 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Account list -->
+        <!-- Account list. TabIndex is explicit on everything in this column: without it these
+             controls default to int.MaxValue like the Advanced-settings contents do, and — because
+             the form's fields carry low explicit indices — the account list and its buttons landed
+             in the MIDDLE of the form, between the password box and Advanced settings. -->
         <DockPanel Grid.Column="0" Grid.Row="0">
             <TextBlock DockPanel.Dock="Top" Text="Accounts" FontWeight="SemiBold" Margin="0,0,0,4"/>
             <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,4,0,0">
@@ -37,18 +40,19 @@
                         x:Name="NewButton"
                         Click="NewButton_Click"
                         AutomationProperties.Name="New account"
-                        MinWidth="60" Margin="0,0,4,0"/>
+                        MinWidth="60" Margin="0,0,4,0" TabIndex="1"/>
                 <Button Content="_Delete"
                         Command="{Binding DeleteAccountCommand}"
                         AutomationProperties.Name="Delete account"
-                        MinWidth="60" Margin="0,0,4,0"/>
+                        MinWidth="60" Margin="0,0,4,0" TabIndex="2"/>
                 <Button Content="Set _Default"
                         Command="{Binding SetDefaultCommand}"
                         CommandParameter="{Binding SelectedAccount}"
                         AutomationProperties.Name="Set as default"
-                        MinWidth="75"/>
+                        MinWidth="75" TabIndex="3"/>
             </StackPanel>
             <ListBox x:Name="AccountListBox"
+                     TabIndex="0"
                      ItemsSource="{Binding Accounts}"
                      SelectedItem="{Binding SelectedAccount, Mode=TwoWay}"
                      AutomationProperties.Name="Account list"
@@ -86,9 +90,14 @@
                      actual provider would never be spoken. LabeledBy supplies the label; the text
                      supplies the value. -->
                 <Label x:Name="LblProvider" Content="Provider:" Target="{Binding ElementName=ProviderText}" Padding="0" Margin="0,0,0,2"/>
+                <!-- Focusable so a keyboard user reaches the provider at all: it is read-only, and a
+                     TextBlock is not in the tab order by default. TabIndex puts it with the fields
+                     it belongs to rather than at the very end. -->
                 <TextBlock x:Name="ProviderText"
                            Text="{Binding SelectedProvider.DisplayName, Mode=OneWay}"
                            AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
+                           Focusable="True"
+                           KeyboardNavigation.TabIndex="4"
                            Margin="0,0,0,4"/>
 
                 <!-- Account Name -->
@@ -96,28 +105,28 @@
                 <TextBox x:Name="AccountNameBox"
                          Text="{Binding AccountName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
-                         TabIndex="0"/>
+                         TabIndex="5"/>
 
                 <!-- Sender Display Name -->
                 <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
                 <TextBox x:Name="DisplayNameBox"
                          Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                         TabIndex="1"/>
+                         TabIndex="6"/>
 
                 <!-- Username -->
                 <Label x:Name="LblUsername" Content="_Email / username:" Target="{Binding ElementName=UsernameBox}" Padding="0" Margin="0,8,0,2"/>
                 <TextBox x:Name="UsernameBox"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
-                         TabIndex="2"/>
+                         TabIndex="7"/>
 
                 <!-- Password panel -->
                 <StackPanel Visibility="{Binding IsPasswordAuth, Converter={StaticResource BoolToVisibility}}">
                     <Label x:Name="LblPassword" Content="Pass_word:" Target="{Binding ElementName=PasswordBox}" Padding="0" Margin="0,8,0,2"/>
                     <PasswordBox x:Name="PasswordBox"
                                  AutomationProperties.LabeledBy="{Binding ElementName=LblPassword}"
-                                 TabIndex="3"
+                                 TabIndex="8"
                                  PasswordChanged="PasswordBox_PasswordChanged"/>
 
                     <!-- App-specific password warning, driven by the account's provider (Gmail, Yahoo,
@@ -131,7 +140,7 @@
                         <StackPanel>
                             <TextBlock Text="{Binding AppPasswordHint}" TextWrapping="Wrap" FontWeight="SemiBold"/>
                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="3"
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="9"
                                            RequestNavigate="AppPasswordLink_RequestNavigate"
                                            AutomationProperties.Name="Create an app password">
                                     <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
@@ -146,13 +155,13 @@
                         Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInMicrosoftCommand}"
                         AutomationProperties.Name="Sign in with Microsoft"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="4"/>
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="10"/>
 
                 <Button Content="Sign in _with Google…"
                         Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInGoogleCommand}"
                         AutomationProperties.Name="Sign in with Google"
-                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="5"/>
+                        HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="11"/>
 
                 <!-- Contact sync (issue #256) — shown only for accounts with a contact API. Stays on
                      the main surface: it is a per-account choice, not a server setting. -->
@@ -164,7 +173,7 @@
                               IsChecked="{Binding SyncContacts}"
                               Click="SyncContactsCheckBox_Click"
                               AutomationProperties.Name="Sync contacts from this account"
-                              Margin="0,0,0,4" TabIndex="6"/>
+                              Margin="0,0,0,4" TabIndex="12"/>
                 </StackPanel>
 
                 <!-- Calendar sync (#282) — shown for Microsoft, Google, and iCloud accounts. -->
@@ -176,7 +185,7 @@
                               IsChecked="{Binding SyncCalendar}"
                               Click="SyncCalendarCheckBox_Click"
                               AutomationProperties.Name="Sync calendar from this account"
-                              Margin="0,0,0,4" TabIndex="7"/>
+                              Margin="0,0,0,4" TabIndex="13"/>
                 </StackPanel>
 
                 <!-- Server settings live behind the same expander as the Add Account dialog, so an
@@ -247,7 +256,12 @@
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
                                     />
 
-                            <CheckBox Content="Implicit SSL on connect (port _465; uncheck for STARTTLS on port 587)"
+                            <!-- The ports live in the Content for sighted users and in a focus hint
+                                 (see HintFor) for everyone else: an explicit AutomationProperties.Name
+                                 overrides the Content, so they cannot be in the Name too — it has to
+                                 stay a short label. -->
+                            <CheckBox x:Name="SmtpImplicitSslCheckBox"
+                                      Content="Implicit SSL on connect (port _465; uncheck for STARTTLS on port 587)"
                                       IsChecked="{Binding SmtpUseSsl}"
                                       AutomationProperties.Name="SMTP implicit SSL on connect"
                                       Margin="0,6"/>
@@ -279,7 +293,8 @@
 
         <!-- Bottom buttons -->
         <DockPanel Grid.Column="1" Grid.Row="1" Margin="10,8,0,0">
-            <Button DockPanel.Dock="Right"
+            <Button x:Name="CloseButton"
+                    DockPanel.Dock="Right"
                     Content="_Close"
                     Click="CloseButton_Click"
                     IsCancel="True"

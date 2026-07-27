@@ -98,10 +98,17 @@ public class MailServiceRouterBackendSelectorTests
     {
         public string Name { get; } = name;
         public AccountModel? Connected { get; private set; }
+        public Guid? Disconnected { get; private set; }
 
         public override Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
         {
             Connected = account;
+            return Task.CompletedTask;
+        }
+
+        public override Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
+        {
+            Disconnected = accountId;
             return Task.CompletedTask;
         }
     }
@@ -139,6 +146,68 @@ public class MailServiceRouterBackendSelectorTests
 
         Assert.NotNull(imap.Connected);
         Assert.Null(graph.Connected);
+    }
+
+    [Fact]
+    public async Task AProbesDisconnectStillReachesTheBackendItConnectedTo()
+    {
+        // This is why ConnectAsync binds an unregistered account at all: DisconnectAsync carries
+        // only a Guid, so without the binding it would fall back to the default (IMAP) backend and
+        // leave the Graph connection open.
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        var probe = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+        await router.ConnectAsync(probe);
+        await router.DisconnectAsync(probe.Id);
+
+        Assert.Equal(probe.Id, graph.Disconnected);
+        Assert.Null(imap.Disconnected);
+    }
+
+    [Fact]
+    public async Task ProbeAccountsDoNotAccumulate()
+    {
+        // Test Connection mints a throwaway Guid per press (AccountEditorViewModel.BuildProbeAccount)
+        // and nothing ever unbound it, so the routing table grew for the life of the process.
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        for (var i = 0; i < 25; i++)
+        {
+            var probe = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+            await router.ConnectAsync(probe);
+            await router.DisconnectAsync(probe.Id);
+        }
+
+        Assert.Equal(0, router.BoundAccountCount);
+    }
+
+    [Fact]
+    public async Task ARegisteredAccountKeepsItsBackendAcrossDisconnects()
+    {
+        // The releasing must not take real accounts with it: they disconnect and reconnect for the
+        // whole run of the app, and their binding is what routes them.
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(new IMailService[] { imap, graph });
+
+        var account = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+        router.RegisterAccount(account.Id, graph);
+
+        await router.ConnectAsync(account);
+        await router.DisconnectAsync(account.Id);
+        await router.ConnectAsync(account);
+
+        Assert.Equal(1, router.BoundAccountCount);
+        Assert.Same(account, graph.Connected);
+        Assert.Null(imap.Connected);
     }
 
     [Fact]

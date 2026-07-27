@@ -19,6 +19,15 @@ namespace QuickMail.Services;
 public class MailServiceRouter : IMailService
 {
     private readonly ConcurrentDictionary<Guid, IMailService> _byAccount = new();
+
+    /// <summary>
+    /// Accounts bound by <see cref="ConnectAsync"/> rather than by <see cref="RegisterAccount"/>,
+    /// so <see cref="DisconnectAsync"/> knows which bindings are its to release. Test Connection
+    /// mints a fresh Guid for every probe (AccountEditorViewModel.BuildProbeAccount), and nothing
+    /// in production ever called UnregisterAccount — so without this the table grew by one entry
+    /// per press of the button, for the life of the process.
+    /// </summary>
+    private readonly ConcurrentDictionary<Guid, byte> _boundByConnect = new();
     private readonly List<IMailService> _allBackends; // ordered, for event aggregation + fan-out
     private readonly IMailService _defaultBackend;             // fallback for unregistered accounts
 
@@ -42,9 +51,25 @@ public class MailServiceRouter : IMailService
     }
 
     /// <summary>Bind an account to a specific backend. Called once at account-load time and once per Add Account. Idempotent.</summary>
-    public void RegisterAccount(Guid accountId, IMailService backend) => _byAccount[accountId] = backend;
+    public void RegisterAccount(Guid accountId, IMailService backend)
+    {
+        _byAccount[accountId] = backend;
+        // A real account's binding outlives any single connection, so it is not the next
+        // Disconnect's to release — even if a probe happened to bind this id first.
+        _boundByConnect.TryRemove(accountId, out _);
+    }
 
-    public void UnregisterAccount(Guid accountId) => _byAccount.TryRemove(accountId, out _);
+    public void UnregisterAccount(Guid accountId)
+    {
+        _byAccount.TryRemove(accountId, out _);
+        _boundByConnect.TryRemove(accountId, out _);
+    }
+
+    /// <summary>
+    /// How many accounts are currently bound to a backend. Diagnostics only — it exists so the
+    /// probe-account leak this class used to have stays testable.
+    /// </summary>
+    public int BoundAccountCount => _byAccount.Count;
 
     /// <summary>
     /// Resolves the backend for an account. Explicitly-registered accounts use their bound backend;
@@ -72,13 +97,23 @@ public class MailServiceRouter : IMailService
     {
         var backend = For(account);
         // Bind it, so the Disconnect that follows (which only has the Guid) reaches the same
-        // backend this connect used.
-        _byAccount.TryAdd(account.Id, backend);
+        // backend this connect used. Note that it was NOT already registered — the binding is this
+        // connection's, and the matching Disconnect gives it back.
+        if (_byAccount.TryAdd(account.Id, backend))
+            _boundByConnect.TryAdd(account.Id, 0);
         return backend.ConnectAsync(account, password, ct);
     }
 
     public Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
-        => For(accountId).DisconnectAsync(accountId, ct);
+    {
+        var backend = For(accountId);
+        // Release a binding ConnectAsync created for an account nobody registered — a Test
+        // Connection probe, whose Guid is thrown away the moment the probe ends. Registered
+        // accounts keep theirs: they disconnect and reconnect for the whole run of the app.
+        if (_boundByConnect.TryRemove(accountId, out _))
+            _byAccount.TryRemove(accountId, out _);
+        return backend.DisconnectAsync(accountId, ct);
+    }
 
     public bool IsConnected(Guid accountId) => For(accountId).IsConnected(accountId);
 

@@ -62,10 +62,21 @@ public partial class AccountManagerDialog : Window
     /// </summary>
     private void OnFieldFocused(object sender, KeyboardFocusChangedEventArgs e)
     {
+        // Keyboard focus arrives at the SAME control repeatedly through no action of the user's:
+        // the window is re-activated after the OAuth sign-in window closes, a ComboBox dropdown
+        // closes and hands focus back. Repeating the hint each time is noise, so a hint is spoken
+        // only when the focused control actually changed.
+        var repeat = ReferenceEquals(e.NewFocus, _lastFocusHinted);
+        _lastFocusHinted = e.NewFocus;
+        if (repeat) return;
+
         var hint = HintFor(e.NewFocus);
         if (hint is not null)
             AccessibilityHelper.Announce(this, hint, category: AnnouncementCategory.Hint);
     }
+
+    /// <summary>The control the last focus hint was evaluated for. See <see cref="OnFieldFocused"/>.</summary>
+    private IInputElement? _lastFocusHinted;
 
     private string? HintFor(IInputElement? focused)
     {
@@ -77,6 +88,12 @@ public partial class AccountManagerDialog : Window
             return "Pulls this account's contacts into the address book. Enabling asks for a one-time read-only permission.";
         if (ReferenceEquals(focused, SyncCalendarCheckBox))
             return "Shows this account's calendar in the Calendar view.";
+        // The ports are in the checkbox's visible Content, but an explicit
+        // AutomationProperties.Name OVERRIDES that text — so without this the port guidance existed
+        // for sighted users only. It belongs in a hint rather than back in the Name, which must
+        // stay a short label.
+        if (ReferenceEquals(focused, SmtpImplicitSslCheckBox))
+            return "Checked uses port 465. Cleared uses STARTTLS on port 587.";
         if (ReferenceEquals(focused, SignatureBox))
             return "Added to the end of new messages, replies, and forwards.";
         return null;

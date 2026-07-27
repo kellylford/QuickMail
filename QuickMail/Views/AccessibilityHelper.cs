@@ -25,6 +25,15 @@ internal static class AccessibilityHelper
     private static bool _resultsEnabled        = true;
     private static bool _messageActionsEnabled = true;
 
+    /// <summary>
+    /// Test-only observer, invoked with every announcement that survives the category filters.
+    ///
+    /// It exists because the alternative for testing announcements is grepping the source, and a
+    /// text grep passes just as happily when the announcement has been DELETED as when it works.
+    /// Null in production; the UIA notification is raised either way.
+    /// </summary>
+    internal static Action<string, AnnouncementCategory>? AnnouncementObserver { get; set; }
+
     /// <summary>Called on startup and after every settings save so changes apply immediately.</summary>
     public static void Configure(ConfigModel config)
     {
@@ -56,6 +65,8 @@ internal static class AccessibilityHelper
         if (!force && !_masterEnabled) return;
         if (!force && !IsCategoryEnabled(category)) return;
         if (string.IsNullOrEmpty(text)) return;
+
+        AnnouncementObserver?.Invoke(text, category);
 
         var fromElement = UIElementAutomationPeer.FromElement(element);
         var peer        = fromElement ?? UIElementAutomationPeer.CreatePeerForElement(element);
