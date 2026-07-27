@@ -92,6 +92,68 @@ public class AddAccountViewModelGateTests
     }
 }
 
+public class MailServiceRouterBackendSelectorTests
+{
+    private sealed class NamedBackend(string name) : StubImapMailServiceBase
+    {
+        public string Name { get; } = name;
+        public AccountModel? Connected { get; private set; }
+
+        public override Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
+        {
+            Connected = account;
+            return Task.CompletedTask;
+        }
+    }
+
+    // An account the router was never told about used to fall back to _allBackends[0] — IMAP. That
+    // made Test Connection on a not-yet-created Graph account (its probe uses a throwaway Guid)
+    // silently probe IMAP against a host the Graph path had just cleared, and report the resulting
+    // IMAP error as a Microsoft 365 failure.
+    [Fact]
+    public async Task AnUnregisteredAccountIsRoutedByItsBackendKind()
+    {
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        var probe = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+        await router.ConnectAsync(probe);
+
+        Assert.NotNull(graph.Connected);
+        Assert.Null(imap.Connected);
+    }
+
+    [Fact]
+    public async Task AnUnregisteredImapAccountStillGoesToImap()
+    {
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        await router.ConnectAsync(new AccountModel { Id = Guid.NewGuid() });
+
+        Assert.NotNull(imap.Connected);
+        Assert.Null(graph.Connected);
+    }
+
+    [Fact]
+    public async Task WithNoSelectorTheOldDefaultBehaviourIsUnchanged()
+    {
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(new IMailService[] { imap, graph });
+
+        await router.ConnectAsync(new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph });
+
+        Assert.NotNull(imap.Connected);
+    }
+}
+
 public class MailServiceRouterTests
 {
     /// <summary>Minimal recording backend: notes the last accountId routed to it and can raise the new-mail event.</summary>

@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -59,10 +60,70 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
         // mail servers QuickMail is about to trust. Certificate validation is left at its default —
         // never disabled here, whatever the account's AcceptInvalidCert setting says.
         var handler = new HttpClientHandler { AllowAutoRedirect = false };
-        var client = new HttpClient(handler);
+        var client = new HttpClient(handler)
+        {
+            // A hostile autodiscover host must not be able to make QuickMail allocate an unbounded
+            // buffer. A real autoconfig document is a few kilobytes.
+            MaxResponseContentBufferSize = MaxResponseBytes,
+        };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("QuickMail-Autoconfig/1.0");
         return client;
     }
+
+    /// <summary>Ceiling on a discovery response body. Real documents are a few KB.</summary>
+    private const int MaxResponseBytes = 512 * 1024;
+
+    /// <summary>
+    /// How many redirects to follow by hand. Automatic redirects are off (an automatic hop could
+    /// walk an HTTPS lookup down to plain HTTP), but treating every 30x as "nothing here" is wrong
+    /// too — Microsoft 365 custom domains commonly answer Autodiscover with a 302 to
+    /// autodiscover-s.outlook.com, and dropping it would make that whole path dead. So follow them
+    /// explicitly, and only to another HTTPS URL.
+    /// </summary>
+    private const int MaxRedirects = 3;
+
+    /// <summary>
+    /// Issues a request, following 30x responses manually and refusing any hop that is not HTTPS.
+    /// Returns null when the chain ends in a non-success status or exceeds <see cref="MaxRedirects"/>.
+    /// </summary>
+    private async Task<string?> SendFollowingHttpsRedirectsAsync(
+        Func<HttpRequestMessage> newRequest, Uri uri, CancellationToken ct)
+    {
+        var target = uri;
+
+        for (var hop = 0; hop <= MaxRedirects; hop++)
+        {
+            using var request = newRequest();
+            request.RequestUri = target;
+            using var response = await _http.SendAsync(request, ct).ConfigureAwait(false);
+
+            if (IsRedirect(response.StatusCode))
+            {
+                var location = response.Headers.Location;
+                if (location is null) return null;
+
+                // Location may be relative; resolve against the URL we just asked.
+                var next = location.IsAbsoluteUri ? location : new Uri(target, location);
+                if (!next.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+                {
+                    LogService.Debug($"AutoDiscover: refusing non-HTTPS redirect to {next.Scheme}.");
+                    return null;
+                }
+                target = next;
+                continue;
+            }
+
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        }
+
+        LogService.Debug("AutoDiscover: redirect limit reached.");
+        return null;
+    }
+
+    private static bool IsRedirect(HttpStatusCode status) => status is
+        HttpStatusCode.MovedPermanently or HttpStatusCode.Found or HttpStatusCode.SeeOther or
+        HttpStatusCode.TemporaryRedirect or HttpStatusCode.PermanentRedirect;
 
     public async Task<DiscoveredSettings?> DiscoverAsync(string emailAddress, CancellationToken ct)
     {
@@ -134,12 +195,11 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
         using var tier = CancellationTokenSource.CreateLinkedTokenSource(ct);
         tier.CancelAfter(TierTimeout);
 
-        var url = IspdbUrlPrefix + Uri.EscapeDataString(domain);
-        using var response = await _http.GetAsync(url, tier.Token).ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode) return null;
+        var url = new Uri(IspdbUrlPrefix + Uri.EscapeDataString(domain));
+        var xml = await SendFollowingHttpsRedirectsAsync(
+            () => new HttpRequestMessage(HttpMethod.Get, url), url, tier.Token).ConfigureAwait(false);
 
-        var xml = await response.Content.ReadAsStringAsync(tier.Token).ConfigureAwait(false);
-        return ParseIspdb(xml, domain);
+        return xml is null ? null : ParseIspdb(xml, domain);
     }
 
     /// <summary>
@@ -166,6 +226,10 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
         if (!TryParsePort(incoming.Element("port"), out var imapPort)) return null;
         if (!TryParsePort(outgoing.Element("port"), out var smtpPort)) return null;
 
+        // Refuse a configuration that would send the password in the clear. See RequiresEncryption.
+        if (!RequiresEncryption((string?)incoming.Element("socketType"))) return null;
+        if (!RequiresEncryption((string?)outgoing.Element("socketType"))) return null;
+
         var displayName = (string?)provider.Element("displayName");
 
         return new DiscoveredSettings(
@@ -178,11 +242,32 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
 
     /// <summary>
     /// Maps an autoconfig socketType to QuickMail's boolean. "SSL" is implicit TLS on connect;
-    /// "STARTTLS" and "plain" are not. Anything unrecognized is treated as not-implicit, matching
-    /// AccountModel's SMTP default of STARTTLS on 587.
+    /// "STARTTLS" is not. Anything else is treated as not-implicit, matching AccountModel's SMTP
+    /// default of STARTTLS on 587 — but only values accepted by <see cref="RequiresEncryption"/>
+    /// ever reach here.
     /// </summary>
     private static bool IsImplicitSsl(string? socketType) =>
         string.Equals(socketType?.Trim(), "SSL", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether a discovered socketType promises encryption. Only "SSL" and "STARTTLS" qualify.
+    ///
+    /// This matters more than it looks. UseSsl=false maps to MailKit's
+    /// <c>StartTlsWhenAvailable</c>, which connects in PLAINTEXT and authenticates anyway when the
+    /// server advertises no STARTTLS. So accepting socketType "plain" from a discovery response
+    /// would let whoever answered for that domain — a typosquatted <c>autodiscover.gmial.com</c>
+    /// with a valid certificate, say — name a server that harvests the password in the clear. The
+    /// user would see only "Settings found", because Advanced settings stays collapsed.
+    ///
+    /// A user who deliberately types a plaintext host into Advanced settings is still free to do so;
+    /// this restriction applies only to settings QuickMail accepted on their behalf.
+    /// </summary>
+    private static bool RequiresEncryption(string? socketType)
+    {
+        var value = socketType?.Trim();
+        return string.Equals(value, "SSL", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(value, "STARTTLS", StringComparison.OrdinalIgnoreCase);
+    }
 
     private static bool TryParsePort(XElement? element, out int port)
     {
@@ -213,11 +298,16 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
                 using var tier = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 tier.CancelAfter(TierTimeout);
 
-                using var content = new StringContent(BuildAutodiscoverRequest(email), Encoding.UTF8, "text/xml");
-                using var response = await _http.PostAsync(endpoint, content, tier.Token).ConfigureAwait(false);
-                if (!response.IsSuccessStatusCode) continue;
+                var body = BuildAutodiscoverRequest(email);
+                var uri = new Uri(endpoint);
+                var xml = await SendFollowingHttpsRedirectsAsync(
+                    () => new HttpRequestMessage(HttpMethod.Post, uri)
+                    {
+                        Content = new StringContent(body, Encoding.UTF8, "text/xml"),
+                    },
+                    uri, tier.Token).ConfigureAwait(false);
+                if (xml is null) continue;
 
-                var xml = await response.Content.ReadAsStringAsync(tier.Token).ConfigureAwait(false);
                 var parsed = ParseAutodiscover(xml, domain, _catalog);
                 if (parsed is not null) return parsed;
             }
@@ -271,9 +361,18 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
             var smtpHost = LocalValue(smtp, "Server");
             if (!string.IsNullOrWhiteSpace(imapHost) && !string.IsNullOrWhiteSpace(smtpHost))
             {
+                var imapPort = ParsePortOrDefault(LocalValue(imap, "Port"), 993);
+                var smtpPort = ParsePortOrDefault(LocalValue(smtp, "Port"), 587);
+
+                // Same refusal as the ISPDB parser: never accept a discovered configuration that
+                // would authenticate in the clear. Autodiscover says "SSL off" explicitly, and the
+                // plaintext SMTP port is the other way in.
+                if (!IsSsl(LocalValue(imap, "SSL"), true)) return null;
+                if (!IsSsl(LocalValue(smtp, "SSL"), true) || smtpPort == 25) return null;
+
                 return new DiscoveredSettings(
-                    imapHost, ParsePortOrDefault(LocalValue(imap, "Port"), 993), IsSsl(LocalValue(imap, "SSL"), true),
-                    smtpHost, ParsePortOrDefault(LocalValue(smtp, "Port"), 587), ImplicitSmtpSsl(LocalValue(smtp, "Port")),
+                    imapHost, imapPort, ImplicitImapSsl(imapPort),
+                    smtpHost, smtpPort, ImplicitSmtpSsl(smtpPort),
                     ProviderId: null,
                     DisplayName: domain,
                     DiscoverySource.ExchangeAutodiscover);
@@ -323,9 +422,13 @@ public sealed class AutoDiscoverService : IAutoDiscoverService, IDisposable
 
     /// <summary>
     /// Autodiscover reports "SSL on" for both implicit TLS and STARTTLS, so it cannot distinguish
-    /// them. Port does: 465 is implicit SSL on connect, 587 and 25 are STARTTLS.
+    /// them. Port does: 465 is implicit SSL on connect, 587 is STARTTLS. (Port 25 is rejected
+    /// outright by the caller rather than mapped here.)
     /// </summary>
-    private static bool ImplicitSmtpSsl(string? rawPort) => ParsePortOrDefault(rawPort, 587) == 465;
+    private static bool ImplicitSmtpSsl(int port) => port == 465;
+
+    /// <summary>Same reasoning for incoming mail: 993 is implicit TLS, 143 is STARTTLS.</summary>
+    private static bool ImplicitImapSsl(int port) => port != 143;
 
     // ── Shared helpers ───────────────────────────────────────────────────────────────
 

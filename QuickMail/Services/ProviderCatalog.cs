@@ -127,9 +127,14 @@ public sealed class ProviderCatalog : IProviderCatalog
     {
         ArgumentNullException.ThrowIfNull(account);
 
-        // Accounts created after the catalog landed carry their provider explicitly.
+        // Accounts created after the catalog landed carry their provider explicitly. "Other" is
+        // deliberately NOT an answer: it means "no provider was identified at creation time", so it
+        // must fall through to the host and username checks below. Returning it here would strand
+        // an account the user set up by hand — an iCloud mailbox added via "Other" with the Apple
+        // host typed in would resolve as Other forever, and contact/calendar sync would silently
+        // never run even though the dialog offered the checkboxes.
         var byId = ById(account.ProviderId);
-        if (byId is not null) return byId;
+        if (byId is not null && !byId.IsOther) return byId;
 
         // Everything created before then is identified by the settings it was given. A Graph account
         // has no IMAP host at all, so check the backend before falling back to host matching.

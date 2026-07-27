@@ -145,6 +145,76 @@ public class AddAccountViewModelProviderTests
         Assert.Equal(ProviderCatalog.OtherId, vm.SelectedProvider!.Id);
     }
 
+    // ── Correcting the address (the sticky-provider bug) ─────────────────────────
+
+    [Fact]
+    public void CorrectingATypodAddressDropsTheOldProviderAndItsServers()
+    {
+        // Type a Gmail address, then realise it should have been a work address. Leaving Gmail
+        // selected meant the account was saved with imap.gmail.com for an unrelated domain —
+        // invisibly, because Advanced stays collapsed — and the settings lookup was skipped
+        // entirely, since a provider had already been chosen.
+        var vm = NewVm();
+        vm.Username = "kelly@gmail.com";
+        Assert.Equal(ProviderCatalog.GmailId, vm.SelectedProvider!.Id);
+
+        vm.Username = "kelly@theideaplace.net";
+
+        Assert.Equal(ProviderCatalog.OtherId, vm.SelectedProvider!.Id);
+        Assert.Equal(string.Empty, vm.ImapHost);
+        Assert.Equal(string.Empty, vm.SmtpHost);
+    }
+
+    [Fact]
+    public void CorrectingTheAddressAlsoDropsTheAutoFilledAccountName()
+    {
+        var vm = NewVm();
+        vm.Username = "kelly@gmail.com";
+        Assert.Equal("Gmail", vm.AccountName);
+
+        vm.Username = "kelly@theideaplace.net";
+
+        Assert.Equal(string.Empty, vm.AccountName);
+    }
+
+    [Fact]
+    public void CorrectingTheAddressKeepsAnAccountNameTheUserTyped()
+    {
+        var vm = NewVm();
+        vm.Username = "kelly@gmail.com";
+        vm.AccountName = "Personal";
+
+        vm.Username = "kelly@theideaplace.net";
+
+        Assert.Equal("Personal", vm.AccountName);
+    }
+
+    [Fact]
+    public void FallingBackToOtherWhileTypingDoesNotPopAdvancedOpen()
+    {
+        // This fires on every keystroke of an unmatched address. Expanding here would be hostile —
+        // and for a screen-reader user, a surprise pile of new fields mid-sentence.
+        var vm = NewVm();
+        vm.Username = "kelly@gmail.com";
+
+        vm.Username = "kelly@g";
+
+        Assert.False(vm.IsAdvancedExpanded);
+    }
+
+    [Fact]
+    public async Task AfterCorrectingTheAddressDiscoveryRunsForTheNewDomain()
+    {
+        var discover = new StubAutoDiscover(null);
+        var vm = NewVm(discover);
+        vm.Username = "kelly@gmail.com";      // catalog match — no lookup wanted
+
+        vm.Username = "kelly@theideaplace.net";
+        await vm.DiscoverSettingsCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, discover.Calls);
+    }
+
     // ── Connection method ────────────────────────────────────────────────────────
 
     [Fact]
@@ -258,6 +328,181 @@ public class AddAccountViewModelProviderTests
         Assert.Equal(0, discover.Calls);
     }
 
+    [Fact]
+    public async Task AStaleLookupIsDiscardedOnceTheAddressHasChanged()
+    {
+        // A lookup can be in flight for up to 12 s. If the user fixes their address meanwhile, the
+        // first lookup's servers must not land on the corrected account.
+        var discover = new StubAutoDiscover(new DiscoveredSettings(
+            "mail.old.example", 993, true, "smtp.old.example", 587, false,
+            null, "Old", DiscoverySource.Ispdb));
+        var vm = NewVm(discover);
+        vm.Username = "kelly@old.example";
+        discover.OnCall = () => vm.Username = "kelly@new.example";   // user retypes mid-lookup
+
+        await vm.DiscoverSettingsCommand.ExecuteAsync(null);
+
+        Assert.Equal(string.Empty, vm.ImapHost);
+        Assert.DoesNotContain("old.example", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DiscoveryStaysInvokableWhileAnEarlierLookupIsStillRunning()
+    {
+        // AsyncRelayCommand reports CanExecute=false while running by default, which silently
+        // dropped the second lookup and let the first one's result win.
+        var vm = NewVm(new StubAutoDiscover(null));
+        vm.Username = "kelly@theideaplace.net";
+
+        var first = vm.DiscoverSettingsCommand.ExecuteAsync(null);
+        Assert.True(vm.DiscoverSettingsCommand.CanExecute(null));
+        await first;
+    }
+
+    [Fact]
+    public async Task ASettingsFoundMessageNamesTheHostsNotJustTheProvider()
+    {
+        // These servers are about to receive the user's password and they arrived over the network,
+        // so they must be stated rather than applied silently behind a collapsed expander.
+        var discover = new StubAutoDiscover(new DiscoveredSettings(
+            "mail.example.edu", 993, true, "smtp.example.edu", 587, false,
+            null, "Example University", DiscoverySource.Ispdb));
+        var vm = NewVm(discover);
+        vm.Username = "kelly@example.edu";
+
+        await vm.DiscoverSettingsCommand.ExecuteAsync(null);
+
+        Assert.Contains("mail.example.edu", vm.StatusText, StringComparison.Ordinal);
+        Assert.Contains("smtp.example.edu", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task WhenTheUserTypedTheirOwnHostsTheMessageSaysTheyWereKept()
+    {
+        var discover = new StubAutoDiscover(new DiscoveredSettings(
+            "mail.example.edu", 993, true, "smtp.example.edu", 587, false,
+            null, "Example University", DiscoverySource.Ispdb));
+        var vm = NewVm(discover);
+        vm.Username = "kelly@example.edu";
+        discover.OnCall = () => vm.ImapHost = "mine.example.edu";   // typed while the lookup ran
+
+        await vm.DiscoverSettingsCommand.ExecuteAsync(null);
+
+        // Claiming "no settings found" here would be a lie — they were found and deliberately not used.
+        Assert.DoesNotContain("No settings found", vm.StatusText, StringComparison.Ordinal);
+        Assert.Equal("mine.example.edu", vm.ImapHost);
+    }
+
+    // ── Edits the user makes by hand ─────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("port")]
+    [InlineData("ssl")]
+    public void ChangingOnlyAPortOrSslFlagCountsAsAUserEdit(string field)
+    {
+        // Was hosts-only, so a user who changed just the port had it silently overwritten by the
+        // next provider match.
+        var vm = NewVm();
+        if (field == "port") vm.ImapPort = 1993; else vm.ImapUseSsl = false;
+
+        Assert.True(vm.HostsUserEdited);
+
+        vm.Username = "kelly@gmail.com";
+        Assert.Equal(ProviderCatalog.OtherId, vm.SelectedProvider!.Id);
+    }
+
+    [Fact]
+    public void SwitchingConnectionMethodBackToImapLeavesAdvancedOpen()
+    {
+        // The connection-method combo lives INSIDE Advanced settings. Collapsing the expander the
+        // user is standing in removes the focused control from the visual tree and strands keyboard
+        // focus on the window, with no announcement.
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        vm.IsAdvancedExpanded = true;
+
+        vm.SelectedBackend = vm.AvailableBackends.First(b => b.Kind == BackendKind.MicrosoftGraph);
+        vm.SelectedBackend = vm.AvailableBackends.First(b => b.Kind == BackendKind.ImapSmtp);
+
+        Assert.True(vm.IsAdvancedExpanded);
+        Assert.Equal("outlook.office365.com", vm.ImapHost);
+    }
+
+    // ── Saving ───────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AnAccountWithNoServersIsNotReadyToSave()
+    {
+        // The server fields are behind a collapsed expander now, so without this an unrecognised
+        // address whose lookup found nothing would be saved with a blank IMAP host, unseen.
+        var vm = NewVm();
+        vm.Username = "kelly@theideaplace.net";
+        vm.Password = "hunter2";
+
+        Assert.False(vm.IsReadyToSave(out var error));
+        Assert.Contains("Advanced settings", error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AMissingPasswordNamesTheAppPasswordWhenTheProviderNeedsOne()
+    {
+        var vm = NewVm();
+        vm.Username = "kelly@yahoo.com";
+
+        Assert.False(vm.IsReadyToSave(out var error));
+        Assert.Contains("app password", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void AMissingAddressIsNotReadyToSave(string username)
+    {
+        var vm = NewVm();
+        vm.Username = username;
+
+        Assert.False(vm.IsReadyToSave(out _));
+    }
+
+    [Fact]
+    public void ACompleteAccountIsReadyToSave()
+    {
+        var vm = NewVm();
+        vm.Username = "kelly@gmail.com";
+        vm.Password = "app-password";
+
+        Assert.True(vm.IsReadyToSave(out var error));
+        Assert.Equal(string.Empty, error);
+    }
+
+    [Fact]
+    public void AGraphAccountNeedsNoHostsToBeReadyToSave()
+    {
+        var vm = NewVm();
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);
+        vm.SelectedBackend = vm.AvailableBackends.First(b => b.Kind == BackendKind.MicrosoftGraph);
+        vm.Username = "kelly@contoso.com";
+
+        Assert.True(vm.IsReadyToSave(out _));
+    }
+
+    [Fact]
+    public void ClearingThePasswordTellsTheViewSoTheBoxCanBeCleared()
+    {
+        // A PasswordBox cannot be bound, so without this signal it keeps showing dots for a password
+        // the VM has dropped — and the account is saved with none.
+        var vm = NewVm();
+        vm.Username = "kelly@theideaplace.net";
+        vm.Password = "typed-before-switching";
+        var cleared = 0;
+        vm.PasswordCleared += () => cleared++;
+
+        vm.SelectedProvider = Catalog.ById(ProviderCatalog.MicrosoftId);   // OAuth: no password
+
+        Assert.Equal(1, cleared);
+        Assert.Equal(string.Empty, vm.Password);
+    }
+
     // ── Persistence ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -287,9 +532,13 @@ public class AddAccountViewModelProviderTests
     {
         public int Calls { get; private set; }
 
+        /// <summary>Runs inside the lookup, to simulate the user typing while it is in flight.</summary>
+        public Action? OnCall { get; set; }
+
         public Task<DiscoveredSettings?> DiscoverAsync(string emailAddress, CancellationToken ct)
         {
             Calls++;
+            OnCall?.Invoke();
             return Task.FromResult(result);
         }
     }

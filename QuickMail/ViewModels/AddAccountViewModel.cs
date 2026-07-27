@@ -104,8 +104,11 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         }
         else if (SelectedProvider is { IsOther: false } provider && !HostsUserEdited)
         {
-            // Switching back to IMAP restores the hosts the Graph branch cleared.
-            ApplyProvider(provider);
+            // Switching back to IMAP restores the hosts the Graph branch cleared. collapseAdvanced
+            // is false because this combo lives INSIDE Advanced settings — collapsing the expander
+            // the user is standing in removes the focused control from the visual tree and strands
+            // keyboard focus on the window, silently.
+            ApplyProvider(provider, collapseAdvanced: false);
         }
     }
 
@@ -138,9 +141,19 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     public void MatchProviderFromUsername()
     {
         if (HostsUserEdited) return; // never overwrite hosts the user typed
-        var match = Catalog.MatchByEmail(Username);
-        if (match is null || ReferenceEquals(match, SelectedProvider)) return;
 
+        var match = Catalog.MatchByEmail(Username);
+        if (match is null)
+        {
+            // The address no longer matches. This is the correcting-a-typo case, and leaving the old
+            // provider selected is how "kelly@gmail.com" edited into "kelly@theideaplace.net" ends up
+            // saved with Gmail's servers — invisibly, because Advanced is collapsed, and with the
+            // settings lookup skipped entirely since a provider was already chosen.
+            ResetToUnknownProvider();
+            return;
+        }
+
+        if (ReferenceEquals(match, SelectedProvider)) return;
         SelectedProvider = match;
     }
 
@@ -148,7 +161,12 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     /// Looks up settings for an address the built-in catalog does not recognize. Safe to call on
     /// every focus change: it no-ops for a blank address, a known provider, or hand-edited hosts.
     /// </summary>
-    [RelayCommand]
+    // AllowConcurrentExecutions matters: by default AsyncRelayCommand reports CanExecute=false while
+    // a run is in flight, so a second lookup — the user fixing their address and tabbing out while
+    // the first is still going — was silently dropped, and the FIRST lookup's settings were then
+    // applied to the corrected address. Letting both run, plus the address guard below, is what
+    // makes the supersede logic reachable at all.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task DiscoverSettingsAsync()
     {
         if (_autoDiscover is null || _disposed) return;
@@ -169,7 +187,8 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         }
 
         IsBusy = true;
-        StatusText = $"Looking up settings for {domain}…";
+        var lookingUpMessage = $"Looking up settings for {domain}…";
+        StatusText = lookingUpMessage;
         try
         {
             var found = await _autoDiscover.DiscoverAsync(Username, cts.Token);
@@ -177,18 +196,38 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
             // A newer lookup started while this one ran — its result wins, so drop this one.
             if (!ReferenceEquals(Volatile.Read(ref _discoverCts), cts)) return;
 
-            if (found is not null && ApplyDiscovered(found))
+            // And the address itself must still be the one we looked up. Belt and braces against
+            // applying one domain's servers to another domain's account.
+            if (!string.Equals(AutoDiscoverService.DomainOf(Username), domain, StringComparison.OrdinalIgnoreCase))
             {
-                var label = string.IsNullOrWhiteSpace(found.DisplayName) ? domain : found.DisplayName;
-                StatusText = $"Settings found for {label}.";
-                DiscoveryCompleted?.Invoke(true, StatusText);
+                // Don't leave "Looking up settings for <the old domain>…" sitting there forever.
+                if (string.Equals(StatusText, lookingUpMessage, StringComparison.Ordinal))
+                    StatusText = string.Empty;
+                return;
             }
-            else
+
+            if (found is null)
             {
                 // Never a silent empty state: say what happened and open the fields to be filled in.
                 IsAdvancedExpanded = true;
                 StatusText = $"No settings found for {domain}. Advanced settings expanded — enter your IMAP host.";
                 DiscoveryCompleted?.Invoke(false, StatusText);
+            }
+            else if (ApplyDiscovered(found))
+            {
+                var label = string.IsNullOrWhiteSpace(found.DisplayName) ? domain : found.DisplayName;
+                // Name the hosts, not just the provider. These servers are about to receive the
+                // user's password and they arrived over the network, so they should not be applied
+                // behind a collapsed expander without ever being stated.
+                StatusText = $"Settings found for {label}: {found.ImapHost} and {found.SmtpHost}.";
+                DiscoveryCompleted?.Invoke(true, StatusText);
+            }
+            else
+            {
+                // Settings WERE found, but the user typed their own hosts while the lookup ran and
+                // those win. Saying "no settings found" here would be a lie.
+                StatusText = $"Settings found for {domain}, but your own server settings were kept.";
+                DiscoveryCompleted?.Invoke(true, StatusText);
             }
         }
         catch (Exception ex)

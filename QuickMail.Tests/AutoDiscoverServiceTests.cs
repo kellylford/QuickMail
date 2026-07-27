@@ -146,6 +146,131 @@ public class AutoDiscoverServiceTests
         Assert.Null(AutoDiscoverService.ParseIspdb(xml, "example.edu"));
     }
 
+    // ── Refusing cleartext (the reason discovery can't be trusted blindly) ───────────
+
+    // UseSsl=false maps to MailKit's StartTlsWhenAvailable, which connects in PLAINTEXT and
+    // authenticates anyway when the server advertises no STARTTLS. So accepting socketType "plain"
+    // from a discovery response would let whoever answers for a typosquatted domain name a server
+    // that harvests the password in the clear — and the user would see only "Settings found",
+    // because Advanced settings stays collapsed.
+    [Theory]
+    [InlineData("<socketType>SSL</socketType>", "<socketType>plain</socketType>")]     // outgoing plain
+    [InlineData("<socketType>plain</socketType>", "<socketType>STARTTLS</socketType>")] // incoming plain
+    [InlineData("<socketType>plain</socketType>", "<socketType>plain</socketType>")]
+    public void IspdbCleartextIsRejected(string incoming, string outgoing)
+    {
+        var xml = GmailIspdb
+            .Replace("<socketType>SSL</socketType>", incoming, StringComparison.Ordinal)
+            .Replace("<socketType>STARTTLS</socketType>", outgoing, StringComparison.Ordinal);
+
+        Assert.Null(AutoDiscoverService.ParseIspdb(xml, "example.edu"));
+    }
+
+    [Fact]
+    public async Task ACleartextIspdbAnswerFallsThroughRatherThanBeingApplied()
+    {
+        var plain = GmailIspdb.Replace("<socketType>SSL</socketType>", "<socketType>plain</socketType>",
+            StringComparison.Ordinal);
+        var handler = new RecordingHandler();
+        handler.Respond(req => req.RequestUri!.Host.Contains("thunderbird", StringComparison.Ordinal)
+            ? Ok(plain)
+            : NotFound());
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@example.edu", CancellationToken.None));
+    }
+
+    [Fact]
+    public void AutodiscoverWithSslOffIsRejected()
+    {
+        var xml = AutodiscoverImap.Replace("<SSL>on</SSL>", "<SSL>off</SSL>", StringComparison.Ordinal);
+
+        Assert.Null(AutoDiscoverService.ParseAutodiscover(xml, "contoso.com", new ProviderCatalog()));
+    }
+
+    [Fact]
+    public void AutodiscoverOnThePlaintextSmtpPortIsRejected()
+    {
+        // Port 25 with "SSL on" is the other way to end up on StartTlsWhenAvailable.
+        var xml = AutodiscoverImap.Replace("<Port>587</Port>", "<Port>25</Port>", StringComparison.Ordinal);
+
+        Assert.Null(AutoDiscoverService.ParseAutodiscover(xml, "contoso.com", new ProviderCatalog()));
+    }
+
+    [Fact]
+    public void AutodiscoverOnPort143IsAcceptedAsStartTlsNotImplicitSsl()
+    {
+        var xml = AutodiscoverImap.Replace("<Port>993</Port>", "<Port>143</Port>", StringComparison.Ordinal);
+
+        var parsed = AutoDiscoverService.ParseAutodiscover(xml, "contoso.com", new ProviderCatalog());
+
+        Assert.NotNull(parsed);
+        Assert.False(parsed!.ImapUseSsl);
+        Assert.Equal(143, parsed.ImapPort);
+    }
+
+    // ── Redirects ────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task AnHttpsRedirectIsFollowed()
+    {
+        // Microsoft 365 custom domains commonly answer Autodiscover with a 302 to
+        // autodiscover-s.outlook.com. Treating every 30x as "nothing here" made that path dead.
+        var handler = new RecordingHandler();
+        handler.Respond(req =>
+        {
+            if (req.RequestUri!.Host.Contains("thunderbird", StringComparison.Ordinal)) return NotFound();
+            if (req.RequestUri.Host == "autodiscover.contoso.com")
+            {
+                var moved = new HttpResponseMessage(HttpStatusCode.Found);
+                moved.Headers.Location = new Uri("https://autodiscover-s.outlook.com/autodiscover/autodiscover.xml");
+                return moved;
+            }
+            return Ok(AutodiscoverOffice365);
+        });
+        var svc = Build(handler);
+
+        var result = await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None);
+
+        Assert.Equal(ProviderCatalog.MicrosoftId, result!.ProviderId);
+        Assert.Contains(handler.Requests, r => r.RequestUri!.Host == "autodiscover-s.outlook.com");
+    }
+
+    [Fact]
+    public async Task ARedirectToPlainHttpIsRefused()
+    {
+        // Following a downgrade would leak the address and let anyone on the path pick the servers.
+        var handler = new RecordingHandler();
+        handler.Respond(req =>
+        {
+            if (req.RequestUri!.Host.Contains("thunderbird", StringComparison.Ordinal)) return NotFound();
+            var moved = new HttpResponseMessage(HttpStatusCode.Found);
+            moved.Headers.Location = new Uri("http://autodiscover.contoso.com/autodiscover/autodiscover.xml");
+            return moved;
+        });
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+        Assert.DoesNotContain(handler.Requests, r => r.RequestUri!.Scheme == "http");
+    }
+
+    [Fact]
+    public async Task ARedirectLoopTerminates()
+    {
+        var handler = new RecordingHandler();
+        handler.Respond(req =>
+        {
+            var moved = new HttpResponseMessage(HttpStatusCode.Found);
+            moved.Headers.Location = new Uri("https://round.example/again");
+            return moved;
+        });
+        var svc = Build(handler);
+
+        Assert.Null(await svc.DiscoverAsync("kelly@contoso.com", CancellationToken.None));
+        // Bounded: 2 endpoints x (1 + MaxRedirects) plus the single ISPDB chain — nowhere near unbounded.
+        Assert.True(handler.Requests.Count < 20, $"unbounded redirect chase: {handler.Requests.Count} requests");
+    }
+
     // ── Tier 3: Exchange Autodiscover ────────────────────────────────────────────────
 
     private const string AutodiscoverImap = """

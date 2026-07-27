@@ -137,7 +137,12 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// Applies a provider's known settings to the form. Returns false without touching anything for
     /// the "Other" entry, which by definition has no settings to apply.
     /// </summary>
-    protected bool ApplyProvider(MailProvider? provider)
+    /// <param name="collapseAdvanced">
+    /// False when the user is already inside Advanced settings. Collapsing an expander that
+    /// currently holds keyboard focus removes the focused element from the visual tree and strands
+    /// focus on the window with no announcement.
+    /// </param>
+    protected bool ApplyProvider(MailProvider? provider, bool collapseAdvanced = true)
     {
         if (provider is null) return false;
 
@@ -177,7 +182,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
                 SmtpAcceptInvalidCert = false;
             }
 
-            if (AuthType != AuthType.Password) Password = string.Empty;
+            if (AuthType != AuthType.Password) ClearPassword();
         }
         finally
         {
@@ -186,8 +191,52 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
         // The settings came from the catalog, not the user, so a later match may still replace them.
         HostsUserEdited = false;
-        IsAdvancedExpanded = false;
+        if (collapseAdvanced) IsAdvancedExpanded = false;
         return true;
+    }
+
+    /// <summary>
+    /// The address no longer matches any known provider — because the user is editing it, or fixing
+    /// a typo. Drops back to "Other" and clears the settings the previous provider filled in, so a
+    /// corrected address can never be saved against the old provider's servers. Silent: no expander
+    /// change, because this fires on keystrokes.
+    /// </summary>
+    protected void ResetToUnknownProvider()
+    {
+        var previous = SelectedProvider;
+        if (previous is null || previous.IsOther) return;
+
+        _applyingSettings = true;
+        try
+        {
+            ImapHost = string.Empty;
+            ImapPort = 993;
+            ImapUseSsl = true;
+            ImapAcceptInvalidCert = false;
+            SmtpHost = string.Empty;
+            SmtpPort = 587;
+            SmtpUseSsl = false;
+            SmtpAcceptInvalidCert = false;
+
+            // The account name was auto-filled from the provider we are leaving. Anything the user
+            // typed themselves is left alone.
+            if (string.Equals(AccountName, previous.DisplayName, StringComparison.Ordinal))
+                AccountName = string.Empty;
+        }
+        finally
+        {
+            _applyingSettings = false;
+        }
+
+        HostsUserEdited = false;
+
+        // Assigning the provider runs the normal "user picked Other" path, which opens Advanced
+        // settings. That is right when the user chose Other deliberately and wrong here — this fires
+        // on every keystroke of an unmatched address, and a pile of new fields appearing mid-word is
+        // hostile, especially with a screen reader. Put the expander back the way the user had it.
+        var wasExpanded = IsAdvancedExpanded;
+        SelectedProvider = Catalog.Other;
+        IsAdvancedExpanded = wasExpanded;
     }
 
     /// <summary>
@@ -208,6 +257,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             return ApplyProvider(provider);
         }
 
+        var wasApplying = _applyingSettings;
         _applyingSettings = true;
         try
         {
@@ -222,7 +272,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         }
         finally
         {
-            _applyingSettings = false;
+            _applyingSettings = wasApplying;
         }
 
         HostsUserEdited = false;
@@ -294,17 +344,32 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// </summary>
     protected void ClearHostsForGraph()
     {
+        var wasApplying = _applyingSettings;
         _applyingSettings = true;
         try
         {
             ImapHost = string.Empty;
             SmtpHost = string.Empty;
-            Password = string.Empty;
+            ClearPassword();
         }
         finally
         {
-            _applyingSettings = false;
+            _applyingSettings = wasApplying;
         }
+    }
+
+    /// <summary>
+    /// Raised when the ViewModel clears the password by itself — switching to an OAuth provider, for
+    /// instance. A <c>PasswordBox</c> cannot be data-bound, so the View has to be told, or it keeps
+    /// showing dots for a password that no longer exists and the account is saved without one.
+    /// </summary>
+    public event Action? PasswordCleared;
+
+    private void ClearPassword()
+    {
+        if (Password.Length == 0) return;
+        Password = string.Empty;
+        PasswordCleared?.Invoke();
     }
 
     /// <summary>
@@ -313,8 +378,14 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// </summary>
     private bool _applyingSettings;
 
+    // Every server field counts, not just the host names: a user who changes only the port or turns
+    // SSL off has made a deliberate choice, and a later provider match must not silently undo it.
     partial void OnImapHostChanged(string value) => NoteHostEdit();
     partial void OnSmtpHostChanged(string value) => NoteHostEdit();
+    partial void OnImapPortChanged(int value) => NoteHostEdit();
+    partial void OnSmtpPortChanged(int value) => NoteHostEdit();
+    partial void OnImapUseSslChanged(bool value) => NoteHostEdit();
+    partial void OnSmtpUseSslChanged(bool value) => NoteHostEdit();
 
     private void NoteHostEdit()
     {
@@ -454,6 +525,43 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// Checks the form is complete enough to save. Matters more than it used to: the server fields
+    /// now live behind a collapsed expander, so without this a user whose settings lookup found
+    /// nothing — or who pressed the default Add button straight from the address field, before the
+    /// lookup ever ran — would save an account with a blank IMAP host and never see why it failed.
+    /// </summary>
+    /// <param name="error">Message to show, and the reason to open Advanced settings.</param>
+    public bool IsReadyToSave(out string error)
+    {
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(Username))
+        {
+            error = "Enter your email address.";
+            return false;
+        }
+
+        // Graph carries no host configuration at all; sign-in is what proves the account.
+        if (IsGraphBackend) return true;
+
+        if (string.IsNullOrWhiteSpace(ImapHost) || string.IsNullOrWhiteSpace(SmtpHost))
+        {
+            error = "No server settings for this address. Enter the IMAP and SMTP hosts under Advanced settings.";
+            return false;
+        }
+
+        if (IsPasswordAuth && string.IsNullOrEmpty(Password))
+        {
+            error = SelectedProvider?.RequiresAppPassword == true
+                ? $"Enter your {SelectedProvider.DisplayName} app password."
+                : "Enter your password.";
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>

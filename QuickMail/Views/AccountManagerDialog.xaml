@@ -36,16 +36,16 @@
                 <Button Content="Ne_w"
                         x:Name="NewButton"
                         Click="NewButton_Click"
-                        AutomationProperties.Name="Add new account"
+                        AutomationProperties.Name="New account"
                         MinWidth="60" Margin="0,0,4,0"/>
                 <Button Content="_Delete"
                         Command="{Binding DeleteAccountCommand}"
-                        AutomationProperties.Name="Delete selected account"
+                        AutomationProperties.Name="Delete account"
                         MinWidth="60" Margin="0,0,4,0"/>
                 <Button Content="Set _Default"
                         Command="{Binding SetDefaultCommand}"
                         CommandParameter="{Binding SelectedAccount}"
-                        AutomationProperties.Name="Set selected account as default for new messages"
+                        AutomationProperties.Name="Set as default"
                         MinWidth="75"/>
             </StackPanel>
             <ListBox x:Name="AccountListBox"
@@ -80,12 +80,15 @@
 
                 <!-- Provider is read-only here: it is fixed when the account is created, the same way
                      BackendKind is. Changing it means deleting and re-adding the account. -->
+                <!-- No AutomationProperties.Name here: an explicit Name OVERRIDES a TextBlock's
+                     automatic name (its own text), so setting it to "Provider" would make a screen
+                     reader say "Provider" for the label and "Provider" again for the value — the
+                     actual provider would never be spoken. LabeledBy supplies the label; the text
+                     supplies the value. -->
                 <Label x:Name="LblProvider" Content="Provider:" Target="{Binding ElementName=ProviderText}" Padding="0" Margin="0,0,0,2"/>
                 <TextBlock x:Name="ProviderText"
                            Text="{Binding SelectedProvider.DisplayName, Mode=OneWay}"
                            AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
-                           AutomationProperties.Name="Provider"
-                           Focusable="True"
                            Margin="0,0,0,4"/>
 
                 <!-- Account Name -->
@@ -129,7 +132,7 @@
                         <StackPanel>
                             <TextBlock Text="{Binding AppPasswordHint}" TextWrapping="Wrap" FontWeight="SemiBold"/>
                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}"
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="3"
                                            RequestNavigate="AppPasswordLink_RequestNavigate"
                                            AutomationProperties.Name="Create an app password">
                                     <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
@@ -140,16 +143,16 @@
                 </StackPanel>
 
                 <!-- OAuth sign-in -->
-                <Button Content="Sign in with _Microsoft…"
+                <Button Content="Sign in _with Microsoft…"
                         Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInMicrosoftCommand}"
-                        AutomationProperties.Name="Sign in with Microsoft account in browser"
+                        AutomationProperties.Name="Sign in with Microsoft"
                         HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="4"/>
 
-                <Button Content="Sign in with _Google…"
+                <Button Content="Sign in _with Google…"
                         Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInGoogleCommand}"
-                        AutomationProperties.Name="Sign in with Google account in browser"
+                        AutomationProperties.Name="Sign in with Google"
                         HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="5"/>
 
                 <!-- Contact sync (issue #256) — shown only for accounts with a contact API. Stays on
@@ -246,9 +249,9 @@
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
                                      TabIndex="15"/>
 
-                            <CheckBox Content="Implicit SS_L on connect (port 465; uncheck for STARTTLS on port 587)"
+                            <CheckBox Content="Implicit SSL on connect (port _465; uncheck for STARTTLS on port 587)"
                                       IsChecked="{Binding SmtpUseSsl}"
-                                      AutomationProperties.Name="SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587."
+                                      AutomationProperties.Name="SMTP implicit SSL on connect"
                                       Margin="0,6" TabIndex="16"/>
 
                             <CheckBox Content="Accept invalid certi_ficates"
@@ -283,23 +286,23 @@
                     Content="_Close"
                     Click="CloseButton_Click"
                     IsCancel="True"
-                    AutomationProperties.Name="Close account manager"
+                    AutomationProperties.Name="Close"
                     MinWidth="80" Margin="6,0,0,0"/>
             <Button DockPanel.Dock="Right"
                     Content="_Test Connection"
                     Command="{Binding TestConnectionCommand}"
-                    AutomationProperties.Name="Test connection with current settings"
+                    AutomationProperties.Name="Test connection"
                     Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}"
                     MinWidth="120" Margin="6,0,0,0"/>
             <Button DockPanel.Dock="Right"
                     Content="_Save"
                     Command="{Binding SaveAccountCommand}"
-                    AutomationProperties.Name="Save account settings"
+                    AutomationProperties.Name="Save"
                     IsDefault="True"
                     MinWidth="80"/>
             <TextBlock VerticalAlignment="Center"
                        Text="{Binding StatusText}"
-                       AutomationProperties.Name="Account manager status"
+                       AutomationProperties.Name="Status"
                        Foreground="{DynamicResource Theme.Accent}"/>
         </DockPanel>
     </Grid>

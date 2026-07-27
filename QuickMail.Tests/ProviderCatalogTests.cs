@@ -171,6 +171,35 @@ public class ProviderCatalogTests
         Assert.Equal(ProviderCatalog.GmailId, _catalog.Resolve(account).Id);
     }
 
+    // "other" is not an answer — it records that nothing was identified when the account was made.
+    // Treating it as one stranded hand-configured accounts: an iCloud mailbox added via "Other" with
+    // the Apple host typed in resolved as Other forever, so ProviderCatalog.IsICloud said false and
+    // contact/calendar sync silently never ran, while the dialog had happily offered the checkboxes.
+    [Theory]
+    [InlineData("imap.mail.me.com", ProviderCatalog.ICloudId)]
+    [InlineData("imap.gmail.com", ProviderCatalog.GmailId)]
+    public void Resolve_TreatsAPersistedOtherAsUnknownAndFallsBackToTheHost(string imapHost, string expectedId)
+    {
+        var account = new AccountModel { ProviderId = ProviderCatalog.OtherId, ImapHost = imapHost };
+
+        Assert.Equal(expectedId, _catalog.Resolve(account).Id);
+    }
+
+    [Fact]
+    public void IsICloud_AgreesWithTheDialogForAHandConfiguredICloudAccount()
+    {
+        // The exact regression: saved via provider "Other", Apple host typed by hand.
+        var account = new AccountModel
+        {
+            ProviderId = ProviderCatalog.OtherId,
+            ImapHost = "imap.mail.me.com",
+            Username = "kelly@icloud.com",
+            AuthType = AuthType.Password,
+        };
+
+        Assert.True(ProviderCatalog.IsICloud(account));
+    }
+
     [Fact]
     public void Resolve_ReturnsOtherForAnUnrecognizedAccount()
     {

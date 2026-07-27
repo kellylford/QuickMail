@@ -209,9 +209,12 @@ public partial class App : Application
 
             // Per-account mail backend router. Each account is registered to the backend its
             // BackendKind selects (IMAP by default, Graph for Microsoft 365 accounts).
-            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend });
             IMailService BackendFor(AccountModel a)
                 => a.BackendKind == BackendKind.MicrosoftGraph ? graphBackend : imapBackend;
+            // BackendFor is also handed to the router so an account it has never been told about —
+            // the throwaway probe account Test Connection builds, for instance — is routed by its
+            // BackendKind rather than defaulting to IMAP.
+            var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend }, BackendFor);
 
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)

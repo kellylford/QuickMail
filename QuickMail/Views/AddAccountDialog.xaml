@@ -69,7 +69,7 @@
                                        TextWrapping="Wrap"
                                        FontWeight="SemiBold"/>
                             <TextBlock Margin="0,4,0,0" TextWrapping="Wrap">
-                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}"
+                                <Hyperlink NavigateUri="{Binding AppPasswordUrl}" KeyboardNavigation.TabIndex="2"
                                            RequestNavigate="AppPasswordLink_RequestNavigate"
                                            AutomationProperties.Name="Create an app password">
                                     <Run Text="{Binding AppPasswordUrl, Mode=OneWay}"/>
@@ -111,16 +111,16 @@
 
                 <!-- OAuth sign-in stays on the main surface too: for an OAuth provider this is the
                      primary action, not an advanced one. -->
-                <Button Content="Sign in with _Microsoft…"
+                <Button Content="Sign in _with Microsoft…"
                         Visibility="{Binding IsOAuth2, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInMicrosoftCommand}"
-                        AutomationProperties.Name="Sign in with Microsoft account in browser"
+                        AutomationProperties.Name="Sign in with Microsoft"
                         HorizontalAlignment="Left" MinWidth="200" Margin="0,10,0,0" TabIndex="7"/>
 
-                <Button Content="Sign in with _Google…"
+                <Button Content="Sign in _with Google…"
                         Visibility="{Binding IsGoogleOAuth, Converter={StaticResource BoolToVisibility}}"
                         Command="{Binding SignInGoogleCommand}"
-                        AutomationProperties.Name="Sign in with Google account in browser"
+                        AutomationProperties.Name="Sign in with Google"
                         HorizontalAlignment="Left" MinWidth="200" Margin="0,10,0,0" TabIndex="8"/>
 
                 <!-- Everything a recognized provider already answers for the user. Collapsed unless
@@ -206,9 +206,9 @@
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblSmtpPort}"
                                      TabIndex="17"/>
 
-                            <CheckBox Content="Implicit SS_L on connect (port 465; uncheck for STARTTLS on port 587)"
+                            <CheckBox Content="Implicit SSL on connect (port _465; uncheck for STARTTLS on port 587)"
                                       IsChecked="{Binding SmtpUseSsl}"
-                                      AutomationProperties.Name="SMTP implicit SSL on connect, port 465. Uncheck to use STARTTLS on port 587."
+                                      AutomationProperties.Name="SMTP implicit SSL on connect"
                                       Margin="0,6" TabIndex="18"/>
 
                             <CheckBox Content="Accept invalid certi_ficates"
@@ -239,7 +239,7 @@
         <!-- Status text -->
         <TextBlock Grid.Row="1"
                    Text="{Binding StatusText}"
-                   AutomationProperties.Name="Add account status"
+                   AutomationProperties.Name="Status"
                    Foreground="{DynamicResource Theme.Accent}"
                    Margin="0,8,0,4"
                    TextWrapping="Wrap"/>
@@ -250,13 +250,13 @@
                     Content="_Cancel"
                     IsCancel="True"
                     Click="CancelButton_Click"
-                    AutomationProperties.Name="Cancel adding account"
+                    AutomationProperties.Name="Cancel"
                     MinWidth="80" Margin="6,0,0,0"/>
             <Button x:Name="TestConnectionButton"
                     DockPanel.Dock="Right"
                     Content="_Test Connection"
                     Command="{Binding TestConnectionCommand}"
-                    AutomationProperties.Name="Test connection with current settings"
+                    AutomationProperties.Name="Test connection"
                     MinWidth="120" Margin="6,0,0,0"/>
             <Button DockPanel.Dock="Right"
                     Content="_Add Account"

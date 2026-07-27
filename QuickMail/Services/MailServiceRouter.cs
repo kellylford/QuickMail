@@ -22,12 +22,23 @@ public class MailServiceRouter : IMailService
     private readonly List<IMailService> _allBackends; // ordered, for event aggregation + fan-out
     private readonly IMailService _defaultBackend;             // fallback for unregistered accounts
 
-    public MailServiceRouter(IEnumerable<IMailService> backends)
+    /// <summary>
+    /// Picks a backend for an account that was never registered, from the account itself. Without
+    /// it, an unregistered account falls back to <see cref="_defaultBackend"/> — which is IMAP — so
+    /// Test Connection on a not-yet-created Graph account (its probe uses a throwaway Guid) would
+    /// silently probe IMAP against a host the Graph path had just cleared, and report the resulting
+    /// IMAP error as a Microsoft 365 failure.
+    /// </summary>
+    private readonly Func<AccountModel, IMailService>? _backendSelector;
+
+    public MailServiceRouter(IEnumerable<IMailService> backends,
+                             Func<AccountModel, IMailService>? backendSelector = null)
     {
         _allBackends = backends.ToList();
         if (_allBackends.Count == 0)
             throw new ArgumentException("MailServiceRouter requires at least one backend.", nameof(backends));
         _defaultBackend = _allBackends[0];
+        _backendSelector = backendSelector;
     }
 
     /// <summary>Bind an account to a specific backend. Called once at account-load time and once per Add Account. Idempotent.</summary>
@@ -45,11 +56,26 @@ public class MailServiceRouter : IMailService
     private IMailService For(Guid accountId)
         => _byAccount.TryGetValue(accountId, out var b) ? b : _defaultBackend;
 
-    private IMailService For(AccountModel account) => For(account.Id);
+    /// <summary>
+    /// Resolves the backend for an account we hold the whole model for. A registered account keeps
+    /// its bound backend; otherwise the selector reads <see cref="AccountModel.BackendKind"/>, which
+    /// is strictly better than assuming IMAP.
+    /// </summary>
+    private IMailService For(AccountModel account)
+    {
+        if (_byAccount.TryGetValue(account.Id, out var bound)) return bound;
+        return _backendSelector?.Invoke(account) ?? _defaultBackend;
+    }
 
     // ── Per-account delegation ─────────────────────────────────────────────────────
     public Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
-        => For(account).ConnectAsync(account, password, ct);
+    {
+        var backend = For(account);
+        // Bind it, so the Disconnect that follows (which only has the Guid) reaches the same
+        // backend this connect used.
+        _byAccount.TryAdd(account.Id, backend);
+        return backend.ConnectAsync(account, password, ct);
+    }
 
     public Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
         => For(accountId).DisconnectAsync(accountId, ct);

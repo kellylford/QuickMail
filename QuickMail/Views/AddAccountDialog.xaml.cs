@@ -33,6 +33,17 @@ public partial class AddAccountDialog : Window
         vm.SignInIdentityMismatch += WarnIdentityMismatch;
         vm.ProviderApplied += OnProviderApplied;
         vm.DiscoveryCompleted += OnDiscoveryCompleted;
+        vm.PasswordCleared += OnPasswordCleared;
+    }
+
+    /// <summary>
+    /// A PasswordBox cannot be data-bound, so when the VM drops the password (switching to an OAuth
+    /// provider, say) the box would otherwise keep showing dots for a password that no longer
+    /// exists — and the account could then be saved with none.
+    /// </summary>
+    private void OnPasswordCleared()
+    {
+        if (PasswordBox.Password.Length > 0) PasswordBox.Clear();
     }
 
     private void WarnIdentityMismatch(string entered, string actual)
@@ -158,6 +169,35 @@ public partial class AddAccountDialog : Window
 
     private void AddButton_Click(object sender, RoutedEventArgs e)
     {
+        // The server fields live behind a collapsed expander now, so an incomplete account could
+        // otherwise be saved without the user ever seeing what was missing. Refuse, say why (the
+        // StatusText handler announces it), and put focus on the field that needs filling in.
+        if (!_vm.IsReadyToSave(out var problem))
+        {
+            _vm.StatusText = problem;
+            if (string.IsNullOrWhiteSpace(_vm.Username))
+            {
+                UsernameBox.Focus();
+                Keyboard.Focus(UsernameBox);
+            }
+            else if (_vm.IsPasswordAuth && string.IsNullOrEmpty(_vm.Password))
+            {
+                PasswordBox.Focus();
+                Keyboard.Focus(PasswordBox);
+            }
+            else
+            {
+                _vm.IsAdvancedExpanded = true;
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    if (!ImapHostBox.IsVisible) return;
+                    ImapHostBox.Focus();
+                    Keyboard.Focus(ImapHostBox);
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            }
+            return;
+        }
+
         DialogResult = true;
         Close();
     }
@@ -175,6 +215,7 @@ public partial class AddAccountDialog : Window
         _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
         _vm.ProviderApplied -= OnProviderApplied;
         _vm.DiscoveryCompleted -= OnDiscoveryCompleted;
+        _vm.PasswordCleared -= OnPasswordCleared;
         // Cancels any in-flight settings lookup. ToAccountModel() (read by the caller after
         // ShowDialog returns) touches none of the disposed state.
         _vm.Dispose();

@@ -27,6 +27,22 @@ public partial class AccountManagerDialog : Window
         // #202: warn with a focus-grabbing dialog when a different identity than the one entered signs
         // in (typically an admin approving consent) — the account stays bound to the entered user.
         vm.SignInIdentityMismatch += WarnIdentityMismatch;
+        // A PasswordBox cannot be data-bound, so the View has to be told when the VM drops the
+        // password itself — otherwise the box keeps showing dots for a password that is gone.
+        vm.PasswordCleared += OnPasswordCleared;
+    }
+
+    private void OnPasswordCleared()
+    {
+        if (PasswordBox.Password.Length > 0) PasswordBox.Clear();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        // OnClosed, not OnClosing: the window can still cancel a close and stay open.
+        _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
+        _vm.PasswordCleared -= OnPasswordCleared;
+        base.OnClosed(e);
     }
 
     private void WarnIdentityMismatch(string entered, string actual)
