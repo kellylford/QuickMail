@@ -91,12 +91,29 @@ public class OAuthServiceScopeSelectionTests
         var account = new AccountModel { BackendKind = BackendKind.MicrosoftGraph, Username = "user@contoso.com" };
 
         Assert.Same(OAuthService.GraphMailScopesWork, OAuthService.FirstConnectScopesFor(account));
-        // The declared explicit scopes drive consent; `.default` (which doesn't prompt) is not used here.
-        Assert.Contains("https://graph.microsoft.com/Mail.ReadWrite", OAuthService.GraphMailScopesWork);
-        Assert.Contains("https://graph.microsoft.com/Mail.Send", OAuthService.GraphMailScopesWork);
         Assert.DoesNotContain("https://graph.microsoft.com/.default", OAuthService.GraphMailScopesWork);
         // Silent refresh still uses `.default`.
         Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
+    }
+
+    [Fact]
+    public void FirstConnect_WorkSchool_RequestsTheFullDeclaredScopeSet()
+    {
+        // The add-time consent must cover everything QuickMail uses (ENTRA-APP-REGISTRATION.md §3),
+        // matching the coverage `.default` gave — otherwise a permission is silently un-consented and
+        // 403s later. Contacts.ReadWrite is intentionally excluded (forward-declaration, unused).
+        var expected = new[]
+        {
+            "https://graph.microsoft.com/Mail.ReadWrite",
+            "https://graph.microsoft.com/Mail.Send",
+            "https://graph.microsoft.com/MailboxSettings.ReadWrite",
+            "https://graph.microsoft.com/Calendars.ReadWrite",
+            "https://graph.microsoft.com/Contacts.Read",
+            "https://graph.microsoft.com/People.Read",
+            "https://graph.microsoft.com/User.Read",
+            "https://graph.microsoft.com/User.ReadBasic.All",
+        };
+        Assert.Equal(expected, OAuthService.GraphMailScopesWork);
     }
 
     [Fact]

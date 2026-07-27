@@ -57,18 +57,29 @@ public class OAuthService : IOAuthService
     // First-connect (add-account) scopes for WORK/SCHOOL Graph accounts. `.default` (used for the
     // silent refreshes, see DefaultScopesFor) does NOT drive an interactive consent prompt on a
     // tenant that hasn't consented yet — it silently returns a token with only what's already
-    // granted, so the mail calls then 403 (Authorization_RequestDenied) with no prompt at all. That's
-    // the exact symptom on a brand-new tenant. Requesting the explicit delegated mail scopes at
-    // add-time forces the consent screen, the same reason personal accounts use explicit scopes.
-    // All three are user-consentable and declared, so there's no admin-approval wall for non-admins
-    // and no requested-vs-declared re-prompt loop (#208). MailboxSettings.ReadWrite (server rules) is
-    // deliberately NOT requested here — it's admin-restricted; `.default` picks it up after admin
-    // consent, keeping add-time unblocked for ordinary users.
+    // granted, so the calls then 403 (Authorization_RequestDenied) with no prompt at all. That's the
+    // exact symptom on a brand-new tenant (#391). Requesting explicit scopes at add-time forces the
+    // consent screen, the same reason personal accounts use explicit scopes.
+    //
+    // This is the FULL set of delegated Graph permissions QuickMail uses (docs/ENTRA-APP-REGISTRATION.md
+    // §3) — the same coverage `.default` gave, but with a working prompt — so one consent at add
+    // covers mail, server rules, calendar, contacts, and recipient resolution. Every scope here is
+    // DECLARED on the app registration, so there's no requested-vs-declared re-prompt loop (#208).
+    // (Contacts.ReadWrite is omitted — it's a forward-declaration with no code path yet, so it stays
+    // out on least-privilege grounds.) MailboxSettings.ReadWrite / User.ReadBasic.All are admin-
+    // restricted on some tenants; requesting them here surfaces the admin-consent need up front rather
+    // than 403ing later. Personal accounts use GraphMailScopesPersonal instead — the org-only scopes
+    // don't apply to them.
     public static readonly string[] GraphMailScopesWork =
     [
         "https://graph.microsoft.com/Mail.ReadWrite",
         "https://graph.microsoft.com/Mail.Send",
+        "https://graph.microsoft.com/MailboxSettings.ReadWrite",
+        "https://graph.microsoft.com/Calendars.ReadWrite",
+        "https://graph.microsoft.com/Contacts.Read",
+        "https://graph.microsoft.com/People.Read",
         "https://graph.microsoft.com/User.Read",
+        "https://graph.microsoft.com/User.ReadBasic.All",
     ];
 
     // Read-only contact scopes for contact sync (issue #256). Explicit scopes (not `.default`) so
