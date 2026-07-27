@@ -181,10 +181,18 @@
                     </Grid>
 
                     <!-- Contact list -->
+                    <!-- IsTextSearchEnabled + TextSearch.TextPath give the list first-letter
+                         (type-ahead) navigation: WPF matches typed characters against
+                         TypeAheadText, accumulating within the system type-ahead timeout and
+                         cycling through same-letter matches on repeats (issue #371). Without
+                         an explicit TextPath the item template's Grid supplies no text and
+                         typing does nothing. -->
                     <ListView x:Name="ContactList"
                               ItemsSource="{Binding FilteredContacts}"
                               SelectedItem="{Binding SelectedContact}"
                               AutomationProperties.Name="Contacts"
+                              IsTextSearchEnabled="True"
+                              TextSearch.TextPath="TypeAheadText"
                               TabIndex="4"
                               Grid.IsSharedSizeScope="True"
                               KeyboardNavigation.TabNavigation="Once"
@@ -192,7 +200,10 @@
                               PreviewKeyDown="ContactList_PreviewKeyDown"
                               ContextMenuOpening="ContactList_ContextMenuOpening">
                         <ListView.ContextMenu>
-                            <ContextMenu AutomationProperties.Name="Add to group"/>
+                            <!-- Items are built in ContactList_ContextMenuOpening: the two
+                                 "Find mail…" actions (when the host can show results) then
+                                 one "Add to group" item per group. -->
+                            <ContextMenu AutomationProperties.Name="Contact actions"/>
                         </ListView.ContextMenu>
                         <ListView.ItemContainerStyle>
                             <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
@@ -244,6 +255,8 @@
                                   ItemsSource="{Binding Groups}"
                                   SelectedItem="{Binding SelectedGroup, Mode=TwoWay}"
                                   AutomationProperties.Name="Groups"
+                                  IsTextSearchEnabled="True"
+                                  TextSearch.TextPath="Name"
                                   TabIndex="20"
                                   KeyboardNavigation.TabNavigation="Once"
                                   PreviewKeyDown="GroupsList_PreviewKeyDown">
@@ -297,6 +310,8 @@
                         <ListView x:Name="GroupMembersList"
                                   ItemsSource="{Binding SelectedGroupMembers}"
                                   AutomationProperties.Name="Group members"
+                                  IsTextSearchEnabled="True"
+                                  TextSearch.TextPath="TypeAheadText"
                                   TabIndex="21"
                                   KeyboardNavigation.TabNavigation="Once"
                                   PreviewKeyDown="GroupMembersList_PreviewKeyDown">

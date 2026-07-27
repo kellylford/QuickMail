@@ -281,7 +281,9 @@ Press **Ctrl+Shift+P** to open the command palette. Type any part of a command n
 
 ### Keyboard Customization
 
-Open **Settings → Keyboard** to reassign any shortcut to a different key. Type in the field for a command to capture a new key combination. Changes take effect immediately and survive restarts.
+Open **Settings → Keyboard** to reassign any shortcut to a different key. Select a command's field and press the key combination you want — QuickMail captures it, shows you what it heard, and asks you to confirm with **OK**, pick another with **Change**, or **Cancel**. If the combination is already assigned to something else, a warning names the existing command so you can decide whether to reassign it. Changes take effect immediately and survive restarts.
+
+**Bare keys as shortcuts.** You can assign a shortcut with no modifier key using **Delete, Backspace, Insert, or any function key (F1–F24)** — for example, bare **Delete** to delete a message, or **F5** to sync. (Bare **Delete** ships as a default binding for exactly this reason.) Plain letters, digits, and the Spacebar cannot be bound on their own — they would swallow ordinary typing — so pair them with **Ctrl**, **Alt**, or **Shift**. **Enter**, **Escape**, and **Tab** are reserved for navigating dialogs and are never captured as shortcuts.
 
 ### Checking for Updates
 
@@ -547,6 +549,24 @@ When forwarding a message that has attachments, QuickMail opens an **Include Att
 Press **Ctrl+Shift+B** to open the address book.
 
 The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
+
+### Jumping to a Contact by Typing
+
+With focus on the contact list, type the first letter of a contact's name to jump straight to it. Type more letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with that letter. Contacts stored without a name are matched on their address instead. The same typing shortcut works in the **Groups** list and the **Group members** list.
+
+### Finding Mail From or To a Contact
+
+From the contact list, you can pull up everything a person sent you, or everything you addressed to them.
+
+1. Select the contact and press **Shift+F10** (or the Applications key) to open the context menu.
+2. Choose **Find mail from this contact** or **Find mail to this contact**.
+3. The address book closes and the message list fills with the matches, newest first. Focus moves to the message list and the count is announced — for example, "12 messages from Bob Baker." The window title shows **Mail from Bob Baker** so you can tell the results apart from a folder.
+
+Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, and you can assign them a keyboard shortcut in Settings → Keyboard.
+
+Press **Escape** with focus in the message list to close the results and go back to the folder you started from; the folder name and its message count are announced. A **Close** button at the top of the results does the same, and **Close Contact Mail Results** is in the Command Palette. Selecting any folder in the folder tree also leaves the results.
+
+The search covers every account and folder QuickMail has cached — not just the folder you were in. Mail older than your sync range is not stored locally, so it is not included. **Find mail to this contact** matches the To line, so a message where the person was only in Cc does not appear.
 
 ### Syncing Contacts from Your Accounts
 
@@ -1115,6 +1135,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `F1` | User Guide |
 | `Shift+,` | First message in group |
 | `Shift+.` | Last message in group |
+| `Escape` | Close contact mail results (message list focus) |
 
 **Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, and **Report a Bug** are likewise command-palette-only unless you assign a shortcut yourself in Settings → Keyboard.
 

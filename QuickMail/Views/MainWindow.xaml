@@ -1115,6 +1115,32 @@
                                Background="{DynamicResource Theme.ChromeBackground}"
                                AutomationProperties.Name="Current folder"/>
 
+                    <!-- Contact-mail results bar (#370) — visible only while the message list is
+                         showing "mail from / to a contact". Mirrors the search bar below: the
+                         match count plus a Close that returns to the folder the search started
+                         from, so the results are never a dead end. Escape does the same. -->
+                    <Border DockPanel.Dock="Top"
+                            Padding="6,4"
+                            BorderThickness="0,0,0,1"
+                            BorderBrush="{DynamicResource Theme.Border}"
+                            Visibility="{Binding IsContactMailView, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <DockPanel>
+                            <!-- Click rather than a direct command binding: closing also moves
+                                 focus to the message list and announces the result, both View
+                                 concerns the VM must not reach into. -->
+                            <Button DockPanel.Dock="Right"
+                                    Content="Close"
+                                    Click="CloseContactMailResults_Click"
+                                    AutomationProperties.Name="Close search results"
+                                    ToolTip="Close these results and go back (Escape)"
+                                    IsTabStop="True"/>
+                            <TextBlock VerticalAlignment="Center"
+                                       Margin="0,0,6,0"
+                                       Focusable="False"
+                                       Text="{Binding Messages.Count, StringFormat='{}{0} found'}"/>
+                        </DockPanel>
+                    </Border>
+
                     <!-- Search bar — visible only while IsSearchActive -->
                     <Border DockPanel.Dock="Top"
                             Padding="6,4"
