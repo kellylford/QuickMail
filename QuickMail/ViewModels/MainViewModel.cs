@@ -278,7 +278,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
            && (a.BackendKind == BackendKind.MicrosoftGraph
                || a.AuthType == AuthType.OAuth2Microsoft
                || a.AuthType == AuthType.OAuth2Google
-               || a.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
+               || ProviderCatalog.IsICloud(a));
 
     // Sentinel prefix for per-account "All Mail" virtual folders, e.g. "\u0000AccountMail:{guid}".
     internal const string AccountMailPrefix = "\u0000AccountMail:";

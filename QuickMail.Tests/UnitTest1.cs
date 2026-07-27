@@ -77,7 +77,7 @@ public class ViewModelConstructionTests
     {
         var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
         var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
-        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate());
+        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate(), new ProviderCatalog());
         Assert.NotNull(vm);
     }
 
@@ -299,7 +299,7 @@ public class XamlParseTests
         EnsureApplication();
         var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
         var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
-        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate());
+        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate(), new ProviderCatalog());
         var window = new AccountManagerDialog(vm);
         Assert.NotNull(window);
         window.Close();
@@ -313,7 +313,7 @@ public class XamlParseTests
         // Gate ON so the backend combo and its bindings (AvailableBackends / SelectedBackend /
         // ShowBackendPicker / IsImapBackend) are exercised during the XAML parse.
         var gate = new StubFeatureGate { [FeatureFlag.GraphBackend] = true };
-        var vm = new AddAccountViewModel(gate, imap, new StubOAuthService());
+        var vm = new AddAccountViewModel(gate, imap, new StubOAuthService(), new ProviderCatalog());
         var window = new AddAccountDialog(vm);
         Assert.NotNull(window);
         window.Close();

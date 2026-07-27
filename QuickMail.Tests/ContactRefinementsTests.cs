@@ -130,7 +130,7 @@ public class AddAccountContactSyncTests
     [Fact]
     public void ShowContactSyncOption_TrueForOAuth_FalseForPassword()
     {
-        var vm = new AddAccountViewModel(new StubFeatureGate(), new StubImapMailService(), new StubOAuthService())
+        var vm = new AddAccountViewModel(new StubFeatureGate(), new StubImapMailService(), new StubOAuthService(), new ProviderCatalog())
         {
             AuthType = AuthType.OAuth2Google,
         };
@@ -143,7 +143,7 @@ public class AddAccountContactSyncTests
     [Fact]
     public void ToAccountModel_CarriesSyncContacts_OnlyWhenOAuth()
     {
-        var vm = new AddAccountViewModel(new StubFeatureGate(), new StubImapMailService(), new StubOAuthService())
+        var vm = new AddAccountViewModel(new StubFeatureGate(), new StubImapMailService(), new StubOAuthService(), new ProviderCatalog())
         {
             Username = "u@gmail.test",
             AuthType = AuthType.OAuth2Google,

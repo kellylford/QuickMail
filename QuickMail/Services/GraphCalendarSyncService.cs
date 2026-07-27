@@ -99,7 +99,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     /// </summary>
     private bool IsICloudCalendarEligible(AccountModel account)
         => _calDav != null && _credentials != null && account.SyncCalendar
-           && account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
+           && ProviderCatalog.IsICloud(account);
 
     /// <summary>True when the account has a calendar QuickMail can pull, regardless of the opt-in flag.</summary>
     private bool HasCalendar(AccountModel account)

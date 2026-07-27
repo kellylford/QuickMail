@@ -6,6 +6,7 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 using QuickMail.Views;
 using Xunit;
@@ -94,6 +95,9 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("Spam rule", new MailRule { Name = "Spam rule" }.ToString());
         Assert.Equal("Work", new AccountModel { AccountName = "Work" }.ToString());
 
+        // Provider combo in the Add Account dialog.
+        Assert.Equal("Gmail", new ProviderCatalog().ById(ProviderCatalog.GmailId)!.ToString());
+
         // Month grid day cells (MonthGrid ListBox): spoken name = full day context.
         var cell = new MonthCell(new System.DateTime(2026, 7, 21), displayedMonth: 7, dayEvents:
             [new CalendarEvent { Summary = "A" }, new CalendarEvent { Summary = "B" }]);
@@ -147,6 +151,7 @@ public class SelectorItemAccessibilityTests
             new MessageTemplate { Title = "Alpha" }.ToString(),
             new MailRule { Name = "Alpha" }.ToString(),
             new GroupModel { Name = "Alpha" }.ToString(),
+            new ProviderCatalog().Other.ToString(),
         };
         foreach (var s in strings)
         {
