@@ -116,7 +116,10 @@ internal sealed class GraphMessage
     [JsonPropertyName("replyTo")] public List<GraphRecipient>? ReplyTo { get; set; }
     [JsonPropertyName("internetMessageId")] public string? InternetMessageId { get; set; }
     [JsonPropertyName("receivedDateTime")] public DateTimeOffset ReceivedDateTime { get; set; }
-    [JsonPropertyName("isRead")] public bool IsRead { get; set; }
+    // Nullable: Graph returns isRead:null for some messages (certain drafts/system messages), which
+    // fails to deserialize into a non-nullable bool and blows up the whole folder fetch. Treat null
+    // as unread at the mapping sites (m.IsRead ?? false).
+    [JsonPropertyName("isRead")] public bool? IsRead { get; set; }
     [JsonPropertyName("hasAttachments")] public bool HasAttachments { get; set; }
     [JsonPropertyName("attachments")] public List<GraphAttachment>? Attachments { get; set; }
     [JsonPropertyName("flag")] public GraphFollowUpFlag? Flag { get; set; }
