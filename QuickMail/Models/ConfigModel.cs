@@ -289,7 +289,10 @@ public class ConfigModel
     /// Raw key/value pairs from the config.ini [features] section (e.g. "GraphBackend" = "true").
     /// Resolved through <see cref="QuickMail.Services.IFeatureGate"/>; absent keys fall back to built-in defaults.
     /// </summary>
-    public Dictionary<string, string> Features { get; set; } = [];
+    /// Case-insensitive so a flag written by the Settings dialog updates the key already in the file
+    /// rather than adding a second one beside it ("googleauth" and "GoogleAuth" are the same flag,
+    /// which is how IFeatureGate reads them).
+    public Dictionary<string, string> Features { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
     // ── Per-account overrides ─────────────────────────────────────────────────────
 

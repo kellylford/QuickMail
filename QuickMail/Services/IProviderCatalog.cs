@@ -10,11 +10,23 @@ namespace QuickMail.Services;
 /// </summary>
 public interface IProviderCatalog
 {
-    /// <summary>Every provider, in display order, with <see cref="Other"/> last.</summary>
+    /// <summary>
+    /// Every provider, in display order, with <see cref="Other"/> first. Includes
+    /// <see cref="GmailGoogleSignIn"/>, which the account dialogs leave out of the picker unless
+    /// the GoogleAuth feature flag is on — so bind a picker to the ViewModel's provider list, not
+    /// to this.
+    /// </summary>
     IReadOnlyList<MailProvider> All { get; }
 
     /// <summary>The catch-all entry used when nothing matches.</summary>
     MailProvider Other { get; }
+
+    /// <summary>
+    /// Gmail authenticated with Google sign-in instead of an app password. Offered only to users who
+    /// turn the GoogleAuth feature flag on, because QuickMail's Google OAuth client no longer accepts
+    /// new authorizations — accounts authorized before it closed still work (#369, #226).
+    /// </summary>
+    MailProvider GmailGoogleSignIn { get; }
 
     /// <summary>The provider owning this email address's domain, or null when none matches.</summary>
     MailProvider? MatchByEmail(string email);

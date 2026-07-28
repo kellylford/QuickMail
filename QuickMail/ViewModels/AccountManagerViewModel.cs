@@ -69,7 +69,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
          || ProviderCatalog.IsICloud(acct));
 
-    public override bool ShowGoogleAuthOption => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
+    protected override bool IsGoogleAuthEnabled => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
 
     public AccountManagerViewModel(
         IAccountService accountService,
@@ -97,6 +97,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _contactSync    = contactSync;
         _graphCalendarSync = graphCalendarSync;
         Accounts = new ObservableCollection<AccountModel>(accountService.LoadAccounts());
+
+        if (featureGate.IsEnabled(FeatureFlag.GoogleAuth)) EnsureGoogleSignInListed();
     }
 
     partial void OnSelectedAccountChanged(AccountModel? value)
@@ -104,7 +106,13 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         if (value == null) return;
         // Resolve before the field copy: accounts saved before the provider catalog existed have no
         // ProviderId, so Resolve falls back to matching their IMAP host.
-        SelectedProvider = Catalog.Resolve(value);
+        var resolved = Catalog.Resolve(value);
+        // An account can resolve to a provider the picker is not offering — a Gmail account created
+        // with Google sign-in, on a profile where the GoogleAuth flag has since been turned off.
+        // Assigning a SelectedItem that is absent from ItemsSource leaves the box blank, so list the
+        // entry rather than misreport the account as something it is not.
+        if (resolved.Id == ProviderCatalog.GmailOAuthId) EnsureGoogleSignInListed();
+        SelectedProvider = resolved;
         BackendKind = value.BackendKind; // drives IsGraphBackend/IsImapBackend → hides auth + IMAP/SMTP for Graph
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;

@@ -16,7 +16,10 @@ public class ConfigFeatureGate : IFeatureGate
     private static readonly Dictionary<FeatureFlag, bool> Defaults = new Dictionary<FeatureFlag, bool>
     {
         [FeatureFlag.GraphBackend] = true,
-        [FeatureFlag.GoogleAuth]   = true,
+        // Off since v0.8.38: Google no longer grants QuickMail new authorizations, so offering the
+        // option to everyone only produced sign-ins that could not succeed. Opt-in for the users
+        // whose authorization predates the block (#369).
+        [FeatureFlag.GoogleAuth]   = false,
         [FeatureFlag.ServerRules]  = false,   // off until server-rule editing + unified window ship (#333)
     };
 

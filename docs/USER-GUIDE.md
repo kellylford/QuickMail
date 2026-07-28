@@ -104,6 +104,7 @@ For most accounts you need three things: your provider, your email address, and 
 
 - **Other (enter settings manually)** — where the list starts, and what you use for any provider QuickMail has no entry for
 - **Gmail**
+- **Gmail (sign in with Google)** — only when you have turned Google sign-in on; see [Gmail (Google Account)](#gmail-google-account)
 - **Outlook.com / Microsoft 365**
 - **Yahoo Mail**
 - **iCloud Mail**
@@ -156,7 +157,7 @@ Choose **Other**, or open **Advanced settings** for any provider, to enter:
 
 - **IMAP host**, port, **Use SSL** (port 993), and whether to accept invalid certificates
 - **SMTP host**, port, implicit SSL on connect (port 465 — leave it unchecked for STARTTLS on port 587), and whether to accept invalid certificates
-- **Authentication** — Password, Microsoft, or Google
+- **Authentication** — Password or Microsoft, plus Google when you have turned Google sign-in on (or when the account already uses it)
 - Your **Signature**, which is added to the end of new messages, replies, and forwards
 
 Advanced settings opens by itself in the two cases where you have no choice but to use it: when you choose **Other**, and when a settings lookup finds nothing.
@@ -205,9 +206,22 @@ To show this account's calendar in the Calendar view, check **Sync calendar from
 
 Enter the app password, not your regular Google password. Gmail's server settings fill in automatically.
 
-App passwords are not offered if your account is enrolled in Google's Advanced Protection Program. This route gives you full mail — send, receive, folders, search — but not Google calendar or contact sync, which need the Google sign-in below.
+App passwords are not offered if your account is enrolled in Google's Advanced Protection Program. This route gives you full mail — send, receive, folders, search — but not Google calendar or contact sync, which need the Google sign-in described below and available only to accounts authorized before Google closed it.
 
-**Google sign-in**, where it still works for you, is available under **Advanced settings** → **Authentication** → **Google OAuth (Gmail)**. Activate the **Sign in with Google** button; your browser opens to a Google sign-in page. Complete the sign-in, grant QuickMail permission to read and send mail, then close the browser window and activate **Add Account**.
+#### Google sign-in, for accounts authorized before it closed
+
+Google stopped granting QuickMail new authorizations, so for most people the sign-in route can only end in a refusal — which is why QuickMail no longer offers it by default. If your Google account was authorized before that happened, it still works, and you can turn the option back on:
+
+1. Open **Tools → Settings**, go to the **Advanced** tab, and check **Sign in with Google for Gmail accounts**. Select **Save**.
+2. Restart QuickMail. The setting is read at startup.
+
+You now have a **Gmail (sign in with Google)** entry in the **Provider** list, sitting directly below plain **Gmail**, and a **Google OAuth (Gmail)** choice under **Advanced settings** → **Authentication**.
+
+Choose **Gmail (sign in with Google)** and there is no password box at all — Gmail's servers fill in as usual and a **Sign in with Google** button takes the password's place. Activate it; your browser opens to a Google sign-in page. Complete the sign-in, grant QuickMail permission to read and send mail, then close the browser window and activate **Add Account**.
+
+If you would rather not use the Settings dialog, the same switch is `GoogleAuth = true` under `[features]` in `config.ini`, or `--feature GoogleAuth` on the command line.
+
+**Accounts you already have are not affected by this setting.** A Gmail account that already signs in with Google keeps working whether the setting is on or off, keeps syncing mail, contacts, and calendar, and still shows **Google OAuth (Gmail)** as its authentication in Manage Accounts. The setting governs only whether the option is *offered* when you set an account up.
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in — for Google this is folded into the same sign-in consent. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
@@ -215,7 +229,7 @@ To show this account's calendar in the Calendar view, check **Sync calendar from
 
 With Google sign-in you may see a message that no password was saved for the account. This is expected — Gmail signs in through your Google account rather than a stored password, so there is no password to save. The sign-in itself is stored securely in Windows Credential Manager and refreshes automatically.
 
-Google also shows a warning that QuickMail is an unverified app, and may end the sign-in with **"This app has been blocked."** Google's app-verification process can take several weeks and may require an expensive third-party security assessment. The app password route above is the reliable path in the meantime.
+Google also shows a warning that QuickMail is an unverified app, and may end the sign-in with **"This app has been blocked."** That message means your account is not one of the ones authorized earlier, and no setting in QuickMail can change it — Google's app-verification process can take several weeks and may require an expensive third-party security assessment. The app password route above is the reliable path.
 
 ### Yahoo Mail
 
@@ -1073,6 +1087,10 @@ Press **Ctrl+,** to open Settings.
 Accounts are not part of Settings — they have a window of their own. Open **File → Manage Accounts…** to add, edit, test, or remove one. See [Accounts](#accounts).
 
 ### Advanced
+
+**Account Sign-In**
+
+- **Sign in with Google for Gmail accounts** — off by default. Google no longer authorizes QuickMail for new accounts, so Gmail normally uses an app password. Turn this on only if your Google authorization predates that change; it adds a **Gmail (sign in with Google)** provider and a Google choice under **Authentication** in the account dialogs. Takes effect the next time QuickMail starts. Gmail accounts already using Google sign-in keep working whether this is on or off. See [Gmail (Google Account)](#gmail-google-account).
 
 **QuickMail Logging**
 
