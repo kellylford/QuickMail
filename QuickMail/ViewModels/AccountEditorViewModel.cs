@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -30,6 +31,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private string _accountName = string.Empty;
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _username = string.Empty;
+
+    /// <summary>
+    /// Bound to the optional "Login username" box in Advanced settings (#396). Empty means the
+    /// server is logged into with the email address, which is the case for almost every account.
+    /// </summary>
+    [ObservableProperty] private string _loginUsername = string.Empty;
+
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsICloudAccount))]
@@ -345,6 +353,23 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     public bool IsImapBackend => BackendKind == BackendKind.ImapSmtp;
 
     [ObservableProperty] private string _statusText = string.Empty;
+
+    /// <summary>
+    /// Which announcement category the View should read the next <see cref="StatusText"/> under.
+    /// Status suits background progress ("Testing connection…"); the outcome of a command the user
+    /// just invoked — above all a refused save — must be a Result, or it is silent for anyone who
+    /// has turned background-progress announcements off. Assign it BEFORE StatusText: the View
+    /// announces on the StatusText change notification.
+    /// </summary>
+    [ObservableProperty] private AnnouncementCategory _statusCategory = AnnouncementCategory.Status;
+
+    /// <summary>Sets <see cref="StatusText"/> as the outcome of a user action.</summary>
+    public void SetStatusOutcome(string text)
+    {
+        StatusCategory = AnnouncementCategory.Result;
+        StatusText = text;
+    }
+
     [ObservableProperty] private bool   _isBusy = false;
 
     public bool IsPasswordAuth => AuthType == AuthType.Password;
@@ -620,6 +645,32 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     /// nothing — or who pressed the default Add button straight from the address field, before the
     /// lookup ever ran — would save an account with a blank IMAP host and never see why it failed.
     /// </summary>
+    /// <summary>
+    /// Whether <see cref="Username"/> can serve as this account's own email address.
+    ///
+    /// Checked when the account is saved, not when a message is sent from it. This field becomes
+    /// the From header — and so the SMTP envelope sender — on everything the account sends, so a
+    /// login name typed here by someone whose server wants one surfaced days later as a rejected
+    /// send with nothing pointing back at this box (#396). Advanced settings now has a separate
+    /// Login username field for that case, which the message names.
+    ///
+    /// Shared by both editors so Add Account and Manage Accounts refuse the same input in the same
+    /// words.
+    /// </summary>
+    protected bool IsEmailAddressUsable(out string error)
+    {
+        if (EmailAddressValidator.IsValid(Username))
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        error = $"\"{Username}\" is not an email address. Enter the full address, including the "
+              + "domain. If your mail server logs in under a different name, put that in "
+              + "Advanced settings, Login username.";
+        return false;
+    }
+
     /// <param name="error">Message to show, and the reason to open Advanced settings.</param>
     public bool IsReadyToSave(out string error)
     {
@@ -630,6 +681,8 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             error = "Enter your email address.";
             return false;
         }
+
+        if (!IsEmailAddressUsable(out error)) return false;
 
         // Graph carries no host configuration at all; sign-in is what proves the account.
         if (IsGraphBackend) return true;
@@ -661,6 +714,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         AccountName = $"Test ({Username})",
         DisplayName = Username,
         Username = Username,
+        // The probe must log in under the same name the saved account will, or a passing test says
+        // nothing about whether the real credentials work.
+        LoginUsername = LoginUsername,
         AuthType = AuthType,
         BackendKind = BackendKind,
         ProviderId = SelectedProvider?.Id,

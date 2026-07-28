@@ -232,6 +232,17 @@ public partial class App : Application
             // covers accounts added at runtime through RefreshAccountList.
             var accounts = accountService.LoadAccounts();
 
+            // Before anything connects: an account hand-configured before the provider catalog
+            // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
+            // every send with an error about the socket rather than the setting (#396). Persisted
+            // right away so the correction survives the session that made it.
+            var repaired = AccountTransportRepair.Apply(accounts, providerCatalog);
+            if (repaired.Count > 0)
+            {
+                accountService.SaveAccounts(accounts);
+                LogService.Log($"AccountTransportRepair: corrected transport settings on {repaired.Count} account(s).");
+            }
+
             _contactService = new ContactService(profile);
             var contactService = _contactService;
             _templateService = new TemplateService(profile);

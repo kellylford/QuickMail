@@ -114,8 +114,9 @@
                          AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
                          TabIndex="6"/>
 
-                <!-- Username -->
-                <Label x:Name="LblUsername" Content="_Email / username:" Target="{Binding ElementName=UsernameBox}" Padding="0" Margin="0,8,0,2"/>
+                <!-- The account's own email address. Since #396 it is only that: a server whose
+                     login differs has a separate Login username box under Advanced settings. -->
+                <Label x:Name="LblUsername" Content="_Email address:" Target="{Binding ElementName=UsernameBox}" Padding="0" Margin="0,8,0,2"/>
                 <TextBox x:Name="UsernameBox"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
@@ -214,6 +215,16 @@
 
                         <!-- IMAP + SMTP server settings — hidden for Microsoft 365 (Graph) accounts. -->
                         <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
+                            <Separator Margin="0,12"/>
+
+                            <!-- Empty for almost every account; filled in when the server logs in
+                                 under something other than the email address (#396). -->
+                            <Label x:Name="LblLoginUsername" Content="_Login username (only if different from your email address):" Target="{Binding ElementName=LoginUsernameBox}" Padding="0" Margin="0,0,0,2"/>
+                            <TextBox x:Name="LoginUsernameBox"
+                                     Text="{Binding LoginUsername, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=LblLoginUsername}"
+                                    />
+
                             <Separator Margin="0,12"/>
 
                             <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>

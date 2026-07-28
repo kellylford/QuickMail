@@ -404,6 +404,9 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
         AccountName = AccountName,
         DisplayName = DisplayName,
         Username = Username,
+        // Null rather than "" when unset, so accounts.json carries the field only for the accounts
+        // that actually need it.
+        LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim(),
         AuthType = AuthType,
         BackendKind = BackendKind,
         ProviderId = SelectedProvider?.Id,

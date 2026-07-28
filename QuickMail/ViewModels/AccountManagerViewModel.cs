@@ -117,6 +117,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;
         Username = value.Username;
+        LoginUsername = value.LoginUsername ?? string.Empty;
         AuthType = value.AuthType;
         Password = value.AuthType == AuthType.Password
             ? (_credentials.GetPassword(value.Id) ?? string.Empty)
@@ -316,9 +317,21 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         if (SelectedAccount == null) return;
         var account = SelectedAccount;
 
+        // The one field this dialog must not save wrong: it is the From address on everything the
+        // account sends. Refusing here is also how an account created before the check existed gets
+        // corrected — the message says where the login name belongs instead (#396).
+        if (!IsEmailAddressUsable(out var addressProblem))
+        {
+            SetStatusOutcome(addressProblem);
+            return;
+        }
+
         account.AccountName = AccountName;
         account.DisplayName = DisplayName;
         account.Username = Username;
+        // Null rather than "" when unset, so accounts.json carries the field only for the accounts
+        // that actually need it.
+        account.LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim();
         // Backfill the personal-account flag when this edit re-authed (SignInMicrosoftAsync set it);
         // leave it untouched otherwise so a plain field edit doesn't wipe a prior detection (#233).
         if (IsPersonalMicrosoftAccount.HasValue)

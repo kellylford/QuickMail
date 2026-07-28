@@ -162,6 +162,19 @@
                         <StackPanel Visibility="{Binding IsImapBackend, Converter={StaticResource BoolToVisibility}}">
                             <Separator Margin="0,12"/>
 
+                            <!-- Only for servers whose login is not the email address. Advanced,
+                                 because it is empty for almost every account; present, because
+                                 without it one box had to be both and was wrong either way (#396).
+                                 The parenthetical is in the Label, not in a Name, so the label text
+                                 stays the accessible name for the box. -->
+                            <Label x:Name="LblLoginUsername" Content="_Login username (only if different from your email address):" Target="{Binding ElementName=LoginUsernameBox}" Padding="0" Margin="0,0,0,2"/>
+                            <TextBox x:Name="LoginUsernameBox"
+                                     Text="{Binding LoginUsername, UpdateSourceTrigger=PropertyChanged}"
+                                     AutomationProperties.LabeledBy="{Binding ElementName=LblLoginUsername}"
+                                    />
+
+                            <Separator Margin="0,12"/>
+
                             <TextBlock Text="Incoming Mail (IMAP)" FontWeight="SemiBold" Margin="0,0,0,6"/>
 
                             <Label x:Name="LblImapHost" Content="IMAP _host:" Target="{Binding ElementName=ImapHostBox}" Padding="0" Margin="0,4,0,2"/>

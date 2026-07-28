@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Navigation;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -15,14 +16,6 @@ public partial class AddAccountDialog : Window
     private readonly AddAccountViewModel _vm;
     private bool _restoreFocusToTestButton;
 
-    /// <summary>
-    /// Which announcement category the next StatusText change is spoken under. Status by default —
-    /// almost every message here is background progress ("Looking up settings…", "Signing in…").
-    /// A caller raises it to Result around its own assignment for a message that is the outcome of
-    /// something the user just did; see <see cref="AddButton_Click"/>.
-    /// </summary>
-    private AnnouncementCategory _statusCategory = AnnouncementCategory.Status;
-
     public AddAccountDialog(AddAccountViewModel vm)
     {
         _vm = vm;
@@ -31,7 +24,12 @@ public partial class AddAccountDialog : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
-                AccessibilityHelper.Announce(this, vm.StatusText, category: _statusCategory);
+                // The category lives on the VM (AccountEditorViewModel.StatusCategory) so both
+                // account dialogs classify status the same way, and so a VM-side refusal can mark
+                // itself a Result without the View having to guess from the wording.
+                AccessibilityHelper.Announce(this, vm.StatusText,
+                    interrupt: vm.StatusCategory == AnnouncementCategory.Result,
+                    category: vm.StatusCategory);
             else if (e.PropertyName == nameof(vm.IsBusy))
                 OnIsBusyChanged();
         };
@@ -138,6 +136,8 @@ public partial class AddAccountDialog : Window
             return "The name recipients see on messages you send.";
         if (ReferenceEquals(focused, PasswordBox))
             return "Stored in Windows Credential Manager.";
+        if (ReferenceEquals(focused, LoginUsernameBox))
+            return "Leave blank unless your mail server logs in under a different name than your email address.";
         if (ReferenceEquals(focused, SyncContactsCheckBox))
             return "Check this before signing in, so reading your contacts is part of the same permission.";
         if (ReferenceEquals(focused, SyncCalendarCheckBox))
@@ -242,11 +242,11 @@ public partial class AddAccountDialog : Window
             // A refused save is the outcome of the action the user just took, not background
             // progress. Announcing it as Status means a user who has turned background-progress
             // announcements off gets silence while focus jumps to a field, with no reason given.
-            _statusCategory = AnnouncementCategory.Result;
-            _vm.StatusText = problem;
-            _statusCategory = AnnouncementCategory.Status;
+            _vm.SetStatusOutcome(problem);
 
-            if (string.IsNullOrWhiteSpace(_vm.Username))
+            // Not just "empty": a login name typed into the address box is also a problem with this
+            // field, and sending focus to the IMAP host for it would point at the wrong box (#396).
+            if (!EmailAddressValidator.IsValid(_vm.Username))
             {
                 UsernameBox.Focus();
                 Keyboard.Focus(UsernameBox);

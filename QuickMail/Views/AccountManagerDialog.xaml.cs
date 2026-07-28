@@ -22,7 +22,11 @@ public partial class AccountManagerDialog : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
-                AccessibilityHelper.Announce(this, vm.StatusText, category: AnnouncementCategory.Status);
+                // The VM classifies its own status text — a refused save is a Result, not progress,
+                // and must not be silent for a user who has progress announcements off (#396).
+                AccessibilityHelper.Announce(this, vm.StatusText,
+                    interrupt: vm.StatusCategory == AnnouncementCategory.Result,
+                    category: vm.StatusCategory);
         };
         // #202: warn with a focus-grabbing dialog when a different identity than the one entered signs
         // in (typically an admin approving consent) — the account stays bound to the entered user.
@@ -84,6 +88,8 @@ public partial class AccountManagerDialog : Window
             return "Leave blank to use your email address.";
         if (ReferenceEquals(focused, PasswordBox))
             return "Stored in Windows Credential Manager.";
+        if (ReferenceEquals(focused, LoginUsernameBox))
+            return "Leave blank unless your mail server logs in under a different name than your email address.";
         if (ReferenceEquals(focused, SyncContactsCheckBox))
             return "Pulls this account's contacts into the address book. Enabling asks for a one-time read-only permission.";
         if (ReferenceEquals(focused, SyncCalendarCheckBox))

@@ -42,6 +42,20 @@ If you turn the setting on and sign-in still ends in **"This app has been blocke
 
 ---
 
+## Sending mail: silence, and the reasons behind it
+
+A report of "sending an email gives no feedback, and does not close the compose window" ([#396](https://github.com/kellylford/QuickMail/issues/396)) turned out to be four separate problems stacked on top of each other. All four are fixed.
+
+**A send that fails now says so out loud.** The failure message was classed as background progress, so if you had turned **Announce background progress** off — a reasonable thing to do, since that is the setting that stops every folder announcing itself during a sync — pressing Send produced the button greying out, coming back, and nothing else. Send failures, refusals, and confirmations are now announced as results, which is the category for the outcome of something you just did, and they interrupt rather than queue. The same fix applies to a refused save in Add Account and Manage Accounts.
+
+**A message that was accepted is no longer reported as failed.** QuickMail closed the connection inside the same step that sent the message, so a server that hangs up the instant it takes your mail — or any hiccup during the sign-off — produced "Send failed" for a message that was already on its way. This is why the reporter saw messages sometimes arrive anyway. The sign-off is now separate and its own failure is ignored, because by then the server has your message.
+
+**Your login and your email address can now be different things.** There was one box serving as both, and for some accounts they are not the same string: an iCloud mailbox on your own domain logs in under the Apple ID, and some hosted servers want a bare user name. Whichever one you entered, the other use of it was wrong — a login name in the box became the From address on your mail, which servers reject. **Advanced settings** in both account dialogs now has a **Login username** box, empty for almost everyone, filled in only when your server logs in under something other than your email address. The **Email address** box is now only that, and saving an account refuses an entry that is not a full address, pointing at the new box instead.
+
+**A wrong encryption setting on a known server is corrected at startup.** An account set up by hand before QuickMail knew these providers could end up with **Implicit SSL on connect** checked while using port 587, which is a STARTTLS port. That combination fails every single send, about a second after you press the button, with an error that names a certificate rather than a checkbox. At startup QuickMail now corrects the encryption setting when — and only when — the server is one it ships settings for *and* the port is the exact port it publishes for that server. Anything else, including one of those servers on a different port, is left exactly as you set it.
+
+---
+
 ## Internal
 
 - `FeatureFlag.GoogleAuth` default flips to `false`. It gates only the *offer* — no runtime authentication path consults it, so saved `AuthType.OAuth2Google` accounts are unaffected.
@@ -51,6 +65,12 @@ If you turn the setting on and sign-in still ends in **"This app has been blocke
 - `AddAccountViewModel.MatchProviderFromUsername` returns early when the selected provider already matches the typed address.
 - `ConfigModel.Features` is now an `OrdinalIgnoreCase` dictionary; `SettingsViewModel.GoogleSignIn` reads and writes the `GoogleAuth` key in it rather than adding a setting of its own.
 - `GoogleSignInOptInTests` — 20 tests covering the gate default and its config/CLI overrides, catalog ordering and resolution, picker contents in both states, the provider-choice regression, and the Settings round-trip.
+- `AccountModel.LoginUsername` (persisted, nullable) plus computed `AuthUsername` = `LoginUsername ?? Username`. Every IMAP/SMTP **password** authentication uses `AuthUsername`; OAuth still uses `Username`, which is the mailbox the token was issued for. `Username` is now documented as the email address and nothing else — it is the From header, the provider-catalog match, and the autodiscovery domain. `SameConnectionSettings` includes `LoginUsername` so a corrected login invalidates the pooled client.
+- `EmailAddressValidator` (new) parses with `AllowAddressesWithoutDomain = false` — MimeKit's default accepts a bare local part, which is exactly the input that produced `MAIL FROM:<fastfinge>`. Deliberately does not require a dot in the domain. Enforced in `AccountEditorViewModel.IsEmailAddressUsable` (shared by `IsReadyToSave` and `AccountManagerViewModel.SaveAccount`) and as a pre-send guard in `ComposeViewModel.SendAsync`.
+- `AccountTransportRepair` (new) runs once in `OnStartup` against the loaded account list, correcting `ImapUseSsl`/`SmtpUseSsl` only where the host equals a catalog provider's host *and* the port equals that provider's published port. Matched on host rather than `ProviderCatalog.Resolve`, whose email-domain fallback would claim an address relayed through a third-party server.
+- `SmtpService.DisconnectQuietlyAsync` replaces the in-`try` `DisconnectAsync` in `SendAsync`, `SendIcsReplyAsync`, and `VerifyAsync`.
+- `AnnouncementCategory StatusCategory` on `ComposeViewModel` and `AccountEditorViewModel`, with `SetStatusOutcome`. Assign it before `StatusText` — the View announces on the `StatusText` notification. Replaces `AddAccountDialog`'s local `_statusCategory` field, and removes three double-announce sites in `ComposeWindow` that set `StatusText` and then announced the same string again.
+- `AccountTransportRepairTests` (8), `AccountLoginUsernameTests` (12), `ComposeViewModelSendFeedbackTests` (7).
 
 ---
 
