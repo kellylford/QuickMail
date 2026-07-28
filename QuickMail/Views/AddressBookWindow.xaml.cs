@@ -149,6 +149,53 @@ public partial class AddressBookWindow : Window
             id: "contacts.manageGroups", category: "Contacts", title: "Manage Groups…",
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             execute: OpenGroupManager));
+
+        // Opens the account filter menu.  No default key — Alt+F (the button's access
+        // key) and Tab already reach it; registering it puts it in the palette and lets
+        // it be given a shortcut from Settings → Keyboard.
+        _registry.Register(new CommandDefinition(
+            id: "contacts.filterByAccount", category: "Contacts", title: "Filter Addresses by Account",
+            defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
+            execute: OpenAccountFilterMenu,
+            isAvailable: () => MainTabs.SelectedIndex == 0));
+    }
+
+    // ── Account filter menu ──────────────────────────────────────────────────
+
+    private void AccountFilterButton_Click(object sender, RoutedEventArgs e) => OpenAccountFilterMenu();
+
+    /// <summary>
+    /// Drops the filter menu below the button. A ContextMenu takes keyboard focus when it
+    /// opens, so Up/Down move between accounts and Enter chooses one; Escape closes the
+    /// menu and leaves the window open.
+    /// </summary>
+    private void OpenAccountFilterMenu()
+    {
+        if (MainTabs.SelectedIndex != 0) MainTabs.SelectedIndex = 0;
+        var menu = AccountFilterButton.ContextMenu;
+        if (menu is null || menu.IsOpen) return;
+        menu.PlacementTarget = AccountFilterButton;
+        menu.Placement       = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.IsOpen          = true;
+    }
+
+    private void AccountFilterMenu_Opened(object sender, RoutedEventArgs e)
+    {
+        // Land on the filter that is currently in effect rather than on the first item,
+        // so the menu opens where the user left it and the check state is read out.
+        var menu = (ContextMenu)sender;
+        if (menu.ItemContainerGenerator.ContainerFromItem(_vm.SelectedAccountFilter) is MenuItem item)
+            item.Focus();
+        else
+            menu.Focus();
+    }
+
+    private void AccountFilterMenu_Closed(object sender, RoutedEventArgs e)
+    {
+        // WPF returns focus to the placement target in most cases, but not reliably when
+        // the menu is dismissed with Escape — put it back explicitly.
+        if (!AccountFilterButton.IsKeyboardFocusWithin)
+            AccountFilterButton.Focus();
     }
 
     // Opens the standalone Group Manager dialog using the same IContactService
@@ -191,6 +238,11 @@ public partial class AddressBookWindow : Window
         // the per-window CommandRegistry above.
         if (e.Key == Key.Escape)
         {
+            // The filter menu owns Escape while it is open — dismissing the menu must
+            // not also close the address book. (Same reasoning as an open ComboBox
+            // dropdown; see the modeless-dialog notes in CLAUDE.md.)
+            if (AccountFilterButton.ContextMenu is { IsOpen: true })
+                return;
             // If the name entry panel is open, Escape dismisses it without
             // closing the whole window. A second Escape then closes.
             if (GroupNameEntryPanel.Visibility == Visibility.Visible)

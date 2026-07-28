@@ -20,6 +20,7 @@ public partial class AddressBookViewModel : ObservableObject
 {
     private readonly IContactService _contactService;
     private readonly IContactSyncService? _contactSync;
+    private readonly IAccountService? _accountService;
     private readonly Dictionary<Guid, string> _accountLabels = [];
     private readonly bool _showFieldLabels;
     private List<ContactModel> _allContacts = [];
@@ -94,13 +95,22 @@ public partial class AddressBookViewModel : ObservableObject
         // can re-use the same IContactService instance.
         ContactService = contactService;
 
-        // Map owning-account id → label so synced contacts can show which account they came from
-        // (issue #256). Resolved once at construction; the address book is short-lived/modal.
-        if (accountService != null)
-            foreach (var a in accountService.LoadAccounts())
-                _accountLabels[a.Id] = a.AccountLabel;
+        // Map owning-account id → label so synced contacts can show which account they came
+        // from (issue #256) and so the Filter menu can name them. Re-read on every load, not
+        // just at construction, so an account added or removed while the address book is
+        // open is picked up by the next refresh.
+        _accountService = accountService;
+        RefreshAccountLabels();
 
         _showFieldLabels = configService?.Load().ContactListShowFieldLabels ?? false;
+    }
+
+    private void RefreshAccountLabels()
+    {
+        if (_accountService is null) return;
+        _accountLabels.Clear();
+        foreach (var a in _accountService.LoadAccounts())
+            _accountLabels[a.Id] = a.AccountLabel;
     }
 
     /// <summary>True when contact sync is wired up, enabling the "Sync Contacts Now" affordance.</summary>
@@ -115,6 +125,103 @@ public partial class AddressBookViewModel : ObservableObject
     public IContactService ContactService { get; }
 
     public ObservableCollection<ContactModel> FilteredContacts { get; } = [];
+
+    // ── Account filter ───────────────────────────────────────────────────────
+    // The contact list can be narrowed to one account (or to the local address
+    // book) from the "Filter" button next to the search box. The options are
+    // rebuilt on every load so an account added or removed while the address
+    // book is open is reflected the next time contacts are refreshed.
+
+    /// <summary>
+    /// Choices for the Filter menu: "All accounts" first, then "Local address book",
+    /// then one entry per account, alphabetically.
+    /// </summary>
+    public ObservableCollection<AccountFilterOption> AccountFilterOptions { get; } = [];
+
+    private AccountFilterOption _selectedAccountFilter = new(AccountFilterKind.All, AllAccountsLabel);
+
+    private const string AllAccountsLabel = "All accounts";
+    private const string LocalLabel       = "Local address book";
+
+    /// <summary>The filter currently in effect. Never null — it starts on "All accounts".</summary>
+    public AccountFilterOption SelectedAccountFilter
+    {
+        get => _selectedAccountFilter;
+        private set
+        {
+            if (ReferenceEquals(_selectedAccountFilter, value)) return;
+            _selectedAccountFilter = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(AccountFilterButtonContent));
+            OnPropertyChanged(nameof(AccountFilterButtonName));
+        }
+    }
+
+    /// <summary>
+    /// Button text, carrying the Alt+F access key. Underscores inside an account name are
+    /// doubled so a name like "work_mail" does not silently claim a second access key.
+    /// </summary>
+    public string AccountFilterButtonContent =>
+        "_Filter: " + SelectedAccountFilter.Name.Replace("_", "__");
+
+    /// <summary>
+    /// Accessible name for the Filter button — a short label that also carries the active
+    /// filter, so tabbing to the button reports what the list is currently showing.
+    /// </summary>
+    public string AccountFilterButtonName => $"Filter: {SelectedAccountFilter.Name}";
+
+    /// <summary>
+    /// Applies a filter chosen from the menu. Always refreshes every option's check state,
+    /// even when the choice did not change, because activating a menu item clears its own
+    /// check mark before this runs.
+    /// </summary>
+    [RelayCommand]
+    public void SelectAccountFilter(AccountFilterOption? option)
+    {
+        if (option is null) return;
+        SelectedAccountFilter = option;
+        foreach (var o in AccountFilterOptions)
+        {
+            o.IsSelected = ReferenceEquals(o, option);
+            o.RefreshIsSelected();
+        }
+        ApplyFilter(SearchText);
+        Announce(
+            FilteredContacts.Count == 1
+                ? $"{option.Name}, 1 contact"
+                : $"{option.Name}, {FilteredContacts.Count} contacts",
+            AnnouncementCategory.Result);
+    }
+
+    /// <summary>
+    /// Rebuilds the filter menu from the configured accounts plus any account that owns a
+    /// loaded contact (the address book opened from Compose has no account service, so the
+    /// contacts themselves are the only source of accounts there). The active filter is
+    /// carried across the rebuild by kind and account id; if its account has gone away the
+    /// filter falls back to "All accounts".
+    /// </summary>
+    private void RebuildAccountFilterOptions()
+    {
+        var previous = SelectedAccountFilter;
+
+        var accounts = new Dictionary<Guid, string>(_accountLabels);
+        foreach (var c in _allContacts)
+            if (!c.IsLocal && c.OwnerAccountId is { } id && !accounts.ContainsKey(id))
+                accounts[id] = c.SourceLabel;
+
+        AccountFilterOptions.Clear();
+        AccountFilterOptions.Add(new AccountFilterOption(AccountFilterKind.All, AllAccountsLabel));
+        AccountFilterOptions.Add(new AccountFilterOption(AccountFilterKind.Local, LocalLabel));
+        foreach (var (id, label) in accounts.OrderBy(a => a.Value, StringComparer.CurrentCultureIgnoreCase))
+            AccountFilterOptions.Add(new AccountFilterOption(AccountFilterKind.Account, label, id));
+
+        var restored = AccountFilterOptions.FirstOrDefault(o =>
+                           o.Kind == previous.Kind && o.AccountId == previous.AccountId)
+                       ?? AccountFilterOptions[0];
+        SelectedAccountFilter = restored;
+        foreach (var o in AccountFilterOptions)
+            o.IsSelected = ReferenceEquals(o, restored);
+    }
 
     // ── Group state ──────────────────────────────────────────────────────────
 
@@ -199,9 +306,13 @@ public partial class AddressBookViewModel : ObservableObject
     [RelayCommand]
     public async Task LoadAsync()
     {
+        RefreshAccountLabels();
         _allContacts = await _contactService.LoadAllContactsAsync();
         foreach (var c in _allContacts)
             StampDisplay(c);
+        // Options depend on the stamped SourceLabel, so rebuild after stamping
+        // and before the filter runs.
+        RebuildAccountFilterOptions();
         ApplyFilter(SearchText);
         await ReloadGroupsAsync();
         RebuildSelectedGroupMembers();
@@ -594,13 +705,19 @@ public partial class AddressBookViewModel : ObservableObject
     {
         FilteredContacts.Clear();
         var q = query.Trim();
-        var matches = string.IsNullOrEmpty(q)
-            ? _allContacts
-            : _allContacts.Where(c =>
+        var filter = SelectedAccountFilter;
+        var matches = _allContacts.Where(filter.Matches);
+        if (!string.IsNullOrEmpty(q))
+            matches = matches.Where(c =>
                 c.DisplayName.Contains(q, StringComparison.OrdinalIgnoreCase) ||
                 c.EmailAddress.Contains(q, StringComparison.OrdinalIgnoreCase));
         foreach (var c in matches)
             FilteredContacts.Add(c);
+
+        // A contact filtered out of view must not stay selected — Edit and Delete
+        // would otherwise act on a row the user can no longer see.
+        if (SelectedContact is { } selected && !FilteredContacts.Contains(selected))
+            SelectedContact = null;
     }
 
     private Task<bool> RequestConfirmAsync(string title, string body) =>

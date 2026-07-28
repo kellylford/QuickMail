@@ -686,6 +686,19 @@ Press **Ctrl+Shift+B** to open the address book.
 
 The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
 
+### Filtering by Account
+
+When several accounts sync contacts into QuickMail, the list can get long. The **Filter** button, just to the right of the search box, narrows the list to one account at a time.
+
+1. Press **Tab** once from the search box, or press **Alt+F** from anywhere on the Contacts tab, to reach the button. Its label reports what is showing now — for example, "Filter: All accounts."
+2. Press **Enter** or **Alt+F** to drop the menu. It opens on the filter currently in effect, which is marked as checked.
+3. Press **Up Arrow** and **Down Arrow** to move through the choices: **All accounts**, **Local address book**, then one entry per account.
+4. Press **Enter** to apply the choice. The list narrows and the result is announced — for example, "Work, 214 contacts." Press **Escape** instead to close the menu and leave the filter alone.
+
+The filter and the search box work together: with a filter applied, searching looks only inside that account. The filter stays in effect while the address book is open, including across a contact sync, and resets to **All accounts** the next time you open the window.
+
+**Filter Addresses by Account** is also in the address book's Command Palette (**Ctrl+Shift+P**), and you can assign it a keyboard shortcut in Settings → Keyboard.
+
 ### Jumping to a Contact by Typing
 
 With focus on the contact list, type the first letter of a contact's name to jump straight to it. Type more letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with that letter. Contacts stored without a name are matched on their address instead. The same typing shortcut works in the **Groups** list and the **Group members** list.
