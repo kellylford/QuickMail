@@ -17,7 +17,7 @@ public enum FeatureFlag
     /// Offers Google sign-in for Gmail accounts: the "Gmail (sign in with Google)" provider entry
     /// and the Google OAuth item in the Authentication combo.
     ///
-    /// Default: false as of v0.8.38. QuickMail's Google OAuth client stopped accepting new
+    /// Default: false as of v0.8.37. QuickMail's Google OAuth client stopped accepting new
     /// authorizations (#369, #226), so for almost everyone the option can only end in a failed
     /// sign-in — an app password is the path that works. The users authorized before it closed keep
     /// working, and turn this on to get the option back: Settings, Advanced, "Sign in with Google
