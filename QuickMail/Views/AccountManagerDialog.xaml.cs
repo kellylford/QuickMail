@@ -34,6 +34,7 @@ public partial class AccountManagerDialog : Window
         // A PasswordBox cannot be data-bound, so the View has to be told when the VM drops the
         // password itself — otherwise the box keeps showing dots for a password that is gone.
         vm.PasswordCleared += OnPasswordCleared;
+        vm.EmailAddressRejected += OnEmailAddressRejected;
     }
 
     private void OnPasswordCleared()
@@ -41,11 +42,30 @@ public partial class AccountManagerDialog : Window
         if (PasswordBox.Password.Length > 0) PasswordBox.Clear();
     }
 
+    /// <summary>
+    /// A refused save names the Login username box under Advanced settings, so open it — otherwise
+    /// the instruction points at a control that is not in the visual tree, and there is no keyboard
+    /// route to it. Focus goes to the address box, which is the field that has to change.
+    /// </summary>
+    private void OnEmailAddressRejected()
+    {
+        _vm.IsAdvancedExpanded = true;
+        // Let the expander realize its content before moving focus, or Focus() lands on an element
+        // that does not exist yet — the same ordering AddAccountDialog uses after expanding.
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!UsernameBox.IsVisible) return;
+            UsernameBox.Focus();
+            Keyboard.Focus(UsernameBox);
+        }), System.Windows.Threading.DispatcherPriority.Input);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         // OnClosed, not OnClosing: the window can still cancel a close and stay open.
         _vm.SignInIdentityMismatch -= WarnIdentityMismatch;
         _vm.PasswordCleared -= OnPasswordCleared;
+        _vm.EmailAddressRejected -= OnEmailAddressRejected;
         base.OnClosed(e);
     }
 

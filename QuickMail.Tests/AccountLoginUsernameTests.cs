@@ -61,6 +61,51 @@ public class AccountLoginUsernameTests
         Assert.Equal("samuel@interfree.ca", account.Username);
     }
 
+    // ── Persistence ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// LoginUsername is persisted; AuthUsername is derived and must never reach accounts.json, where
+    /// it would be read back as a stale duplicate of a field the user has since changed.
+    /// </summary>
+    [Fact]
+    public void TheOverrideIsPersistedAndTheDerivedLoginIsNot()
+    {
+        var account = new AccountModel { Username = "samuel@interfree.ca", LoginUsername = "fastfinge" };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(account);
+
+        Assert.Contains("\"LoginUsername\":\"fastfinge\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("AuthUsername", json, StringComparison.Ordinal);
+
+        var restored = System.Text.Json.JsonSerializer.Deserialize<AccountModel>(json)!;
+        Assert.Equal("fastfinge", restored.LoginUsername);
+        Assert.Equal("fastfinge", restored.AuthUsername);
+    }
+
+    /// <summary>
+    /// Every accounts.json in the wild predates this field. Loading one must leave the account
+    /// logging in exactly as it did before — under its email address.
+    /// </summary>
+    [Fact]
+    public void AnAccountsFileWrittenBeforeThisFieldExistedStillLoads()
+    {
+        const string json = """
+            {
+              "Id": "1f5c1da8-43f0-4463-b776-77059767d36d",
+              "AccountName": "icloud",
+              "Username": "kelly@example.com",
+              "AuthType": 0,
+              "ImapHost": "imap.mail.me.com",
+              "SmtpHost": "smtp.mail.me.com"
+            }
+            """;
+
+        var account = System.Text.Json.JsonSerializer.Deserialize<AccountModel>(json)!;
+
+        Assert.Null(account.LoginUsername);
+        Assert.Equal("kelly@example.com", account.AuthUsername);
+    }
+
     // ── Add Account ──────────────────────────────────────────────────────────────
 
     [Fact]
@@ -178,7 +223,8 @@ public class AccountLoginUsernameTests
 
     /// <summary>
     /// This is the path that repairs an account created before the address was checked, so the
-    /// refusal has to be both blocking and audible — a Result, not background progress.
+    /// refusal has to be both blocking and audible — a Result, not background progress — and it has
+    /// to tell the View to open Advanced settings, since the message names a box that lives there.
     /// </summary>
     [Fact]
     public void ManageAccountsRefusesToSaveALoginNameAsTheAddressAndSaysSoAsAResult()
@@ -190,12 +236,55 @@ public class AccountLoginUsernameTests
             AuthType = AuthType.Password,
         };
         var vm = NewManagerVm(account);
+        var status = StatusAnnouncementRecorder.Watch(vm);
+        var rejected = 0;
+        vm.EmailAddressRejected += () => rejected++;
 
         vm.Username = "fastfinge";
         vm.SaveAccountCommand.Execute(null);
 
         Assert.Equal("samuel@interfree.ca", account.Username);   // nothing was written
-        Assert.Contains("not an email address", vm.StatusText);
-        Assert.Equal(AnnouncementCategory.Result, vm.StatusCategory);
+        Assert.Contains("not an email address", status.Last.Text);
+        Assert.Equal(AnnouncementCategory.Result, status.Last.Category);
+        Assert.Equal(1, rejected);
+    }
+
+    // ── The saved address is the one the mail builder can use ────────────────────
+
+    /// <summary>
+    /// Pasting an address out of a mail client brings the display name with it. That parses as a
+    /// mailbox but throws in MimeMessageBuilder's MailboxAddress constructor, so what gets saved is
+    /// the bare address — otherwise the refusal simply moves to every send.
+    /// </summary>
+    [Theory]
+    [InlineData("Kelly Ford <kelly@example.com>")]
+    [InlineData("<kelly@example.com>")]
+    [InlineData("  kelly@example.com  ")]
+    public void ManageAccountsSavesTheBareAddress(string typed)
+    {
+        var account = new AccountModel
+        {
+            Id = Guid.NewGuid(),
+            Username = "kelly@example.com",
+            AuthType = AuthType.Password,
+        };
+        var vm = NewManagerVm(account);
+
+        vm.Username = typed;
+        vm.SaveAccountCommand.Execute(null);
+
+        Assert.Equal("kelly@example.com", account.Username);
+        Assert.Equal("kelly@example.com", vm.Username);   // the box shows what was saved
+    }
+
+    [Theory]
+    [InlineData("Kelly Ford <kelly@example.com>")]
+    [InlineData("  kelly@example.com  ")]
+    public void AddAccountSavesTheBareAddress(string typed)
+    {
+        var vm = NewAddVm();
+        vm.Username = typed;
+
+        Assert.Equal("kelly@example.com", vm.ToAccountModel().Username);
     }
 }

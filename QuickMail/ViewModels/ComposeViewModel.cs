@@ -95,34 +95,44 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _statusText = string.Empty;
 
     /// <summary>
-    /// Which announcement category the View should read the next <see cref="StatusText"/> under.
+    /// Which announcement category the View reads the accompanying <see cref="StatusText"/> under.
     ///
     /// Status is right for background progress ("Sending…", "Saving draft…") and wrong for the
     /// outcome of a command the user just invoked. Announcing "Send failed" as Status meant anyone
     /// who had turned background-progress announcements off pressed Send, watched the button come
-    /// back enabled, and was told nothing at all — the message reported in #396. Assign this
-    /// BEFORE StatusText: the View announces on the StatusText change notification, so a category
-    /// set afterwards arrives too late.
+    /// back enabled, and was told nothing at all — the report in #396.
+    ///
+    /// One-shot: it returns to Status after every raise, so a message assigned through neither
+    /// helper cannot inherit a latched Result and interrupt. Same contract as
+    /// <see cref="MainViewModel.StatusAnnouncementCategory"/>.
     /// </summary>
-    [ObservableProperty] private AnnouncementCategory _statusCategory = AnnouncementCategory.Status;
+    public AnnouncementCategory StatusCategory { get; private set; } = AnnouncementCategory.Status;
 
     /// <summary>
     /// Sets <see cref="StatusText"/> as the outcome of a user action, so it is announced as a
     /// Result and survives the background-progress preference. Public because the compose window
     /// reports a few outcomes of its own (address checks, address-book adds) and must classify
     /// them the same way rather than announcing alongside the binding.
+    ///
+    /// The reset is safe because StatusText's PropertyChanged fires synchronously: the View has
+    /// already read the category by the time this returns.
     /// </summary>
-    public void SetStatusOutcome(string text)
-    {
-        StatusCategory = AnnouncementCategory.Result;
-        StatusText = text;
-    }
+    public void SetStatusOutcome(string text) => SetStatus(text, AnnouncementCategory.Result);
 
     /// <summary>Sets <see cref="StatusText"/> as background progress.</summary>
-    private void SetProgress(string text)
+    private void SetProgress(string text) => SetStatus(text, AnnouncementCategory.Status);
+
+    private void SetStatus(string text, AnnouncementCategory category)
     {
-        StatusCategory = AnnouncementCategory.Status;
+        StatusCategory = category;
+        // Cleared first so an identical message repeats. StatusText is an [ObservableProperty] with
+        // an equality check, so pressing Send twice with the same empty recipient box would raise no
+        // notification the second time — the user presses the button and hears nothing, which is the
+        // symptom this change exists to remove. The empty value is never announced; the View skips
+        // empty status text.
+        StatusText = string.Empty;
         StatusText = text;
+        StatusCategory = AnnouncementCategory.Status;
     }
 
     [ObservableProperty] private bool _isBusy = false;

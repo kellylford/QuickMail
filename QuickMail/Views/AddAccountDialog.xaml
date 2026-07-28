@@ -165,9 +165,12 @@
                             <!-- Only for servers whose login is not the email address. Advanced,
                                  because it is empty for almost every account; present, because
                                  without it one box had to be both and was wrong either way (#396).
-                                 The parenthetical is in the Label, not in a Name, so the label text
-                                 stays the accessible name for the box. -->
-                            <Label x:Name="LblLoginUsername" Content="_Login username (only if different from your email address):" Target="{Binding ElementName=LoginUsernameBox}" Padding="0" Margin="0,0,0,2"/>
+                                 The label is a short label and nothing else: AutomationProperties.LabeledBy
+                                 makes this exact string the box's accessible name, so the "only if
+                                 different from…" guidance belongs in the focus Hint (see HintFor),
+                                 where it also respects the user's hint preference.
+                                 Access key is u, not l — Alt+L is already "Sync ca_lendar". -->
+                            <Label x:Name="LblLoginUsername" Content="Login _username:" Target="{Binding ElementName=LoginUsernameBox}" Padding="0" Margin="0,0,0,2"/>
                             <TextBox x:Name="LoginUsernameBox"
                                      Text="{Binding LoginUsername, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblLoginUsername}"

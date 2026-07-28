@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -403,7 +404,11 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     {
         AccountName = AccountName,
         DisplayName = DisplayName,
-        Username = Username,
+        // The NORMALIZED address where one can be parsed out, not the raw box: a pasted
+        // "Kelly Ford <kelly@example.com>" or a trailing space parses fine in the validator and then
+        // throws in MimeMessageBuilder on every send. Falls back to the raw value only on a path
+        // that never reaches here with an unusable address — IsReadyToSave has already refused it.
+        Username = EmailAddressValidator.TryNormalize(Username, out var address) ? address : Username,
         // Null rather than "" when unset, so accounts.json carries the field only for the accounts
         // that actually need it.
         LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim(),

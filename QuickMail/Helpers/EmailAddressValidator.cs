@@ -25,15 +25,38 @@ internal static class EmailAddressValidator
     }
 
     /// <summary>
-    /// True when <paramref name="address"/> is a single mailbox with a domain.
+    /// Reduces user input to the bare addr-spec that <see cref="MailboxAddress"/> and the SMTP
+    /// envelope can actually carry, or returns false when there is no such address in it.
+    ///
+    /// Normalizing rather than merely validating, because the two are not the same test here.
+    /// <c>MailboxAddress.TryParse</c> accepts a whole mailbox — "Kelly Ford &lt;kelly@example.com&gt;",
+    /// an angle-addr, a string with surrounding whitespace — while the
+    /// <c>MailboxAddress(name, address)</c> constructor that <see cref="Services.MimeMessageBuilder"/>
+    /// calls accepts ONLY the addr-spec and throws a ParseException on every one of those forms.
+    /// A validator that said yes to input the builder then threw on would have reproduced the exact
+    /// unactionable failure #396 is about, one layer further down. Taking <c>mailbox.Address</c>
+    /// strips the display name and the angle brackets and settles it.
+    /// </summary>
+    public static bool TryNormalize(string? input, out string address)
+    {
+        address = string.Empty;
+        if (string.IsNullOrWhiteSpace(input)) return false;
+
+        if (!MailboxAddress.TryParse(RequireDomain, input.Trim(), out var mailbox)) return false;
+        if (string.IsNullOrWhiteSpace(mailbox.Domain)) return false;
+        if (string.IsNullOrWhiteSpace(mailbox.Address)) return false;
+
+        address = mailbox.Address;
+        return true;
+    }
+
+    /// <summary>
+    /// True when <paramref name="address"/> contains a single usable mailbox with a domain.
     ///
     /// Deliberately does NOT require a dot in the domain. Recipient checking in the compose window
     /// does, on the reasoning that a typo is likelier than an intranet host; for an account the
     /// user has configured themselves the reverse holds — someone whose mail server really is
     /// <c>user@mailhost</c> must still be able to save the account.
     /// </summary>
-    public static bool IsValid(string? address) =>
-        !string.IsNullOrWhiteSpace(address)
-        && MailboxAddress.TryParse(RequireDomain, address, out var mailbox)
-        && !string.IsNullOrWhiteSpace(mailbox.Domain);
+    public static bool IsValid(string? address) => TryNormalize(address, out _);
 }

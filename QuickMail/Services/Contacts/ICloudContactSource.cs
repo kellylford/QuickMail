@@ -43,9 +43,13 @@ public sealed class ICloudContactSource : IProviderContactSource
             throw new InvalidOperationException(
                 $"no app-specific password saved for {account.Username} — re-enter it in Manage Accounts.");
 
+        // AuthUsername, not Username: CardDAV is HTTP Basic auth built from this and the
+        // app-specific password, so it is an authentication identity exactly like the IMAP and SMTP
+        // logins. An account whose Apple ID differs from its mail address (#396) authenticates here
+        // under the same name it authenticates with for mail.
         if (!_addressbookUrlByAccount.TryGetValue(account.Id, out var addressbookUrl))
         {
-            var info = await _client.DiscoverAddressbookAsync(ICloudCardDavUrl, account.Username, password, ct);
+            var info = await _client.DiscoverAddressbookAsync(ICloudCardDavUrl, account.AuthUsername, password, ct);
             addressbookUrl = info.Url;
             _addressbookUrlByAccount[account.Id] = addressbookUrl;
         }
@@ -53,7 +57,7 @@ public sealed class ICloudContactSource : IProviderContactSource
         List<string> vcards;
         try
         {
-            vcards = await _client.FetchVCardsAsync(addressbookUrl, account.Username, password, ct);
+            vcards = await _client.FetchVCardsAsync(addressbookUrl, account.AuthUsername, password, ct);
         }
         catch
         {

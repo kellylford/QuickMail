@@ -234,13 +234,15 @@ public partial class App : Application
 
             // Before anything connects: an account hand-configured before the provider catalog
             // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
-            // every send with an error about the socket rather than the setting (#396). Persisted
-            // right away so the correction survives the session that made it.
-            var repaired = AccountTransportRepair.Apply(accounts, providerCatalog);
+            // every send with an error about the socket rather than the setting; and one holding a
+            // login name where its email address belongs needs that login preserved before the user
+            // is asked to correct the address (#396). Persisted right away so both survive the
+            // session that made them.
+            var repaired = AccountStartupRepair.Apply(accounts, providerCatalog);
             if (repaired.Count > 0)
             {
                 accountService.SaveAccounts(accounts);
-                LogService.Log($"AccountTransportRepair: corrected transport settings on {repaired.Count} account(s).");
+                LogService.Log($"AccountStartupRepair: repaired {repaired.Count} account(s).");
             }
 
             _contactService = new ContactService(profile);

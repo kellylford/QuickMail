@@ -81,6 +81,12 @@ public class SmtpService : ISendMailService
         {
             await client.DisconnectAsync(true, ct);
         }
+        catch (OperationCanceledException)
+        {
+            // The send's own timeout expiring during QUIT. Not a failure of anything — logged
+            // separately so the log does not report a cancellation as a disconnect error.
+            LogService.Debug("SmtpService: disconnect cancelled after the work completed.");
+        }
         catch (Exception ex)
         {
             LogService.Log($"SmtpService: disconnect after send failed, ignoring ({ex.GetType().Name})", ex);

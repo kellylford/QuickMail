@@ -356,9 +356,12 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
     {
         var password = ICloudPassword(account);
 
+        // Every CalDAV call below passes AuthUsername rather than Username: this is HTTP Basic auth
+        // with the app-specific password, so it is an authentication identity, and an account whose
+        // Apple ID differs from its mail address (#396) must sign in under the Apple ID here too.
         if (!_calDavCalendarsByAccount.TryGetValue(account.Id, out var calendars))
         {
-            calendars = await _calDav!.DiscoverCalendarsAsync(ICloudCalDavUrl, account.Username, password, ct);
+            calendars = await _calDav!.DiscoverCalendarsAsync(ICloudCalDavUrl, account.AuthUsername, password, ct);
             _calDavCalendarsByAccount[account.Id] = calendars;
         }
 
@@ -370,7 +373,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
             // so each calendar is its own selectable source.
             foreach (var cal in calendars)
             {
-                var resources = await _calDav!.FetchEventIcsAsync(cal.Url, account.Username, password,
+                var resources = await _calDav!.FetchEventIcsAsync(cal.Url, account.AuthUsername, password,
                                                                   nowUtc - WindowBack, nowUtc + WindowForward, ct);
                 union.AddRange(MapCalDavEvents(resources, account.Id, cal.Url, cal.DisplayName));
             }
@@ -509,7 +512,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         // A new resource: QuickMail chooses its name (after the UID). Record the URL it PUT to so an
         // immediate edit (before the next read-sync captures the server's real href) still targets it.
         var resourceUrl = CalDavCalendarClient.EventResourceUrl(evt.CalendarId, evt.Uid);
-        await _calDav!.PutEventAsync(resourceUrl, ics, account.Username, password, ifNoneMatch: true, ct);
+        await _calDav!.PutEventAsync(resourceUrl, ics, account.AuthUsername, password, ifNoneMatch: true, ct);
 
         evt.AccountId = account.Id;
         evt.IsGraph = true; // "server-synced row"
@@ -533,7 +536,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         var resourceUrl = string.IsNullOrEmpty(evt.ResourceUrl)
             ? CalDavCalendarClient.EventResourceUrl(evt.CalendarId, evt.Uid)
             : evt.ResourceUrl;
-        await _calDav!.PutEventAsync(resourceUrl, ics, account.Username, password, ifNoneMatch: false, ct);
+        await _calDav!.PutEventAsync(resourceUrl, ics, account.AuthUsername, password, ifNoneMatch: false, ct);
 
         evt.AccountId = account.Id;
         evt.IsGraph = true;
@@ -555,7 +558,7 @@ public sealed class GraphCalendarSyncService : IGraphCalendarSyncService
         var resourceUrl = string.IsNullOrEmpty(evt.ResourceUrl)
             ? CalDavCalendarClient.EventResourceUrl(evt.CalendarId, evt.Uid)
             : evt.ResourceUrl;
-        await _calDav!.DeleteEventAsync(resourceUrl, account.Username, password, ct);
+        await _calDav!.DeleteEventAsync(resourceUrl, account.AuthUsername, password, ct);
         await _store.DeleteCalendarEventAsync(evt.Uid, account.Id);
         LogService.Log($"CalendarSync: deleted iCloud event on {account.AccountLabel} ({evt.Uid}).");
     }

@@ -218,8 +218,10 @@
                             <Separator Margin="0,12"/>
 
                             <!-- Empty for almost every account; filled in when the server logs in
-                                 under something other than the email address (#396). -->
-                            <Label x:Name="LblLoginUsername" Content="_Login username (only if different from your email address):" Target="{Binding ElementName=LoginUsernameBox}" Padding="0" Margin="0,0,0,2"/>
+                                 under something other than the email address (#396). Short label
+                                 only — LabeledBy makes it the accessible name, and the guidance is
+                                 delivered as a focus Hint. Access key u: Alt+L is "Sync ca_lendar". -->
+                            <Label x:Name="LblLoginUsername" Content="Login _username:" Target="{Binding ElementName=LoginUsernameBox}" Padding="0" Margin="0,0,0,2"/>
                             <TextBox x:Name="LoginUsernameBox"
                                      Text="{Binding LoginUsername, UpdateSourceTrigger=PropertyChanged}"
                                      AutomationProperties.LabeledBy="{Binding ElementName=LblLoginUsername}"

@@ -165,7 +165,7 @@ Advanced settings opens by itself in the two cases where you have no choice but 
 
 Anything you enter here is yours to keep. Once you have changed a server field — a host, a port, or an SSL setting — no provider match and no later lookup overwrites it.
 
-There is one exception, and it only ever runs at startup. If an account points at a server QuickMail ships settings for, on the exact port QuickMail publishes for that server, and the encryption setting disagrees with the published one, the encryption setting is corrected. That pairing cannot work — implicit SSL against a STARTTLS port fails every send about a second after you press the button — so leaving it alone would only preserve a broken account. One of those servers on any other port is left exactly as you set it.
+There is one exception, and it applies only to accounts you have never saved in Manage Accounts. At startup, if such an account points at a server QuickMail ships settings for, on the exact port QuickMail publishes for that server, and the encryption setting disagrees with the published one, the encryption setting is corrected. That pairing cannot work — implicit SSL against a STARTTLS port fails every send about a second after you press the button — so leaving it alone would only preserve a broken account. One of those servers on any other port is left exactly as you set it, and once you have saved an account yourself nothing touches it again.
 
 ### When your login is not your email address
 
@@ -177,6 +177,8 @@ They come apart when your mail provider keeps a separate account name. An iCloud
 - **Login username** is what the server wants at sign-in — the Apple ID, the bare name, whatever your provider told you.
 
 Putting the login name in the **Email address** box instead sends mail with a From line that is not an address, and servers reject it. QuickMail will not save an account whose email address is missing its domain; the message points you at the **Login username** box.
+
+If you already had an account set up that way, QuickMail copies the login name into **Login username** for you the first time it starts after the update — so when you correct the **Email address**, the login that was working goes on working. You only need to enter the address.
 
 ### Testing a connection
 
