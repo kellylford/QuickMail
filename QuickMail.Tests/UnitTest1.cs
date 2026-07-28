@@ -320,6 +320,16 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void SettingsDialog_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        var dialog = new SettingsDialog(vm);
+        Assert.NotNull(dialog);
+        dialog.Close();
+    }
+
+    [StaFact]
     public void AddressBookWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

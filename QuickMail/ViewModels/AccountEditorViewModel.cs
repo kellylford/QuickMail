@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -51,6 +53,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowContactSyncOption))]
     [NotifyPropertyChangedFor(nameof(ShowCalendarSyncOption))]
     [NotifyPropertyChangedFor(nameof(ShowAppPasswordHint))]
+    [NotifyPropertyChangedFor(nameof(ShowGoogleAuthOption))]
     private AuthType _authType = AuthType.Password;
 
     /// <summary>
@@ -91,8 +94,30 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     // ── Provider selection and progressive disclosure ────────────────────────────
 
-    /// <summary>Providers offered in the picker, in display order.</summary>
-    public IReadOnlyList<MailProvider> Providers => Catalog.All;
+    /// <summary>
+    /// Providers offered in the picker, in display order. Built from the catalog minus the Google
+    /// sign-in entry, which <see cref="EnsureGoogleSignInListed"/> puts back for the users entitled
+    /// to it. Observable rather than a plain list because that call can happen after the ComboBox
+    /// has already bound.
+    /// </summary>
+    public ObservableCollection<MailProvider> Providers { get; }
+
+    /// <summary>
+    /// Adds "Gmail (sign in with Google)" to the picker, directly after plain Gmail so the two sit
+    /// together. Idempotent. Called by the derived VMs when the GoogleAuth flag is on, and — in the
+    /// Account Manager — when the account being edited already uses Google sign-in, so an account
+    /// created before the flag was turned back off is never left with a blank provider box.
+    /// </summary>
+    protected void EnsureGoogleSignInListed()
+    {
+        var entry = Catalog.GmailGoogleSignIn;
+        if (Providers.Contains(entry)) return;
+
+        var afterGmail = Providers.ToList().FindIndex(p => p.Id == ProviderCatalog.GmailId) + 1;
+        // FindIndex returns -1 for a catalog with no plain Gmail entry, which +1 turns into 0 — a
+        // valid insert position, so the entry is still offered rather than silently dropped.
+        Providers.Insert(afterGmail, entry);
+    }
 
     /// <summary>
     /// The provider this account is being created from or was created with. Selecting one fills
@@ -327,10 +352,20 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     public bool IsGoogleOAuth  => AuthType == AuthType.OAuth2Google;
 
     /// <summary>
-    /// Whether the Google OAuth option is available in this editor context.
-    /// Derived classes override to reflect their feature-gate state.
+    /// Whether the GoogleAuth feature flag is on in this editor context. Derived classes override to
+    /// reflect their feature-gate state; prefer <see cref="ShowGoogleAuthOption"/> for UI decisions.
     /// </summary>
-    public virtual bool ShowGoogleAuthOption => false;
+    protected virtual bool IsGoogleAuthEnabled => false;
+
+    /// <summary>
+    /// Whether the Google OAuth item belongs in the Authentication combo.
+    ///
+    /// The second clause is what keeps a grandfathered account editable. With the flag off, an
+    /// account saved as <see cref="AuthType.OAuth2Google"/> still sets AuthTypeIndex to 2 — and if
+    /// the item at index 2 were collapsed, the Account Manager would show a blank Authentication
+    /// box for an account that is authenticating perfectly well, with no way to tell what it uses.
+    /// </summary>
+    public bool ShowGoogleAuthOption => IsGoogleAuthEnabled || AuthType == AuthType.OAuth2Google;
 
     public int AuthTypeIndex
     {
@@ -358,6 +393,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         OAuthService = oauth;
         Catalog = catalog;
         SendMailService = sendMail;
+        // Google sign-in is left out here and added back by EnsureGoogleSignInListed. Filtering at
+        // construction rather than gating a binding keeps the entry out of the keyboard order and
+        // out of the accessibility tree entirely — a Collapsed ComboBoxItem is still an item the
+        // arrow keys can land on in some templates, and "offered but unusable" is exactly what this
+        // change exists to prevent.
+        Providers = new ObservableCollection<MailProvider>(
+            catalog.All.Where(p => p.Id != ProviderCatalog.GmailOAuthId));
         // Assign the backing field, not the property: going through the setter would fire
         // OnSelectedProviderChangedInternal, whose "Other" branch expands Advanced settings — so a
         // brand-new dialog would open with every server field showing, which is the opposite of the
