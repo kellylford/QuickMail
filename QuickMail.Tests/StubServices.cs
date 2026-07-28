@@ -97,7 +97,18 @@ sealed class StubSmtpService : ISendMailService
     /// <summary>Records every ICS reply sent, so tests can assert which account it was routed from.</summary>
     public List<(AccountModel Account, string Ics, string OrganizerEmail)> SentReplies { get; } = new();
 
-    public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.CompletedTask;
+    /// <summary>Set to make a send fail, the way a rejected MAIL FROM or a refused login does.</summary>
+    public Exception? SendFailure { get; set; }
+
+    /// <summary>Every message handed to SendAsync, so a test can assert a send never happened.</summary>
+    public List<(ComposeModel Compose, AccountModel Account)> Sent { get; } = new();
+
+    public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default)
+    {
+        if (SendFailure is not null) return Task.FromException(SendFailure);
+        Sent.Add((compose, account));
+        return Task.CompletedTask;
+    }
     public Task SendIcsReplyAsync(string icsReplyContent, AccountModel account, string? password,
         string organizerEmail, CancellationToken ct = default)
     {

@@ -155,6 +155,7 @@ To turn off steps 2, 3, and 4, set `AutoDiscoverOnline = off` in `config.ini`. T
 
 Choose **Other**, or open **Advanced settings** for any provider, to enter:
 
+- **Login username** — leave this blank unless your mail server logs in under a different name than your email address. See [When your login is not your email address](#when-your-login-is-not-your-email-address).
 - **IMAP host**, port, **Use SSL** (port 993), and whether to accept invalid certificates
 - **SMTP host**, port, implicit SSL on connect (port 465 — leave it unchecked for STARTTLS on port 587), and whether to accept invalid certificates
 - **Authentication** — Password or Microsoft, plus Google when you have turned Google sign-in on (or when the account already uses it)
@@ -163,6 +164,21 @@ Choose **Other**, or open **Advanced settings** for any provider, to enter:
 Advanced settings opens by itself in the two cases where you have no choice but to use it: when you choose **Other**, and when a settings lookup finds nothing.
 
 Anything you enter here is yours to keep. Once you have changed a server field — a host, a port, or an SSL setting — no provider match and no later lookup overwrites it.
+
+There is one exception, and it applies only to accounts you have never saved in Manage Accounts. At startup, if such an account points at a server QuickMail ships settings for, on the exact port QuickMail publishes for that server, and the encryption setting disagrees with the published one, the encryption setting is corrected. That pairing cannot work — implicit SSL against a STARTTLS port fails every send about a second after you press the button — so leaving it alone would only preserve a broken account. One of those servers on any other port is left exactly as you set it, and once you have saved an account yourself nothing touches it again.
+
+### When your login is not your email address
+
+For almost every account these are the same thing, and the **Login username** box under **Advanced settings** stays empty.
+
+They come apart when your mail provider keeps a separate account name. An iCloud mailbox that receives mail at your own domain still signs in under the Apple ID; some hosted servers want a bare user name rather than a full address. In that case:
+
+- **Email address** is your real address — `you@yourdomain.com`. This is what recipients see in the From line of everything you send, so it has to be an address that works.
+- **Login username** is what the server wants at sign-in — the Apple ID, the bare name, whatever your provider told you.
+
+Putting the login name in the **Email address** box instead sends mail with a From line that is not an address, and servers reject it. QuickMail will not save an account whose email address is missing its domain; the message points you at the **Login username** box.
+
+If you already had an account set up that way, QuickMail copies the login name into **Login username** for you the first time it starts after the update — so when you correct the **Email address**, the login that was working goes on working. You only need to enter the address.
 
 ### Testing a connection
 
@@ -250,9 +266,9 @@ To bring in your iCloud data, check **Sync contacts from this account** and/or *
 Select an account in the **Accounts** list and its settings appear beside it. You can change:
 
 - **Account name** and **Sender display name**
-- **Email / username**, and for password accounts the **Password**. The box is filled from Windows Credential Manager, so you only need to touch it when the password itself has changed.
+- **Email address**, and for password accounts the **Password**. The box is filled from Windows Credential Manager, so you only need to touch it when the password itself has changed.
 - **Sync contacts from this account** and **Sync calendar from this account**, on iCloud accounts and on accounts that sign in (Microsoft, or Gmail with Google sign-in)
-- Under **Advanced settings**: **Authentication**, the IMAP and SMTP servers, and your **Signature**
+- Under **Advanced settings**: **Login username**, **Authentication**, the IMAP and SMTP servers, and your **Signature**
 
 Press **Save** — the default button, so Enter is enough — to keep the changes. The two sync checkboxes are the exception: they apply the moment you change them, with no Save step. Switching one on asks for the permission it needs and pulls the first batch immediately; switching it off removes what had been synced. iCloud prompts for nothing, because it uses the app-specific password you already entered.
 

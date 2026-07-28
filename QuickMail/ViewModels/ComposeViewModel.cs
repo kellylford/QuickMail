@@ -93,6 +93,48 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     public bool IsSpellNavAvailable => true;
 #pragma warning restore CA1822
     [ObservableProperty] private string _statusText = string.Empty;
+
+    /// <summary>
+    /// Which announcement category the View reads the accompanying <see cref="StatusText"/> under.
+    ///
+    /// Status is right for background progress ("Sending…", "Saving draft…") and wrong for the
+    /// outcome of a command the user just invoked. Announcing "Send failed" as Status meant anyone
+    /// who had turned background-progress announcements off pressed Send, watched the button come
+    /// back enabled, and was told nothing at all — the report in #396.
+    ///
+    /// One-shot: it returns to Status after every raise, so a message assigned through neither
+    /// helper cannot inherit a latched Result and interrupt. Same contract as
+    /// <see cref="MainViewModel.StatusAnnouncementCategory"/>.
+    /// </summary>
+    public AnnouncementCategory StatusCategory { get; private set; } = AnnouncementCategory.Status;
+
+    /// <summary>
+    /// Sets <see cref="StatusText"/> as the outcome of a user action, so it is announced as a
+    /// Result and survives the background-progress preference. Public because the compose window
+    /// reports a few outcomes of its own (address checks, address-book adds) and must classify
+    /// them the same way rather than announcing alongside the binding.
+    ///
+    /// The reset is safe because StatusText's PropertyChanged fires synchronously: the View has
+    /// already read the category by the time this returns.
+    /// </summary>
+    public void SetStatusOutcome(string text) => SetStatus(text, AnnouncementCategory.Result);
+
+    /// <summary>Sets <see cref="StatusText"/> as background progress.</summary>
+    private void SetProgress(string text) => SetStatus(text, AnnouncementCategory.Status);
+
+    private void SetStatus(string text, AnnouncementCategory category)
+    {
+        StatusCategory = category;
+        // Cleared first so an identical message repeats. StatusText is an [ObservableProperty] with
+        // an equality check, so pressing Send twice with the same empty recipient box would raise no
+        // notification the second time — the user presses the button and hears nothing, which is the
+        // symptom this change exists to remove. The empty value is never announced; the View skips
+        // empty status text.
+        StatusText = string.Empty;
+        StatusText = text;
+        StatusCategory = AnnouncementCategory.Status;
+    }
+
     [ObservableProperty] private bool _isBusy = false;
     [ObservableProperty] private ObservableCollection<AccountModel> _senderAccounts = [];
     [ObservableProperty] private AccountModel? _senderAccount;
@@ -195,30 +237,30 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         var account = SenderAccount;
         if (account == null)
         {
-            StatusText = "Please select a sender account.";
+            SetStatusOutcome("Please select a sender account.");
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
-            StatusText = "Total attachment size exceeds 25 MB. Please remove some attachments.";
+            SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
             return;
         }
 
         IsBusy = true;
-        StatusText = "Saving draft…";
+        SetProgress("Saving draft…");
         try
         {
             await SaveDraftCoreAsync(account);
-            StatusText = "Draft saved.";
+            SetStatusOutcome("Draft saved.");
         }
         catch (DraftFolderMissingException)
         {
-            StatusText = "No Drafts folder found on this account.";
+            SetStatusOutcome("No Drafts folder found on this account.");
         }
         catch (Exception ex)
         {
-            StatusText = $"Save draft failed: {ex.Message}";
+            SetStatusOutcome($"Save draft failed: {ex.Message}");
         }
         finally
         {
@@ -328,39 +370,50 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     {
         if (string.IsNullOrWhiteSpace(To))
         {
-            StatusText = "Please enter at least one recipient.";
+            SetStatusOutcome("Please enter at least one recipient.");
             return;
         }
 
         var account = SenderAccount;
         if (account == null)
         {
-            StatusText = "Please select a sender account.";
+            SetStatusOutcome("Please select a sender account.");
             return;
         }
 
         if (Attachments.Sum(a => a.FileSize) > 25_000_000)
         {
-            StatusText = "Total attachment size exceeds 25 MB. Please remove some attachments.";
+            SetStatusOutcome("Total attachment size exceeds 25 MB. Please remove some attachments.");
+            return;
+        }
+
+        // The From header is built from this address, so an account whose "email address" is not one
+        // — a login name typed into the field before it was validated at save time — produces
+        // MAIL FROM:<name>, which the server rejects with a message about the recipient or the
+        // sender that explains nothing. Say what is actually wrong, and where to fix it. (#396)
+        if (!EmailAddressValidator.IsValid(account.Username))
+        {
+            SetStatusOutcome($"\"{account.Username}\" is not a valid email address, so this message has no " +
+                       "valid sender. Fix the email address for this account in Manage Accounts.");
             return;
         }
 
         var password = _credentials.GetPassword(account.Id);
         if (string.IsNullOrEmpty(password) && account.AuthType == Models.AuthType.Password)
         {
-            StatusText = "No password stored for this account.";
+            SetStatusOutcome("No password stored for this account.");
             return;
         }
 
         IsBusy = true;
-        StatusText = "Sending…";
+        SetProgress("Sending…");
         try
         {
             var compose = BuildComposeModel(account.Id);
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await _smtp.SendAsync(compose, account, password, cts.Token);
-            StatusText = "Message sent.";
+            SetStatusOutcome("Message sent.");
             _isSent = true;
 
             // Append to Sent folder (best-effort — fire and forget so it doesn't block the UI).
@@ -397,7 +450,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
-            StatusText = $"Send failed: {ex.Message}";
+            SetStatusOutcome($"Send failed: {ex.Message}");
         }
         finally
         {
@@ -549,7 +602,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             InsertTextIntoEditorRequested?.Invoke(body);
         else
             Body += body;
-        StatusText = $"Template '{template.Title}' inserted.";
+        SetStatusOutcome($"Template '{template.Title}' inserted.");
     }
 
     [RelayCommand]
@@ -561,7 +614,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
             : Body;
         if (string.IsNullOrWhiteSpace(templateBody))
         {
-            StatusText = "Nothing to save — body is empty.";
+            SetStatusOutcome("Nothing to save — body is empty.");
             return;
         }
 
@@ -573,7 +626,7 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
         };
 
         await _templateService.AddAsync(template);
-        StatusText = $"Template saved as '{template.Title}'.";
+        SetStatusOutcome($"Template saved as '{template.Title}'.");
     }
 
     /// <summary>

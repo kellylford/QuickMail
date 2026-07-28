@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -30,6 +31,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private string _accountName = string.Empty;
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _username = string.Empty;
+
+    /// <summary>
+    /// Bound to the optional "Login username" box in Advanced settings (#396). Empty means the
+    /// server is logged into with the email address, which is the case for almost every account.
+    /// </summary>
+    [ObservableProperty] private string _loginUsername = string.Empty;
+
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsICloudAccount))]
@@ -345,6 +353,39 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     public bool IsImapBackend => BackendKind == BackendKind.ImapSmtp;
 
     [ObservableProperty] private string _statusText = string.Empty;
+
+    /// <summary>
+    /// Which announcement category the View reads the accompanying <see cref="StatusText"/> under.
+    ///
+    /// Status suits background progress ("Testing connection…"); the outcome of a command the user
+    /// just invoked — above all a refused save — must be a Result, or it is silent for anyone who
+    /// has turned background-progress announcements off.
+    ///
+    /// Defaults back to Status after every raise, because these VMs assign StatusText directly in
+    /// several dozen places and a category left latched to Result would re-classify all of them —
+    /// announcing a settings lookup as an interrupting outcome. Same one-shot contract, and same
+    /// reasoning, as <see cref="MainViewModel.StatusAnnouncementCategory"/>.
+    /// </summary>
+    public AnnouncementCategory StatusCategory { get; private set; } = AnnouncementCategory.Status;
+
+    /// <summary>
+    /// Sets <see cref="StatusText"/> as the outcome of a user action. The reset afterwards is safe
+    /// because StatusText's PropertyChanged fires synchronously — the View has read the category
+    /// before this method returns.
+    /// </summary>
+    public void SetStatusOutcome(string text)
+    {
+        StatusCategory = AnnouncementCategory.Result;
+        // Cleared first so an identical message repeats. StatusText is an [ObservableProperty] with
+        // an equality check, so pressing Save twice on the same unfixed field would otherwise raise
+        // no notification the second time — the user presses the button and hears nothing, which is
+        // the symptom this whole change exists to remove (#396). The empty value is not announced;
+        // the View skips empty status text.
+        StatusText = string.Empty;
+        StatusText = text;
+        StatusCategory = AnnouncementCategory.Status;
+    }
+
     [ObservableProperty] private bool   _isBusy = false;
 
     public bool IsPasswordAuth => AuthType == AuthType.Password;
@@ -615,6 +656,39 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Whether <see cref="Username"/> can serve as this account's own email address.
+    ///
+    /// Checked when the account is saved, not when a message is sent from it. This field becomes
+    /// the From header — and so the SMTP envelope sender — on everything the account sends, so a
+    /// login name typed here by someone whose server wants one surfaced days later as a rejected
+    /// send with nothing pointing back at this box (#396). Advanced settings now has a separate
+    /// Login username field for that case, which the message names.
+    ///
+    /// Shared by both editors so Add Account and Manage Accounts refuse the same input in the same
+    /// words.
+    /// </summary>
+    /// <param name="error">Message to show when the address cannot be used.</param>
+    /// <param name="normalized">
+    /// The address stripped to its bare addr-spec — no display name, no angle brackets, no
+    /// surrounding whitespace. This, not the raw field, is what gets saved: MimeMessageBuilder's
+    /// MailboxAddress constructor throws on every one of those forms, so storing what the user
+    /// typed would move the failure from a refused save to a rejected send.
+    /// </param>
+    protected bool IsEmailAddressUsable(out string error, out string normalized)
+    {
+        if (EmailAddressValidator.TryNormalize(Username, out normalized))
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        error = $"\"{Username}\" is not an email address. Enter the full address, including the "
+              + "domain. If your mail server logs in under a different name, put that in "
+              + "Advanced settings, Login username.";
+        return false;
+    }
+
+    /// <summary>
     /// Checks the form is complete enough to save. Matters more than it used to: the server fields
     /// now live behind a collapsed expander, so without this a user whose settings lookup found
     /// nothing — or who pressed the default Add button straight from the address field, before the
@@ -630,6 +704,8 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             error = "Enter your email address.";
             return false;
         }
+
+        if (!IsEmailAddressUsable(out error, out _)) return false;
 
         // Graph carries no host configuration at all; sign-in is what proves the account.
         if (IsGraphBackend) return true;
@@ -661,6 +737,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         AccountName = $"Test ({Username})",
         DisplayName = Username,
         Username = Username,
+        // The probe must log in under the same name the saved account will, or a passing test says
+        // nothing about whether the real credentials work.
+        LoginUsername = LoginUsername,
         AuthType = AuthType,
         BackendKind = BackendKind,
         ProviderId = SelectedProvider?.Id,

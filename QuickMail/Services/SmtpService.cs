@@ -52,17 +52,44 @@ public class SmtpService : ISendMailService
             }
             else
             {
-                await client.AuthenticateAsync(account.Username, password!, ct);
+                await client.AuthenticateAsync(account.AuthUsername, password!, ct);
             }
             LogService.Log($"SmtpService: authenticated, sending.");
             await client.SendAsync(message, ct);
             LogService.Log($"SmtpService: send complete");
-            await client.DisconnectAsync(true, ct);
         }
         catch (Exception ex)
         {
             LogService.Log($"SmtpService: send failed ({ex.GetType().Name})", ex);
             throw;
+        }
+
+        // Outside the try, and swallowing its own failure: the message is ACCEPTED by the server at
+        // this point, so a QUIT that throws — a server that drops the connection the instant it
+        // takes the message, a network blip — is not a send failure. Reporting one told the user
+        // their message had failed while it was already on its way, which is worse than either
+        // truth. Disposing the client closes the socket regardless. (#396)
+        await DisconnectQuietlyAsync(client, ct);
+    }
+
+    /// <summary>
+    /// Best-effort QUIT. Never throws: every caller has already completed the work that matters.
+    /// </summary>
+    private static async Task DisconnectQuietlyAsync(SmtpClient client, CancellationToken ct)
+    {
+        try
+        {
+            await client.DisconnectAsync(true, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // The send's own timeout expiring during QUIT. Not a failure of anything — logged
+            // separately so the log does not report a cancellation as a disconnect error.
+            LogService.Debug("SmtpService: disconnect cancelled after the work completed.");
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"SmtpService: disconnect after send failed, ignoring ({ex.GetType().Name})", ex);
         }
     }
 
@@ -97,11 +124,12 @@ public class SmtpService : ISendMailService
         }
         else
         {
-            await client.AuthenticateAsync(account.Username, password!, ct);
+            await client.AuthenticateAsync(account.AuthUsername, password!, ct);
         }
 
-        // Nothing is sent — authenticating is the whole proof.
-        await client.DisconnectAsync(true, ct);
+        // Nothing is sent — authenticating is the whole proof, so a failing QUIT must not turn a
+        // successful verification into "Test Connection failed".
+        await DisconnectQuietlyAsync(client, ct);
         LogService.Log("SmtpService: verify succeeded");
     }
 
@@ -139,17 +167,20 @@ public class SmtpService : ISendMailService
             }
             else
             {
-                await client.AuthenticateAsync(account.Username, password!, ct);
+                await client.AuthenticateAsync(account.AuthUsername, password!, ct);
             }
             LogService.Log($"SmtpService: ICS reply authenticated, sending.");
             await client.SendAsync(message, ct);
             LogService.Log($"SmtpService: ICS reply sent.");
-            await client.DisconnectAsync(true, ct);
         }
         catch (Exception ex)
         {
             LogService.Log($"SmtpService: ICS reply send failed ({ex.GetType().Name})", ex);
             throw;
         }
+
+        // See SendAsync: the reply has been accepted, so a failing QUIT must not surface as a
+        // failure to respond to the invitation.
+        await DisconnectQuietlyAsync(client, ct);
     }
 }

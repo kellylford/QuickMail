@@ -117,6 +117,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;
         Username = value.Username;
+        LoginUsername = value.LoginUsername ?? string.Empty;
         AuthType = value.AuthType;
         Password = value.AuthType == AuthType.Password
             ? (_credentials.GetPassword(value.Id) ?? string.Empty)
@@ -310,15 +311,39 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
+    /// <summary>
+    /// A save was refused because the email address is not one. The View opens Advanced settings —
+    /// where the message says the login name belongs — and puts focus on the address box, because a
+    /// refusal that names a field the user cannot see and has no keyboard route to is not a
+    /// refusal they can act on. Mirrors what AddAccountDialog does on the same refusal.
+    /// </summary>
+    public event Action? EmailAddressRejected;
+
     [RelayCommand]
     private void SaveAccount()
     {
         if (SelectedAccount == null) return;
         var account = SelectedAccount;
 
+        // The one field this dialog must not save wrong: it is the From address on everything the
+        // account sends. Refusing here is also how an account created before the check existed gets
+        // corrected — the message says where the login name belongs instead (#396).
+        if (!IsEmailAddressUsable(out var addressProblem, out var address))
+        {
+            SetStatusOutcome(addressProblem);
+            EmailAddressRejected?.Invoke();
+            return;
+        }
+
         account.AccountName = AccountName;
         account.DisplayName = DisplayName;
-        account.Username = Username;
+        // The NORMALIZED address, not the raw box: a pasted "Kelly Ford <kelly@example.com>" or a
+        // trailing space parses fine here and then throws in MimeMessageBuilder on every send.
+        account.Username = address;
+        Username = address;   // reflect the normalization back so the box shows what was saved
+        // Null rather than "" when unset, so accounts.json carries the field only for the accounts
+        // that actually need it.
+        account.LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim();
         // Backfill the personal-account flag when this edit re-authed (SignInMicrosoftAsync set it);
         // leave it untouched otherwise so a plain field edit doesn't wipe a prior detection (#233).
         if (IsPersonalMicrosoftAccount.HasValue)
