@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connection Diagnostics - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="tools-menu.html">Previous: Tools Menu</a> | <a href="reporting-issues.html">Next: Reporting Issues</a></div>
+  <h1 id="connection-diagnostics">Connection Diagnostics</h1>
+<p>Connection Diagnostics records what QuickMail is doing when it talks
+to your mail servers, so a problem that is hard to describe can be
+looked at directly instead of guessed at.</p>
+<p>It is <strong>off by default</strong> and most people will never need
+it. While it is off, nothing is recorded, no log file is created, no
+connections are made on its behalf, and no <strong>Connection
+Diagnostics</strong> item appears in the <strong>Help</strong> menu.</p>
+<h3 id="when-you-might-use-it">When you might use it</h3>
+<p>Turn it on if:</p>
+<ul>
+<li>An account shows as <strong>disconnected</strong> when it seems to
+be working, or shows as connected when mail is not arriving.</li>
+<li>Mail stops arriving for one account but not others.</li>
+<li>An action reports a failure you cannot explain — a delete or move
+that “may not have completed”, for example.</li>
+<li>You are filing a bug report about any of the above and want to
+include something concrete.</li>
+</ul>
+<p>It is a troubleshooting tool, not something to leave on. Turn it off
+again once you have what you need.</p>
+<h3 id="turning-it-on">Turning it on</h3>
+<ol type="1">
+<li>Open <strong>Settings</strong> (Ctrl+comma) and go to the
+<strong>Advanced</strong> tab.</li>
+<li>Check <strong>Record connection diagnostics</strong>.</li>
+<li>Select <strong>Save</strong>.</li>
+</ol>
+<p>Recording starts immediately — you do not need to restart QuickMail
+first. That matters when a problem is happening right now, since
+restarting would clear the very thing you are trying to capture.</p>
+<p>Once it is on, <strong>Connection Diagnostics</strong> appears in the
+<strong>Help</strong> menu.</p>
+<h3 id="the-connection-diagnostics-window">The Connection Diagnostics
+window</h3>
+<p>Open it from <strong>Help → Connection Diagnostics</strong>. Focus
+starts in the accounts list.</p>
+<p><strong>Accounts</strong> lists every account with two things: the
+status QuickMail is currently showing for it, and what its mail server
+actually said the last time it was checked. When those two disagree, the
+list says so in plain words — for example that an account shown as
+disconnected answered normally, which means the status is wrong rather
+than the connection.</p>
+<p><strong>Test this account</strong> — press Enter on an account, or
+use the button, to check it right now. QuickMail opens a brand-new
+connection that shares nothing with the connections it is already using,
+signs in, and reads your Inbox. The result is announced and added to the
+list. This is the question the window exists to answer: whether the
+problem is your connection or what QuickMail is reporting about it.</p>
+<p><strong>Connection events</strong> is the running record, newest
+first. Each line is one event — a connection being opened, reused, or
+dropped, a sign-in failing, a status changing. The dropdown above the
+list filters it to a single account.</p>
+<p><strong>Copy report</strong> puts a complete report on the clipboard.
+<strong>Save report</strong> writes it to a text file. Either can be
+attached to a bug report or pasted into an email.</p>
+<p><strong>Keyboard:</strong> F6 and Shift+F6 move between the accounts
+list, the events list, and the buttons. Ctrl+Shift+P opens the command
+palette. Escape closes the window and returns focus to where you
+were.</p>
+<h3 id="what-it-records">What it records</h3>
+<ul>
+<li>Your account names, and the names and network addresses of your mail
+servers.</li>
+<li>Connection attempts and what happened to them, including how long
+they took and the exact error when one fails.</li>
+<li>Changes to the connection status QuickMail shows for each account,
+and what caused each change.</li>
+<li>The results of any checks it runs.</li>
+</ul>
+<h3 id="what-it-never-records">What it never records</h3>
+<ul>
+<li>Passwords or authentication tokens.</li>
+<li>The contents, subjects, senders, or recipients of your mail.</li>
+<li>Anything you type.</li>
+</ul>
+<p>Your account names may be your email addresses, and your mail server
+names identify your provider, so it is worth knowing that before you
+share a report. If you would rather not send one, describe what you saw
+instead — that is still useful.</p>
+<h3 id="where-it-is-kept-and-removing-it">Where it is kept, and removing
+it</h3>
+<p>The record is written to <code>connection.log</code> in your profile
+directory (usually <code>%APPDATA%\QuickMail</code>), next to
+QuickMail’s other settings. It is capped in size and older entries are
+discarded, so it cannot grow without limit — a full session of ordinary
+use produces roughly 50 KB.</p>
+<p>Recording stops as soon as you turn the setting off. To remove what
+has already been recorded, use <strong>Delete QuickMail logs</strong> on
+the <strong>Advanced</strong> tab, which deletes the connection log
+along with the application log.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="tools-menu.html">Previous: Tools Menu</a> | <a href="reporting-issues.html">Next: Reporting Issues</a></div>
+</body>
+</html>

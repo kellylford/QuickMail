@@ -72,9 +72,12 @@ activity to <code>quickmail.log</code> in your profile directory
 (usually <code>%APPDATA%\QuickMail</code>). Uncheck to stop writing the
 log file. Changes take effect when you select
 <strong>Save</strong>.</li>
-<li><strong>Delete QuickMail log</strong> — deletes the log file
-immediately after confirmation. If logging is still on, a new log file
-is created the next time an activity is logged.</li>
+<li><strong>Delete QuickMail logs</strong> — deletes QuickMail’s log
+files immediately after confirmation: the application log
+(<code>quickmail.log</code>) and the connection diagnostics log
+(<code>connection.log</code>), if either exists. If logging or
+connection diagnostics are still on, new files are created the next time
+something is recorded.</li>
 </ul>
 <blockquote>
 <p><strong>Note:</strong> If QuickMail was launched with the
@@ -88,6 +91,15 @@ problems and overrides this preference so that nothing is missed.</p>
 timestamp, which is easier to scan since the log is already in
 chronological order. <strong>Time first</strong> uses the original
 format with the timestamp at the start of each line.</p>
+<p><strong>Connection Diagnostics</strong></p>
+<ul>
+<li><strong>Record connection diagnostics</strong> — off by default.
+Records how QuickMail connects to your mail servers and adds
+<strong>Connection Diagnostics</strong> to the <strong>Help</strong>
+menu. Takes effect as soon as you select <strong>Save</strong>, with no
+restart. See <a href="#connection-diagnostics">Connection
+Diagnostics</a>.</li>
+</ul>
 <h3 id="keyboard">Keyboard</h3>
 <p>Reassign shortcuts for any registered command.</p>
 <h3 id="appearance">Appearance</h3>

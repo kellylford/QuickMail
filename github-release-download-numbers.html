@@ -325,9 +325,18 @@ it is the easier route on a machine you do not control.</p>
 <h3 id="with-a-gui">With a GUI</h3>
 <p>If you would rather read this in a window than a terminal, <a
 href="https://github.com/kellylford/GHManage">GHManage</a> is a
-keyboard-driven, screen-reader-friendly desktop app whose Releases view
-shows a downloads column per release, a repo-wide total, and a per-file
-breakdown when you press Enter on a release.</p>
+keyboard-driven, screen-reader-friendly desktop app for browsing GitHub
+repositories. Its Releases view shows a downloads column per release and
+a repo-wide total in the status bar; pressing Enter on a release drills
+into its individual files, ordered most-downloaded first, and the
+details panel breaks a release down file by file without leaving the
+list.</p>
+<p>Download it from the <a
+href="https://github.com/kellylford/GHManage/releases/tag/v0.2.1">v0.2.1
+release</a> (a standalone <code>.exe</code>, no install required — it
+needs the <code>gh</code> CLI authenticated), or read the source at <a
+href="https://github.com/kellylford/GHManage">github.com/kellylford/GHManage</a>.
+Every number in the case study below was read out of it.</p>
 <hr />
 <h2 id="now-the-part-that-matters-reading-them-honestly">Now the part
 that matters: reading them honestly</h2>
@@ -392,53 +401,8 @@ honest number you have. An installer download tells you someone took a
 copy. An <strong>updater</strong> download tells you a copy was still
 installed and still running when you shipped the next version. That is
 retention, measured directly.</p>
-<p>Watch it across consecutive releases. A real example from a small
-Windows app using an auto-updater:</p>
-<table>
-<thead>
-<tr class="header">
-<th>Release</th>
-<th style="text-align: right;">Delta package</th>
-<th style="text-align: right;">Full package</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>0.8.31</td>
-<td style="text-align: right;">11</td>
-<td style="text-align: right;">8</td>
-</tr>
-<tr class="even">
-<td>0.8.32</td>
-<td style="text-align: right;">11</td>
-<td style="text-align: right;">8</td>
-</tr>
-<tr class="odd">
-<td>0.8.33</td>
-<td style="text-align: right;">13</td>
-<td style="text-align: right;">5</td>
-</tr>
-<tr class="even">
-<td>0.8.34</td>
-<td style="text-align: right;">13</td>
-<td style="text-align: right;">4</td>
-</tr>
-<tr class="odd">
-<td>0.8.35</td>
-<td style="text-align: right;">14</td>
-<td style="text-align: right;">12</td>
-</tr>
-<tr class="even">
-<td>0.8.36</td>
-<td style="text-align: right;">18</td>
-<td style="text-align: right;">12</td>
-</tr>
-</tbody>
-</table>
-<p>That steadiness is the finding. It is the same population showing up
-six releases running, growing slowly. Meanwhile the installer count for
-those same releases bounced between 5 and 41 — noisier, and measuring
-something else entirely.</p>
+<p>Watch it across consecutive releases. The full worked example is
+below.</p>
 <p>Treat the updater figure as a <strong>floor</strong>, not a total.
 Portable users and people who reinstall manually never appear in it.</p>
 <h3
@@ -448,15 +412,10 @@ counts mean real clients; uniform counts mean scraping</h3>
 grabbing everything, all your assets show roughly the same count. Real
 users produce a jagged profile, because each one fetches exactly the
 file they need.</p>
-<p>From the same release: the update-feed metadata file had 110
-downloads, the installer 27, the delta package 18, the portable build 11
-— while a stale package from the previous version had 1 and one metadata
-file had 0. That spread is the signature of software behaving like
-software. Uniformity across every asset would be the warning sign.</p>
-<p>Apply the same suspicion to spikes. In that project’s history, two
-releases scored 258 and 234 when their neighbours sat between 30 and 40.
-A jump of that shape, out of pattern with everything around it, is much
-more likely to be automated traffic than a sudden burst of humans.</p>
+<p>Uniformity across every asset is the warning sign. Apply the same
+suspicion to spikes: a release that scores five or ten times its
+neighbours, with nothing in its content to explain it, is far more
+likely to be automated traffic than a sudden burst of humans.</p>
 <h3 id="things-that-quietly-are-not-counted">Things that quietly are not
 counted</h3>
 <ul>
@@ -486,33 +445,308 @@ repository and are not inherited. A fork of a popular project shows
 nothing until it publishes its own releases with its own assets.</li>
 </ul>
 <hr />
-<h2 id="a-worked-reading">A worked reading</h2>
-<p>Suppose one release shows:</p>
-<pre><code>installer.msi          27
-app-delta.nupkg        18
-app-full.nupkg         12
-portable.exe           11
-update-feed.json      110</code></pre>
-<p>The wrong read: “somewhere between 12 and 27 users.”</p>
-<p>The right read:</p>
+<h2 id="a-worked-example-with-real-numbers">A worked example, with real
+numbers</h2>
+<p>Abstract advice is easy to nod along to and hard to apply, so here is
+an entire repository’s history with nothing withheld.</p>
+<p><a href="https://github.com/kellylford/QuickMail">QuickMail</a> is a
+keyboard and screen reader friendly email client for Windows. It is a
+personal project with no marketing, no announcement channel, and no
+press. Discovery is word of mouth. These are all of its numbers as of 29
+July 2026.</p>
+<h3 id="what-its-releases-contain">What its releases contain</h3>
+<p>Understanding the files is a prerequisite for reading the counts, and
+this is true of any project — you cannot interpret a number until you
+know which population produces it.</p>
+<table>
+<colgroup>
+<col style="width: 27%" />
+<col style="width: 72%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>File</th>
+<th>Who fetches it</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>QuickMail-win.msi</code> / <code>-setup.exe</code></td>
+<td>A person installing it. New users, reinstalls, manual updaters.</td>
+</tr>
+<tr class="even">
+<td><code>QuickMail.exe</code></td>
+<td>A person who wants the portable build and no installer. Never
+auto-updates.</td>
+</tr>
+<tr class="odd">
+<td><code>QuickMail-&lt;v&gt;-delta.nupkg</code></td>
+<td>An <strong>installed, running</strong> copy patching itself from the
+previous version.</td>
+</tr>
+<tr class="even">
+<td><code>QuickMail-&lt;v&gt;-full.nupkg</code></td>
+<td>The same updater, taking the whole package because a delta would not
+apply.</td>
+</tr>
+<tr class="odd">
+<td><code>releases.win.json</code></td>
+<td>The updater checking whether a new version exists.</td>
+</tr>
+<tr class="even">
+<td><code>RELEASES</code>, <code>assets.win.json</code></td>
+<td>Legacy or unused feed metadata.</td>
+</tr>
+</tbody>
+</table>
+<p>The last three are machine traffic by definition. The updater arrived
+in v0.8.0 on 8 July 2026; before that there was no auto-update at all,
+which is why the nupkg columns are empty earlier in the history.</p>
+<h3 id="the-whole-history">The whole history</h3>
+<table>
+<thead>
+<tr class="header">
+<th>Release</th>
+<th>Date</th>
+<th style="text-align: right;">Installer</th>
+<th style="text-align: right;">Portable</th>
+<th style="text-align: right;">Delta</th>
+<th style="text-align: right;">Full</th>
+<th style="text-align: right;">Feed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>v0.8.36</td>
+<td>07-24</td>
+<td style="text-align: right;">27</td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;"><strong>18</strong></td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">110</td>
+</tr>
+<tr class="even">
+<td>v0.8.35</td>
+<td>07-23</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;"><strong>14</strong></td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">172</td>
+</tr>
+<tr class="odd">
+<td>v0.8.34</td>
+<td>07-22</td>
+<td style="text-align: right;">37</td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;"><strong>13</strong></td>
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">256</td>
+</tr>
+<tr class="even">
+<td>v0.8.33</td>
+<td>07-20</td>
+<td style="text-align: right;">15</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;"><strong>13</strong></td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">331</td>
+</tr>
+<tr class="odd">
+<td>v0.8.32</td>
+<td>07-15</td>
+<td style="text-align: right;">16</td>
+<td style="text-align: right;">13</td>
+<td style="text-align: right;"><strong>11</strong></td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">476</td>
+</tr>
+<tr class="even">
+<td>v0.8.31</td>
+<td>07-14</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">2</td>
+<td style="text-align: right;"><strong>11</strong></td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">516</td>
+</tr>
+<tr class="odd">
+<td>v0.8.3</td>
+<td>07-13</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;"><strong>9</strong></td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">565</td>
+</tr>
+<tr class="even">
+<td>v0.8.2</td>
+<td>07-12</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;"><strong>9</strong></td>
+<td style="text-align: right;">11</td>
+<td style="text-align: right;">640</td>
+</tr>
+<tr class="odd">
+<td>v0.8.1</td>
+<td>07-09</td>
+<td style="text-align: right;">41</td>
+<td style="text-align: right;">29</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">712</td>
+</tr>
+<tr class="even">
+<td>v0.8.0</td>
+<td>07-08</td>
+<td style="text-align: right;">14</td>
+<td style="text-align: right;">12</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">744</td>
+</tr>
+<tr class="odd">
+<td>v0.7.9.1</td>
+<td>07-03</td>
+<td style="text-align: right;">57</td>
+<td style="text-align: right;">35</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr class="even">
+<td>v0.7.4</td>
+<td>06-17</td>
+<td style="text-align: right;"><strong>234</strong></td>
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr class="odd">
+<td>v0.7.2</td>
+<td>06-12</td>
+<td style="text-align: right;"><strong>258</strong></td>
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr class="even">
+<td>v0.6.6</td>
+<td>05-28</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;"><strong>164</strong></td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr class="odd">
+<td>v0.5.1</td>
+<td>05-12</td>
+<td style="text-align: right;">0</td>
+<td style="text-align: right;"><strong>149</strong></td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr class="even">
+<td><em>(29 more)</em></td>
+<td></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+<td style="text-align: right;"></td>
+</tr>
+<tr class="odd">
+<td><strong>Lifetime</strong></td>
+<td></td>
+<td style="text-align: right;"><strong>1,091</strong></td>
+<td style="text-align: right;"><strong>771</strong></td>
+<td style="text-align: right;"><strong>98</strong></td>
+<td style="text-align: right;"><strong>83</strong></td>
+<td style="text-align: right;"><strong>4,522</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Lifetime downloads across every asset of every release:
+<strong>6,571</strong>. Lifetime downloads of things a human would
+deliberately choose — installers and the portable build —
+<strong>1,862</strong>.</p>
+<h3 id="reading-it">Reading it</h3>
+<p><strong>1,862 is not a user count, and neither is 6,571.</strong> The
+larger figure is mostly the updater talking to itself. The smaller one
+counts acquisitions over three months, including bots, repeat downloads,
+and everyone who tried it once and deleted it.</p>
+<p><strong>The delta column is the honest one.</strong> Look at it in
+isolation: 9, 9, 11, 11, 13, 13, 14, 18. Eight consecutive releases,
+each number earned only by a copy of QuickMail that was still installed
+and still running when the next version shipped. It is not noisy, it
+does not spike, and it grows slowly. That is the same group of people
+showing up again and again.</p>
+<p>Compare the installer column over exactly the same releases: 10, 8,
+5, 16, 15, 37, 9, 27. Same period, triple the volatility, and measuring
+something else entirely — arrival, not retention.</p>
+<p><strong>So how many people actually use QuickMail?</strong> The
+defensible answer is <strong>roughly 15 to 20 regular users</strong>,
+with a plausible ceiling around 30 to 35.</p>
+<p>The reasoning, in full:</p>
 <ul>
-<li>18 + 12 = <strong>30 existing installs updated themselves.</strong>
-Both nupkg files are fetched only by the updater; the full package is
-what it falls back to when a delta will not apply. Different machines,
-so they add.</li>
-<li>27 installer + 11 portable = <strong>38 fresh acquisitions</strong>,
-of which an unknown share are bots, repeat downloads, or people who
-tried it once.</li>
-<li>110 feed checks is <strong>not</strong> 110 users — it is cumulative
-polls, and one install polling daily for a week is seven of them.</li>
-<li>Ceiling on machines that obtained this version: about 68. Floor on
-machines demonstrably running it: about 30. The truth is in between and
-closer to the floor.</li>
+<li><strong>18</strong> installs auto-updated into the most recent
+release. That is a hard floor — each one is a running installation.</li>
+<li>Add the <strong>12</strong> that took the full package instead. Some
+of those are the same kind of user on a machine where the delta failed;
+some skipped a version. Call the updating population <strong>20 to
+30</strong>.</li>
+<li>Portable users are <strong>invisible</strong> to this. They never
+auto-update, so they never appear in any nupkg count. Roughly 11 people
+took the portable build of the latest release, but there is no way to
+know how many still run it.</li>
+<li>Anyone who updates by re-running the installer is invisible too,
+mixed indistinguishably into the installer column with genuinely new
+users.</li>
+<li>The feed count of 110 is <strong>not</strong> 110 people. It is
+cumulative update checks, and one install checking daily for a week
+contributes seven.</li>
 </ul>
-<p>And the honest limit: none of this distinguishes someone who
-downloaded and kept using it from someone who downloaded and deleted it
-ten minutes later. Downloads measure acquisition. They can never measure
-whether anyone stayed.</p>
+<p><strong>Two spikes do not belong.</strong> v0.7.2 at 258 and v0.7.4
+at 234 sit among neighbours in the 30 to 40 range, with nothing in
+either release to explain a sevenfold jump. The same shape appears in
+the portable column at v0.6.6 (164) and v0.5.1 (149). These are almost
+certainly automated. Excluding them removes roughly 800 from the
+lifetime total — which is to say, <strong>nearly half of that 1,862 is
+probably not human at all.</strong></p>
+<p><strong>One thing I genuinely cannot explain.</strong> The feed
+column declines steadily as releases get newer — 744 at v0.8.0 down to
+110 at v0.8.36. Older releases have had longer to accumulate checks,
+which accounts for some of it, but not cleanly. I do not know exactly
+how the updater distributes those requests across releases, and rather
+than invent a mechanism I will say so. It is a reminder that not every
+number in this data has a confident interpretation, and the temptation
+to supply one is exactly the failure mode this article is about.</p>
+<h3 id="what-the-numbers-do-and-do-not-say">What the numbers do and do
+not say</h3>
+<p>They say roughly 15 to 20 people run this software regularly, and
+that the figure is growing slowly and steadily.</p>
+<p>They do <strong>not</strong> say the software is good or bad.
+QuickMail has had no distribution whatsoever, and a project with no
+distribution gets a number like this regardless of quality. For
+contrast, a comparable Windows accessibility project in the same niche
+recorded roughly 3,000 downloads in two months — it has an organisation
+behind it and a 36-episode onboarding podcast, which is a marketing
+budget wearing a disguise. Nothing in either dataset speaks to which
+program is better. They measure reach.</p>
+<p>And they never, under any circumstance, distinguish a person who
+downloaded and still uses it from a person who downloaded and deleted it
+ten minutes later. Downloads measure acquisition. Only an updater
+measures retention, and only approximately.</p>
+<p>That is the whole point of publishing these figures rather than a
+tidy hypothetical. Small numbers are the normal case for independent
+software, they are worth reading accurately, and reading them accurately
+is more useful than either inflating them or being embarrassed by
+them.</p>
 <hr />
 <h2 id="the-one-line-summary">The one-line summary</h2>
 <p>The numbers are easy to get and easy to misread. Pull them per asset
