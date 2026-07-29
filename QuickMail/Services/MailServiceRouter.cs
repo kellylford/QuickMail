@@ -16,7 +16,7 @@ namespace QuickMail.Services;
 /// In v0.7 (PR 3) the only backend is <see cref="ImapMailService"/>, so every account registers to
 /// it and behavior is identical to today. PR 4 adds a Graph backend and routes Graph accounts to it.
 /// </summary>
-public class MailServiceRouter : IMailService
+public class MailServiceRouter : IMailService, IConnectionProbe
 {
     private readonly ConcurrentDictionary<Guid, IMailService> _byAccount = new();
 
@@ -80,6 +80,31 @@ public class MailServiceRouter : IMailService
     /// </summary>
     private IMailService For(Guid accountId)
         => _byAccount.TryGetValue(accountId, out var b) ? b : _defaultBackend;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Routes the probe to the account's own backend. Getting this wrong is not a harmless
+    /// inaccuracy: the first live run of the diagnostics asked the IMAP backend about a Microsoft
+    /// Graph account and reported a perfectly healthy account as being in the wrong state. A probe
+    /// that reports false alarms is worse than no probe, because it burns the user's trust in the
+    /// one tool meant to settle the question.
+    /// </remarks>
+    public Task<ProbeResult> ProbeAccountAsync(Guid accountId, CancellationToken ct = default)
+    {
+        // Deliberately no _defaultBackend fallback: an unregistered account routed to IMAP by
+        // default is exactly the mistake described above.
+        if (!_byAccount.TryGetValue(accountId, out var backend))
+        {
+            return Task.FromResult(new ProbeResult(ProbeOutcome.NotSupported, 0,
+                "account is not bound to a mail backend, so there is nothing to test"));
+        }
+
+        if (backend is IConnectionProbe probe)
+            return probe.ProbeAccountAsync(accountId, ct);
+
+        return Task.FromResult(new ProbeResult(ProbeOutcome.NotSupported, 0,
+            $"the {backend.GetType().Name} backend does not support connection testing"));
+    }
 
     /// <summary>
     /// Resolves the backend for an account we hold the whole model for. A registered account keeps

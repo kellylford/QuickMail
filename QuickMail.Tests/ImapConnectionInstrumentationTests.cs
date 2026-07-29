@@ -123,12 +123,15 @@ public class ImapConnectionInstrumentationTests : IDisposable
     }
 
     [Fact]
-    public async Task ProbeAccount_OnAnUnknownAccount_ReportsUnreachableRatherThanThrowing()
+    public async Task ProbeAccount_OnAnAccountThisBackendDoesNotOwn_IsInconclusiveNotAFailure()
     {
-        // The probe must always return a verdict. Throwing would leave the diagnostics window with
-        // nothing to say at precisely the moment the user is asking the question.
+        // A Microsoft Graph account looks exactly like this to the IMAP backend. Reporting it as
+        // unreachable is what made the first live run flag a healthy account as broken, so this
+        // must stay "cannot test", never "did not answer".
         var result = await _service.ProbeAccountAsync(Guid.NewGuid(), CancellationToken.None);
 
+        Assert.True(result.Inconclusive);
+        Assert.False(result.Unreachable);
         Assert.False(result.Reachable);
         Assert.Contains("not registered", result.Detail);
     }

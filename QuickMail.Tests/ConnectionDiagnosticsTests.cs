@@ -262,7 +262,8 @@ public class ConnectionTruthProbeTests : IDisposable
     public void Dispose() => ConnectionJournal.ResetForTests();
 
     private ConnectionTruthProbe Create(bool reachable, string detail = "ok") =>
-        new(new StubConnectionProbe(_ => new ProbeResult(reachable, 5, detail)), _ => "Kelly");
+        new(new StubConnectionProbe(_ => new ProbeResult(
+            reachable ? ProbeOutcome.Reachable : ProbeOutcome.Unreachable, 5, detail)), _ => "Kelly");
 
     [Fact]
     public async Task Verdict_FlagsAMismatchWhenTheLabelIsWrong()
@@ -387,7 +388,7 @@ public class ConnectionTruthProbeTests : IDisposable
             }
             Thread.Sleep(20);
             lock (gate) { concurrent--; }
-            return new ProbeResult(true, 20, "ok");
+            return new ProbeResult(ProbeOutcome.Reachable, 20, "ok");
         });
 
         using var probe = new ConnectionTruthProbe(backend, _ => "Kelly");
@@ -410,6 +411,36 @@ public class ConnectionTruthProbeTests : IDisposable
         // (see the IDisposable rules in CLAUDE.md — cancel before dispose).
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
             () => probe.RunProbeAsync(_account, "after dispose"));
+    }
+
+    [Fact]
+    public async Task Verdict_NeverCallsTheStatusWrongWhenTheProbeCouldNotTest()
+    {
+        // Regression guard for the first live false alarm: an IMAP-only probe was asked about a
+        // Microsoft Graph account, said "not registered with the IMAP service", and the window
+        // reported a healthy account as being in the wrong state. Inconclusive must stay inconclusive.
+        using var probe = new ConnectionTruthProbe(
+            new StubConnectionProbe(_ => new ProbeResult(
+                ProbeOutcome.NotSupported, 0, "not an IMAP account")),
+            _ => "ICanBrew");
+
+        probe.NoteDisconnected(_account, "reachability-event");
+        await probe.RunProbeAsync(_account, "test");
+
+        var verdict = Assert.Single(ConnectionJournal.Snapshot(), e => e.Phase == "verdict");
+        Assert.Contains("actual=NOT-TESTABLE", verdict.Detail);
+        Assert.DoesNotContain("DISPLAYED STATUS IS WRONG", verdict.Detail);
+        Assert.DoesNotContain("UNREACHABLE", verdict.Detail);
+    }
+
+    [Fact]
+    public void ProbeResult_NotSupported_IsNeitherReachableNorUnreachable()
+    {
+        var result = new ProbeResult(ProbeOutcome.NotSupported, 0, "no backend");
+
+        Assert.False(result.Reachable);
+        Assert.False(result.Unreachable);   // the bit that made NotSupported read as a failure
+        Assert.True(result.Inconclusive);
     }
 
     [Fact]

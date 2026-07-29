@@ -183,8 +183,17 @@ public sealed class ConnectionTruthProbe : IDisposable
             // The one line the whole build exists to produce. Formatted so `grep VERDICT` over
             // connection.log answers the question without reading anything else.
             var labelState = _disconnected.ContainsKey(accountId) ? "DISCONNECTED" : "CONNECTED";
-            var actual     = result.Reachable ? "REACHABLE" : "UNREACHABLE";
-            var mismatch   = labelState == "DISCONNECTED" && result.Reachable
+            var actual = result.Outcome switch
+            {
+                ProbeOutcome.Reachable   => "REACHABLE",
+                ProbeOutcome.Unreachable => "UNREACHABLE",
+                _                        => "NOT-TESTABLE",
+            };
+
+            // Only claim the displayed status is wrong when the probe positively established the
+            // opposite. An inconclusive probe must never accuse the UI of being wrong — doing so is
+            // what produced the first live false alarm.
+            var mismatch = labelState == "DISCONNECTED" && result.Reachable
                 ? "  ← DISPLAYED STATUS IS WRONG"
                 : string.Empty;
 

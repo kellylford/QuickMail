@@ -320,8 +320,11 @@ public partial class App : Application
             // Answers the question the app cannot answer about itself: when an account shows as
             // disconnected, is it actually unreachable? Probes on a connection that shares nothing
             // with the pools or watchers. Label resolution reads the live account list.
+            // Through the ROUTER, not the IMAP backend: each account must be probed by the backend
+            // that actually owns it. Probing a Graph account with the IMAP backend is what produced
+            // the first live false alarm.
             _truthProbe = new ConnectionTruthProbe(
-                imapBackend,
+                mailRouter,
                 id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
 
             var mainVm = new MainViewModel(

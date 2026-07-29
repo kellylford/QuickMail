@@ -18,7 +18,7 @@ namespace QuickMail.Services;
 /// read path (connect, folders, summaries, detail, mark-read, status); mutations, attachment
 /// download, folder CRUD, and change notifications throw and are lit up in PRs 5–7.
 /// </summary>
-public class GraphMailService : IMailService
+public class GraphMailService : IMailService, IConnectionProbe
 {
     private readonly GraphClient _client;
     private readonly IConfigService? _config;
@@ -110,6 +110,41 @@ public class GraphMailService : IMailService
     }
 
     public Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => Task.CompletedTask;
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// Graph has no held connection to test, so "reachable" means a live authenticated API call
+    /// succeeded: acquiring a token and reading the Inbox's counts. That exercises the same auth
+    /// and network path the mail UI depends on, which is what the question is really about.
+    /// </remarks>
+    public async Task<ProbeResult> ProbeAccountAsync(Guid accountId, CancellationToken ct = default)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        if (!_accounts.TryGetValue(accountId, out var account))
+        {
+            return new ProbeResult(ProbeOutcome.NotSupported, sw.ElapsedMilliseconds,
+                "account is not registered with the Graph service, so there is nothing to test");
+        }
+
+        try
+        {
+            var inbox = await _client.GetAsync<GraphMailFolder>(
+                account, "/me/mailFolders/Inbox?$select=totalItemCount,unreadItemCount", ct);
+
+            return inbox == null
+                ? new ProbeResult(ProbeOutcome.Unreachable, sw.ElapsedMilliseconds,
+                    "Graph returned no Inbox for this account")
+                : new ProbeResult(ProbeOutcome.Reachable, sw.ElapsedMilliseconds,
+                    $"Inbox count={inbox.TotalItemCount} unread={inbox.UnreadItemCount} (Microsoft Graph)");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            return new ProbeResult(ProbeOutcome.Unreachable, sw.ElapsedMilliseconds,
+                LogService.FormatException(ex));
+        }
+    }
 
     private AccountModel Account(Guid accountId)
         => _accounts.TryGetValue(accountId, out var a)

@@ -132,6 +132,15 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
             return;
         }
 
+        // An inconclusive probe says so and stops. It must never be phrased as a fault: reporting
+        // "the server did not answer" for an account we simply could not test is what made the
+        // first live run flag a healthy Microsoft account as broken.
+        if (verdict.Inconclusive)
+        {
+            row.VerdictText = $"Cannot be tested ({verdict.Detail}).";
+            return;
+        }
+
         // State the disagreement in plain words. This is the finding, not a footnote — if the
         // account list says disconnected and the server answers fine, that is the whole bug.
         row.VerdictText = (account.IsConnected, verdict.Reachable) switch
@@ -197,13 +206,15 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
             RefreshStatusOnly();
 
             var shownDisconnected = !_accountsSource().FirstOrDefault(a => a.Id == row.Id)?.IsConnected ?? false;
-            var spoken = (shownDisconnected, result.Reachable) switch
-            {
-                (true, true)   => $"{row.Label} is reachable. The disconnected status is incorrect.",
-                (true, false)  => $"{row.Label} is not reachable. {result.Detail}",
-                (false, true)  => $"{row.Label} is reachable.",
-                (false, false) => $"{row.Label} did not answer. {result.Detail}",
-            };
+            var spoken = result.Inconclusive
+                ? $"{row.Label} cannot be tested. {result.Detail}"
+                : (shownDisconnected, result.Reachable) switch
+                {
+                    (true, true)   => $"{row.Label} is reachable. The disconnected status is incorrect.",
+                    (true, false)  => $"{row.Label} is not reachable. {result.Detail}",
+                    (false, true)  => $"{row.Label} is reachable.",
+                    (false, false) => $"{row.Label} did not answer. {result.Detail}",
+                };
             AnnounceRequested?.Invoke(spoken, AnnouncementCategory.Result);
         }
         catch (OperationCanceledException)

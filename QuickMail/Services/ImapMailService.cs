@@ -1189,10 +1189,11 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
         if (!_accounts.TryGetValue(accountId, out var account))
         {
-            // Not an error state to report as "unreachable" — the service has simply never been told
-            // about this account, which is itself worth knowing when the UI shows it as disconnected.
-            return new ProbeResult(false, sw.ElapsedMilliseconds,
-                "account is not registered with the IMAP service (never connected, or disconnected and removed)");
+            // NOT "unreachable". This fires for any account this backend does not own — including a
+            // Microsoft Graph account — and reporting that as a failure is what made the first live
+            // run flag a healthy account as broken. Nothing is known here, so say exactly that.
+            return new ProbeResult(ProbeOutcome.NotSupported, sw.ElapsedMilliseconds,
+                "account is not registered with the IMAP service (not an IMAP account, or never connected)");
         }
 
         _passwords.TryGetValue(accountId, out var password);
@@ -1211,7 +1212,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
             var detail = $"INBOX count={inbox.Count} unread={inbox.Unread} " +
                          $"idleSupported={client.Capabilities.HasFlag(ImapCapabilities.Idle)}";
-            return new ProbeResult(true, sw.ElapsedMilliseconds, detail);
+            return new ProbeResult(ProbeOutcome.Reachable, sw.ElapsedMilliseconds, detail);
         }
         catch (OperationCanceledException)
         {
@@ -1219,7 +1220,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         }
         catch (Exception ex)
         {
-            return new ProbeResult(false, sw.ElapsedMilliseconds, LogService.FormatException(ex));
+            return new ProbeResult(ProbeOutcome.Unreachable, sw.ElapsedMilliseconds, LogService.FormatException(ex));
         }
         finally
         {
