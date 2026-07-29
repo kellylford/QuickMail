@@ -232,6 +232,19 @@ public partial class App : Application
             // covers accounts added at runtime through RefreshAccountList.
             var accounts = accountService.LoadAccounts();
 
+            // Before anything connects: an account hand-configured before the provider catalog
+            // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
+            // every send with an error about the socket rather than the setting; and one holding a
+            // login name where its email address belongs needs that login preserved before the user
+            // is asked to correct the address (#396). Persisted right away so both survive the
+            // session that made them.
+            var repaired = AccountStartupRepair.Apply(accounts, providerCatalog);
+            if (repaired.Count > 0)
+            {
+                accountService.SaveAccounts(accounts);
+                LogService.Log($"AccountStartupRepair: repaired {repaired.Count} account(s).");
+            }
+
             _contactService = new ContactService(profile);
             var contactService = _contactService;
             _templateService = new TemplateService(profile);

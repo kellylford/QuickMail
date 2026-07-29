@@ -1,9 +1,12 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -28,6 +31,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [ObservableProperty] private string _accountName = string.Empty;
     [ObservableProperty] private string _displayName = string.Empty;
     [ObservableProperty] private string _username = string.Empty;
+
+    /// <summary>
+    /// Bound to the optional "Login username" box in Advanced settings (#396). Empty means the
+    /// server is logged into with the email address, which is the case for almost every account.
+    /// </summary>
+    [ObservableProperty] private string _loginUsername = string.Empty;
+
     [ObservableProperty] private string _password = string.Empty;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsICloudAccount))]
@@ -51,6 +61,7 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowContactSyncOption))]
     [NotifyPropertyChangedFor(nameof(ShowCalendarSyncOption))]
     [NotifyPropertyChangedFor(nameof(ShowAppPasswordHint))]
+    [NotifyPropertyChangedFor(nameof(ShowGoogleAuthOption))]
     private AuthType _authType = AuthType.Password;
 
     /// <summary>
@@ -91,8 +102,30 @@ public abstract partial class AccountEditorViewModel : ObservableObject
 
     // ── Provider selection and progressive disclosure ────────────────────────────
 
-    /// <summary>Providers offered in the picker, in display order.</summary>
-    public IReadOnlyList<MailProvider> Providers => Catalog.All;
+    /// <summary>
+    /// Providers offered in the picker, in display order. Built from the catalog minus the Google
+    /// sign-in entry, which <see cref="EnsureGoogleSignInListed"/> puts back for the users entitled
+    /// to it. Observable rather than a plain list because that call can happen after the ComboBox
+    /// has already bound.
+    /// </summary>
+    public ObservableCollection<MailProvider> Providers { get; }
+
+    /// <summary>
+    /// Adds "Gmail (sign in with Google)" to the picker, directly after plain Gmail so the two sit
+    /// together. Idempotent. Called by the derived VMs when the GoogleAuth flag is on, and — in the
+    /// Account Manager — when the account being edited already uses Google sign-in, so an account
+    /// created before the flag was turned back off is never left with a blank provider box.
+    /// </summary>
+    protected void EnsureGoogleSignInListed()
+    {
+        var entry = Catalog.GmailGoogleSignIn;
+        if (Providers.Contains(entry)) return;
+
+        var afterGmail = Providers.ToList().FindIndex(p => p.Id == ProviderCatalog.GmailId) + 1;
+        // FindIndex returns -1 for a catalog with no plain Gmail entry, which +1 turns into 0 — a
+        // valid insert position, so the entry is still offered rather than silently dropped.
+        Providers.Insert(afterGmail, entry);
+    }
 
     /// <summary>
     /// The provider this account is being created from or was created with. Selecting one fills
@@ -320,6 +353,39 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     public bool IsImapBackend => BackendKind == BackendKind.ImapSmtp;
 
     [ObservableProperty] private string _statusText = string.Empty;
+
+    /// <summary>
+    /// Which announcement category the View reads the accompanying <see cref="StatusText"/> under.
+    ///
+    /// Status suits background progress ("Testing connection…"); the outcome of a command the user
+    /// just invoked — above all a refused save — must be a Result, or it is silent for anyone who
+    /// has turned background-progress announcements off.
+    ///
+    /// Defaults back to Status after every raise, because these VMs assign StatusText directly in
+    /// several dozen places and a category left latched to Result would re-classify all of them —
+    /// announcing a settings lookup as an interrupting outcome. Same one-shot contract, and same
+    /// reasoning, as <see cref="MainViewModel.StatusAnnouncementCategory"/>.
+    /// </summary>
+    public AnnouncementCategory StatusCategory { get; private set; } = AnnouncementCategory.Status;
+
+    /// <summary>
+    /// Sets <see cref="StatusText"/> as the outcome of a user action. The reset afterwards is safe
+    /// because StatusText's PropertyChanged fires synchronously — the View has read the category
+    /// before this method returns.
+    /// </summary>
+    public void SetStatusOutcome(string text)
+    {
+        StatusCategory = AnnouncementCategory.Result;
+        // Cleared first so an identical message repeats. StatusText is an [ObservableProperty] with
+        // an equality check, so pressing Save twice on the same unfixed field would otherwise raise
+        // no notification the second time — the user presses the button and hears nothing, which is
+        // the symptom this whole change exists to remove (#396). The empty value is not announced;
+        // the View skips empty status text.
+        StatusText = string.Empty;
+        StatusText = text;
+        StatusCategory = AnnouncementCategory.Status;
+    }
+
     [ObservableProperty] private bool   _isBusy = false;
 
     public bool IsPasswordAuth => AuthType == AuthType.Password;
@@ -327,10 +393,20 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     public bool IsGoogleOAuth  => AuthType == AuthType.OAuth2Google;
 
     /// <summary>
-    /// Whether the Google OAuth option is available in this editor context.
-    /// Derived classes override to reflect their feature-gate state.
+    /// Whether the GoogleAuth feature flag is on in this editor context. Derived classes override to
+    /// reflect their feature-gate state; prefer <see cref="ShowGoogleAuthOption"/> for UI decisions.
     /// </summary>
-    public virtual bool ShowGoogleAuthOption => false;
+    protected virtual bool IsGoogleAuthEnabled => false;
+
+    /// <summary>
+    /// Whether the Google OAuth item belongs in the Authentication combo.
+    ///
+    /// The second clause is what keeps a grandfathered account editable. With the flag off, an
+    /// account saved as <see cref="AuthType.OAuth2Google"/> still sets AuthTypeIndex to 2 — and if
+    /// the item at index 2 were collapsed, the Account Manager would show a blank Authentication
+    /// box for an account that is authenticating perfectly well, with no way to tell what it uses.
+    /// </summary>
+    public bool ShowGoogleAuthOption => IsGoogleAuthEnabled || AuthType == AuthType.OAuth2Google;
 
     public int AuthTypeIndex
     {
@@ -358,6 +434,13 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         OAuthService = oauth;
         Catalog = catalog;
         SendMailService = sendMail;
+        // Google sign-in is left out here and added back by EnsureGoogleSignInListed. Filtering at
+        // construction rather than gating a binding keeps the entry out of the keyboard order and
+        // out of the accessibility tree entirely — a Collapsed ComboBoxItem is still an item the
+        // arrow keys can land on in some templates, and "offered but unusable" is exactly what this
+        // change exists to prevent.
+        Providers = new ObservableCollection<MailProvider>(
+            catalog.All.Where(p => p.Id != ProviderCatalog.GmailOAuthId));
         // Assign the backing field, not the property: going through the setter would fire
         // OnSelectedProviderChangedInternal, whose "Other" branch expands Advanced settings — so a
         // brand-new dialog would open with every server field showing, which is the opposite of the
@@ -573,6 +656,39 @@ public abstract partial class AccountEditorViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Whether <see cref="Username"/> can serve as this account's own email address.
+    ///
+    /// Checked when the account is saved, not when a message is sent from it. This field becomes
+    /// the From header — and so the SMTP envelope sender — on everything the account sends, so a
+    /// login name typed here by someone whose server wants one surfaced days later as a rejected
+    /// send with nothing pointing back at this box (#396). Advanced settings now has a separate
+    /// Login username field for that case, which the message names.
+    ///
+    /// Shared by both editors so Add Account and Manage Accounts refuse the same input in the same
+    /// words.
+    /// </summary>
+    /// <param name="error">Message to show when the address cannot be used.</param>
+    /// <param name="normalized">
+    /// The address stripped to its bare addr-spec — no display name, no angle brackets, no
+    /// surrounding whitespace. This, not the raw field, is what gets saved: MimeMessageBuilder's
+    /// MailboxAddress constructor throws on every one of those forms, so storing what the user
+    /// typed would move the failure from a refused save to a rejected send.
+    /// </param>
+    protected bool IsEmailAddressUsable(out string error, out string normalized)
+    {
+        if (EmailAddressValidator.TryNormalize(Username, out normalized))
+        {
+            error = string.Empty;
+            return true;
+        }
+
+        error = $"\"{Username}\" is not an email address. Enter the full address, including the "
+              + "domain. If your mail server logs in under a different name, put that in "
+              + "Advanced settings, Login username.";
+        return false;
+    }
+
+    /// <summary>
     /// Checks the form is complete enough to save. Matters more than it used to: the server fields
     /// now live behind a collapsed expander, so without this a user whose settings lookup found
     /// nothing — or who pressed the default Add button straight from the address field, before the
@@ -588,6 +704,8 @@ public abstract partial class AccountEditorViewModel : ObservableObject
             error = "Enter your email address.";
             return false;
         }
+
+        if (!IsEmailAddressUsable(out error, out _)) return false;
 
         // Graph carries no host configuration at all; sign-in is what proves the account.
         if (IsGraphBackend) return true;
@@ -619,6 +737,9 @@ public abstract partial class AccountEditorViewModel : ObservableObject
         AccountName = $"Test ({Username})",
         DisplayName = Username,
         Username = Username,
+        // The probe must log in under the same name the saved account will, or a passing test says
+        // nothing about whether the real credentials work.
+        LoginUsername = LoginUsername,
         AuthType = AuthType,
         BackendKind = BackendKind,
         ProviderId = SelectedProvider?.Id,

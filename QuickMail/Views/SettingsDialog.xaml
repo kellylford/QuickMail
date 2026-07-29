@@ -375,6 +375,18 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Account Sign-In Group -->
+                        <GroupBox Header="Account _Sign-In" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Account sign-in settings">
+                            <StackPanel>
+                                <CheckBox Content="Sign in with _Google for Gmail accounts"
+                                          IsChecked="{Binding GoogleSignIn, Mode=TwoWay}"
+                                          AutomationProperties.Name="Sign in with Google for Gmail accounts"/>
+                                <TextBlock Text="Google no longer authorizes QuickMail for new accounts, so Gmail normally uses an app password. Turn this on only if your Google authorization predates that change — it adds a Gmail (sign in with Google) provider and a Google option under Authentication. Takes effect the next time QuickMail starts. Gmail accounts already using Google sign-in keep working whether this is on or off."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- QuickMail Logging Group -->
                         <GroupBox Header="QuickMail _Logging" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="QuickMail logging settings">

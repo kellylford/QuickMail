@@ -8,9 +8,9 @@ namespace QuickMail.Views;
 
 /// <summary>
 /// Modeless picker for jumping the calendar to a date. Modeless per the CLAUDE.md modal rules —
-/// an editable-field dialog (the DatePicker) opened over the main window's live WebView2 reading
-/// pane must not use <c>ShowDialog()</c>. Escape / Cancel / Enter and the command palette are wired
-/// explicitly because a modeless window has no <c>DialogResult</c>.
+/// an editable-field dialog opened over the main window's live WebView2 reading pane must not use
+/// <c>ShowDialog()</c>. Escape / Cancel / Enter and the command palette are wired explicitly
+/// because a modeless window has no <c>DialogResult</c>.
 /// </summary>
 public partial class GoToDateWindow : Window
 {
@@ -32,9 +32,10 @@ public partial class GoToDateWindow : Window
 
         Loaded += (_, _) =>
         {
-            DatePickerBox.Focus();
+            DateField.Focus();
             AccessibilityHelper.Announce(this,
-                "Choose a date, then press Go. Press Escape to cancel.",
+                "Type a date or use the arrow keys to change it, then press Go. " +
+                "Press Escape to cancel.",
                 category: AnnouncementCategory.Hint);
         };
     }
@@ -72,10 +73,8 @@ public partial class GoToDateWindow : Window
             return;
         }
 
-        // Escape while the DatePicker calendar drop-down is open: let the control consume it
-        // (the modeless-dialog Escape guard in CLAUDE.md) rather than closing the window.
-        if (e.Key == Key.Escape && DatePickerBox.IsDropDownOpen)
-            return;
+        // The DatePicker drop-down Escape guard that used to live here is gone with the picker
+        // itself: the date field is a plain editable field with no popup to consume Escape.
 
         // Registry dispatch (ComposeWindow pattern) — so gotodate.confirm / gotodate.cancel
         // rebindings in the keyboard customizations dialog actually take effect.
@@ -91,7 +90,7 @@ public partial class GoToDateWindow : Window
     /// <summary>Cycles focus across the picker's logical stops: Date → Go.</summary>
     private void CycleFocus(bool forward)
     {
-        System.Windows.Controls.Control[] stops = { DatePickerBox, GoButton };
+        System.Windows.Controls.Control[] stops = { DateField, GoButton };
         var current = System.Array.FindIndex(stops, c => c.IsKeyboardFocusWithin);
         if (current < 0) current = 0;
         var next = forward

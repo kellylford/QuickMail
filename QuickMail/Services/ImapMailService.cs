@@ -1079,7 +1079,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             {
                 if (password is null)
                     throw new InvalidOperationException($"No password is available for account {account.Username}.");
-                await client.AuthenticateAsync(account.Username, password, ct);
+                await client.AuthenticateAsync(account.AuthUsername, password, ct);
             }
 
             LogService.Log($"Connected. Capabilities: {client.Capabilities}");
@@ -1107,6 +1107,9 @@ public class ImapMailService : IMailService, IChangeNotifier
     private static bool SameConnectionSettings(AccountModel left, AccountModel right) =>
         left.Id == right.Id &&
         left.Username == right.Username &&
+        // Part of the connection, not the label: a pooled client authenticated under the old login
+        // name must not be reused after the user corrects it in Manage Accounts.
+        left.LoginUsername == right.LoginUsername &&
         left.AuthType == right.AuthType &&
         left.ImapHost == right.ImapHost &&
         left.ImapPort == right.ImapPort &&
@@ -1124,6 +1127,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             AccountName           = account.AccountName,
             DisplayName           = account.DisplayName,
             Username              = account.Username,
+            LoginUsername         = account.LoginUsername,
             AuthType              = account.AuthType,
             ImapHost              = account.ImapHost,
             ImapPort              = account.ImapPort,

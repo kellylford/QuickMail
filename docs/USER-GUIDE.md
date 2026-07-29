@@ -104,6 +104,7 @@ For most accounts you need three things: your provider, your email address, and 
 
 - **Other (enter settings manually)** — where the list starts, and what you use for any provider QuickMail has no entry for
 - **Gmail**
+- **Gmail (sign in with Google)** — only when you have turned Google sign-in on; see [Gmail (Google Account)](#gmail-google-account)
 - **Outlook.com / Microsoft 365**
 - **Yahoo Mail**
 - **iCloud Mail**
@@ -154,14 +155,30 @@ To turn off steps 2, 3, and 4, set `AutoDiscoverOnline = off` in `config.ini`. T
 
 Choose **Other**, or open **Advanced settings** for any provider, to enter:
 
+- **Login username** — leave this blank unless your mail server logs in under a different name than your email address. See [When your login is not your email address](#when-your-login-is-not-your-email-address).
 - **IMAP host**, port, **Use SSL** (port 993), and whether to accept invalid certificates
 - **SMTP host**, port, implicit SSL on connect (port 465 — leave it unchecked for STARTTLS on port 587), and whether to accept invalid certificates
-- **Authentication** — Password, Microsoft, or Google
+- **Authentication** — Password or Microsoft, plus Google when you have turned Google sign-in on (or when the account already uses it)
 - Your **Signature**, which is added to the end of new messages, replies, and forwards
 
 Advanced settings opens by itself in the two cases where you have no choice but to use it: when you choose **Other**, and when a settings lookup finds nothing.
 
 Anything you enter here is yours to keep. Once you have changed a server field — a host, a port, or an SSL setting — no provider match and no later lookup overwrites it.
+
+There is one exception, and it applies only to accounts you have never saved in Manage Accounts. At startup, if such an account points at a server QuickMail ships settings for, on the exact port QuickMail publishes for that server, and the encryption setting disagrees with the published one, the encryption setting is corrected. That pairing cannot work — implicit SSL against a STARTTLS port fails every send about a second after you press the button — so leaving it alone would only preserve a broken account. One of those servers on any other port is left exactly as you set it, and once you have saved an account yourself nothing touches it again.
+
+### When your login is not your email address
+
+For almost every account these are the same thing, and the **Login username** box under **Advanced settings** stays empty.
+
+They come apart when your mail provider keeps a separate account name. An iCloud mailbox that receives mail at your own domain still signs in under the Apple ID; some hosted servers want a bare user name rather than a full address. In that case:
+
+- **Email address** is your real address — `you@yourdomain.com`. This is what recipients see in the From line of everything you send, so it has to be an address that works.
+- **Login username** is what the server wants at sign-in — the Apple ID, the bare name, whatever your provider told you.
+
+Putting the login name in the **Email address** box instead sends mail with a From line that is not an address, and servers reject it. QuickMail will not save an account whose email address is missing its domain; the message points you at the **Login username** box.
+
+If you already had an account set up that way, QuickMail copies the login name into **Login username** for you the first time it starts after the update — so when you correct the **Email address**, the login that was working goes on working. You only need to enter the address.
 
 ### Testing a connection
 
@@ -205,9 +222,22 @@ To show this account's calendar in the Calendar view, check **Sync calendar from
 
 Enter the app password, not your regular Google password. Gmail's server settings fill in automatically.
 
-App passwords are not offered if your account is enrolled in Google's Advanced Protection Program. This route gives you full mail — send, receive, folders, search — but not Google calendar or contact sync, which need the Google sign-in below.
+App passwords are not offered if your account is enrolled in Google's Advanced Protection Program. This route gives you full mail — send, receive, folders, search — but not Google calendar or contact sync, which need the Google sign-in described below and available only to accounts authorized before Google closed it.
 
-**Google sign-in**, where it still works for you, is available under **Advanced settings** → **Authentication** → **Google OAuth (Gmail)**. Activate the **Sign in with Google** button; your browser opens to a Google sign-in page. Complete the sign-in, grant QuickMail permission to read and send mail, then close the browser window and activate **Add Account**.
+#### Google sign-in, for accounts authorized before it closed
+
+Google stopped granting QuickMail new authorizations, so for most people the sign-in route can only end in a refusal — which is why QuickMail no longer offers it by default. If your Google account was authorized before that happened, it still works, and you can turn the option back on:
+
+1. Open **Tools → Settings**, go to the **Advanced** tab, and check **Sign in with Google for Gmail accounts**. Select **Save**.
+2. Restart QuickMail. The setting is read at startup.
+
+You now have a **Gmail (sign in with Google)** entry in the **Provider** list, sitting directly below plain **Gmail**, and a **Google OAuth (Gmail)** choice under **Advanced settings** → **Authentication**.
+
+Choose **Gmail (sign in with Google)** and there is no password box at all — Gmail's servers fill in as usual and a **Sign in with Google** button takes the password's place. Activate it; your browser opens to a Google sign-in page. Complete the sign-in, grant QuickMail permission to read and send mail, then close the browser window and activate **Add Account**.
+
+If you would rather not use the Settings dialog, the same switch is `GoogleAuth = true` under `[features]` in `config.ini`, or `--feature GoogleAuth` on the command line.
+
+**Accounts you already have are not affected by this setting.** A Gmail account that already signs in with Google keeps working whether the setting is on or off, keeps syncing mail, contacts, and calendar, and still shows **Google OAuth (Gmail)** as its authentication in Manage Accounts. The setting governs only whether the option is *offered* when you set an account up.
 
 To bring this account's contacts into your address book, check **Sync contacts from this account** before signing in — for Google this is folded into the same sign-in consent. See [Syncing Contacts from Your Accounts](#syncing-contacts-from-your-accounts).
 
@@ -215,7 +245,7 @@ To show this account's calendar in the Calendar view, check **Sync calendar from
 
 With Google sign-in you may see a message that no password was saved for the account. This is expected — Gmail signs in through your Google account rather than a stored password, so there is no password to save. The sign-in itself is stored securely in Windows Credential Manager and refreshes automatically.
 
-Google also shows a warning that QuickMail is an unverified app, and may end the sign-in with **"This app has been blocked."** Google's app-verification process can take several weeks and may require an expensive third-party security assessment. The app password route above is the reliable path in the meantime.
+Google also shows a warning that QuickMail is an unverified app, and may end the sign-in with **"This app has been blocked."** That message means your account is not one of the ones authorized earlier, and no setting in QuickMail can change it — Google's app-verification process can take several weeks and may require an expensive third-party security assessment. The app password route above is the reliable path.
 
 ### Yahoo Mail
 
@@ -236,9 +266,9 @@ To bring in your iCloud data, check **Sync contacts from this account** and/or *
 Select an account in the **Accounts** list and its settings appear beside it. You can change:
 
 - **Account name** and **Sender display name**
-- **Email / username**, and for password accounts the **Password**. The box is filled from Windows Credential Manager, so you only need to touch it when the password itself has changed.
+- **Email address**, and for password accounts the **Password**. The box is filled from Windows Credential Manager, so you only need to touch it when the password itself has changed.
 - **Sync contacts from this account** and **Sync calendar from this account**, on iCloud accounts and on accounts that sign in (Microsoft, or Gmail with Google sign-in)
-- Under **Advanced settings**: **Authentication**, the IMAP and SMTP servers, and your **Signature**
+- Under **Advanced settings**: **Login username**, **Authentication**, the IMAP and SMTP servers, and your **Signature**
 
 Press **Save** — the default button, so Enter is enough — to keep the changes. The two sync checkboxes are the exception: they apply the moment you change them, with no Save step. Switching one on asks for the permission it needs and pulls the first batch immediately; switching it off removes what had been synced. iCloud prompts for nothing, because it uses the app-specific password you already entered.
 
@@ -656,6 +686,19 @@ Press **Ctrl+Shift+B** to open the address book.
 
 The address book lists everyone you have sent mail to or explicitly added, plus — if you turn on contact sync — the contacts stored in your Microsoft and Google accounts. You can search by name or address, edit contact details, and organize contacts into groups. An **Account** column shows where each contact came from: **Local address book** for the ones you added yourself, or the account name for synced ones.
 
+### Filtering by Account
+
+When several accounts sync contacts into QuickMail, the list can get long. The **Filter** button, just to the right of the search box, narrows the list to one account at a time.
+
+1. Press **Tab** once from the search box, or press **Alt+F** from anywhere on the Contacts tab, to reach the button. Its label reports what is showing now — for example, "Filter: All accounts."
+2. Press **Enter** or **Alt+F** to drop the menu. It opens on the filter currently in effect, which is marked as checked.
+3. Press **Up Arrow** and **Down Arrow** to move through the choices: **All accounts**, **Local address book**, then one entry per account.
+4. Press **Enter** to apply the choice. The list narrows and the result is announced — for example, "Work, 214 contacts." Press **Escape** instead to close the menu and leave the filter alone.
+
+The filter and the search box work together: with a filter applied, searching looks only inside that account. The filter stays in effect while the address book is open, including across a contact sync, and resets to **All accounts** the next time you open the window.
+
+**Filter Addresses by Account** is also in the address book's Command Palette (**Ctrl+Shift+P**).
+
 ### Jumping to a Contact by Typing
 
 With focus on the contact list, type the first letter of a contact's name to jump straight to it. Type more letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with that letter. Contacts stored without a name are matched on their address instead. The same typing shortcut works in the **Groups** list and the **Group members** list.
@@ -668,7 +711,7 @@ From the contact list, you can pull up everything a person sent you, or everythi
 2. Choose **Find mail from this contact** or **Find mail to this contact**.
 3. The address book closes and the message list fills with the matches, newest first. Focus moves to the message list and the count is announced — for example, "12 messages from Bob Baker." The window title shows **Mail from Bob Baker** so you can tell the results apart from a folder.
 
-Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, and you can assign them a keyboard shortcut in Settings → Keyboard.
+Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**. Commands that live inside the address book are not listed in Settings → Keyboard, which covers the main window's commands; reach them from the palette.
 
 Press **Escape** with focus in the message list to close the results and go back to the folder you started from; the folder name and its message count are announced. A **Close** button at the top of the results does the same, and **Close Contact Mail Results** is in the Command Palette. Selecting any folder in the folder tree also leaves the results.
 
@@ -855,14 +898,41 @@ QuickMail sends your reply to the organizer from the account that received the i
 Press **N** (or the **New** toolbar button) to open the appointment editor. It is a normal window you can tab through:
 
 - **Title** — required.
-- **All day** — check this for an all-day event; the time fields then switch off.
-- **Starts / Ends** — a date and a time for each. You can type the time naturally: "9", "9:00", "9:00 AM", or "14:30" all work. If you leave the end time blank, QuickMail uses 30 minutes after the start.
+- **All day** — check this for an all-day event; the time fields then switch off. Turning it back off restores the times you had.
+- **Starts / Ends** — a date and a time for each. See **Entering dates and times** below.
 - **Location** — optional.
 - **Repeat** — leave as "Does not repeat" for a one-off, or set up a repeating appointment (see below).
 - **Notes** — free text.
 - **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved: your **Local Calendar** or a connected account. For iCloud the picker lists each of your Apple calendars (Home, Family, …) so you can choose which one. With no connected calendar this picker does not appear and everything is saved locally.
 
-Press **Enter** (or the **Save** button) to save, or **Escape** to cancel.
+Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If something is wrong, QuickMail puts focus on the field at fault and shows the reason on an error line above the buttons; the message clears itself as soon as you fix it.
+
+### Entering dates and times
+
+Every date and time field in the appointment editor works the same way, and so does the date in **Go to date**. Each one is an ordinary edit field: you can type into it, and you can change it with the arrow keys without typing anything.
+
+In a **date** field:
+
+| Key | Moves by |
+| --- | --- |
+| Up / Down arrow | One day |
+| Shift+Up / Shift+Down | One week |
+| Page Up / Page Down | One month |
+| Ctrl+Page Up / Ctrl+Page Down | One year |
+
+In a **time** field:
+
+| Key | Moves by |
+| --- | --- |
+| Up / Down arrow | 15 minutes, landing on the quarter hour |
+| Ctrl+Up / Ctrl+Down | One minute |
+| Page Up / Page Down | One hour |
+
+Stepping a time past midnight moves the date with it, so 11:50 PM stepped up becomes 12:00 AM the next day.
+
+You can also just type. Dates accept "8/3", "August 3", "2026-08-03", "today", "tomorrow", "friday", "next tuesday", a bare day number like "3" for that day of the month shown, and offsets like "+7", "-3", "+2w", "+1m", "+1y". Times accept "9", "930", "9:30", "9:30 AM", "9p", "14:30", "noon", "midnight", and offsets like "+30" or "-15". Press Enter or move to another field to apply what you typed; if it isn't something QuickMail can read as a date or a time, the field puts its previous value back.
+
+**The end follows the start.** When you change the start date or start time, the end moves by the same amount, so a 30-minute appointment stays 30 minutes long and you are never sent back to fix an end you didn't touch. Changing the end directly sets a new length, which the start then preserves from that point on.
 
 ### Repeating appointments
 
@@ -1073,6 +1143,10 @@ Press **Ctrl+,** to open Settings.
 Accounts are not part of Settings — they have a window of their own. Open **File → Manage Accounts…** to add, edit, test, or remove one. See [Accounts](#accounts).
 
 ### Advanced
+
+**Account Sign-In**
+
+- **Sign in with Google for Gmail accounts** — off by default. Google no longer authorizes QuickMail for new accounts, so Gmail normally uses an app password. Turn this on only if your Google authorization predates that change; it adds a **Gmail (sign in with Google)** provider and a Google choice under **Authentication** in the account dialogs. Takes effect the next time QuickMail starts. Gmail accounts already using Google sign-in keep working whether this is on or off. See [Gmail (Google Account)](#gmail-google-account).
 
 **QuickMail Logging**
 

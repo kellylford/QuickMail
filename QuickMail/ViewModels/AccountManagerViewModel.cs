@@ -69,7 +69,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
          || ProviderCatalog.IsICloud(acct));
 
-    public override bool ShowGoogleAuthOption => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
+    protected override bool IsGoogleAuthEnabled => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
 
     public AccountManagerViewModel(
         IAccountService accountService,
@@ -97,6 +97,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _contactSync    = contactSync;
         _graphCalendarSync = graphCalendarSync;
         Accounts = new ObservableCollection<AccountModel>(accountService.LoadAccounts());
+
+        if (featureGate.IsEnabled(FeatureFlag.GoogleAuth)) EnsureGoogleSignInListed();
     }
 
     partial void OnSelectedAccountChanged(AccountModel? value)
@@ -104,11 +106,18 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         if (value == null) return;
         // Resolve before the field copy: accounts saved before the provider catalog existed have no
         // ProviderId, so Resolve falls back to matching their IMAP host.
-        SelectedProvider = Catalog.Resolve(value);
+        var resolved = Catalog.Resolve(value);
+        // An account can resolve to a provider the picker is not offering — a Gmail account created
+        // with Google sign-in, on a profile where the GoogleAuth flag has since been turned off.
+        // Assigning a SelectedItem that is absent from ItemsSource leaves the box blank, so list the
+        // entry rather than misreport the account as something it is not.
+        if (resolved.Id == ProviderCatalog.GmailOAuthId) EnsureGoogleSignInListed();
+        SelectedProvider = resolved;
         BackendKind = value.BackendKind; // drives IsGraphBackend/IsImapBackend → hides auth + IMAP/SMTP for Graph
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;
         Username = value.Username;
+        LoginUsername = value.LoginUsername ?? string.Empty;
         AuthType = value.AuthType;
         Password = value.AuthType == AuthType.Password
             ? (_credentials.GetPassword(value.Id) ?? string.Empty)
@@ -302,15 +311,39 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
+    /// <summary>
+    /// A save was refused because the email address is not one. The View opens Advanced settings —
+    /// where the message says the login name belongs — and puts focus on the address box, because a
+    /// refusal that names a field the user cannot see and has no keyboard route to is not a
+    /// refusal they can act on. Mirrors what AddAccountDialog does on the same refusal.
+    /// </summary>
+    public event Action? EmailAddressRejected;
+
     [RelayCommand]
     private void SaveAccount()
     {
         if (SelectedAccount == null) return;
         var account = SelectedAccount;
 
+        // The one field this dialog must not save wrong: it is the From address on everything the
+        // account sends. Refusing here is also how an account created before the check existed gets
+        // corrected — the message says where the login name belongs instead (#396).
+        if (!IsEmailAddressUsable(out var addressProblem, out var address))
+        {
+            SetStatusOutcome(addressProblem);
+            EmailAddressRejected?.Invoke();
+            return;
+        }
+
         account.AccountName = AccountName;
         account.DisplayName = DisplayName;
-        account.Username = Username;
+        // The NORMALIZED address, not the raw box: a pasted "Kelly Ford <kelly@example.com>" or a
+        // trailing space parses fine here and then throws in MimeMessageBuilder on every send.
+        account.Username = address;
+        Username = address;   // reflect the normalization back so the box shows what was saved
+        // Null rather than "" when unset, so accounts.json carries the field only for the accounts
+        // that actually need it.
+        account.LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim();
         // Backfill the personal-account flag when this edit re-authed (SignInMicrosoftAsync set it);
         // leave it untouched otherwise so a plain field edit doesn't wipe a prior detection (#233).
         if (IsPersonalMicrosoftAccount.HasValue)

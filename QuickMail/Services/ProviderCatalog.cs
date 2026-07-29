@@ -14,6 +14,15 @@ public sealed class ProviderCatalog : IProviderCatalog
     // Provider ids. Persisted to accounts.json via AccountModel.ProviderId, so treat them as a
     // stable wire format — rename a DisplayName freely, never an Id.
     public const string GmailId     = "gmail";
+
+    /// <summary>
+    /// Gmail over Google OAuth rather than an app password. A separate entry, not a variation on
+    /// <see cref="GmailId"/>, because the two differ in what the user has to supply and QuickMail
+    /// cannot tell from an address which one an account is entitled to. Offered only behind
+    /// <see cref="FeatureFlag.GoogleAuth"/> — see <see cref="GmailOAuthProvider"/>.
+    /// </summary>
+    public const string GmailOAuthId = "gmail-oauth";
+
     public const string MicrosoftId = "microsoft";
     public const string YahooId     = "yahoo";
     public const string ICloudId    = "icloud";
@@ -26,13 +35,39 @@ public sealed class ProviderCatalog : IProviderCatalog
         ImapHost: "imap.gmail.com", ImapPort: 993, ImapUseSsl: true,
         SmtpHost: "smtp.gmail.com", SmtpPort: 587, SmtpUseSsl: false,
         // Password rather than OAuth: Google OAuth sign-in is blocked for new accounts (#369, #226),
-        // and an app password is the path that works today. OAuth stays reachable under Advanced.
+        // and an app password is the path that works today. Users whose Google authorization predates
+        // the block pick GmailOAuthProvider instead, which the GoogleAuth feature flag unlocks.
         DefaultAuthType: AuthType.Password,
         SupportsOAuth: true,
         DefaultBackend: BackendKind.ImapSmtp,
         AppPasswordHint: "Gmail requires an app password, not your Google account password. "
                        + "Turn on 2-Step Verification first, then create a 16-character app password.",
         AppPasswordUrl: "https://myaccount.google.com/apppasswords");
+
+    /// <summary>
+    /// Gmail for the users whose Google authorization still works: QuickMail's Google OAuth client
+    /// is closed to new grants (#369, #226), but accounts authorized before that keep signing in.
+    /// Hidden unless <see cref="Models.FeatureFlag.GoogleAuth"/> is on, so the users it would only
+    /// fail for never see it.
+    ///
+    /// Deliberately carries the gmail.com domains even though it sits AFTER
+    /// <see cref="GmailProvider"/> in the catalog and so never wins a MatchByEmail: without them
+    /// MailProvider.IsOther would be true and the entry would behave as the manual-settings
+    /// catch-all. Typing a gmail.com address must keep landing on the app-password entry — the one
+    /// that works for almost everyone — which the ordering is what guarantees.
+    /// </summary>
+    private static readonly MailProvider GmailOAuthProvider = new(
+        Id: GmailOAuthId,
+        DisplayName: "Gmail (sign in with Google)",
+        Domains: ["gmail.com", "googlemail.com"],
+        ImapHost: "imap.gmail.com", ImapPort: 993, ImapUseSsl: true,
+        SmtpHost: "smtp.gmail.com", SmtpPort: 587, SmtpUseSsl: false,
+        DefaultAuthType: AuthType.OAuth2Google,
+        SupportsOAuth: true,
+        DefaultBackend: BackendKind.ImapSmtp,
+        // No app-password hint: this is the whole point of the entry — there is no password to enter.
+        AppPasswordHint: null,
+        AppPasswordUrl: null);
 
     private static readonly MailProvider MicrosoftProvider = new(
         Id: MicrosoftId,
@@ -89,10 +124,16 @@ public sealed class ProviderCatalog : IProviderCatalog
     // "Other" comes FIRST, not last. The dialog opens with it selected, so if it sat at the end of
     // the list pressing Down arrow would do nothing — the user would be parked on the one entry with
     // no settings, with no obvious way to discover that the others exist.
+    //
+    // GmailProvider comes before GmailOAuthProvider and the order is load-bearing: MatchByEmail and
+    // the host fallback in Resolve both take the FIRST match, so a gmail.com address resolves to the
+    // app-password entry. The Google sign-in entry is only ever reached by an explicit pick or by a
+    // ProviderId saved on an existing account.
     private static readonly MailProvider[] Catalog =
     [
         OtherProvider,
         GmailProvider,
+        GmailOAuthProvider,
         MicrosoftProvider,
         YahooProvider,
         ICloudProvider,
@@ -117,6 +158,8 @@ public sealed class ProviderCatalog : IProviderCatalog
     public IReadOnlyList<MailProvider> All => Catalog;
 
     public MailProvider Other => OtherProvider;
+
+    public MailProvider GmailGoogleSignIn => GmailOAuthProvider;
 
     public MailProvider? MatchByEmail(string email) =>
         Catalog.FirstOrDefault(p => p.MatchesEmail(email));

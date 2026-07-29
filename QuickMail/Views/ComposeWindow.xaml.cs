@@ -140,7 +140,12 @@ public partial class ComposeWindow : Window
         vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(vm.StatusText) && !string.IsNullOrEmpty(vm.StatusText))
-                AccessibilityHelper.Announce(this, vm.StatusText, category: AnnouncementCategory.Status);
+                // The VM classifies its own status text: progress as Status, the outcome of a
+                // command as Result. An outcome also interrupts, because "Send failed" arriving
+                // behind a queued "Sending…" is heard after the user has already moved on. (#396)
+                AccessibilityHelper.Announce(this, vm.StatusText,
+                    interrupt: vm.StatusCategory == AnnouncementCategory.Result,
+                    category: vm.StatusCategory);
             else if (e.PropertyName == nameof(vm.CurrentMode))
                 ApplyComposeMode();
         };
@@ -502,9 +507,10 @@ public partial class ComposeWindow : Window
             c.EmailAddress.Equals(email, StringComparison.OrdinalIgnoreCase));
         if (dup != null)
         {
-            var msg = $"{email} is already in your address book.";
-            _vm.StatusText = msg;
-            AccessibilityHelper.Announce(this, msg, category: AnnouncementCategory.Result);
+            // SetStatusOutcome, not StatusText plus a separate Announce: assigning StatusText
+            // already announces it through the binding above, so announcing again here queued the
+            // same sentence twice under one activity id.
+            _vm.SetStatusOutcome($"{email} is already in your address book.");
         }
         else
         {
@@ -514,9 +520,7 @@ public partial class ComposeWindow : Window
                 EmailAddress = email
             });
             var label = string.IsNullOrWhiteSpace(displayName) ? email : $"{displayName} ({email})";
-            var msg = $"Added {label} to address book.";
-            _vm.StatusText = msg;
-            AccessibilityHelper.Announce(this, msg, category: AnnouncementCategory.Result);
+            _vm.SetStatusOutcome($"Added {label} to address book.");
         }
     }
 
@@ -588,8 +592,7 @@ public partial class ComposeWindow : Window
         else
             summary = $"{total} address{(total == 1 ? "" : "es")} checked. All valid.";
 
-        _vm.StatusText = summary;
-        AccessibilityHelper.Announce(this, summary, category: AnnouncementCategory.Result);
+        _vm.SetStatusOutcome(summary);
     }
 
     private static bool IsValidEmailAddress(string email)
@@ -1280,7 +1283,7 @@ public partial class ComposeWindow : Window
 
     private void OpenAddressBook()
     {
-        var vm = new AddressBookViewModel(_contactService, contactSync: null, accountService: null, configService: _configService);
+        var vm = new AddressBookViewModel(_contactService, contactSync: null, accountService: _vm.AccountService, configService: _configService);
         vm.SetInsertActions(
             toAction:  c => ToBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),
             ccAction:  c => CcBox.AddAddress(c.DisplayName ?? string.Empty, c.EmailAddress),

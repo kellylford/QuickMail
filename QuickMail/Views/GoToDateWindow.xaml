@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:QuickMail.Controls"
         mc:Ignorable="d"
         Title="Go to date"
         SizeToContent="WidthAndHeight"
@@ -28,11 +29,11 @@
 
         <TextBlock Grid.Row="0" Grid.Column="0" Text="Date:"
                    Margin="0,0,8,12" VerticalAlignment="Center"/>
-        <DatePicker Grid.Row="0" Grid.Column="1"
-                    x:Name="DatePickerBox"
-                    AutomationProperties.Name="Date"
-                    SelectedDate="{Binding SelectedDate}"
-                    MinWidth="150" Margin="0,0,0,12"/>
+        <controls:DateTimeField Grid.Row="0" Grid.Column="1"
+                                x:Name="DateField"
+                                AutomationProperties.Name="Date"
+                                Kind="Date" Value="{Binding SelectedDate}"
+                                MinWidth="200" Margin="0,0,0,12"/>
 
         <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
                     Orientation="Horizontal" HorizontalAlignment="Right">

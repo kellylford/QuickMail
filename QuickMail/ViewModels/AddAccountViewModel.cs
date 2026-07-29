@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -43,6 +44,10 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
 
         AvailableBackends = backends;
         _selectedBackend = backends[0];
+
+        // The Google sign-in provider entry only exists for users who opted in. Everyone else is
+        // creating a Gmail account with an app password, which the plain Gmail entry already does.
+        if (gate.IsEnabled(FeatureFlag.GoogleAuth)) EnsureGoogleSignInListed();
         // SelectedProvider already starts on the catalog's "Other" entry (set by the base
         // constructor). Typing an address whose domain is in the catalog moves the picker for the user.
     }
@@ -102,7 +107,7 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     public bool ShowConnectionMethod =>
         AvailableBackends.Count > 1 && SelectedProvider?.Id == ProviderCatalog.MicrosoftId;
 
-    public override bool ShowGoogleAuthOption => _gate.IsEnabled(FeatureFlag.GoogleAuth);
+    protected override bool IsGoogleAuthEnabled => _gate.IsEnabled(FeatureFlag.GoogleAuth);
 
     [ObservableProperty]
     private BackendKindOption _selectedBackend;
@@ -267,6 +272,13 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     {
         if (HostsUserEdited) return; // never overwrite hosts the user typed
 
+        // The selected provider already owns this domain, so there is nothing to correct. Without
+        // this, picking "Gmail (sign in with Google)" and then typing the address threw the choice
+        // away on the first keystroke: MatchByEmail answers with the plain Gmail entry for every
+        // gmail.com address by design, so the two entries fought and the app-password one always
+        // won — silently, and after the user had explicitly chosen otherwise.
+        if (SelectedProvider?.MatchesEmail(Username) == true) return;
+
         var match = Catalog.MatchByEmail(Username);
         if (match is null)
         {
@@ -392,7 +404,14 @@ public partial class AddAccountViewModel : AccountEditorViewModel, IDisposable
     {
         AccountName = AccountName,
         DisplayName = DisplayName,
-        Username = Username,
+        // The NORMALIZED address where one can be parsed out, not the raw box: a pasted
+        // "Kelly Ford <kelly@example.com>" or a trailing space parses fine in the validator and then
+        // throws in MimeMessageBuilder on every send. Falls back to the raw value only on a path
+        // that never reaches here with an unusable address — IsReadyToSave has already refused it.
+        Username = EmailAddressValidator.TryNormalize(Username, out var address) ? address : Username,
+        // Null rather than "" when unset, so accounts.json carries the field only for the accounts
+        // that actually need it.
+        LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim(),
         AuthType = AuthType,
         BackendKind = BackendKind,
         ProviderId = SelectedProvider?.Id,

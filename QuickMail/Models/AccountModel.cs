@@ -11,7 +11,39 @@ public partial class AccountModel : ObservableObject
     public Guid Id { get; set; } = Guid.NewGuid();
     public string AccountName { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    /// <summary>
+    /// This account's email address. Everything user-facing treats it as one: the Add Account
+    /// dialog labels it "Email address", the provider catalog matches a provider from its domain,
+    /// autodiscovery looks up its domain, and <see cref="Services.MimeMessageBuilder"/> puts it in
+    /// the From header of every message sent from the account.
+    /// </summary>
     public string Username { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The name the mail server wants at login, when that is not the email address (#396).
+    ///
+    /// Null or empty for the overwhelming majority of accounts, where the two are the same thing.
+    /// They come apart on providers that keep a separate account name — an iCloud account whose
+    /// mail is at a custom domain logs in as the Apple ID, a hosted server may want a bare
+    /// "firstname" or a "domain\user" — and before this field existed one box had to serve both
+    /// roles. Whichever the user filled in, the other was wrong: a login name in the box produced
+    /// MAIL FROM:&lt;name&gt; and the server rejected the message, an email address produced a
+    /// login the server did not recognize.
+    ///
+    /// Use <see cref="AuthUsername"/> rather than reading this directly.
+    /// </summary>
+    public string? LoginUsername { get; set; }
+
+    /// <summary>
+    /// The identity to authenticate with: <see cref="LoginUsername"/> when the server wants a
+    /// different login, otherwise the email address. Every IMAP and SMTP password authentication
+    /// goes through this. OAuth deliberately does not — there the identity is the mailbox the token
+    /// was issued for, which is the email address.
+    /// </summary>
+    [JsonIgnore]
+    public string AuthUsername =>
+        string.IsNullOrWhiteSpace(LoginUsername) ? Username : LoginUsername;
+
     public AuthType AuthType { get; set; } = AuthType.Password;
 
     /// <summary>Which protocol stack this account uses. Fixed at account creation.</summary>
