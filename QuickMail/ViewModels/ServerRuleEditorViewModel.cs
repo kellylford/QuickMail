@@ -463,6 +463,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
            || !string.IsNullOrWhiteSpace(BodyContains)
            || SentToMe || SentOnlyToMe || HasAttachments
            || !string.IsNullOrWhiteSpace(SelectedImportance?.Value)
+           || MarkAsUnread
            || CopyToFolder
            || !string.IsNullOrWhiteSpace(SelectedMarkImportance?.Value)
            || !string.IsNullOrWhiteSpace(ForwardTo);
