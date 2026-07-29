@@ -757,6 +757,33 @@ public class LocalStoreService : ILocalStoreService
         return result;
     }
 
+    /// <summary>
+    /// Which of <paramref name="messageIds"/> already exist in the folder — a bounded
+    /// <c>WHERE unique_id IN (…)</c> so a live sync can dedupe its small fetched batch without
+    /// scanning (and materialising a HashSet of) every id in a large cached folder.
+    /// </summary>
+    public async Task<HashSet<string>> GetExistingMessageIdsAsync(
+        Guid accountId, string folderName, IEnumerable<string> messageIds)
+    {
+        var ids = messageIds as IReadOnlyList<string> ?? messageIds.ToList();
+        var result = new HashSet<string>();
+        if (ids.Count == 0) return result;
+
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        var placeholders = string.Join(",", ids.Select((_, i) => "$id" + i));
+        cmd.CommandText =
+            $"SELECT unique_id FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn AND unique_id IN ({placeholders});";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        for (var i = 0; i < ids.Count; i++)
+            cmd.Parameters.AddWithValue("$id" + i, ids[i]);
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            result.Add(r.GetString(0));
+        return result;
+    }
+
     public async Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName)
     {
         await using var conn = await OpenAsync();

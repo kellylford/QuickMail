@@ -108,7 +108,8 @@ public class SyncServiceRuleApplicationTests : IDisposable
         public bool IsConnected(Guid accountId) => true;
         public Task<List<MailFolderModel>> GetFoldersAsync(Guid a, CancellationToken ct = default) => Task.FromResult(new List<MailFolderModel>());
         public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid a, string f, int max, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());
-        public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid a, string f, DateTime since, CancellationToken ct = default) => Task.FromResult(new List<MailMessageSummary>());
+        // The full-sync path uses the since-date fetch on a fresh store; return the same batch.
+        public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid a, string f, DateTime since, CancellationToken ct = default) => Task.FromResult(Batch.Select(Clone).ToList());
         public Task<MailMessageDetail> GetMessageDetailAsync(Guid a, string f, string id, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
         public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid a, string f, string id, CancellationToken ct = default) => Task.FromResult(new MailMessageDetail());
         public Task MarkReadAsync(Guid a, string f, string id, CancellationToken ct = default) => Task.CompletedTask;
@@ -120,7 +121,9 @@ public class SyncServiceRuleApplicationTests : IDisposable
         public Task NoOpAsync(Guid a, CancellationToken ct = default) => Task.CompletedTask;
         public Task<int> CountTrashMessagesAsync(Guid a, CancellationToken ct = default) => Task.FromResult(0);
         public Task<int> EmptyTrashAsync(Guid a, CancellationToken ct = default) => Task.FromResult(0);
-        public Task<IList<string>> GetFolderMessageIdsAsync(Guid a, string f, CancellationToken ct = default) => Task.FromResult<IList<string>>([]);
+        // Report the batch as still present on the server so the full sync's remote-deletion pass
+        // doesn't treat the just-synced messages as deleted.
+        public Task<IList<string>> GetFolderMessageIdsAsync(Guid a, string f, CancellationToken ct = default) => Task.FromResult<IList<string>>(Batch.Select(m => m.MessageId).ToList());
         public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid a, string f, IList<string> ids, int maxLines, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
         public Task<int> PollAsync(Guid a, string f, CancellationToken ct = default) => Task.FromResult(0);
@@ -205,6 +208,22 @@ public class SyncServiceRuleApplicationTests : IDisposable
 
         var batch = Assert.Single(rules.Calls);          // rules ran once, only for the new arrival
         Assert.Equal("401", Assert.Single(batch).MessageId);
+    }
+
+    [Fact]
+    public async Task FullSync_AppliesRulesToNewArrivals()
+    {
+        // The initial/periodic full sync (SyncFolderAsync, reached via SyncAllAccountsAsync) must run
+        // rules too — it's the path that historically held this logic, and where a regression is worst.
+        var rules = new CapturingRuleService();
+        var sync = Build(new FetchStubMailService([Message("700")]), rules);
+        var folder = new MailFolderModel { FullName = "INBOX", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox };
+        var cached = new Dictionary<Guid, List<MailFolderModel>> { [_accountId] = [folder] };
+
+        await sync.SyncAllAccountsAsync([Account()], cached, CancellationToken.None);
+
+        var batch = Assert.Single(rules.Calls);
+        Assert.Equal("700", Assert.Single(batch).MessageId);
     }
 
     [Fact]

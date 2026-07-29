@@ -177,12 +177,14 @@ public class SyncService : ISyncService
         // (LoadRules() is cached after first load.) Still persist so the cache/UI reflect the fetch.
         var hasEnabledRules = _rules.LoadRules().Any(r => r.IsEnabled);
 
-        // Persisted dedupe authority is the store — snapshot it BEFORE the upsert so freshly-fetched
-        // messages still read as new. (The store, not the in-session guard, is authoritative here,
-        // which also keeps the guard from growing unbounded on the persisted path.)
-        var knownInStore = persisted && hasEnabledRules
-            ? await _store.GetAllMessageIdsAsync(account.Id, folder.FullName)
-            : [];
+        // Persisted dedupe authority is the store — snapshot which fetched ids it already holds,
+        // BEFORE the upsert, so freshly-fetched messages still read as new. A bounded IN over the
+        // batch avoids scanning every id in a large cached folder; the full scan is only cheaper for
+        // an unusually large batch (a fresh account's first sync, where the store is empty anyway).
+        var knownInStore = !(persisted && hasEnabledRules) ? []
+            : fetched.Count <= 500
+                ? await _store.GetExistingMessageIdsAsync(account.Id, folder.FullName, fetched.Select(m => m.MessageId))
+                : await _store.GetAllMessageIdsAsync(account.Id, folder.FullName);
 
         if (persisted)
             await _store.UpsertSummariesAsync(fetched);

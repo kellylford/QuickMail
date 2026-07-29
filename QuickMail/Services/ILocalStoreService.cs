@@ -45,6 +45,9 @@ public interface ILocalStoreService
     /// <summary>Returns all message ids stored locally for this folder.</summary>
     Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName);
 
+    /// <summary>Which of <paramref name="messageIds"/> already exist in the folder (bounded lookup).</summary>
+    Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
+
     /// <summary>
     /// Counts all message summaries stored for the given account.
     /// Returns 0 if the account has no messages or does not exist.
