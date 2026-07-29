@@ -66,6 +66,20 @@ jobs:
           # Inject version line after the h1
           sed -i "s|<h1 class=\"title\">QuickMail User Guide</h1>|<h1 class=\"title\">QuickMail User Guide</h1><p class=\"version\">Version $VERSION</p>|" build/docs/full.html
 
+      - name: Generate standalone articles
+        run: |
+          # Standalone pages that are not part of the user guide. Generated here so
+          # they survive deployment: peaceiris/actions-gh-pages replaces the whole
+          # branch each run, so a file added to gh-pages by hand would be wiped.
+          pandoc docs/github-release-download-numbers.md \
+            --from markdown \
+            --to html5 \
+            --standalone \
+            --include-in-header=/tmp/guide-style.html \
+            --metadata title="How to Get GitHub Release Download Numbers" \
+            --metadata lang=en \
+            --output build/docs/github-release-download-numbers.html
+
       - name: Generate sectioned HTML with navigation
         run: |
           VERSION="${{ steps.version.outputs.version }}"
@@ -156,6 +170,10 @@ jobs:
             </ul>
             <hr>
             <p><a href="full.html">View as single page</a></p>
+            <h2>Articles</h2>
+            <ul>
+              <li><a href="github-release-download-numbers.html">How to Get GitHub Release Download Numbers</a> — pulling release download counts out of GitHub, and how to read them without fooling yourself</li>
+            </ul>
           </body>
           </html>"""
           with open('build/docs/index.html', 'w', encoding='utf-8') as f:
