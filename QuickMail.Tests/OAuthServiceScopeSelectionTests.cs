@@ -1,3 +1,4 @@
+using Microsoft.Identity.Client;
 using QuickMail.Models;
 using QuickMail.Services;
 using Xunit;
@@ -113,6 +114,25 @@ public class OAuthServiceScopeSelectionTests
         };
         Assert.Same(OAuthService.GraphMailScopes, OAuthService.DefaultScopesFor(account));
     }
+
+    // ── Add-account forces the consent screen (#391) ────────────────────────
+    // The scope selection is unchanged (DefaultScopesFor, covered above). The fix is the PROMPT:
+    // adding an account forces Prompt.Consent so the full declared set is approved once — `.default`
+    // otherwise issues a token silently as soon as ANY grant exists (Microsoft docs Example 3), which
+    // is why a work account with contacts/calendar already enabled then 403s on mail. Re-auth keeps
+    // the normal prompt.
+
+    [Fact]
+    public void AddAccount_ForcesConsentPrompt()
+        => Assert.Equal(Prompt.Consent, OAuthService.PromptForSignIn(firstConnect: true, "user@contoso.com"));
+
+    [Fact]
+    public void ReAuth_ForKnownAccount_ForcesLogin_NotConsent()
+        => Assert.Equal(Prompt.ForceLogin, OAuthService.PromptForSignIn(firstConnect: false, "user@contoso.com"));
+
+    [Fact]
+    public void ReAuth_WithNoExpectedAccount_SelectsAccount()
+        => Assert.Equal(Prompt.SelectAccount, OAuthService.PromptForSignIn(firstConnect: false, null));
 
     [Fact]
     public void ImapScopes_AreExplicit_NotDefault() // #239
