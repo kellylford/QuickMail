@@ -48,6 +48,22 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     public static ServerRuleEditorViewModel ForNew() => new() { IsNew = true, Name = string.Empty };
 
+    /// <summary>A new rule prefilled from a message (create-rule-from-message, Ctrl+Shift+T): carries
+    /// the message's From and Subject as conditions. It's still a new rule — the user picks the
+    /// action, and it's classified server/client on save like any other New rule.</summary>
+    public static ServerRuleEditorViewModel ForNewFromTemplate(MailRule template)
+    {
+        var vm = new ServerRuleEditorViewModel
+        {
+            IsNew = true,
+            Name = template.Name ?? string.Empty,
+            FromAddresses = template.UseFromCondition ? (template.FromContains ?? string.Empty) : string.Empty,
+            SubjectContains = template.UseSubjectCondition ? (template.SubjectContains ?? string.Empty) : string.Empty,
+        };
+        vm.IsAdvancedExpanded = vm.HasAdvancedContent();
+        return vm;
+    }
+
     public static ServerRuleEditorViewModel ForEdit(ServerRuleModel rule)
     {
         var vm = new ServerRuleEditorViewModel

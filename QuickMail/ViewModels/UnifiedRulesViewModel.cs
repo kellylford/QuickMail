@@ -120,13 +120,49 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // ── Commands ────────────────────────────────────────────────────────────
 
     [RelayCommand]
-    private void NewRule()
+    private void NewRule() => OpenNewEditor(ServerRuleEditorViewModel.ForNew());
+
+    /// <summary>Open the New-rule editor prefilled from a message (Ctrl+Shift+T). The prefilled rule
+    /// classifies server/client on save exactly like a hand-made New rule.</summary>
+    public void NewRuleFromTemplate(MailRule template)
+    {
+        // Land on the message's account so the rule is scoped to it (the picker may be on another).
+        if (template.AccountId is Guid tid && AccountOptions.FirstOrDefault(o => o.Id == tid) is { } opt)
+            SelectedAccount = opt;
+        OpenNewEditor(ServerRuleEditorViewModel.ForNewFromTemplate(template));
+    }
+
+    private void OpenNewEditor(ServerRuleEditorViewModel editor)
     {
         if (SelectedAccount?.Id is not Guid accountId) return;
-        var editor = ServerRuleEditorViewModel.ForNew();
         editor.Saved += _ => SaveNewAsync(accountId, editor);
         editor.AnnouncementRequested += (t, c) => AnnouncementRequested?.Invoke(t, c);
         EditorRequested?.Invoke(editor);
+    }
+
+    /// <summary>Ask the owner to run client rules over already-cached mail (it owns the local store),
+    /// returning how many messages were moved/deleted. Server rules run server-side, so this is
+    /// client-only — same as the standalone manager (#346).</summary>
+    public event Func<Task<int>>? RunOnExistingRequested;
+
+    [RelayCommand]
+    private async Task RunOnExistingAsync()
+    {
+        if (RunOnExistingRequested is null) return;
+        Announce("Running rules on existing mail…", AnnouncementCategory.Status);
+        int affected;
+        try
+        {
+            affected = await RunOnExistingRequested.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Announce($"Couldn't run rules on existing mail: {ex.Message}", AnnouncementCategory.Result);
+            return;
+        }
+        Announce(affected > 0
+            ? $"Applied rules to existing mail: {affected} message{(affected == 1 ? "" : "s")} moved or deleted."
+            : "Applied rules to existing mail.", AnnouncementCategory.Result);
     }
 
     [RelayCommand(CanExecute = nameof(CanEditSelected))]

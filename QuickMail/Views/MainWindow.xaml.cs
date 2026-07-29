@@ -5935,7 +5935,11 @@ public partial class MainWindow : Window
         // to the open window rather than silently dropping it.
         if (_rulesWindow is { IsLoaded: true } existing)
         {
-            if (template != null && existing is RulesManagerWindow rmw) rmw.PrefillFromTemplate(template);
+            if (template != null)
+            {
+                if (existing is RulesManagerWindow rmw) rmw.PrefillFromTemplate(template);
+                else if (existing is UnifiedRulesWindow urw) urw.PrefillFromTemplate(template);
+            }
             existing.Activate();
             return;
         }
@@ -5951,13 +5955,25 @@ public partial class MainWindow : Window
         // reader (GrabAddresses). Choose the layout: the unified single-list manager (spec §20) when
         // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
         // shared Closed handler below works for either window type.
+        // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner runs
+        // client rules over cached mail off the UI thread and returns how many were moved/deleted.
+        async Task<int> RunClientRulesOnExisting()
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            var removed = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token));
+            if (removed.Count > 0)
+                _vm.RefreshCommand.Execute(null);
+            return removed.Count;
+        }
+
+        // Unowned (issue #347) so the window reads its own title, not the main window's. Modeless
+        // (.Show) — a modal loop over the live WebView2 reading pane hard-deadlocks with a screen
+        // reader (GrabAddresses). Choose the layout: the unified single-list manager (spec §20) when
+        // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
+        // shared Closed handler below works for either window type.
         Window dialog;
-        // A templated open (create-rule-from-message, Ctrl+Shift+T) isn't wired into the unified
-        // window yet, so route it to the client-only manager, which prefills the rule from the
-        // message — better than opening the unified window and silently dropping the prefill.
-        // (Run-on-Existing is likewise still client-only; both are follow-ups.)
-        if (template == null
-            && _serverRuleService != null
+        UnifiedRulesWindow? unifiedWindow = null;
+        if (_serverRuleService != null
             && _featureGate.IsEnabled(FeatureFlag.ServerRules)
             && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
         {
@@ -5965,7 +5981,10 @@ public partial class MainWindow : Window
             // VM falls back to the first account).
             var unifiedVm = new UnifiedRulesViewModel(
                 _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id);
-            dialog = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders);
+            unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
+            // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
+            unifiedWindow = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template);
+            dialog = unifiedWindow;
         }
         else
         {
@@ -5975,19 +5994,7 @@ public partial class MainWindow : Window
                 prefillTemplate: template,
                 selectedMessagesForTest: selectedMessages,
                 configService: _configService);
-
-            // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner
-            // performs the run off the UI thread and returns how many messages were moved/deleted.
-            rulesVm.RunOnExistingRequested += async () =>
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-                var removed = await Task.Run(
-                    () => _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token));
-                if (removed.Count > 0)
-                    _vm.RefreshCommand.Execute(null);
-                return removed.Count;
-            };
-
+            rulesVm.RunOnExistingRequested += RunClientRulesOnExisting;
             dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm: null);
         }
 

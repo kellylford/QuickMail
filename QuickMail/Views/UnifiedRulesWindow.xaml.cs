@@ -28,15 +28,19 @@ public partial class UnifiedRulesWindow : Window
     // here so it's discoverable, including ones with no default hotkey.
     private readonly CommandRegistry _registry = new();
 
+    private readonly MailRule? _prefillTemplate;
+
     public UnifiedRulesWindow(
         UnifiedRulesViewModel vm,
         IEnumerable<AccountModel> accounts,
-        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        MailRule? prefillTemplate = null)
     {
         InitializeComponent();
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
+        _prefillTemplate = prefillTemplate;
         DataContext = vm;
 
         vm.EditorRequested += OnEditorRequested;
@@ -52,6 +56,9 @@ public partial class UnifiedRulesWindow : Window
         {
             await vm.RefreshCommand.ExecuteAsync(null);
             FocusInitialControl();
+            // Prefill after the window is shown — the editor it opens takes this as its Owner, and WPF
+            // forbids an Owner that hasn't been shown yet.
+            if (_prefillTemplate != null) PrefillFromTemplate(_prefillTemplate);
         };
     }
 
@@ -82,6 +89,9 @@ public partial class UnifiedRulesWindow : Window
             id: "rules.moveDown", category: "Rules", title: "Move Rule Down",
             execute: () => Run(_vm.MoveDownCommand), isAvailable: () => _vm.CanMoveDown));
         _registry.Register(new CommandDefinition(
+            id: "rules.runOnExisting", category: "Rules", title: "Run Rules on Existing Mail",
+            execute: () => Run(_vm.RunOnExistingCommand)));
+        _registry.Register(new CommandDefinition(
             id: "rules.close", category: "Rules", title: "Close",
             execute: Close, defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None));
     }
@@ -109,6 +119,10 @@ public partial class UnifiedRulesWindow : Window
     }
 
     private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Open the New-rule editor prefilled from the current message (Ctrl+Shift+T). Called by
+    /// MainWindow, including when this already-open window is brought forward.</summary>
+    public void PrefillFromTemplate(MailRule template) => _vm.NewRuleFromTemplate(template);
 
     private void OnEditorRequested(ServerRuleEditorViewModel editorVm)
     {

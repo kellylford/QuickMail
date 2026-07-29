@@ -252,6 +252,46 @@ public class UnifiedRulesViewModelTests
         Assert.DoesNotContain("No rules for this account", vm.StatusText); // … not overwritten by BuildStatus
     }
 
+    // ── Prefill-from-message (Ctrl+Shift+T) and Run-on-Existing in the unified window ──────────
+
+    [Fact]
+    public async Task NewRuleFromTemplate_PrefillsFromMessage_AndScopesToItsAccount()
+    {
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(a), Graph(b)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.NewRuleFromTemplate(new MailRule
+        {
+            Name = "Rule for x@y.com", FromContains = "x@y.com", SubjectContains = "Invoice", AccountId = b,
+        });
+
+        Assert.Equal(b, vm.SelectedAccount?.Id);            // switched to the message's account
+        Assert.NotNull(editor);
+        Assert.True(editor!.IsNew);                         // a NEW rule, not an edit
+        Assert.Equal("Rule for x@y.com", editor.Name);      // prefilled from the message
+        Assert.Equal("x@y.com", editor.FromAddresses);
+        Assert.Equal("Invoice", editor.SubjectContains);
+    }
+
+    [Fact]
+    public async Task RunOnExisting_InvokesOwner_AndAnnouncesTheCount()
+    {
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(Guid.NewGuid())]);
+        var invoked = false;
+        vm.RunOnExistingRequested += () => { invoked = true; return Task.FromResult(3); };
+        string? announced = null;
+        vm.AnnouncementRequested += (t, _) => announced = t;
+
+        await vm.RunOnExistingCommand.ExecuteAsync(null);
+
+        Assert.True(invoked);
+        Assert.Contains("3 messages moved or deleted", announced);
+    }
+
     [Fact]
     public void AccountPicker_SeedsToPreferredAccount_AndHidesWhenSingle()
     {
