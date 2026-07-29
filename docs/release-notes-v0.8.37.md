@@ -102,8 +102,25 @@ If you already had an account set up with a login name in the address box, Quick
 
 ---
 
+## Fixed: work and school Microsoft 365 accounts
+
+**Adding a work or school account now always asks your permission.** On some organizations, sign-in finished without ever showing a permission screen — and then every attempt to read mail failed. The account was added, looked connected, and could not reach a single message. It happened where the organization had already approved QuickMail for something else, such as contacts or calendar: Microsoft treats an existing approval as covering the whole request and signs you in silently, so the mail permissions were never asked for and never granted.
+
+Adding an account now always shows the permission screen, so the full set is approved once, up front. You will see it when you add an account, and when you use **Sign in** in Manage Accounts — which is the button you reach for when an account has stopped working, so asking again there is deliberate. An account whose sign-in has merely expired renews as before, without asking. (#391)
+
+**A folder no longer stops loading because of one message.** Microsoft 365 reports some messages — certain drafts and system-generated mail — with no read state at all. A single one of those failed the entire folder's fetch, so none of that folder's new mail arrived and nothing said why. One real session hit it 49 times. A message with no read state is now treated as unread. (#395)
+
+## Fixed: the Provider field in Manage Accounts had no value to read
+
+The read-only **Provider** value added in this release announced its label and nothing else — you heard "Provider" and were given no value at all, so the one thing the field exists to tell you was the one thing it never said. It now reads out the provider it is showing, and the text can be reviewed a character at a time. (#401)
+
+---
+
 ## Internal
 
+- `OAuthService.PromptForSignIn(firstConnect, username)` centralizes the MSAL prompt choice: the add-account path forces `Prompt.Consent`, re-auth keeps `ForceLogin`/`SelectAccount`. Scopes stay `.default` for work/school, so requested-equals-declared still holds by construction (#208) and Azure resolves the set per account type — an explicit org-only scope list would have broken personal accounts on a custom domain. `SignInInteractiveAsync(account, ct)` is the add path and is reached from both `AddAccountViewModel` and `AccountManagerViewModel`'s **Sign in** button, since both derive from `AccountEditorViewModel`. The add path therefore trades `Prompt.ForceLogin` for `Prompt.Consent`; the #202 identity-mismatch guard in `AccountEditorViewModel` still refuses to adopt a different identity that completes sign-in, so the protection moves from prevention to detection rather than disappearing. Note that `.default` never surfaces a *newly declared* permission to a user who already holds an older grant — any permission added in future must be requested explicitly at the point it is needed, as contacts and calendar already do.
+- `GraphMessage.IsRead` becomes `bool?`, mapped `?? false` at both sites in `GraphMailService`. As a non-nullable `bool` it threw `JsonException: Cannot get the value of a token type 'Null' as a boolean` mid-batch, and because the throw escaped the whole deserialization, one message took down the entire folder fetch.
+- Account Manager's Provider value is a read-only `TextBox` rather than a focusable `TextBlock`. A TextBox exposes its `Text` as a value alongside the `LabeledBy` name; on the TextBlock, `LabeledBy` overrode the automatic name (its own text) and left no value behind it, so the binding was announced as nothing. Same binding, same tab position, still read-only.
 - `FeatureFlag.GoogleAuth` default flips to `false`. It gates only the *offer* — no runtime authentication path consults it, so saved `AuthType.OAuth2Google` accounts are unaffected.
 - New `ProviderCatalog` entry `gmail-oauth` ("Gmail (sign in with Google)"), `DefaultAuthType = OAuth2Google`, no app-password hint, exposed as `IProviderCatalog.GmailGoogleSignIn`. It carries the gmail.com domains but sits after the plain Gmail entry, so `MatchByEmail` and `Resolve`'s host fallback still answer `gmail` for every Gmail address; it is reached only by an explicit pick or a saved `ProviderId`.
 - `AccountEditorViewModel.Providers` becomes an `ObservableCollection<MailProvider>` built from the catalog minus the Google entry, with `EnsureGoogleSignInListed()` inserting it after Gmail. The entry is absent from the list rather than collapsed, so it is out of the keyboard order and the accessibility tree entirely.
