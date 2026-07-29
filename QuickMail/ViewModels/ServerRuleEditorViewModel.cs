@@ -25,7 +25,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     public bool IsNew { get; private init; }
 
-    public string Title => IsNew ? "New server rule" : "Edit server rule";
+    public string Title => IsNew ? "New rule" : "Edit rule";
 
     // ── Events (View subscribes) ────────────────────────────────────────────
 
@@ -89,6 +89,43 @@ public partial class ServerRuleEditorViewModel : ObservableObject
             string.Equals(o.Value, rule.MarkImportance, StringComparison.OrdinalIgnoreCase)) ?? ImportanceOptions[0];
         // If the rule already uses any advanced field, open the Advanced section so editing never
         // hides a populated field. A brand-new rule leaves it collapsed.
+        vm.IsAdvancedExpanded = vm.HasAdvancedContent();
+        return vm;
+    }
+
+    /// <summary>
+    /// Populates the editor from a client-side <see cref="MailRule"/> (the inverse of
+    /// <see cref="ToClientRule"/>), so a client rule can be edited in the same unified editor. The
+    /// client model's single-value substring conditions map to the corresponding fields; its one
+    /// action maps to that action. Editing preserves the rule's kind (client stays client) — the
+    /// caller re-persists via the client rule service, it is not re-classified (spec §20.6).
+    /// </summary>
+    public static ServerRuleEditorViewModel ForEditClient(MailRule rule)
+    {
+        var vm = new ServerRuleEditorViewModel
+        {
+            IsNew = false,
+            Name = rule.Name,
+            IsEnabled = rule.IsEnabled,
+            FromAddresses = rule.UseFromCondition ? (rule.FromContains ?? string.Empty) : string.Empty,
+            SentToAddresses = rule.UseToCondition ? (rule.ToContains ?? string.Empty) : string.Empty,
+            SubjectContains = rule.UseSubjectCondition ? (rule.SubjectContains ?? string.Empty) : string.Empty,
+            BodyContains = rule.UseBodyCondition ? (rule.BodyContains ?? string.Empty) : string.Empty,
+            HasAttachments = rule.MustHaveAttachments,
+        };
+
+        switch (rule.Action)
+        {
+            case RuleAction.MarkAsRead: vm.MarkAsRead = true; break;
+            case RuleAction.MarkAsUnread: vm.MarkAsUnread = true; break;
+            case RuleAction.MoveToFolder:
+                vm.MoveToFolder = true;
+                vm.MoveToFolderId = rule.TargetFolder;
+                vm.MoveToFolderName = rule.TargetFolder;   // display name resolved by the owner if available
+                break;
+            case RuleAction.Delete: vm.Delete = true; break;
+        }
+
         vm.IsAdvancedExpanded = vm.HasAdvancedContent();
         return vm;
     }

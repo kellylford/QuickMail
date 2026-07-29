@@ -12,18 +12,32 @@ namespace QuickMail.Tests;
 
 public class UnifiedRulesViewModelTests
 {
-    // Minimal IServerRuleService whose ListAsync returns a configured set; write methods aren't
-    // exercised by these load tests.
+    // Records calls and mutates Stored so a reload reflects a write.
     private sealed class FakeServerRules : IServerRuleService
     {
         public List<ServerRuleModel> Stored { get; init; } = [];
-        public Task<IReadOnlyList<ServerRuleModel>> ListAsync(Guid accountId, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ServerRuleModel>>(Stored);
-        public Task<ServerRuleModel> CreateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task UpdateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task SetEnabledAsync(Guid a, string id, bool e, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task ReorderAsync(Guid a, IReadOnlyList<ServerRuleModel> rules, CancellationToken ct = default) => throw new NotImplementedException();
-        public Task DeleteAsync(Guid a, string id, CancellationToken ct = default) => throw new NotImplementedException();
+        public List<string> Calls { get; } = [];
+        public Task<IReadOnlyList<ServerRuleModel>> ListAsync(Guid a, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<ServerRuleModel>>(Stored.ToList());
+        public Task<ServerRuleModel> CreateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default)
+        { Calls.Add("create"); r.Id = "srv-" + Stored.Count; Stored.Add(r); return Task.FromResult(r); }
+        public Task UpdateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default)
+        { Calls.Add("update"); var i = Stored.FindIndex(x => x.Id == r.Id); if (i >= 0) Stored[i] = r; return Task.CompletedTask; }
+        public Task SetEnabledAsync(Guid a, string id, bool e, CancellationToken ct = default)
+        { Calls.Add("setEnabled"); var x = Stored.FirstOrDefault(s => s.Id == id); if (x != null) x.IsEnabled = e; return Task.CompletedTask; }
+        public Task ReorderAsync(Guid a, IReadOnlyList<ServerRuleModel> rules, CancellationToken ct = default)
+        { Calls.Add("reorder"); Stored.Clear(); Stored.AddRange(rules); return Task.CompletedTask; }
+        public Task DeleteAsync(Guid a, string id, CancellationToken ct = default)
+        { Calls.Add("delete"); Stored.RemoveAll(s => s.Id == id); return Task.CompletedTask; }
+    }
+
+    private static async Task<ServerRuleEditorViewModel> OpenNewEditorAsync(UnifiedRulesViewModel vm)
+    {
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.NewRuleCommand.Execute(null);
+        return editor!;
     }
 
     private static AccountModel Graph(Guid id) => new() { Id = id, BackendKind = BackendKind.MicrosoftGraph, Username = "g@x.com", AccountName = "Work" };
@@ -76,6 +90,92 @@ public class UnifiedRulesViewModelTests
         Assert.False(vm.AccountSupportsServerRules);
         Assert.Single(vm.Rules);
         Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
+    }
+
+    // ── New-rule classification & routing (spec §20.3) ──────────────────────
+
+    [Fact]
+    public async Task NewRule_ServerRepresentable_OnGraph_RoutesToServer()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Move digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Contains("create", server.Calls);
+        Assert.Empty(client.LoadedRules);
+        Assert.Single(vm.Rules);
+        Assert.Equal(RuleRunsWhere.Server, vm.Rules[0].RunsWhere);
+    }
+
+    [Fact]
+    public async Task NewRule_MarkAsUnread_OnGraph_RoutesToClient_AndNotifies()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+        string? notice = null;
+        vm.ClientRuleNoticeRequested += n => notice = n;
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Keep unread"; editor.SubjectContains = "later"; editor.MarkAsUnread = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.DoesNotContain("create", server.Calls);      // not a server rule
+        Assert.Single(client.LoadedRules);                  // persisted as a client rule
+        Assert.Equal(a, client.LoadedRules[0].AccountId);
+        Assert.NotNull(notice);
+        Assert.Contains("Mark as unread", notice);
+        Assert.Single(vm.Rules);
+        Assert.Equal(RuleRunsWhere.Client, vm.Rules[0].RunsWhere);
+    }
+
+    [Fact]
+    public async Task NewRule_ConflictingMix_BlocksSave()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var client = new StubRuleService();
+        var vm = new UnifiedRulesViewModel(client, server, [Graph(a)], preferredAccountId: a);
+
+        var editor = await OpenNewEditorAsync(vm);
+        var closed = false;
+        editor.CloseRequested += () => closed = true;
+        editor.Name = "Impossible";
+        editor.MarkAsUnread = true;   // client-only action
+        editor.SelectedImportance = ServerRuleEditorViewModel.ImportanceOptions.First(o => o.Value == "high"); // server-only condition
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(closed);                       // editor stays open on conflict
+        Assert.False(string.IsNullOrEmpty(editor.SaveError));
+        Assert.DoesNotContain("create", server.Calls);
+        Assert.Empty(client.LoadedRules);
+    }
+
+    [Fact]
+    public async Task EditClientRule_UpdatesInPlace_PreservingId()
+    {
+        var a = Guid.NewGuid();
+        var original = Client("C1", a);
+        var client = new StubRuleService { LoadedRules = [original] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        ServerRuleEditorViewModel? editor = null;
+        vm.EditorRequested += e => editor = e;
+        vm.SelectedRule = vm.Rules.Single();
+        vm.EditRuleCommand.Execute(null);
+        editor!.Name = "C1 renamed";
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.Single(client.LoadedRules);
+        Assert.Equal("C1 renamed", client.LoadedRules[0].Name);
+        Assert.Equal(original.Id, client.LoadedRules[0].Id);   // same rule, not a new one
     }
 
     [Fact]
