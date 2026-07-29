@@ -418,6 +418,19 @@ file they need.</p>
 suspicion to spikes: a release that scores five or ten times its
 neighbours, with nothing in its content to explain it, is far more
 likely to be automated traffic than a sudden burst of humans.</p>
+<h3 id="look-for-a-number-that-counts-people-not-requests">Look for a
+number that counts people, not requests</h3>
+<p>Before you build any conclusion on download counts, check whether
+your project already produces a number <strong>tied to an
+identity</strong> — an OAuth grant, a licence activation, an account
+registration, a sync service seeing a login. Anything a person has to
+complete a real action to trigger.</p>
+<p>Such a number is worth more than your entire release history, because
+it counts people instead of HTTP requests. It deduplicates. Bots do not
+appear in it. If you have one and are still reasoning from downloads,
+you are working from your weakest data. The case study below turns on
+exactly this — the most informative figure in it is not a download count
+at all.</p>
 <h3 id="things-that-quietly-are-not-counted">Things that quietly are not
 counted</h3>
 <ul>
@@ -453,9 +466,11 @@ numbers</h2>
 an entire repository’s history with nothing withheld.</p>
 <p><a href="https://github.com/kellylford/QuickMail">QuickMail</a> is a
 keyboard and screen reader friendly email client for Windows. It is a
-personal project with no marketing, no announcement channel, and no
-press. Discovery is word of mouth. These are all of its numbers as of 29
-July 2026.</p>
+personal project still under active development, and promotion so far
+has been light — some Mastodon and mailing list posts, and a mention in
+a few newsletters. There has been no concerted promotional effort,
+deliberately, while the software is still being built. These are all of
+its numbers as of 29 July 2026.</p>
 <h3 id="what-its-releases-contain">What its releases contain</h3>
 <p>Understanding the files is a prerequisite for reading the counts, and
 this is true of any project — you cannot interpret a number until you
@@ -691,9 +706,10 @@ showing up again and again.</p>
 <p>Compare the installer column over exactly the same releases: 10, 8,
 5, 16, 15, 37, 9, 27. Same period, triple the volatility, and measuring
 something else entirely — arrival, not retention.</p>
-<p><strong>So how many people actually use QuickMail?</strong> The
-defensible answer is <strong>roughly 15 to 20 regular users</strong>,
-with a plausible ceiling around 30 to 35.</p>
+<p><strong>So how many people actively update QuickMail?</strong> The
+defensible answer is <strong>roughly 15 to 20</strong>, with a plausible
+ceiling around 30 to 35. Hold that number lightly — a second, better
+data point further down revises the picture considerably.</p>
 <p>The reasoning, in full:</p>
 <ul>
 <li><strong>18</strong> installs auto-updated into the most recent
@@ -710,8 +726,12 @@ know how many still run it.</li>
 mixed indistinguishably into the installer column with genuinely new
 users.</li>
 <li>The feed count of 110 is <strong>not</strong> 110 people. It is
-cumulative update checks, and one install checking daily for a week
-contributes seven.</li>
+cumulative update checks. QuickMail checks at startup, so one install
+contributes seven by being opened once a day for a week — and
+contributes exactly the same seven if one person quits and relaunches it
+seven times in a single afternoon. The number rises with <strong>how
+often the program is started</strong>, which is a measure of habit, not
+of headcount.</li>
 </ul>
 <p><strong>Two spikes do not belong.</strong> v0.7.2 at 258 and v0.7.4
 at 234 sit among neighbours in the 30 to 40 range, with nothing in
@@ -728,18 +748,81 @@ how the updater distributes those requests across releases, and rather
 than invent a mechanism I will say so. It is a reminder that not every
 number in this data has a confident interpretation, and the temptation
 to supply one is exactly the failure mode this article is about.</p>
+<h3
+id="the-best-number-came-from-outside-the-download-data-entirely">The
+best number came from outside the download data entirely</h3>
+<p>Everything above is derived from download counts, and download counts
+can never identify a person. But QuickMail has a second signal that can,
+and it is worth more than the whole table.</p>
+<p>Google caps an <strong>unverified</strong> application at <strong>100
+users</strong>. QuickMail requests Gmail scopes, which Google classes as
+restricted, so until the app passes verification — a process that runs
+weeks and can require a paid third-party security assessment — only 100
+accounts may ever authorise it. QuickMail <strong>hit that cap.</strong>
+New users now get “This app has been blocked,” which is why Gmail
+sign-in became opt-in and app passwords became the default route.</p>
+<p>That is a fundamentally better measurement than anything downloads
+produce, because it is <strong>bound to identity</strong>. Each of those
+authorisations is a distinct Google account belonging to a distinct
+person who installed the software, opened it, reached the account setup,
+and completed a sign-in. No bot does that. No duplicate counts
+twice.</p>
+<p>So: <strong>at least 100 different people got QuickMail working with
+Gmail</strong> — against the 18 the delta count could see.</p>
+<p><strong>How can both be true?</strong> Because they answer different
+questions. And the gap has a specific, checkable explanation:
+<strong>auto-update did not exist until v0.8.0 on 8 July 2026.</strong>
+Roughly thirty releases shipped before it, from v0.5.0 in May onwards,
+with no updater at all. Every one of those users had to notice a new
+version and manually download it.</p>
+<p>Anyone who installed during that period and stopped manually updating
+is <strong>still running that old build today, and is invisible to every
+signal in the table above</strong> — permanently. They will never fetch
+a delta package, because their copy has no idea deltas exist. The
+pre-updater installer numbers were not small either: 57, 43, 40, 34, 32
+across those releases.</p>
+<p>That reframes the whole reading. The honest summary is now three
+numbers, not one:</p>
+<ul>
+<li><strong>~18</strong> installs are actively auto-updating and
+current.</li>
+<li><strong>≥100</strong> distinct people authorised Gmail at some
+point.</li>
+<li><strong>Unknown, possibly large</strong> — people stranded on a
+pre-auto-update build who are still using it and cannot be counted by
+any means available.</li>
+</ul>
+<p><strong>The general lesson, which is the reason this section
+exists:</strong> before drawing conclusions from download counts, look
+for a number somewhere else that is <strong>tied to an
+identity</strong>. An OAuth grant, a licence activation, an account
+registration, a sync endpoint. One of those is worth more than the
+entire release history, because it counts people rather than HTTP
+requests. If you have one and are still reasoning from downloads, you
+are using your weakest data.</p>
+<p>The caveats stay honest, though. That 100 is <strong>cumulative, not
+current</strong> — it includes the developer’s own test accounts, and
+everyone who authorised once and abandoned it. It counts only Gmail
+users, so anyone on Outlook, iCloud, or a plain IMAP server is outside
+it entirely. And a cap tells you the number was <em>reached</em>, not by
+how much it was exceeded — demand above 100 is simply invisible, since
+Google turns it away at the door.</p>
 <h3 id="what-the-numbers-do-and-do-not-say">What the numbers do and do
 not say</h3>
-<p>They say roughly 15 to 20 people run this software regularly, and
-that the figure is growing slowly and steadily.</p>
+<p>They say roughly 15 to 20 people keep an up-to-date copy running, at
+least 100 have used it, and an uncounted group sits on old builds in
+between.</p>
 <p>They do <strong>not</strong> say the software is good or bad.
-QuickMail has had no distribution whatsoever, and a project with no
-distribution gets a number like this regardless of quality. For
-contrast, a comparable Windows accessibility project in the same niche
-recorded roughly 3,000 downloads in two months — it has an organisation
-behind it and a 36-episode onboarding podcast, which is a marketing
-budget wearing a disguise. Nothing in either dataset speaks to which
-program is better. They measure reach.</p>
+QuickMail has had little promotion — a few Mastodon and mailing list
+posts and some newsletter mentions, with no concerted effort while it is
+still under development — and a project promoted that lightly gets a
+number like this regardless of quality. For contrast, a comparable
+Windows accessibility project in the same niche recorded roughly 3,000
+downloads in two months, with an organisation behind it and a 36-episode
+onboarding podcast, which is a marketing budget wearing a disguise.
+Nothing in either dataset speaks to which program is better. They
+measure reach, and reach is mostly a function of effort spent on
+reach.</p>
 <p>And they never, under any circumstance, distinguish a person who
 downloaded and still uses it from a person who downloaded and deleted it
 ten minutes later. Downloads measure acquisition. Only an updater
@@ -757,6 +840,9 @@ group of people, treat your updater’s package count as your only real
 retention signal, and start snapshotting today — because GitHub keeps no
 history, and the trend you will eventually want can only be built
 forward from now.</p>
+<p>And before you conclude anything from them, look for a number
+elsewhere that is tied to an identity. If you have one, it outranks
+everything here.</p>
 <hr />
 <p><em>Sources: <a
 href="https://docs.github.com/en/repositories/releasing-projects-on-github/about-releases">About
@@ -767,5 +853,29 @@ href="https://docs.github.com/en/rest/releases/releases">REST API
 endpoints for releases</a> · <a
 href="https://docs.github.com/en/enterprise/2.16/user/github/administering-a-repository/getting-the-download-count-for-your-releases">the
 retired Enterprise 2.16 article</a></em></p>
+<hr />
+<h2 id="reporting-issues">Reporting Issues</h2>
+<p>Have a question about this article, a correction to it, or a problem
+with QuickMail itself? There are three ways to reach us — pick the one
+that fits:</p>
+<ol type="1">
+<li><strong>Report a Bug → Send</strong> (Help menu, inside QuickMail).
+Files the report for you anonymously — it includes no email address or
+other identifying information, so there is no way to follow up with you.
+<strong>Best when you don’t want any follow-up.</strong></li>
+<li><strong>Report a Bug → Copy report and open GitHub</strong> (Help
+menu). Opens a pre-filled issue that you submit under your own GitHub
+account, so your GitHub contact information is attached. <strong>Best
+when you have a GitHub account and want automatic filing plus direct
+contact.</strong></li>
+<li><strong>Email</strong> <a
+href="mailto:quickmailissues@theideaplace.net">quickmailissues@theideaplace.net</a>.
+<strong>Best when you don’t mind sending email and want a personal
+follow-up.</strong></li>
+</ol>
+<p>Full details, including exactly what a report contains (and what it
+never contains), are in the <a
+href="https://kellylford.github.io/QuickMail/reporting-issues.html">Reporting
+Issues section of the User Guide</a>.</p>
 </body>
 </html>
