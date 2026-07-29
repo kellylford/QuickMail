@@ -58,7 +58,9 @@
                              what the list is currently showing. -->
                         <Button Grid.Column="1"
                                 x:Name="AccountFilterButton"
-                                Content="{Binding AccountFilterButtonContent}"
+                                Content="{Binding SelectedAccountFilter.Name,
+                                                  Converter={x:Static local:AccessKeyLabelConverter.Instance},
+                                                  ConverterParameter='_Filter: {0}'}"
                                 AutomationProperties.Name="{Binding AccountFilterButtonName}"
                                 MinWidth="120" Margin="6,0,0,0"
                                 TabIndex="1"

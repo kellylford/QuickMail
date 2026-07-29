@@ -4,12 +4,14 @@
 // The rules the tests below pin down:
 //   - "All accounts" is the default, and it shows everything.
 //   - The menu always offers All accounts and Local address book, plus one entry per
-//     account — configured accounts when an IAccountService is supplied, and accounts
-//     inferred from the contacts themselves when it is not (the address book opened
-//     from Compose has no account service).
+//     configured account. Accounts we cannot name are not offered at all; their contacts
+//     stay reachable under All accounts.
+//   - The list collapses duplicate addresses to one row, so the filter matches on every
+//     account that contributed a copy — not just the surviving row's own owner.
 //   - The account filter and the search box compose: both must match.
 //   - The active filter survives a reload (sync, add, edit) and falls back to
 //     All accounts when its account disappears.
+//   - Adding a contact the active filter would hide resets the filter, with one message.
 //   - Choosing a filter announces the result count as AnnouncementCategory.Result.
 
 using System;
@@ -97,23 +99,146 @@ public class AddressBookAccountFilterTests
     }
 
     [Fact]
-    public async Task Options_AreInferredFromContacts_WhenNoAccountServiceIsSupplied()
+    public async Task UnnameableAccounts_AreNotOffered_AndTheirContactsStayUnderAllAccounts()
     {
-        // The address book opened from Compose is constructed without an IAccountService.
-        // The accounts that own contacts are still offered so the filter is usable there.
+        // Only accounts we have a name for become menu entries. An account we cannot name
+        // would read as a second, indistinguishable "Synced contact" row — unusable by ear.
+        // Its contacts are still reachable under "All accounts".
         var (contacts, dir) = MakeContacts();
-        var acct = Guid.NewGuid();
+        var known   = Guid.NewGuid();
+        var orphan  = Guid.NewGuid();
         try
         {
-            await contacts.ReplaceSyncedContactsAsync(acct, ContactSource.Microsoft,
-                [new ContactModel { SourceId = "m1", DisplayName = "Synced Person", EmailAddress = "synced@x.test" }]);
-            var vm = new AddressBookViewModel(contacts);
+            await contacts.ReplaceSyncedContactsAsync(known, ContactSource.Microsoft,
+                [new ContactModel { SourceId = "m1", DisplayName = "Known Person", EmailAddress = "known@x.test" }]);
+            await contacts.ReplaceSyncedContactsAsync(orphan, ContactSource.Google,
+                [new ContactModel { SourceId = "g1", DisplayName = "Orphan Person", EmailAddress = "orphan@x.test" }]);
+            var vm = new AddressBookViewModel(contacts, null,
+                new FakeAccountService(new AccountModel { Id = known, AccountName = "Work" }));
 
             await vm.LoadAsync();
 
-            var inferred = vm.AccountFilterOptions.Single(o => o.Kind == AccountFilterKind.Account);
-            Assert.Equal(acct, inferred.AccountId);
-            Assert.Equal("Synced contact", inferred.Name);   // no account label available
+            Assert.Equal(
+                ["All accounts", "Local address book", "Work"],
+                vm.AccountFilterOptions.Select(o => o.Name).ToArray());
+            Assert.Contains(vm.FilteredContacts, c => c.DisplayName == "Orphan Person");
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task AccountFilter_ShowsAPersonWhoseAddressIsAlsoSavedLocally()
+    {
+        // The list collapses duplicate addresses to one row, preferring the local copy. The
+        // filter must still answer "does this account have this person", not "is this row's
+        // owning account this one" — otherwise syncing an address you already saved locally
+        // makes that person vanish from their own account's filter.
+        var (contacts, dir) = MakeContacts();
+        var work = Guid.NewGuid();
+        try
+        {
+            await contacts.UpsertContactAsync(new ContactModel { DisplayName = "Alice", EmailAddress = "alice@corp.test" });
+            await contacts.ReplaceSyncedContactsAsync(work, ContactSource.Microsoft,
+                [new ContactModel { SourceId = "w1", DisplayName = "Alice Anderson", EmailAddress = "alice@corp.test" }]);
+            var vm = new AddressBookViewModel(contacts, null,
+                new FakeAccountService(new AccountModel { Id = work, AccountName = "Work" }));
+            await vm.LoadAsync();
+
+            // One row, the local copy, as before.
+            Assert.Equal(["Alice"], vm.FilteredContacts.Select(c => c.DisplayName).ToArray());
+
+            vm.SelectAccountFilter(Option(vm, "Work"));
+            Assert.Equal(["Alice"], vm.FilteredContacts.Select(c => c.DisplayName).ToArray());
+
+            // And she is still in the local address book too.
+            vm.SelectAccountFilter(Option(vm, "Local address book"));
+            Assert.Equal(["Alice"], vm.FilteredContacts.Select(c => c.DisplayName).ToArray());
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task APersonSyncedFromTwoAccounts_ShowsUnderBoth()
+    {
+        var (contacts, dir) = MakeContacts();
+        var work = Guid.NewGuid();
+        var home = Guid.NewGuid();
+        try
+        {
+            await contacts.ReplaceSyncedContactsAsync(work, ContactSource.Microsoft,
+                [new ContactModel { SourceId = "w1", DisplayName = "Bob", EmailAddress = "bob@x.test" }]);
+            await contacts.ReplaceSyncedContactsAsync(home, ContactSource.Google,
+                [new ContactModel { SourceId = "g1", DisplayName = "Bob", EmailAddress = "bob@x.test" }]);
+            var vm = new AddressBookViewModel(contacts, null, new FakeAccountService(
+                new AccountModel { Id = work, AccountName = "Work" },
+                new AccountModel { Id = home, AccountName = "Home" }));
+            await vm.LoadAsync();
+
+            vm.SelectAccountFilter(Option(vm, "Work"));
+            Assert.Single(vm.FilteredContacts);
+
+            vm.SelectAccountFilter(Option(vm, "Home"));
+            Assert.Single(vm.FilteredContacts);
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task AddingAContactUnderAnAccountFilter_ResetsToAllAccounts_AndSaysSo()
+    {
+        // A new contact is local, so an account filter set earlier would hide it. The user
+        // must not be told "added" and then see nothing appear.
+        var (contacts, dir) = MakeContacts();
+        var work = Guid.NewGuid();
+        try
+        {
+            await contacts.ReplaceSyncedContactsAsync(work, ContactSource.Microsoft,
+                [new ContactModel { SourceId = "w1", DisplayName = "Work Person", EmailAddress = "work@x.test" }]);
+            var vm = new AddressBookViewModel(contacts, null,
+                new FakeAccountService(new AccountModel { Id = work, AccountName = "Work" }));
+            await vm.LoadAsync();
+            vm.SelectAccountFilter(Option(vm, "Work"));
+
+            var heard = new List<(string Text, AnnouncementCategory Category)>();
+            vm.AnnouncementRequested += (text, category) => heard.Add((text, category));
+
+            vm.BeginAddContactCommand.Execute(null);
+            vm.EditName  = "New Person";
+            vm.EditEmail = "new@x.test";
+            await vm.SaveContactCommand.ExecuteAsync(null);
+
+            Assert.Equal(AccountFilterKind.All, vm.SelectedAccountFilter.Kind);
+            Assert.Contains(vm.FilteredContacts, c => c.DisplayName == "New Person");
+            Assert.Same(vm.FilteredContacts.Single(c => c.DisplayName == "New Person"), vm.SelectedContact);
+            // One message, not a filter announcement followed by an add announcement.
+            Assert.Equal(
+                ("New Person added. Filter reset to all accounts.", AnnouncementCategory.Result),
+                heard.Last());
+            Assert.DoesNotContain(heard, h => h.Text.StartsWith("All accounts,", StringComparison.Ordinal));
+        }
+        finally { Cleanup(dir); }
+    }
+
+    [Fact]
+    public async Task AddingAContactVisibleUnderTheActiveFilter_LeavesTheFilterAlone()
+    {
+        var (contacts, dir) = MakeContacts();
+        try
+        {
+            var vm = new AddressBookViewModel(contacts);
+            await vm.LoadAsync();
+            vm.SelectAccountFilter(Option(vm, "Local address book"));
+
+            var heard = new List<string>();
+            vm.AnnouncementRequested += (text, _) => heard.Add(text);
+
+            vm.BeginAddContactCommand.Execute(null);
+            vm.EditName  = "New Person";
+            vm.EditEmail = "new@x.test";
+            await vm.SaveContactCommand.ExecuteAsync(null);
+
+            Assert.Equal(AccountFilterKind.Local, vm.SelectedAccountFilter.Kind);
+            Assert.Equal("New Person added", heard.Last());
         }
         finally { Cleanup(dir); }
     }
@@ -254,8 +379,10 @@ public class AddressBookAccountFilterTests
     }
 
     [Fact]
-    public async Task ButtonLabel_ReportsTheActiveFilter_AndDoublesUnderscores()
+    public async Task ButtonAccessibleName_ReportsTheActiveFilter_Verbatim()
     {
+        // Plain text only — the access-key underscore is added by the View, so the
+        // accessible name never carries markup even when the account name has an underscore.
         var (contacts, dir) = MakeContacts();
         var acct = Guid.NewGuid();
         try
@@ -263,14 +390,10 @@ public class AddressBookAccountFilterTests
             var vm = new AddressBookViewModel(contacts, null, new FakeAccountService(new AccountModel { Id = acct, AccountName = "work_mail" }));
             await vm.LoadAsync();
 
-            Assert.Equal("_Filter: All accounts", vm.AccountFilterButtonContent);
             Assert.Equal("Filter: All accounts", vm.AccountFilterButtonName);
 
             vm.SelectAccountFilter(Option(vm, "work_mail"));
 
-            // The underscore in the account name is doubled so it renders literally
-            // instead of claiming a second access key.
-            Assert.Equal("_Filter: work__mail", vm.AccountFilterButtonContent);
             Assert.Equal("Filter: work_mail", vm.AccountFilterButtonName);
         }
         finally { Cleanup(dir); }
@@ -351,5 +474,35 @@ public class AddressBookAccountFilterTests
             Assert.Equal(["Local Person"], vm.FilteredContacts.Select(c => c.DisplayName).ToArray());
         }
         finally { Cleanup(dir); }
+    }
+}
+
+/// <summary>
+/// The View-side converter that turns the ViewModel's plain filter name into a button label
+/// carrying an access key. The doubling rule matters: an account whose name contains an
+/// underscore would otherwise swallow it and claim a second access key.
+/// </summary>
+public class AccessKeyLabelConverterTests
+{
+    [Theory]
+    [InlineData("All accounts", "_Filter: All accounts")]
+    [InlineData("work_mail",    "_Filter: work__mail")]
+    [InlineData("a_b_c",        "_Filter: a__b__c")]
+    [InlineData("",             "_Filter: ")]
+    public void Convert_AddsTheAccessKey_AndDoublesUnderscoresInTheValue(string value, string expected)
+    {
+        var actual = QuickMail.Views.AccessKeyLabelConverter.Instance.Convert(
+            value, typeof(string), "_Filter: {0}", System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.Equal(expected, actual);
+    }
+
+    [Fact]
+    public void Convert_WithNoTemplate_ReturnsTheEscapedValue()
+    {
+        var actual = QuickMail.Views.AccessKeyLabelConverter.Instance.Convert(
+            "work_mail", typeof(string), null, System.Globalization.CultureInfo.InvariantCulture);
+
+        Assert.Equal("work__mail", actual);
     }
 }

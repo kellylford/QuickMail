@@ -697,7 +697,7 @@ When several accounts sync contacts into QuickMail, the list can get long. The *
 
 The filter and the search box work together: with a filter applied, searching looks only inside that account. The filter stays in effect while the address book is open, including across a contact sync, and resets to **All accounts** the next time you open the window.
 
-**Filter Addresses by Account** is also in the address book's Command Palette (**Ctrl+Shift+P**), and you can assign it a keyboard shortcut in Settings → Keyboard.
+**Filter Addresses by Account** is also in the address book's Command Palette (**Ctrl+Shift+P**).
 
 ### Jumping to a Contact by Typing
 
@@ -711,7 +711,7 @@ From the contact list, you can pull up everything a person sent you, or everythi
 2. Choose **Find mail from this contact** or **Find mail to this contact**.
 3. The address book closes and the message list fills with the matches, newest first. Focus moves to the message list and the count is announced — for example, "12 messages from Bob Baker." The window title shows **Mail from Bob Baker** so you can tell the results apart from a folder.
 
-Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**, and you can assign them a keyboard shortcut in Settings → Keyboard.
+Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) as **Find Mail From Contact** and **Find Mail To Contact**. Commands that live inside the address book are not listed in Settings → Keyboard, which covers the main window's commands; reach them from the palette.
 
 Press **Escape** with focus in the message list to close the results and go back to the folder you started from; the folder name and its message count are announced. A **Close** button at the top of the results does the same, and **Close Contact Mail Results** is in the Command Palette. Selecting any folder in the folder tree also leaves the results.
 

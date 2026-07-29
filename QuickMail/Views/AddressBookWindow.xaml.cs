@@ -150,14 +150,15 @@ public partial class AddressBookWindow : Window
             defaultKey: Key.M, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             execute: OpenGroupManager));
 
-        // Opens the account filter menu.  No default key — Alt+F (the button's access
-        // key) and Tab already reach it; registering it puts it in the palette and lets
-        // it be given a shortcut from Settings → Keyboard.
+        // Opens the account filter menu.  No default key — Alt+F (the button's access key)
+        // and Tab already reach it; registering it puts it in this window's palette. No
+        // isAvailable predicate: the command switches to the Contacts tab itself, so it is
+        // always usable. (Availability would not be consulted anyway — the palette does not
+        // check it, and a Key.None command is never reached by gesture dispatch.)
         _registry.Register(new CommandDefinition(
             id: "contacts.filterByAccount", category: "Contacts", title: "Filter Addresses by Account",
             defaultKey: Key.None, defaultModifiers: ModifierKeys.None,
-            execute: OpenAccountFilterMenu,
-            isAvailable: () => MainTabs.SelectedIndex == 0));
+            execute: OpenAccountFilterMenu));
     }
 
     // ── Account filter menu ──────────────────────────────────────────────────

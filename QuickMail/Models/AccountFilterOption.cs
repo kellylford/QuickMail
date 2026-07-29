@@ -58,12 +58,20 @@ public sealed class AccountFilterOption : ObservableObject
     /// </summary>
     public void RefreshIsSelected() => OnPropertyChanged(nameof(IsSelected));
 
-    /// <summary>True when this filter should show the given contact.</summary>
+    /// <summary>
+    /// True when this filter should show the given contact. The address book shows one row
+    /// per address, so a person the user saved locally *and* syncs from two accounts is a
+    /// single row; the filter matches if any contributing copy belongs to this account (see
+    /// <see cref="ContactModel.MergedAccountIds"/>). The surviving row's own provenance is
+    /// checked too, so a contact that never went through the collapse still matches.
+    /// </summary>
     public bool Matches(ContactModel contact) => Kind switch
     {
         AccountFilterKind.All   => true,
-        AccountFilterKind.Local => contact.IsLocal,
-        _                       => !contact.IsLocal && contact.OwnerAccountId == AccountId,
+        AccountFilterKind.Local => contact.IsLocal || contact.MergedIncludesLocal,
+        _                       => AccountId is { } id
+                                   && ((!contact.IsLocal && contact.OwnerAccountId == id)
+                                       || contact.MergedAccountIds.Contains(id)),
     };
 
     /// <summary>Display text for any Selector or menu this is bound into (see CLAUDE.md).</summary>
