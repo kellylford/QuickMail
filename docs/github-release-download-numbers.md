@@ -228,9 +228,11 @@ Abstract advice is easy to nod along to and hard to apply, so here is an entire
 repository's history with nothing withheld.
 
 [QuickMail](https://github.com/kellylford/QuickMail) is a keyboard and screen
-reader friendly email client for Windows. It is a personal project with no
-marketing, no announcement channel, and no press. Discovery is word of mouth.
-These are all of its numbers as of 29 July 2026.
+reader friendly email client for Windows. It is a personal project still under
+active development, and promotion so far has been light — some Mastodon and
+mailing list posts, and a mention in a few newsletters. There has been no
+concerted promotional effort, deliberately, while the software is still being
+built. These are all of its numbers as of 29 July 2026.
 
 ### What its releases contain
 
@@ -311,8 +313,12 @@ The reasoning, in full:
   latest release, but there is no way to know how many still run it.
 - Anyone who updates by re-running the installer is invisible too, mixed
   indistinguishably into the installer column with genuinely new users.
-- The feed count of 110 is **not** 110 people. It is cumulative update checks,
-  and one install checking daily for a week contributes seven.
+- The feed count of 110 is **not** 110 people. It is cumulative update checks.
+  QuickMail checks at startup, so one install contributes seven by being opened
+  once a day for a week — and contributes exactly the same seven if one person
+  quits and relaunches it seven times in a single afternoon. The number rises
+  with **how often the program is started**, which is a measure of habit, not of
+  headcount.
 
 **Two spikes do not belong.** v0.7.2 at 258 and v0.7.4 at 234 sit among
 neighbours in the 30 to 40 range, with nothing in either release to explain a
@@ -390,13 +396,15 @@ invisible, since Google turns it away at the door.
 They say roughly 15 to 20 people keep an up-to-date copy running, at least 100
 have used it, and an uncounted group sits on old builds in between.
 
-They do **not** say the software is good or bad. QuickMail has had no
-distribution whatsoever, and a project with no distribution gets a number like
-this regardless of quality. For contrast, a comparable Windows accessibility
-project in the same niche recorded roughly 3,000 downloads in two months — it
-has an organisation behind it and a 36-episode onboarding podcast, which is a
-marketing budget wearing a disguise. Nothing in either dataset speaks to which
-program is better. They measure reach.
+They do **not** say the software is good or bad. QuickMail has had little
+promotion — a few Mastodon and mailing list posts and some newsletter mentions,
+with no concerted effort while it is still under development — and a project
+promoted that lightly gets a number like this regardless of quality. For
+contrast, a comparable Windows accessibility project in the same niche recorded
+roughly 3,000 downloads in two months, with an organisation behind it and a
+36-episode onboarding podcast, which is a marketing budget wearing a disguise.
+Nothing in either dataset speaks to which program is better. They measure reach,
+and reach is mostly a function of effort spent on reach.
 
 And they never, under any circumstance, distinguish a person who downloaded and
 still uses it from a person who downloaded and deleted it ten minutes later.
