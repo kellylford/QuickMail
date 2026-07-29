@@ -224,9 +224,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
         // Client rule — persist and tell the user it runs in QuickMail (spec §20.3).
         var rule = editor.ToClientRule(accountId);
         AddClientRule(rule);
-        await ReloadAndReselectAsync(clientId: rule.Id);
+        // Show the notice BEFORE re-selecting: ReloadAndReselect posts a focus move to the new row,
+        // and if that's pending when the modal notice opens, focus jumps into the background window
+        // while the notice is up. Raising the (modal) notice first means the reselect + focus request
+        // run only once it's dismissed.
         ClientRuleNoticeRequested?.Invoke(
             $"Saved as a QuickMail rule (it runs while QuickMail is open) — {kind.ClientReason}.");
+        await ReloadAndReselectAsync(clientId: rule.Id);
         return null;
     }
 
@@ -379,6 +383,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// then client rules. A server-load failure never hides the client rules — they load in their own
     /// scope (the standard fetch pattern in ARCHITECTURE.md).
     /// </summary>
+    private CancellationTokenSource? _refreshCts;
+
     [RelayCommand]
     private async Task RefreshAsync(CancellationToken ct)
     {
@@ -388,6 +394,15 @@ public partial class UnifiedRulesViewModel : ObservableObject
             StatusText = string.Empty;
             return;
         }
+
+        // Supersede any in-flight refresh so two loads can't interleave (arrow through the account
+        // picker on a slow connection and the list could end up showing a mix), and a load can't
+        // outlive the window (the View cancels this on close via CancelPendingLoad).
+        var previous = _refreshCts;
+        _refreshCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        previous?.Cancel();
+        previous?.Dispose();
+        var token = _refreshCts.Token;
 
         IsBusy = true;
         try
@@ -401,9 +416,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
             {
                 try
                 {
-                    var server = await _serverRules.ListAsync(accountId, ct);
+                    var server = await _serverRules.ListAsync(accountId, token);
                     rows.AddRange(server.Select(UnifiedRuleRow.ForServer));
                 }
+                catch (OperationCanceledException) { return; }   // superseded — leave state untouched
                 catch (Exception ex)
                 {
                     failures.Add($"Couldn't load server rules: {ex.Message}");
@@ -423,6 +439,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 LogService.Log("UnifiedRules: client load failed", ex);
             }
 
+            if (token.IsCancellationRequested) return;   // a newer refresh (or a close) won the race
+
             Rules.Clear();
             foreach (var row in rows) Rules.Add(row);
 
@@ -440,6 +458,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
             IsBusy = false;
         }
     }
+
+    /// <summary>Cancels any in-flight load. The View calls this on close so a slow Graph fetch can't
+    /// complete and write into a window that's gone.</summary>
+    public void CancelPendingLoad() => _refreshCts?.Cancel();
 
     private static string BuildStatus(IReadOnlyList<UnifiedRuleRow> rows, IReadOnlyList<string> failures)
     {

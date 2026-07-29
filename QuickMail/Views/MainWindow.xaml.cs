@@ -5952,7 +5952,12 @@ public partial class MainWindow : Window
         // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
         // shared Closed handler below works for either window type.
         Window dialog;
-        if (_serverRuleService != null
+        // A templated open (create-rule-from-message, Ctrl+Shift+T) isn't wired into the unified
+        // window yet, so route it to the client-only manager, which prefills the rule from the
+        // message — better than opening the unified window and silently dropping the prefill.
+        // (Run-on-Existing is likewise still client-only; both are follow-ups.)
+        if (template == null
+            && _serverRuleService != null
             && _featureGate.IsEnabled(FeatureFlag.ServerRules)
             && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
         {
@@ -5961,8 +5966,6 @@ public partial class MainWindow : Window
             var unifiedVm = new UnifiedRulesViewModel(
                 _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id);
             dialog = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders);
-            // NOTE: prefill-from-message (Ctrl+Shift+T) and Run-on-Existing aren't wired in the
-            // unified path yet — follow-ups.
         }
         else
         {

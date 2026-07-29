@@ -24,6 +24,10 @@ public partial class UnifiedRulesWindow : Window
     private readonly IEnumerable<AccountModel> _accounts;
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>> _cachedFolders;
 
+    // Window-scoped command palette (Ctrl+Shift+P) — New Window Checklist. Every window action lives
+    // here so it's discoverable, including ones with no default hotkey.
+    private readonly CommandRegistry _registry = new();
+
     public UnifiedRulesWindow(
         UnifiedRulesViewModel vm,
         IEnumerable<AccountModel> accounts,
@@ -42,11 +46,51 @@ public partial class UnifiedRulesWindow : Window
         vm.WriteBlockedByPermission += OnPermissionMessage;
         vm.FocusSelectedRuleRequested += OnFocusSelectedRule;
 
+        RegisterCommands();
+
         Loaded += async (_, _) =>
         {
             await vm.RefreshCommand.ExecuteAsync(null);
             FocusInitialControl();
         };
+    }
+
+    // Window-scoped actions for the command palette. Gated actions carry an availability check so the
+    // palette shows them disabled when the selected rule doesn't support them; each execute re-checks
+    // CanExecute so invoking a disabled one is a no-op.
+    private void RegisterCommands()
+    {
+        void Run(System.Windows.Input.ICommand c) { if (c.CanExecute(null)) c.Execute(null); }
+
+        _registry.Register(new CommandDefinition(
+            id: "rules.new", category: "Rules", title: "New Rule",
+            execute: () => Run(_vm.NewRuleCommand),
+            defaultKey: Key.N, defaultModifiers: ModifierKeys.Control));
+        _registry.Register(new CommandDefinition(
+            id: "rules.edit", category: "Rules", title: "Edit Rule",
+            execute: () => Run(_vm.EditRuleCommand), isAvailable: () => _vm.CanEditSelected));
+        _registry.Register(new CommandDefinition(
+            id: "rules.delete", category: "Rules", title: "Delete Rule",
+            execute: () => Run(_vm.DeleteRuleCommand), isAvailable: () => _vm.CanModifySelected));
+        _registry.Register(new CommandDefinition(
+            id: "rules.toggle", category: "Rules", title: "Enable or Disable Rule",
+            execute: () => Run(_vm.ToggleEnabledCommand), isAvailable: () => _vm.CanModifySelected));
+        _registry.Register(new CommandDefinition(
+            id: "rules.moveUp", category: "Rules", title: "Move Rule Up",
+            execute: () => Run(_vm.MoveUpCommand), isAvailable: () => _vm.CanMoveUp));
+        _registry.Register(new CommandDefinition(
+            id: "rules.moveDown", category: "Rules", title: "Move Rule Down",
+            execute: () => Run(_vm.MoveDownCommand), isAvailable: () => _vm.CanMoveDown));
+        _registry.Register(new CommandDefinition(
+            id: "rules.close", category: "Rules", title: "Close",
+            execute: Close, defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None));
+    }
+
+    private void OpenCommandPalette()
+    {
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+        new CommandPaletteWindow(_registry) { Owner = this }.ShowDialog();
+        (previousFocus ?? RulesListBox).Focus();
     }
 
     // The account picker is the intended first landing spot (spec §20.7) — land there when it's shown
@@ -159,6 +203,15 @@ public partial class UnifiedRulesWindow : Window
         base.OnPreviewKeyDown(e);
         if (e.Handled) return;
 
+        // Ctrl+Shift+P opens the window's command palette (framework-level — can't dispatch through
+        // the palette itself, so it stays a direct binding per CLAUDE.md).
+        if (e.Key == Key.P && Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            OpenCommandPalette();
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key == Key.F6)
         {
             CyclePane(forward: (Keyboard.Modifiers & ModifierKeys.Shift) == 0);
@@ -190,6 +243,8 @@ public partial class UnifiedRulesWindow : Window
 
     protected override void OnClosed(EventArgs e)
     {
+        // Cancel any in-flight load so a slow Graph fetch can't complete into a closed window.
+        _vm.CancelPendingLoad();
         _vm.EditorRequested -= OnEditorRequested;
         _vm.ConfirmDeleteRequested -= OnConfirmDelete;
         _vm.ClientRuleNoticeRequested -= OnClientRuleNotice;
