@@ -1,7 +1,6 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Helpers;
@@ -19,6 +18,7 @@ namespace QuickMail.ViewModels;
 public partial class ReportBugViewModel : ObservableObject, IDisposable
 {
     private readonly IBugReportService _bugReportService;
+    private readonly IClipboardService _clipboard;
     private readonly BugReportContext? _context;
     private CancellationTokenSource? _sendCts;
 
@@ -69,10 +69,14 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
     /// <summary>Fired after a failed send — the View moves focus to the fallback button.</summary>
     public event EventHandler? SendFailed;
 
-    public ReportBugViewModel(IBugReportService bugReportService, BugReportContext? context = null)
+    public ReportBugViewModel(
+        IBugReportService bugReportService,
+        BugReportContext? context = null,
+        IClipboardService? clipboard = null)
     {
         _bugReportService = bugReportService;
         _context = context;
+        _clipboard = clipboard ?? ClipboardService.Default;
     }
 
     private BugReportModel BuildModel() => new()
@@ -130,7 +134,7 @@ public partial class ReportBugViewModel : ObservableObject, IDisposable
         }
 
         var model = BuildModel();
-        Clipboard.SetText($"{Summary}\n\n{_bugReportService.BuildReportText(model)}");
+        _clipboard.SetText($"{Summary}\n\n{_bugReportService.BuildReportText(model)}");
         StatusMessage = "Report copied. Opening GitHub in your browser.";
         AnnouncementRequested?.Invoke(StatusMessage, AnnouncementCategory.Result);
         ExternalUriPolicy.TryOpenExternal(_bugReportService.BuildFallbackUrl(model));

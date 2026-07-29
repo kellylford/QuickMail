@@ -1,28 +1,43 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
-using System.Windows;
 using QuickMail.Models;
+using QuickMail.Services;
 using QuickMail.ViewModels;
 using Xunit;
 
 namespace QuickMail.Tests;
 
-// WpfTests collection: these STA tests touch WPF/clipboard state; serialize them with the
-// other WPF/STA tests so no two STA window-owning threads run at once (issue #211).
-[Collection("WpfTests")]
+// Deliberately NOT an STA/WpfTests class any more, and no longer touching the real clipboard.
+//
+// These tests used to drive the VM against the machine-wide Windows clipboard. Only one process may
+// hold it at a time, so whenever anything else did — a clipboard manager, a remote session, or
+// QuickMail itself running on the same machine — Clipboard.SetText threw CLIPBRD_E_CANT_OPEN. In
+// the two tests that drove the VM from a hand-rolled STA thread that exception was unhandled on a
+// foreground thread, which terminates the process: one contended clipboard took down the whole test
+// host mid-run and left the suite hanging.
+//
+// PropertiesViewModel now takes an IClipboardService, so these assert on what the VM copied without
+// involving the operating system, and need neither an STA apartment nor a thread.
 public class PropertiesViewModelTests
 {
+    /// <summary>Records what the VM copied. No Windows clipboard, no apartment requirements.</summary>
+    private sealed class FakeClipboard : IClipboardService
+    {
+        public string Text { get; private set; } = string.Empty;
+        public bool SetText(string text) { Text = text; return true; }
+        public string GetText() => Text;
+    }
+
     private static PropertiesViewModel Make(
         IReadOnlyList<PropertySection>? sections = null,
-        string? rawHeaders = null)
+        string? rawHeaders = null,
+        IClipboardService? clipboard = null)
     {
         sections ??= [
             new("Headers", [new("From", "alice@example.com")]),
             new("Storage", [new("Folder", "INBOX")]),
         ];
-        return new PropertiesViewModel("Test Properties", sections, rawHeaders);
+        return new PropertiesViewModel("Test Properties", sections, rawHeaders, clipboard);
     }
 
     [Fact]
@@ -97,58 +112,77 @@ public class PropertiesViewModelTests
         Assert.Contains("From:", vm.RawHeaders);
     }
 
-    [StaFact]
+    [Fact]
     public void CopyAll_ProducesFormattedText()
     {
-        var vm = Make();
-        Clipboard.SetText(string.Empty);
+        var clipboard = new FakeClipboard();
+        var vm = Make(clipboard: clipboard);
 
         vm.CopyAllCommand.Execute(null);
 
-        var text = Clipboard.GetText();
+        var text = clipboard.Text;
         Assert.Contains("Test Properties", text);
         Assert.Contains("Headers", text);
         Assert.Contains("From: alice@example.com", text);
         Assert.Contains("Storage", text);
     }
 
-    [StaFact]
+    [Fact]
     public void CopyAll_IncludesRawHeadersWhenPresent()
     {
         const string rawHeaders = "From: alice@example.com\r\nSubject: Test";
-        var vm = Make(rawHeaders: rawHeaders);
+        var clipboard = new FakeClipboard();
+        var vm = Make(rawHeaders: rawHeaders, clipboard: clipboard);
 
         vm.CopyAllCommand.Execute(null);
 
-        var text = Clipboard.GetText();
+        var text = clipboard.Text;
         Assert.Contains("Raw headers", text);
         Assert.Contains("From: alice@example.com", text);
     }
 
-    [StaFact]
+    [Fact]
+    public void CopyAll_OmitsRawHeadersWhenAbsent()
+    {
+        var clipboard = new FakeClipboard();
+        var vm = Make(clipboard: clipboard);
+
+        vm.CopyAllCommand.Execute(null);
+
+        Assert.DoesNotContain("Raw headers", clipboard.Text);
+    }
+
+    [Fact]
     public void CopyRow_PutsLabelColonValueOnClipboard()
     {
-        var vm = Make();
+        var clipboard = new FakeClipboard();
+        var vm = Make(clipboard: clipboard);
         var row = new FlatRow("Headers", "From", "alice@example.com");
 
         vm.CopyRowCommand.Execute(row);
 
-        var text = Clipboard.GetText();
-        Assert.Equal("From: alice@example.com", text);
+        Assert.Equal("From: alice@example.com", clipboard.Text);
+    }
+
+    [Fact]
+    public void CopyRow_HeaderRow_CopiesJustTheSectionName()
+    {
+        var clipboard = new FakeClipboard();
+        var vm = Make(clipboard: clipboard);
+
+        vm.CopyRowCommand.Execute(vm.Rows.First(r => r.IsHeader));
+
+        Assert.Equal("Headers", clipboard.Text);
     }
 
     [Fact]
     public void CopyRow_HeaderRow_RaisesAnnouncementWithSectionName()
     {
         string? announced = null;
-        var vm = Make();
+        var vm = Make(clipboard: new FakeClipboard());
         vm.AnnouncementRequested += (text, _) => announced = text;
 
-        var thread = new Thread(() =>
-            vm.CopyRowCommand.Execute(vm.Rows.First(r => r.IsHeader)));
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
+        vm.CopyRowCommand.Execute(vm.Rows.First(r => r.IsHeader));
 
         Assert.NotNull(announced);
         Assert.Contains("Headers", announced);
@@ -158,18 +192,12 @@ public class PropertiesViewModelTests
     public void CopyRow_RaisesAnnouncementRequested()
     {
         string? announced = null;
-        var vm = Make();
+        var vm = Make(clipboard: new FakeClipboard());
         vm.AnnouncementRequested += (text, _) => announced = text;
 
         var row = new FlatRow("Headers", "Subject", "Hello World");
 
-        var thread = new Thread(() =>
-        {
-            vm.CopyRowCommand.Execute(row);
-        });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
+        vm.CopyRowCommand.Execute(row);
 
         Assert.NotNull(announced);
         Assert.Contains("Subject", announced);
@@ -179,8 +207,12 @@ public class PropertiesViewModelTests
     [Fact]
     public void CopyRow_NullItem_DoesNothing()
     {
-        var vm = Make();
+        var clipboard = new FakeClipboard();
+        var vm = Make(clipboard: clipboard);
+
         vm.CopyRowCommand.Execute(null);
+
+        Assert.Equal(string.Empty, clipboard.Text);
     }
 
     [Fact]

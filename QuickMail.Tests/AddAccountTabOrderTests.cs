@@ -32,40 +32,11 @@ public class AddAccountTabOrderTests
     /// Walks Tab from the currently focused control and records each stop. Uses MoveFocus, not
     /// PredictFocus — PredictFocus only supports directional navigation and throws on Next.
     /// </summary>
-    private static List<string> WalkTabOrder(Window window, int maxStops = 40)
-    {
-        var stops = new List<string>();
-        var seen = new HashSet<FrameworkElement>();
+    private static List<string> WalkTabOrder(Window window, int maxStops = 40) =>
+        TabOrderWalker.Walk(window, maxStops);
 
-        for (var i = 0; i < maxStops; i++)
-        {
-            if (Keyboard.FocusedElement is not UIElement current) break;
-            if (!current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next))) break;
-            Drain();
 
-            if (Keyboard.FocusedElement is not FrameworkElement next) break;
-            if (!seen.Add(next)) break;      // wrapped around
-            stops.Add(Describe(next));
-        }
-        return stops;
-    }
-
-    private static string Describe(FrameworkElement fe)
-    {
-        if (!string.IsNullOrEmpty(fe.Name)) return fe.Name;
-        var auto = AutomationProperties.GetName(fe);
-        if (!string.IsNullOrEmpty(auto)) return auto;
-        if (fe is ContentControl { Content: string s }) return s;
-        return fe.GetType().Name;
-    }
-
-    private static void Drain()
-    {
-        var frame = new DispatcherFrame();
-        Dispatcher.CurrentDispatcher.BeginInvoke(
-            DispatcherPriority.SystemIdle, new Action(() => frame.Continue = false));
-        Dispatcher.PushFrame(frame);
-    }
+    private static void Drain() => TabOrderWalker.Drain();
 
     [StaFact]
     public void AdvancedSettingsControlsComeAfterTheExpanderThatRevealsThem()
@@ -84,9 +55,7 @@ public class AddAccountTabOrderTests
             Drain();
 
             var provider = (Control)window.FindName("ProviderComboBox");
-            provider.Focus();
-            Keyboard.Focus(provider);
-            Drain();
+            TabOrderWalker.StartAt(window, provider, "ProviderComboBox");
 
             var stops = WalkTabOrder(window);
 
@@ -133,9 +102,7 @@ public class AddAccountTabOrderTests
             window.UpdateLayout();
             Drain();
             var provider = (Control)window.FindName("ProviderComboBox");
-            provider.Focus();
-            Keyboard.Focus(provider);
-            Drain();
+            TabOrderWalker.StartAt(window, provider, "ProviderComboBox");
 
             var stops = WalkTabOrder(window);
 
