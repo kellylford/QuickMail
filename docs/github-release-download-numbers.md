@@ -71,18 +71,18 @@ incomplete total.
 
 ### With `curl` instead
 
-Same data, no CLI, works against public repos unauthenticated:
+If you do not have `gh`, `curl` fetches exactly the same JSON:
 
 ```bash
-curl -s https://api.github.com/repos/OWNER/REPO/releases | jq -r '.[] | "\(.tag_name): \([.assets[].download_count] | add // 0)"'
+curl -s https://api.github.com/repos/OWNER/REPO/releases
 ```
 
-Add `-H "Authorization: Bearer $TOKEN"` for private repositories or to lift the
+Add `-H "Authorization: Bearer $TOKEN"` for private repositories, or to lift the
 unauthenticated rate limit (60 requests per hour, versus 5,000 authenticated).
 
-Note that `jq` is a separate program you have to install. The `gh` examples
-above do not need it — `gh api -q` has a jq-compatible filter built in, which is
-why it is the easier route on a machine you do not control.
+That hands you the raw JSON to read or feed into whatever you already use. The
+`gh` examples above are easier where you have it, because `-q` does the
+filtering for you and returns finished lines rather than a wall of JSON.
 
 ### With a GUI
 
@@ -135,12 +135,12 @@ gh api repos/OWNER/REPO/releases --paginate -q '.[] | .tag_name as $t | .assets[
   ForEach-Object { "$stamp`t$_" } | Add-Content downloads-history.tsv
 ```
 
-Both use jq's `@tsv` rather than building the string by hand, and that is
-deliberate. On Windows, PowerShell strips the double quotes out of an argument
-on its way to a native executable, so a filter written as
-`"\($t)\t\(.name)"` reaches `gh` with its quotes removed and fails with
-`unexpected token "\"`. `@tsv` contains no quotes to lose, produces properly
-tab-separated output, and behaves identically in both shells.
+Both end their filter with `@tsv`, which emits the fields tab-separated, rather
+than assembling the line by hand. That is deliberate. On Windows, PowerShell
+strips the double quotes out of an argument on its way to a native executable,
+so a filter written the natural way — `"\($t)\t\(.name)"` — reaches `gh` with
+its quotes gone and fails with `unexpected token "\"`. `@tsv` has no quotes to
+lose, so the identical command works in both shells.
 
 Start this today even if you have no use for it yet. The data does not exist
 until you begin collecting it, and the day you want a trend is always after the
