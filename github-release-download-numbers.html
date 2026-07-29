@@ -312,16 +312,17 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb4-1"><a href="
 <p><code>--paginate</code> matters. Without it you get the first 30
 releases and a quietly incomplete total.</p>
 <h3 id="with-curl-instead">With <code>curl</code> instead</h3>
-<p>Same data, no CLI, works against public repos unauthenticated:</p>
+<p>If you do not have <code>gh</code>, <code>curl</code> fetches exactly
+the same JSON:</p>
 <div class="sourceCode" id="cb5"><pre
-class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> https://api.github.com/repos/OWNER/REPO/releases <span class="kw">|</span> <span class="ex">jq</span> <span class="at">-r</span> <span class="st">&#39;.[] | &quot;\(.tag_name): \([.assets[].download_count] | add // 0)&quot;&#39;</span></span></code></pre></div>
+class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="ex">curl</span> <span class="at">-s</span> https://api.github.com/repos/OWNER/REPO/releases</span></code></pre></div>
 <p>Add <code>-H "Authorization: Bearer $TOKEN"</code> for private
-repositories or to lift the unauthenticated rate limit (60 requests per
+repositories, or to lift the unauthenticated rate limit (60 requests per
 hour, versus 5,000 authenticated).</p>
-<p>Note that <code>jq</code> is a separate program you have to install.
-The <code>gh</code> examples above do not need it —
-<code>gh api -q</code> has a jq-compatible filter built in, which is why
-it is the easier route on a machine you do not control.</p>
+<p>That hands you the raw JSON to read or feed into whatever you already
+use. The <code>gh</code> examples above are easier where you have it,
+because <code>-q</code> does the filtering for you and returns finished
+lines rather than a wall of JSON.</p>
 <h3 id="with-a-gui">With a GUI</h3>
 <p>If you would rather read this in a window than a terminal, <a
 href="https://github.com/kellylford/GHManage">GHManage</a> is a
@@ -365,13 +366,14 @@ class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="
 class="sourceCode powershell"><code class="sourceCode powershell"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="va">$stamp</span> <span class="op">=</span> <span class="op">(</span><span class="fu">Get-Date</span> <span class="op">-</span>Format <span class="st">&#39;yyyy-MM-dd&#39;</span><span class="op">)</span></span>
 <span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>gh api repos<span class="op">/</span>OWNER<span class="op">/</span>REPO<span class="op">/</span>releases <span class="op">--</span>paginate <span class="op">-</span>q <span class="st">&#39;.[] | .tag_name as $t | .assets[] | [$t, .name, .download_count] | @tsv&#39;</span> <span class="op">|</span></span>
 <span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">ForEach-Object</span> <span class="op">{</span> <span class="st">&quot;$stamp</span><span class="ch">`t</span><span class="st">$_&quot;</span> <span class="op">}</span> <span class="op">|</span> <span class="fu">Add-Content</span> downloads<span class="op">-</span>history<span class="op">.</span><span class="fu">tsv</span></span></code></pre></div>
-<p>Both use jq’s <code>@tsv</code> rather than building the string by
-hand, and that is deliberate. On Windows, PowerShell strips the double
-quotes out of an argument on its way to a native executable, so a filter
-written as <code>"\($t)\t\(.name)"</code> reaches <code>gh</code> with
-its quotes removed and fails with <code>unexpected token "\"</code>.
-<code>@tsv</code> contains no quotes to lose, produces properly
-tab-separated output, and behaves identically in both shells.</p>
+<p>Both end their filter with <code>@tsv</code>, which emits the fields
+tab-separated, rather than assembling the line by hand. That is
+deliberate. On Windows, PowerShell strips the double quotes out of an
+argument on its way to a native executable, so a filter written the
+natural way — <code>"\($t)\t\(.name)"</code> — reaches <code>gh</code>
+with its quotes gone and fails with <code>unexpected token "\"</code>.
+<code>@tsv</code> has no quotes to lose, so the identical command works
+in both shells.</p>
 <p>Start this today even if you have no use for it yet. The data does
 not exist until you begin collecting it, and the day you want a trend is
 always after the day you should have started.</p>
