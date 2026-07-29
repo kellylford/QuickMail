@@ -147,7 +147,7 @@ public sealed class ConnectionTruthProbe : IDisposable
         CancellationTokenSource linked;
         try
         {
-            if (_disposed) throw new ObjectDisposedException(nameof(ConnectionTruthProbe));
+            ObjectDisposedException.ThrowIf(_disposed, this);
             linked = CancellationTokenSource.CreateLinkedTokenSource(ct, _shutdown.Token);
         }
         catch (ObjectDisposedException)
