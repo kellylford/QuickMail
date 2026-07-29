@@ -2,10 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
-using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using QuickMail.Models;
+using QuickMail.Services;
 
 namespace QuickMail.ViewModels;
 
@@ -23,19 +23,28 @@ public partial class PropertiesViewModel : ObservableObject
     public IReadOnlyList<FlatRow> Rows { get; }
 
     private readonly IReadOnlyList<PropertySection> _sections;
+    private readonly IClipboardService _clipboard;
 
     /// <summary>Raised when the VM wants to announce text to the screen reader.
     /// The View subscribes and calls AccessibilityHelper.Announce.</summary>
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
 
+    /// <param name="clipboard">
+    /// Injected so tests need no real clipboard. It defaults to the Windows one, so the many
+    /// existing call sites are unaffected — but a VM must not reach into System.Windows itself
+    /// (CLAUDE.md MVVM rules), and a test that used the machine-wide clipboard failed whenever any
+    /// other process held it.
+    /// </param>
     public PropertiesViewModel(
         string title,
         IReadOnlyList<PropertySection> sections,
-        string? rawHeaders = null)
+        string? rawHeaders = null,
+        IClipboardService? clipboard = null)
     {
         Title      = title;
         RawHeaders = rawHeaders;
         _sections  = sections;
+        _clipboard = clipboard ?? ClipboardService.Default;
 
         Rows = sections
             .Where(s => s.Items.Count > 0)
@@ -50,7 +59,7 @@ public partial class PropertiesViewModel : ObservableObject
     {
         if (row is null) return;
         var text = row.IsHeader ? row.Label : $"{row.Label}: {row.Value}";
-        Clipboard.SetText(text);
+        _clipboard.SetText(text);
         AnnouncementRequested?.Invoke($"Copied: {text}", AnnouncementCategory.Result);
     }
 
@@ -73,7 +82,7 @@ public partial class PropertiesViewModel : ObservableObject
             sb.AppendLine("Raw headers");
             sb.AppendLine(RawHeaders);
         }
-        Clipboard.SetText(sb.ToString());
+        _clipboard.SetText(sb.ToString());
         AnnouncementRequested?.Invoke("All properties copied", AnnouncementCategory.Result);
     }
 }

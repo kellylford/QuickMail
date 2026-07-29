@@ -54,45 +54,9 @@ public class AccountManagerTabOrderTests
     /// Walks Tab from the currently focused control and records each stop. Uses MoveFocus, not
     /// PredictFocus — PredictFocus only supports directional navigation and throws on Next.
     /// </summary>
-    private static List<string> WalkTabOrder(int maxStops = 50)
-    {
-        var stops = new List<string>();
-        var seen = new HashSet<FrameworkElement>();
 
-        for (var i = 0; i < maxStops; i++)
-        {
-            if (Keyboard.FocusedElement is not UIElement current) break;
-            if (!current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next))) break;
-            Drain();
 
-            if (Keyboard.FocusedElement is not FrameworkElement next) break;
-            if (!seen.Add(next)) break;      // wrapped around
-            stops.Add(Describe(next));
-        }
-        return stops;
-    }
-
-    private static string Describe(FrameworkElement fe)
-    {
-        // A list is entered at its ITEM, never at the container, so report an item stop under the
-        // owning list's name — for tab order, that stop IS the account list.
-        if (ItemsControl.ItemsControlFromItemContainer(fe) is FrameworkElement owner
-            && !string.IsNullOrEmpty(owner.Name))
-            return owner.Name;
-        if (!string.IsNullOrEmpty(fe.Name)) return fe.Name;
-        var auto = AutomationProperties.GetName(fe);
-        if (!string.IsNullOrEmpty(auto)) return auto;
-        if (fe is ContentControl { Content: string s }) return s;
-        return fe.GetType().Name;
-    }
-
-    private static void Drain()
-    {
-        var frame = new DispatcherFrame();
-        Dispatcher.CurrentDispatcher.BeginInvoke(
-            DispatcherPriority.SystemIdle, new Action(() => frame.Continue = false));
-        Dispatcher.PushFrame(frame);
-    }
+    private static void Drain() => TabOrderWalker.Drain();
 
     [StaFact]
     public void TheAccountListAndItsButtonsComeBeforeTheEditForm()
@@ -113,11 +77,9 @@ public class AccountManagerTabOrderTests
             // records every other stop in order.
             var close = window.FindName("CloseButton") as Button;
             Assert.NotNull(close);
-            close!.Focus();
-            Keyboard.Focus(close);
-            Drain();
+            TabOrderWalker.StartAt(window, close!, "Close");
 
-            var stops = WalkTabOrder();
+            var stops = TabOrderWalker.Walk(window);
             var order = string.Join(" -> ", stops);
             int At(string name) => stops.IndexOf(name);
 
@@ -155,11 +117,9 @@ public class AccountManagerTabOrderTests
 
             var close = window.FindName("CloseButton") as Button;
             Assert.NotNull(close);
-            close!.Focus();
-            Keyboard.Focus(close);
-            Drain();
+            TabOrderWalker.StartAt(window, close!, "Close");
 
-            var stops = WalkTabOrder();
+            var stops = TabOrderWalker.Walk(window);
             var order = string.Join(" -> ", stops);
             int At(string name) => stops.IndexOf(name);
 
