@@ -44,32 +44,25 @@ public partial class SettingsDialog : Window
 
     private void DeleteLogButton_Click(object sender, RoutedEventArgs e)
     {
+        // Deletes BOTH logs. Someone deleting their logs means all of them — most often because the
+        // logs hold their email addresses and mail server names and they don't want them on disk.
+        // Leaving connection.log behind because it happens to be a second file would quietly defeat
+        // that, and nothing in the UI would hint that a second log still existed.
         var result = MessageBox.Show(
-            "Delete the QuickMail log file? This cannot be undone.",
-            "Delete Log",
+            "Delete QuickMail's log files? This deletes the application log and the connection " +
+            "diagnostics log, and cannot be undone.",
+            "Delete Logs",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,
             MessageBoxResult.No);
 
         if (result == MessageBoxResult.Yes)
+        {
             LogService.DeleteLog();
+            ConnectionJournal.DeleteLog();
+        }
 
         DeleteLogButton.Focus();
-    }
-
-    private void DeleteConnectionLogButton_Click(object sender, RoutedEventArgs e)
-    {
-        var result = MessageBox.Show(
-            "Delete the connection diagnostics log? This cannot be undone.",
-            "Delete Connection Log",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Question,
-            MessageBoxResult.No);
-
-        if (result == MessageBoxResult.Yes)
-            ConnectionJournal.DeleteLog();
-
-        DeleteConnectionLogButton.Focus();
     }
 
     private void HotkeyListView_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

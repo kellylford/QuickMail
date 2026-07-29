@@ -78,6 +78,28 @@ If you turn the setting on and sign-in still ends in **"This app has been blocke
 
 ---
 
+## Fixed: adding an account no longer shows every other account as disconnected
+
+Adding a new account made the accounts you already had report **disconnected** in the account list, and they stayed that way until you restarted QuickMail. This has been reported several times, and each previous attempt fixed a real connection bug that turned out not to be this one.
+
+**Nothing was ever actually disconnecting.** Your accounts stayed connected the whole time - mail kept arriving, folders kept working. What broke was the account list's picture of them. Adding an account makes QuickMail re-read your account file, and connection status is live information that is deliberately never written to that file, so every account came back from the re-read reporting "disconnected". Accounts that were already working were then skipped by the reconnect pass - correctly, since nothing was wrong with them - so nothing ever corrected the status, and the wrong label stuck.
+
+The status now survives a re-read. Adding, editing, or removing an account leaves the others reporting exactly what they were.
+
+This one hid for so long because it looks exactly like a connection failure: it appears the moment you touch your accounts, it hits every account at once, and it lasts until a restart. It was found by recording what QuickMail's connections were actually doing at the moment it happened - which is the feature below.
+
+## New: Connection Diagnostics, for when something looks wrong
+
+**Settings -> Advanced -> Record connection diagnostics** turns on a record of how QuickMail connects to your mail servers. It is **off by default**, and most people will never need it.
+
+Turn it on when an account reports the wrong status, mail stops arriving, or an action reports a failure you cannot explain - then reproduce the problem. It starts recording the moment you switch it on, so you do not have to restart first and lose what you were trying to capture.
+
+While it is on, a **Connection Diagnostics** item appears in the **Help** menu. It shows each account with what QuickMail believes about it alongside what its mail server actually says, and a **Test this account** button checks an account directly on a brand-new connection. That is the question this exists to answer: whether the problem is your connection or what QuickMail is reporting about it. **Copy report** and **Save report** produce a plain-text file you can attach to a bug report.
+
+**What it records:** your account names, your mail server names and addresses, connection attempts and their results, and error messages. **What it never records:** passwords, authentication tokens, and the contents of your mail. Your account names may be email addresses, and mail server names identify your provider, so it is worth knowing what is in a report before you share one.
+
+The record is written to `connection.log` beside QuickMail's other settings, is capped in size, and stops the moment you turn the setting off. **Delete QuickMail logs** in the same Advanced section removes it along with the application log.
+
 ## Fixes
 
 - **Editing a Gmail address no longer discards a deliberate provider choice.** Picking a Gmail entry and then typing the address swapped your choice for the other Gmail entry on the first keystroke, because a Gmail address matches both. A provider that already covers the address you are typing is now left alone. Correcting the address to a different provider still moves off it as before.
@@ -103,6 +125,18 @@ If you already had an account set up with a login name in the address box, Quick
 ---
 
 ## Internal
+
+- **`MainViewModel.LoadAccountList` carries `IsConnected`/`TotalUnread` across a reload**, keyed by account id. Both are runtime state deliberately excluded from `accounts.json`, so rebuilding the models produced objects defaulting to disconnected, and replacing the `Accounts` collection made the whole list read that way at once. `RefreshAccountList` reconnects only accounts failing `AccountsNeedingConnect`, so healthy accounts were never re-evaluated and the false label persisted until restart. Guarded by `AccountListReloadStatusTests`; 4 of its 5 tests fail with the carry-over removed.
+- **The instrumentation could not see this directly**, and that is the lesson worth keeping: the state was lost by *object replacement*, not assignment. `ApplyAccountStatus` genuinely is the only writer of `IsConnected`, so no write was ever observable - the journal's silence next to a plainly visible symptom was itself the evidence. `LoadAccountList` now records an `accounts-reloaded` event closing that blind spot.
+- `ConnectionJournal` (new) - bounded, self-rotating `connection.log` plus a 2000-event in-memory ring backing the diagnostics window. Gated on `ConfigModel.ConnectionDiagnostics` (default `false`); `Record`/`RecordError` return on a volatile read before allocating or walking an exception chain, so the instrumentation threaded through the connect and pool paths is free when off. Enable and disable each write a marker, so a journal that stops is distinguishable from one switched off mid-investigation.
+- `HostConnectionCensus` (new) - live socket counts per host with cached DNS resolution, and shared-address detection. Our cap is per *account*; a server's is per *user+IP*, and on shared hosting per IP overall. Registrations live in a `ConditionalWeakTable` keyed by client so release is idempotent and a leaked client falls out on GC rather than inflating the count forever - a census that drifts would fabricate evidence of exhaustion.
+- `IConnectionProbe` / `ConnectionTruthProbe` (new) - independent reachability verification on a connection sharing nothing with the pools or watchers, emitting a greppable `verdict` line stating what the UI shows against what the server said. Serialized process-wide and rate-limited per account, since a per-IP limit is a plausible suspect and the probe must not become part of what it measures.
+- `ProbeResult` carries a three-state `ProbeOutcome` (`Reachable`/`Unreachable`/`NotSupported`). The first live run wired the probe straight to `ImapMailService`, which answered "not registered with the IMAP service" for a **Graph** account; collapsed to a boolean that read as unreachable, it reported a healthy account as broken. `Unreachable` is false for `NotSupported`, so the two cannot be conflated again. `GraphMailService` implements the interface via the Inbox counts, and `MailServiceRouter` dispatches per account with **no default-backend fallback** - defaulting to IMAP was the original defect.
+- `ImapMailService.RaiseReachability` funnels `AccountReachabilityChanged` so every raise carries a reason. Worth noting for anyone reading the connection code: the IDLE watcher is still the only source of reachability, and it marks an account unreachable after a *single* failure, before any retry (#314).
+- `ApplyAccountStatus` takes a `source` tag from all nine call sites.
+- `ConnectionDiagnosticsWindow` is modeless per the modal-dialog rules, with its own F6 ring, `Ctrl+Shift+P` palette, Escape handling and focus restoration. `help.connectionDiagnostics` is registered and unregistered by `ApplyConnectionDiagnosticsSetting` rather than at startup, so the palette and the Help menu never disagree about whether the feature exists.
+- **Delete QuickMail logs** now removes `connection.log` (and its rolled-over `.1`) alongside `quickmail.log`. Deleting your logs means all of them - most often because they carry your email addresses and mail server names - and leaving a second file behind would quietly defeat that.
+- `ConnectionDiagnosticsTests`, `ConnectionDiagnosticsSettingTests`, `ConnectionDiagnosticsWindowTests`, `ImapConnectionInstrumentationTests` (real connect path against a closed port and a hang-up listener, asserting socket error codes are captured and the census does not drift), plus `AccountListReloadStatusTests`.
 
 - `FeatureFlag.GoogleAuth` default flips to `false`. It gates only the *offer* — no runtime authentication path consults it, so saved `AuthType.OAuth2Google` accounts are unaffected.
 - New `ProviderCatalog` entry `gmail-oauth` ("Gmail (sign in with Google)"), `DefaultAuthType = OAuth2Google`, no app-password hint, exposed as `IProviderCatalog.GmailGoogleSignIn`. It carries the gmail.com domains but sits after the plain Gmail entry, so `MatchByEmail` and `Resolve`'s host fallback still answer `gmail` for every Gmail address; it is reached only by an explicit pick or a saved `ProviderId`.
