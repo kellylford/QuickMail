@@ -155,15 +155,34 @@ public sealed class ConnectionTruthProbe : IDisposable
     /// </summary>
     private void StartLoop(Guid accountId)
     {
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        CancellationTokenSource cts;
+        try
+        {
+            // Racing Dispose must not throw at the caller. Pre-fix this token was read inside the
+            // Task.Run lambda, so the same race only faulted a background task; reading it here
+            // moved the throw onto ApplyAccountStatus's thread.
+            cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        }
+        catch (ObjectDisposedException) { return; }
+
         var handle = new LoopHandle
         {
             Cts  = cts,
             Task = Task.Run(() => VerifyUntilConnectedAsync(accountId, cts.Token), cts.Token),
         };
 
-        if (_loops.TryRemove(accountId, out var previous)) previous.StopAndDispose();
-        _loops[accountId] = handle;
+        // Atomic swap. A TryRemove-then-assign pair leaves a window where two concurrent starts can
+        // both install a handle and orphan one — which is Defect D's exact shape reached by a race
+        // rather than by a flap. Callers are all UI-thread today; not depending on that is cheap.
+        var previous = _loops.AddOrUpdate(accountId, handle, (_, existing) =>
+        {
+            existing.StopAndDispose();
+            return handle;
+        });
+
+        // Disposed after us: don't leave a live loop behind.
+        if (_disposed) StopLoop(accountId);
+        _ = previous;
     }
 
     /// <summary>Stops and forgets an account's verification loop, if it has one.</summary>
@@ -216,6 +235,21 @@ public sealed class ConnectionTruthProbe : IDisposable
         }
     }
 
+    /// <summary>
+    /// Removes this loop's own handle once it has finished under its own steam, so its linked
+    /// <see cref="CancellationTokenSource"/> stops holding a registration on the shutdown token.
+    /// Only retires the handle if it is still the current one — a replacement started in the
+    /// meantime belongs to someone else.
+    /// </summary>
+    private void RetireOwnHandle(Guid accountId, CancellationToken ownToken)
+    {
+        if (!_loops.TryGetValue(accountId, out var handle)) return;
+        if (handle.Cts.Token != ownToken) return;      // superseded by a newer loop
+        if (!_loops.TryRemove(new KeyValuePair<Guid, LoopHandle>(accountId, handle))) return;
+
+        handle.StopAndDispose();
+    }
+
     private async Task VerifyUntilConnectedAsync(Guid accountId, CancellationToken ct)
     {
         var round = 0;
@@ -252,7 +286,8 @@ public sealed class ConnectionTruthProbe : IDisposable
                     // verification "already running" that had in fact exited, so re-enabling
                     // diagnostics never resumed checking that account for the rest of the session.
                     _disconnected.TryRemove(accountId, out _);
-                    return;   // the handle is disposed by whoever starts the next loop
+                    RetireOwnHandle(accountId, ct);
+                    return;
                 }
 
                 round++;
