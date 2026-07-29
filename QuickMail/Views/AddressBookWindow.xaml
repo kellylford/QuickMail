@@ -69,11 +69,19 @@
                                 <ContextMenu x:Name="AccountFilterMenu"
                                              ItemsSource="{Binding AccountFilterOptions}"
                                              AutomationProperties.Name="Filter addresses"
-                                             Opened="AccountFilterMenu_Opened"
-                                             Closed="AccountFilterMenu_Closed">
+                                             Opened="AccountFilterMenu_Opened">
                                     <ContextMenu.ItemContainerStyle>
                                         <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
-                                            <Setter Property="Header" Value="{Binding Name}"/>
+                                            <!-- Header renders through a ContentPresenter with
+                                                 RecognizesAccessKey, so an account named
+                                                 "work_mail" would draw as "workmail", announce as
+                                                 "workmail", and quietly claim Alt+M inside the
+                                                 menu. The converter doubles the underscore; the
+                                                 explicit automation name keeps the announced text
+                                                 exactly the account name either way. -->
+                                            <Setter Property="Header"
+                                                    Value="{Binding Name, Converter={x:Static local:AccessKeyLabelConverter.Instance}}"/>
+                                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
                                             <!-- IsCheckable="True" is what makes the automation peer
                                                  expose the Toggle pattern, so the active filter is
                                                  announced as checked. -->

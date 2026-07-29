@@ -191,13 +191,10 @@ public partial class AddressBookWindow : Window
             menu.Focus();
     }
 
-    private void AccountFilterMenu_Closed(object sender, RoutedEventArgs e)
-    {
-        // WPF returns focus to the placement target in most cases, but not reliably when
-        // the menu is dismissed with Escape — put it back explicitly.
-        if (!AccountFilterButton.IsKeyboardFocusWithin)
-            AccountFilterButton.Focus();
-    }
+    // No Closed handler restores focus. WPF already returns focus to the placement target
+    // on both the Escape and the Enter path, and ContextMenu.Closed does not fire until the
+    // popup's fade animation finishes — roughly 170ms later. A handler there would yank
+    // focus back from wherever the user had already moved with a quick Tab or Ctrl+G.
 
     // Opens the standalone Group Manager dialog using the same IContactService
     // the address book is using (so the shared _loadLock is honored).
@@ -239,11 +236,9 @@ public partial class AddressBookWindow : Window
         // the per-window CommandRegistry above.
         if (e.Key == Key.Escape)
         {
-            // The filter menu owns Escape while it is open — dismissing the menu must
-            // not also close the address book. (Same reasoning as an open ComboBox
-            // dropdown; see the modeless-dialog notes in CLAUDE.md.)
-            if (AccountFilterButton.ContextMenu is { IsOpen: true })
-                return;
+            // No guard is needed for the open filter menu: the focused MenuItem lives in the
+            // popup's own HwndSource, and that route never reaches this handler, so Escape
+            // closes only the menu. Verified with real keystrokes, not assumed.
             // If the name entry panel is open, Escape dismisses it without
             // closing the whole window. A second Escape then closes.
             if (GroupNameEntryPanel.Visibility == Visibility.Visible)

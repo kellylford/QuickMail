@@ -11,7 +11,8 @@
 //     Toggle pattern, so the active filter is announced as checked) and is wired to the
 //     VM command through the ContextMenu's inherited DataContext. That RelativeSource
 //     binding fails silently in XAML — nothing happens on Enter — so it is asserted here.
-//   - Escape closes the menu without closing the address book.
+//   - An underscore in an account name does not become a hidden menu mnemonic or corrupt
+//     the announced item name.
 
 using System;
 using System.Collections.Generic;
@@ -175,30 +176,32 @@ public class AddressBookFilterMenuTests
     }
 
     [StaFact]
-    public void Escape_WithTheMenuOpen_DoesNotCloseTheAddressBook()
+    public void MenuItemNames_SurviveAnUnderscoreInAnAccountName()
     {
+        // MenuItem.Header renders through a ContentPresenter with RecognizesAccessKey, so an
+        // account named "work_mail" would draw and announce as "workmail" and would quietly
+        // claim Alt+M inside the menu. Accounts with no display name fall back to the
+        // username, where underscores are common.
         EnsureApplication();
-        var (_, window, dir) = BuildWindow(out var cleanup);
-        var closed = false;
+        var (vm, window, dir) = BuildWindow(out var cleanup, underscoreAccountName: true);
         try
         {
-            window!.Closed += (_, _) => closed = true;
-            var button = (Button)window.FindName("AccountFilterButton");
+            var button = (Button)window!.FindName("AccountFilterButton");
             var menu   = button.ContextMenu!;
-            menu.PlacementTarget = button;
-            menu.IsOpen = true;
+            Click(button);
             DoEvents();
 
-            // The window-level handler must decline Escape while the menu owns it.
-            var handled = InvokeWindowPreviewKeyDown(window, Key.Escape);
+            var item = ItemFor(menu, vm.AccountFilterOptions.Single(o => o.Name == "work_mail"))!;
 
-            Assert.False(handled);
-            Assert.False(closed);
+            // Doubled for rendering...
+            Assert.Equal("work__mail", item.Header);
+            // ...and the announced name is the account name exactly, underscore intact.
+            Assert.Equal("work_mail", AutomationProperties.GetName(item));
 
             menu.IsOpen = false;
             DoEvents();
         }
-        finally { if (!closed) window!.Close(); cleanup(dir); }
+        finally { window!.Close(); cleanup(dir); }
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
@@ -224,28 +227,8 @@ public class AddressBookFilterMenuTests
         onClick.Invoke(item, null);
     }
 
-    /// <summary>
-    /// Feeds a real key event through the window's PreviewKeyDown handler and reports
-    /// whether it was handled, without going through the input manager.
-    /// </summary>
-    private static bool InvokeWindowPreviewKeyDown(Window window, Key key)
-    {
-        var args = new KeyEventArgs(
-            Keyboard.PrimaryDevice,
-            PresentationSource.FromVisual(window) ?? throw new InvalidOperationException("no source"),
-            0,
-            key)
-        { RoutedEvent = Keyboard.PreviewKeyDownEvent };
-
-        var method = window.GetType().GetMethod(
-            "Window_PreviewKeyDown",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            ?? throw new InvalidOperationException("Window_PreviewKeyDown not found");
-        method.Invoke(window, [window, args]);
-        return args.Handled;
-    }
-
-    private static (AddressBookViewModel vm, AddressBookWindow? window, string dir) BuildWindow(out Action<string> cleanup)
+    private static (AddressBookViewModel vm, AddressBookWindow? window, string dir) BuildWindow(
+        out Action<string> cleanup, bool underscoreAccountName = false)
     {
         var dir  = Path.Combine(Path.GetTempPath(), $"QM-AddrFilterMenu-{Guid.NewGuid():N}");
         var svc  = new ContactService(new ProfileContext(dir));
@@ -261,7 +244,7 @@ public class AddressBookFilterMenuTests
            .GetAwaiter().GetResult();
 
         var accounts = new FakeAccountService(
-            new AccountModel { Id = work, AccountName = "Work" },
+            new AccountModel { Id = work, AccountName = underscoreAccountName ? "work_mail" : "Work" },
             new AccountModel { Id = home, AccountName = "Home" });
         var vm = new AddressBookViewModel(svc, null, accounts);
         var window = new AddressBookWindow(vm);
