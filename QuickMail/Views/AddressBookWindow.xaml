@@ -37,13 +37,66 @@
                      AutomationProperties.Name="Contacts"
                      KeyboardNavigation.TabNavigation="Local">
                 <DockPanel Margin="0,6,0,0">
-                    <!-- Search -->
-                    <TextBox DockPanel.Dock="Top"
-                             x:Name="SearchBox"
-                             Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             AutomationProperties.Name="Search contacts"
-                             Margin="0,0,0,6"
-                             TabIndex="0"/>
+                    <!-- Search + account filter.  The Filter button is deliberately the
+                         second tab stop, not the first: the window still opens on the
+                         search box and the contact list, and the filter is one Tab (or
+                         Alt+F) away. -->
+                    <Grid DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBox Grid.Column="0"
+                                 x:Name="SearchBox"
+                                 Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                 AutomationProperties.Name="Search contacts"
+                                 TabIndex="0"/>
+
+                        <!-- Opens a menu of accounts; arrow keys and Enter choose one.
+                             The label carries the active filter so tabbing here reports
+                             what the list is currently showing. -->
+                        <Button Grid.Column="1"
+                                x:Name="AccountFilterButton"
+                                Content="{Binding SelectedAccountFilter.Name,
+                                                  Converter={x:Static local:AccessKeyLabelConverter.Instance},
+                                                  ConverterParameter='_Filter: {0}'}"
+                                AutomationProperties.Name="{Binding AccountFilterButtonName}"
+                                MinWidth="120" Margin="6,0,0,0"
+                                TabIndex="1"
+                                Click="AccountFilterButton_Click">
+                            <Button.ContextMenu>
+                                <ContextMenu x:Name="AccountFilterMenu"
+                                             ItemsSource="{Binding AccountFilterOptions}"
+                                             AutomationProperties.Name="Filter addresses"
+                                             Opened="AccountFilterMenu_Opened">
+                                    <ContextMenu.ItemContainerStyle>
+                                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                            <!-- Header renders through a ContentPresenter with
+                                                 RecognizesAccessKey, so an account named
+                                                 "work_mail" would draw as "workmail", announce as
+                                                 "workmail", and quietly claim Alt+M inside the
+                                                 menu. The converter doubles the underscore; the
+                                                 explicit automation name keeps the announced text
+                                                 exactly the account name either way. -->
+                                            <Setter Property="Header"
+                                                    Value="{Binding Name, Converter={x:Static local:AccessKeyLabelConverter.Instance}}"/>
+                                            <Setter Property="AutomationProperties.Name" Value="{Binding Name}"/>
+                                            <!-- IsCheckable="True" is what makes the automation peer
+                                                 expose the Toggle pattern, so the active filter is
+                                                 announced as checked. -->
+                                            <Setter Property="IsCheckable" Value="True"/>
+                                            <Setter Property="IsChecked" Value="{Binding IsSelected, Mode=OneWay}"/>
+                                            <Setter Property="Command"
+                                                    Value="{Binding DataContext.SelectAccountFilterCommand,
+                                                                    RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                                            <Setter Property="CommandParameter" Value="{Binding}"/>
+                                        </Style>
+                                    </ContextMenu.ItemContainerStyle>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </Grid>
 
                     <!-- Insert into message — visible only when opened from Compose (Ctrl+Shift+B) -->
                     <StackPanel DockPanel.Dock="Top"
@@ -56,17 +109,17 @@
                                 Command="{Binding AddToToCommand}"
                                 IsEnabled="{Binding HasSelectedContact}"
                                 AutomationProperties.Name="Add to To field"
-                                MinWidth="50" Margin="0,0,4,0" TabIndex="1"/>
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="2"/>
                         <Button Content="_Cc"
                                 Command="{Binding AddToCcCommand}"
                                 IsEnabled="{Binding HasSelectedContact}"
                                 AutomationProperties.Name="Add to Cc field"
-                                MinWidth="50" Margin="0,0,4,0" TabIndex="2"/>
+                                MinWidth="50" Margin="0,0,4,0" TabIndex="3"/>
                         <Button Content="_Bcc"
                                 Command="{Binding AddToBccCommand}"
                                 IsEnabled="{Binding HasSelectedContact}"
                                 AutomationProperties.Name="Add to Bcc field"
-                                MinWidth="50" TabIndex="3"/>
+                                MinWidth="50" TabIndex="4"/>
                     </StackPanel>
 
                     <!-- Contact detail fields + action buttons -->
@@ -97,7 +150,7 @@
                                      AutomationProperties.LabeledBy="{Binding ElementName=ContactNameLabel}"
                                      AutomationProperties.Name="Contact name"
                                      PreviewKeyDown="ContactFieldBox_PreviewKeyDown"
-                                     Margin="4,0" TabIndex="5"/>
+                                     Margin="4,0" TabIndex="6"/>
 
                             <Label Grid.Column="2"
                                    x:Name="ContactEmailLabel"
@@ -111,7 +164,7 @@
                                      AutomationProperties.LabeledBy="{Binding ElementName=ContactEmailLabel}"
                                      AutomationProperties.Name="Contact email"
                                      PreviewKeyDown="ContactFieldBox_PreviewKeyDown"
-                                     Margin="4,0" TabIndex="6"/>
+                                     Margin="4,0" TabIndex="7"/>
                         </Grid>
 
                         <!-- Row 1: Action buttons (two sets, toggled by IsEditingContact) -->
@@ -122,26 +175,26 @@
                             <Button Content="_Add"
                                     Command="{Binding BeginAddContactCommand}"
                                     AutomationProperties.Name="Add contact"
-                                    MinWidth="60" Margin="0,0,4,0" TabIndex="7"/>
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="8"/>
                             <Button Content="_Edit"
                                     Command="{Binding BeginEditContactCommand}"
                                     AutomationProperties.Name="Edit contact"
                                     IsEnabled="{Binding CanEditContact}"
-                                    MinWidth="60" Margin="0,0,4,0" TabIndex="8"/>
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
                             <Button Content="_Delete"
                                     Click="DeleteButton_Click"
                                     AutomationProperties.Name="Delete selected contact"
                                     IsEnabled="{Binding CanDeleteContact}"
-                                    MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="10"/>
                             <Button Content="Sync _Now"
                                     Command="{Binding SyncContactsNowCommand}"
                                     AutomationProperties.Name="Sync contacts now"
                                     Visibility="{Binding CanSyncContacts, Converter={StaticResource BoolToVis}}"
-                                    MinWidth="60" Margin="0,0,4,0" TabIndex="10"/>
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="11"/>
                             <Border Margin="0,0,4,0"/>
                             <Button Content="Close"
                                     AutomationProperties.Name="Close address book"
-                                    MinWidth="60" TabIndex="11"
+                                    MinWidth="60" TabIndex="12"
                                     Click="Close_Click"/>
                         </StackPanel>
 
@@ -152,15 +205,15 @@
                             <Button Content="_Save"
                                     Command="{Binding SaveContactCommand}"
                                     AutomationProperties.Name="Save contact"
-                                    MinWidth="60" Margin="0,0,4,0" TabIndex="7"/>
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="8"/>
                             <Button Content="Cancel"
                                     Command="{Binding CancelEditCommand}"
                                     AutomationProperties.Name="Cancel edit"
-                                    MinWidth="60" Margin="0,0,4,0" TabIndex="8"/>
+                                    MinWidth="60" Margin="0,0,4,0" TabIndex="9"/>
                             <Border Margin="0,0,4,0"/>
                             <Button Content="Close"
                                     AutomationProperties.Name="Close address book"
-                                    MinWidth="60" TabIndex="9"
+                                    MinWidth="60" TabIndex="10"
                                     Click="Close_Click"/>
                         </StackPanel>
 
@@ -193,7 +246,7 @@
                               AutomationProperties.Name="Contacts"
                               IsTextSearchEnabled="True"
                               TextSearch.TextPath="TypeAheadText"
-                              TabIndex="4"
+                              TabIndex="5"
                               Grid.IsSharedSizeScope="True"
                               KeyboardNavigation.TabNavigation="Once"
                               KeyboardNavigation.DirectionalNavigation="Contained"

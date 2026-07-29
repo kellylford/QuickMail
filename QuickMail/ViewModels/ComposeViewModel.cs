@@ -163,6 +163,13 @@ public partial class ComposeViewModel : ObservableObject, IDisposable
     /// </summary>
     public Func<string, string, bool>? ConfirmationRequested { get; set; }
 
+    /// <summary>
+    /// The IAccountService this compose window was built with. Exposed so the address book
+    /// opened from here (Ctrl+Shift+B) can name accounts in its account filter — without it
+    /// every synced account reads as an indistinguishable "Synced contact".
+    /// </summary>
+    public IAccountService AccountService => _accountService;
+
     public ComposeViewModel(ISendMailService smtp, IAccountService accountService, ICredentialService credentials, IMailService imap, ITemplateService templateService, IMarkdownService? markdown = null)
     {
         _smtp = smtp;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace QuickMail.Models;
@@ -63,6 +64,25 @@ public class ContactModel
     /// </summary>
     [JsonIgnore]
     public string AccessibleName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Every account that has its own copy of this address, for a row that survived the
+    /// collapse-by-email in <c>ContactService</c>. One person can be in the local address book
+    /// *and* synced from two accounts; the address book shows a single row for them, so the
+    /// account filter has to match on any contributing account rather than on the surviving
+    /// row's own <see cref="OwnerAccountId"/>. Stamped by <c>ContactService</c>; never serialized.
+    /// Empty when the contact did not come through that path.
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyCollection<Guid> MergedAccountIds { get; set; } = [];
+
+    /// <summary>
+    /// True when a local copy of this address contributed to the row — see
+    /// <see cref="MergedAccountIds"/>. Distinct from <see cref="IsLocal"/>, which describes only
+    /// the surviving row.
+    /// </summary>
+    [JsonIgnore]
+    public bool MergedIncludesLocal { get; set; }
 
     [JsonIgnore]
     public string Display => string.IsNullOrWhiteSpace(DisplayName)
