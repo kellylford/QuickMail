@@ -206,6 +206,29 @@ public class GraphMailServiceTests
     }
 
     [Fact]
+    public async Task GetMessageSummariesAsync_NullIsRead_MapsToUnread_WithoutThrowing()
+    {
+        // Graph returns isRead:null for some messages (certain drafts/system messages). It must not
+        // fail to deserialize into a non-nullable bool and blow up the whole folder fetch — treat a
+        // null read-state as unread.
+        const string msgs = """
+            {"value":[{
+              "id":"m1","subject":"Hello","receivedDateTime":"2024-01-02T03:04:05Z",
+              "isRead":null,"bodyPreview":"hi"
+            }]}
+            """;
+        var (svc, _) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, msgs));
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var list = await svc.GetMessageSummariesAsync(account.Id, "inbox", 50, TestContext.Current.CancellationToken);
+
+        var m = Assert.Single(list);
+        Assert.Equal("m1", m.MessageId);
+        Assert.False(m.IsRead);   // null → unread
+    }
+
+    [Fact]
     public async Task GetMessageDetailAsync_MapsBodyAndExcludesInlineAttachments()
     {
         const string detail = """

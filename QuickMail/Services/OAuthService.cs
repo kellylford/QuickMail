@@ -54,6 +54,7 @@ public class OAuthService : IOAuthService
         "https://graph.microsoft.com/User.Read",
     ];
 
+
     // Read-only contact scopes for contact sync (issue #256). Explicit scopes (not `.default`) so
     // they work for BOTH personal and work/school Microsoft accounts — the same reasoning as the
     // personal-mail scopes above. Requested only when the user opts an account into contact sync.
@@ -110,6 +111,19 @@ public class OAuthService : IOAuthService
         var isPersonal = account.IsPersonalMicrosoftAccount ?? IsPersonalMicrosoftDomain(account.Username);
         return isPersonal ? GraphMailScopesPersonal : GraphMailScopes;
     }
+
+    // Prompt for an interactive sign-in. Adding an account forces the CONSENT screen: `.default`
+    // (work/school) issues a token SILENTLY as soon as ANY grant exists on the tenant — e.g. from a
+    // prior contacts/calendar consent or an earlier partial sign-in — so without this the mail
+    // permissions are never consented and mail calls then 403 (#391, Microsoft docs "`.default`"
+    // Example 3). Prompt.Consent makes the admin/user approve the full declared set once, up front,
+    // while STAYING on `.default` so requested-equals-declared is preserved by construction (#208).
+    // Re-auth (an already-added account whose token expired) uses the normal prompt — that account
+    // already consented at add-time, so a forced re-consent on every cache loss would just annoy.
+    internal static Prompt PromptForSignIn(bool firstConnect, string? username)
+        => firstConnect ? Prompt.Consent
+           : string.IsNullOrEmpty(username) ? Prompt.SelectAccount
+           : Prompt.ForceLogin;
 
     private readonly string _cacheDir;
     private const string CacheFileName = "msal.cache";
@@ -242,10 +256,18 @@ public class OAuthService : IOAuthService
         }
     }
 
+    // Add-account entry point: force the CONSENT screen so the full declared permission set is
+    // approved once (see PromptForSignIn). Scopes stay `.default` for work/school (DefaultScopesFor),
+    // so requested-equals-declared holds (#208).
     public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, CancellationToken ct = default)
-        => SignInInteractiveAsync(account, DefaultScopesFor(account), ct);
+        => SignInInteractiveAsync(account, DefaultScopesFor(account), firstConnect: true, ct);
 
-    public async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+    // Re-auth with explicit scopes (GetAccessTokenAsync's UI-required fallback): normal prompt, since
+    // the account already consented at add-time.
+    public Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, CancellationToken ct = default)
+        => SignInInteractiveAsync(account, scopes, firstConnect: false, ct);
+
+    private async Task<OAuthResult> SignInInteractiveAsync(AccountModel account, string[] scopes, bool firstConnect, CancellationToken ct)
     {
         await EnsureTokenCacheAsync();
         LogService.Log($"OAuthService: starting interactive sign-in for {account.Username}");
@@ -254,9 +276,7 @@ public class OAuthService : IOAuthService
             // Embedded WebView2 window: renders in-app and closes itself on completion, returning
             // focus to QuickMail — no system-browser tab and no lingering success page.
             .WithUseEmbeddedWebView(true)
-            // Force credential entry when a specific account is expected,
-            // so the browser cannot silently reuse a different cached account.
-            .WithPrompt(string.IsNullOrEmpty(account.Username) ? Prompt.SelectAccount : Prompt.ForceLogin);
+            .WithPrompt(PromptForSignIn(firstConnect, account.Username));
 
         if (!string.IsNullOrEmpty(account.Username))
             builder = builder.WithLoginHint(account.Username);
