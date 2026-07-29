@@ -394,7 +394,13 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             Rules.Clear();
             foreach (var row in rows) Rules.Add(row);
-            if (string.IsNullOrEmpty(StatusText) || !IsBusy) StatusText = BuildStatus(rows);
+
+            // Open on an actionable, readable first rule: select it so the detail pane populates and
+            // the list has a selection (re-selection after a write is handled by ReloadAndReselect).
+            if (SelectedRule is null || !Rules.Contains(SelectedRule))
+                SelectedRule = Rules.FirstOrDefault();
+
+            StatusText = BuildStatus(rows);
         }
         finally
         {

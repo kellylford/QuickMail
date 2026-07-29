@@ -45,9 +45,26 @@ public partial class UnifiedRulesWindow : Window
         Loaded += async (_, _) =>
         {
             await vm.RefreshCommand.ExecuteAsync(null);
-            FocusFirstRule();
+            FocusInitialControl();
         };
     }
+
+    // The account picker is the intended first landing spot (spec §20.7) — land there when it's shown
+    // (more than one account); otherwise there's no choice to make, so land on the rule list.
+    private void FocusInitialControl()
+    {
+        if (AccountPicker.Visibility == Visibility.Visible)
+        {
+            AccountCombo.Focus();
+            Keyboard.Focus(AccountCombo);
+        }
+        else
+        {
+            FocusFirstRule();
+        }
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
 
     private void OnEditorRequested(ServerRuleEditorViewModel editorVm)
     {

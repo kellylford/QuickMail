@@ -20,8 +20,8 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- Account picker: first focusable control; governs everything below. Shown only when there's
@@ -41,23 +41,8 @@
                    AutomationProperties.Name="{Binding StatusText}"
                    AutomationProperties.LiveSetting="Polite"/>
 
-        <WrapPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,6">
-            <Button Content="New" Command="{Binding NewRuleCommand}"
-                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New rule"/>
-            <Button Content="Edit" Command="{Binding EditRuleCommand}"
-                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected rule"/>
-            <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
-                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected rule"/>
-            <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"
-                    Height="26" Padding="10,0" Margin="0,0,6,4"
-                    AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected rule}"/>
-            <Button Content="Move Up" Command="{Binding MoveUpCommand}"
-                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule up"/>
-            <Button Content="Move Down" Command="{Binding MoveDownCommand}"
-                    Height="26" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected rule down"/>
-        </WrapPanel>
-
-        <Grid Grid.Row="3">
+        <!-- Content (row 2) comes BEFORE the buttons in Tab order: picker → list → detail → buttons. -->
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="280"/>
                 <ColumnDefinition Width="6"/>
@@ -99,6 +84,31 @@
                      AcceptsReturn="True" TextWrapping="Wrap"
                      VerticalScrollBarVisibility="Auto"
                      AutomationProperties.Name="Rule detail"/>
+        </Grid>
+
+        <!-- Buttons last in Tab order (row 3): New … Move Down, then Close on the right. -->
+        <Grid Grid.Row="3" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <WrapPanel Grid.Column="0" Orientation="Horizontal">
+                <Button Content="New" Command="{Binding NewRuleCommand}"
+                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New rule"/>
+                <Button Content="Edit" Command="{Binding EditRuleCommand}"
+                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected rule"/>
+                <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
+                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected rule"/>
+                <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"
+                        Height="26" Padding="10,0" Margin="0,0,6,4"
+                        AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected rule}"/>
+                <Button Content="Move Up" Command="{Binding MoveUpCommand}"
+                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule up"/>
+                <Button Content="Move Down" Command="{Binding MoveDownCommand}"
+                        Height="26" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected rule down"/>
+            </WrapPanel>
+            <Button Grid.Column="1" Content="Close" Click="CloseButton_Click"
+                    Height="26" Padding="12,0" VerticalAlignment="Top" AutomationProperties.Name="Close rules manager"/>
         </Grid>
     </Grid>
 </Window>
