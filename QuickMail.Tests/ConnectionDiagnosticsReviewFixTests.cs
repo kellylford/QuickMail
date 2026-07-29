@@ -344,3 +344,100 @@ public class ConnectionDiagnosticsSecondRoundTests : IDisposable
             ConnectionJournal.Snapshot(), e => e.Phase == "verification-deferred");
     }
 }
+
+/// <summary>
+/// Third round. The re-review proved that a status flap orphaned a verification loop: NoteConnected
+/// removed the tracking entries but left the loop asleep in its 60-second delay, so the next
+/// NoteDisconnected repopulated those entries and the orphan woke up and kept probing alongside the
+/// new loop. One extra permanent loop per flap, against a host presumed to be refusing connections.
+/// </summary>
+[Collection("ConnectionDiagnostics")]
+public class ConnectionTruthProbeLoopLifetimeTests : IDisposable
+{
+    private readonly Guid _account = Guid.NewGuid();
+
+    public ConnectionTruthProbeLoopLifetimeTests() => ConnectionJournal.ResetForTests();
+
+    public void Dispose()
+    {
+        ConnectionJournal.ResetForTests();
+        GC.SuppressFinalize(this);
+    }
+
+    // Probes instantly so the loop reaches its delay quickly, and counts every call.
+    private sealed class CountingProbe : IConnectionProbe
+    {
+        private int _calls;
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<ProbeResult> ProbeAccountAsync(Guid accountId, CancellationToken ct = default)
+        {
+            Interlocked.Increment(ref _calls);
+            return Task.FromResult(new ProbeResult(ProbeOutcome.Reachable, 1, "ok"));
+        }
+    }
+
+    // Short enough that an orphaned loop wakes up and probes within the test's lifetime. With the
+    // shipped 60-second interval this test would pass against the very defect it guards.
+    private static readonly TimeSpan FastInterval = TimeSpan.FromMilliseconds(60);
+
+    [Fact]
+    public async Task FlappingDoesNotAccumulateVerificationLoops()
+    {
+        var backend = new CountingProbe();
+        using var probe = new ConnectionTruthProbe(backend, _ => "Kelly", FastInterval);
+        ConnectionJournal.Enabled = true;
+
+        // Ten disconnect/reconnect cycles, the shape of an account flapping during an incident.
+        for (var i = 0; i < 10; i++)
+        {
+            probe.NoteDisconnected(_account, $"flap {i}");
+            await Task.Delay(30);
+            probe.NoteConnected(_account, $"recovered {i}");
+        }
+
+        var afterFlapping = backend.Calls;
+        await Task.Delay(400);
+
+        // Every loop was stopped, so nothing is left running to probe on its own. Before the fix
+        // each flap left a sleeping loop that would wake and probe once a minute, forever.
+        Assert.Equal(afterFlapping, backend.Calls);
+        Assert.False(probe.IsMarkedDisconnected(_account));
+    }
+
+    [Fact]
+    public async Task ReconnectingStopsTheLoopPromptlyRatherThanAtTheNextWakeUp()
+    {
+        var backend = new CountingProbe();
+        using var probe = new ConnectionTruthProbe(backend, _ => "Kelly", FastInterval);
+        ConnectionJournal.Enabled = true;
+
+        probe.NoteDisconnected(_account, "down");
+        await Task.Delay(200);
+        var whileDown = backend.Calls;
+        Assert.True(whileDown >= 1, "the first check should run immediately");
+
+        probe.NoteConnected(_account, "recovered");
+        await Task.Delay(300);
+
+        Assert.Equal(whileDown, backend.Calls);
+    }
+
+    [Fact]
+    public async Task DisposeStopsEveryRunningLoop()
+    {
+        var backend = new CountingProbe();
+        var probe = new ConnectionTruthProbe(backend, _ => "Kelly", FastInterval);
+        ConnectionJournal.Enabled = true;
+
+        probe.NoteDisconnected(Guid.NewGuid(), "a");
+        probe.NoteDisconnected(Guid.NewGuid(), "b");
+        await Task.Delay(200);
+
+        var beforeDispose = backend.Calls;
+        probe.Dispose();
+        await Task.Delay(300);
+
+        Assert.Equal(beforeDispose, backend.Calls);
+    }
+}

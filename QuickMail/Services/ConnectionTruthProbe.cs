@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,8 +33,16 @@ namespace QuickMail.Services;
 /// </summary>
 public sealed class ConnectionTruthProbe : IDisposable
 {
-    /// <summary>Minimum gap between probes of the same account.</summary>
-    public static readonly TimeSpan MinInterval = TimeSpan.FromSeconds(60);
+    /// <summary>Default minimum gap between probes of the same account.</summary>
+    public static readonly TimeSpan DefaultMinInterval = TimeSpan.FromSeconds(60);
+
+    /// <summary>
+    /// Minimum gap between probes of the same account. Injectable so tests can actually observe
+    /// loop behaviour: with the shipped 60-second value, a test would have to run for over a
+    /// minute to notice a loop that should have stopped but didn't — which is precisely the defect
+    /// that reached review twice.
+    /// </summary>
+    public TimeSpan MinInterval { get; }
 
     private readonly IConnectionProbe _probe;
     private readonly Func<Guid, string> _labelOf;
@@ -42,20 +51,46 @@ public sealed class ConnectionTruthProbe : IDisposable
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
     private readonly CancellationTokenSource _shutdown = new();
 
-    // accountId -> the repeating verification loop currently running for it.
-    private readonly ConcurrentDictionary<Guid, Task> _loops = new();
+    // accountId -> the repeating verification loop currently running for it, and the token that
+    // stops it. The token matters: without it, NoteConnected only removed dictionary entries while
+    // the loop stayed asleep in its 60-second delay. A later NoteDisconnected repopulated those
+    // entries, the orphan woke to a satisfied condition, and it kept probing alongside the new
+    // loop — one extra permanent loop per status flap, which is exactly the "never be part of the
+    // problem it measures" contract this class claims to keep.
+    private readonly ConcurrentDictionary<Guid, LoopHandle> _loops = new();
     private readonly ConcurrentDictionary<Guid, bool> _disconnected = new();
     private readonly ConcurrentDictionary<Guid, ProbeResult> _lastResult = new();
     private readonly ConcurrentDictionary<Guid, DateTime> _lastResultAt = new();
+
+    // Monotonic stamp of the last completed probe, for interval arithmetic. Separate from
+    // _lastResultAt (wall-clock, for display): a DST or NTP step backwards would otherwise defer
+    // verification for up to an hour, or throw out of Task.Delay on a large enough correction.
+    private readonly ConcurrentDictionary<Guid, long> _lastProbeTicks = new();
+
+    private sealed class LoopHandle
+    {
+        public required Task Task { get; init; }
+        public required CancellationTokenSource Cts { get; init; }
+
+        public void StopAndDispose()
+        {
+            // Cancel before disposing, per the IDisposable rules in CLAUDE.md.
+            try { Cts.Cancel(); } catch { }
+            try { Cts.Dispose(); } catch { }
+        }
+    }
 
     private bool _disposed;
 
     /// <param name="probe">Performs the actual reachability check.</param>
     /// <param name="labelOf">Resolves an account id to a display label for the journal.</param>
-    public ConnectionTruthProbe(IConnectionProbe probe, Func<Guid, string> labelOf)
+    /// <param name="minInterval">Minimum gap between probes of one account; defaults to 60 seconds.</param>
+    public ConnectionTruthProbe(
+        IConnectionProbe probe, Func<Guid, string> labelOf, TimeSpan? minInterval = null)
     {
-        _probe   = probe;
-        _labelOf = labelOf;
+        _probe      = probe;
+        _labelOf    = labelOf;
+        MinInterval = minInterval ?? DefaultMinInterval;
     }
 
     /// <summary>The most recent verdict for an account, or null if it has never been probed.</summary>
@@ -91,7 +126,7 @@ public sealed class ConnectionTruthProbe : IDisposable
         // loop to clean up after itself cannot work when it sleeps a minute between rounds.
         if (!_disconnected.TryAdd(accountId, true))
         {
-            var stillRunning = _loops.TryGetValue(accountId, out var existing) && !existing.IsCompleted;
+            var stillRunning = _loops.TryGetValue(accountId, out var existing) && !existing.Task.IsCompleted;
             if (stillRunning)
             {
                 ConnectionJournal.Record(
@@ -103,7 +138,7 @@ public sealed class ConnectionTruthProbe : IDisposable
             ConnectionJournal.Record(
                 ConnectionEventKind.Probe, _labelOf(accountId), "-", "verification-restarted",
                 $"source={source} (previous check had stopped)");
-            _loops[accountId] = Task.Run(() => VerifyUntilConnectedAsync(accountId, _shutdown.Token));
+            StartLoop(accountId);
             return;
         }
 
@@ -111,7 +146,30 @@ public sealed class ConnectionTruthProbe : IDisposable
             ConnectionEventKind.Probe, _labelOf(accountId), "-", "marked-disconnected",
             $"source={source} — verifying whether the account is really unreachable");
 
-        _loops[accountId] = Task.Run(() => VerifyUntilConnectedAsync(accountId, _shutdown.Token));
+        StartLoop(accountId);
+    }
+
+    /// <summary>
+    /// Starts (or replaces) the verification loop for an account, stopping any previous one first
+    /// so loops can never accumulate.
+    /// </summary>
+    private void StartLoop(Guid accountId)
+    {
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        var handle = new LoopHandle
+        {
+            Cts  = cts,
+            Task = Task.Run(() => VerifyUntilConnectedAsync(accountId, cts.Token), cts.Token),
+        };
+
+        if (_loops.TryRemove(accountId, out var previous)) previous.StopAndDispose();
+        _loops[accountId] = handle;
+    }
+
+    /// <summary>Stops and forgets an account's verification loop, if it has one.</summary>
+    private void StopLoop(Guid accountId)
+    {
+        if (_loops.TryRemove(accountId, out var handle)) handle.StopAndDispose();
     }
 
     /// <summary>
@@ -125,7 +183,7 @@ public sealed class ConnectionTruthProbe : IDisposable
         // while an account was being verified, its loop still has to be told to stop.
         if (!_disconnected.TryRemove(accountId, out _)) return;   // wasn't disconnected
 
-        _loops.TryRemove(accountId, out _);
+        StopLoop(accountId);
         ConnectionJournal.Record(
             ConnectionEventKind.Probe, _labelOf(accountId), "-", "marked-connected",
             $"source={source} — verification stopped");
@@ -151,7 +209,7 @@ public sealed class ConnectionTruthProbe : IDisposable
             if (live.Contains(id)) continue;
             if (!_disconnected.TryRemove(id, out _)) continue;
 
-            _loops.TryRemove(id, out _);
+            StopLoop(id);
             ConnectionJournal.Record(
                 ConnectionEventKind.Probe, _labelOf(id), "-", "verification-abandoned",
                 "account is no longer in the account list");
@@ -169,10 +227,11 @@ public sealed class ConnectionTruthProbe : IDisposable
             // authenticated connect per flap, against a host that is by hypothesis already refusing
             // them: the same mistake as probing while switched off, one level down. Wait out the
             // remainder rather than declining, so verification is deferred and never skipped.
-            if (_lastResultAt.TryGetValue(accountId, out var last))
+            if (_lastProbeTicks.TryGetValue(accountId, out var lastTicks))
             {
-                var since = DateTime.Now - last;
-                if (since < MinInterval)
+                var since = TimeSpan.FromTicks(
+                    (long)((Stopwatch.GetTimestamp() - lastTicks) * (10_000_000.0 / Stopwatch.Frequency)));
+                if (since > TimeSpan.Zero && since < MinInterval)
                 {
                     ConnectionJournal.Record(
                         ConnectionEventKind.Probe, _labelOf(accountId), "-", "verification-deferred",
@@ -193,8 +252,7 @@ public sealed class ConnectionTruthProbe : IDisposable
                     // verification "already running" that had in fact exited, so re-enabling
                     // diagnostics never resumed checking that account for the rest of the session.
                     _disconnected.TryRemove(accountId, out _);
-                    _loops.TryRemove(accountId, out _);
-                    return;
+                    return;   // the handle is disposed by whoever starts the next loop
                 }
 
                 round++;
@@ -257,8 +315,9 @@ public sealed class ConnectionTruthProbe : IDisposable
 
             var result = await _probe.ProbeAccountAsync(accountId, ct);
 
-            _lastResult[accountId]   = result;
-            _lastResultAt[accountId] = DateTime.Now;
+            _lastResult[accountId]     = result;
+            _lastResultAt[accountId]   = DateTime.Now;              // display
+            _lastProbeTicks[accountId] = Stopwatch.GetTimestamp();  // interval arithmetic
 
             // The one line the whole build exists to produce. Formatted so `grep VERDICT` over
             // connection.log answers the question without reading anything else.
@@ -312,6 +371,7 @@ public sealed class ConnectionTruthProbe : IDisposable
         // Cancel before disposing so in-flight probes see OperationCanceledException rather than
         // ObjectDisposedException (see the IDisposable rules in CLAUDE.md).
         try { _shutdown.Cancel(); } catch { }
+        foreach (var id in _loops.Keys.ToArray()) StopLoop(id);
         _shutdown.Dispose();
         _oneAtATime.Dispose();
         GC.SuppressFinalize(this);

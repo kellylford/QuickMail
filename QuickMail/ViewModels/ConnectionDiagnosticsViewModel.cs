@@ -179,6 +179,12 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
     /// <summary>Refreshes only the status/verdict text, leaving selection and scroll position alone.</summary>
     public void RefreshStatusOnly()
     {
+        // CanTest depends on ConnectionJournal.Enabled, which changes outside this VM (Settings).
+        // Nothing else re-queries it — CommunityToolkit's RelayCommand does not hook
+        // CommandManager.RequerySuggested — so without this the Test button keeps reporting itself
+        // enabled to a screen reader after diagnostics are switched off, and then does nothing.
+        TestAccountCommand.NotifyCanExecuteChanged();
+
         // Not ToDictionary: LoadAccountList deliberately tolerates a duplicated id in accounts.json,
         // so a duplicate genuinely reaches Accounts. Throwing here would turn that survivable data
         // oddity into an unhandled exception on the dispatcher — crashing the app from the window
