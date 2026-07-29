@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:QuickMail.Controls">
 
     <!-- ══════════════════════════════════════════════════════════════════════
          ThemedControls.xaml — implicit, token-driven control templates.
@@ -160,6 +161,10 @@
             </Setter.Value>
         </Setter>
     </Style>
+
+    <!-- DateTimeField is a TextBox subclass, and WPF keys implicit styles on the EXACT type, so
+         without this line the appointment editor's date and time fields render unthemed. -->
+    <Style TargetType="{x:Type controls:DateTimeField}" BasedOn="{StaticResource {x:Type TextBox}}"/>
 
     <Style TargetType="RichTextBox">
         <Setter Property="FocusVisualStyle" Value="{DynamicResource FocusVisual}"/>
