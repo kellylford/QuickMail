@@ -169,11 +169,10 @@ through:</p>
 <ul>
 <li><strong>Title</strong> — required.</li>
 <li><strong>All day</strong> — check this for an all-day event; the time
-fields then switch off.</li>
-<li><strong>Starts / Ends</strong> — a date and a time for each. You can
-type the time naturally: “9”, “9:00”, “9:00 AM”, or “14:30” all work. If
-you leave the end time blank, QuickMail uses 30 minutes after the
-start.</li>
+fields then switch off. Turning it back off restores the times you
+had.</li>
+<li><strong>Starts / Ends</strong> — a date and a time for each. See
+<strong>Entering dates and times</strong> below.</li>
 <li><strong>Location</strong> — optional.</li>
 <li><strong>Repeat</strong> — leave as “Does not repeat” for a one-off,
 or set up a repeating appointment (see below).</li>
@@ -187,7 +186,80 @@ connected calendar this picker does not appear and everything is saved
 locally.</li>
 </ul>
 <p>Press <strong>Enter</strong> (or the <strong>Save</strong> button) to
-save, or <strong>Escape</strong> to cancel.</p>
+save, or <strong>Escape</strong> to cancel. If something is wrong,
+QuickMail puts focus on the field at fault and shows the reason on an
+error line above the buttons; the message clears itself as soon as you
+fix it.</p>
+<h3 id="entering-dates-and-times">Entering dates and times</h3>
+<p>Every date and time field in the appointment editor works the same
+way, and so does the date in <strong>Go to date</strong>. Each one is an
+ordinary edit field: you can type into it, and you can change it with
+the arrow keys without typing anything.</p>
+<p>In a <strong>date</strong> field:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Key</th>
+<th>Moves by</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Up / Down arrow</td>
+<td>One day</td>
+</tr>
+<tr class="even">
+<td>Shift+Up / Shift+Down</td>
+<td>One week</td>
+</tr>
+<tr class="odd">
+<td>Page Up / Page Down</td>
+<td>One month</td>
+</tr>
+<tr class="even">
+<td>Ctrl+Page Up / Ctrl+Page Down</td>
+<td>One year</td>
+</tr>
+</tbody>
+</table>
+<p>In a <strong>time</strong> field:</p>
+<table>
+<thead>
+<tr class="header">
+<th>Key</th>
+<th>Moves by</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Up / Down arrow</td>
+<td>15 minutes, landing on the quarter hour</td>
+</tr>
+<tr class="even">
+<td>Ctrl+Up / Ctrl+Down</td>
+<td>One minute</td>
+</tr>
+<tr class="odd">
+<td>Page Up / Page Down</td>
+<td>One hour</td>
+</tr>
+</tbody>
+</table>
+<p>Stepping a time past midnight moves the date with it, so 11:50 PM
+stepped up becomes 12:00 AM the next day.</p>
+<p>You can also just type. Dates accept “8/3”, “August 3”, “2026-08-03”,
+“today”, “tomorrow”, “friday”, “next tuesday”, a bare day number like
+“3” for that day of the month shown, and offsets like “+7”, “-3”, “+2w”,
+“+1m”, “+1y”. Times accept “9”, “930”, “9:30”, “9:30 AM”, “9p”, “14:30”,
+“noon”, “midnight”, and offsets like “+30” or “-15”. Press Enter or move
+to another field to apply what you typed; if it isn’t something
+QuickMail can read as a date or a time, the field puts its previous
+value back.</p>
+<p><strong>The end follows the start.</strong> When you change the start
+date or start time, the end moves by the same amount, so a 30-minute
+appointment stays 30 minutes long and you are never sent back to fix an
+end you didn’t touch. Changing the end directly sets a new length, which
+the start then preserves from that point on.</p>
 <h3 id="repeating-appointments">Repeating appointments</h3>
 <p>In the editor’s <strong>Repeat</strong> field choose Daily, Weekly,
 Monthly, or Yearly. You can then set:</p>

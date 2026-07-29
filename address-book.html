@@ -35,6 +35,74 @@ contact details, and organize contacts into groups. An
 <strong>Account</strong> column shows where each contact came from:
 <strong>Local address book</strong> for the ones you added yourself, or
 the account name for synced ones.</p>
+<h3 id="filtering-by-account">Filtering by Account</h3>
+<p>When several accounts sync contacts into QuickMail, the list can get
+long. The <strong>Filter</strong> button, just to the right of the
+search box, narrows the list to one account at a time.</p>
+<ol type="1">
+<li>Press <strong>Tab</strong> once from the search box, or press
+<strong>Alt+F</strong> from anywhere on the Contacts tab, to reach the
+button. Its label reports what is showing now — for example, “Filter:
+All accounts.”</li>
+<li>Press <strong>Enter</strong> or <strong>Alt+F</strong> to drop the
+menu. It opens on the filter currently in effect, which is marked as
+checked.</li>
+<li>Press <strong>Up Arrow</strong> and <strong>Down Arrow</strong> to
+move through the choices: <strong>All accounts</strong>, <strong>Local
+address book</strong>, then one entry per account.</li>
+<li>Press <strong>Enter</strong> to apply the choice. The list narrows
+and the result is announced — for example, “Work, 214 contacts.” Press
+<strong>Escape</strong> instead to close the menu and leave the filter
+alone.</li>
+</ol>
+<p>The filter and the search box work together: with a filter applied,
+searching looks only inside that account. The filter stays in effect
+while the address book is open, including across a contact sync, and
+resets to <strong>All accounts</strong> the next time you open the
+window.</p>
+<p><strong>Filter Addresses by Account</strong> is also in the address
+book’s Command Palette (<strong>Ctrl+Shift+P</strong>).</p>
+<h3 id="jumping-to-a-contact-by-typing">Jumping to a Contact by
+Typing</h3>
+<p>With focus on the contact list, type the first letter of a contact’s
+name to jump straight to it. Type more letters quickly to match a longer
+beginning (“br” goes to Brenda rather than Bob), or press the same
+letter again to move to the next contact starting with that letter.
+Contacts stored without a name are matched on their address instead. The
+same typing shortcut works in the <strong>Groups</strong> list and the
+<strong>Group members</strong> list.</p>
+<h3 id="finding-mail-from-or-to-a-contact">Finding Mail From or To a
+Contact</h3>
+<p>From the contact list, you can pull up everything a person sent you,
+or everything you addressed to them.</p>
+<ol type="1">
+<li>Select the contact and press <strong>Shift+F10</strong> (or the
+Applications key) to open the context menu.</li>
+<li>Choose <strong>Find mail from this contact</strong> or <strong>Find
+mail to this contact</strong>.</li>
+<li>The address book closes and the message list fills with the matches,
+newest first. Focus moves to the message list and the count is announced
+— for example, “12 messages from Bob Baker.” The window title shows
+<strong>Mail from Bob Baker</strong> so you can tell the results apart
+from a folder.</li>
+</ol>
+<p>Both actions are also in the address book’s Command Palette
+(<strong>Ctrl+Shift+P</strong>) as <strong>Find Mail From
+Contact</strong> and <strong>Find Mail To Contact</strong>. Commands
+that live inside the address book are not listed in Settings → Keyboard,
+which covers the main window’s commands; reach them from the
+palette.</p>
+<p>Press <strong>Escape</strong> with focus in the message list to close
+the results and go back to the folder you started from; the folder name
+and its message count are announced. A <strong>Close</strong> button at
+the top of the results does the same, and <strong>Close Contact Mail
+Results</strong> is in the Command Palette. Selecting any folder in the
+folder tree also leaves the results.</p>
+<p>The search covers every account and folder QuickMail has cached — not
+just the folder you were in. Mail older than your sync range is not
+stored locally, so it is not included. <strong>Find mail to this
+contact</strong> matches the To line, so a message where the person was
+only in Cc does not appear.</p>
 <h3 id="syncing-contacts-from-your-accounts">Syncing Contacts from Your
 Accounts</h3>
 <p>QuickMail can fill the address book from the contacts already stored
@@ -45,9 +113,9 @@ message.</p>
 <li><strong>Turn it on per account.</strong> When adding a Microsoft,
 Google, or iCloud account, check <strong>Sync contacts from this
 account</strong> in the Add Account dialog. For an account you already
-have, open <strong>Settings → Accounts</strong>, select the account, and
-check the same box — it takes effect immediately, with no separate Save
-step. Enabling sync asks your account for read-only access to your
+have, open <strong>File → Manage Accounts…</strong>, select the account,
+and check the same box — it takes effect immediately, with no separate
+Save step. Enabling sync asks your account for read-only access to your
 contacts (for Google this is part of the normal sign-in; for Microsoft
 it is granted right after sign-in; <strong>for iCloud it uses the
 app-specific password you already entered</strong>, so there is no extra
