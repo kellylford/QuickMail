@@ -160,6 +160,8 @@ public partial class MainWindow : Window
     private readonly IMailService _imap;
     private readonly IOAuthService _oauth;
     private readonly IFeatureGate _featureGate;
+    private readonly IProviderCatalog _providerCatalog;
+    private readonly IAutoDiscoverService? _autoDiscover;
     private readonly ICommandRegistry _registry;
     private bool _webViewReady;
     private CoreWebView2Environment? _webViewEnvironment;
@@ -260,9 +262,15 @@ public partial class MainWindow : Window
         INotificationService? notificationService = null,
         IContactSyncService? contactSyncService = null,
         IGraphCalendarSyncService? graphCalendarSyncService = null,
-        IServerRuleService? serverRuleService = null)
+        IServerRuleService? serverRuleService = null,
+        IProviderCatalog? providerCatalog = null,
+        IAutoDiscoverService? autoDiscover = null)
     {
         _vm = vm;
+        // Optional so existing test constructions keep compiling; a null catalog falls back to the
+        // built-in table, which is a pure lookup with no dependencies of its own.
+        _providerCatalog = providerCatalog ?? new ProviderCatalog();
+        _autoDiscover = autoDiscover;
         _notificationService = notificationService;
         _smtp = smtp;
         _accountService = accountService;
@@ -4836,7 +4844,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManager()
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService, _graphCalendarSyncService);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
         var dialog = new AccountManagerDialog(accountVm) { Owner = this };
         dialog.ShowDialog();
         // Refresh regardless of the dialog result: the contact- and calendar-sync toggles apply
@@ -4847,7 +4855,7 @@ public partial class MainWindow : Window
 
     private void OpenAccountManagerForAccount(AccountModel account)
     {
-        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _contactSyncService, _graphCalendarSyncService);
+        var accountVm = new AccountManagerViewModel(_accountService, _credentials, _imap, _oauth, _localStore, _configService, _featureGate, _providerCatalog, _autoDiscover, _smtp, _contactSyncService, _graphCalendarSyncService);
         var dialog    = new AccountManagerDialog(accountVm) { Owner = this };
         // Pre-select the account in the manager
         accountVm.SelectedAccount = accountVm.Accounts.FirstOrDefault(a => a.Id == account.Id);

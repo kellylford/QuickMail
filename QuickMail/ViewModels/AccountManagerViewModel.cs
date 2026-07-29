@@ -18,6 +18,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     private readonly IConfigService _configService;
     private readonly IOAuthService _oauth;
     private readonly IFeatureGate _featureGate;
+    private readonly IAutoDiscoverService? _autoDiscover;
+    private readonly ISendMailService? _sendMail;
     private readonly IContactSyncService? _contactSync;
     private readonly IGraphCalendarSyncService? _graphCalendarSync;
 
@@ -28,9 +30,22 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(CanSyncContacts))]
     [NotifyPropertyChangedFor(nameof(CanSyncCalendar))]
+    [NotifyPropertyChangedFor(nameof(ShowTestConnection))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
+
+    /// <summary>
+    /// Test Connection is offered only when there is an account to test. With nothing selected the
+    /// form is disabled but the button used to stay visible, because OnSelectedAccountChanged
+    /// returns early on a null selection and leaves BackendKind at its default (found by
+    /// CityDweller, PR #388, from a screen-reader user working the add/manage flow).
+    ///
+    /// Deliberately NOT also gated on IsImapBackend. That gate made sense while Test Connection
+    /// could only probe IMAP, but it now probes Graph accounts too, via the backend's GET /me — so
+    /// hiding it for Microsoft 365 would hide it exactly where it just started working.
+    /// </summary>
+    public bool ShowTestConnection => IsEditing;
 
     /// <summary>
     /// Contact sync (issue #256) is offered for Microsoft and Google (OAuth contact APIs), plus
@@ -40,7 +55,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public bool CanSyncContacts =>
         _contactSync != null && SelectedAccount is { } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
-         || acct.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
+         || ProviderCatalog.IsICloud(acct));
 
     // SyncContacts / SyncCalendar are inherited from AccountEditorViewModel (shared with Add Account).
 
@@ -52,9 +67,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     public bool CanSyncCalendar =>
         _graphCalendarSync != null && SelectedAccount is { } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
-         || acct.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase));
+         || ProviderCatalog.IsICloud(acct));
 
-    public override bool ShowGoogleAuthOption => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
+    protected override bool IsGoogleAuthEnabled => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
 
     public AccountManagerViewModel(
         IAccountService accountService,
@@ -64,10 +79,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         ILocalStoreService localStore,
         IConfigService configService,
         IFeatureGate featureGate,
+        IProviderCatalog catalog,
+        IAutoDiscoverService? autoDiscover = null,
+        ISendMailService? sendMail = null,
         IContactSyncService? contactSync = null,
         IGraphCalendarSyncService? graphCalendarSync = null)
-        : base(imap, oauth)
+        : base(imap, oauth, catalog, sendMail)
     {
+        _autoDiscover   = autoDiscover;
+        _sendMail       = sendMail;
         _accountService = accountService;
         _credentials    = credentials;
         _oauth          = oauth;
@@ -77,15 +97,27 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         _contactSync    = contactSync;
         _graphCalendarSync = graphCalendarSync;
         Accounts = new ObservableCollection<AccountModel>(accountService.LoadAccounts());
+
+        if (featureGate.IsEnabled(FeatureFlag.GoogleAuth)) EnsureGoogleSignInListed();
     }
 
     partial void OnSelectedAccountChanged(AccountModel? value)
     {
         if (value == null) return;
+        // Resolve before the field copy: accounts saved before the provider catalog existed have no
+        // ProviderId, so Resolve falls back to matching their IMAP host.
+        var resolved = Catalog.Resolve(value);
+        // An account can resolve to a provider the picker is not offering — a Gmail account created
+        // with Google sign-in, on a profile where the GoogleAuth flag has since been turned off.
+        // Assigning a SelectedItem that is absent from ItemsSource leaves the box blank, so list the
+        // entry rather than misreport the account as something it is not.
+        if (resolved.Id == ProviderCatalog.GmailOAuthId) EnsureGoogleSignInListed();
+        SelectedProvider = resolved;
         BackendKind = value.BackendKind; // drives IsGraphBackend/IsImapBackend → hides auth + IMAP/SMTP for Graph
         AccountName = value.AccountName;
         DisplayName = value.DisplayName;
         Username = value.Username;
+        LoginUsername = value.LoginUsername ?? string.Empty;
         AuthType = value.AuthType;
         Password = value.AuthType == AuthType.Password
             ? (_credentials.GetPassword(value.Id) ?? string.Empty)
@@ -102,6 +134,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         SyncContacts = value.SyncContacts;
         SyncCalendar = value.SyncCalendar;
         StatusText = string.Empty;
+        // These are the account's saved values, not something typed just now — clear the edit flag so
+        // switching between accounts doesn't look like a hand edit. Advanced starts collapsed; the
+        // user opens it when they want to see servers.
+        HostsUserEdited = false;
+        // After the field copies above, because assigning a host or port clears this flag as a hand
+        // edit. Restoring the saved value is what stops merely opening an account in this dialog
+        // from downgrading it from "STARTTLS required" to "STARTTLS if the server feels like it".
+        RequireStartTls = value.RequireStartTls;
+        IsAdvancedExpanded = false;
     }
 
     /// <summary>
@@ -210,7 +251,8 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
-    public AddAccountViewModel CreateAddAccountViewModel() => new(_featureGate, MailService, OAuthService);
+    public AddAccountViewModel CreateAddAccountViewModel() =>
+        new(_featureGate, MailService, OAuthService, Catalog, _autoDiscover, _sendMail);
 
     public void CommitNewAccount(AccountModel account, string password)
     {
@@ -269,15 +311,39 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
+    /// <summary>
+    /// A save was refused because the email address is not one. The View opens Advanced settings —
+    /// where the message says the login name belongs — and puts focus on the address box, because a
+    /// refusal that names a field the user cannot see and has no keyboard route to is not a
+    /// refusal they can act on. Mirrors what AddAccountDialog does on the same refusal.
+    /// </summary>
+    public event Action? EmailAddressRejected;
+
     [RelayCommand]
     private void SaveAccount()
     {
         if (SelectedAccount == null) return;
         var account = SelectedAccount;
 
+        // The one field this dialog must not save wrong: it is the From address on everything the
+        // account sends. Refusing here is also how an account created before the check existed gets
+        // corrected — the message says where the login name belongs instead (#396).
+        if (!IsEmailAddressUsable(out var addressProblem, out var address))
+        {
+            SetStatusOutcome(addressProblem);
+            EmailAddressRejected?.Invoke();
+            return;
+        }
+
         account.AccountName = AccountName;
         account.DisplayName = DisplayName;
-        account.Username = Username;
+        // The NORMALIZED address, not the raw box: a pasted "Kelly Ford <kelly@example.com>" or a
+        // trailing space parses fine here and then throws in MimeMessageBuilder on every send.
+        account.Username = address;
+        Username = address;   // reflect the normalization back so the box shows what was saved
+        // Null rather than "" when unset, so accounts.json carries the field only for the accounts
+        // that actually need it.
+        account.LoginUsername = string.IsNullOrWhiteSpace(LoginUsername) ? null : LoginUsername.Trim();
         // Backfill the personal-account flag when this edit re-authed (SignInMicrosoftAsync set it);
         // leave it untouched otherwise so a plain field edit doesn't wipe a prior detection (#233).
         if (IsPersonalMicrosoftAccount.HasValue)
@@ -291,7 +357,13 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         account.SmtpPort = SmtpPort;
         account.SmtpUseSsl = SmtpUseSsl;
         account.SmtpAcceptInvalidCert = SmtpAcceptInvalidCert;
+        // Follows the fields: hand-editing a server in this dialog clears it, which is the user
+        // taking the settings over and with them the choice about fallback.
+        account.RequireStartTls = RequireStartTls;
         account.Signature = Signature;
+        // Backfill the provider on an account created before the catalog existed, so later lookups
+        // stop relying on the host fallback. The provider itself is read-only in this dialog.
+        account.ProviderId ??= SelectedProvider?.Id;
         // SyncContacts is NOT touched here — the checkbox applies itself immediately via
         // OnSyncContactsChanged (consent + persist), so Save never enables/disables it.
 

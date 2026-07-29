@@ -117,6 +117,21 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _showUpdateInstalledAlerts;
 
+    /// <summary>
+    /// Bound to the Advanced tab's Google sign-in checkbox, and stored as the GoogleAuth flag in the
+    /// config.ini [features] section rather than as a setting of its own — it is the same switch as
+    /// <c>--feature GoogleAuth</c>, and two spellings of one flag would disagree the moment a user
+    /// set both. Read at startup by ConfigFeatureGate, hence the restart.
+    /// </summary>
+    [ObservableProperty]
+    private bool _googleSignIn;
+
+    /// <summary>Reads a [features] flag, treating anything unparseable or absent as the default.</summary>
+    private static bool ReadFeature(ConfigModel cfg, FeatureFlag flag, bool fallback) =>
+        cfg.Features.TryGetValue(flag.ToString(), out var raw) && bool.TryParse(raw, out var parsed)
+            ? parsed
+            : fallback;
+
     // ── Composing ──────────────────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -290,6 +305,7 @@ public partial class SettingsViewModel : ObservableObject
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
         AutoUpdate                       = cfg.AutoUpdate;
         ShowUpdateInstalledAlerts        = cfg.ShowUpdateInstalledAlerts;
+        GoogleSignIn                     = ReadFeature(cfg, FeatureFlag.GoogleAuth, false);
         AutoSaveDrafts                   = cfg.AutoSaveDrafts;
         AutoSaveIntervalSeconds          = cfg.AutoSaveIntervalSeconds;
         DefaultComposeMode = cfg.DefaultComposeMode switch
@@ -363,6 +379,9 @@ public partial class SettingsViewModel : ObservableObject
         cfg.CloseToTray                      = CloseToTray;
         cfg.AutoUpdate                       = AutoUpdate;
         cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;
+        // Written both ways round, never removed when false: an explicit "false" in the file is how
+        // a user who turns this back off stays off if the built-in default ever changes again.
+        cfg.Features[FeatureFlag.GoogleAuth.ToString()] = GoogleSignIn ? "true" : "false";
         if (DesktopShortcut != Helpers.DesktopShortcut.Exists())
         {
             try

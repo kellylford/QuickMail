@@ -188,6 +188,27 @@ public class CardDavContactSyncTests
         Assert.Equal("john@icloud.test", john.EmailAddress);
     }
 
+    /// <summary>
+    /// CardDAV Basic auth is an authentication identity, so it follows the account's login name and
+    /// not its email address. An iCloud mailbox on a custom domain signs in under the Apple ID
+    /// (#396); before LoginUsername existed the two had to be the same string, and after it was
+    /// added contact sync kept sending the address and started getting 401s.
+    /// </summary>
+    [Fact]
+    public async Task Fetch_AuthenticatesWithTheLoginUsername_NotTheEmailAddress()
+    {
+        var handler = FullSyncHandler(Card("card-1", "John Doe", "john@icloud.test"));
+        var account = ICloudAccount();
+        account.Username = "samuel@interfree.ca";   // the address recipients see
+        account.LoginUsername = "fastfinge";        // what Apple wants at sign-in
+
+        await Source(handler).FetchAsync(account, TestContext.Current.CancellationToken);
+
+        var expectedAuth = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("fastfinge:app-pass"));
+        Assert.NotEmpty(handler.Requests);
+        Assert.All(handler.Requests, r => Assert.Equal(expectedAuth, r.Auth));
+    }
+
     [Fact]
     public async Task Fetch_Discovery_WalksPrincipalHomeAndCollections_WithAuthAndDepth()
     {

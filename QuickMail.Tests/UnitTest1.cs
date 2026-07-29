@@ -3,12 +3,14 @@
 // that the app can at least initialise without throwing.
 
 using System;
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Windows;
 using System.Windows.Markup;
 using System.Xml;
+using QuickMail.Controls;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -77,7 +79,7 @@ public class ViewModelConstructionTests
     {
         var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
         var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
-        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate());
+        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate(), new ProviderCatalog());
         Assert.NotNull(vm);
     }
 
@@ -299,7 +301,7 @@ public class XamlParseTests
         EnsureApplication();
         var (imap, accounts, creds, _, _, _, _, _, _) = MakeServices();
         var (_, _, _, store2, _, config2, _, _, _) = MakeServices();
-        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate());
+        var vm = new AccountManagerViewModel(accounts, creds, imap, new StubOAuthService(), store2, config2, new StubFeatureGate(), new ProviderCatalog());
         var window = new AccountManagerDialog(vm);
         Assert.NotNull(window);
         window.Close();
@@ -313,10 +315,20 @@ public class XamlParseTests
         // Gate ON so the backend combo and its bindings (AvailableBackends / SelectedBackend /
         // ShowBackendPicker / IsImapBackend) are exercised during the XAML parse.
         var gate = new StubFeatureGate { [FeatureFlag.GraphBackend] = true };
-        var vm = new AddAccountViewModel(gate, imap, new StubOAuthService());
+        var vm = new AddAccountViewModel(gate, imap, new StubOAuthService(), new ProviderCatalog());
         var window = new AddAccountDialog(vm);
         Assert.NotNull(window);
         window.Close();
+    }
+
+    [StaFact]
+    public void SettingsDialog_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new SettingsViewModel(new StubConfigService(), new StubCommandRegistry());
+        var dialog = new SettingsDialog(vm);
+        Assert.NotNull(dialog);
+        dialog.Close();
     }
 
     [StaFact]
@@ -337,6 +349,59 @@ public class XamlParseTests
         var vm = new EventEditorViewModel(new DateTime(2026, 7, 16, 9, 0, 0));
         var window = new EventEditorWindow(vm);
         Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
+    public void EventEditorWindow_DateAndTimeFieldsResolveByName()
+    {
+        // The code-behind reaches these by name for the F6 ring and for focusing the field a
+        // refused save blamed. Renaming one in XAML would otherwise fail only at runtime, and
+        // silently — a broken binding writes to the debug trace and nowhere the user can see.
+        EnsureApplication();
+        var vm = new EventEditorViewModel(new DateTime(2026, 7, 16, 9, 0, 0));
+        var window = new EventEditorWindow(vm);
+
+        foreach (var name in new[]
+                 {
+                     "StartDateField", "StartTimeField", "EndDateField", "EndTimeField",
+                     "RepeatIntervalField", "RepeatUntilField",
+                 })
+        {
+            var field = window.FindName(name) as DateTimeField;
+            Assert.NotNull(field);
+        }
+
+        Assert.NotNull(window.FindName("ErrorLine") as System.Windows.Controls.TextBox);
+        window.Close();
+    }
+
+    [StaFact]
+    public void EventEditorWindow_DateAndTimeFieldsShowTheViewModelValue()
+    {
+        // Both faces of the same instant: the date field renders its date, the time field its
+        // time. A binding that silently failed to resolve would leave these empty.
+        EnsureApplication();
+        var vm = new EventEditorViewModel(new DateTime(2026, 7, 16, 9, 0, 0));
+        var window = new EventEditorWindow(vm);
+
+        var startDate = window.FindName("StartDateField") as DateTimeField;
+        var startTime = window.FindName("StartTimeField") as DateTimeField;
+        Assert.NotNull(startDate);
+        Assert.NotNull(startTime);
+
+        Assert.Equal(vm.Start.ToString("D", CultureInfo.CurrentCulture), startDate!.Text);
+        Assert.Equal(vm.Start.ToString("t", CultureInfo.CurrentCulture), startTime!.Text);
+        window.Close();
+    }
+
+    [StaFact]
+    public void GoToDateWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var window = new GoToDateWindow(new GoToDateViewModel(new DateTime(2026, 7, 16)));
+        Assert.NotNull(window);
+        Assert.NotNull(window.FindName("DateField") as DateTimeField);
         window.Close();
     }
 

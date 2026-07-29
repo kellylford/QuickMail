@@ -228,7 +228,7 @@ public partial class CalendarViewModel : ObservableObject
     /// IMAP host, matching the sync service's eligibility.
     /// </summary>
     private static bool IsICloudAccount(AccountModel a)
-        => a.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase);
+        => ProviderCatalog.IsICloud(a);
 
     /// <summary>
     /// Builds the "Calendar" source label for a row: "Local" for locally-authored appointments,

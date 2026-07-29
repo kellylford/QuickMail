@@ -1,5 +1,6 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:QuickMail.Controls">
 
     <!-- Visible keyboard focus ring for all controls.
          Theme.FocusIndicator resolves to the theme's high-visibility ring color
@@ -44,6 +45,11 @@
         <Setter Property="FocusVisualStyle" Value="{StaticResource FocusVisual}"/>
         <Setter Property="Padding" Value="4,2"/>
     </Style>
+
+    <!-- DateTimeField is a TextBox subclass, and implicit styles key on the exact type. Repeated
+         here as well as in ThemedControls so the appointment editor's date and time fields keep a
+         focus ring under Windows High Contrast, where ThemedControls is withdrawn. -->
+    <Style TargetType="{x:Type controls:DateTimeField}" BasedOn="{StaticResource {x:Type TextBox}}"/>
 
     <!-- Column headers are mouse-clickable but never keyboard tab stops.
          Lives here (not only in ThemedControls) so the rule also holds under

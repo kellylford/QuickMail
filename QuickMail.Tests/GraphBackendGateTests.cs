@@ -15,16 +15,25 @@ public class AddAccountViewModelGateTests
     private static AddAccountViewModel Make(bool graphEnabled)
     {
         var gate = new StubFeatureGate { [FeatureFlag.GraphBackend] = graphEnabled };
-        return new AddAccountViewModel(gate, new StubImapMailService(), new StubOAuthService());
+        return new AddAccountViewModel(gate, new StubImapMailService(), new StubOAuthService(), new ProviderCatalog());
+    }
+
+    private static AddAccountViewModel MakeMicrosoft(bool graphEnabled)
+    {
+        var vm = Make(graphEnabled);
+        // The connection-method combo lives in Advanced settings and is offered only for the
+        // Microsoft provider — every other provider has exactly one connection method.
+        vm.SelectedProvider = new ProviderCatalog().ById(ProviderCatalog.MicrosoftId);
+        return vm;
     }
 
     [Fact]
     public void GateOff_OffersOnlyImap()
     {
-        var vm = Make(graphEnabled: false);
+        var vm = MakeMicrosoft(graphEnabled: false);
         Assert.Single(vm.AvailableBackends);
         Assert.Equal(BackendKind.ImapSmtp, vm.AvailableBackends[0].Kind);
-        Assert.False(vm.ShowBackendPicker);
+        Assert.False(vm.ShowConnectionMethod);
         Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
         Assert.True(vm.IsImapBackend);
     }
@@ -32,12 +41,26 @@ public class AddAccountViewModelGateTests
     [Fact]
     public void GateOn_OffersBothBackends()
     {
-        var vm = Make(graphEnabled: true);
+        var vm = MakeMicrosoft(graphEnabled: true);
         Assert.Equal(2, vm.AvailableBackends.Count);
         Assert.Contains(vm.AvailableBackends, b => b.Kind == BackendKind.MicrosoftGraph);
-        Assert.True(vm.ShowBackendPicker);
-        // Default selection is still IMAP.
+        Assert.True(vm.ShowConnectionMethod);
+        // Default selection is still IMAP — picking the Microsoft provider must not silently move
+        // new accounts onto the Graph backend.
         Assert.Equal(BackendKind.ImapSmtp, vm.BackendKind);
+    }
+
+    [Fact]
+    public void ConnectionMethodIsHiddenForNonMicrosoftProviders()
+    {
+        var vm = Make(graphEnabled: true);
+        var catalog = new ProviderCatalog();
+
+        vm.SelectedProvider = catalog.ById(ProviderCatalog.GmailId);
+        Assert.False(vm.ShowConnectionMethod);
+
+        vm.SelectedProvider = catalog.Other;
+        Assert.False(vm.ShowConnectionMethod);
     }
 
     [Fact]
@@ -66,6 +89,137 @@ public class AddAccountViewModelGateTests
 
         var imapVm = Make(graphEnabled: false);
         Assert.Equal(BackendKind.ImapSmtp, imapVm.ToAccountModel().BackendKind);
+    }
+}
+
+public class MailServiceRouterBackendSelectorTests
+{
+    private sealed class NamedBackend(string name) : StubImapMailServiceBase
+    {
+        public string Name { get; } = name;
+        public AccountModel? Connected { get; private set; }
+        public Guid? Disconnected { get; private set; }
+
+        public override Task ConnectAsync(AccountModel account, string? password = null, CancellationToken ct = default)
+        {
+            Connected = account;
+            return Task.CompletedTask;
+        }
+
+        public override Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
+        {
+            Disconnected = accountId;
+            return Task.CompletedTask;
+        }
+    }
+
+    // An account the router was never told about used to fall back to _allBackends[0] — IMAP. That
+    // made Test Connection on a not-yet-created Graph account (its probe uses a throwaway Guid)
+    // silently probe IMAP against a host the Graph path had just cleared, and report the resulting
+    // IMAP error as a Microsoft 365 failure.
+    [Fact]
+    public async Task AnUnregisteredAccountIsRoutedByItsBackendKind()
+    {
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        var probe = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+        await router.ConnectAsync(probe);
+
+        Assert.NotNull(graph.Connected);
+        Assert.Null(imap.Connected);
+    }
+
+    [Fact]
+    public async Task AnUnregisteredImapAccountStillGoesToImap()
+    {
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        await router.ConnectAsync(new AccountModel { Id = Guid.NewGuid() });
+
+        Assert.NotNull(imap.Connected);
+        Assert.Null(graph.Connected);
+    }
+
+    [Fact]
+    public async Task AProbesDisconnectStillReachesTheBackendItConnectedTo()
+    {
+        // This is why ConnectAsync binds an unregistered account at all: DisconnectAsync carries
+        // only a Guid, so without the binding it would fall back to the default (IMAP) backend and
+        // leave the Graph connection open.
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        var probe = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+        await router.ConnectAsync(probe);
+        await router.DisconnectAsync(probe.Id);
+
+        Assert.Equal(probe.Id, graph.Disconnected);
+        Assert.Null(imap.Disconnected);
+    }
+
+    [Fact]
+    public async Task ProbeAccountsDoNotAccumulate()
+    {
+        // Test Connection mints a throwaway Guid per press (AccountEditorViewModel.BuildProbeAccount)
+        // and nothing ever unbound it, so the routing table grew for the life of the process.
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(
+            new IMailService[] { imap, graph },
+            a => a.BackendKind == BackendKind.MicrosoftGraph ? graph : imap);
+
+        for (var i = 0; i < 25; i++)
+        {
+            var probe = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+            await router.ConnectAsync(probe);
+            await router.DisconnectAsync(probe.Id);
+        }
+
+        Assert.Equal(0, router.BoundAccountCount);
+    }
+
+    [Fact]
+    public async Task ARegisteredAccountKeepsItsBackendAcrossDisconnects()
+    {
+        // The releasing must not take real accounts with it: they disconnect and reconnect for the
+        // whole run of the app, and their binding is what routes them.
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(new IMailService[] { imap, graph });
+
+        var account = new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph };
+        router.RegisterAccount(account.Id, graph);
+
+        await router.ConnectAsync(account);
+        await router.DisconnectAsync(account.Id);
+        await router.ConnectAsync(account);
+
+        Assert.Equal(1, router.BoundAccountCount);
+        Assert.Same(account, graph.Connected);
+        Assert.Null(imap.Connected);
+    }
+
+    [Fact]
+    public async Task WithNoSelectorTheOldDefaultBehaviourIsUnchanged()
+    {
+        var imap = new NamedBackend("imap");
+        var graph = new NamedBackend("graph");
+        var router = new MailServiceRouter(new IMailService[] { imap, graph });
+
+        await router.ConnectAsync(new AccountModel { Id = Guid.NewGuid(), BackendKind = BackendKind.MicrosoftGraph });
+
+        Assert.NotNull(imap.Connected);
     }
 }
 

@@ -44,7 +44,7 @@ public class AccountEditorSignInTests
     private static (AddAccountViewModel Vm, FakeOAuthService Oauth) NewVm()
     {
         var oauth = new FakeOAuthService();
-        var vm = new AddAccountViewModel(new StubFeatureGate(), new StubImapMailService(), oauth);
+        var vm = new AddAccountViewModel(new StubFeatureGate(), new StubImapMailService(), oauth, new ProviderCatalog());
         return (vm, oauth);
     }
 

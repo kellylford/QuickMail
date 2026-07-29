@@ -101,13 +101,28 @@ public class ContactService : IContactService, IDisposable
     /// Collapses contacts that share an email address (case-insensitive) to a single row,
     /// preferring — in order — a local contact, then a saved server contact, then a prior
     /// recipient. Among equal-rank duplicates the most-recently-used wins. The winner is the
-    /// original cache object (never mutated), so callers see one row per person without the
-    /// cache being altered.
+    /// original cache object, so callers see one row per person without the cache being
+    /// altered — apart from the two display-only, unserialized provenance fields stamped
+    /// below.
+    ///
+    /// The losing rows carry information the winner does not: which *other* accounts also
+    /// hold this address. Without it the address book's account filter would answer "is this
+    /// row's owning account X" instead of "does account X have this person", and would hide
+    /// a synced contact whose address the user also saved locally.
     /// </summary>
     private static IEnumerable<ContactModel> DedupByEmail(IEnumerable<ContactModel> contacts)
         => contacts
             .GroupBy(c => c.EmailAddress.Trim(), StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.OrderBy(SourceRank).ThenByDescending(c => c.LastUsedTicks).First());
+            .Select(g =>
+            {
+                var winner = g.OrderBy(SourceRank).ThenByDescending(c => c.LastUsedTicks).First();
+                winner.MergedIncludesLocal = g.Any(c => c.IsLocal);
+                winner.MergedAccountIds    = g.Where(c => !c.IsLocal && c.OwnerAccountId is not null)
+                                              .Select(c => c.OwnerAccountId!.Value)
+                                              .Distinct()
+                                              .ToList();
+                return winner;
+            });
 
     // Local user contacts outrank saved server contacts, which outrank prior recipients.
     private static int SourceRank(ContactModel c)

@@ -11,11 +11,50 @@ public partial class AccountModel : ObservableObject
     public Guid Id { get; set; } = Guid.NewGuid();
     public string AccountName { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+    /// <summary>
+    /// This account's email address. Everything user-facing treats it as one: the Add Account
+    /// dialog labels it "Email address", the provider catalog matches a provider from its domain,
+    /// autodiscovery looks up its domain, and <see cref="Services.MimeMessageBuilder"/> puts it in
+    /// the From header of every message sent from the account.
+    /// </summary>
     public string Username { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The name the mail server wants at login, when that is not the email address (#396).
+    ///
+    /// Null or empty for the overwhelming majority of accounts, where the two are the same thing.
+    /// They come apart on providers that keep a separate account name — an iCloud account whose
+    /// mail is at a custom domain logs in as the Apple ID, a hosted server may want a bare
+    /// "firstname" or a "domain\user" — and before this field existed one box had to serve both
+    /// roles. Whichever the user filled in, the other was wrong: a login name in the box produced
+    /// MAIL FROM:&lt;name&gt; and the server rejected the message, an email address produced a
+    /// login the server did not recognize.
+    ///
+    /// Use <see cref="AuthUsername"/> rather than reading this directly.
+    /// </summary>
+    public string? LoginUsername { get; set; }
+
+    /// <summary>
+    /// The identity to authenticate with: <see cref="LoginUsername"/> when the server wants a
+    /// different login, otherwise the email address. Every IMAP and SMTP password authentication
+    /// goes through this. OAuth deliberately does not — there the identity is the mailbox the token
+    /// was issued for, which is the email address.
+    /// </summary>
+    [JsonIgnore]
+    public string AuthUsername =>
+        string.IsNullOrWhiteSpace(LoginUsername) ? Username : LoginUsername;
+
     public AuthType AuthType { get; set; } = AuthType.Password;
 
     /// <summary>Which protocol stack this account uses. Fixed at account creation.</summary>
     public BackendKind BackendKind { get; set; } = BackendKind.ImapSmtp;
+
+    /// <summary>
+    /// Id of the <see cref="MailProvider"/> this account was created from ("gmail", "icloud", …).
+    /// Null for accounts created before the provider catalog existed; <c>ProviderCatalog.Resolve</c>
+    /// falls back to matching the IMAP host in that case, so there is no migration step.
+    /// </summary>
+    public string? ProviderId { get; set; }
 
     /// <summary>
     /// True if this is a personal Microsoft account (its MSAL tenant is the consumers tenant), null if
@@ -39,6 +78,25 @@ public partial class AccountModel : ObservableObject
     public int SmtpPort { get; set; } = 587;
     public bool SmtpUseSsl { get; set; } = false; // STARTTLS on 587
     public bool SmtpAcceptInvalidCert { get; set; } = false;
+
+    /// <summary>
+    /// Encryption is mandatory on this account, not merely preferred.
+    ///
+    /// <see cref="ImapUseSsl"/> / <see cref="SmtpUseSsl"/> false means "STARTTLS", and it used to map
+    /// to MailKit's <c>StartTlsWhenAvailable</c> — which, when the server advertises no STARTTLS,
+    /// connects in PLAINTEXT and authenticates anyway. So "STARTTLS" was a label on the setting, not
+    /// a property of the connection: a host on port 143 that simply never offers STARTTLS receives
+    /// the password in the clear. With this flag set the connection uses <c>StartTls</c>, which
+    /// fails instead.
+    ///
+    /// Default false, so accounts already in accounts.json deserialize exactly as before. Set true
+    /// for server settings QuickMail chose on the user's behalf — the built-in provider catalog and
+    /// every discovery tier — because those hosts arrived over the network (or from a table) rather
+    /// than from the user, and a typosquatted responder naming a plaintext host must not be able to
+    /// harvest the password behind a collapsed Advanced expander. Settings the user typed in
+    /// Advanced settings keep the permissive behavior; that is their choice to make.
+    /// </summary>
+    public bool RequireStartTls { get; set; } = false;
 
     /// <summary>When true, this account is pre-selected when composing a new message.</summary>
     public bool IsDefault { get; set; } = false;

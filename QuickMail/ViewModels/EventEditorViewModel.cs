@@ -16,14 +16,35 @@ namespace QuickMail.ViewModels;
 public sealed record CalendarSaveTarget(string Label, Guid AccountId,
                                         string? CalendarId = null, string? CalendarName = null);
 
+/// <summary>Which field a refused save blames, so the View can move focus to it.</summary>
+public enum EditorField
+{
+    None,
+    Title,
+    Start,
+    End,
+    Repeat,
+    RepeatInterval,
+    RepeatUntil,
+    SaveTarget,
+}
+
 /// <summary>
-/// Authoring ViewModel for a single locally-created calendar appointment. Holds the editable
-/// fields (title, start/end date+time, location, notes), validates them, and produces a
+/// Authoring ViewModel for a single calendar appointment. Holds the editable fields (title,
+/// start and end instants, location, notes, recurrence), validates them, and produces a
 /// <see cref="CalendarEvent"/> on save. Pure VM: no View types, no window references. The View
-/// subscribes to <see cref="Saved"/> / <see cref="Cancelled"/> to close and persist, and to
-/// <see cref="AnnouncementRequested"/> for validation feedback.
+/// subscribes to <see cref="Saved"/> / <see cref="Cancelled"/> to close and persist, to
+/// <see cref="FieldFocusRequested"/> to put focus on a rejected field, and to
+/// <see cref="AnnouncementRequested"/> for spoken feedback.
 ///
-/// v1 scope: timed events only. All-day support needs a persisted model flag and is deferred.
+/// The start and the end are each a single <see cref="DateTime"/> rather than a date part plus a
+/// time part. The editor's date field and time field bind to the SAME property and differ only in
+/// how they format it and how far they step it. That is what lets a time stepped up from 23:50
+/// land on 00:05 tomorrow instead of wrapping back to the same morning, and it is why there is no
+/// nullable "no date yet" state to validate against.
+///
+/// The two are linked by <see cref="_duration"/>: moving the start moves the end with it, so the
+/// appointment keeps its length and the user is not sent back to fix a field they never touched.
 /// </summary>
 public partial class EventEditorViewModel : ObservableObject
 {
@@ -86,12 +107,97 @@ public partial class EventEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasTimes))]
     private bool _isAllDay;
 
-    [ObservableProperty] private DateTime? _startDate;
-    [ObservableProperty] private string _startTime = string.Empty;
-    [ObservableProperty] private DateTime? _endDate;
-    [ObservableProperty] private string _endTime = string.Empty;
+    /// <summary>
+    /// When the appointment starts. The Start date field and the Start time field both bind here.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RepeatUntilSeed))]
+    private DateTime _start;
+
+    /// <summary>
+    /// When the appointment ends. For an all-day appointment this is the INCLUSIVE last day at
+    /// midnight; <see cref="TryBuildEvent"/> converts it to 23:59:59 on that day when saving.
+    /// </summary>
+    [ObservableProperty] private DateTime _end;
+
     [ObservableProperty] private string _location = string.Empty;
     [ObservableProperty] private string _notes = string.Empty;
+
+    /// <summary>
+    /// How long the appointment lasts. Preserved when the start moves; re-derived whenever the end
+    /// is edited directly. Never stored negative — an end briefly dragged behind the start would
+    /// otherwise make the next start edit push the end even further into the past.
+    /// </summary>
+    private TimeSpan _duration = TimeSpan.FromMinutes(30);
+
+    /// <summary>
+    /// Set while one changed-handler is writing its sibling, so the sibling treats that write as
+    /// propagation rather than as a fresh edit. A single bool is enough: propagation runs exactly
+    /// one level deep (Start to End, never the reverse) and a VM is only ever touched on the UI
+    /// thread.
+    /// </summary>
+    private bool _syncing;
+
+    /// <summary>Time of day and length remembered across an All day round trip.</summary>
+    private TimeSpan _savedTimeOfDay = TimeSpan.FromHours(9);
+    private TimeSpan _savedDuration = TimeSpan.FromMinutes(30);
+
+    partial void OnStartChanged(DateTime value)
+    {
+        if (_syncing) { Revalidate(); return; }
+
+        _syncing = true;
+        try { End = value + _duration; }
+        finally { _syncing = false; }
+        Revalidate();
+    }
+
+    partial void OnEndChanged(DateTime value)
+    {
+        // A direct edit of the end redefines the length. When it came from OnStartChanged the
+        // length is already correct and re-deriving it here would just recompute what produced it.
+        if (!_syncing)
+        {
+            var length = value - Start;
+            _duration = length > TimeSpan.Zero ? length : TimeSpan.Zero;
+        }
+        Revalidate();
+    }
+
+    partial void OnTitleChanged(string value) => Revalidate();
+
+    partial void OnRepeatUntilChanged(DateTime? value) => Revalidate();
+
+    partial void OnRepeatIntervalChanged(int value) => Revalidate();
+
+    partial void OnIsAllDayChanged(bool value)
+    {
+        _syncing = true;   // both endpoints are rewritten below; neither write is a user edit
+        try
+        {
+            if (value)
+            {
+                _savedTimeOfDay = Start.TimeOfDay;
+                _savedDuration = _duration;
+
+                // Day count comes from the DATES, not from the length: an appointment running
+                // 23:45 to 00:15 touches two calendar dates but is one all-day event. Math.Max
+                // absorbs the transient end-before-start state described on _duration.
+                var days = Math.Max(0, (End.Date - Start.Date).Days);
+                Start = Start.Date;
+                End = Start.Date.AddDays(days);
+                _duration = End - Start;
+            }
+            else
+            {
+                Start = Start.Date + _savedTimeOfDay;
+                _duration = _savedDuration > TimeSpan.Zero ? _savedDuration : TimeSpan.FromMinutes(30);
+                End = Start + _duration;
+            }
+        }
+        finally { _syncing = false; }
+        Revalidate();
+    }
 
     // Recurrence — 0 = Does not repeat, 1 = Daily, 2 = Weekly, 3 = Monthly, 4 = Yearly.
     [ObservableProperty]
@@ -101,7 +207,19 @@ public partial class EventEditorViewModel : ObservableObject
     private int _repeatIndex;
 
     [ObservableProperty] private int _repeatInterval = 1;
+
+    /// <summary>
+    /// When the series stops, or null for "repeat forever". Unlike the start and the end this one
+    /// keeps its nullable form, because an empty repeat-until is a real and common answer rather
+    /// than a field the user has not reached yet.
+    /// </summary>
     [ObservableProperty] private DateTime? _repeatUntil;
+
+    /// <summary>
+    /// What the empty repeat-until field should adopt the first time it is stepped, so the control
+    /// does not have to invent a date of its own.
+    /// </summary>
+    public DateTime RepeatUntilSeed => Start.Date.AddMonths(1);
 
     // Weekly only: which days the appointment repeats on. All unchecked = the start date's weekday.
     [ObservableProperty] private bool _repeatOnSunday;
@@ -158,6 +276,39 @@ public partial class EventEditorViewModel : ObservableObject
         1 => "days", 2 => "weeks", 3 => "months", 4 => "years", _ => "",
     };
 
+    /// <summary>
+    /// Why the last save was refused, or empty when the fields are valid. Shown on a permanent
+    /// error line in the editor, so the reason survives every announcement setting being switched
+    /// off — the old code announced the message and nothing else, which made Save look dead to
+    /// anyone who had turned result announcements off.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasError))]
+    private string _errorText = string.Empty;
+
+    public bool HasError => !string.IsNullOrEmpty(ErrorText);
+
+    /// <summary>
+    /// Raised after a refused save so the View can move focus to the field at fault. Focus
+    /// movement is the other half of the feedback: a screen reader announces it as ordinary
+    /// navigation, with no programmatic notification to be filtered out by a config setting.
+    /// </summary>
+    public event Action<EditorField>? FieldFocusRequested;
+
+    /// <summary>
+    /// Whether Save has been pressed yet. Validation stays silent until it has: flagging an
+    /// incomplete appointment while the user is still filling it in is nagging, but going quiet
+    /// after the first refusal — so the user has to press Save again to learn whether their fix
+    /// worked — is worse.
+    /// </summary>
+    private bool _saveAttempted;
+
+    private void Revalidate()
+    {
+        if (!_saveAttempted) return;
+        ErrorText = TryBuildEvent(out _, out var error, out _) ? string.Empty : error;
+    }
+
     /// <summary>Raised with the built event when the user saves and validation passes.</summary>
     public event Action<CalendarEvent>? Saved;
 
@@ -179,16 +330,17 @@ public partial class EventEditorViewModel : ObservableObject
         IsEdit = false;
         _saveTargets = BuildSaveTargets(accountTargets);
         SaveTargetLabels = _saveTargets.ConvertAll(t => t.Label);
-        var start = RoundUpToQuarterHour(defaultStart);
-        // Derive EndDate from the end instant, not from start.Date: the default half-hour can roll
-        // past midnight (23:45 + 30min), and pinning the end to the start's date then puts the end
-        // before the start, so TryBuildEvent rejects the untouched default. Mirrors the existing-
-        // event constructor below. (#378)
-        var end = start.AddMinutes(30);
-        StartDate = start.Date;
-        StartTime = start.ToString("t");
-        EndDate = end.Date;
-        EndTime = end.ToString("t");
+        // Backing fields, not the properties: the changed-handlers would run duration propagation
+        // and All day bookkeeping before anything is subscribed, and there is nothing for them to
+        // do here anyway.
+        //
+        // The end is derived from the start instant plus the length, so 23:45 + 30 minutes is
+        // 00:15 the next day. The old code pinned the end to the start's DATE, which put the end
+        // before the start and made the editor reject its own untouched defaults late in the
+        // evening (#378). With one instant per endpoint that failure mode no longer exists.
+        _start = RoundUpToQuarterHour(defaultStart);
+        _duration = TimeSpan.FromMinutes(30);
+        _end = _start + _duration;
     }
 
     private static List<CalendarSaveTarget> BuildSaveTargets(IReadOnlyList<CalendarSaveTarget>? accountTargets)
@@ -229,14 +381,17 @@ public partial class EventEditorViewModel : ObservableObject
         Title = existing.Summary;
         Location = existing.Location;
         Notes = existing.Description;
-        IsAllDay = existing.IsAllDay;
 
-        var start = existing.StartTime ?? DateTime.Now;
-        StartDate = start.Date;
-        StartTime = start.ToString("t");
-        var end = existing.EndTime ?? start.AddMinutes(30);
-        EndDate = end.Date;
-        EndTime = end.ToString("t");
+        // Backing fields throughout, so setting All day does not run the collapse-to-dates
+        // bookkeeping over values that were already stored in all-day form.
+        _isAllDay = existing.IsAllDay;
+        _start = existing.StartTime ?? DateTime.Now;
+        var end = existing.EndTime ?? _start.AddMinutes(30);
+        // A stored all-day event ends at 23:59:59 on its last day; the editor holds that day at
+        // midnight, which is the inclusive form TryBuildEvent converts back on save.
+        _end = _isAllDay ? end.Date : end;
+        _duration = _end - _start;
+        if (_duration < TimeSpan.Zero) _duration = TimeSpan.Zero;
 
         var rule = Models.RecurrenceRule.Parse(existing.RecurrenceRule);
         if (rule != null)
@@ -260,11 +415,20 @@ public partial class EventEditorViewModel : ObservableObject
     [RelayCommand]
     private void Save()
     {
-        if (!TryBuildEvent(out var evt, out var error))
+        _saveAttempted = true;
+        if (!TryBuildEvent(out var evt, out var error, out var field))
         {
+            // Cleared before it is set so an identical message notifies again. ErrorText is an
+            // [ObservableProperty], which suppresses an equal assignment — without this, pressing
+            // Save a second time on a field the user has not fixed would change nothing anywhere,
+            // which is the "the button does nothing" symptom this whole surface exists to remove.
+            ErrorText = string.Empty;
+            ErrorText = error;
+            FieldFocusRequested?.Invoke(field);
             AnnouncementRequested?.Invoke(error, AnnouncementCategory.Result);
             return;
         }
+        ErrorText = string.Empty;
         Saved?.Invoke(evt);
     }
 
@@ -276,18 +440,22 @@ public partial class EventEditorViewModel : ObservableObject
     /// Returns false with a spoken-friendly <paramref name="error"/> message on failure.
     /// </summary>
     public bool TryBuildEvent(out CalendarEvent evt, out string error)
+        => TryBuildEvent(out evt, out error, out _);
+
+    /// <summary>
+    /// As above, and additionally reports which <paramref name="field"/> was rejected so the
+    /// caller can put focus there.
+    /// </summary>
+    public bool TryBuildEvent(out CalendarEvent evt, out string error, out EditorField field)
     {
         evt = null!;
         error = string.Empty;
+        field = EditorField.None;
 
         if (string.IsNullOrWhiteSpace(Title))
         {
             error = "Title is required.";
-            return false;
-        }
-        if (StartDate is null)
-        {
-            error = "Start date is required.";
+            field = EditorField.Title;
             return false;
         }
 
@@ -295,43 +463,28 @@ public partial class EventEditorViewModel : ObservableObject
 
         if (IsAllDay)
         {
-            // All-day: span whole day(s). Single day => start 00:00, end 23:59:59 same date.
-            start = StartDate.Value.Date;
-            var endDay = (EndDate ?? StartDate.Value).Date;
-            if (endDay < start.Date)
+            // All-day spans whole days: start at 00:00 and end at 23:59:59 on the last day.
+            start = Start.Date;
+            if (End.Date < start)
             {
                 error = "The end date is before the start date.";
+                field = EditorField.End;
                 return false;
             }
-            end = endDay.AddDays(1).AddSeconds(-1);
+            end = End.Date.AddDays(1).AddSeconds(-1);
         }
         else
         {
-            start = CombineDateAndTime(StartDate.Value, StartTime, out var startOk);
-            if (!startOk)
-            {
-                error = "Start time is not a valid time. Try a format like 9:00 AM.";
-                return false;
-            }
-
-            var endBaseDate = EndDate ?? StartDate.Value;
-            if (string.IsNullOrWhiteSpace(EndTime))
-            {
-                end = start.AddMinutes(30);
-            }
-            else
-            {
-                end = CombineDateAndTime(endBaseDate, EndTime, out var endOk);
-                if (!endOk)
-                {
-                    error = "End time is not a valid time. Try a format like 9:30 AM.";
-                    return false;
-                }
-            }
-
+            // Both endpoints are real instants by construction — the fields cannot hold text that
+            // failed to parse, and duration linking keeps the end ahead of the start whenever the
+            // start moves. This branch is now only reachable by editing the END backwards on
+            // purpose, which is why it stays.
+            start = Start;
+            end = End;
             if (end < start)
             {
                 error = "The end time is before the start time.";
+                field = EditorField.End;
                 return false;
             }
         }
@@ -346,11 +499,13 @@ public partial class EventEditorViewModel : ObservableObject
             if (RepeatInterval < 1)
             {
                 error = "Repeat interval must be at least 1.";
+                field = EditorField.RepeatInterval;
                 return false;
             }
             if (RepeatUntil is DateTime u && u.Date < start.Date)
             {
                 error = "The repeat end date is before the start date.";
+                field = EditorField.RepeatUntil;
                 return false;
             }
             var rule = new RecurrenceRule
@@ -383,6 +538,7 @@ public partial class EventEditorViewModel : ObservableObject
             // events that try to add a repeat — previously the edit path skipped this and the
             // whole edit was discarded post-close by the push's NotSupportedException.
             error = "Repeating appointments can only be saved to Local Calendar for now.";
+            field = IsEdit ? EditorField.Repeat : EditorField.SaveTarget;
             return false;
         }
 
@@ -405,23 +561,6 @@ public partial class EventEditorViewModel : ObservableObject
             ResponseStatus = CalendarResponseStatus.Accepted,
         };
         return true;
-    }
-
-    /// <summary>Combines a date with a free-typed time string ("9", "9:00", "9:00 AM", "14:30").</summary>
-    private static DateTime CombineDateAndTime(DateTime date, string timeText, out bool ok)
-    {
-        if (string.IsNullOrWhiteSpace(timeText))
-        {
-            ok = true;
-            return date.Date; // midnight
-        }
-        if (DateTime.TryParse(timeText.Trim(), out var parsed))
-        {
-            ok = true;
-            return date.Date + parsed.TimeOfDay;
-        }
-        ok = false;
-        return date.Date;
     }
 
     private void SetRepeatDay(DayOfWeek day, bool value)

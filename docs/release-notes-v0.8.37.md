@@ -13,6 +13,26 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ---
 
+## New: setting up an account asks for three things
+
+Adding an account used to ask for an IMAP host, port, SSL setting, and certificate rule, and then the same four again for SMTP — even when QuickMail already knew every one of those values. It now asks for a **provider**, your **email address**, and your **password**, and works the rest out.
+
+The dialog opens on a new **Provider** list: **Other**, **Gmail**, **Outlook.com / Microsoft 365**, **Yahoo Mail**, and **iCloud Mail**. Other is first rather than last, so Down arrow reaches the rest from where the dialog puts you. Choosing a provider fills in every server setting and says what it did; typing an address at one of them selects it for you, so most people never touch the list. Server names, ports, and SSL settings moved behind an **Advanced settings** expander that stays closed unless you need it — Tab reaches its header before its contents, so one keystroke moves past the whole thing.
+
+**Account name is now optional.** Leave it blank and the account is labelled with its email address.
+
+**An address QuickMail does not recognize gets looked up** when you leave the Email field. Four things are tried in turn: the built-in provider list (offline — nothing leaves your computer), Mozilla's public autoconfig database, your domain's own Autodiscover service, and finally your domain's public DNS records, which say where its mail is actually delivered. Only the **domain** is sent for the second and fourth; the third sends your address to your own provider's server, exactly as Outlook does. That last step is what makes ordinary business mail work: most Microsoft 365 and Google Workspace customers use their own domain and publish nothing the earlier steps can read, and a work mailbox has no IMAP host to type — the way in is a sign-in. When nothing is found at all, Advanced settings opens and focus moves to the **IMAP host** field, with a message naming the sign-in route for a work or school account. Set `AutoDiscoverOnline = off` in `config.ini` to skip everything but the built-in list.
+
+**Gmail now defaults to an app password.** Google sign-in is currently blocked for new QuickMail accounts, so the app password is the path that works today, and the dialog links straight to the page where you create one. Google sign-in stays available under **Advanced settings → Authentication**. Yahoo Mail and iCloud Mail need app passwords too, and say so above the password box. (#369)
+
+**Work or school Microsoft 365 accounts connect through Microsoft 365 directly.** An address on your organization's own domain now moves onto that connection method as you type it, instead of being left on IMAP — where sign-in ended at "your administrator needs to make a change" for a mailbox that signs in perfectly well the other way. Personal Outlook.com, Hotmail, and Live.com accounts are unaffected and stay on IMAP.
+
+**Test Connection checks both halves of your mail.** Incoming and outgoing are probed separately and reported separately — "IMAP: OK. SMTP: OK." A working inbox with a misconfigured send server used to pass this test and then fail on your first message. Microsoft 365 accounts can be tested now as well. The button is on the Manage Accounts window too, so it is as useful on an account that has stopped working as on one you are setting up.
+
+Manage Accounts gained the same **Advanced settings** expander, so an account that is working needs no scrolling past hosts and ports to reach the settings people actually change, and it shows which provider the account belongs to.
+
+The [Accounts section of the User Guide](https://kellylford.github.io/QuickMail/accounts.html) covers the whole lifecycle — choosing a provider, adding an account, entering settings by hand, testing, editing, and removing.
+
 ## Changed: mail rules are now per-account
 
 The "All accounts" rule option has been replaced by scoping each rule to a specific account. This happens automatically the first time rules load after updating:
@@ -34,6 +54,70 @@ Two things to know about the results: mail older than your sync range is not sto
 ## Fixed: typing a letter jumps to a contact in the address book
 
 With focus on the address book's contact list, typing a letter did nothing. Now it jumps to the first contact starting with that letter, the same way lists behave elsewhere in Windows. Type several letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with it. Contacts saved without a name are matched on their address. The **Groups** and **Group members** lists work the same way. (#371)
+
+---
+
+## Changed: Google sign-in for Gmail is now something you turn on
+
+Google stopped granting QuickMail new authorizations, so Gmail accounts sign in with an app password. But a small number of accounts were authorized before that happened and still work perfectly well over Google sign-in, and this release makes sure they keep their route in.
+
+**If your Gmail account already uses Google sign-in, nothing changes and you need do nothing.** It keeps signing in, keeps syncing mail, contacts, and calendar, and Manage Accounts still shows it as a Google account. Only the *offer* of Google sign-in to a new account is affected.
+
+**If you want to add another Gmail account over Google sign-in**, turn the option on:
+
+1. **Tools → Settings → Advanced**, check **Sign in with Google for Gmail accounts**, and select **Save**.
+2. Restart QuickMail — the setting is read at startup.
+
+The **Provider** list then has a **Gmail (sign in with Google)** entry directly below plain **Gmail**. Choose it and there is no password box at all: Gmail's servers fill in as usual and a **Sign in with Google** button stands where the password would be. Contact and calendar sync are offered too, granted as part of the same sign-in. The Google choice also returns to **Advanced settings → Authentication**.
+
+The same switch is available as `GoogleAuth = true` under `[features]` in `config.ini`, or `--feature GoogleAuth` at launch, for anyone who would rather not use the Settings dialog.
+
+**Why it is off by default.** It was previously on for everyone, which meant the one path Google refuses was the one on offer — a sign-in that ends in "This app has been blocked" tells you nothing about what to do instead. Off by default, the app-password route is what a new Gmail account gets, and the users the sign-in still works for have a supported way to ask for it.
+
+If you turn the setting on and sign-in still ends in **"This app has been blocked,"** your account is not one of the ones authorized earlier and no QuickMail setting can change that. Use a Gmail app password — the User Guide's [Gmail section](https://kellylford.github.io/QuickMail/) has the steps.
+
+---
+
+## Fixes
+
+- **Editing a Gmail address no longer discards a deliberate provider choice.** Picking a Gmail entry and then typing the address swapped your choice for the other Gmail entry on the first keystroke, because a Gmail address matches both. A provider that already covers the address you are typing is now left alone. Correcting the address to a different provider still moves off it as before.
+- **An account signing in with Google always shows that in Manage Accounts**, whether or not the setting above is on. Previously the Authentication box could be left blank for such an account, with nothing to say what it was using.
+- **A feature flag written from Settings updates the entry already in `config.ini`** instead of adding a second one in different capitalization beside it, which could leave a setting looking as though it had not taken.
+
+---
+
+## Fixed: sending mail gave no feedback
+
+A report of "sending an email gives no feedback, and does not close the compose window" ([#396](https://github.com/kellylford/QuickMail/issues/396)) turned out to be four separate problems stacked on top of each other. All four are fixed.
+
+**A send that fails now says so out loud.** The failure message was classed as background progress, so if you had turned **Announce background progress** off — a reasonable thing to do, since that is the setting that stops every folder announcing itself during a sync — pressing Send produced the button greying out, coming back, and nothing else. Send failures, refusals, and confirmations are now announced as results, which is the category for the outcome of something you just did, and they interrupt rather than queue. The same fix applies to a refused save in Add Account and Manage Accounts.
+
+**A message that was accepted is no longer reported as failed.** QuickMail closed the connection inside the same step that sent the message, so a server that hangs up the instant it takes your mail — or any hiccup during the sign-off — produced "Send failed" for a message that was already on its way. This is why the reporter saw messages sometimes arrive anyway. The sign-off is now separate and its own failure is ignored, because by then the server has your message.
+
+**Your login and your email address can now be different things.** There was one box serving as both, and for some accounts they are not the same string: an iCloud mailbox on your own domain logs in under the Apple ID, and some hosted servers want a bare user name. Whichever one you entered, the other use of it was wrong — a login name in the box became the From address on your mail, which servers reject. **Advanced settings** in both account dialogs now has a **Login username** box, empty for almost everyone, filled in only when your server logs in under something other than your email address. The **Email address** box is now only that, and saving an account refuses an entry that is not a full address, pointing at the new box instead.
+
+If you already had an account set up with a login name in the address box, QuickMail copies it into **Login username** for you the first time it starts. That matters: correcting the address is what you are now asked to do, and without the copy you would be deleting the very thing your account signs in with. You enter the address; the login carries on working. This also covers contact and calendar sync on iCloud, which sign in with the same name.
+
+**A wrong encryption setting on a known server is corrected at startup.** An account set up by hand before QuickMail knew these providers could end up with **Implicit SSL on connect** checked while using port 587, which is a STARTTLS port. That combination fails every single send, about a second after you press the button, with an error that names a certificate rather than a checkbox. At startup QuickMail now corrects the encryption setting when — and only when — the account is one you have never saved yourself, the server is one it ships settings for, *and* the port is the exact port it publishes for that server. Anything else — one of those servers on a different port, or any account you have saved in Manage Accounts — is left exactly as you set it. A corrected connection also requires encryption from then on, rather than falling back to plain text if the server offers none.
+
+---
+
+## Internal
+
+- `FeatureFlag.GoogleAuth` default flips to `false`. It gates only the *offer* — no runtime authentication path consults it, so saved `AuthType.OAuth2Google` accounts are unaffected.
+- New `ProviderCatalog` entry `gmail-oauth` ("Gmail (sign in with Google)"), `DefaultAuthType = OAuth2Google`, no app-password hint, exposed as `IProviderCatalog.GmailGoogleSignIn`. It carries the gmail.com domains but sits after the plain Gmail entry, so `MatchByEmail` and `Resolve`'s host fallback still answer `gmail` for every Gmail address; it is reached only by an explicit pick or a saved `ProviderId`.
+- `AccountEditorViewModel.Providers` becomes an `ObservableCollection<MailProvider>` built from the catalog minus the Google entry, with `EnsureGoogleSignInListed()` inserting it after Gmail. The entry is absent from the list rather than collapsed, so it is out of the keyboard order and the accessibility tree entirely.
+- `ShowGoogleAuthOption` is no longer virtual: it is `IsGoogleAuthEnabled || AuthType == AuthType.OAuth2Google`, with derived VMs overriding the protected gate check. The second clause is what keeps an existing Google account's Authentication combo populated.
+- `AddAccountViewModel.MatchProviderFromUsername` returns early when the selected provider already matches the typed address.
+- `ConfigModel.Features` is now an `OrdinalIgnoreCase` dictionary; `SettingsViewModel.GoogleSignIn` reads and writes the `GoogleAuth` key in it rather than adding a setting of its own.
+- `GoogleSignInOptInTests` — 20 tests covering the gate default and its config/CLI overrides, catalog ordering and resolution, picker contents in both states, the provider-choice regression, and the Settings round-trip.
+- `AccountModel.LoginUsername` (persisted, nullable) plus computed `AuthUsername` = `LoginUsername ?? Username`. Every **password** authentication uses `AuthUsername` — IMAP, all three SMTP entry points, and the iCloud CardDAV/CalDAV Basic auth in `ICloudContactSource` and `GraphCalendarSyncService`, which is the same credential pair. OAuth still uses `Username`, the mailbox the token was issued for. `Username` is now documented as the email address and nothing else — it is the From header, the provider-catalog match, and the autodiscovery domain. `SameConnectionSettings` includes `LoginUsername` so a corrected login invalidates the pooled client.
+- `EmailAddressValidator` (new) parses with `AllowAddressesWithoutDomain = false` — MimeKit's default accepts a bare local part, which is exactly the input that produced `MAIL FROM:<fastfinge>`. Deliberately does not require a dot in the domain. `TryNormalize` returns `mailbox.Address`, and that normalized form is what both editors save: `MailboxAddress.TryParse` accepts `Kelly Ford <kelly@example.com>`, an angle-addr, and padded input, while the `MailboxAddress(name, address)` constructor `MimeMessageBuilder` calls throws on all three — so validating without normalizing would only have moved the failure from a refused save to a rejected send. Enforced in `AccountEditorViewModel.IsEmailAddressUsable` (shared by `IsReadyToSave` and `AccountManagerViewModel.SaveAccount`) and as a pre-send guard in `ComposeViewModel.SendAsync`.
+- `AccountStartupRepair` (new) runs in `OnStartup` against the loaded account list and does two things. It corrects `ImapUseSsl`/`SmtpUseSsl` where the account carries no `ProviderId` (the marker for predating the catalog — `SaveAccount` backfills it, so a deliberate pairing the user has saved is never overruled), the host equals a catalog provider's host, *and* the port equals that provider's published port; a leg moved to STARTTLS also gets `RequireStartTls`, matching what `ApplyProvider` sets for the same host and port, so a repaired account is not left weaker than a freshly added one. It also copies a non-address `Username` into `LoginUsername` on password accounts, so correcting the address does not destroy the working login. Matched on host rather than `ProviderCatalog.Resolve`, whose email-domain fallback would claim an address relayed through a third-party server.
+- `SmtpService.DisconnectQuietlyAsync` replaces the in-`try` `DisconnectAsync` in `SendAsync`, `SendIcsReplyAsync`, and `VerifyAsync`.
+- `AnnouncementCategory StatusCategory` on `ComposeViewModel` and `AccountEditorViewModel`, with `SetStatusOutcome`/`SetProgress`. **One-shot** — it returns to `Status` after every raise, matching `MainViewModel.StatusAnnouncementCategory`, because both VMs assign `StatusText` directly in dozens of places and a latched `Result` would re-classify all of them as interrupting outcomes. The setter also clears `StatusText` first so an identical repeated message still raises `PropertyChanged`; without that, pressing a button twice on the same unfixed field announced nothing the second time. Replaces `AddAccountDialog`'s local `_statusCategory` field, and removes three double-announce sites in `ComposeWindow`.
+- `AccountManagerViewModel.EmailAddressRejected` — the View opens Advanced settings and focuses the address box, since the refusal names a control that lives behind a collapsed expander.
+- `AccountStartupRepairTests` (17), `AccountLoginUsernameTests` (20), `ComposeViewModelSendFeedbackTests` (13), `EmailAddressValidatorTests` (26), plus login-identity tests in `CardDavContactSyncTests` and `CalDavCalendarSyncTests`. `StatusAnnouncementRecorder` captures announcements inside the `PropertyChanged` notification, the way the View does — asserting the category afterwards would pass against a broken implementation now that the category is one-shot.
 
 ---
 

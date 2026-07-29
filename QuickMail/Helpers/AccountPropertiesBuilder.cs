@@ -1,10 +1,11 @@
-// Deviation from spec: AccountModel uses AccountLabel (computed) for the display name,
-// a single Username field (not separate ImapUsername/SmtpUsername), ImapUseSsl/SmtpUseSsl
+// Deviation from spec: AccountModel uses AccountLabel (computed) for the display name, one
+// AuthUsername shared by both legs (not separate ImapUsername/SmtpUsername), ImapUseSsl/SmtpUseSsl
 // (not ImapSsl/SmtpSsl), and AuthType enum (not a UseOAuth bool).
 
 using System;
 using System.Collections.Generic;
 using QuickMail.Models;
+using QuickMail.Services;
 
 namespace QuickMail.Helpers;
 
@@ -24,7 +25,9 @@ public static class AccountPropertiesBuilder
             new("Server",   account.ImapHost),
             new("Port",     account.ImapPort.ToString()),
             new("Security", account.ImapUseSsl ? "SSL/TLS" : "STARTTLS"),
-            new("Username", account.Username),
+            // AuthUsername, not Username: these two rows describe how the account CONNECTS, so on an
+            // account with a separate login name they must show the name actually sent (#396).
+            new("Username", account.AuthUsername),
         };
 
         var smtp = new List<PropertyItem>
@@ -32,7 +35,7 @@ public static class AccountPropertiesBuilder
             new("Server",   account.SmtpHost),
             new("Port",     account.SmtpPort.ToString()),
             new("Security", account.SmtpUseSsl ? "SSL/TLS" : "STARTTLS"),
-            new("Username", account.Username),
+            new("Username", account.AuthUsername),
         };
 
         var auth = new List<PropertyItem>
@@ -42,7 +45,7 @@ public static class AccountPropertiesBuilder
                 {
                     AuthType.OAuth2Microsoft => "OAuth2 (Microsoft 365)",
                     AuthType.OAuth2Google    => "OAuth2 (Google / Gmail)",
-                    _ when account.ImapHost.Equals("imap.mail.me.com", StringComparison.OrdinalIgnoreCase)
+                    _ when ProviderCatalog.IsICloud(account)
                                              => "App-Specific Password (iCloud)",
                     _                        => "Password (Windows Credential Manager)",
                 }),

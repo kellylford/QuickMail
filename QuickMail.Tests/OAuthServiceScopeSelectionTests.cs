@@ -12,6 +12,40 @@ namespace QuickMail.Tests;
 /// </summary>
 public class OAuthServiceScopeSelectionTests
 {
+    // The account a work-or-school Microsoft address must end up as. Asserted at the scope layer
+    // because that is where the failure actually bites: the IMAP scopes below are the ones a tenant
+    // has usually never consented to, and requesting them ends sign-in at "your administrator needs
+    // to make a change" for a mailbox that signs in fine over Graph.
+    [Fact]
+    public void AWorkTenantOnGraphAsksForTheAdminConsentedDefaultScope()
+    {
+        var account = new AccountModel
+        {
+            Username = "kelly@icanbrew.com",
+            AuthType = AuthType.OAuth2Microsoft,
+            BackendKind = BackendKind.MicrosoftGraph,
+            IsPersonalMicrosoftAccount = false,
+        };
+
+        Assert.Equal(["https://graph.microsoft.com/.default"], OAuthService.DefaultScopesFor(account));
+    }
+
+    [Fact]
+    public void TheSameAccountOnTheImapBackendAsksForScopesTenantsRarelyGrant()
+    {
+        var account = new AccountModel
+        {
+            Username = "kelly@icanbrew.com",
+            AuthType = AuthType.OAuth2Microsoft,
+            BackendKind = BackendKind.ImapSmtp,
+        };
+
+        var scopes = OAuthService.DefaultScopesFor(account);
+
+        Assert.Contains("https://outlook.office.com/IMAP.AccessAsUser.All", scopes);
+        Assert.Contains("https://outlook.office.com/SMTP.Send", scopes);
+    }
+
     [Theory]
     [InlineData("me@outlook.com")]
     [InlineData("me@hotmail.com")]

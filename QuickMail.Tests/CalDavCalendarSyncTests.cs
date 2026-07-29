@@ -332,6 +332,26 @@ public class CalDavCalendarSyncTests : IDisposable
         Assert.NotEqual(CalDavCalendarClient.EventResourceUrl(row.CalendarId, row.Uid), row.ResourceUrl);
     }
 
+    /// <summary>
+    /// CalDAV Basic auth follows the account's login name, not its email address — an iCloud mailbox
+    /// on a custom domain signs in under the Apple ID (#396). Without this, separating the two
+    /// fields fixed mail and silently broke calendar sync with a 401 on every pass.
+    /// </summary>
+    [Fact]
+    public async Task Sync_AuthenticatesWithTheLoginUsername_NotTheEmailAddress()
+    {
+        var handler = FullSyncHandler(TimedIcs);
+        var account = ICloudAccount();
+        account.Username = "samuel@interfree.ca";   // the address recipients see
+        account.LoginUsername = "fastfinge";        // what Apple wants at sign-in
+
+        await Service(handler, account: account).SyncAllAsync(TestContext.Current.CancellationToken);
+
+        var expectedAuth = "Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("fastfinge:app-pass"));
+        Assert.NotEmpty(handler.Requests);
+        Assert.All(handler.Requests, r => Assert.Equal(expectedAuth, r.Auth));
+    }
+
     [Fact]
     public async Task Sync_Discovery_WalksPrincipalHomeAndCollections_WithAuthAndDepth()
     {

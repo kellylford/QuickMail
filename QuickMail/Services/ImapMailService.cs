@@ -1064,11 +1064,9 @@ public class ImapMailService : IMailService, IChangeNotifier
 #pragma warning restore CA5359
             }
 
-            var ssl = account.ImapUseSsl
-                ? SecureSocketOptions.SslOnConnect
-                : SecureSocketOptions.StartTlsWhenAvailable;
+            var ssl = MailSecurity.ForImap(account);
 
-            LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={account.ImapUseSsl} auth={account.AuthType}");
+            LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={ssl} auth={account.AuthType}");
             LogService.Debug($"  user={account.Username}");
             await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
 
@@ -1081,7 +1079,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             {
                 if (password is null)
                     throw new InvalidOperationException($"No password is available for account {account.Username}.");
-                await client.AuthenticateAsync(account.Username, password, ct);
+                await client.AuthenticateAsync(account.AuthUsername, password, ct);
             }
 
             LogService.Log($"Connected. Capabilities: {client.Capabilities}");
@@ -1109,10 +1107,17 @@ public class ImapMailService : IMailService, IChangeNotifier
     private static bool SameConnectionSettings(AccountModel left, AccountModel right) =>
         left.Id == right.Id &&
         left.Username == right.Username &&
+        // Part of the connection, not the label: a pooled client authenticated under the old login
+        // name must not be reused after the user corrects it in Manage Accounts.
+        left.LoginUsername == right.LoginUsername &&
         left.AuthType == right.AuthType &&
         left.ImapHost == right.ImapHost &&
         left.ImapPort == right.ImapPort &&
         left.ImapUseSsl == right.ImapUseSsl &&
+        // Part of how the connection is made, not just of how it is labelled: a pooled client that
+        // negotiated under StartTlsWhenAvailable must not be reused for an account that now requires
+        // STARTTLS.
+        left.RequireStartTls == right.RequireStartTls &&
         left.ImapAcceptInvalidCert == right.ImapAcceptInvalidCert;
 
     private static AccountModel CloneAccount(AccountModel account) =>
@@ -1122,6 +1127,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             AccountName           = account.AccountName,
             DisplayName           = account.DisplayName,
             Username              = account.Username,
+            LoginUsername         = account.LoginUsername,
             AuthType              = account.AuthType,
             ImapHost              = account.ImapHost,
             ImapPort              = account.ImapPort,
@@ -1131,6 +1137,7 @@ public class ImapMailService : IMailService, IChangeNotifier
             SmtpPort              = account.SmtpPort,
             SmtpUseSsl            = account.SmtpUseSsl,
             SmtpAcceptInvalidCert = account.SmtpAcceptInvalidCert,
+            RequireStartTls       = account.RequireStartTls,
             IsDefault             = account.IsDefault,
         };
 
