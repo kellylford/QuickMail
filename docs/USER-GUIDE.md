@@ -898,14 +898,41 @@ QuickMail sends your reply to the organizer from the account that received the i
 Press **N** (or the **New** toolbar button) to open the appointment editor. It is a normal window you can tab through:
 
 - **Title** — required.
-- **All day** — check this for an all-day event; the time fields then switch off.
-- **Starts / Ends** — a date and a time for each. You can type the time naturally: "9", "9:00", "9:00 AM", or "14:30" all work. If you leave the end time blank, QuickMail uses 30 minutes after the start.
+- **All day** — check this for an all-day event; the time fields then switch off. Turning it back off restores the times you had.
+- **Starts / Ends** — a date and a time for each. See **Entering dates and times** below.
 - **Location** — optional.
 - **Repeat** — leave as "Does not repeat" for a one-off, or set up a repeating appointment (see below).
 - **Notes** — free text.
 - **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved: your **Local Calendar** or a connected account. For iCloud the picker lists each of your Apple calendars (Home, Family, …) so you can choose which one. With no connected calendar this picker does not appear and everything is saved locally.
 
-Press **Enter** (or the **Save** button) to save, or **Escape** to cancel.
+Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If something is wrong, QuickMail puts focus on the field at fault and shows the reason on an error line above the buttons; the message clears itself as soon as you fix it.
+
+### Entering dates and times
+
+Every date and time field in the appointment editor works the same way, and so does the date in **Go to date**. Each one is an ordinary edit field: you can type into it, and you can change it with the arrow keys without typing anything.
+
+In a **date** field:
+
+| Key | Moves by |
+| --- | --- |
+| Up / Down arrow | One day |
+| Shift+Up / Shift+Down | One week |
+| Page Up / Page Down | One month |
+| Ctrl+Page Up / Ctrl+Page Down | One year |
+
+In a **time** field:
+
+| Key | Moves by |
+| --- | --- |
+| Up / Down arrow | 15 minutes, landing on the quarter hour |
+| Ctrl+Up / Ctrl+Down | One minute |
+| Page Up / Page Down | One hour |
+
+Stepping a time past midnight moves the date with it, so 11:50 PM stepped up becomes 12:00 AM the next day.
+
+You can also just type. Dates accept "8/3", "August 3", "2026-08-03", "today", "tomorrow", "friday", "next tuesday", a bare day number like "3" for that day of the month shown, and offsets like "+7", "-3", "+2w", "+1m", "+1y". Times accept "9", "930", "9:30", "9:30 AM", "9p", "14:30", "noon", "midnight", and offsets like "+30" or "-15". Press Enter or move to another field to apply what you typed; if it isn't something QuickMail can read as a date or a time, the field puts its previous value back.
+
+**The end follows the start.** When you change the start date or start time, the end moves by the same amount, so a 30-minute appointment stays 30 minutes long and you are never sent back to fix an end you didn't touch. Changing the end directly sets a new length, which the start then preserves from that point on.
 
 ### Repeating appointments
 

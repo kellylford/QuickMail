@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:QuickMail.Controls"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         Height="560" Width="500"
@@ -31,6 +32,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
@@ -101,31 +103,37 @@
                    IsChecked="{Binding IsAllDay}"
                    VerticalAlignment="Center" Margin="0,0,0,10"/>
 
-        <!-- Start -->
+        <!-- Start. The date field and the time field bind to the SAME property: one is the date
+             face of the instant and the other is its time face, which is what lets a time stepped
+             up from 23:50 move the date with it. -->
         <TextBlock  Grid.Row="2" Grid.Column="0" Text="Starts:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <DatePicker Grid.Row="2" Grid.Column="1"
-                    x:Name="StartDatePicker"
-                    AutomationProperties.Name="Start date"
-                    SelectedDate="{Binding StartDate}" Margin="0,0,8,10"/>
+        <controls:DateTimeField Grid.Row="2" Grid.Column="1"
+                                x:Name="StartDateField"
+                                AutomationProperties.Name="Start date"
+                                Kind="Date" Value="{Binding Start}"
+                                Margin="0,0,8,10"/>
         <TextBlock  Grid.Row="2" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <TextBox    Grid.Row="2" Grid.Column="3"
-                    AutomationProperties.Name="Start time"
-                    Text="{Binding StartTime, UpdateSourceTrigger=PropertyChanged}"
-                    IsEnabled="{Binding HasTimes}"
-                    MinWidth="90" MaxLength="20" Margin="0,0,0,10"/>
+        <controls:DateTimeField Grid.Row="2" Grid.Column="3"
+                                x:Name="StartTimeField"
+                                AutomationProperties.Name="Start time"
+                                Kind="Time" Value="{Binding Start}"
+                                IsEnabled="{Binding HasTimes}"
+                                MinWidth="90" Margin="0,0,0,10"/>
 
         <!-- End -->
         <TextBlock  Grid.Row="3" Grid.Column="0" Text="Ends:" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <DatePicker Grid.Row="3" Grid.Column="1"
-                    x:Name="EndDatePicker"
-                    AutomationProperties.Name="End date"
-                    SelectedDate="{Binding EndDate}" Margin="0,0,8,10"/>
+        <controls:DateTimeField Grid.Row="3" Grid.Column="1"
+                                x:Name="EndDateField"
+                                AutomationProperties.Name="End date"
+                                Kind="Date" Value="{Binding End}"
+                                Margin="0,0,8,10"/>
         <TextBlock  Grid.Row="3" Grid.Column="2" Text="at" Margin="0,0,8,10" VerticalAlignment="Center"/>
-        <TextBox    Grid.Row="3" Grid.Column="3"
-                    AutomationProperties.Name="End time"
-                    Text="{Binding EndTime, UpdateSourceTrigger=PropertyChanged}"
-                    IsEnabled="{Binding HasTimes}"
-                    MinWidth="90" MaxLength="20" Margin="0,0,0,10"/>
+        <controls:DateTimeField Grid.Row="3" Grid.Column="3"
+                                x:Name="EndTimeField"
+                                AutomationProperties.Name="End time"
+                                Kind="Time" Value="{Binding End}"
+                                IsEnabled="{Binding HasTimes}"
+                                MinWidth="90" Margin="0,0,0,10"/>
 
         <!-- Location -->
         <TextBlock Grid.Row="4" Grid.Column="0" Text="Location:" Margin="0,0,8,10" VerticalAlignment="Center"/>
@@ -153,13 +161,21 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                         Visibility="{Binding HasRepeat, Converter={StaticResource BoolToVis}}">
                 <TextBlock Text="every" Margin="10,0,6,0" VerticalAlignment="Center"/>
-                <TextBox AutomationProperties.Name="Repeat interval"
-                         Text="{Binding RepeatInterval, UpdateSourceTrigger=PropertyChanged}"
-                         Width="42" VerticalAlignment="Center"/>
+                <controls:DateTimeField x:Name="RepeatIntervalField"
+                                        AutomationProperties.Name="Repeat interval"
+                                        Kind="Number" Value="{Binding RepeatInterval}"
+                                        Minimum="1" Maximum="999"
+                                        Width="48" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding RepeatUnitLabel}" Margin="6,0,10,0" VerticalAlignment="Center"/>
                 <TextBlock Text="until" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                <DatePicker AutomationProperties.Name="Repeat until date"
-                            SelectedDate="{Binding RepeatUntil}" MinWidth="120"/>
+                <!-- AllowEmpty because a blank "until" is how a series repeats forever; the seed
+                     gives the first step somewhere sensible to land. -->
+                <controls:DateTimeField x:Name="RepeatUntilField"
+                                        AutomationProperties.Name="Repeat until date"
+                                        Kind="Date" Value="{Binding RepeatUntil}"
+                                        SeedValue="{Binding RepeatUntilSeed}"
+                                        AllowEmpty="True"
+                                        MinWidth="150" VerticalAlignment="Center"/>
             </StackPanel>
         </StackPanel>
 
@@ -200,8 +216,21 @@
                    VerticalScrollBarVisibility="Auto"
                    MinHeight="80" Margin="0,0,0,10"/>
 
+        <!-- Why a save was refused. A read-only TextBox rather than a TextBlock so it is a real
+             tab stop that a screen reader will read, the same reason the Calendar line above uses
+             one. Collapsed while the fields are valid, so it is not an empty stop in the way. -->
+        <TextBox Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="4"
+                 x:Name="ErrorLine"
+                 AutomationProperties.Name="Error"
+                 Text="{Binding ErrorText, Mode=OneWay}"
+                 Visibility="{Binding HasError, Converter={StaticResource BoolToVis}}"
+                 IsReadOnly="True"
+                 TextWrapping="Wrap"
+                 Foreground="{DynamicResource Theme.Error}"
+                 Margin="0,0,0,8"/>
+
         <!-- Buttons -->
-        <StackPanel Grid.Row="9" Grid.Column="0" Grid.ColumnSpan="4"
+        <StackPanel Grid.Row="10" Grid.Column="0" Grid.ColumnSpan="4"
                     Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SaveButton"
                     Content="_Save"

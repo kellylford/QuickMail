@@ -28,6 +28,7 @@ public partial class EventEditorWindow : Window
         _vm.Cancelled += Close;
         _vm.AnnouncementRequested += (text, category) =>
             AccessibilityHelper.Announce(this, text, category: category);
+        _vm.FieldFocusRequested += FocusField;
 
         RegisterPaletteCommands();
 
@@ -36,10 +37,12 @@ public partial class EventEditorWindow : Window
             TitleBox.Focus();
             TitleBox.SelectAll();
             AccessibilityHelper.Announce(this,
-                vm.IsRecurringEdit
+                (vm.IsRecurringEdit
                     ? "This is a repeating event. Choose what to change: this event only, or all events " +
-                      "in the series. Tab through the fields. Press Control plus Enter to save, Escape to cancel."
-                    : "Tab through the fields. Press Control plus Enter to save, Escape to cancel.",
+                      "in the series. "
+                    : string.Empty) +
+                "Tab through the fields. In a date or time field, use the up and down arrows to change " +
+                "the value, or type one. Press Control plus Enter to save, Escape to cancel.",
                 category: AnnouncementCategory.Hint);
         };
     }
@@ -77,11 +80,11 @@ public partial class EventEditorWindow : Window
             return;
         }
 
-        // Escape while a DatePicker calendar or ComboBox dropdown is open: let the control
-        // consume it (the modeless-dialog Escape guard in CLAUDE.md).
+        // Escape while a ComboBox dropdown is open: let the control consume it (the
+        // modeless-dialog Escape guard in CLAUDE.md). The two DatePickers that used to be listed
+        // here are gone — their date entry is now a plain editable field with no popup at all.
         if (e.Key == Key.Escape
-            && (StartDatePicker.IsDropDownOpen || EndDatePicker.IsDropDownOpen
-                || RepeatCombo.IsDropDownOpen || SaveTargetCombo.IsDropDownOpen))
+            && (RepeatCombo.IsDropDownOpen || SaveTargetCombo.IsDropDownOpen))
             return;
 
         // Registry dispatch (ComposeWindow pattern) — so editor.save / editor.cancel rebindings
@@ -95,10 +98,35 @@ public partial class EventEditorWindow : Window
         }
     }
 
+    /// <summary>
+    /// Puts focus on the field a refused save blamed, and selects its text so a correction can be
+    /// typed straight over it. Focus movement is announced by the screen reader as ordinary
+    /// navigation, which is why it still tells the user something when every QuickMail
+    /// announcement setting is switched off.
+    /// </summary>
+    private void FocusField(EditorField field)
+    {
+        Control? target = field switch
+        {
+            EditorField.Title => TitleBox,
+            EditorField.Start => StartDateField,
+            EditorField.End => EndDateField,
+            EditorField.Repeat => RepeatCombo,
+            EditorField.RepeatInterval => RepeatIntervalField,
+            EditorField.RepeatUntil => RepeatUntilField,
+            EditorField.SaveTarget => SaveTargetCombo,
+            _ => null,
+        };
+        if (target is null) return;
+
+        target.Focus();
+        if (target is TextBox box) box.SelectAll();
+    }
+
     /// <summary>Cycles focus across the editor's logical stops: Title → Start → Notes → Save.</summary>
     private void CycleFocus(bool forward)
     {
-        Control[] stops = { TitleBox, StartDatePicker, NotesBox, SaveButton };
+        Control[] stops = { TitleBox, StartDateField, NotesBox, SaveButton };
         var current = System.Array.FindIndex(stops, c => c.IsKeyboardFocusWithin);
         if (current < 0) current = 0;
         var next = forward
