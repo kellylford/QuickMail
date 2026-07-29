@@ -56,6 +56,19 @@ public sealed class UnifiedRuleRow
 
     public override string ToString() => RowText;
 
+    /// <summary>Fuller prose for the detail pane. Server rules reuse their rich detail; client rules
+    /// get a short "runs in QuickMail" block with the same one-line summary.</summary>
+    public string DetailText
+    {
+        get
+        {
+            if (RunsWhere == RuleRunsWhere.Server) return Server!.DetailText();
+            var name = string.IsNullOrWhiteSpace(Name) ? "Unnamed rule" : Name;
+            var state = IsEnabled ? "enabled" : "disabled";
+            return $"{name} ({state})\nRuns in QuickMail (only while QuickMail is open).\n{ClientSummary(Client!)}";
+        }
+    }
+
     /// <summary>"If subject contains 'x' → move to Archive" for a client rule — mirrors
     /// <see cref="ServerRuleModel.OneLineSummary"/> so both kinds read the same way.</summary>
     private static string ClientSummary(MailRule r)

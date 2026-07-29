@@ -1,0 +1,104 @@
+<Window x:Class="QuickMail.Views.UnifiedRulesWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Rules Manager"
+        Width="780" Height="560"
+        MinWidth="620" MinHeight="440"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        WindowStyle="ToolWindow"
+        Background="{DynamicResource Theme.WindowBackground}"
+        Foreground="{DynamicResource Theme.TextPrimary}"
+        FontFamily="{DynamicResource Theme.FontFamily}"
+        FontSize="{DynamicResource Theme.FontSizeBase}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Account picker: first focusable control; governs everything below. Shown only when there's
+             more than one account (a single account needs no choice). -->
+        <StackPanel Grid.Row="0" x:Name="AccountPicker" Margin="0,0,0,8"
+                    Visibility="{Binding ShowAccountSelector, Converter={StaticResource BoolToVisibility}}">
+            <TextBlock Text="Account"/>
+            <ComboBox x:Name="AccountCombo"
+                      ItemsSource="{Binding AccountOptions}"
+                      SelectedItem="{Binding SelectedAccount}"
+                      Margin="0,2,0,0" AutomationProperties.Name="Account"/>
+        </StackPanel>
+
+        <!-- Status line: focusable (F6 ring) so counts can be re-read; not in the Tab order. -->
+        <TextBlock Grid.Row="1" x:Name="StatusText" Text="{Binding StatusText}" Margin="0,0,0,6"
+                   Focusable="True" KeyboardNavigation.IsTabStop="False"
+                   AutomationProperties.Name="{Binding StatusText}"
+                   AutomationProperties.LiveSetting="Polite"/>
+
+        <WrapPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,6">
+            <Button Content="New" Command="{Binding NewRuleCommand}"
+                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New rule"/>
+            <Button Content="Edit" Command="{Binding EditRuleCommand}"
+                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected rule"/>
+            <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
+                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected rule"/>
+            <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"
+                    Height="26" Padding="10,0" Margin="0,0,6,4"
+                    AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected rule}"/>
+            <Button Content="Move Up" Command="{Binding MoveUpCommand}"
+                    Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule up"/>
+            <Button Content="Move Down" Command="{Binding MoveDownCommand}"
+                    Height="26" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected rule down"/>
+        </WrapPanel>
+
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280"/>
+                <ColumnDefinition Width="6"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <ListBox Grid.Column="0" x:Name="RulesListBox"
+                     ItemsSource="{Binding Rules}"
+                     SelectedItem="{Binding SelectedRule}"
+                     AutomationProperties.Name="Rules list"
+                     KeyDown="RulesListBox_KeyDown"
+                     VirtualizingPanel.IsVirtualizing="False">
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Padding" Value="6,4"/>
+                        <Setter Property="AutomationProperties.Name" Value="{Binding RowText}"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem Header="New rule" Command="{Binding NewRuleCommand}"/>
+                        <MenuItem Header="Edit" Command="{Binding EditRuleCommand}"/>
+                        <MenuItem Header="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"/>
+                        <MenuItem Header="Move up" Command="{Binding MoveUpCommand}"/>
+                        <MenuItem Header="Move down" Command="{Binding MoveDownCommand}"/>
+                        <Separator/>
+                        <MenuItem Header="Delete" Command="{Binding DeleteRuleCommand}"/>
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+            </ListBox>
+
+            <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch"
+                          Background="Transparent" Focusable="False"
+                          KeyboardNavigation.IsTabStop="False"/>
+
+            <TextBox Grid.Column="2" x:Name="DetailBox"
+                     Text="{Binding DetailText, Mode=OneWay}"
+                     IsReadOnly="True" IsReadOnlyCaretVisible="True"
+                     AcceptsReturn="True" TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     AutomationProperties.Name="Rule detail"/>
+        </Grid>
+    </Grid>
+</Window>

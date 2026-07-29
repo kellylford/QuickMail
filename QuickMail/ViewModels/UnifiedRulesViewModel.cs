@@ -63,12 +63,20 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditSelected))]
     [NotifyPropertyChangedFor(nameof(CanModifySelected))]
+    [NotifyPropertyChangedFor(nameof(ToggleEnabledLabel))]
+    [NotifyPropertyChangedFor(nameof(DetailText))]
     [NotifyCanExecuteChangedFor(nameof(EditRuleCommand))]
     [NotifyCanExecuteChangedFor(nameof(DeleteRuleCommand))]
     [NotifyCanExecuteChangedFor(nameof(ToggleEnabledCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
     private UnifiedRuleRow? _selectedRule;
+
+    /// <summary>Enable/Disable button text: "Enable" for a disabled rule, "Disable" for an enabled one.</summary>
+    public string ToggleEnabledLabel => SelectedRule?.IsEnabled == true ? "Disable" : "Enable";
+
+    /// <summary>Detail prose for the selected rule (empty when nothing is selected).</summary>
+    public string DetailText => SelectedRule?.DetailText ?? string.Empty;
 
     [ObservableProperty] private string _statusText = string.Empty;
     [ObservableProperty] private bool _isBusy;
