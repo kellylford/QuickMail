@@ -54,8 +54,21 @@ public sealed class LogServiceTests : IDisposable
     /// </summary>
     private readonly string _marker = $"marker-{Guid.NewGuid():N}";
 
-    private bool LogContainsMarker() =>
-        File.Exists(LogFile) && File.ReadAllText(LogFile).Contains(_marker, StringComparison.Ordinal);
+    /// <summary>
+    /// Reads the log without locking out LogService's own writer. File.ReadAllText opens with
+    /// FileShare.Read, so a concurrent append from another test's production code failed — and
+    /// LogService swallows write errors, so the line vanished and this returned false. That was one
+    /// of the suite's intermittent failures.
+    /// </summary>
+    private bool LogContainsMarker()
+    {
+        if (!File.Exists(LogFile)) return false;
+
+        using var stream = new FileStream(
+            LogFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd().Contains(_marker, StringComparison.Ordinal);
+    }
 
     [Fact]
     public void Log_WhenEnabled_WritesFile()

@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Net.Sockets;
+using System.Threading;
 using System.Text;
 
 namespace QuickMail.Services;
@@ -56,10 +57,40 @@ public static class LogService
                 : $"{message}  [{ts}]{Environment.NewLine}";
             lock (_writeGate)
             {
-                File.AppendAllText(_logFile, line);
+                AppendWithRetry(line);
             }
         }
         catch { /* never crash on logging */ }
+    }
+
+    /// <summary>
+    /// Appends one line, retrying briefly if the file is momentarily unavailable.
+    ///
+    /// The lock serialises this process's own writers, but nothing stops something OUTSIDE the
+    /// process holding the file for a moment — a text editor or tail viewer with the log open, a
+    /// backup or sync agent, an antivirus scan. File.AppendAllText then throws IOException, and
+    /// because Log() swallows everything to guarantee it never crashes the app, that line was
+    /// simply lost with no trace.
+    ///
+    /// Losing log lines exactly when someone is watching the log is the worst possible time to lose
+    /// them, and a silently missing line is far more misleading than a missing file: it reads as
+    /// "that code never ran". Retrying a few milliseconds later clears essentially all of these.
+    /// </summary>
+    private static void AppendWithRetry(string line)
+    {
+        const int maxAttempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                File.AppendAllText(_logFile, line);
+                return;
+            }
+            catch (IOException) when (attempt < maxAttempts)
+            {
+                Thread.Sleep(15);
+            }
+        }
     }
 
     /// <summary>
