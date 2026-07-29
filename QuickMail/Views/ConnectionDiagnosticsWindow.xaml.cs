@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -19,32 +20,48 @@ namespace QuickMail.Views;
 /// dialog opened over it can hard-deadlock the UI thread with a screen reader active (see the modal
 /// dialog rules in CLAUDE.md). Escape and Close are therefore wired explicitly.
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "_testCts is cancelled in OnClosing and disposed in OnClosed; WPF never calls Dispose on a Window, so implementing IDisposable would be dead code.")]
 public partial class ConnectionDiagnosticsWindow : Window
 {
     private readonly ConnectionDiagnosticsViewModel _vm;
-    private readonly ICommandRegistry? _registry;
     private readonly IUiDispatcher? _ui;
     private IInputElement? _restoreFocusTo;
     private bool _accountHintAnnounced;
 
+    // Per the New Window Checklist: async work is owned by a field-scoped CTS, cancelled in
+    // OnClosing. Without it, closing the window mid-test left the probe running and holding the
+    // process-wide one-at-a-time semaphore for up to 45 seconds, blocking the next test.
+    private CancellationTokenSource? _testCts;
+
+    // A palette scoped to THIS window. Passing the global registry offered only main-window
+    // commands, so none of this window's own actions were reachable from it — the checklist
+    // requires actions without a hotkey to be discoverable here.
+    private readonly CommandRegistry _localRegistry = new();
+
     public ConnectionDiagnosticsWindow(
         ConnectionTruthProbe? probe,
         Func<IReadOnlyList<AccountModel>> accountsSource,
-        ICommandRegistry? registry = null,
         IUiDispatcher? uiDispatcher = null)
     {
         InitializeComponent();
 
-        _registry = registry;
         _ui       = uiDispatcher;
         _vm       = new ConnectionDiagnosticsViewModel(probe, accountsSource);
         DataContext = _vm;
 
+        _vm.TestTokenProvider = () =>
+        {
+            _testCts?.Dispose();
+            _testCts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            return _testCts.Token;
+        };
         _vm.CopyRequested     += OnCopyRequested;
         _vm.SaveRequested     += OnSaveRequested;
         _vm.AnnounceRequested += OnAnnounceRequested;
 
         ConnectionJournal.EventRecorded += OnJournalEvent;
+
+        RegisterLocalCommands();
 
         CloseButton.Click     += (_, _) => Close();
         AccountList.GotFocus  += OnAccountListGotFocus;
@@ -70,10 +87,12 @@ public partial class ConnectionDiagnosticsWindow : Window
     {
         // Fires on whatever thread produced the event (IDLE watchers and probes run on the thread
         // pool), so marshal before touching the bound collection.
+        var affectsStatus = evt.Kind is ConnectionEventKind.Status or ConnectionEventKind.Probe;
+
         void Apply()
         {
             _vm.AppendEvent(evt);
-            _vm.RefreshStatusOnly();
+            if (affectsStatus) _vm.RefreshStatusOnly();
         }
 
         if (_ui != null) _ui.Post(Apply);
@@ -175,10 +194,22 @@ public partial class ConnectionDiagnosticsWindow : Window
         }
     }
 
+    private void RegisterLocalCommands()
+    {
+        void Add(string id, string title, Action execute) =>
+            _localRegistry.Register(new CommandDefinition(
+                id: id, category: "Diagnostics", title: title, execute: execute));
+
+        Add("diagnostics.test",    "Test This Account", () => { if (_vm.TestAccountCommand.CanExecute(null)) _vm.TestAccountCommand.Execute(null); });
+        Add("diagnostics.copy",    "Copy Report",       () => _vm.CopyReportCommand.Execute(null));
+        Add("diagnostics.save",    "Save Report",       () => _vm.SaveReportCommand.Execute(null));
+        Add("diagnostics.refresh", "Refresh",           () => _vm.RefreshNowCommand.Execute(null));
+        Add("diagnostics.close",   "Close Window",      Close);
+    }
+
     private void OpenCommandPalette()
     {
-        if (_registry == null) return;
-        new CommandPaletteWindow(_registry) { Owner = this }.ShowDialog();
+        new CommandPaletteWindow(_localRegistry) { Owner = this }.ShowDialog();
     }
 
     // The F6 ring: accounts → events → buttons. Announced on arrival so the move is audible.
@@ -207,10 +238,20 @@ public partial class ConnectionDiagnosticsWindow : Window
         else
             target.Focus();
 
-        AccessibilityHelper.Announce(this, name, category: AnnouncementCategory.Hint);
+        // Status, not Hint: this is where focus went, not advice. A user who turns hints off still
+        // needs to know which pane they landed in, or F6 becomes silent movement.
+        AccessibilityHelper.Announce(this, name, category: AnnouncementCategory.Status);
     }
 
     // ── Lifetime ─────────────────────────────────────────────────────────────────
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        // Cancel in OnClosing, not OnClosed: an in-flight probe holds a process-wide semaphore, and
+        // releasing it promptly is what lets the next test run.
+        try { _testCts?.Cancel(); } catch { }
+        base.OnClosing(e);
+    }
 
     protected override void OnClosed(EventArgs e)
     {
@@ -220,6 +261,9 @@ public partial class ConnectionDiagnosticsWindow : Window
         _vm.CopyRequested     -= OnCopyRequested;
         _vm.SaveRequested     -= OnSaveRequested;
         _vm.AnnounceRequested -= OnAnnounceRequested;
+
+        _testCts?.Dispose();
+        _testCts = null;
 
         base.OnClosed(e);
 

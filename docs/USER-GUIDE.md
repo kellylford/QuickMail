@@ -1090,7 +1090,7 @@ The **Tools** menu is always available from the main window menu bar and groups 
 
 Connection Diagnostics records what QuickMail is doing when it talks to your mail servers, so a problem that is hard to describe can be looked at directly instead of guessed at.
 
-It is **off by default** and most people will never need it. Nothing is recorded, and no **Connection Diagnostics** item appears in the **Help** menu, until you turn it on.
+It is **off by default** and most people will never need it. While it is off, nothing is recorded, no log file is created, no connections are made on its behalf, and no **Connection Diagnostics** item appears in the **Help** menu.
 
 ### When you might use it
 

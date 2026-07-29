@@ -58,8 +58,11 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
     [ObservableProperty]
     private ConnectionAccountRow? _selectedAccount;
 
+    /// <summary>The unfiltered choice. A named constant because three places compare against it.</summary>
+    public const string AllAccountsFilter = "All accounts";
+
     [ObservableProperty]
-    private string _eventFilter = "All accounts";
+    private string _eventFilter = AllAccountsFilter;
 
     [NotifyCanExecuteChangedFor(nameof(TestAccountCommand))]
     [ObservableProperty]
@@ -83,6 +86,13 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
     /// <summary>Raised with text the View should announce, and the category it belongs to.</summary>
     public event Action<string, AnnouncementCategory>? AnnounceRequested;
 
+    /// <summary>
+    /// Supplies the cancellation token for a manual test. The View owns it, so closing the window
+    /// cancels an in-flight probe rather than leaving it holding the process-wide probe semaphore.
+    /// Falls back to a local timeout when unset (tests, or any host that does not provide one).
+    /// </summary>
+    public Func<CancellationToken>? TestTokenProvider { get; set; }
+
     public ConnectionDiagnosticsViewModel(
         ConnectionTruthProbe? probe, Func<IReadOnlyList<AccountModel>> accountsSource)
     {
@@ -98,9 +108,16 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
         var accounts = _accountsSource();
 
         var previousSelection = SelectedAccount?.Id;
+        var previousFilter    = EventFilter;
+
         Accounts.Clear();
+
+        // Rebuilding FilterOptions drops the ComboBox's SelectedItem, and the TwoWay binding writes
+        // that null straight back into EventFilter. Left alone, the journal then filters on a null
+        // account name, empties itself, and rejects every subsequent live event — so pressing
+        // Refresh during an incident blanks the very log the user opened the window to read.
         FilterOptions.Clear();
-        FilterOptions.Add("All accounts");
+        FilterOptions.Add(AllAccountsFilter);
 
         foreach (var account in accounts)
         {
@@ -116,6 +133,13 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
         }
 
         SelectedAccount = Accounts.FirstOrDefault(r => r.Id == previousSelection) ?? Accounts.FirstOrDefault();
+
+        // Restore the filter (falling back to "All accounts" if that account is gone). Assigning it
+        // re-runs ReloadEvents via OnEventFilterChanged; assign unconditionally so the ComboBox ends
+        // up with a real selection rather than a null one.
+        EventFilter = previousFilter != null && FilterOptions.Contains(previousFilter)
+            ? previousFilter
+            : AllAccountsFilter;
         ReloadEvents();
     }
 
@@ -167,9 +191,12 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
     public void ReloadEvents()
     {
         var all = ConnectionJournal.Snapshot();
-        var filtered = EventFilter == "All accounts"
+        // Treat null/blank as unfiltered: a transient null from a ComboBox rebuild must never be
+        // read as "show me events whose account is null", which matches nothing.
+        var filter = string.IsNullOrEmpty(EventFilter) ? AllAccountsFilter : EventFilter;
+        var filtered = filter == AllAccountsFilter
             ? all
-            : all.Where(e => e.Account == EventFilter).ToList();
+            : all.Where(e => e.Account == filter).ToList();
 
         Events.Clear();
         foreach (var e in filtered.Reverse()) Events.Add(e);
@@ -180,7 +207,9 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
     /// <summary>Appends one live event if it passes the current filter.</summary>
     public void AppendEvent(ConnectionEvent evt)
     {
-        if (EventFilter != "All accounts" && evt.Account != EventFilter) return;
+        if (!string.IsNullOrEmpty(EventFilter)
+            && EventFilter != AllAccountsFilter
+            && evt.Account != EventFilter) return;
 
         Events.Insert(0, evt);
         // Keep the visible list bounded; the file and the report hold the full history.
@@ -200,8 +229,9 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
         AnnounceRequested?.Invoke($"Testing {row.Label}.", AnnouncementCategory.Status);
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-            var result = await _probe.RunProbeAsync(row.Id, "manual test", cts.Token);
+            using var fallback = new CancellationTokenSource(TimeSpan.FromSeconds(45));
+            var token = TestTokenProvider?.Invoke() ?? fallback.Token;
+            var result = await _probe.RunProbeAsync(row.Id, "manual test", token);
 
             RefreshStatusOnly();
 
@@ -241,8 +271,10 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
     {
         var report = BuildReport();
         CopyRequested?.Invoke(report);
+        // Count what the report actually contains, not what the filtered list happens to show —
+        // with a per-account filter active those two differ.
         AnnounceRequested?.Invoke(
-            $"Report copied. {Events.Count} events.", AnnouncementCategory.Result);
+            $"Report copied. {ConnectionJournal.Snapshot().Count} events.", AnnouncementCategory.Result);
     }
 
     [RelayCommand]

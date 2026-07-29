@@ -86,6 +86,12 @@ public static class ConnectionJournal
     private const long MaxFileBytes = 5 * 1024 * 1024;
 
     private static readonly object _gate = new();
+    // Separate from _gate: taken only around Enabled transitions, which call Record (and therefore
+    // take _gate) while holding it. Two locks with a strict order — _enabledGate then _gate — and
+    // never the reverse.
+    private static readonly object _enabledGate = new();
+    // Guards the log file only, so a disk write never blocks a UI-thread Snapshot().
+    private static readonly object _fileGate = new();
     private static readonly Queue<ConnectionEvent> _ring = new(Capacity);
     private static string? _logFile;
     private static volatile bool _enabled;
@@ -94,32 +100,40 @@ public static class ConnectionJournal
     /// Whether the journal records anything. Off by default; driven by the
     /// <c>ConnectionDiagnostics</c> setting, and applied live when settings are saved.
     ///
-    /// When off, <see cref="Record"/> returns before allocating, so the instrumentation scattered
-    /// through the connect and pool paths costs a single volatile read. Turning it on begins
-    /// recording immediately — no restart — so a problem already in progress is captured from the
-    /// moment the user switches it on.
+    /// When off, <see cref="Record"/> returns on a volatile read before allocating. Call sites whose
+    /// detail is expensive to build — anything calling into <see cref="HostConnectionCensus"/>,
+    /// which resolves DNS — must use the <see cref="Func{T}"/> overload or check this property
+    /// first, because arguments to the eager overload are evaluated before it can short-circuit.
+    /// Turning it on begins recording immediately — no restart — so a problem already in progress is
+    /// captured from the moment the user switches it on.
     /// </summary>
     public static bool Enabled
     {
         get => _enabled;
         set
         {
-            if (_enabled == value) return;
-            _enabled = value;
+            // Serialised under its own lock, and the disable marker is written while still enabled
+            // rather than by flipping the flag back and forth. The earlier check-then-act version
+            // had a window where a concurrent enable could be silently overwritten by the disable
+            // that was in flight, leaving recording off while the caller believed it was on.
+            lock (_enabledGate)
+            {
+                if (_enabled == value) return;
 
-            if (value)
-            {
-                Record(ConnectionEventKind.Status, "-", "-", "diagnostics-enabled",
-                    $"QuickMail {AppVersion()} pid={Environment.ProcessId}");
-            }
-            else
-            {
-                // Say so in the file before going quiet, so a journal that simply stops is
-                // distinguishable from one the user turned off mid-investigation.
-                _enabled = true;
-                Record(ConnectionEventKind.Status, "-", "-", "diagnostics-disabled",
-                    "recording stopped by the Connection Diagnostics setting");
-                _enabled = false;
+                if (value)
+                {
+                    _enabled = true;
+                    Record(ConnectionEventKind.Status, "-", "-", "diagnostics-enabled",
+                        $"QuickMail {AppVersion()} pid={Environment.ProcessId}");
+                }
+                else
+                {
+                    // Say so in the file before going quiet, so a journal that simply stops is
+                    // distinguishable from one the user turned off mid-investigation.
+                    Record(ConnectionEventKind.Status, "-", "-", "diagnostics-disabled",
+                        "recording stopped by the Connection Diagnostics setting");
+                    _enabled = false;
+                }
             }
         }
     }
@@ -185,6 +199,26 @@ public static class ConnectionJournal
         try { EventRecorded?.Invoke(evt); } catch { /* a bad subscriber must not break logging */ }
     }
 
+    /// <summary>
+    /// Records one event, building the detail string only if something is listening.
+    ///
+    /// The eager overload evaluates its arguments before the enabled check can run, and several
+    /// call sites pass a host census that resolves DNS and walks every tracked host. Use this
+    /// overload wherever the detail is more than a cheap literal, so the disabled path really is
+    /// just a volatile read.
+    /// </summary>
+    public static void Record(
+        ConnectionEventKind kind, string account, string host, string phase, Func<string> detail)
+    {
+        if (!_enabled) return;
+
+        string text;
+        try { text = detail(); }
+        catch { text = "(detail unavailable)"; }
+
+        Record(kind, account, host, phase, text);
+    }
+
     /// <summary>Records an exception with its full inner chain, including socket error codes.</summary>
     public static void RecordError(
         ConnectionEventKind kind, string account, string host, string phase, Exception ex,
@@ -201,9 +235,13 @@ public static class ConnectionJournal
 
     private static void AppendToFile(string file, ConnectionEvent evt)
     {
+        // Its own lock, deliberately NOT _gate. Snapshot() and LogFilePath take _gate and are called
+        // from the UI thread to populate the diagnostics window; holding _gate across an
+        // open-write-close would stall the UI behind a background thread's disk I/O — on the very
+        // screen someone opens while something is already going wrong.
         try
         {
-            lock (_gate)
+            lock (_fileGate)
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(file)!);
                 RollIfTooLarge(file);
@@ -215,7 +253,7 @@ public static class ConnectionJournal
         catch { /* never crash on logging */ }
     }
 
-    // Caller holds _gate.
+    // Caller holds _fileGate.
     private static void RollIfTooLarge(string file)
     {
         try
@@ -236,11 +274,17 @@ public static class ConnectionJournal
     /// </summary>
     public static void DeleteLog()
     {
+        string? file;
         lock (_gate)
         {
             _ring.Clear();
-            if (_logFile == null) return;
-            foreach (var path in new[] { _logFile, _logFile + ".1" })
+            file = _logFile;
+        }
+        if (file == null) return;
+
+        lock (_fileGate)
+        {
+            foreach (var path in new[] { file, file + ".1" })
             {
                 try { if (File.Exists(path)) File.Delete(path); }
                 catch { /* never crash on log management */ }

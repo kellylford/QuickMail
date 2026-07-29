@@ -76,6 +76,14 @@ public sealed class ConnectionTruthProbe : IDisposable
     {
         if (_disposed) return;
 
+        // Diagnostics off means NOTHING runs. This is not merely about logging: the verification
+        // loop below opens a real authenticated connection, outside the pool's cap, every minute
+        // until the account recovers. Without this check, a single IDLE failure on a default install
+        // starts that loop for the rest of the session — adding connections to a host at exactly the
+        // moment it is already refusing them, which is the failure mode this whole feature exists to
+        // investigate. The probe must never be part of the problem it measures.
+        if (!ConnectionJournal.Enabled) return;
+
         // Already verifying this account — record the extra signal but don't stack loops.
         if (!_disconnected.TryAdd(accountId, true))
         {
@@ -99,6 +107,8 @@ public sealed class ConnectionTruthProbe : IDisposable
     public void NoteConnected(Guid accountId, string source)
     {
         if (_disposed) return;
+        // Deliberately NOT gated on ConnectionJournal.Enabled: if diagnostics were switched off
+        // while an account was being verified, its loop still has to be told to stop.
         if (!_disconnected.TryRemove(accountId, out _)) return;   // wasn't disconnected
 
         _loops.TryRemove(accountId, out _);
@@ -110,12 +120,38 @@ public sealed class ConnectionTruthProbe : IDisposable
     /// <summary>True if the UI currently shows this account as disconnected.</summary>
     public bool IsMarkedDisconnected(Guid accountId) => _disconnected.ContainsKey(accountId);
 
+    /// <summary>
+    /// Stops verification for any account not in <paramref name="liveAccountIds"/>.
+    ///
+    /// An account deleted while it was showing disconnected never gets a NoteConnected call — it is
+    /// simply gone from the list — so without this its loop keeps opening connections once a minute
+    /// for the rest of the session, for a mailbox the user has removed.
+    /// </summary>
+    public void RetainOnly(IEnumerable<Guid> liveAccountIds)
+    {
+        if (_disposed) return;
+
+        var live = new HashSet<Guid>(liveAccountIds);
+        foreach (var id in _disconnected.Keys.ToArray())
+        {
+            if (live.Contains(id)) continue;
+            if (!_disconnected.TryRemove(id, out _)) continue;
+
+            _loops.TryRemove(id, out _);
+            ConnectionJournal.Record(
+                ConnectionEventKind.Probe, _labelOf(id), "-", "verification-abandoned",
+                "account is no longer in the account list");
+        }
+    }
+
     private async Task VerifyUntilConnectedAsync(Guid accountId, CancellationToken ct)
     {
         var round = 0;
         try
         {
-            while (!ct.IsCancellationRequested && _disconnected.ContainsKey(accountId))
+            while (!ct.IsCancellationRequested
+                   && _disconnected.ContainsKey(accountId)
+                   && ConnectionJournal.Enabled)   // switched off mid-verification: stop connecting
             {
                 round++;
                 await RunProbeAsync(accountId, $"auto round {round}", ct);

@@ -1158,11 +1158,23 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // This was invisible to the status instrumentation because the state is lost by object
         // replacement, not by assignment: ApplyAccountStatus is genuinely the only code that writes
         // IsConnected, so no write is ever observed. See docs/planning/connection-drop-diagnostics.md.
-        var previous = Accounts.ToDictionary(a => a.Id);
+        // Not ToDictionary: a duplicated id in accounts.json would throw, turning a tolerable data
+        // oddity into a UI-thread crash on every Manage Accounts close. Last one wins, as before.
+        var previous = new Dictionary<Guid, AccountModel>();
+        foreach (var existing in Accounts) previous[existing.Id] = existing;
+
         var carried = 0;
         foreach (var account in accounts)
         {
             if (!previous.TryGetValue(account.Id, out var prior)) continue;
+
+            // Only carry status when the connection itself is unchanged. If the user just edited the
+            // host, port, login or security settings, the pooled connections are for the OLD server:
+            // reporting "connected" would vouch for a connection that no longer matches the account.
+            // Leaving it disconnected is both honest and useful — it puts the account into
+            // AccountsNeedingConnect so the reconnect pass actually re-establishes it.
+            if (!SameConnectionIdentity(prior, account)) continue;
+
             account.IsConnected = prior.IsConnected;
             account.TotalUnread = prior.TotalUnread;
             carried++;
@@ -1172,15 +1184,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
             RegisterAccountBackend?.Invoke(account);
         Accounts = new ObservableCollection<AccountModel>(accounts);
 
+        // An account deleted while it was showing disconnected never receives a NoteConnected call,
+        // so its verification loop would otherwise keep probing a mailbox the user has removed.
+        _truthProbe?.RetainOnly(accounts.Select(a => a.Id));
+
         if (previous.Count > 0)
         {
+            var carriedCount = carried;
             ConnectionJournal.Record(
                 ConnectionEventKind.Status, "-", "-", "accounts-reloaded",
-                $"rebuilt {accounts.Count} account object(s) from disk; " +
-                $"carried live status for {carried}; " +
-                $"{accounts.Count - carried} new or unmatched");
+                () => $"rebuilt {accounts.Count} account object(s) from disk; " +
+                      $"carried live status for {carriedCount}; " +
+                      $"{accounts.Count - carriedCount} new, removed or reconfigured");
         }
     }
+
+    /// <summary>
+    /// Whether two snapshots of an account describe the same server connection. Used to decide
+    /// whether live connection status may be carried across a reload — a changed host, port, login
+    /// or security setting means the existing connections no longer belong to this account.
+    /// </summary>
+    private static bool SameConnectionIdentity(AccountModel left, AccountModel right) =>
+        left.BackendKind == right.BackendKind &&
+        left.Username == right.Username &&
+        left.LoginUsername == right.LoginUsername &&
+        left.AuthType == right.AuthType &&
+        left.ImapHost == right.ImapHost &&
+        left.ImapPort == right.ImapPort &&
+        left.ImapUseSsl == right.ImapUseSsl &&
+        left.RequireStartTls == right.RequireStartTls &&
+        left.ImapAcceptInvalidCert == right.ImapAcceptInvalidCert;
 
     // ── Saved-views lifecycle ─────────────────────────────────────────────────────
 

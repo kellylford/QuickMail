@@ -17,6 +17,9 @@ namespace QuickMail.Tests;
 /// <c>as</c> + <c>Assert.NotNull</c> per CLAUDE.md, so a renamed element fails cleanly instead of
 /// throwing a bare NullReferenceException.
 /// </summary>
+// WpfTests because it shows real Windows on an STA thread. That does mean it can run alongside
+// the ConnectionDiagnostics collection, which mutates the same static journal — so these tests
+// deliberately assert nothing about journal CONTENT, only about the window and its bound VM.
 [Collection("WpfTests")]
 public class ConnectionDiagnosticsWindowTests
 {

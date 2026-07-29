@@ -406,10 +406,10 @@
                         </GroupBox>
 
                         <!-- Connection Diagnostics Group -->
-                        <GroupBox Header="Connection _Diagnostics" Padding="10" Margin="0,0,0,15"
+                        <GroupBox Header="_Connection Diagnostics" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Connection diagnostics settings">
                             <StackPanel>
-                                <CheckBox Content="Record _connection diagnostics"
+                                <CheckBox Content="_Record connection diagnostics"
                                           IsChecked="{Binding ConnectionDiagnostics, Mode=TwoWay}"
                                           AutomationProperties.Name="Record connection diagnostics"/>
                                 <TextBlock Text="Records how QuickMail connects to your mail servers, and adds Connection Diagnostics to the Help menu so you can check each account's real connection state and save a report. Turn this on when an account reports the wrong status or mail stops arriving, then reproduce the problem. It takes effect straight away — no restart needed. The report includes your account names, mail server names and addresses, but never passwords or message content."

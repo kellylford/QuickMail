@@ -3690,9 +3690,7 @@ public partial class MainWindow : Window
         var previousFocus = Keyboard.FocusedElement as IInputElement;
         var window = new ConnectionDiagnosticsWindow(
             _truthProbe,
-            () => _vm.Accounts.ToList(),
-            _registry,
-            uiDispatcher: null) { Owner = this };
+            () => _vm.Accounts.ToList()) { Owner = this };
         window.SetFocusRestoreTarget(previousFocus);
         window.Show();
     }

@@ -904,7 +904,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 LogService.Log($"IDLE watcher [{account.Username}]: watching INBOX (Count={inbox.Count}).");
                 ConnectionJournal.Record(
                     ConnectionEventKind.Idle, account.AccountLabel, account.ImapHost, "watcher-established",
-                    $"inboxCount={inbox.Count} {HostConnectionCensus.Describe(account.ImapHost)}");
+                    () => $"inboxCount={inbox.Count} {HostConnectionCensus.Describe(account.ImapHost)}");
 
                 // Successfully connected — reset retry count and fire reachability event.
                 if (_idleRetryCount.TryGetValue(accountId, out var retryCount) && retryCount > 0)
@@ -964,9 +964,12 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                 var host     = acct?.ImapHost ?? "-";
                 LogService.Log($"IDLE watcher [{username}] error (attempt {retryCount}) — will retry in {delaySeconds:F0}s: {LogService.FormatException(ex)}");
 
-                ConnectionJournal.RecordError(
-                    ConnectionEventKind.Idle, label, host, "watcher-error", ex,
-                    $"attempt={retryCount} retryIn={delaySeconds:F0}s {HostConnectionCensus.Describe(host)}");
+                if (ConnectionJournal.Enabled)
+                {
+                    ConnectionJournal.RecordError(
+                        ConnectionEventKind.Idle, label, host, "watcher-error", ex,
+                        $"attempt={retryCount} retryIn={delaySeconds:F0}s {HostConnectionCensus.Describe(host)}");
+                }
 
                 // Mark account as unreachable on first retry failure.
                 //
@@ -1141,8 +1144,8 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             // is how many sockets were already open when this attempt was made, not after.
             ConnectionJournal.Record(
                 ConnectionEventKind.Connect, account.AccountLabel, account.ImapHost, "connect-begin",
-                $"port={account.ImapPort} ssl={ssl} auth={account.AuthType} " +
-                HostConnectionCensus.Describe(account.ImapHost));
+                () => $"port={account.ImapPort} ssl={ssl} auth={account.AuthType} " +
+                      HostConnectionCensus.Describe(account.ImapHost));
 
             await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
             connected = true;
@@ -1163,7 +1166,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             LogService.Log($"Connected. Capabilities: {client.Capabilities}");
             ConnectionJournal.Record(
                 ConnectionEventKind.Connect, account.AccountLabel, account.ImapHost, "connect-ok",
-                $"elapsed={sw.ElapsedMilliseconds}ms {HostConnectionCensus.Describe(account.ImapHost)}");
+                () => $"elapsed={sw.ElapsedMilliseconds}ms {HostConnectionCensus.Describe(account.ImapHost)}");
             return client;
         }
         catch (Exception ex)
@@ -1172,10 +1175,13 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
             // the failure response ("Maximum number of connections from user+IP exceeded"), and
             // MailKit surfaces that text in the exception message. FormatException walks the whole
             // inner chain including SocketError and native code, so the reason survives here.
-            ConnectionJournal.RecordError(
-                ConnectionEventKind.Connect, account.AccountLabel, account.ImapHost,
-                connected ? "auth-failed" : "connect-failed", ex,
-                $"elapsed={sw.ElapsedMilliseconds}ms {HostConnectionCensus.Describe(account.ImapHost)}");
+            if (ConnectionJournal.Enabled)
+            {
+                ConnectionJournal.RecordError(
+                    ConnectionEventKind.Connect, account.AccountLabel, account.ImapHost,
+                    connected ? "auth-failed" : "connect-failed", ex,
+                    $"elapsed={sw.ElapsedMilliseconds}ms {HostConnectionCensus.Describe(account.ImapHost)}");
+            }
 
             DisposeClient(client);   // releases the census registration
             throw;
@@ -1457,10 +1463,11 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
                     if (discardedUnusable > 0)
                     {
+                        var unusable = discardedUnusable;
                         ConnectionJournal.Record(
                             ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
                             "discard-unusable",
-                            $"count={discardedUnusable} — client reported not connected/authenticated before reuse. {Census()}");
+                            () => $"count={unusable} — client reported not connected/authenticated before reuse. {Census()}");
                         discardedUnusable = 0;
                     }
 
@@ -1494,14 +1501,14 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
                             ConnectionJournal.Record(
                                 ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
                                 reuseIsStale ? "reuse-probed" : "reuse-hot",
-                                $"priority={priority} waited={rentSw.ElapsedMilliseconds}ms {Census()}");
+                                () => $"priority={priority} waited={rentSw.ElapsedMilliseconds}ms {Census()}");
                             break;
                         }
 
                         ConnectionJournal.Record(
                             ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
                             "probe-failed-discard",
-                            $"NOOP probe failed on an idle connection; discarding and reconnecting. {Census()}");
+                            () => $"NOOP probe failed on an idle connection; discarding and reconnecting. {Census()}");
 
                         lock (_gate) { _all.Remove(reuse); }
                         DisposeClient(reuse);
@@ -1527,7 +1534,7 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
                     ConnectionJournal.Record(
                         ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost, "created-new",
-                        $"priority={priority} waited={rentSw.ElapsedMilliseconds}ms {Census()}");
+                        () => $"priority={priority} waited={rentSw.ElapsedMilliseconds}ms {Census()}");
                 }
 
                 return new ImapClientLease(this, client, hasBackgroundSlot);
@@ -1567,13 +1574,20 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
             if (!keep)
             {
-                // A client that comes back unusable died during the operation that just ran. That is
-                // the drop we most want to catch, and it is silent today — the caller either
-                // succeeded on a retry or surfaced a vague error, and nothing recorded the death.
-                ConnectionJournal.Record(
-                    ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
-                    "returned-dead",
-                    $"connection was not usable when the operation finished; discarded. {Census()}");
+                // Only a genuine death is worth recording. `keep` is also false when the pool has
+                // been disposed (account disconnect, app exit), and journaling those as dead
+                // connections would manufacture drop evidence in the one log built to count real
+                // drops — the log we then read as proof of what happened.
+                bool poolClosed;
+                lock (_gate) { poolClosed = _disposed; }
+
+                if (!poolClosed)
+                {
+                    ConnectionJournal.Record(
+                        ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
+                        "returned-dead",
+                        () => $"connection was not usable when the operation finished; discarded. {Census()}");
+                }
                 DisposeClient(client);
             }
 

@@ -35,8 +35,15 @@ public static class HostConnectionCensus
     // Which host/account each live client belongs to, so a client can be released without the
     // release site needing to know either. Clients are disposed from static helpers that have no
     // account context, and double-releasing would corrupt the count — the table makes release
-    // idempotent (the entry is removed on first release) and lets a leaked client fall out on GC
-    // rather than pinning the count forever.
+    // idempotent (the entry is removed on first release).
+    //
+    // LIMITATION, stated plainly because this number is read as evidence: the count is decremented
+    // only by Released(), which every disposal path funnels through (DisposeClient). A client that
+    // were somehow collected WITHOUT being disposed would take its table entry with it and leave
+    // the counter high forever, and an inflated count is exactly the fabricated exhaustion evidence
+    // this class exists to detect. MailKit's ImapClient is IDisposable and the pool disposes every
+    // client it owns, so that path should not occur — but treat a census that looks impossibly high
+    // as suspect rather than as proof, and cross-check against the pool= figure on the same line.
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Registration> _registry = new();
 
     private sealed class Registration
