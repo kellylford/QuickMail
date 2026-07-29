@@ -28,6 +28,7 @@ public partial class App : Application
     private BugReportService? _bugReportService;
     private WindowsToastNotificationService? _notificationService;
     private AutoDiscoverService? _autoDiscoverService;
+    private ConnectionTruthProbe? _truthProbe;
 
     // Owned by Main (acquired before WPF starts, disposed after Run returns); OnStartup
     // wires its activation signal to the main window.
@@ -164,6 +165,11 @@ public partial class App : Application
         }
 
         LogService.Configure(profile.ProfileDir);
+
+        // Deliberately NOT gated on /debug or the EnableLogging setting. Connection drops are the
+        // one failure we have repeatedly been unable to diagnose after the fact, and the profile
+        // that reported them had logging switched off. The journal is bounded and self-rotating.
+        ConnectionJournal.Configure(profile.ProfileDir);
 
         // /debug enables verbose debug logging to the log file.
         if (e.Args.Contains("/debug", StringComparer.OrdinalIgnoreCase))
@@ -311,15 +317,22 @@ public partial class App : Application
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
+            // Answers the question the app cannot answer about itself: when an account shows as
+            // disconnected, is it actually unreachable? Probes on a connection that shares nothing
+            // with the pools or watchers. Label resolution reads the live account list.
+            _truthProbe = new ConnectionTruthProbe(
+                imapBackend,
+                id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
+
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
                 themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
-                graphCalendarSyncService: graphCalendarSync);
+                graphCalendarSyncService: graphCalendarSync, truthProbe: _truthProbe);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -362,6 +375,7 @@ public partial class App : Application
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         _notificationService?.Dispose(); // unhooks the toast-activation static event
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
+        _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
         base.OnExit(e);
     }
 

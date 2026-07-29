@@ -21,6 +21,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IMailService _imap;
     private readonly IChangeNotifier? _changeNotifier;
+
+    // Verifies, independently of the app's own connection state, whether an account shown as
+    // disconnected really is. Optional so tests and the stub-service constructors are unaffected.
+    private readonly ConnectionTruthProbe? _truthProbe;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
@@ -1049,8 +1053,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IThemeService? themeService = null,
         INotificationService? notificationService = null,
         IContactSyncService? contactSyncService = null,
-        IGraphCalendarSyncService? graphCalendarSyncService = null)
+        IGraphCalendarSyncService? graphCalendarSyncService = null,
+        ConnectionTruthProbe? truthProbe = null)
     {
+        _truthProbe = truthProbe;
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
         _changeNotifier  = changeNotifier;
@@ -1805,6 +1811,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "help.reportBug", category: "Help", title: "Report a Bug",
             execute: () => ReportBugRequested?.Invoke(this, EventArgs.Empty)));
+
+        // No default hotkey: this is a diagnostic, reachable from the Help menu and the palette.
+        registry.Register(new CommandDefinition(
+            id: "help.connectionDiagnostics", category: "Help", title: "Connection Diagnostics",
+            execute: () => ConnectionDiagnosticsRequested?.Invoke(this, EventArgs.Empty)));
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -2045,7 +2056,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (account != null)
                     {
                         var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                        ApplyAccountStatus(account, folders);
+                        ApplyAccountStatus(account, folders, "reachability-event");
                     }
                 });
                 _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
@@ -2759,7 +2770,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var account = Accounts.FirstOrDefault(a => a.Id == id);
             if (account != null)
-                ApplyAccountStatus(account, folders);
+                ApplyAccountStatus(account, folders, "initial-connect");
             if (folders != null)
                 _cachedFolders[id] = folders;
         }
@@ -2779,14 +2790,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// just-fetched folder list.  TotalUnread is summed across all folders.
     /// Pass <c>null</c> on connection failure to mark as disconnected.
     /// </summary>
-    private static void ApplyAccountStatus(AccountModel account, List<MailFolderModel>? folders)
+    /// <param name="source">
+    /// Short tag naming the calling site (e.g. "reachability-event", "folder-load-failed").
+    /// The account list showing "disconnected" with no way to tell which of this method's nine
+    /// callers decided that is the symptom under investigation, so every transition is journaled
+    /// with its origin, and a flip to disconnected starts an independent reachability check.
+    /// </param>
+    private void ApplyAccountStatus(AccountModel account, List<MailFolderModel>? folders, string source)
     {
+        var was = account.IsConnected;
+
         if (folders == null)
         {
             account.IsConnected = false;
             account.TotalUnread = 0;
+            if (was)
+            {
+                ConnectionJournal.Record(
+                    ConnectionEventKind.Status, account.AccountLabel, account.ImapHost,
+                    "ui-shows-disconnected",
+                    $"source={source} — the account list now shows this account as disconnected");
+            }
+            _truthProbe?.NoteDisconnected(account.Id, source);
             return;
         }
+
+        if (!was)
+        {
+            ConnectionJournal.Record(
+                ConnectionEventKind.Status, account.AccountLabel, account.ImapHost,
+                "ui-shows-connected", $"source={source}");
+        }
+        _truthProbe?.NoteConnected(account.Id, source);
 
         account.IsConnected = true;
         // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
@@ -3366,7 +3401,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await _imap.ConnectAsync(account, password, ct);
             var folderList = await _imap.GetFoldersAsync(account.Id, ct);
             _cachedFolders[account.Id] = folderList;
-            ApplyAccountStatus(account, folderList);
+            ApplyAccountStatus(account, folderList, "select-account");
             RebuildFolderListFromCache();
             // Start this account's new-mail watcher and refresh the status labels — a manual
             // sign-in/activation previously connected the account but never began polling it.
@@ -3817,7 +3852,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folders))
             {
                 _cachedFolders[account.Id] = folders;
-                ApplyAccountStatus(account, folders);
+                ApplyAccountStatus(account, folders, "refresh-folder-lists");
                 changed = true;
             }
         }
@@ -4997,6 +5032,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? AboutRequested;
     public event EventHandler? ReportBugRequested;
 
+    /// <summary>Raised when the user asks for the Connection Diagnostics window.</summary>
+    public event EventHandler? ConnectionDiagnosticsRequested;
+
     // One-time first-run offer to add a desktop shortcut (installed copies only). The View
     // shows the actual dialog and reports the answer back via ApplyDesktopShortcutChoice.
     public event EventHandler? DesktopShortcutOfferRequested;
@@ -5632,7 +5670,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var folderList  = await _imap.GetFoldersAsync(accountId, cts.Token);
             _cachedFolders[accountId] = folderList;
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-            if (account != null) ApplyAccountStatus(account, folderList);
+            if (account != null) ApplyAccountStatus(account, folderList, "folder-refresh");
             RebuildFolderListFromCache();
         }
         catch (Exception ex)
@@ -5757,7 +5795,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Re-sum the account's unread badge from the pruned folder list.
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account != null) ApplyAccountStatus(account, _cachedFolders[accountId]);
+        if (account != null) ApplyAccountStatus(account, _cachedFolders[accountId], "folder-deleted-resum");
     }
 
     /// <summary>
@@ -5823,7 +5861,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var folderList = await _imap.GetFoldersAsync(accountId, cts.Token);
             _cachedFolders[accountId] = folderList;
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-            if (account != null) ApplyAccountStatus(account, folderList);
+            if (account != null) ApplyAccountStatus(account, folderList, "folder-created");
             _folderTreeRebuildPending = true;
             StatusText = $"Folder '{name}' created.";
             return folderList;
@@ -6479,7 +6517,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var result = await ConnectOneAccountAsync(account);
                 _ui.Invoke(() =>
                 {
-                    ApplyAccountStatus(account, result.Folders);
+                    ApplyAccountStatus(account, result.Folders, "account-list-refresh");
                     if (result.Folders != null)
                     {
                         _cachedFolders[result.Id] = result.Folders;

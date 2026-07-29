@@ -608,6 +608,9 @@
                 <MenuItem Header="_Report a Bug"
                           AutomationProperties.Name="Report a Bug"
                           Click="MenuReportBug_Click"/>
+                <MenuItem Header="Connection _Diagnostics"
+                          AutomationProperties.Name="Connection Diagnostics"
+                          Click="MenuConnectionDiagnostics_Click"/>
                 <Separator/>
                 <MenuItem Header="_About QuickMail"
                           AutomationProperties.Name="About QuickMail"
