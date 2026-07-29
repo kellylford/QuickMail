@@ -17,18 +17,25 @@ public class UnifiedRulesViewModelTests
     {
         public List<ServerRuleModel> Stored { get; init; } = [];
         public List<string> Calls { get; } = [];
+
+        // Set any of these to make the matching call throw, so the failure paths can be exercised.
+        public Exception? ThrowOnList { get; set; }
+        public Exception? ThrowOnCreate { get; set; }
+        public Exception? ThrowOnSetEnabled { get; set; }
+        public Exception? ThrowOnDelete { get; set; }
+
         public Task<IReadOnlyList<ServerRuleModel>> ListAsync(Guid a, CancellationToken ct = default)
-            => Task.FromResult<IReadOnlyList<ServerRuleModel>>(Stored.ToList());
+        { if (ThrowOnList != null) throw ThrowOnList; return Task.FromResult<IReadOnlyList<ServerRuleModel>>(Stored.ToList()); }
         public Task<ServerRuleModel> CreateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default)
-        { Calls.Add("create"); r.Id = "srv-" + Stored.Count; Stored.Add(r); return Task.FromResult(r); }
+        { Calls.Add("create"); if (ThrowOnCreate != null) throw ThrowOnCreate; r.Id = "srv-" + Stored.Count; Stored.Add(r); return Task.FromResult(r); }
         public Task UpdateAsync(Guid a, ServerRuleModel r, CancellationToken ct = default)
         { Calls.Add("update"); var i = Stored.FindIndex(x => x.Id == r.Id); if (i >= 0) Stored[i] = r; return Task.CompletedTask; }
         public Task SetEnabledAsync(Guid a, string id, bool e, CancellationToken ct = default)
-        { Calls.Add("setEnabled"); var x = Stored.FirstOrDefault(s => s.Id == id); if (x != null) x.IsEnabled = e; return Task.CompletedTask; }
+        { Calls.Add("setEnabled"); if (ThrowOnSetEnabled != null) throw ThrowOnSetEnabled; var x = Stored.FirstOrDefault(s => s.Id == id); if (x != null) x.IsEnabled = e; return Task.CompletedTask; }
         public Task ReorderAsync(Guid a, IReadOnlyList<ServerRuleModel> rules, CancellationToken ct = default)
         { Calls.Add("reorder"); Stored.Clear(); Stored.AddRange(rules); return Task.CompletedTask; }
         public Task DeleteAsync(Guid a, string id, CancellationToken ct = default)
-        { Calls.Add("delete"); Stored.RemoveAll(s => s.Id == id); return Task.CompletedTask; }
+        { Calls.Add("delete"); if (ThrowOnDelete != null) throw ThrowOnDelete; Stored.RemoveAll(s => s.Id == id); return Task.CompletedTask; }
     }
 
     private static async Task<ServerRuleEditorViewModel> OpenNewEditorAsync(UnifiedRulesViewModel vm)
@@ -176,6 +183,73 @@ public class UnifiedRulesViewModelTests
         Assert.Single(client.LoadedRules);
         Assert.Equal("C1 renamed", client.LoadedRules[0].Name);
         Assert.Equal(original.Id, client.LoadedRules[0].Id);   // same rule, not a new one
+    }
+
+    // ── Failure paths (review: writes must not announce success on failure; a load failure must
+    //    survive to the status line; create must re-select the new rule) ──────────────────────
+
+    [Fact]
+    public async Task NewRule_ServerCreate_SelectsTheNewRule()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+
+        var editor = await OpenNewEditorAsync(vm);
+        editor.Name = "Move digests"; editor.SubjectContains = "digest"; editor.MarkAsRead = true;
+        await editor.SaveCommand.ExecuteAsync(null);
+
+        Assert.NotNull(vm.SelectedRule);                                 // not stranded after create
+        Assert.Equal(RuleRunsWhere.Server, vm.SelectedRule!.RunsWhere);
+        Assert.Equal("Move digests", vm.SelectedRule.Name);
+    }
+
+    [Fact]
+    public async Task ToggleEnabled_ServerFails_AnnouncesTheError_NotSuccess()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { Stored = [Server("S1")], ThrowOnSetEnabled = new Exception("boom") };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+        string? announced = null;
+        vm.AnnouncementRequested += (t, _) => announced = t;
+
+        await vm.ToggleEnabledCommand.ExecuteAsync(null);
+
+        Assert.Equal("boom", announced);            // the failure, not "Rule disabled."
+    }
+
+    [Fact]
+    public async Task DeleteRule_ServerFails_AnnouncesTheError_AndKeepsTheRule()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { Stored = [Server("S1")], ThrowOnDelete = new Exception("nope") };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+        vm.ConfirmDeleteRequested += (_, _) => true;
+        await vm.RefreshCommand.ExecuteAsync(null);
+        vm.SelectedRule = vm.Rules.Single();
+        string? announced = null;
+        vm.AnnouncementRequested += (t, _) => announced = t;
+
+        await vm.DeleteRuleCommand.ExecuteAsync(null);
+
+        Assert.Equal("nope", announced);            // not "Rule deleted."
+        Assert.Single(vm.Rules);                    // rule stays — the reload is skipped on failure
+    }
+
+    [Fact]
+    public async Task Refresh_ServerListFails_StatusReportsFailure_NotNoRules()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules { ThrowOnList = new Exception("Graph unreachable") };
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+
+        await vm.RefreshCommand.ExecuteAsync(null);
+
+        Assert.Contains("Couldn't load server rules", vm.StatusText);   // the evidence survives …
+        Assert.Contains("Graph unreachable", vm.StatusText);
+        Assert.DoesNotContain("No rules for this account", vm.StatusText); // … not overwritten by BuildStatus
     }
 
     [Fact]

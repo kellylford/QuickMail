@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using QuickMail.Helpers;
 using QuickMail.Models;
 using QuickMail.Services;
 
@@ -149,11 +150,12 @@ public partial class UnifiedRulesViewModel : ObservableObject
         if (SelectedAccount?.Id is not Guid accountId || SelectedRule is not { } row) return;
 
         bool newState;
+        string? error = null;
         if (row.RunsWhere == RuleRunsWhere.Server)
         {
             var rule = row.Server!;
             newState = !rule.IsEnabled;
-            await RunServerWriteAsync(async () =>
+            error = await RunServerWriteAsync(async () =>
             {
                 await _serverRules!.SetEnabledAsync(accountId, rule.Id, newState, ct);
                 rule.IsEnabled = newState;
@@ -166,7 +168,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
             SetClientEnabled(rule.Id, newState);
             await ReloadAndReselectAsync(clientId: rule.Id, ct: ct);
         }
-        Announce(newState ? "Rule enabled." : "Rule disabled.", AnnouncementCategory.Result);
+        // A failed Graph write returns its message; don't announce success over it.
+        Announce(error ?? (newState ? "Rule enabled." : "Rule disabled."), AnnouncementCategory.Result);
     }
 
     [RelayCommand(CanExecute = nameof(CanModifySelected))]
@@ -178,14 +181,20 @@ public partial class UnifiedRulesViewModel : ObservableObject
             $"Delete rule '{row.Name}'? It will stop running.", "Delete Rule") ?? false;
         if (!confirmed) return;
 
+        // Remember where the deleted row sat so focus lands on a neighbour, not nowhere.
+        var index = Rules.IndexOf(row);
+
+        string? error = null;
         if (row.RunsWhere == RuleRunsWhere.Server)
-            await RunServerWriteAsync(() => _serverRules!.DeleteAsync(accountId, row.Server!.Id, ct));
+            // Reload ourselves (with the fallback index) rather than letting the write re-select by a
+            // now-gone id and strand the selection.
+            error = await RunServerWriteAsync(
+                () => _serverRules!.DeleteAsync(accountId, row.Server!.Id, ct), reloadOnSuccess: false);
         else
-        {
             DeleteClientRule(row.Client!.Id);
-            await ReloadAndReselectAsync(ct: ct);
-        }
-        Announce("Rule deleted.", AnnouncementCategory.Result);
+
+        if (error is null) await ReloadAndReselectAsync(fallbackIndex: index, ct: ct);
+        Announce(error ?? "Rule deleted.", AnnouncementCategory.Result);
     }
 
     [RelayCommand(CanExecute = nameof(CanMoveUp))]
@@ -205,8 +214,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             var model = editor.ToModel();
             model.Sequence = ServerRows().Count + 1;       // Graph rejects sequence 0
+            // Re-select the created rule — its id only exists on CreateAsync's return, so route
+            // through the value-returning overload (otherwise nothing is selected and focus strands).
             return await RunServerWriteAsync(
-                () => _serverRules!.CreateAsync(accountId, model), reloadOnSuccess: true);
+                () => _serverRules!.CreateAsync(accountId, model),
+                created => created.Id, reloadOnSuccess: true);
         }
 
         // Client rule — persist and tell the user it runs in QuickMail (spec §20.3).
@@ -246,9 +258,10 @@ public partial class UnifiedRulesViewModel : ObservableObject
         if (from < 0 || to < 0 || to >= order.Count) return;
         (order[from], order[to]) = (order[to], order[from]);
 
-        await RunServerWriteAsync(
+        var error = await RunServerWriteAsync(
             () => _serverRules!.ReorderAsync(accountId, order, ct), reloadOnSuccess: true, selectServerId: rule.Id);
-        Announce($"Moved {(delta < 0 ? "up" : "down")}.", AnnouncementCategory.Status);
+        // An action outcome is a Result, not background Status (which users can silence).
+        Announce(error ?? $"Moved {(delta < 0 ? "up" : "down")}.", AnnouncementCategory.Result);
     }
 
     // ── Client-rule persistence (rules.json via IRuleService) ────────────────
@@ -291,14 +304,25 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// other failures instead of swallowing them. Returns null on success or a message on failure.
     /// On success it reloads the list (server ids change) and re-selects the target.
     /// </summary>
-    private async Task<string?> RunServerWriteAsync(
+    private Task<string?> RunServerWriteAsync(
         Func<Task> write, string? selectServerId = null, bool reloadOnSuccess = true)
+        => RunServerWriteAsync<object?>(
+            async () => { await write(); return null; },
+            _ => selectServerId, reloadOnSuccess);
+
+    /// <summary>
+    /// As above, for a write that returns a value — e.g. <see cref="IServerRuleService.CreateAsync"/>
+    /// hands back the created rule, whose new id is the only place to learn what to re-select.
+    /// <paramref name="selectIdFromResult"/> maps the result to the server id to land on.
+    /// </summary>
+    private async Task<string?> RunServerWriteAsync<T>(
+        Func<Task<T>> write, Func<T, string?> selectIdFromResult, bool reloadOnSuccess = true)
     {
         IsBusy = true;
         try
         {
-            await write();
-            if (reloadOnSuccess) await ReloadAndReselectAsync(serverId: selectServerId);
+            var result = await write();
+            if (reloadOnSuccess) await ReloadAndReselectAsync(serverId: selectIdFromResult(result));
             return null;
         }
         catch (ServerRuleConsentRequiredException ex)
@@ -321,12 +345,17 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     /// <summary>Reloads the account's rules and re-selects a rule by server id or client id, then
     /// asks the View to return focus to it.</summary>
-    private async Task ReloadAndReselectAsync(string? serverId = null, Guid? clientId = null, CancellationToken ct = default)
+    private async Task ReloadAndReselectAsync(
+        string? serverId = null, Guid? clientId = null, int? fallbackIndex = null, CancellationToken ct = default)
     {
         await RefreshAsync(ct);
         SelectedRule = Rules.FirstOrDefault(r =>
             (serverId != null && r.Server?.Id == serverId) ||
             (clientId != null && r.Client?.Id == clientId));
+        // Nothing matched (e.g. after a delete — the id is gone): land on the neighbour that took the
+        // deleted row's slot, so focus and the enabled/disabled buttons don't strand.
+        if (SelectedRule is null && fallbackIndex is int idx && Rules.Count > 0)
+            SelectedRule = Rules[Math.Clamp(idx, 0, Rules.Count - 1)];
         if (SelectedRule is not null) FocusSelectedRuleRequested?.Invoke();
     }
 
@@ -342,7 +371,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private AccountModel? SelectedAccountModel
         => _allAccounts.FirstOrDefault(a => a.Id == SelectedAccount?.Id);
 
-    partial void OnSelectedAccountChanged(AccountOption? value) => _ = RefreshCommand.ExecuteAsync(null);
+    partial void OnSelectedAccountChanged(AccountOption? value)
+        => RefreshCommand.ExecuteAsync(null).LogFaults("UnifiedRules: account-change refresh");
 
     /// <summary>
     /// Loads the selected account's rules into one list: server rules first (in execution order),
@@ -363,6 +393,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         try
         {
             var rows = new List<UnifiedRuleRow>();
+            var failures = new List<string>();
 
             // Server rules — Graph accounts only. Isolated so a Graph/network failure still lets the
             // client rules below load.
@@ -375,7 +406,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 }
                 catch (Exception ex)
                 {
-                    StatusText = $"Couldn't load server rules: {ex.Message}";
+                    failures.Add($"Couldn't load server rules: {ex.Message}");
                     LogService.Log("UnifiedRules: server load failed", ex);
                 }
             }
@@ -388,7 +419,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             }
             catch (Exception ex)
             {
-                StatusText = $"Couldn't load QuickMail rules: {ex.Message}";
+                failures.Add($"Couldn't load QuickMail rules: {ex.Message}");
                 LogService.Log("UnifiedRules: client load failed", ex);
             }
 
@@ -400,7 +431,9 @@ public partial class UnifiedRulesViewModel : ObservableObject
             if (SelectedRule is null || !Rules.Contains(SelectedRule))
                 SelectedRule = Rules.FirstOrDefault();
 
-            StatusText = BuildStatus(rows);
+            // A load failure must survive to the status line — otherwise "couldn't reach Graph" reads
+            // as "this account has no server rules", which invites the wrong next action.
+            StatusText = BuildStatus(rows, failures);
         }
         finally
         {
@@ -408,11 +441,21 @@ public partial class UnifiedRulesViewModel : ObservableObject
         }
     }
 
-    private static string BuildStatus(IReadOnlyList<UnifiedRuleRow> rows)
+    private static string BuildStatus(IReadOnlyList<UnifiedRuleRow> rows, IReadOnlyList<string> failures)
     {
-        if (rows.Count == 0) return "No rules for this account.";
-        var server = rows.Count(r => r.RunsWhere == RuleRunsWhere.Server);
-        var client = rows.Count(r => r.RunsWhere == RuleRunsWhere.Client);
-        return $"{rows.Count} rule{(rows.Count == 1 ? "" : "s")}: {server} on server, {client} in QuickMail.";
+        if (failures.Count > 0)
+        {
+            // Lead with what went wrong; append counts only for the section(s) that did load.
+            var loaded = rows.Count == 0 ? "" : " " + Counts(rows);
+            return string.Join(" ", failures) + loaded;
+        }
+        return rows.Count == 0 ? "No rules for this account." : Counts(rows);
+
+        static string Counts(IReadOnlyList<UnifiedRuleRow> r)
+        {
+            var server = r.Count(x => x.RunsWhere == RuleRunsWhere.Server);
+            var client = r.Count(x => x.RunsWhere == RuleRunsWhere.Client);
+            return $"{r.Count} rule{(r.Count == 1 ? "" : "s")}: {server} on server, {client} in QuickMail.";
+        }
     }
 }

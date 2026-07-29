@@ -166,9 +166,11 @@ public partial class UnifiedRulesWindow : Window
             return;
         }
 
-        // Modeless window: no DialogResult, so wire Escape to Close — but step aside for an open combo
-        // dropdown that needs Escape to dismiss itself.
-        if (e.Key == Key.Escape && !(Keyboard.FocusedElement is ComboBox { IsDropDownOpen: true }))
+        // Modeless window: no DialogResult, so wire Escape to Close — but step aside for the open
+        // account-combo dropdown that needs Escape to dismiss itself. Checking the named combo
+        // directly (not Keyboard.FocusedElement) matches the other modeless windows and doesn't
+        // depend on where focus sits when the dropdown is open.
+        if (e.Key == Key.Escape && !AccountCombo.IsDropDownOpen)
         {
             Close();
             e.Handled = true;
