@@ -61,16 +61,24 @@ public class SyncServiceRuleApplicationTests : IDisposable
     {
         public List<List<MailMessageSummary>> Calls { get; } = [];
 
+        // Ids the simulated rule "moves/deletes" — returned as RemovedMessages so the chokepoint's
+        // store-delete / batch-strip / MessagesRemoved path runs under test.
+        public HashSet<string> RemoveIds { get; } = [];
+
+        // The chokepoint skips the engine entirely when there are no enabled rules, so report one.
+        private static readonly List<MailRule> OneEnabledRule = [new MailRule { Name = "t", IsEnabled = true }];
+
         public Task<(int MatchedCount, List<MailMessageSummary> RemovedMessages)> ApplyRulesAsync(
             List<MailMessageSummary> incoming, Guid accountId, CancellationToken ct)
         {
             Calls.Add(incoming.ToList());
-            // Simulate a mark-as-unread rule firing on every message (local-only, no removals).
-            foreach (var m in incoming) m.IsRead = false;
-            return Task.FromResult((incoming.Count, new List<MailMessageSummary>()));
+            var removed = incoming.Where(m => RemoveIds.Contains(m.MessageId)).ToList();
+            // Survivors: simulate a local-only mark-as-unread.
+            foreach (var m in incoming.Where(m => !RemoveIds.Contains(m.MessageId))) m.IsRead = false;
+            return Task.FromResult((incoming.Count, removed));
         }
 
-        public List<MailRule> LoadRules() => [];
+        public List<MailRule> LoadRules() => OneEnabledRule;
         public void SaveRules(List<MailRule> rules) { }
         public List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages) => [];
         public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(ILocalStoreService store, CancellationToken ct)
@@ -80,12 +88,13 @@ public class SyncServiceRuleApplicationTests : IDisposable
     // ── IMailService that returns a scripted batch from GetMessagesSinceAsync ─────
     private sealed class FetchStubMailService : IMailService
     {
-        private readonly List<MailMessageSummary> _batch;
-        public FetchStubMailService(List<MailMessageSummary> batch) => _batch = batch;
+        // Mutable so a test can add a later "arrival" between fetches.
+        public List<MailMessageSummary> Batch { get; }
+        public FetchStubMailService(List<MailMessageSummary> batch) => Batch = batch;
 
         // The only method the IDLE paths call to fetch.
         public Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid a, string f, string sinceId, int count, CancellationToken ct = default)
-            => Task.FromResult(_batch.Select(Clone).ToList());
+            => Task.FromResult(Batch.Select(Clone).ToList());
 
         private static MailMessageSummary Clone(MailMessageSummary m) => new()
         {
@@ -177,17 +186,47 @@ public class SyncServiceRuleApplicationTests : IDisposable
     }
 
     [Fact]
-    public async Task OnlineIdleSync_AppliesRulesOncePerMessage_ViaSessionGuard()
+    public async Task OnlineIdleSync_FirstFetchIsBaseline_RulesFireOnlyOnLaterArrivals()
     {
-        // Online mode keeps no store, so the in-session guard is the only dedup. Polling the same
-        // message twice must still run rules exactly once.
+        // Online mode keeps no store and re-fetches the last 50 every fire — and that path is also
+        // delete/archive reconciliation. So the FIRST fetch per folder must be a baseline (marked
+        // seen, no rules), or a move/delete rule would retroactively rewrite up to 50 pre-existing
+        // messages. Rules fire only on messages that appear in a LATER fetch.
         var rules = new CapturingRuleService();
-        var sync = Build(new FetchStubMailService([Message("400")]), rules);
+        var mail = new FetchStubMailService([Message("400")]);
+        var sync = Build(mail, rules);
 
         await sync.SyncOneFolderOnlineAsync(Account(), _inbox, CancellationToken.None);
+        Assert.Empty(rules.Calls);   // baseline — msg 400 is pre-existing, not touched
+
+        // A genuinely new message shows up in the next fetch.
+        mail.Batch.Add(Message("401"));
         await sync.SyncOneFolderOnlineAsync(Account(), _inbox, CancellationToken.None);
 
-        var batch = Assert.Single(rules.Calls);          // one call across both polls
-        Assert.Equal("400", Assert.Single(batch).MessageId);
+        var batch = Assert.Single(rules.Calls);          // rules ran once, only for the new arrival
+        Assert.Equal("401", Assert.Single(batch).MessageId);
+    }
+
+    [Fact]
+    public async Task LiveIdleSync_RuleRemovedMessage_StrippedFromBatch_DeletedFromStore_AndRaisesMessagesRemoved()
+    {
+        // A move/delete rule returns the message in RemovedMessages. The chokepoint must drop it
+        // from the returned batch (so the UI doesn't show it in the origin folder), delete it from
+        // the store, and raise MessagesRemoved.
+        var rules = new CapturingRuleService();
+        rules.RemoveIds.Add("500");
+        var sync = Build(new FetchStubMailService([Message("500"), Message("501")]), rules);
+
+        var removedRaised = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removedRaised.AddRange(list);
+
+        var forwarded = await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.DoesNotContain(forwarded, m => m.MessageId == "500");   // stripped from batch
+        Assert.Contains(forwarded, m => m.MessageId == "501");         // survivor kept
+        Assert.Equal("500", Assert.Single(removedRaised).MessageId);   // MessagesRemoved fired
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.DoesNotContain("500", stored);                          // deleted from store
+        Assert.Contains("501", stored);                                // survivor persisted
     }
 }

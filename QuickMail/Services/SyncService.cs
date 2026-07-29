@@ -4,7 +4,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Windows;
 using QuickMail.Helpers;
 using QuickMail.Models;
 
@@ -16,13 +15,19 @@ public class SyncService : ISyncService
     private readonly ILocalStoreService _store;
     private readonly IConfigService _config;
     private readonly IRuleService _rules;
+    private readonly IUiDispatcher _ui;
 
-    public SyncService(IMailService imap, ILocalStoreService store, IConfigService config, IRuleService rules)
+    public SyncService(IMailService imap, ILocalStoreService store, IConfigService config, IRuleService rules,
+        IUiDispatcher? ui = null)
     {
         _imap   = imap;
         _store  = store;
         _config = config;
         _rules  = rules;
+        // WpfUiDispatcher marshals only when the real QuickMail App is present, and runs inline
+        // otherwise — a plain Application.Current null-check is NOT enough (tests create a pumpless
+        // Application, so InvokeAsync would park forever).
+        _ui     = ui ?? new WpfUiDispatcher();
     }
 
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
@@ -32,11 +37,15 @@ public class SyncService : ISyncService
 
     private readonly Dictionary<Guid, DateTimeOffset> _lastSyncedUtc = new();
 
-    // Message keys (account, folder, id) that have already been run through client mail rules
-    // this session. Guards the single rule-application chokepoint against re-firing a rule on a
-    // message a second time — e.g. the store-less online path, or a re-fetch that lands before an
-    // upsert becomes visible. Persisted paths also dedupe against the store; this covers the rest.
+    // Store-less (online) dedupe only. Message keys (account, folder, id) already run through client
+    // rules this session, so a re-fetched last-50 batch doesn't re-run a rule. Persisted paths use
+    // the local store as the first-sight authority instead (this dictionary would grow unbounded and
+    // is redundant there). Seeded as a baseline on the first online fetch per folder — see the
+    // chokepoint — so rules never fire retroactively on the initial batch.
     private readonly ConcurrentDictionary<(Guid Account, string Folder, string Id), byte> _rulesApplied = new();
+
+    // (account, folder) pairs whose store-less baseline has been established (first online fetch seen).
+    private readonly ConcurrentDictionary<(Guid Account, string Folder), byte> _onlineBaselined = new();
 
     public async Task SyncAllAccountsAsync(
         IEnumerable<AccountModel> accounts,
@@ -85,7 +94,7 @@ public class SyncService : ISyncService
                         }
 
                         var count = Interlocked.Increment(ref completedFolders[0]);
-                        await OnUiAsync(() => SyncProgressChanged?.Invoke(count, totalFolders));
+                        _ui.Post(() => SyncProgressChanged?.Invoke(count, totalFolders));
                     }
                 }
             }));
@@ -150,44 +159,55 @@ public class SyncService : ISyncService
     /// it. (Previously only the full sync applied rules, so mail arriving while the app was running
     /// slipped past every client rule.)
     ///
-    /// Determines genuinely-new arrivals (persisted paths dedupe against the local store; all paths
-    /// share an in-session guard), persists the batch, runs rules on the new arrivals, deletes any
-    /// rule-moved/deleted messages from the store, raises <see cref="RulesApplied"/> /
-    /// <see cref="MessagesRemoved"/>, and returns the batch with those messages stripped so the UI
-    /// never shows them in the origin folder. Callers own <see cref="FolderSynced"/>.
+    /// Determines genuinely-new arrivals — persisted paths dedupe against the local store; the
+    /// store-less online path uses an in-session guard, and treats its first fetch per folder as a
+    /// baseline (marked seen, never run) so rules can't fire retroactively on the reconciliation
+    /// batch. Persists the batch, runs rules on the new arrivals, deletes any rule-moved/deleted
+    /// messages from the store, raises <see cref="RulesApplied"/> / <see cref="MessagesRemoved"/>,
+    /// and returns the batch with those messages stripped so the UI never shows them in the origin
+    /// folder. Callers own <see cref="FolderSynced"/>.
     /// </summary>
-    // Marshal to the UI thread when there is an Application (production); run inline when there
-    // isn't — headless tests, or a sync completing during shutdown after the Application is gone.
-    private static async Task OnUiAsync(Action action)
-    {
-        var app = Application.Current;
-        if (app is null) { action(); return; }
-        await app.Dispatcher.InvokeAsync(action);
-    }
-
     private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
         AccountModel account, MailFolderModel folder,
         List<MailMessageSummary> fetched, bool persisted, CancellationToken ct)
     {
         if (fetched.Count == 0) return fetched;
 
-        // First-sight detection. The store is authoritative for persisted paths; the in-session
-        // guard additionally prevents a rule re-firing before an upsert is visible, and covers the
-        // store-less online path.
-        var known = persisted
+        // No enabled rules → no id scan, no guard bookkeeping; a rule-less profile pays nothing.
+        // (LoadRules() is cached after first load.) Still persist so the cache/UI reflect the fetch.
+        var hasEnabledRules = _rules.LoadRules().Any(r => r.IsEnabled);
+
+        // Persisted dedupe authority is the store — snapshot it BEFORE the upsert so freshly-fetched
+        // messages still read as new. (The store, not the in-session guard, is authoritative here,
+        // which also keeps the guard from growing unbounded on the persisted path.)
+        var knownInStore = persisted && hasEnabledRules
             ? await _store.GetAllMessageIdsAsync(account.Id, folder.FullName)
-            : new HashSet<string>();
+            : [];
+
+        if (persisted)
+            await _store.UpsertSummariesAsync(fetched);
+
+        if (!hasEnabledRules) return fetched;
+
+        // Store-less (online) baseline: the first fetch per folder is the last-50 reconciliation
+        // batch, not new mail. Mark it seen WITHOUT running rules, so a move/delete/mark-read rule
+        // never rewrites up-to-50 pre-existing messages on a delete or archive reconciliation.
+        // Retroactive application has its own user-invoked home in ApplyRulesToExistingAsync.
+        if (!persisted && _onlineBaselined.TryAdd((account.Id, folder.FullName), 0))
+        {
+            foreach (var m in fetched)
+                _rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0);
+            return fetched;
+        }
 
         var newArrivals = new List<MailMessageSummary>();
         foreach (var m in fetched)
         {
-            if (known.Contains(m.MessageId)) continue;
-            if (!_rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0)) continue;
-            newArrivals.Add(m);
+            var isNew = persisted
+                ? !knownInStore.Contains(m.MessageId)
+                : _rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0);
+            if (isNew) newArrivals.Add(m);
         }
-
-        if (persisted)
-            await _store.UpsertSummariesAsync(fetched);
 
         if (newArrivals.Count == 0) return fetched;
 
@@ -203,6 +223,12 @@ public class SyncService : ISyncService
         catch (Exception ex)
         {
             LogService.Log($"Applying rules for {account.AccountLabel}/{folder.FullName} failed", ex);
+            // Un-mark the store-less guard so the next poll retries instead of skipping these
+            // forever. (The persisted path is store-guarded; the upsert already recorded them, and
+            // rolling the store back on a transient rule failure would be worse than a retry.)
+            if (!persisted)
+                foreach (var m in newArrivals)
+                    _rulesApplied.TryRemove((account.Id, folder.FullName, m.MessageId), out _);
             return fetched;
         }
 
@@ -233,7 +259,7 @@ public class SyncService : ISyncService
 
         if (matchedCount > 0 || removedMessages.Count > 0)
         {
-            await OnUiAsync(() =>
+            _ui.Post(() =>
             {
                 if (matchedCount > 0) RulesApplied?.Invoke(matchedCount);
                 if (removedMessages.Count > 0) MessagesRemoved?.Invoke(removedMessages);
@@ -265,7 +291,7 @@ public class SyncService : ISyncService
             // Upsert + client rules happen inside the shared chokepoint so live-arriving mail is
             // subject to rules exactly like the full sync.
             incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
-            await OnUiAsync(() => FolderSynced?.Invoke(incoming));
+            _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
     }
@@ -281,7 +307,7 @@ public class SyncService : ISyncService
         {
             // Online mode keeps no local store, so rules dedupe via the in-session guard only.
             incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: false, ct);
-            await OnUiAsync(() => FolderSynced?.Invoke(incoming));
+            _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
     }
@@ -312,7 +338,7 @@ public class SyncService : ISyncService
             // RulesApplied / MessagesRemoved; here we just surface the survivors to the UI —
             // immediately, without waiting for body preview fetches.
             incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
-            await OnUiAsync(() => FolderSynced?.Invoke(incoming));
+            _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
 
         // ── Remote deletions ─────────────────────────────────────────────────────
@@ -338,7 +364,7 @@ public class SyncService : ISyncService
             })
             .ToList();
 
-        await OnUiAsync(() => MessagesRemoved?.Invoke(removed));
+        _ui.Post(() => MessagesRemoved?.Invoke(removed));
 
         return incoming;
     }
@@ -377,7 +403,7 @@ public class SyncService : ISyncService
 
             // One dispatcher hop for the whole batch instead of N — N dispatcher
             // invocations during a fast sync flood the UI thread with continuations.
-            await OnUiAsync(() =>
+            _ui.Post(() =>
             {
                 foreach (var (s, p) in uiApply) s.Preview = p;
             });
