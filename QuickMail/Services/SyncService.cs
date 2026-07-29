@@ -32,6 +32,12 @@ public class SyncService : ISyncService
 
     private readonly Dictionary<Guid, DateTimeOffset> _lastSyncedUtc = new();
 
+    // Message keys (account, folder, id) that have already been run through client mail rules
+    // this session. Guards the single rule-application chokepoint against re-firing a rule on a
+    // message a second time — e.g. the store-less online path, or a re-fetch that lands before an
+    // upsert becomes visible. Persisted paths also dedupe against the store; this covers the rest.
+    private readonly ConcurrentDictionary<(Guid Account, string Folder, string Id), byte> _rulesApplied = new();
+
     public async Task SyncAllAccountsAsync(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
@@ -79,7 +85,7 @@ public class SyncService : ISyncService
                         }
 
                         var count = Interlocked.Increment(ref completedFolders[0]);
-                        await Application.Current.Dispatcher.InvokeAsync(() => SyncProgressChanged?.Invoke(count, totalFolders));
+                        await OnUiAsync(() => SyncProgressChanged?.Invoke(count, totalFolders));
                     }
                 }
             }));
@@ -137,6 +143,106 @@ public class SyncService : ISyncService
         }
     }
 
+    /// <summary>
+    /// The single point where client mail rules run against freshly fetched messages. Every sync
+    /// path — the initial/periodic full sync and the live IDLE/change-notifier syncs — funnels its
+    /// batch through here, so a rule fires exactly once per message no matter which path first sees
+    /// it. (Previously only the full sync applied rules, so mail arriving while the app was running
+    /// slipped past every client rule.)
+    ///
+    /// Determines genuinely-new arrivals (persisted paths dedupe against the local store; all paths
+    /// share an in-session guard), persists the batch, runs rules on the new arrivals, deletes any
+    /// rule-moved/deleted messages from the store, raises <see cref="RulesApplied"/> /
+    /// <see cref="MessagesRemoved"/>, and returns the batch with those messages stripped so the UI
+    /// never shows them in the origin folder. Callers own <see cref="FolderSynced"/>.
+    /// </summary>
+    // Marshal to the UI thread when there is an Application (production); run inline when there
+    // isn't — headless tests, or a sync completing during shutdown after the Application is gone.
+    private static async Task OnUiAsync(Action action)
+    {
+        var app = Application.Current;
+        if (app is null) { action(); return; }
+        await app.Dispatcher.InvokeAsync(action);
+    }
+
+    private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
+        AccountModel account, MailFolderModel folder,
+        List<MailMessageSummary> fetched, bool persisted, CancellationToken ct)
+    {
+        if (fetched.Count == 0) return fetched;
+
+        // First-sight detection. The store is authoritative for persisted paths; the in-session
+        // guard additionally prevents a rule re-firing before an upsert is visible, and covers the
+        // store-less online path.
+        var known = persisted
+            ? await _store.GetAllMessageIdsAsync(account.Id, folder.FullName)
+            : new HashSet<string>();
+
+        var newArrivals = new List<MailMessageSummary>();
+        foreach (var m in fetched)
+        {
+            if (known.Contains(m.MessageId)) continue;
+            if (!_rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0)) continue;
+            newArrivals.Add(m);
+        }
+
+        if (persisted)
+            await _store.UpsertSummariesAsync(fetched);
+
+        if (newArrivals.Count == 0) return fetched;
+
+        int matchedCount = 0;
+        List<MailMessageSummary> removedMessages = [];
+        try
+        {
+            LogService.Debug($"ApplyRules: {account.AccountLabel}/{folder.FullName} — {newArrivals.Count} new of {fetched.Count} fetched");
+            (matchedCount, removedMessages) = await _rules.ApplyRulesAsync(newArrivals, account.Id, ct);
+            LogService.Debug($"ApplyRules: done — {matchedCount} matched, {removedMessages.Count} removed");
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            LogService.Log($"Applying rules for {account.AccountLabel}/{folder.FullName} failed", ex);
+            return fetched;
+        }
+
+        // Delete rule-moved/deleted messages from the store so they don't reappear on cache load.
+        if (persisted && removedMessages.Count > 0)
+        {
+            foreach (var group in removedMessages.GroupBy(m => (m.AccountId, m.FolderName)))
+            {
+                try
+                {
+                    await _store.DeleteSummariesAsync(
+                        group.Key.AccountId, group.Key.FolderName, group.Select(m => m.MessageId));
+                }
+                catch (Exception ex)
+                {
+                    LogService.Log($"Rule cleanup: failed to delete {group.Count()} summaries from {group.Key.FolderName}", ex);
+                }
+            }
+        }
+
+        // Strip moved/deleted from the batch so the UI doesn't show them in the origin folder.
+        if (removedMessages.Count > 0)
+        {
+            var removedKeys = removedMessages
+                .Select(m => (m.MessageId, m.AccountId, m.FolderName)).ToHashSet();
+            fetched.RemoveAll(m => removedKeys.Contains((m.MessageId, m.AccountId, m.FolderName)));
+        }
+
+        if (matchedCount > 0 || removedMessages.Count > 0)
+        {
+            await OnUiAsync(() =>
+            {
+                if (matchedCount > 0) RulesApplied?.Invoke(matchedCount);
+                if (removedMessages.Count > 0) MessagesRemoved?.Invoke(removedMessages);
+            });
+        }
+
+        return fetched;
+    }
+
     public async Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
     {
         // IDLE-triggered sync in non-online (SQLite cache) mode.
@@ -156,8 +262,10 @@ public class SyncService : ISyncService
         LogService.Log($"IDLE targeted sync: {incoming.Count} messages fetched from {account.AccountLabel}/{folder.FullName}");
         if (incoming.Count > 0)
         {
-            await _store.UpsertSummariesAsync(incoming);
-            await Application.Current.Dispatcher.InvokeAsync(() => FolderSynced?.Invoke(incoming));
+            // Upsert + client rules happen inside the shared chokepoint so live-arriving mail is
+            // subject to rules exactly like the full sync.
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
+            await OnUiAsync(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
     }
@@ -171,7 +279,9 @@ public class SyncService : ISyncService
         LogService.Log($"IDLE targeted sync: {incoming.Count} messages fetched from {account.AccountLabel}/{folder.FullName}");
         if (incoming.Count > 0)
         {
-            await Application.Current.Dispatcher.InvokeAsync(() => FolderSynced?.Invoke(incoming));
+            // Online mode keeps no local store, so rules dedupe via the in-session guard only.
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: false, ct);
+            await OnUiAsync(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
     }
@@ -197,53 +307,12 @@ public class SyncService : ISyncService
 
         if (incoming.Count > 0)
         {
-            await _store.UpsertSummariesAsync(incoming);
-
-            // Apply mail rules before notifying the UI so the user sees
-            // the post-rule state (moved, flagged, etc.) immediately.
-            int matchedCount = 0;
-            List<MailMessageSummary> removedMessages = [];
-            try
-            {
-                LogService.Debug($"SyncFolderAsync: applying rules for {account.AccountLabel}/{folder.FullName}, {incoming.Count} incoming");
-                (matchedCount, removedMessages) = await _rules.ApplyRulesAsync(incoming, account.Id, ct);
-                LogService.Debug($"SyncFolderAsync: rules done — {matchedCount} matched, {removedMessages.Count} removed, {incoming.Count} remaining in incoming");
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
-            {
-                LogService.Log($"Rules execution failed for {account.AccountLabel}", ex);
-            }
-
-            // Delete rule-moved/deleted messages from the local store so they
-            // don't reappear on the next cache load.
-            if (removedMessages.Count > 0)
-            {
-                var byFolder = removedMessages.GroupBy(m => (m.AccountId, m.FolderName));
-                foreach (var group in byFolder)
-                {
-                    try
-                    {
-                        await _store.DeleteSummariesAsync(
-                            group.Key.AccountId, group.Key.FolderName,
-                            group.Select(m => m.MessageId));
-                    }
-                    catch (Exception ex)
-                    {
-                        LogService.Log($"Rule cleanup: failed to delete {group.Count()} summaries from {group.Key.FolderName}", ex);
-                    }
-                }
-            }
-
-            // Show messages immediately — don't wait for body preview fetches.
-            await Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                FolderSynced?.Invoke(incoming);
-                if (matchedCount > 0)
-                    RulesApplied?.Invoke(matchedCount);
-                if (removedMessages.Count > 0)
-                    MessagesRemoved?.Invoke(removedMessages);
-            });
+            // Upsert + client rules run inside the shared chokepoint (the same path the live IDLE
+            // syncs use). It strips rule-moved/deleted messages from the batch and raises
+            // RulesApplied / MessagesRemoved; here we just surface the survivors to the UI —
+            // immediately, without waiting for body preview fetches.
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
+            await OnUiAsync(() => FolderSynced?.Invoke(incoming));
         }
 
         // ── Remote deletions ─────────────────────────────────────────────────────
@@ -269,8 +338,7 @@ public class SyncService : ISyncService
             })
             .ToList();
 
-        await Application.Current.Dispatcher.InvokeAsync(
-            () => MessagesRemoved?.Invoke(removed));
+        await OnUiAsync(() => MessagesRemoved?.Invoke(removed));
 
         return incoming;
     }
@@ -309,7 +377,7 @@ public class SyncService : ISyncService
 
             // One dispatcher hop for the whole batch instead of N — N dispatcher
             // invocations during a fast sync flood the UI thread with continuations.
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await OnUiAsync(() =>
             {
                 foreach (var (s, p) in uiApply) s.Preview = p;
             });
