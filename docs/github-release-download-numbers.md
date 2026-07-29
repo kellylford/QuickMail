@@ -185,6 +185,19 @@ spikes: a release that scores five or ten times its neighbours, with nothing in
 its content to explain it, is far more likely to be automated traffic than a
 sudden burst of humans.
 
+### Look for a number that counts people, not requests
+
+Before you build any conclusion on download counts, check whether your project
+already produces a number **tied to an identity** — an OAuth grant, a licence
+activation, an account registration, a sync service seeing a login. Anything a
+person has to complete a real action to trigger.
+
+Such a number is worth more than your entire release history, because it counts
+people instead of HTTP requests. It deduplicates. Bots do not appear in it. If
+you have one and are still reasoning from downloads, you are working from your
+weakest data. The case study below turns on exactly this — the most informative
+figure in it is not a download count at all.
+
 ### Things that quietly are not counted
 
 - **Source code archives are invisible.** The auto-generated "Source code (zip)"
@@ -281,8 +294,10 @@ Compare the installer column over exactly the same releases: 10, 8, 5, 16, 15,
 37, 9, 27. Same period, triple the volatility, and measuring something else
 entirely — arrival, not retention.
 
-**So how many people actually use QuickMail?** The defensible answer is
-**roughly 15 to 20 regular users**, with a plausible ceiling around 30 to 35.
+**So how many people actively update QuickMail?** The defensible answer is
+**roughly 15 to 20**, with a plausible ceiling around 30 to 35. Hold that number
+lightly — a second, better data point further down revises the picture
+considerably.
 
 The reasoning, in full:
 
@@ -314,10 +329,66 @@ releases, and rather than invent a mechanism I will say so. It is a reminder
 that not every number in this data has a confident interpretation, and the
 temptation to supply one is exactly the failure mode this article is about.
 
+### The best number came from outside the download data entirely
+
+Everything above is derived from download counts, and download counts can never
+identify a person. But QuickMail has a second signal that can, and it is worth
+more than the whole table.
+
+Google caps an **unverified** application at **100 users**. QuickMail requests
+Gmail scopes, which Google classes as restricted, so until the app passes
+verification — a process that runs weeks and can require a paid third-party
+security assessment — only 100 accounts may ever authorise it. QuickMail **hit
+that cap.** New users now get "This app has been blocked," which is why Gmail
+sign-in became opt-in and app passwords became the default route.
+
+That is a fundamentally better measurement than anything downloads produce,
+because it is **bound to identity**. Each of those authorisations is a distinct
+Google account belonging to a distinct person who installed the software, opened
+it, reached the account setup, and completed a sign-in. No bot does that. No
+duplicate counts twice.
+
+So: **at least 100 different people got QuickMail working with Gmail** — against
+the 18 the delta count could see.
+
+**How can both be true?** Because they answer different questions. And the gap
+has a specific, checkable explanation: **auto-update did not exist until v0.8.0
+on 8 July 2026.** Roughly thirty releases shipped before it, from v0.5.0 in May
+onwards, with no updater at all. Every one of those users had to notice a new
+version and manually download it.
+
+Anyone who installed during that period and stopped manually updating is **still
+running that old build today, and is invisible to every signal in the table
+above** — permanently. They will never fetch a delta package, because their copy
+has no idea deltas exist. The pre-updater installer numbers were not small
+either: 57, 43, 40, 34, 32 across those releases.
+
+That reframes the whole reading. The honest summary is now three numbers, not
+one:
+
+- **~18** installs are actively auto-updating and current.
+- **≥100** distinct people authorised Gmail at some point.
+- **Unknown, possibly large** — people stranded on a pre-auto-update build who
+  are still using it and cannot be counted by any means available.
+
+**The general lesson, which is the reason this section exists:** before drawing
+conclusions from download counts, look for a number somewhere else that is
+**tied to an identity**. An OAuth grant, a licence activation, an account
+registration, a sync endpoint. One of those is worth more than the entire
+release history, because it counts people rather than HTTP requests. If you have
+one and are still reasoning from downloads, you are using your weakest data.
+
+The caveats stay honest, though. That 100 is **cumulative, not current** — it
+includes the developer's own test accounts, and everyone who authorised once and
+abandoned it. It counts only Gmail users, so anyone on Outlook, iCloud, or a
+plain IMAP server is outside it entirely. And a cap tells you the number was
+*reached*, not by how much it was exceeded — demand above 100 is simply
+invisible, since Google turns it away at the door.
+
 ### What the numbers do and do not say
 
-They say roughly 15 to 20 people run this software regularly, and that the
-figure is growing slowly and steadily.
+They say roughly 15 to 20 people keep an up-to-date copy running, at least 100
+have used it, and an uncounted group sits on old builds in between.
 
 They do **not** say the software is good or bad. QuickMail has had no
 distribution whatsoever, and a project with no distribution gets a number like
@@ -346,6 +417,9 @@ per release, remember that each file describes a different group of people, trea
 your updater's package count as your only real retention signal, and start
 snapshotting today — because GitHub keeps no history, and the trend you will
 eventually want can only be built forward from now.
+
+And before you conclude anything from them, look for a number elsewhere that is
+tied to an identity. If you have one, it outranks everything here.
 
 ---
 
