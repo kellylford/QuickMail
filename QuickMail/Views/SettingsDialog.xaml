@@ -403,6 +403,24 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Connection Diagnostics Group -->
+                        <GroupBox Header="Connection _Diagnostics" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Connection diagnostics settings">
+                            <StackPanel>
+                                <CheckBox Content="Record _connection diagnostics"
+                                          IsChecked="{Binding ConnectionDiagnostics, Mode=TwoWay}"
+                                          AutomationProperties.Name="Record connection diagnostics"/>
+                                <TextBlock Text="Records how QuickMail connects to your mail servers, and adds Connection Diagnostics to the Help menu so you can check each account's real connection state and save a report. Turn this on when an account reports the wrong status or mail stops arriving, then reproduce the problem. It takes effect straight away — no restart needed. The report includes your account names, mail server names and addresses, but never passwords or message content."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                <Button x:Name="DeleteConnectionLogButton"
+                                        Content="Delete connection _log"
+                                        HorizontalAlignment="Left"
+                                        Margin="0,10,0,0"
+                                        Click="DeleteConnectionLogButton_Click"
+                                        AutomationProperties.Name="Delete connection log"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Log Format Group -->
                         <GroupBox Header="_Log Format" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Log format settings">

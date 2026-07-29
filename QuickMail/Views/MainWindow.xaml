@@ -610,6 +610,7 @@
                           Click="MenuReportBug_Click"/>
                 <MenuItem Header="Connection _Diagnostics"
                           AutomationProperties.Name="Connection Diagnostics"
+                          Visibility="{Binding IsConnectionDiagnosticsEnabled, Converter={StaticResource BoolToVisibilityConverter}}"
                           Click="MenuConnectionDiagnostics_Click"/>
                 <Separator/>
                 <MenuItem Header="_About QuickMail"

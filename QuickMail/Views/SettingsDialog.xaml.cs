@@ -33,6 +33,11 @@ public partial class SettingsDialog : Window
         _vm.SaveCommand.Execute(null);
         LogService.Format  = _vm.LogFormat;
         LogService.Enabled = _vm.EnableLogging;
+
+        // Applied live rather than at next startup: someone turning this on is troubleshooting a
+        // problem that is happening now, and making them restart would lose the very thing they
+        // are trying to capture.
+        ConnectionJournal.Enabled = _vm.ConnectionDiagnostics;
         DialogResult = true;
         Close();
     }
@@ -50,6 +55,21 @@ public partial class SettingsDialog : Window
             LogService.DeleteLog();
 
         DeleteLogButton.Focus();
+    }
+
+    private void DeleteConnectionLogButton_Click(object sender, RoutedEventArgs e)
+    {
+        var result = MessageBox.Show(
+            "Delete the connection diagnostics log? This cannot be undone.",
+            "Delete Connection Log",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question,
+            MessageBoxResult.No);
+
+        if (result == MessageBoxResult.Yes)
+            ConnectionJournal.DeleteLog();
+
+        DeleteConnectionLogButton.Focus();
     }
 
     private void HotkeyListView_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)

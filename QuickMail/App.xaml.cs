@@ -166,9 +166,8 @@ public partial class App : Application
 
         LogService.Configure(profile.ProfileDir);
 
-        // Deliberately NOT gated on /debug or the EnableLogging setting. Connection drops are the
-        // one failure we have repeatedly been unable to diagnose after the fact, and the profile
-        // that reported them had logging switched off. The journal is bounded and self-rotating.
+        // Point the journal at the profile now; whether it actually records is decided below from
+        // the ConnectionDiagnostics setting (off by default).
         ConnectionJournal.Configure(profile.ProfileDir);
 
         // /debug enables verbose debug logging to the log file.
@@ -333,6 +332,9 @@ public partial class App : Application
                 themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
                 graphCalendarSyncService: graphCalendarSync, truthProbe: _truthProbe);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
+            // Registers/unregisters the Help command and shows or hides the menu item, and sets
+            // ConnectionJournal.Enabled — so nothing records until the user opts in.
+            mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
             mainVm.LoadAccountList(accounts);
 
             var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe);

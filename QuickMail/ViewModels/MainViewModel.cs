@@ -1609,6 +1609,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // setting) raises ThemeChanged once, not twice.
         _themeService?.ApplyAppearance(cfg);
 
+        ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
+
         ShowMessageStatus = cfg.ShowMessageStatus;
         ReadAsPlainText   = cfg.ReadAsPlainText;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
@@ -1848,10 +1850,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             id: "help.reportBug", category: "Help", title: "Report a Bug",
             execute: () => ReportBugRequested?.Invoke(this, EventArgs.Empty)));
 
-        // No default hotkey: this is a diagnostic, reachable from the Help menu and the palette.
-        registry.Register(new CommandDefinition(
-            id: "help.connectionDiagnostics", category: "Help", title: "Connection Diagnostics",
-            execute: () => ConnectionDiagnosticsRequested?.Invoke(this, EventArgs.Empty)));
+        // help.connectionDiagnostics is deliberately NOT registered here. It is registered and
+        // unregistered by ApplyConnectionDiagnosticsSetting so the command palette only offers it
+        // while the feature is switched on, matching the Help menu. No default hotkey either way.
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -5070,6 +5071,36 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>Raised when the user asks for the Connection Diagnostics window.</summary>
     public event EventHandler? ConnectionDiagnosticsRequested;
+
+    /// <summary>
+    /// Whether connection diagnostics are switched on. Drives the visibility of the Help menu item;
+    /// the matching command is registered and unregistered alongside it so the command palette and
+    /// the menu never disagree about whether the feature exists.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isConnectionDiagnosticsEnabled;
+
+    /// <summary>
+    /// Applies the ConnectionDiagnostics setting to the journal, the command registry and the menu.
+    /// Called at startup and again whenever settings are saved, so the toggle takes effect without
+    /// a restart — someone switching this on is troubleshooting a live problem.
+    /// </summary>
+    internal void ApplyConnectionDiagnosticsSetting(bool enabled)
+    {
+        IsConnectionDiagnosticsEnabled = enabled;
+        ConnectionJournal.Enabled = enabled;
+
+        if (enabled)
+        {
+            _commandRegistry.Register(new CommandDefinition(
+                id: "help.connectionDiagnostics", category: "Help", title: "Connection Diagnostics",
+                execute: () => ConnectionDiagnosticsRequested?.Invoke(this, EventArgs.Empty)));
+        }
+        else
+        {
+            _commandRegistry.Unregister("help.connectionDiagnostics");
+        }
+    }
 
     // One-time first-run offer to add a desktop shortcut (installed copies only). The View
     // shows the actual dialog and reports the answer back via ApplyDesktopShortcutChoice.

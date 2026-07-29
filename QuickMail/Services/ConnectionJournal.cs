@@ -62,16 +62,20 @@ public sealed record ConnectionEvent(
 }
 
 /// <summary>
-/// Always-on, bounded journal of IMAP connection activity.
+/// Bounded, opt-in journal of IMAP connection activity.
 ///
-/// Deliberately separate from <see cref="LogService"/> and deliberately NOT gated on the
-/// <c>EnableLogging</c> setting: connection drops are the one failure we have repeatedly been
-/// unable to diagnose after the fact, and the live profile that reported them had logging off.
-/// A few hundred KB of bounded, rotating text is a cheap insurance premium against another
-/// round of guesswork.
+/// Separate from <see cref="LogService"/> and its <c>EnableLogging</c> setting: this records
+/// connection lifecycle rather than general application events, and the two are useful at
+/// different times. Off by default and driven by the <c>ConnectionDiagnostics</c> setting —
+/// it is a troubleshooting tool, switched on when investigating a problem.
 ///
 /// Holds the last <see cref="Capacity"/> events in memory to back the Connection Diagnostics
-/// window, and appends every event to <c>connection.log</c> in the profile directory.
+/// window, and appends every event to <c>connection.log</c> in the profile directory, rolling
+/// over at 5 MB. For scale: a full session of normal use produced roughly 50 KB.
+///
+/// Recorded content is account labels (which are email addresses for some accounts), server host
+/// names, IP addresses, counts and error text. Never passwords, tokens, or message content — but
+/// a shared report does carry those addresses, which is why enabling it is the user's choice.
 /// </summary>
 public static class ConnectionJournal
 {
@@ -84,6 +88,41 @@ public static class ConnectionJournal
     private static readonly object _gate = new();
     private static readonly Queue<ConnectionEvent> _ring = new(Capacity);
     private static string? _logFile;
+    private static volatile bool _enabled;
+
+    /// <summary>
+    /// Whether the journal records anything. Off by default; driven by the
+    /// <c>ConnectionDiagnostics</c> setting, and applied live when settings are saved.
+    ///
+    /// When off, <see cref="Record"/> returns before allocating, so the instrumentation scattered
+    /// through the connect and pool paths costs a single volatile read. Turning it on begins
+    /// recording immediately — no restart — so a problem already in progress is captured from the
+    /// moment the user switches it on.
+    /// </summary>
+    public static bool Enabled
+    {
+        get => _enabled;
+        set
+        {
+            if (_enabled == value) return;
+            _enabled = value;
+
+            if (value)
+            {
+                Record(ConnectionEventKind.Status, "-", "-", "diagnostics-enabled",
+                    $"QuickMail {AppVersion()} pid={Environment.ProcessId}");
+            }
+            else
+            {
+                // Say so in the file before going quiet, so a journal that simply stops is
+                // distinguishable from one the user turned off mid-investigation.
+                _enabled = true;
+                Record(ConnectionEventKind.Status, "-", "-", "diagnostics-disabled",
+                    "recording stopped by the Connection Diagnostics setting");
+                _enabled = false;
+            }
+        }
+    }
 
     /// <summary>
     /// Raised after an event is recorded, so an open diagnostics window can live-update.
@@ -102,8 +141,8 @@ public static class ConnectionJournal
         {
             _logFile = Path.Combine(profileDir, "connection.log");
         }
-        Record(ConnectionEventKind.Status, "-", "-", "journal-started",
-            $"QuickMail {AppVersion()} pid={Environment.ProcessId}");
+        // No "started" line here: recording is gated on Enabled, which the caller sets from config
+        // immediately after. Enabling emits its own marker.
     }
 
     private static string AppVersion()
@@ -116,10 +155,12 @@ public static class ConnectionJournal
         catch { return "unknown"; }
     }
 
-    /// <summary>Records one event. Never throws.</summary>
+    /// <summary>Records one event. Never throws. No-op when <see cref="Enabled"/> is false.</summary>
     public static void Record(
         ConnectionEventKind kind, string account, string host, string phase, string detail = "")
     {
+        if (!_enabled) return;
+
         ConnectionEvent evt;
         try
         {
@@ -149,6 +190,10 @@ public static class ConnectionJournal
         ConnectionEventKind kind, string account, string host, string phase, Exception ex,
         string? extra = null)
     {
+        // Check first: walking the inner-exception chain is the costly part, and it is pure waste
+        // when nothing is recording.
+        if (!_enabled) return;
+
         var detail = LogService.FormatException(ex);
         if (!string.IsNullOrEmpty(extra)) detail = $"{extra} — {detail}";
         Record(kind, account, host, phase, detail);
@@ -183,6 +228,24 @@ public static class ConnectionJournal
             File.Move(file, previous);
         }
         catch { /* if rolling fails, keep appending rather than lose the journal */ }
+    }
+
+    /// <summary>
+    /// Deletes the journal file and its rolled-over predecessor, and clears the in-memory ring.
+    /// Safe to call while recording — subsequent events recreate the file.
+    /// </summary>
+    public static void DeleteLog()
+    {
+        lock (_gate)
+        {
+            _ring.Clear();
+            if (_logFile == null) return;
+            foreach (var path in new[] { _logFile, _logFile + ".1" })
+            {
+                try { if (File.Exists(path)) File.Delete(path); }
+                catch { /* never crash on log management */ }
+            }
+        }
     }
 
     /// <summary>Snapshot of the in-memory ring, oldest first.</summary>
@@ -261,5 +324,6 @@ public static class ConnectionJournal
             _logFile = null;
         }
         EventRecorded = null;
+        _enabled = true;   // tests exercise recording; the disabled path has its own tests
     }
 }
