@@ -353,3 +353,15 @@ eventually want can only be built forward from now.
 [REST API endpoints for release assets](https://docs.github.com/en/rest/releases/assets) ·
 [REST API endpoints for releases](https://docs.github.com/en/rest/releases/releases) ·
 [the retired Enterprise 2.16 article](https://docs.github.com/en/enterprise/2.16/user/github/administering-a-repository/getting-the-download-count-for-your-releases)*
+
+---
+
+## Reporting Issues
+
+Have a question about this article, a correction to it, or a problem with QuickMail itself? There are three ways to reach us — pick the one that fits:
+
+1. **Report a Bug → Send** (Help menu, inside QuickMail). Files the report for you anonymously — it includes no email address or other identifying information, so there is no way to follow up with you. **Best when you don't want any follow-up.**
+2. **Report a Bug → Copy report and open GitHub** (Help menu). Opens a pre-filled issue that you submit under your own GitHub account, so your GitHub contact information is attached. **Best when you have a GitHub account and want automatic filing plus direct contact.**
+3. **Email** [quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net). **Best when you don't mind sending email and want a personal follow-up.**
+
+Full details, including exactly what a report contains (and what it never contains), are in the [Reporting Issues section of the User Guide](https://kellylford.github.io/QuickMail/reporting-issues.html).
