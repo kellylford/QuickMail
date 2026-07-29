@@ -204,6 +204,17 @@ public class ConfigModel
     /// </summary>
     public bool EnableLogging { get; set; } = false;
 
+    /// <summary>
+    /// Whether to record connection diagnostics: the connection.log journal, the per-host socket
+    /// census, automatic reachability probing, and the Connection Diagnostics window in the Help
+    /// menu. Default off — it is a troubleshooting tool, not something every session needs.
+    ///
+    /// Turning it on takes effect immediately; the journal begins recording from that moment, so a
+    /// problem already in progress will be captured from the point it is switched on rather than
+    /// needing a restart.
+    /// </summary>
+    public bool ConnectionDiagnostics { get; set; } = false;
+
     // ── Tutorial ──────────────────────────────────────────────────────────────────
 
     /// <summary>Show a confirmation dialog before emptying trash. Default on.</summary>

@@ -21,6 +21,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 {
     private readonly IMailService _imap;
     private readonly IChangeNotifier? _changeNotifier;
+
+    // Verifies, independently of the app's own connection state, whether an account shown as
+    // disconnected really is. Optional so tests and the stub-service constructors are unaffected.
+    private readonly ConnectionTruthProbe? _truthProbe;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
@@ -1049,8 +1053,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IThemeService? themeService = null,
         INotificationService? notificationService = null,
         IContactSyncService? contactSyncService = null,
-        IGraphCalendarSyncService? graphCalendarSyncService = null)
+        IGraphCalendarSyncService? graphCalendarSyncService = null,
+        ConnectionTruthProbe? truthProbe = null)
     {
+        _truthProbe = truthProbe;
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
         _changeNotifier  = changeNotifier;
@@ -1135,10 +1141,79 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void LoadAccountList(List<AccountModel>? preloaded = null)
     {
         var accounts = preloaded ?? _accountService.LoadAccounts();
+
+        // Carry live connection state across the reload.
+        //
+        // These AccountModel objects are rebuilt from accounts.json, and IsConnected / TotalUnread
+        // are runtime state that is deliberately never persisted — so every reloaded account arrives
+        // reporting "disconnected" regardless of what its backend is actually doing. Replacing the
+        // Accounts collection then makes every account in the list read as disconnected at once.
+        //
+        // That is the whole "adding an account disconnects the others" symptom. Nothing disconnects:
+        // the pools, the IDLE watchers and the sockets are untouched (the journal shows
+        // watchers-reconciled stopping=0 across an add), and RefreshAccountList deliberately skips
+        // reconnecting accounts that are already healthy — so nothing ever sets IsConnected back to
+        // true for them, and the false status sticks until the next restart.
+        //
+        // This was invisible to the status instrumentation because the state is lost by object
+        // replacement, not by assignment: ApplyAccountStatus is genuinely the only code that writes
+        // IsConnected, so no write is ever observed. See docs/planning/connection-drop-diagnostics.md.
+        // Not ToDictionary: a duplicated id in accounts.json would throw, turning a tolerable data
+        // oddity into a UI-thread crash on every Manage Accounts close. Last one wins, as before.
+        var previous = new Dictionary<Guid, AccountModel>();
+        foreach (var existing in Accounts) previous[existing.Id] = existing;
+
+        var carried = 0;
+        foreach (var account in accounts)
+        {
+            if (!previous.TryGetValue(account.Id, out var prior)) continue;
+
+            // Only carry status when the connection itself is unchanged. If the user just edited the
+            // host, port, login or security settings, the pooled connections are for the OLD server:
+            // reporting "connected" would vouch for a connection that no longer matches the account.
+            // Leaving it disconnected is both honest and useful — it puts the account into
+            // AccountsNeedingConnect so the reconnect pass actually re-establishes it.
+            if (!SameConnectionIdentity(prior, account)) continue;
+
+            account.IsConnected = prior.IsConnected;
+            account.TotalUnread = prior.TotalUnread;
+            carried++;
+        }
+
         foreach (var account in accounts)
             RegisterAccountBackend?.Invoke(account);
         Accounts = new ObservableCollection<AccountModel>(accounts);
+
+        // An account deleted while it was showing disconnected never receives a NoteConnected call,
+        // so its verification loop would otherwise keep probing a mailbox the user has removed.
+        _truthProbe?.RetainOnly(accounts.Select(a => a.Id));
+
+        if (previous.Count > 0)
+        {
+            var carriedCount = carried;
+            ConnectionJournal.Record(
+                ConnectionEventKind.Status, "-", "-", "accounts-reloaded",
+                () => $"rebuilt {accounts.Count} account object(s) from disk; " +
+                      $"carried live status for {carriedCount}; " +
+                      $"{accounts.Count - carriedCount} new, removed or reconfigured");
+        }
     }
+
+    /// <summary>
+    /// Whether two snapshots of an account describe the same server connection. Used to decide
+    /// whether live connection status may be carried across a reload — a changed host, port, login
+    /// or security setting means the existing connections no longer belong to this account.
+    /// </summary>
+    private static bool SameConnectionIdentity(AccountModel left, AccountModel right) =>
+        left.BackendKind == right.BackendKind &&
+        left.Username == right.Username &&
+        left.LoginUsername == right.LoginUsername &&
+        left.AuthType == right.AuthType &&
+        left.ImapHost == right.ImapHost &&
+        left.ImapPort == right.ImapPort &&
+        left.ImapUseSsl == right.ImapUseSsl &&
+        left.RequireStartTls == right.RequireStartTls &&
+        left.ImapAcceptInvalidCert == right.ImapAcceptInvalidCert;
 
     // ── Saved-views lifecycle ─────────────────────────────────────────────────────
 
@@ -1567,6 +1642,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // setting) raises ThemeChanged once, not twice.
         _themeService?.ApplyAppearance(cfg);
 
+        ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
+
         ShowMessageStatus = cfg.ShowMessageStatus;
         ReadAsPlainText   = cfg.ReadAsPlainText;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
@@ -1805,6 +1882,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "help.reportBug", category: "Help", title: "Report a Bug",
             execute: () => ReportBugRequested?.Invoke(this, EventArgs.Empty)));
+
+        // help.connectionDiagnostics is deliberately NOT registered here. It is registered and
+        // unregistered by ApplyConnectionDiagnosticsSetting so the command palette only offers it
+        // while the feature is switched on, matching the Help menu. No default hotkey either way.
     }
 
     // ── Startup ──────────────────────────────────────────────────────────────────
@@ -2045,7 +2126,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (account != null)
                     {
                         var folders = isReachable && _cachedFolders.TryGetValue(accountId, out var f) ? f : null;
-                        ApplyAccountStatus(account, folders);
+                        ApplyAccountStatus(account, folders, "reachability-event");
                     }
                 });
                 _changeNotifier.AccountReachabilityChanged += _onReachabilityChanged;
@@ -2759,7 +2840,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             var account = Accounts.FirstOrDefault(a => a.Id == id);
             if (account != null)
-                ApplyAccountStatus(account, folders);
+                ApplyAccountStatus(account, folders, "initial-connect");
             if (folders != null)
                 _cachedFolders[id] = folders;
         }
@@ -2779,14 +2860,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// just-fetched folder list.  TotalUnread is summed across all folders.
     /// Pass <c>null</c> on connection failure to mark as disconnected.
     /// </summary>
-    private static void ApplyAccountStatus(AccountModel account, List<MailFolderModel>? folders)
+    /// <param name="source">
+    /// Short tag naming the calling site (e.g. "reachability-event", "folder-load-failed").
+    /// The account list showing "disconnected" with no way to tell which of this method's nine
+    /// callers decided that is the symptom under investigation, so every transition is journaled
+    /// with its origin, and a flip to disconnected starts an independent reachability check.
+    /// </param>
+    private void ApplyAccountStatus(AccountModel account, List<MailFolderModel>? folders, string source)
     {
+        var was = account.IsConnected;
+
         if (folders == null)
         {
             account.IsConnected = false;
             account.TotalUnread = 0;
+            if (was)
+            {
+                ConnectionJournal.Record(
+                    ConnectionEventKind.Status, account.AccountLabel, account.ImapHost,
+                    "ui-shows-disconnected",
+                    $"source={source} — the account list now shows this account as disconnected");
+            }
+            _truthProbe?.NoteDisconnected(account.Id, source);
             return;
         }
+
+        if (!was)
+        {
+            ConnectionJournal.Record(
+                ConnectionEventKind.Status, account.AccountLabel, account.ImapHost,
+                "ui-shows-connected", $"source={source}");
+        }
+        _truthProbe?.NoteConnected(account.Id, source);
 
         account.IsConnected = true;
         // Exclude Gmail's virtual folders (All Mail / Important / Starred): their counts overlap the
@@ -3366,7 +3471,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await _imap.ConnectAsync(account, password, ct);
             var folderList = await _imap.GetFoldersAsync(account.Id, ct);
             _cachedFolders[account.Id] = folderList;
-            ApplyAccountStatus(account, folderList);
+            ApplyAccountStatus(account, folderList, "select-account");
             RebuildFolderListFromCache();
             // Start this account's new-mail watcher and refresh the status labels — a manual
             // sign-in/activation previously connected the account but never began polling it.
@@ -3817,7 +3922,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folders))
             {
                 _cachedFolders[account.Id] = folders;
-                ApplyAccountStatus(account, folders);
+                ApplyAccountStatus(account, folders, "refresh-folder-lists");
                 changed = true;
             }
         }
@@ -4997,6 +5102,39 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public event EventHandler? AboutRequested;
     public event EventHandler? ReportBugRequested;
 
+    /// <summary>Raised when the user asks for the Connection Diagnostics window.</summary>
+    public event EventHandler? ConnectionDiagnosticsRequested;
+
+    /// <summary>
+    /// Whether connection diagnostics are switched on. Drives the visibility of the Help menu item;
+    /// the matching command is registered and unregistered alongside it so the command palette and
+    /// the menu never disagree about whether the feature exists.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isConnectionDiagnosticsEnabled;
+
+    /// <summary>
+    /// Applies the ConnectionDiagnostics setting to the journal, the command registry and the menu.
+    /// Called at startup and again whenever settings are saved, so the toggle takes effect without
+    /// a restart — someone switching this on is troubleshooting a live problem.
+    /// </summary>
+    internal void ApplyConnectionDiagnosticsSetting(bool enabled)
+    {
+        IsConnectionDiagnosticsEnabled = enabled;
+        ConnectionJournal.Enabled = enabled;
+
+        if (enabled)
+        {
+            _commandRegistry.Register(new CommandDefinition(
+                id: "help.connectionDiagnostics", category: "Help", title: "Connection Diagnostics",
+                execute: () => ConnectionDiagnosticsRequested?.Invoke(this, EventArgs.Empty)));
+        }
+        else
+        {
+            _commandRegistry.Unregister("help.connectionDiagnostics");
+        }
+    }
+
     // One-time first-run offer to add a desktop shortcut (installed copies only). The View
     // shows the actual dialog and reports the answer back via ApplyDesktopShortcutChoice.
     public event EventHandler? DesktopShortcutOfferRequested;
@@ -5632,7 +5770,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var folderList  = await _imap.GetFoldersAsync(accountId, cts.Token);
             _cachedFolders[accountId] = folderList;
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-            if (account != null) ApplyAccountStatus(account, folderList);
+            if (account != null) ApplyAccountStatus(account, folderList, "folder-refresh");
             RebuildFolderListFromCache();
         }
         catch (Exception ex)
@@ -5757,7 +5895,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Re-sum the account's unread badge from the pruned folder list.
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account != null) ApplyAccountStatus(account, _cachedFolders[accountId]);
+        if (account != null) ApplyAccountStatus(account, _cachedFolders[accountId], "folder-deleted-resum");
     }
 
     /// <summary>
@@ -5823,7 +5961,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var folderList = await _imap.GetFoldersAsync(accountId, cts.Token);
             _cachedFolders[accountId] = folderList;
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-            if (account != null) ApplyAccountStatus(account, folderList);
+            if (account != null) ApplyAccountStatus(account, folderList, "folder-created");
             _folderTreeRebuildPending = true;
             StatusText = $"Folder '{name}' created.";
             return folderList;
@@ -6479,7 +6617,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var result = await ConnectOneAccountAsync(account);
                 _ui.Invoke(() =>
                 {
-                    ApplyAccountStatus(account, result.Folders);
+                    ApplyAccountStatus(account, result.Folders, "account-list-refresh");
                     if (result.Folders != null)
                     {
                         _cachedFolders[result.Id] = result.Folders;

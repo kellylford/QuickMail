@@ -17,7 +17,7 @@ using QuickMail.Models;
 
 namespace QuickMail.Services;
 
-public class ImapMailService : IMailService, IChangeNotifier
+public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 {
     private static readonly string[] ComposeModeHeaders = ["X-QuickMail-Compose-Mode"];
 
@@ -97,6 +97,24 @@ public class ImapMailService : IMailService, IChangeNotifier
     }
 
     public bool IsConnected(Guid accountId) => _pools.ContainsKey(accountId);
+
+    /// <summary>
+    /// Single funnel for <see cref="AccountReachabilityChanged"/>. Every raise carries a reason and
+    /// is journaled, because the symptom under investigation is an account showing as disconnected
+    /// with no way to tell what decided that. Bare <c>Invoke</c> calls defeat the whole exercise —
+    /// raise reachability through here.
+    /// </summary>
+    private void RaiseReachability(Guid accountId, bool reachable, string reason)
+    {
+        var label = _accounts.TryGetValue(accountId, out var a) ? a.AccountLabel : accountId.ToString();
+        var host  = a?.ImapHost ?? "-";
+
+        ConnectionJournal.Record(
+            ConnectionEventKind.Status, label, host,
+            reachable ? "reachable" : "unreachable", reason);
+
+        AccountReachabilityChanged?.Invoke(accountId, reachable);
+    }
 
     public async Task DisconnectAsync(Guid accountId, CancellationToken ct = default)
     {
@@ -805,10 +823,21 @@ public class ImapMailService : IMailService, IChangeNotifier
         // disconnect the others (regression of #126). See WatcherReconciler.
         var (toStart, toStop) = WatcherReconciler.Reconcile(_idleCts.Keys, desired);
 
+        // The #126 regression was exactly this call restarting healthy watchers. Journal the diff so
+        // a recurrence is visible as data rather than inferred from a burst of reconnects.
+        ConnectionJournal.Record(
+            ConnectionEventKind.Idle, "-", "-", "watchers-reconciled",
+            $"desired={desired.Count} running={_idleCts.Count} " +
+            $"starting={toStart.Count} stopping={toStop.Count}");
+
         foreach (var accountId in toStop)
         {
             if (_idleCts.TryRemove(accountId, out var old))
             {
+                var stopped = _accounts.TryGetValue(accountId, out var sa) ? sa.AccountLabel : accountId.ToString();
+                ConnectionJournal.Record(
+                    ConnectionEventKind.Idle, stopped, "-", "watcher-stopped",
+                    "account left the connected set");
                 try { old.Cancel(); old.Dispose(); } catch { }
             }
         }
@@ -846,7 +875,12 @@ public class ImapMailService : IMailService, IChangeNotifier
             try
             {
                 if (!_accounts.TryGetValue(accountId, out var account))
+                {
+                    ConnectionJournal.Record(
+                        ConnectionEventKind.Idle, accountId.ToString(), "-", "watcher-exit-account-gone",
+                        "account no longer in the connected set");
                     return; // account removed — exit permanently
+                }
 
                 _passwords.TryGetValue(accountId, out var password);
                 client = await CreateAuthenticatedClientAsync(account, password, ct);
@@ -854,6 +888,12 @@ public class ImapMailService : IMailService, IChangeNotifier
                 if (!client.Capabilities.HasFlag(ImapCapabilities.Idle))
                 {
                     LogService.Log($"IDLE watcher [{account.Username}]: server does not support IDLE — watcher disabled.");
+                    // A permanent exit. Worth journaling loudly: from here on this account has no
+                    // reachability source at all, so its status can only ever be set by the UI layer.
+                    ConnectionJournal.Record(
+                        ConnectionEventKind.Idle, account.AccountLabel, account.ImapHost,
+                        "watcher-exit-no-idle-support",
+                        "server does not advertise IDLE; this account will never raise reachability again");
                     DisposeClient(client);
                     return;
                 }
@@ -862,12 +902,16 @@ public class ImapMailService : IMailService, IChangeNotifier
                 await inbox.OpenAsync(FolderAccess.ReadOnly, ct);
 
                 LogService.Log($"IDLE watcher [{account.Username}]: watching INBOX (Count={inbox.Count}).");
+                ConnectionJournal.Record(
+                    ConnectionEventKind.Idle, account.AccountLabel, account.ImapHost, "watcher-established",
+                    () => $"inboxCount={inbox.Count} {HostConnectionCensus.Describe(account.ImapHost)}");
 
                 // Successfully connected — reset retry count and fire reachability event.
                 if (_idleRetryCount.TryGetValue(accountId, out var retryCount) && retryCount > 0)
                 {
                     _idleRetryCount[accountId] = 0;
-                    AccountReachabilityChanged?.Invoke(accountId, true);
+                    RaiseReachability(accountId, true,
+                        $"IDLE watcher reconnected after {retryCount} failed attempt(s)");
                 }
 
                 inbox.CountChanged += OnCountChanged;
@@ -914,12 +958,29 @@ public class ImapMailService : IMailService, IChangeNotifier
                 var baseSeconds = retryCount == 1 ? 30 : retryCount == 2 ? 60 : 120;
                 var delaySeconds = baseSeconds * (0.7 + Random.Shared.NextDouble() * 0.6);
 
-                var username = _accounts.TryGetValue(accountId, out var acct) ? acct.Username : accountId.ToString();
+                var acct     = _accounts.TryGetValue(accountId, out var found) ? found : null;
+                var username = acct?.Username ?? accountId.ToString();
+                var label    = acct?.AccountLabel ?? accountId.ToString();
+                var host     = acct?.ImapHost ?? "-";
                 LogService.Log($"IDLE watcher [{username}] error (attempt {retryCount}) — will retry in {delaySeconds:F0}s: {LogService.FormatException(ex)}");
 
-                // Mark account as unreachable on first retry failure
+                if (ConnectionJournal.Enabled)
+                {
+                    ConnectionJournal.RecordError(
+                        ConnectionEventKind.Idle, label, host, "watcher-error", ex,
+                        $"attempt={retryCount} retryIn={delaySeconds:F0}s {HostConnectionCensus.Describe(host)}");
+                }
+
+                // Mark account as unreachable on first retry failure.
+                //
+                // NOTE for the analysis: this is the ONLY place an IMAP account is ever marked
+                // unreachable. It fires on a single IDLE failure, before any retry has been tried,
+                // and nothing else in the app — fetch, counts, sync, delete — ever contradicts it.
+                // If the journal shows this firing while probes come back REACHABLE, the label is
+                // wrong and the bug is here, not in the network.
                 if (retryCount == 1)
-                    AccountReachabilityChanged?.Invoke(accountId, false);
+                    RaiseReachability(accountId, false,
+                        $"IDLE watcher failed once ({ex.GetType().Name}); not yet retried");
 
                 if (client != null) DisposeClient(client);
                 client = null;
@@ -1047,6 +1108,14 @@ public class ImapMailService : IMailService, IChangeNotifier
                 LogService.Log(
                     $"IMAP op dropped (attempt {attempt}/{maxAttempts}) — reconnecting and retrying: " +
                     $"{ex.GetType().Name}: {ex.Message}");
+
+                // Retries that succeed are invisible today. They are the clearest evidence of how
+                // often connections are really dropping, independent of whether the user ever saw it.
+                var acct = _accounts.TryGetValue(accountId, out var a) ? a : null;
+                ConnectionJournal.RecordError(
+                    ConnectionEventKind.Retry, acct?.AccountLabel ?? accountId.ToString(),
+                    acct?.ImapHost ?? "-", "op-dropped-retrying", ex,
+                    $"attempt={attempt}/{maxAttempts}");
             }
         }
     }
@@ -1055,6 +1124,8 @@ public class ImapMailService : IMailService, IChangeNotifier
         AccountModel account, string? password, CancellationToken ct)
     {
         var client = new ImapClient();
+        var sw = Stopwatch.StartNew();
+        var connected = false;
         try
         {
             if (account.ImapAcceptInvalidCert)
@@ -1068,7 +1139,17 @@ public class ImapMailService : IMailService, IChangeNotifier
 
             LogService.Log($"Connecting to {account.ImapHost}:{account.ImapPort} ssl={ssl} auth={account.AuthType}");
             LogService.Debug($"  user={account.Username}");
+
+            // Census BEFORE the attempt: if a per-IP limit is what kicks us, the interesting number
+            // is how many sockets were already open when this attempt was made, not after.
+            ConnectionJournal.Record(
+                ConnectionEventKind.Connect, account.AccountLabel, account.ImapHost, "connect-begin",
+                () => $"port={account.ImapPort} ssl={ssl} auth={account.AuthType} " +
+                      HostConnectionCensus.Describe(account.ImapHost));
+
             await client.ConnectAsync(account.ImapHost, account.ImapPort, ssl, ct);
+            connected = true;
+            HostConnectionCensus.Opened(account.ImapHost, account.Id, client);
 
             if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
             {
@@ -1083,12 +1164,76 @@ public class ImapMailService : IMailService, IChangeNotifier
             }
 
             LogService.Log($"Connected. Capabilities: {client.Capabilities}");
+            ConnectionJournal.Record(
+                ConnectionEventKind.Connect, account.AccountLabel, account.ImapHost, "connect-ok",
+                () => $"elapsed={sw.ElapsedMilliseconds}ms {HostConnectionCensus.Describe(account.ImapHost)}");
             return client;
         }
-        catch
+        catch (Exception ex)
         {
-            DisposeClient(client);
+            // A server that is refusing us because of a connection limit says so in the greeting or
+            // the failure response ("Maximum number of connections from user+IP exceeded"), and
+            // MailKit surfaces that text in the exception message. FormatException walks the whole
+            // inner chain including SocketError and native code, so the reason survives here.
+            if (ConnectionJournal.Enabled)
+            {
+                ConnectionJournal.RecordError(
+                    ConnectionEventKind.Connect, account.AccountLabel, account.ImapHost,
+                    connected ? "auth-failed" : "connect-failed", ex,
+                    $"elapsed={sw.ElapsedMilliseconds}ms {HostConnectionCensus.Describe(account.ImapHost)}");
+            }
+
+            DisposeClient(client);   // releases the census registration
             throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<ProbeResult> ProbeAccountAsync(Guid accountId, CancellationToken ct = default)
+    {
+        var sw = Stopwatch.StartNew();
+
+        if (!_accounts.TryGetValue(accountId, out var account))
+        {
+            // NOT "unreachable". This fires for any account this backend does not own — including a
+            // Microsoft Graph account — and reporting that as a failure is what made the first live
+            // run flag a healthy account as broken. Nothing is known here, so say exactly that.
+            return new ProbeResult(ProbeOutcome.NotSupported, sw.ElapsedMilliseconds,
+                "account is not registered with the IMAP service (not an IMAP account, or never connected)");
+        }
+
+        _passwords.TryGetValue(accountId, out var password);
+
+        ImapClient? client = null;
+        try
+        {
+            // CreateAuthenticatedClientAsync deliberately, so the probe exercises the same connect,
+            // TLS, and auth path the app uses — a probe that connected differently could come back
+            // healthy while the real path fails, which would be worse than no probe at all.
+            client = await CreateAuthenticatedClientAsync(account, password, ct);
+
+            var inbox = client.Inbox ?? throw new InvalidOperationException("server has no INBOX");
+            await inbox.StatusAsync(StatusItems.Count | StatusItems.Unread, ct);
+            await client.NoOpAsync(ct);
+
+            var detail = $"INBOX count={inbox.Count} unread={inbox.Unread} " +
+                         $"idleSupported={client.Capabilities.HasFlag(ImapCapabilities.Idle)}";
+            return new ProbeResult(ProbeOutcome.Reachable, sw.ElapsedMilliseconds, detail);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return new ProbeResult(ProbeOutcome.Unreachable, sw.ElapsedMilliseconds, LogService.FormatException(ex));
+        }
+        finally
+        {
+            // Always hand the socket back. A probe that leaked connections would make a per-IP
+            // limit worse — and this probe runs precisely when we suspect one.
+            if (client != null)
+                await DisconnectAndDisposeAsync(client, CancellationToken.None);
         }
     }
 
@@ -1170,6 +1315,9 @@ public class ImapMailService : IMailService, IChangeNotifier
 
     private static void DisposeClient(ImapClient client)
     {
+        // Release the per-host census first: Dispose may throw, and a socket that is going away
+        // must stop counting either way or the census drifts upward for the rest of the session.
+        HostConnectionCensus.Released(client);
         try { client.Dispose(); } catch { /* best effort */ }
     }
 
@@ -1280,6 +1428,8 @@ public class ImapMailService : IMailService, IChangeNotifier
             }
 
             ImapClient? client = null;
+            var discardedUnusable = 0;
+            var rentSw = Stopwatch.StartNew();
 
             try
             {
@@ -1307,7 +1457,18 @@ public class ImapMailService : IMailService, IChangeNotifier
                             _all.Remove(candidate);
                             _returnedUtc.Remove(candidate);
                             DisposeClient(candidate);
+                            discardedUnusable++;
                         }
+                    }
+
+                    if (discardedUnusable > 0)
+                    {
+                        var unusable = discardedUnusable;
+                        ConnectionJournal.Record(
+                            ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
+                            "discard-unusable",
+                            () => $"count={unusable} — client reported not connected/authenticated before reuse. {Census()}");
+                        discardedUnusable = 0;
                     }
 
                     if (reuse != null)
@@ -1333,8 +1494,21 @@ public class ImapMailService : IMailService, IChangeNotifier
                         if (alive)
                         {
                             client = reuse;
+                            // Hot reuse skips the probe entirely, so a socket the server dropped
+                            // seconds ago is handed out as healthy — that was #311. Distinguish the
+                            // two cases in the journal: if failures follow "reuse-hot" and not
+                            // "reuse-probed", the 30s threshold is the problem.
+                            ConnectionJournal.Record(
+                                ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
+                                reuseIsStale ? "reuse-probed" : "reuse-hot",
+                                () => $"priority={priority} waited={rentSw.ElapsedMilliseconds}ms {Census()}");
                             break;
                         }
+
+                        ConnectionJournal.Record(
+                            ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
+                            "probe-failed-discard",
+                            () => $"NOOP probe failed on an idle connection; discarding and reconnecting. {Census()}");
 
                         lock (_gate) { _all.Remove(reuse); }
                         DisposeClient(reuse);
@@ -1357,6 +1531,10 @@ public class ImapMailService : IMailService, IChangeNotifier
                         ObjectDisposedException.ThrowIf(_disposed, this);
                         _all.Add(client);
                     }
+
+                    ConnectionJournal.Record(
+                        ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost, "created-new",
+                        () => $"priority={priority} waited={rentSw.ElapsedMilliseconds}ms {Census()}");
                 }
 
                 return new ImapClientLease(this, client, hasBackgroundSlot);
@@ -1395,11 +1573,39 @@ public class ImapMailService : IMailService, IChangeNotifier
             }
 
             if (!keep)
+            {
+                // Only a genuine death is worth recording. `keep` is also false when the pool has
+                // been disposed (account disconnect, app exit), and journaling those as dead
+                // connections would manufacture drop evidence in the one log built to count real
+                // drops — the log we then read as proof of what happened.
+                bool poolClosed;
+                lock (_gate) { poolClosed = _disposed; }
+
+                if (!poolClosed)
+                {
+                    ConnectionJournal.Record(
+                        ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost,
+                        "returned-dead",
+                        () => $"connection was not usable when the operation finished; discarded. {Census()}");
+                }
                 DisposeClient(client);
+            }
 
             _slots.Release();
             if (releaseBackgroundSlot)
                 _backgroundSlots.Release();
+        }
+
+        /// <summary>
+        /// Pool occupancy plus the per-host socket picture, appended to every pool event.
+        /// Cheap enough to compute on each rent (a couple of counter reads and a cached DNS entry).
+        /// </summary>
+        private string Census()
+        {
+            int idle, all;
+            lock (_gate) { idle = _idle.Count; all = _all.Count; }
+            return $"pool={all - idle}/{all} inUse, max={MaxConnections}; " +
+                   HostConnectionCensus.Describe(Account.ImapHost);
         }
 
         public async Task DisconnectAsync(CancellationToken ct)
@@ -1414,6 +1620,10 @@ public class ImapMailService : IMailService, IChangeNotifier
                 _all.Clear();
                 _returnedUtc.Clear();
             }
+
+            ConnectionJournal.Record(
+                ConnectionEventKind.Pool, Account.AccountLabel, Account.ImapHost, "pool-torn-down",
+                $"closing {clients.Count} connection(s)");
 
             foreach (var client in clients)
                 await DisconnectAndDisposeAsync(client, ct);

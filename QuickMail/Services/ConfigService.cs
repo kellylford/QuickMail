@@ -272,6 +272,7 @@ public class ConfigService : IConfigService
                         config.LogFormat = string.Equals(value, "timefirst", StringComparison.OrdinalIgnoreCase) ? "timeFirst" : "actionFirst";
                         break;
                     case "enablelogging": config.EnableLogging = ParseBool(value); break;
+                    case "connectiondiagnostics": config.ConnectionDiagnostics = ParseBool(value); break;
                     case "tutorialcompleted":    config.TutorialCompleted    = ParseBool(value); break;
                     case "desktopshortcutprompted": config.DesktopShortcutPrompted = ParseBool(value); break;
                     case "autoupdate":              config.AutoUpdate              = ParseBool(value); break;
@@ -557,6 +558,15 @@ public class ConfigService : IConfigService
         sb.AppendLine($"EnableLogging = {(config.EnableLogging ? "on" : "off")}");
         sb.AppendLine("# Write log entries to quickmail.log. When off, no log file is written.");
         sb.AppendLine("# If QuickMail was launched with /debug, this setting is ignored and logging always runs.");
+        sb.AppendLine("# Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"ConnectionDiagnostics = {(config.ConnectionDiagnostics ? "on" : "off")}");
+        sb.AppendLine("# Record connection diagnostics to connection.log and add Connection Diagnostics");
+        sb.AppendLine("# to the Help menu. Turn this on when investigating connection or account-status");
+        sb.AppendLine("# problems, then reproduce the issue. Takes effect immediately. Default off.");
+        sb.AppendLine("# The journal records account labels (which may be email addresses), server host");
+        sb.AppendLine("# names and IP addresses. It never records passwords, tokens or message content.");
         sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 

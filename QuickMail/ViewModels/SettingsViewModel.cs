@@ -224,6 +224,14 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _enableLogging;
 
+    /// <summary>
+    /// Records connection diagnostics and adds Connection Diagnostics to the Help menu.
+    /// Off by default; applied immediately on save, so a problem already in progress can be
+    /// captured without restarting.
+    /// </summary>
+    [ObservableProperty]
+    private bool _connectionDiagnostics;
+
     public bool IsLogFormatActionFirst
     {
         get => LogFormat == "actionFirst";
@@ -316,6 +324,7 @@ public partial class SettingsViewModel : ObservableObject
         };
         LogFormat                        = cfg.LogFormat;
         EnableLogging                    = cfg.EnableLogging;
+        ConnectionDiagnostics            = cfg.ConnectionDiagnostics;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
         {
             Models.MessageOpenMode.Tab    => "tab",
@@ -414,6 +423,7 @@ public partial class SettingsViewModel : ObservableObject
         };
         cfg.LogFormat                        = LogFormat;
         cfg.EnableLogging                    = EnableLogging;
+        cfg.ConnectionDiagnostics            = ConnectionDiagnostics;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
         {
             "tab"    => Models.MessageOpenMode.Tab,

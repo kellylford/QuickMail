@@ -203,6 +203,7 @@ public partial class MainWindow : Window
     private readonly ICustomDictionaryService? _customDictionary;
     private readonly IThemeService? _themeService;
     private readonly IBugReportService? _bugReportService;
+    private readonly ConnectionTruthProbe? _truthProbe;
     private readonly INotificationService? _notificationService;
 
     // ── Close-to-tray / run-in-background ──────────────────────────────────────
@@ -264,7 +265,8 @@ public partial class MainWindow : Window
         IGraphCalendarSyncService? graphCalendarSyncService = null,
         IServerRuleService? serverRuleService = null,
         IProviderCatalog? providerCatalog = null,
-        IAutoDiscoverService? autoDiscover = null)
+        IAutoDiscoverService? autoDiscover = null,
+        ConnectionTruthProbe? truthProbe = null)
     {
         _vm = vm;
         // Optional so existing test constructions keep compiling; a null catalog falls back to the
@@ -293,6 +295,7 @@ public partial class MainWindow : Window
         _themeService = themeService;
         _bugReportService = bugReportService;
 
+        _truthProbe       = truthProbe;
         InitializeComponent();
         DataContext = vm;
 
@@ -396,6 +399,7 @@ public partial class MainWindow : Window
         };
         vm.AboutRequested += (_, _) => ShowAboutDialog();
         vm.ReportBugRequested += (_, _) => ShowReportBugWindow();
+        vm.ConnectionDiagnosticsRequested += (_, _) => ShowConnectionDiagnosticsWindow();
         vm.PropertiesRequested += propertiesVm =>
         {
             var win = new PropertiesWindow(propertiesVm) { Owner = this };
@@ -3677,6 +3681,23 @@ public partial class MainWindow : Window
     private void MenuReportBug_Click(object sender, RoutedEventArgs e)
     {
         ShowReportBugWindow();
+    }
+
+    // Modeless for the same reason as the bug report window: it is opened over this window's live
+    // WebView2 reading pane, and a modal nested message loop there can deadlock the UI thread.
+    private void ShowConnectionDiagnosticsWindow()
+    {
+        var previousFocus = Keyboard.FocusedElement as IInputElement;
+        var window = new ConnectionDiagnosticsWindow(
+            _truthProbe,
+            () => _vm.Accounts.ToList()) { Owner = this };
+        window.SetFocusRestoreTarget(previousFocus);
+        window.Show();
+    }
+
+    private void MenuConnectionDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        ShowConnectionDiagnosticsWindow();
     }
 
     private void MenuAbout_Click(object sender, RoutedEventArgs e)

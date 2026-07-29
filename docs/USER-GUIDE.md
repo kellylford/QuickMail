@@ -21,6 +21,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Calendar](#calendar)
 - [Notifications](#notifications)
 - [Tools Menu](#tools-menu)
+- [Connection Diagnostics](#connection-diagnostics)
 - [Reporting Issues](#reporting-issues)
 - [Settings](#settings)
 - [Themes](#themes)
@@ -1085,6 +1086,70 @@ The **Tools** menu is always available from the main window menu bar and groups 
 
 ---
 
+## Connection Diagnostics
+
+Connection Diagnostics records what QuickMail is doing when it talks to your mail servers, so a problem that is hard to describe can be looked at directly instead of guessed at.
+
+It is **off by default** and most people will never need it. While it is off, nothing is recorded, no log file is created, no connections are made on its behalf, and no **Connection Diagnostics** item appears in the **Help** menu.
+
+### When you might use it
+
+Turn it on if:
+
+- An account shows as **disconnected** when it seems to be working, or shows as connected when mail is not arriving.
+- Mail stops arriving for one account but not others.
+- An action reports a failure you cannot explain — a delete or move that "may not have completed", for example.
+- You are filing a bug report about any of the above and want to include something concrete.
+
+It is a troubleshooting tool, not something to leave on. Turn it off again once you have what you need.
+
+### Turning it on
+
+1. Open **Settings** (Ctrl+comma) and go to the **Advanced** tab.
+2. Check **Record connection diagnostics**.
+3. Select **Save**.
+
+Recording starts immediately — you do not need to restart QuickMail first. That matters when a problem is happening right now, since restarting would clear the very thing you are trying to capture.
+
+Once it is on, **Connection Diagnostics** appears in the **Help** menu.
+
+### The Connection Diagnostics window
+
+Open it from **Help → Connection Diagnostics**. Focus starts in the accounts list.
+
+**Accounts** lists every account with two things: the status QuickMail is currently showing for it, and what its mail server actually said the last time it was checked. When those two disagree, the list says so in plain words — for example that an account shown as disconnected answered normally, which means the status is wrong rather than the connection.
+
+**Test this account** — press Enter on an account, or use the button, to check it right now. QuickMail opens a brand-new connection that shares nothing with the connections it is already using, signs in, and reads your Inbox. The result is announced and added to the list. This is the question the window exists to answer: whether the problem is your connection or what QuickMail is reporting about it.
+
+**Connection events** is the running record, newest first. Each line is one event — a connection being opened, reused, or dropped, a sign-in failing, a status changing. The dropdown above the list filters it to a single account.
+
+**Copy report** puts a complete report on the clipboard. **Save report** writes it to a text file. Either can be attached to a bug report or pasted into an email.
+
+**Keyboard:** F6 and Shift+F6 move between the accounts list, the events list, and the buttons. Ctrl+Shift+P opens the command palette. Escape closes the window and returns focus to where you were.
+
+### What it records
+
+- Your account names, and the names and network addresses of your mail servers.
+- Connection attempts and what happened to them, including how long they took and the exact error when one fails.
+- Changes to the connection status QuickMail shows for each account, and what caused each change.
+- The results of any checks it runs.
+
+### What it never records
+
+- Passwords or authentication tokens.
+- The contents, subjects, senders, or recipients of your mail.
+- Anything you type.
+
+Your account names may be your email addresses, and your mail server names identify your provider, so it is worth knowing that before you share a report. If you would rather not send one, describe what you saw instead — that is still useful.
+
+### Where it is kept, and removing it
+
+The record is written to `connection.log` in your profile directory (usually `%APPDATA%\QuickMail`), next to QuickMail's other settings. It is capped in size and older entries are discarded, so it cannot grow without limit — a full session of ordinary use produces roughly 50 KB.
+
+Recording stops as soon as you turn the setting off. To remove what has already been recorded, use **Delete QuickMail logs** on the **Advanced** tab, which deletes the connection log along with the application log.
+
+---
+
 ## Reporting Issues
 
 QuickMail improves because people report problems and suggest changes. There are **three** ways to do it. They mostly differ in one thing: **whether you can be contacted for follow-up**. Pick whichever fits.
@@ -1151,13 +1216,17 @@ Accounts are not part of Settings — they have a window of their own. Open **Fi
 **QuickMail Logging**
 
 - **Enable logging** — when checked, QuickMail writes activity to `quickmail.log` in your profile directory (usually `%APPDATA%\QuickMail`). Uncheck to stop writing the log file. Changes take effect when you select **Save**.
-- **Delete QuickMail log** — deletes the log file immediately after confirmation. If logging is still on, a new log file is created the next time an activity is logged.
+- **Delete QuickMail logs** — deletes QuickMail's log files immediately after confirmation: the application log (`quickmail.log`) and the connection diagnostics log (`connection.log`), if either exists. If logging or connection diagnostics are still on, new files are created the next time something is recorded.
 
 > **Note:** If QuickMail was launched with the `/debug` flag, logging always runs regardless of the Enable logging setting. The `/debug` flag is intended for diagnosing problems and overrides this preference so that nothing is missed.
 
 **Log Format**
 
 Controls the order of timestamp and message text in each log line. **Action first** (default) places the message before the timestamp, which is easier to scan since the log is already in chronological order. **Time first** uses the original format with the timestamp at the start of each line.
+
+**Connection Diagnostics**
+
+- **Record connection diagnostics** — off by default. Records how QuickMail connects to your mail servers and adds **Connection Diagnostics** to the **Help** menu. Takes effect as soon as you select **Save**, with no restart. See [Connection Diagnostics](#connection-diagnostics).
 
 ### Keyboard
 

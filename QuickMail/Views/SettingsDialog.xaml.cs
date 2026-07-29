@@ -33,21 +33,34 @@ public partial class SettingsDialog : Window
         _vm.SaveCommand.Execute(null);
         LogService.Format  = _vm.LogFormat;
         LogService.Enabled = _vm.EnableLogging;
+
+        // Applied live rather than at next startup: someone turning this on is troubleshooting a
+        // problem that is happening now, and making them restart would lose the very thing they
+        // are trying to capture.
+        ConnectionJournal.Enabled = _vm.ConnectionDiagnostics;
         DialogResult = true;
         Close();
     }
 
     private void DeleteLogButton_Click(object sender, RoutedEventArgs e)
     {
+        // Deletes BOTH logs. Someone deleting their logs means all of them — most often because the
+        // logs hold their email addresses and mail server names and they don't want them on disk.
+        // Leaving connection.log behind because it happens to be a second file would quietly defeat
+        // that, and nothing in the UI would hint that a second log still existed.
         var result = MessageBox.Show(
-            "Delete the QuickMail log file? This cannot be undone.",
-            "Delete Log",
+            "Delete QuickMail's log files? This deletes the application log and the connection " +
+            "diagnostics log, and cannot be undone.",
+            "Delete Logs",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,
             MessageBoxResult.No);
 
         if (result == MessageBoxResult.Yes)
+        {
             LogService.DeleteLog();
+            ConnectionJournal.DeleteLog();
+        }
 
         DeleteLogButton.Focus();
     }

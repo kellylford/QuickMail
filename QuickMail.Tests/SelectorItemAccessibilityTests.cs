@@ -107,6 +107,23 @@ public class SelectorItemAccessibilityTests
 
         var group = new GroupModel { Name = "Team" };
         Assert.Equal(group.Display, group.ToString());
+
+        // Connection Diagnostics lists. The account row must speak the disagreement, not just the
+        // label — "shown as disconnected but the server answered" is the entire point of that list.
+        var row = new ConnectionAccountRow
+        {
+            Id = Guid.NewGuid(), Label = "Kelly", Host = "mail.example.com",
+            StatusText = "disconnected", VerdictText = "Server answered normally.",
+        };
+        Assert.Equal("Kelly, disconnected. Server answered normally.", row.ToString());
+
+        // Journal rows are read one line at a time, so the line itself is the accessible name.
+        var evt = new ConnectionEvent(
+            new System.DateTime(2026, 7, 28, 14, 3, 9), ConnectionEventKind.Connect,
+            "Kelly", "mail.example.com", "connect-failed", "SocketError=TimedOut");
+        Assert.Contains("connect-failed", evt.ToString());
+        Assert.Contains("account=Kelly", evt.ToString());
+        Assert.Contains("SocketError=TimedOut", evt.ToString());
     }
 
     // End-to-end against the REAL RulesManagerWindow: what a screen reader actually speaks for a
@@ -152,6 +169,11 @@ public class SelectorItemAccessibilityTests
             new MailRule { Name = "Alpha" }.ToString(),
             new GroupModel { Name = "Alpha" }.ToString(),
             new ProviderCatalog().Other.ToString(),
+            new ConnectionAccountRow
+            {
+                Id = Guid.NewGuid(), Label = "Alpha", Host = "h",
+                StatusText = "connected", VerdictText = "Confirmed reachable.",
+            }.ToString(),
         };
         foreach (var s in strings)
         {

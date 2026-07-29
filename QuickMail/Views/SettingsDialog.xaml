@@ -395,11 +395,25 @@
                                           IsChecked="{Binding EnableLogging, Mode=TwoWay}"
                                           AutomationProperties.Name="Enable logging"/>
                                 <Button x:Name="DeleteLogButton"
-                                        Content="_Delete QuickMail log"
+                                        Content="_Delete QuickMail logs"
                                         HorizontalAlignment="Left"
                                         Margin="0,10,0,0"
                                         Click="DeleteLogButton_Click"
-                                        AutomationProperties.Name="Delete QuickMail log"/>
+                                        AutomationProperties.Name="Delete QuickMail logs"/>
+                                <TextBlock Text="Deletes both the application log and the connection diagnostics log."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Connection Diagnostics Group -->
+                        <GroupBox Header="_Connection Diagnostics" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Connection diagnostics settings">
+                            <StackPanel>
+                                <CheckBox Content="_Record connection diagnostics"
+                                          IsChecked="{Binding ConnectionDiagnostics, Mode=TwoWay}"
+                                          AutomationProperties.Name="Record connection diagnostics"/>
+                                <TextBlock Text="Records how QuickMail connects to your mail servers, and adds Connection Diagnostics to the Help menu so you can check each account's real connection state and save a report. Turn this on when an account reports the wrong status or mail stops arriving, then reproduce the problem. It takes effect straight away — no restart needed. The report includes your account names, mail server names and addresses, but never passwords or message content."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>
 

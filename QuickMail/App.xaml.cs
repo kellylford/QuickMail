@@ -28,6 +28,7 @@ public partial class App : Application
     private BugReportService? _bugReportService;
     private WindowsToastNotificationService? _notificationService;
     private AutoDiscoverService? _autoDiscoverService;
+    private ConnectionTruthProbe? _truthProbe;
 
     // Owned by Main (acquired before WPF starts, disposed after Run returns); OnStartup
     // wires its activation signal to the main window.
@@ -164,6 +165,10 @@ public partial class App : Application
         }
 
         LogService.Configure(profile.ProfileDir);
+
+        // Point the journal at the profile now; whether it actually records is decided below from
+        // the ConnectionDiagnostics setting (off by default).
+        ConnectionJournal.Configure(profile.ProfileDir);
 
         // /debug enables verbose debug logging to the log file.
         if (e.Args.Contains("/debug", StringComparer.OrdinalIgnoreCase))
@@ -311,15 +316,28 @@ public partial class App : Application
             _updateCheckService = new UpdateCheckService(configService, ParseUpdateFeed(e.Args));
             _bugReportService   = new BugReportService(credentialService);
             _notificationService = new WindowsToastNotificationService();
+            // Answers the question the app cannot answer about itself: when an account shows as
+            // disconnected, is it actually unreachable? Probes on a connection that shares nothing
+            // with the pools or watchers. Label resolution reads the live account list.
+            // Through the ROUTER, not the IMAP backend: each account must be probed by the backend
+            // that actually owns it. Probing a Graph account with the IMAP backend is what produced
+            // the first live false alarm.
+            _truthProbe = new ConnectionTruthProbe(
+                mailRouter,
+                id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
+
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
                 onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
                 themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
-                graphCalendarSyncService: graphCalendarSync);
+                graphCalendarSyncService: graphCalendarSync, truthProbe: _truthProbe);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
+            // Registers/unregisters the Help command and shows or hides the menu item, and sets
+            // ConnectionJournal.Enabled — so nothing records until the user opts in.
+            mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService);
+            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -362,6 +380,7 @@ public partial class App : Application
         _themeService?.Dispose();   // unsubscribes SystemParameters/SystemEvents static events
         _notificationService?.Dispose(); // unhooks the toast-activation static event
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
+        _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
         base.OnExit(e);
     }
 
