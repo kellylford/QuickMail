@@ -274,7 +274,9 @@ public class ConnectionTruthProbeTests : IDisposable
 
         await probe.RunProbeAsync(_account, "test");
 
-        var verdict = Assert.Single(ConnectionJournal.Snapshot(), e => e.Phase == "verdict");
+        // The verification loop probes immediately too, so more than one verdict may land.
+        // Assert on the first, which is the one this test triggered.
+        var verdict = ConnectionJournal.Snapshot().First(e => e.Phase == "verdict");
         Assert.Contains("label=DISCONNECTED", verdict.Detail);
         Assert.Contains("actual=REACHABLE", verdict.Detail);
         Assert.Contains("DISPLAYED STATUS IS WRONG", verdict.Detail);
@@ -288,7 +290,9 @@ public class ConnectionTruthProbeTests : IDisposable
 
         await probe.RunProbeAsync(_account, "test");
 
-        var verdict = Assert.Single(ConnectionJournal.Snapshot(), e => e.Phase == "verdict");
+        // The verification loop probes immediately too, so more than one verdict may land.
+        // Assert on the first, which is the one this test triggered.
+        var verdict = ConnectionJournal.Snapshot().First(e => e.Phase == "verdict");
         Assert.Contains("label=DISCONNECTED", verdict.Detail);
         Assert.Contains("actual=UNREACHABLE", verdict.Detail);
         Assert.DoesNotContain("DISPLAYED STATUS IS WRONG", verdict.Detail);
@@ -302,7 +306,9 @@ public class ConnectionTruthProbeTests : IDisposable
 
         await probe.RunProbeAsync(_account, "manual test");
 
-        var verdict = Assert.Single(ConnectionJournal.Snapshot(), e => e.Phase == "verdict");
+        // The verification loop probes immediately too, so more than one verdict may land.
+        // Assert on the first, which is the one this test triggered.
+        var verdict = ConnectionJournal.Snapshot().First(e => e.Phase == "verdict");
         Assert.Contains("label=CONNECTED", verdict.Detail);
     }
 
@@ -427,7 +433,9 @@ public class ConnectionTruthProbeTests : IDisposable
         probe.NoteDisconnected(_account, "reachability-event");
         await probe.RunProbeAsync(_account, "test");
 
-        var verdict = Assert.Single(ConnectionJournal.Snapshot(), e => e.Phase == "verdict");
+        // The verification loop probes immediately too, so more than one verdict may land.
+        // Assert on the first, which is the one this test triggered.
+        var verdict = ConnectionJournal.Snapshot().First(e => e.Phase == "verdict");
         Assert.Contains("actual=NOT-TESTABLE", verdict.Detail);
         Assert.DoesNotContain("DISPLAYED STATUS IS WRONG", verdict.Detail);
         Assert.DoesNotContain("UNREACHABLE", verdict.Detail);

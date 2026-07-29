@@ -179,7 +179,12 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
     /// <summary>Refreshes only the status/verdict text, leaving selection and scroll position alone.</summary>
     public void RefreshStatusOnly()
     {
-        var byId = _accountsSource().ToDictionary(a => a.Id);
+        // Not ToDictionary: LoadAccountList deliberately tolerates a duplicated id in accounts.json,
+        // so a duplicate genuinely reaches Accounts. Throwing here would turn that survivable data
+        // oddity into an unhandled exception on the dispatcher — crashing the app from the window
+        // someone opened because something was already wrong.
+        var byId = new Dictionary<Guid, AccountModel>();
+        foreach (var account in _accountsSource()) byId[account.Id] = account;
         foreach (var row in Accounts)
         {
             if (byId.TryGetValue(row.Id, out var account))
@@ -216,14 +221,28 @@ public sealed partial class ConnectionDiagnosticsViewModel : ObservableObject
         while (Events.Count > ConnectionJournal.Capacity) Events.RemoveAt(Events.Count - 1);
     }
 
-    /// <summary>A test needs a selected account, a probe, and no test already running.</summary>
-    private bool CanTest() => SelectedAccount != null && _probe != null && !IsTesting;
+    /// <summary>
+    /// A test needs a selected account, a probe, no test already running — and diagnostics still
+    /// switched on. The window is modeless and nothing closes it when the setting is turned off in
+    /// Settings, so without the last check the button would still open a real connection while the
+    /// journal recorded nothing.
+    /// </summary>
+    private bool CanTest() =>
+        SelectedAccount != null && _probe != null && !IsTesting && ConnectionJournal.Enabled;
 
     [RelayCommand(CanExecute = nameof(CanTest))]
     private async Task TestAccountAsync()
     {
         var row = SelectedAccount;
         if (row == null || _probe == null || IsTesting) return;
+
+        if (!ConnectionJournal.Enabled)
+        {
+            AnnounceRequested?.Invoke(
+                "Connection diagnostics have been turned off. Turn them back on in Settings, Advanced, to test an account.",
+                AnnouncementCategory.Result);
+            return;
+        }
 
         IsTesting = true;
         AnnounceRequested?.Invoke($"Testing {row.Label}.", AnnouncementCategory.Status);

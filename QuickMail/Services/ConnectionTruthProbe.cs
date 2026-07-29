@@ -84,12 +84,26 @@ public sealed class ConnectionTruthProbe : IDisposable
         // investigate. The probe must never be part of the problem it measures.
         if (!ConnectionJournal.Enabled) return;
 
-        // Already verifying this account — record the extra signal but don't stack loops.
+        // Already tracked — but "tracked" is not the same as "still being checked". A loop can have
+        // exited while the entry remains: diagnostics were switched off, or it faulted. Restart it
+        // rather than assuming, otherwise an account can sit marked-disconnected with nothing
+        // verifying it for the rest of the session. Timing-independent by design — relying on the
+        // loop to clean up after itself cannot work when it sleeps a minute between rounds.
         if (!_disconnected.TryAdd(accountId, true))
         {
+            var stillRunning = _loops.TryGetValue(accountId, out var existing) && !existing.IsCompleted;
+            if (stillRunning)
+            {
+                ConnectionJournal.Record(
+                    ConnectionEventKind.Probe, _labelOf(accountId), "-", "marked-disconnected-again",
+                    $"source={source} (verification already running)");
+                return;
+            }
+
             ConnectionJournal.Record(
-                ConnectionEventKind.Probe, _labelOf(accountId), "-", "marked-disconnected-again",
-                $"source={source} (verification already running)");
+                ConnectionEventKind.Probe, _labelOf(accountId), "-", "verification-restarted",
+                $"source={source} (previous check had stopped)");
+            _loops[accountId] = Task.Run(() => VerifyUntilConnectedAsync(accountId, _shutdown.Token));
             return;
         }
 
@@ -149,10 +163,40 @@ public sealed class ConnectionTruthProbe : IDisposable
         var round = 0;
         try
         {
-            while (!ct.IsCancellationRequested
-                   && _disconnected.ContainsKey(accountId)
-                   && ConnectionJournal.Enabled)   // switched off mid-verification: stop connecting
+            // Honour the documented per-account rate limit across loops, not just within one.
+            // Status can flap — the folder-count sweep alone can re-run every few seconds — and each
+            // flap starts a fresh loop. Probing immediately every time would mean one extra
+            // authenticated connect per flap, against a host that is by hypothesis already refusing
+            // them: the same mistake as probing while switched off, one level down. Wait out the
+            // remainder rather than declining, so verification is deferred and never skipped.
+            if (_lastResultAt.TryGetValue(accountId, out var last))
             {
+                var since = DateTime.Now - last;
+                if (since < MinInterval)
+                {
+                    ConnectionJournal.Record(
+                        ConnectionEventKind.Probe, _labelOf(accountId), "-", "verification-deferred",
+                        $"last checked {since.TotalSeconds:F0}s ago; waiting out the " +
+                        $"{MinInterval.TotalSeconds:F0}s minimum before checking again");
+
+                    try { await Task.Delay(MinInterval - since, ct); }
+                    catch (OperationCanceledException) { return; }
+                }
+            }
+
+            while (!ct.IsCancellationRequested && _disconnected.ContainsKey(accountId))
+            {
+                if (!ConnectionJournal.Enabled)
+                {
+                    // Switched off mid-verification. Clear the tracking state as well as stopping:
+                    // leaving the account in _disconnected made a later NoteDisconnected see a
+                    // verification "already running" that had in fact exited, so re-enabling
+                    // diagnostics never resumed checking that account for the rest of the session.
+                    _disconnected.TryRemove(accountId, out _);
+                    _loops.TryRemove(accountId, out _);
+                    return;
+                }
+
                 round++;
                 await RunProbeAsync(accountId, $"auto round {round}", ct);
 

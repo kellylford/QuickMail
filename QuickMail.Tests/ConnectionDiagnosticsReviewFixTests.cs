@@ -256,3 +256,91 @@ public class AccountListCarryOverGuardTests
         Assert.Equal(2, vm.Accounts.Count);
     }
 }
+
+/// <summary>
+/// Second round: guards for defects introduced by the first round of review fixes. Both were found
+/// by re-review rather than by the original pass, which is the argument for re-reviewing a fix.
+/// </summary>
+[Collection("ConnectionDiagnostics")]
+public class ConnectionDiagnosticsSecondRoundTests : IDisposable
+{
+    private readonly Guid _account = Guid.NewGuid();
+
+    public ConnectionDiagnosticsSecondRoundTests() => ConnectionJournal.ResetForTests();
+
+    public void Dispose()
+    {
+        ConnectionJournal.ResetForTests();
+        GC.SuppressFinalize(this);
+    }
+
+    private sealed class CountingProbe : IConnectionProbe
+    {
+        private int _calls;
+        public int Calls => Volatile.Read(ref _calls);
+
+        public Task<ProbeResult> ProbeAccountAsync(Guid accountId, CancellationToken ct = default)
+        {
+            Interlocked.Increment(ref _calls);
+            return Task.FromResult(new ProbeResult(ProbeOutcome.Reachable, 1, "ok"));
+        }
+    }
+
+    [Fact]
+    public async Task VerificationResumesAfterDiagnosticsAreTurnedOffAndOnAgain()
+    {
+        // The first fix stopped the loop but left the account in _disconnected, so a later
+        // NoteDisconnected saw a verification "already running" that had actually exited — and the
+        // account was never checked again for the rest of the session.
+        var backend = new CountingProbe();
+        using var probe = new ConnectionTruthProbe(backend, _ => "Kelly");
+
+        ConnectionJournal.Enabled = true;
+        probe.NoteDisconnected(_account, "first");
+        await Task.Delay(200);
+
+        ConnectionJournal.Enabled = false;
+        await Task.Delay(250);
+        var callsWhileOff = backend.Calls;
+
+        // Deliberately does NOT assert the loop has already tidied up: it sleeps a minute between
+        // rounds, so prompt cleanup is not something to depend on. What must hold is that
+        // re-enabling resumes verification regardless of whatever state the old loop left behind.
+        ConnectionJournal.Enabled = true;
+        probe.NoteDisconnected(_account, "second");
+
+        Assert.True(
+            probe.IsMarkedDisconnected(_account),
+            "re-enabling diagnostics must be able to start verification again");
+        Assert.Contains(
+            ConnectionJournal.Snapshot(),
+            e => e.Phase is "verification-restarted" or "marked-disconnected");
+        Assert.Equal(callsWhileOff, backend.Calls);   // and nothing probed while it was off
+    }
+
+    [Fact]
+    public async Task RepeatedStatusFlapsDoNotProbeEveryTime()
+    {
+        // ApplyAccountStatus has many callers and the folder-count sweep can re-run every few
+        // seconds. Without a rate limit each flap started a loop that probed immediately — an extra
+        // authenticated connect per flap, against a host presumed to be refusing connections.
+        var backend = new CountingProbe();
+        using var probe = new ConnectionTruthProbe(backend, _ => "Kelly");
+        ConnectionJournal.Enabled = true;
+
+        probe.NoteDisconnected(_account, "flap 1");
+        await Task.Delay(200);
+        Assert.Equal(1, backend.Calls);                      // first check runs immediately
+        Assert.NotNull(probe.LastResultAtFor(_account));
+
+        probe.NoteConnected(_account, "recovered");
+        probe.NoteDisconnected(_account, "flap 2");
+        await Task.Delay(300);
+
+        // Deferred, not declined: still tracked, but no second connection inside the interval.
+        Assert.Equal(1, backend.Calls);
+        Assert.True(probe.IsMarkedDisconnected(_account));
+        Assert.Contains(
+            ConnectionJournal.Snapshot(), e => e.Phase == "verification-deferred");
+    }
+}
