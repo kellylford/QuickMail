@@ -1141,9 +1141,45 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void LoadAccountList(List<AccountModel>? preloaded = null)
     {
         var accounts = preloaded ?? _accountService.LoadAccounts();
+
+        // Carry live connection state across the reload.
+        //
+        // These AccountModel objects are rebuilt from accounts.json, and IsConnected / TotalUnread
+        // are runtime state that is deliberately never persisted — so every reloaded account arrives
+        // reporting "disconnected" regardless of what its backend is actually doing. Replacing the
+        // Accounts collection then makes every account in the list read as disconnected at once.
+        //
+        // That is the whole "adding an account disconnects the others" symptom. Nothing disconnects:
+        // the pools, the IDLE watchers and the sockets are untouched (the journal shows
+        // watchers-reconciled stopping=0 across an add), and RefreshAccountList deliberately skips
+        // reconnecting accounts that are already healthy — so nothing ever sets IsConnected back to
+        // true for them, and the false status sticks until the next restart.
+        //
+        // This was invisible to the status instrumentation because the state is lost by object
+        // replacement, not by assignment: ApplyAccountStatus is genuinely the only code that writes
+        // IsConnected, so no write is ever observed. See docs/planning/connection-drop-diagnostics.md.
+        var previous = Accounts.ToDictionary(a => a.Id);
+        var carried = 0;
+        foreach (var account in accounts)
+        {
+            if (!previous.TryGetValue(account.Id, out var prior)) continue;
+            account.IsConnected = prior.IsConnected;
+            account.TotalUnread = prior.TotalUnread;
+            carried++;
+        }
+
         foreach (var account in accounts)
             RegisterAccountBackend?.Invoke(account);
         Accounts = new ObservableCollection<AccountModel>(accounts);
+
+        if (previous.Count > 0)
+        {
+            ConnectionJournal.Record(
+                ConnectionEventKind.Status, "-", "-", "accounts-reloaded",
+                $"rebuilt {accounts.Count} account object(s) from disk; " +
+                $"carried live status for {carried}; " +
+                $"{accounts.Count - carried} new or unmatched");
+        }
     }
 
     // ── Saved-views lifecycle ─────────────────────────────────────────────────────
