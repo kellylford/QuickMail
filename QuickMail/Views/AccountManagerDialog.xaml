@@ -84,21 +84,18 @@
 
                 <!-- Provider is read-only here: it is fixed when the account is created, the same way
                      BackendKind is. Changing it means deleting and re-adding the account. -->
-                <!-- No AutomationProperties.Name here: an explicit Name OVERRIDES a TextBlock's
-                     automatic name (its own text), so setting it to "Provider" would make a screen
-                     reader say "Provider" for the label and "Provider" again for the value — the
-                     actual provider would never be spoken. LabeledBy supplies the label; the text
-                     supplies the value. -->
                 <Label x:Name="LblProvider" Content="Provider:" Target="{Binding ElementName=ProviderText}" Padding="0" Margin="0,0,0,2"/>
-                <!-- Focusable so a keyboard user reaches the provider at all: it is read-only, and a
-                     TextBlock is not in the tab order by default. TabIndex puts it with the fields
-                     it belongs to rather than at the very end. -->
-                <TextBlock x:Name="ProviderText"
-                           Text="{Binding SelectedProvider.DisplayName, Mode=OneWay}"
-                           AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
-                           Focusable="True"
-                           KeyboardNavigation.TabIndex="4"
-                           Margin="0,0,0,4"/>
+                <!-- A read-only TextBox, NOT a TextBlock: a TextBox has a value the screen reader reads
+                     in addition to its LabeledBy name, so it announces "Provider: <value>" and the text
+                     can be read/arrowed. A bare TextBlock has no value pattern, so LabeledBy overrode
+                     its name with just "Provider" and the actual provider was never spoken at all. It
+                     also matches the other read-only-looking fields in this dialog. -->
+                <TextBox x:Name="ProviderText"
+                         Text="{Binding SelectedProvider.DisplayName, Mode=OneWay}"
+                         IsReadOnly="True"
+                         AutomationProperties.LabeledBy="{Binding ElementName=LblProvider}"
+                         TabIndex="4"
+                         Margin="0,0,0,4"/>
 
                 <!-- Account Name -->
                 <Label x:Name="LblAccountName" Content="Account _name:" Target="{Binding ElementName=AccountNameBox}" Padding="0" Margin="0,8,0,2"/>
