@@ -10,11 +10,21 @@
         <Setter Property="Control.Template">
             <Setter.Value>
                 <ControlTemplate>
-                    <Rectangle Margin="2"
-                               StrokeThickness="{DynamicResource Theme.FocusThickness}"
-                               Stroke="{DynamicResource Theme.FocusIndicator}"
-                               StrokeDashArray="2 1"
-                               SnapsToDevicePixels="True"/>
+                    <!-- Two-tone ring: a solid halo in the window background sits under the
+                         dashed focus ring and extends 1px beyond it on each side. One of the
+                         two colors always contrasts >=3:1 with whatever fill is underneath
+                         (unit-enforced), so focus stays visible on selected rows too. -->
+                    <Grid>
+                        <Rectangle Margin="2"
+                                   StrokeThickness="{DynamicResource Theme.FocusHaloThickness}"
+                                   Stroke="{DynamicResource Theme.WindowBackground}"
+                                   SnapsToDevicePixels="True"/>
+                        <Rectangle Margin="2"
+                                   StrokeThickness="{DynamicResource Theme.FocusThickness}"
+                                   Stroke="{DynamicResource Theme.FocusIndicator}"
+                                   StrokeDashArray="2 1"
+                                   SnapsToDevicePixels="True"/>
+                    </Grid>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
