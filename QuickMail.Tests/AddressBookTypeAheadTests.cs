@@ -26,10 +26,11 @@
 // made them the least reliable tests in the suite.
 //
 // Note this does NOT mean the app has no prefix accumulator of its own — it does.
-// MainWindow.xaml.cs TryBuildTypeAheadPrefix hand-rolls one (_typeAheadBuffer,
-// _typeAheadScope, TypeAheadResetDelay) for the folder tree, message list and group
-// trees, shipped in v0.5.5. That code has no tests, before or after this change
-// (issue #415), and it is not what the removed tests covered.
+// TypeAheadPrefixTracker (extracted from MainWindow for issue #415) hand-rolls one for
+// the message list and group trees (shipped in v0.5.5), and — since #418 — the folder
+// tree and the folder picker's tree. (The v0.5.5 notes described the folder tree as
+// accumulating, but its code was always single-shot until #418.) The tracker is covered
+// deterministically by TypeAheadLogicTests, and it is not what the removed tests covered.
 
 using System;
 using System.Collections.Generic;

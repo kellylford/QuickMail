@@ -151,8 +151,6 @@ public class MessageAccessibleNameConverter : IMultiValueConverter
 
 public partial class MainWindow : Window
 {
-    private static readonly TimeSpan TypeAheadResetDelay = TimeSpan.FromSeconds(1);
-
     private readonly MainViewModel _vm;
     private readonly ISendMailService _smtp;
     private readonly IAccountService _accountService;
@@ -165,9 +163,7 @@ public partial class MainWindow : Window
     private readonly ICommandRegistry _registry;
     private bool _webViewReady;
     private CoreWebView2Environment? _webViewEnvironment;
-    private string _typeAheadBuffer = string.Empty;
-    private DateTime _typeAheadLastInputUtc = DateTime.MinValue;
-    private object? _typeAheadScope;
+    private readonly TypeAheadPrefixTracker _typeAhead = new();
     private int _messageBodyRenderVersion;
 
     // Tracks which pane (GetFocusedPaneIndex) was active when the window last deactivated
@@ -1877,8 +1873,10 @@ public partial class MainWindow : Window
     private async void FolderList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleFolderTreeTypeAhead(FolderList, FolderList.Items.OfType<FolderTreeNode>(), searchText))
+            TryPeekTypeAheadPrefix(searchText, FolderList, out var peeked) &&
+            TreeViewFocusHelper.TrySelectNextMatch(FolderList, FolderList.Items.OfType<FolderTreeNode>(), peeked))
         {
+            CommitTypeAheadPrefix(peeked, FolderList);
             e.Handled = true;
             return;
         }
@@ -1917,10 +1915,13 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Input);
     }
 
-    // First-letter navigation for the folder TreeView (TreeView has no built-in TextSearch).
+    // Type-ahead for the folder TreeView. Hand-rolled because WPF's TextSearch is disabled by
+    // default on TreeView/TreeViewItem, and even when enabled it only matches one level's
+    // items — never the visible tree as a whole (see TreeViewFocusHelper.TrySelectNextMatch).
     private void FolderList_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
     {
-        if (TryHandleFolderTreeTypeAhead(FolderList, FolderList.Items.OfType<FolderTreeNode>(), e.Text))
+        if (TryBuildTypeAheadPrefix(e.Text, FolderList, out var prefix) &&
+            TreeViewFocusHelper.TrySelectNextMatch(FolderList, FolderList.Items.OfType<FolderTreeNode>(), prefix))
             e.Handled = true;
     }
 
@@ -1929,11 +1930,6 @@ public partial class MainWindow : Window
         if (TryHandleMessageListTypeAhead(e.Text))
             e.Handled = true;
     }
-
-    // Recursively yields visible (expanded) FolderTreeNode items in depth-first order.
-    private static System.Collections.Generic.IEnumerable<FolderTreeNode> GetVisibleTreeNodes(
-        System.Collections.Generic.IEnumerable<FolderTreeNode> nodes)
-        => TreeViewFocusHelper.GetVisibleTreeNodes(nodes);
 
     // Walks the TreeView container hierarchy to find and select the target node.
     private static bool SelectTreeViewNode(System.Windows.Controls.ItemsControl parent, FolderTreeNode target, bool focusNode = true)
@@ -1986,80 +1982,47 @@ public partial class MainWindow : Window
     }
 
 
-    private static bool TryHandleFolderTreeTypeAhead(TreeView tree, System.Collections.Generic.IEnumerable<FolderTreeNode> roots, string? text)
-    {
-        if (string.IsNullOrEmpty(text) || char.IsControl(text[0]))
-            return false;
-
-        var allNodes = GetVisibleTreeNodes(roots).ToList();
-        if (allNodes.Count == 0)
-            return false;
-
-        var current = tree.SelectedItem as FolderTreeNode;
-        var startIdx = current != null ? allNodes.IndexOf(current) : -1;
-
-        for (int i = 1; i <= allNodes.Count; i++)
-        {
-            var candidate = allNodes[(startIdx + i) % allNodes.Count];
-            if (!candidate.Label.StartsWith(text, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            return SelectTreeViewNode(tree, candidate);
-        }
-
-        return false;
-    }
-
     private bool TryHandleMessageListTypeAhead(string? text)
+        => TryBuildTypeAheadPrefix(text, MessageList, out var prefix)
+           && TrySelectMessageListMatch(prefix);
+
+    private bool TrySelectMessageListMatch(string prefix)
     {
-        if (!TryBuildTypeAheadPrefix(text, MessageList, out var prefix))
-            return false;
-
         var items = MessageList.Items.OfType<MailMessageSummary>().ToList();
-        if (items.Count == 0)
-            return false;
-
         var current = MessageList.SelectedItem as MailMessageSummary;
         var startIdx = current != null ? items.IndexOf(current) : -1;
 
-        for (int i = 1; i <= items.Count; i++)
-        {
-            var candidate = items[(startIdx + i) % items.Count];
-            if (!GetTypeAheadText(candidate).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
+        var idx = TypeAheadMatcher.FindNext(items, GetTypeAheadText, startIdx, prefix);
+        if (idx < 0)
+            return false;
 
-            MessageList.SelectedItem = candidate;
-            MessageList.ScrollIntoView(candidate);
-            var targetIndex = MessageList.Items.IndexOf(candidate);
-            Dispatcher.InvokeAsync(() => FocusItemAt(targetIndex), DispatcherPriority.Input);
-            return true;
-        }
-
-        return false;
+        var candidate = items[idx];
+        MessageList.SelectedItem = candidate;
+        MessageList.ScrollIntoView(candidate);
+        var targetIndex = MessageList.Items.IndexOf(candidate);
+        Dispatcher.InvokeAsync(() => FocusItemAt(targetIndex), DispatcherPriority.Input);
+        return true;
     }
 
+    // Commit route (PreviewTextInput): records the keystroke so the next one extends the prefix.
     private bool TryBuildTypeAheadPrefix(string? text, object scope, out string prefix)
     {
         prefix = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(text) || Keyboard.Modifiers != ModifierKeys.None)
-            return false;
-
-        var trimmed = text.Trim();
-        if (trimmed.Length == 0 || trimmed.Any(char.IsControl))
-            return false;
-
-        var now = DateTime.UtcNow;
-        if (!ReferenceEquals(_typeAheadScope, scope) || now - _typeAheadLastInputUtc > TypeAheadResetDelay)
-            _typeAheadBuffer = trimmed;
-        else
-            _typeAheadBuffer += trimmed;
-
-        _typeAheadScope = scope;
-        _typeAheadLastInputUtc = now;
-        prefix = _typeAheadBuffer;
-        return true;
+        return TreeViewFocusHelper.ModifiersAllowTypeAhead && _typeAhead.TryAppend(text, scope, out prefix);
     }
+
+    // Peek route (PreviewKeyDown): computes the prefix without recording it. The KeyDown site
+    // commits only on a match — a matched KeyDown is marked handled (suppressing the TextInput
+    // for that keystroke), while an unmatched one falls through to PreviewTextInput, which
+    // commits. Committing on both routes would append the same keystroke twice.
+    private bool TryPeekTypeAheadPrefix(string? text, object scope, out string prefix)
+    {
+        prefix = string.Empty;
+        return TreeViewFocusHelper.ModifiersAllowTypeAhead && _typeAhead.TryPeek(text, scope, out prefix);
+    }
+
+    // Commits the exact prefix the KeyDown route peeked and matched on.
+    private void CommitTypeAheadPrefix(string prefix, object scope) => _typeAhead.Commit(prefix, scope);
 
     private static bool TryGetTypeAheadKeyText(KeyEventArgs e, out string text)
         => TreeViewFocusHelper.TryGetTypeAheadKeyText(e, out text);
@@ -2130,49 +2093,27 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private static void HandleMessageTreeTypeAhead(
-        TreeView tree,
-        object? currentSelection,
-        System.Collections.Generic.List<object> visibleItems,
-        string prefix,
-        TextCompositionEventArgs e)
-    {
-        if (visibleItems.Count == 0) return;
-
-        var startIdx = currentSelection != null ? visibleItems.IndexOf(currentSelection) : -1;
-        for (int i = 1; i <= visibleItems.Count; i++)
-        {
-            var candidate = visibleItems[(startIdx + i) % visibleItems.Count];
-            if (!GetTypeAheadText(candidate).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            FocusTreeItem(tree, candidate);
-            e.Handled = true;
-            return;
-        }
-    }
-
     private bool TryHandleMessageTreeTypeAhead(
         TreeView tree,
         object? currentSelection,
         System.Collections.Generic.List<object> visibleItems,
         string? text)
+        => TryBuildTypeAheadPrefix(text, tree, out var prefix)
+           && TrySelectTreeMatch(tree, currentSelection, visibleItems, prefix);
+
+    private static bool TrySelectTreeMatch(
+        TreeView tree,
+        object? currentSelection,
+        System.Collections.Generic.List<object> visibleItems,
+        string prefix)
     {
-        if (!TryBuildTypeAheadPrefix(text, tree, out var prefix) || visibleItems.Count == 0)
+        var startIdx = currentSelection != null ? visibleItems.IndexOf(currentSelection) : -1;
+        var idx = TypeAheadMatcher.FindNext(visibleItems, GetTypeAheadText, startIdx, prefix);
+        if (idx < 0)
             return false;
 
-        var startIdx = currentSelection != null ? visibleItems.IndexOf(currentSelection) : -1;
-        for (int i = 1; i <= visibleItems.Count; i++)
-        {
-            var candidate = visibleItems[(startIdx + i) % visibleItems.Count];
-            if (!GetTypeAheadText(candidate).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            FocusTreeItem(tree, candidate);
-            return true;
-        }
-
-        return false;
+        FocusTreeItem(tree, visibleItems[idx]);
+        return true;
     }
 
     // Focuses the first (or currently selected) ListViewItem so Up/Down arrow work
@@ -2654,8 +2595,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (TryGetTypeAheadKeyText(e, out var searchText) && TryHandleMessageListTypeAhead(searchText))
+        if (TryGetTypeAheadKeyText(e, out var searchText) &&
+            TryPeekTypeAheadPrefix(searchText, MessageList, out var peeked) &&
+            TrySelectMessageListMatch(peeked))
         {
+            CommitTypeAheadPrefix(peeked, MessageList);
             e.Handled = true;
             return;
         }
@@ -3895,12 +3839,14 @@ public partial class MainWindow : Window
         }
 
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleMessageTreeTypeAhead(
+            TryPeekTypeAheadPrefix(searchText, ConversationTree, out var peeked) &&
+            TrySelectTreeMatch(
                 ConversationTree,
                 ConversationTree.SelectedItem,
                 GetVisibleConversationItems(_vm.Conversations).ToList(),
-                searchText))
+                peeked))
         {
+            CommitTypeAheadPrefix(peeked, ConversationTree);
             e.Handled = true;
             return;
         }
@@ -4500,12 +4446,14 @@ public partial class MainWindow : Window
         }
 
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleMessageTreeTypeAhead(
+            TryPeekTypeAheadPrefix(searchText, SenderGroupTree, out var peeked) &&
+            TrySelectTreeMatch(
                 SenderGroupTree,
                 SenderGroupTree.SelectedItem,
                 GetVisibleSenderItems(_vm.SenderGroups).ToList(),
-                searchText))
+                peeked))
         {
+            CommitTypeAheadPrefix(peeked, SenderGroupTree);
             e.Handled = true;
             return;
         }
@@ -4675,12 +4623,14 @@ public partial class MainWindow : Window
         }
 
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleMessageTreeTypeAhead(
+            TryPeekTypeAheadPrefix(searchText, ToGroupTree, out var peeked) &&
+            TrySelectTreeMatch(
                 ToGroupTree,
                 ToGroupTree.SelectedItem,
                 GetVisibleSenderItems(_vm.ToGroups).ToList(),
-                searchText))
+                peeked))
         {
+            CommitTypeAheadPrefix(peeked, ToGroupTree);
             e.Handled = true;
             return;
         }
