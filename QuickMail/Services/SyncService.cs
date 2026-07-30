@@ -344,17 +344,36 @@ public class SyncService : ISyncService
         }
 
         // ── Remote deletions ─────────────────────────────────────────────────────
+        await ReconcileFolderAsync(account, folder, ct);
+
+        return incoming;
+    }
+
+    /// <summary>
+    /// Reconciles a single folder's local cache against the server: any message id we hold locally
+    /// but the server no longer lists (deleted or moved away by another client — Outlook web/desktop/
+    /// mobile, a server-side rule, or Exchange Online rebalancing) is removed from the store and
+    /// raised via <see cref="MessagesRemoved"/> so the UI drops the ghost row.
+    ///
+    /// Backend-agnostic — <see cref="IMailService.GetFolderMessageIdsAsync"/> routes to IMAP or Graph
+    /// (Graph reads with immutable ids, #366). Add-only sync paths (live IDLE, Graph delta poll, the
+    /// periodic fallback) do NOT reconcile, so this is the piece that catches deletions made elsewhere
+    /// while the app is running. Cheap: one id-only listing plus a set difference. No-ops (returns 0)
+    /// when the folder has no local data yet. Returns the number of ghosts removed.
+    /// </summary>
+    public async Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+    {
         // Only meaningful when we already have local data for this folder.
         var localIds = await _store.GetAllMessageIdsAsync(account.Id, folder.FullName);
-        if (localIds.Count == 0) return incoming;
+        if (localIds.Count == 0) return 0;
 
         var serverIds  = await _imap.GetFolderMessageIdsAsync(account.Id, folder.FullName, ct);
         var serverSet  = new HashSet<string>(serverIds);
         var deletedIds = localIds.Where(id => !serverSet.Contains(id)).ToList();
 
-        if (deletedIds.Count == 0) return incoming;
+        if (deletedIds.Count == 0) return 0;
 
-        LogService.Log($"Sync {account.AccountLabel}/{folder.FullName}: {deletedIds.Count} remote deletion(s)");
+        LogService.Log($"Reconcile {account.AccountLabel}/{folder.FullName}: {deletedIds.Count} remote deletion(s)");
         await _store.DeleteSummariesAsync(account.Id, folder.FullName, deletedIds);
 
         var removed = deletedIds
@@ -368,7 +387,7 @@ public class SyncService : ISyncService
 
         _ui.Post(() => MessagesRemoved?.Invoke(removed));
 
-        return incoming;
+        return deletedIds.Count;
     }
 
     private async Task FetchAndApplyPreviewsAsync(

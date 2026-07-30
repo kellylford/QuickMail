@@ -52,6 +52,15 @@ public interface ISyncService
     Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
 
     /// <summary>
+    /// Reconciles one folder's local cache against the server, removing (and raising
+    /// <see cref="MessagesRemoved"/> for) any message deleted or moved away by another client. Used
+    /// to reconcile a folder on open and on the periodic tick, since the live/add-only sync paths do
+    /// not. Backend-agnostic. Returns the number of ghost messages removed (0 when in sync or no local
+    /// data yet).
+    /// </summary>
+    Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
+
+    /// <summary>
     /// Returns the UTC time of the last completed sync for the given account,
     /// or null if the account has never been synced in this session.
     /// </summary>

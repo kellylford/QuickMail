@@ -147,6 +147,52 @@ public class GraphChangeNotifierTests : IDisposable
     }
 
     [Fact]
+    public async Task Poll_WithRemovedEntry_RaisesInboxMessagesRemoved_NotNewMail()
+    {
+        // A delta page carrying only an @removed tombstone (message deleted/moved out of the Inbox by
+        // another client) must route to the removal event, not the new-mail event (#366).
+        const string deltaLink = "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$deltatoken=NEW";
+        var handler = new StubHttpHandler(_ =>
+            (HttpStatusCode.OK, $$$"""{"value":[{"id":"gone1","@removed":{"reason":"deleted"}}],"@odata.deltaLink":"{{{deltaLink}}}"}"""));
+
+        var account = GraphAccount();
+        using var notifier = MakeNotifier(handler);
+        var removed = new TaskCompletionSource<(Guid, IReadOnlyList<string>)>();
+        var newMailFired = false;
+        notifier.InboxNewMailDetected += _ => newMailFired = true;
+        notifier.InboxMessagesRemoved += (id, ids) => removed.TrySetResult((id, ids));
+
+        notifier.StartWatchers(new[] { account }, TestContext.Current.CancellationToken);
+
+        var (acctId, ids) = await removed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal(account.Id, acctId);
+        Assert.Equal(new[] { "gone1" }, ids);
+        Assert.False(newMailFired, "an @removed-only page must not signal new mail");
+        notifier.StopWatchers();
+    }
+
+    [Fact]
+    public async Task Poll_MixedAddAndRemove_RaisesBothEvents()
+    {
+        const string deltaLink = "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$deltatoken=NEW";
+        var handler = new StubHttpHandler(_ =>
+            (HttpStatusCode.OK, $$$"""{"value":[{"id":"new1"},{"id":"gone1","@removed":{"reason":"moved"}}],"@odata.deltaLink":"{{{deltaLink}}}"}"""));
+
+        var account = GraphAccount();
+        using var notifier = MakeNotifier(handler);
+        var newMail = new TaskCompletionSource<Guid>();
+        var removed = new TaskCompletionSource<IReadOnlyList<string>>();
+        notifier.InboxNewMailDetected += id => newMail.TrySetResult(id);
+        notifier.InboxMessagesRemoved += (_, ids) => removed.TrySetResult(ids);
+
+        notifier.StartWatchers(new[] { account }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(account.Id, await newMail.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        Assert.Equal(new[] { "gone1" }, await removed.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
+        notifier.StopWatchers();
+    }
+
+    [Fact]
     public void StartWatchers_IgnoresNonGraphAccounts()
     {
         var handler = new StubHttpHandler(_ => (HttpStatusCode.OK, "{}"));

@@ -1117,7 +1117,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
+        {
             _changeNotifier.InboxNewMailDetected += OnInboxNewMailDetected;
+            _changeNotifier.InboxMessagesRemoved += OnInboxMessagesRemoved;
+        }
         if (_flagService != null)
         {
             _onFlagDefinitionsChanged = (_, _) => _ = OnFlagDefinitionsChangedAsync();
@@ -2205,6 +2208,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var delay = minutes <= 0 ? TimeSpan.FromMinutes(5) : TimeSpan.FromMinutes(minutes);
                 await Task.Delay(delay, ct).ConfigureAwait(false);
                 if (ct.IsCancellationRequested) break;
+
+                // Reconcile the folder the user is currently viewing, every tick, regardless of the
+                // inbox-poll setting below (#366). This is the one folder with no other live removal
+                // signal — a custom folder (any backend) the user is staring at while a message is
+                // deleted/moved elsewhere. Reconcile-on-open catches it on navigation; this catches it
+                // while they sit on it. Skips virtual/aggregate folders (no single server folder to
+                // list) and online mode (no store). One id-only listing per tick.
+                await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
+
                 if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
 
                 // Snapshot the IMAP inboxes to sync on the UI thread (Accounts/_cachedFolders are
@@ -2251,6 +2263,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    // Reconciles the single real folder currently displayed against the server, purging any message
+    // removed elsewhere from the store and the view (#366). Snapshots the UI-thread-owned SelectedFolder
+    // /Accounts, then does the id-listing off the UI thread. No-op for virtual/aggregate folders (no one
+    // server folder to list) and online mode (no store to reconcile).
+    private async Task ReconcileCurrentFolderAsync(CancellationToken ct)
+    {
+        if (OnlineMode) return;
+
+        AccountModel? account = null;
+        MailFolderModel? folder = null;
+        _ui.Invoke(() =>
+        {
+            var f = SelectedFolder;
+            if (f == null || f.AccountId == Guid.Empty || IsVirtualFolder(f)) return;
+            account = Accounts.FirstOrDefault(a => a.Id == f.AccountId);
+            folder  = f;
+        });
+        if (account == null || folder == null) return;
+
+        try { await _syncService.ReconcileFolderAsync(account, folder, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { LogService.Log("Periodic reconcile of current folder", ex); }
     }
 
     // ── FolderSynced merge ───────────────────────────────────────────────────────
@@ -2468,6 +2504,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 LogService.Log("IDLE targeted sync", ex);
             }
         });
+    });
+
+    // Called on a ThreadPool thread by the change notifier when the Graph delta poll observes inbox
+    // messages removed elsewhere (deleted or moved out by another client — Outlook web/desktop/mobile
+    // or a server-side rule). The live add-only sync paths never see removals, so without this the
+    // rows linger until the next startup reconcile (#366). Deletes them from the store and drops the
+    // rows from any view currently showing them, reusing the same UI-removal handler as full-sync
+    // reconciliation. Ids match the store because the poll and folder sync read the same backend id
+    // type. Resolve UI-thread-owned state (Accounts, _cachedFolders) on the UI thread first.
+    private void OnInboxMessagesRemoved(Guid accountId, IReadOnlyList<string> ids) => _ui.Post(() =>
+    {
+        if (ids.Count == 0) return;
+        if (!_cachedFolders.TryGetValue(accountId, out var folders)) return;
+        var inbox = folders.FirstOrDefault(f =>
+            f.Kind == Models.SpecialFolderKind.Inbox ||
+            string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
+        if (inbox is null) return;
+
+        LogService.Log($"Delta: {ids.Count} inbox message(s) removed elsewhere for {accountId} — dropping from cache/view.");
+
+        // Purge the cache so a later cache-served folder open doesn't resurrect the ghost.
+        if (!OnlineMode)
+            _localStore.DeleteSummariesAsync(accountId, inbox.FullName, ids)
+                .LogFaults("local store: delete delta-removed summaries");
+
+        var removed = ids
+            .Select(id => new MailMessageSummary { MessageId = id, AccountId = accountId, FolderName = inbox.FullName })
+            .ToList();
+        OnMessagesRemoved(removed);
+
+        // Removals change server unread counts; refresh them (debounced, STATUS-authoritative).
+        ScheduleFolderCountRefresh(accountId);
     });
 
     // Shows a Windows toast for genuinely-new inbox mail. Runs on the UI thread (the caller posts
@@ -3625,6 +3693,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
 
             _ = RefreshFolderFromServerAsync(accountId, folder, loadVersion, ct);
+
+            // Reconcile-on-open (#366): RefreshFolderFromServerAsync replaces the *displayed* list with
+            // server truth, but only upserts the store — it never deletes rows for messages removed
+            // elsewhere, so those ghosts persist in the cache and resurface in aggregate views (All
+            // Mail) and on the next cache-load. Purge them with a full-id reconcile against the server.
+            // Cached mode only (online keeps no store, and its UI is already server-truth). Fire-and-
+            // forget on the same load token so navigating away cancels it; idempotent and cheap.
+            if (!OnlineMode)
+            {
+                var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+                if (account != null)
+                    _syncService.ReconcileFolderAsync(account, folder, ct)
+                        .LogFaults("reconcile on folder open");
+            }
         }
         catch (OperationCanceledException)
         {

@@ -248,4 +248,59 @@ public class SyncServiceRuleApplicationTests : IDisposable
         Assert.DoesNotContain("500", stored);                          // deleted from store
         Assert.Contains("501", stored);                                // survivor persisted
     }
+
+    // ── ReconcileFolderAsync (#366): live removal of mail deleted/moved by another client ─────────
+
+    [Fact]
+    public async Task Reconcile_RemovesGhost_WhenLocalIdMissingFromServer()
+    {
+        // Store holds A, B, C; the server now lists only A, C (B deleted/moved elsewhere). Reconcile
+        // must delete B from the store and raise MessagesRemoved([B]).
+        await _store.UpsertSummariesAsync([Message("A"), Message("B"), Message("C")]);
+        var imap = new FetchStubMailService([]) ;
+        imap.Batch.AddRange([Message("A"), Message("C")]); // server view = A, C
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        var count = await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.Equal(1, count);
+        Assert.Equal("B", Assert.Single(removed).MessageId);
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.DoesNotContain("B", stored);
+        Assert.Contains("A", stored);
+        Assert.Contains("C", stored);
+    }
+
+    [Fact]
+    public async Task Reconcile_NoOp_WhenServerMatchesStore()
+    {
+        await _store.UpsertSummariesAsync([Message("A"), Message("B")]);
+        var imap = new FetchStubMailService([]);
+        imap.Batch.AddRange([Message("A"), Message("B")]); // server view identical
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public async Task Reconcile_NoOp_WhenNoLocalData()
+    {
+        // Nothing cached yet → nothing to reconcile, and (importantly) no false deletions even if the
+        // server id listing is empty.
+        var imap = new FetchStubMailService([]);
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+    }
 }

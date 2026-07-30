@@ -123,6 +123,20 @@ internal sealed class GraphMessage
     [JsonPropertyName("hasAttachments")] public bool HasAttachments { get; set; }
     [JsonPropertyName("attachments")] public List<GraphAttachment>? Attachments { get; set; }
     [JsonPropertyName("flag")] public GraphFollowUpFlag? Flag { get; set; }
+
+    /// <summary>
+    /// Present on a delta-query entry when the message was removed from the tracked folder — deleted,
+    /// or moved out (a server-side rule or manual move counts as a removal from the source folder).
+    /// The object carries a <c>reason</c> ("deleted" | "changed"); we only need its presence. Non-null
+    /// entries carry just <c>@removed</c> + <c>id</c> and no message fields, so the delta consumer must
+    /// route them to deletion, not treat them as new mail (#366). Always null on non-delta reads.
+    /// </summary>
+    [JsonPropertyName("@removed")] public GraphRemoved? Removed { get; set; }
+}
+
+internal sealed class GraphRemoved
+{
+    [JsonPropertyName("reason")] public string? Reason { get; set; }
 }
 
 internal sealed class GraphFollowUpFlag

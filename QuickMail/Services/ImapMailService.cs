@@ -37,6 +37,9 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
 
     public event Action<Guid, bool>? AccountReachabilityChanged;
     public event Action<Guid>? InboxNewMailDetected;
+#pragma warning disable CS0067 // IMAP IDLE reports new mail but gives no removal signal; declared to satisfy IChangeNotifier. IMAP removals are caught by reconcile-on-open / periodic reconcile (#366).
+    public event Action<Guid, IReadOnlyList<string>>? InboxMessagesRemoved;
+#pragma warning restore CS0067
 
     public ImapMailService(IOAuthService oauth, IConfigService? config = null)
     {
