@@ -22,5 +22,7 @@ public sealed class NullScreenshotCaptureService : IScreenshotCaptureService
 
     public void OpenFolder() { }
 
+    public bool CaptureToFile(Window window, string filePath) => false;
+
     public void Dispose() { }
 }

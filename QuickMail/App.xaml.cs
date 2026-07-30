@@ -19,6 +19,9 @@ public partial class App : Application
     /// </summary>
     public IScreenshotCaptureService? ScreenshotCapture { get; private set; }
 
+    /// <summary>Non-null only in --ui-probe automation mode (#180).</summary>
+    public UiProbeOptions? UiProbe { get; private set; }
+
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
@@ -185,7 +188,27 @@ public partial class App : Application
             LogService.Log("Debug mode enabled.");
         }
 
+        // --ui-probe (#180): automation launch mode — implies /debug, forces the
+        // app offline, drives to a surface, captures, exits. Never user-reachable.
+        UiProbe = UiProbeOptions.Parse(e.Args, out var probeError);
+        if (probeError != null)
+        {
+            LogService.Log($"ui-probe: {probeError}");
+            Shutdown(64); // EX_USAGE — the orchestrator must see a hard failure
+            return;
+        }
+        if (UiProbe != null)
+        {
+            LogService.DebugMode = true;
+            LogService.Log($"ui-probe mode: surfaces=[{string.Join(";", UiProbe.Surfaces)}] theme={UiProbe.ThemeId ?? "(configured)"} scale={UiProbe.TextScale?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(configured)"}");
+        }
+
         var onlineMode = e.Args.Contains("--online", StringComparer.OrdinalIgnoreCase);
+        if (onlineMode && UiProbe != null)
+        {
+            LogService.Debug("ui-probe forces offline; --online ignored.");
+            onlineMode = false;
+        }
         if (onlineMode)
             LogService.Log("Online mode enabled — SQLite cache bypassed.");
 
@@ -294,6 +317,14 @@ public partial class App : Application
             var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource, iCloudContactSource);
 
             var startupCfg = configService.Load();
+            // ui-probe (#180): theme/scale land in the loaded config BEFORE
+            // ThemeService.Initialize so the first render is already correct;
+            // ThemeService never persists, so config.ini is untouched.
+            if (UiProbe is { } probeOpts)
+            {
+                if (probeOpts.ThemeId != null) startupCfg.AppearanceThemeId = probeOpts.ThemeId;
+                if (probeOpts.TextScale != null) startupCfg.AppearanceTextScale = probeOpts.TextScale.Value;
+            }
             Views.AccessibilityHelper.Configure(startupCfg);
             LogService.Format  = startupCfg.LogFormat;
             LogService.Enabled = startupCfg.EnableLogging;
@@ -346,18 +377,31 @@ public partial class App : Application
                 mailRouter,
                 id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
 
+            // ui-probe (#180 Decision D): network hard-off at the DI root. The VM and
+            // window get offline no-op backends and null background services, so the
+            // probe is structurally incapable of connecting, syncing, or sending.
+            var probeMode = UiProbe != null;
+            IMailService effectiveMail = probeMode ? new ProbeOfflineMailService() : mailRouter;
+            ISendMailService effectiveSmtp = probeMode ? new ProbeOfflineSendMailService() : smtpService;
+            IOAuthService effectiveOAuth = probeMode ? new ProbeOfflineOAuthService() : oauthService;
+
             var mainVm = new MainViewModel(
-                mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService, screenshotCapture: ScreenshotCapture,
-                themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
-                graphCalendarSyncService: graphCalendarSync, truthProbe: _truthProbe);
-            mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
+                effectiveMail, accountService, credentialService, localStore, effectiveOAuth, syncService, configService, commandRegistry, viewService, ruleService, effectiveSmtp,
+                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService,
+                changeNotifier: probeMode ? null : _changeNotifier,
+                updateCheckService: probeMode ? null : _updateCheckService,
+                screenshotCapture: ScreenshotCapture,
+                themeService: themeService, notificationService: _notificationService,
+                contactSyncService: probeMode ? null : contactSyncService,
+                graphCalendarSyncService: probeMode ? null : graphCalendarSync,
+                truthProbe: probeMode ? null : _truthProbe);
+            mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe);
+            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
