@@ -57,6 +57,23 @@ public static class TreeViewFocusHelper
     }
 
     /// <summary>
+    /// Type-ahead over the visible (expanded) nodes of a folder tree: selects the next node
+    /// after the current selection whose <see cref="FolderTreeNode.Label"/> starts with
+    /// <paramref name="prefix"/>, wrapping around. Used by MainWindow's folder tree and the
+    /// folder picker's tree view. WPF's built-in <c>TextSearch</c> is not an alternative here:
+    /// it is disabled by default on <c>TreeView</c>/<c>TreeViewItem</c>, and even when enabled
+    /// it only matches a single level's items, never the visible tree as a whole.
+    /// </summary>
+    /// <returns>True if a matching node was found and selected.</returns>
+    public static bool TrySelectNextMatch(TreeView tree, IEnumerable<FolderTreeNode> roots, string prefix)
+    {
+        var visible = GetVisibleTreeNodes(roots).ToList();
+        var startIdx = tree.SelectedItem is FolderTreeNode current ? visible.IndexOf(current) : -1;
+        var idx = TypeAheadMatcher.FindNext(visible, n => n.Label, startIdx, prefix);
+        return idx >= 0 && SelectTreeViewNode(tree, visible[idx]);
+    }
+
+    /// <summary>
     /// Extracts a single-character type-ahead search string from a key event.
     /// Returns false when modifiers are held or the key is not a letter/digit.
     /// </summary>

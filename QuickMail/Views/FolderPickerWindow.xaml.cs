@@ -23,6 +23,7 @@ public partial class FolderPickerWindow : Window
     private static readonly Dictionary<string, MailFolderModel> EmptyFolderById = new();
 
     private readonly ObservableCollection<FolderPickerItem> _items = [];
+    private readonly TypeAheadPrefixTracker _typeAhead = new();
     private readonly ICollectionView? _view;
     private readonly MailFolderModel? _initialFolder;
     private readonly bool _useTreeView;
@@ -307,6 +308,20 @@ public partial class FolderPickerWindow : Window
         }
     }
 
+    // Type-ahead over the visible tree, same behavior as the main window's folder tree
+    // (accumulating prefix, wrap-around). See the XAML note on FolderTreeView for why this is
+    // hand-rolled rather than WPF TextSearch.
+    private void FolderTreeView_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.None)
+            return;
+
+        if (FolderTreeView.ItemsSource is IEnumerable<FolderTreeNode> roots &&
+            _typeAhead.TryAppend(e.Text, FolderTreeView, out var prefix) &&
+            TreeViewFocusHelper.TrySelectNextMatch(FolderTreeView, roots, prefix))
+            e.Handled = true;
+    }
+
     // Alt+N opens New Folder. Wired explicitly (rather than a button mnemonic) so a bare "n" in the
     // folder tree stays available for type-ahead instead of triggering the button (see the XAML note
     // on NewFolderButton). Handled window-wide so it works whatever picker control has focus.
@@ -523,7 +538,9 @@ public partial class FolderPickerWindow : Window
         DialogResult = true;
     }
 
-    private sealed class FolderPickerItem
+    // Internal (not private) so TypeAheadWiringTests can assert the flat list's
+    // TextSearch.TextPath resolves to a real property on this type.
+    internal sealed class FolderPickerItem
     {
         public FolderPickerItem(
             MailFolderModel folder,

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Reflection;
 using System.Xml.Linq;
 using QuickMail.Models;
+using QuickMail.Views;
 using Xunit;
 
 namespace QuickMail.Tests;
@@ -35,9 +36,10 @@ namespace QuickMail.Tests;
 /// that <i>needs</i> one and lacks it.</item>
 /// <item>Nothing ties a row's <c>ItemType</c> to the list's real <c>ItemsSource</c>. Retargeting a
 /// list to a different item type that lacks the property is as silent as the rename this does catch.</item>
-/// <item>QuickMail's own hand-rolled accumulator (<c>MainWindow.xaml.cs TryBuildTypeAheadPrefix</c>,
-/// serving the folder tree, message list and group trees via <c>PreviewTextInput</c>) is a separate
-/// mechanism that declares no TextPath and is not covered here or anywhere (issue #415).</item>
+/// <item>QuickMail's own hand-rolled accumulator (<c>TypeAheadPrefixTracker</c> +
+/// <c>TypeAheadMatcher</c>, serving the folder tree, message list, group trees, and the folder
+/// picker's tree) is a separate mechanism that declares no TextPath; it is covered
+/// deterministically by <see cref="TypeAheadLogicTests"/> (issue #415).</item>
 /// <item>Keys stolen before <c>TextSearch</c> sees them (mnemonics, <c>PreviewKeyDown</c> handlers) —
 /// the way type-ahead has actually broken in this repo. See the notes in
 /// <see cref="AddressBookTypeAheadTests"/>.</item>
@@ -62,7 +64,7 @@ public class TypeAheadWiringTests
         new("Views/AccountManagerDialog.xaml", "AccountListBox",   "AccountLabelWithDefault", typeof(AccountModel)),
         new("Views/MainWindow.xaml",           "AccountList",      "AccountLabel",            typeof(AccountModel)),
         new("Views/CommandPaletteWindow.xaml", "CommandList",      "Title",                   typeof(CommandDefinition)),
-        new("Views/FolderPickerWindow.xaml",   "FolderTreeView",   "Label",                   typeof(FolderTreeNode)),
+        new("Views/FolderPickerWindow.xaml",   "FolderListBox",    "FolderPath",              typeof(FolderPickerWindow.FolderPickerItem)),
     ];
 
     private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
@@ -139,6 +141,36 @@ public class TypeAheadWiringTests
         }
 
         Assert.True(problems.Count == 0, Report("Type-ahead disabled on a list that declares a TextPath", problems));
+    }
+
+    /// <summary>
+    /// WPF's TextSearch is DISABLED by default on TreeView and TreeViewItem (unlike ListBox,
+    /// ListView, and ComboBox), so a bare <c>TextSearch.TextPath</c> on a TreeView does
+    /// nothing — and even with <c>IsTextSearchEnabled="True"</c> it would only match one
+    /// level's items, never the visible tree. Exactly this shipped in v0.8.32: the folder
+    /// picker's tree got a TextPath, the release note claimed type-ahead, and typing did
+    /// nothing (issue #418). Trees must use the hand-rolled route
+    /// (<c>TypeAheadPrefixTracker</c> + <c>TreeViewFocusHelper.TrySelectNextMatch</c>) instead.
+    /// </summary>
+    [Fact]
+    public void NoTreeView_DeclaresATextSearchTextPath()
+    {
+        var problems = new List<string>();
+        foreach (var (relative, doc) in XamlDocuments())
+        {
+            foreach (var element in doc.Descendants()
+                                       .Where(e => e.Name.LocalName is "TreeView" or "TreeViewItem"
+                                                && e.Attribute(TextPathAttr) != null))
+            {
+                var name = (string?)element.Attribute(X + "Name") ?? element.Name.LocalName;
+                problems.Add($"{relative}/{name}: {TextPathAttr} on a {element.Name.LocalName} is inert — "
+                           + "TreeView text search is disabled by default, and enabling it only matches "
+                           + "one level's items. Wire PreviewTextInput to TypeAheadPrefixTracker + "
+                           + "TreeViewFocusHelper.TrySelectNextMatch instead (see FolderPickerWindow).");
+            }
+        }
+
+        Assert.True(problems.Count == 0, Report("TextSearch declared on a TreeView, where it does nothing", problems));
     }
 
     [Fact]
