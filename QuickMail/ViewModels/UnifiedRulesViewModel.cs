@@ -499,7 +499,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     /// complete and write into a window that's gone.</summary>
     public void CancelPendingLoad() => _refreshCts?.Cancel();
 
-    private static string BuildStatus(IReadOnlyList<UnifiedRuleRow> rows, IReadOnlyList<string> failures)
+    private static string BuildStatus(List<UnifiedRuleRow> rows, List<string> failures)
     {
         if (failures.Count > 0)
         {
@@ -509,7 +509,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
         }
         return rows.Count == 0 ? "No rules for this account." : Counts(rows);
 
-        static string Counts(IReadOnlyList<UnifiedRuleRow> r)
+        static string Counts(List<UnifiedRuleRow> r)
         {
             var server = r.Count(x => x.RunsWhere == RuleRunsWhere.Server);
             var client = r.Count(x => x.RunsWhere == RuleRunsWhere.Client);
