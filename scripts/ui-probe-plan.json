@@ -1,40 +1,155 @@
 {
-  "comment": "Default probe plan for scripts/ui-probe.ps1 (#180). Each entry launches QuickMail.exe --ui-probe <surface> --theme <theme> --text-scale <scale> once. Surfaces are the names UiProbeDriver understands. Per spec §13.2: all surfaces x {parchment, dark} at 100%, plus the full set at 150% in Parchment.",
+  "comment": "Default probe plan for scripts/ui-probe.ps1 (#180). Each entry launches QuickMail.exe --ui-probe <surface> --theme <theme> --text-scale <scale> once. Surfaces are the names UiProbeDriver understands. Per spec \u00a713.2: all surfaces x {parchment, dark} at 100%, plus the full set at 150% in Parchment. folder-picker is EXCLUDED offline: the folder cache only exists after an IMAP connect, so the picker's open path early-returns (documented #180 v1 limitation).",
   "entries": [
-    { "surface": "inbox",               "theme": "parchment", "scale": 100 },
-    { "surface": "reading-pane",        "theme": "parchment", "scale": 100 },
-    { "surface": "compose",             "theme": "parchment", "scale": 100 },
-    { "surface": "settings-appearance", "theme": "parchment", "scale": 100 },
-    { "surface": "theme-manager",       "theme": "parchment", "scale": 100 },
-    { "surface": "address-book",        "theme": "parchment", "scale": 100 },
-    { "surface": "rules",               "theme": "parchment", "scale": 100 },
-    { "surface": "saved-views",         "theme": "parchment", "scale": 100 },
-    { "surface": "calendar",            "theme": "parchment", "scale": 100 },
-    { "surface": "command-palette",     "theme": "parchment", "scale": 100 },
-    { "surface": "folder-picker",       "theme": "parchment", "scale": 100 },
-
-    { "surface": "inbox",               "theme": "dark", "scale": 100 },
-    { "surface": "reading-pane",        "theme": "dark", "scale": 100 },
-    { "surface": "compose",             "theme": "dark", "scale": 100 },
-    { "surface": "settings-appearance", "theme": "dark", "scale": 100 },
-    { "surface": "theme-manager",       "theme": "dark", "scale": 100 },
-    { "surface": "address-book",        "theme": "dark", "scale": 100 },
-    { "surface": "rules",               "theme": "dark", "scale": 100 },
-    { "surface": "saved-views",         "theme": "dark", "scale": 100 },
-    { "surface": "calendar",            "theme": "dark", "scale": 100 },
-    { "surface": "command-palette",     "theme": "dark", "scale": 100 },
-    { "surface": "folder-picker",       "theme": "dark", "scale": 100 },
-
-    { "surface": "inbox",               "theme": "parchment", "scale": 150 },
-    { "surface": "reading-pane",        "theme": "parchment", "scale": 150 },
-    { "surface": "compose",             "theme": "parchment", "scale": 150 },
-    { "surface": "settings-appearance", "theme": "parchment", "scale": 150 },
-    { "surface": "theme-manager",       "theme": "parchment", "scale": 150 },
-    { "surface": "address-book",        "theme": "parchment", "scale": 150 },
-    { "surface": "rules",               "theme": "parchment", "scale": 150 },
-    { "surface": "saved-views",         "theme": "parchment", "scale": 150 },
-    { "surface": "calendar",            "theme": "parchment", "scale": 150 },
-    { "surface": "command-palette",     "theme": "parchment", "scale": 150 },
-    { "surface": "folder-picker",       "theme": "parchment", "scale": 150 }
+    {
+      "surface": "inbox",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "reading-pane",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "compose",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "settings-appearance",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "theme-manager",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "address-book",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "rules",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "saved-views",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "calendar",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "command-palette",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
+      "surface": "inbox",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "reading-pane",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "compose",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "settings-appearance",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "theme-manager",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "address-book",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "rules",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "saved-views",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "calendar",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "command-palette",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
+      "surface": "inbox",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "reading-pane",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "compose",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "settings-appearance",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "theme-manager",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "address-book",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "rules",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "saved-views",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "calendar",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "command-palette",
+      "theme": "parchment",
+      "scale": 150
+    }
   ]
 }

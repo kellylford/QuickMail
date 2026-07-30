@@ -166,15 +166,10 @@ internal sealed class UiProbeDriver
         _window.MessageBodyRendered += OnRendered;
         try
         {
-            // Same stub-summary route OpenCalendarSourceMessage uses: the real
-            // SelectMessageAsync resolves the account and loads the cached detail.
-            _vm.SelectMessageCommand.Execute(new MailMessageSummary
-            {
-                MessageId = UiProbeFixture.HtmlMessageId,
-                AccountId = UiProbeFixture.AccountId,
-                FolderName = UiProbeFixture.InboxFolder,
-                Subject = UiProbeFixture.HtmlMessageSubject,
-            });
+            // Through the window's open path (the notification-activation route):
+            // the VM command alone loads the detail but never renders the body.
+            _ = _window.OpenMessageForProbeAsync(
+                UiProbeFixture.AccountId, UiProbeFixture.InboxFolder, UiProbeFixture.HtmlMessageId);
 
             var done = await Task.WhenAny(rendered.Task, Task.Delay(SurfaceTimeout)) == rendered.Task;
             if (!done)
