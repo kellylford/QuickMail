@@ -47,6 +47,18 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 - **TemplateServiceTests** / **TemplatePickerViewModelTests** — message template CRUD
 - **ProfileContextTests** — profile directory validation
 - **IcsModelTests**, **MessageFilterTests**, **TutorialViewModelTests**, **SessionFeaturesTests**, **BatchObservableCollectionTests**
+- **TypeAheadWiringTests** — deterministic guards that every WPF `TextSearch` list declares a `TextSearch.TextPath` and that the path resolves to a real property on its item type. Register any new type-ahead list in its `Sites` table; the suite fails if you don't.
+
+### Synthesized-input tests are opt-in
+
+Tests that drive real keystrokes at a shown window are gated behind `QUICKMAIL_RUN_INPUT_TESTS=1` (CI sets it) and skip with a visible reason otherwise — they depend on focus and elapsed time, so anything on the machine that reacts to windows appearing perturbs them (issue #380). Gate a new one with:
+
+```csharp
+[StaFact(Skip = InputTests.SkipReason,
+         SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+```
+
+Do **not** subclass `FactAttribute` to do this — that trips `xUnit3003` (losing the source-file/line info IDE test navigation uses) and is evaluated at discovery rather than execution.
 
 ## User Guide Publishing
 

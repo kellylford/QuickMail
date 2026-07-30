@@ -1,12 +1,35 @@
-// Regression tests for first-letter (type-ahead) navigation in the Address Book
-// lists — issue #371.
+// Type-ahead on the Address Book lists — issue #371. These raise TextInput events at a
+// shown window, so they are opt-in (QUICKMAIL_RUN_INPUT_TESTS=1, which CI sets) and
+// report as skipped with a reason elsewhere. See issue #380 for the flakiness.
 //
-// The contact list uses an ItemTemplate whose root is a Grid, so WPF's TextSearch
-// has no text to match unless the list declares TextSearch.TextPath explicitly.
-// Without it, typing a letter with focus on the list does nothing at all. These
-// tests drive real TextInput events through the WPF input pipeline so a regression
-// (a removed TextPath, or a renamed source property) fails here rather than in the
-// running app.
+// Scope, stated precisely because the earlier version of this comment overstated it:
+//
+//  * These are NOT end-to-end. SendText raises UIElement.TextInputEvent directly on the
+//    list, so key translation, PreviewKeyDown, PreviewTextInput and AccessKeyManager are
+//    all bypassed. A key stolen before TextSearch sees it will NOT fail these tests —
+//    and that is how type-ahead has actually broken here twice (release notes v0.8.32:
+//    the picker's "_New" mnemonic firing on the type-ahead "n", and bare-K competing with
+//    folder-tree type-ahead). Those paths remain uncovered.
+//
+//  * The declaration-and-property wiring these were written to guard is now asserted
+//    deterministically by TypeAheadWiringTests, which is why gating them is acceptable.
+//
+//  * Gating is not a fix. Issue #380 diagnoses a harness readiness bug — a fire-once
+//    DoEvents() that assumes a single dispatcher pump is enough — and proposes a bounded
+//    wait on ContainersGenerated plus focus actually landing. That is NOT implemented
+//    here; these tests are simply no longer run by default on developer machines.
+//
+// Two tests were removed rather than gated (issue #380): they asserted that "b"+"r"
+// accumulates into the prefix "br", and that a repeated "b" cycles to the next match.
+// That is WPF's TextSearch doing the accumulating on these particular lists, and the
+// assertions needed both synthesized keystrokes to land inside its reset window, which
+// made them the least reliable tests in the suite.
+//
+// Note this does NOT mean the app has no prefix accumulator of its own — it does.
+// MainWindow.xaml.cs TryBuildTypeAheadPrefix hand-rolls one (_typeAheadBuffer,
+// _typeAheadScope, TypeAheadResetDelay) for the folder tree, message list and group
+// trees, shipped in v0.5.5. That code has no tests, before or after this change
+// (issue #415), and it is not what the removed tests covered.
 
 using System;
 using System.Collections.Generic;
@@ -29,7 +52,8 @@ public class AddressBookTypeAheadTests
     private static string TempDir() =>
         Path.Combine(Path.GetTempPath(), $"QM-TypeAheadTests-{Guid.NewGuid():N}");
 
-    [StaFact]
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
     public void ContactList_TypingFirstLetter_SelectsMatchingContact()
     {
         EnsureApplication();
@@ -55,67 +79,8 @@ public class AddressBookTypeAheadTests
         }
     }
 
-    [StaFact]
-    public void ContactList_RepeatingSameLetter_CyclesThroughMatches()
-    {
-        // Two contacts start with "B". Pressing B twice should land on the second
-        // one — WPF treats a repeat of the same character as "next match", not as
-        // a two-character prefix.
-        EnsureApplication();
-        var (_, window, dir) = BuildWindowWithContacts();
-        try
-        {
-            var list = window.FindName("ContactList") as ListView;
-            Assert.NotNull(list);
-            list!.Focus();
-            DoEvents();
-
-            SendText(list, "b");
-            DoEvents();
-            SendText(list, "b");
-            DoEvents();
-
-            var selected = list.SelectedItem as ContactModel;
-            Assert.NotNull(selected);
-            Assert.Equal("Brenda Cole", selected!.DisplayName);
-        }
-        finally
-        {
-            window.Close();
-            DeleteDir(dir);
-        }
-    }
-
-    [StaFact]
-    public void ContactList_TypingMultipleLetters_MatchesLongerPrefix()
-    {
-        // Typed characters accumulate within the type-ahead timeout, so "br"
-        // should skip past "Bob Baker" and land on "Brenda Cole".
-        EnsureApplication();
-        var (_, window, dir) = BuildWindowWithContacts();
-        try
-        {
-            var list = window.FindName("ContactList") as ListView;
-            Assert.NotNull(list);
-            list!.Focus();
-            DoEvents();
-
-            SendText(list, "b");
-            SendText(list, "r");
-            DoEvents();
-
-            var selected = list.SelectedItem as ContactModel;
-            Assert.NotNull(selected);
-            Assert.Equal("Brenda Cole", selected!.DisplayName);
-        }
-        finally
-        {
-            window.Close();
-            DeleteDir(dir);
-        }
-    }
-
-    [StaFact]
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
     public void ContactList_NamelessContact_IsReachableByAddress()
     {
         // Prior-recipient contacts often have no display name. TypeAheadText falls
@@ -144,7 +109,8 @@ public class AddressBookTypeAheadTests
         }
     }
 
-    [StaFact]
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
     public void GroupsList_TypingFirstLetter_SelectsMatchingGroup()
     {
         EnsureApplication();
