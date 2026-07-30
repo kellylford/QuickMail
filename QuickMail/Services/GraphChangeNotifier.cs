@@ -89,7 +89,7 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
                 {
                     // Immutable ids on every delta request (initial + nextLink + deltaLink), so
                     // delta-delivered ids match the immutable ids the folder sync stores (#366).
-                    var resp = await _client.GetAsync<GraphDeltaResponse>(account, url, GraphMailService.ImmutableIdHeader, ct);
+                    var resp = await _client.GetAsync<GraphDeltaResponse>(account, url, GraphHeaders.ImmutableId, ct);
                     if (resp?.Value?.Length > 0)
                         sawMessages = true;
 

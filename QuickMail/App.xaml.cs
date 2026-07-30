@@ -237,6 +237,29 @@ public partial class App : Application
             // covers accounts added at runtime through RefreshAccountList.
             var accounts = accountService.LoadAccounts();
 
+            // One-time immutable-id cache rebuild (#366): clear cached mail for Graph accounts so the
+            // next sync repopulates with immutable ids (mutable and immutable ids must not be mixed).
+            // Graph-scoped so IMAP bodies — and the IMAP calendar-invite source links that depend on
+            // them — survive; a marker file gates it to run exactly once. The VM announces the
+            // resulting one-time re-sync. Skipped in --online mode (no local store).
+            bool immutableIdRebuilt = false;
+            if (!onlineMode)
+            {
+                var rebuildMarker = System.IO.Path.Combine(profile.ProfileDir, ".immutable-id-rebuilt");
+                if (!System.IO.File.Exists(rebuildMarker))
+                {
+                    var graphIds = new List<Guid>();
+                    foreach (var a in accounts)
+                        if (a.BackendKind == BackendKind.MicrosoftGraph) graphIds.Add(a.Id);
+                    if (graphIds.Count > 0)
+                    {
+                        localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
+                        immutableIdRebuilt = true;
+                    }
+                    try { System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o")); } catch { }
+                }
+            }
+
             // Before anything connects: an account hand-configured before the provider catalog
             // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
             // every send with an error about the socket rather than the setting; and one holding a
@@ -332,6 +355,7 @@ public partial class App : Application
                 themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
                 graphCalendarSyncService: graphCalendarSync, truthProbe: _truthProbe);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
+            mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);

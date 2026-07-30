@@ -191,7 +191,7 @@ public class GraphMailServiceTests
         await svc.GetMessageSummariesAsync(account.Id, "inbox", 50, TestContext.Current.CancellationToken);
 
         var read = Assert.Single(h.HeaderCalls, c => c.Url.Contains("/mailFolders/inbox/messages"));
-        Assert.Contains("ImmutableId", read.Prefer ?? "");
+        Assert.Equal("IdType=\"ImmutableId\"", read.Prefer);
     }
 
     [Fact]
@@ -204,9 +204,27 @@ public class GraphMailServiceTests
         await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
 
         var read = Assert.Single(h.HeaderCalls, c => c.Url.Contains("/me/messages/m1"));
-        Assert.Contains("ImmutableId", read.Prefer ?? "");
+        Assert.Equal("IdType=\"ImmutableId\"", read.Prefer);
         // Scoping check: the /me identity probe is not a message read and carries no Prefer.
         Assert.All(h.HeaderCalls.Where(c => c.Url.Contains("/me?")), c => Assert.Null(c.Prefer));
+    }
+
+    [Fact]
+    public async Task MessageWrites_SendImmutableIdHeader()
+    {
+        // Cached ids are now immutable; the writes that consume them must declare the same id type,
+        // or Graph rejects them (ErrorInvalidIdMalformed). Distinct ids so PATCH/DELETE URLs differ.
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, "{}"));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        await svc.MarkReadAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+        await svc.MoveMessagesAsync(account.Id, "inbox", new[] { "m2" }, "archive", TestContext.Current.CancellationToken);
+        await svc.PermanentlyDeleteBatchAsync(account.Id, "deleteditems", new[] { "m3" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("IdType=\"ImmutableId\"", Assert.Single(h.HeaderCalls, c => c.Url.EndsWith("/me/messages/m1")).Prefer);       // mark-read PATCH
+        Assert.Equal("IdType=\"ImmutableId\"", Assert.Single(h.HeaderCalls, c => c.Url.Contains("/me/messages/m2/move")).Prefer);   // move POST
+        Assert.Equal("IdType=\"ImmutableId\"", Assert.Single(h.HeaderCalls, c => c.Url.EndsWith("/me/messages/m3")).Prefer);        // delete DELETE
     }
 
     [Fact]

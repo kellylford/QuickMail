@@ -1894,6 +1894,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// Shows All Mail from the local store immediately (no network).
     /// Called first in OnLoaded so the UI is populated before any IMAP work begins.
     /// </summary>
+    /// <summary>Set by App startup when the one-time Graph immutable-id cache rebuild (#366) cleared
+    /// cached mail; InitialLoadAsync announces the resulting re-sync so the empty inbox isn't a mystery.</summary>
+    public bool ImmutableIdRebuildAnnouncePending { get; set; }
+
     public async Task InitialLoadAsync()
     {
         SelectedFolder = AllMailFolder;
@@ -1904,6 +1908,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             FlagDefinitions.Clear();
             foreach (var d in defs.OrderBy(d => d.SortOrder))
                 FlagDefinitions.Add(d);
+        }
+        if (ImmutableIdRebuildAnnouncePending)
+        {
+            // One-time: cached Microsoft 365 mail was cleared to switch to immutable ids; the sync
+            // below repopulates it. Say so (Status + status bar) rather than showing a silent empty inbox.
+            ImmutableIdRebuildAnnouncePending = false;
+            SetStatus("Microsoft 365 mail is doing a one-time re-sync — this may take a few minutes.",
+                AnnouncementCategory.Status);
         }
         if (OnlineMode)
         {

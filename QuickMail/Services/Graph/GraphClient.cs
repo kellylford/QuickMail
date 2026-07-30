@@ -76,8 +76,8 @@ public sealed class GraphClient : IDisposable
 
     /// <summary>
     /// As the silent-aware overload, plus extra request headers applied to every page request.
-    /// Used by calendar sync to send <c>Prefer: outlook.timezone="UTC"</c> so Graph returns event
-    /// times normalized to UTC regardless of the mailbox's configured time zone.
+    /// Used by calendar sync (<c>Prefer: outlook.timezone="UTC"</c>) and by mail folder/id
+    /// enumeration (<c>Prefer: IdType="ImmutableId"</c>, #366).
     /// </summary>
     public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly,
         IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)

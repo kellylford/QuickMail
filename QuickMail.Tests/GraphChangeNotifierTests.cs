@@ -42,6 +42,8 @@ public class GraphChangeNotifierTests : IDisposable
     {
         private readonly Func<string, (HttpStatusCode Status, string Json)> _respond;
         public ConcurrentQueue<string> Requests { get; } = new();
+        // Prefer header per request (null if absent), enqueued in lock-step with Requests (#366).
+        public ConcurrentQueue<string?> Prefers { get; } = new();
 
         public StubHttpHandler(Func<string, (HttpStatusCode, string)> respond) => _respond = respond;
 
@@ -49,6 +51,7 @@ public class GraphChangeNotifierTests : IDisposable
         {
             var url = request.RequestUri!.ToString();
             Requests.Enqueue(url);
+            Prefers.Enqueue(request.Headers.TryGetValues("Prefer", out var p) ? string.Join(",", p) : null);
             var (status, json) = _respond(url);
             return Task.FromResult(new HttpResponseMessage(status)
             {
@@ -102,6 +105,27 @@ public class GraphChangeNotifierTests : IDisposable
         // The final page's deltaLink is persisted for the next tick.
         await WaitForAsync(async () => await _store.GetDeltaTokenAsync(account.Id, "Inbox") == deltaLink);
         notifier.StopWatchers();
+    }
+
+    [Fact]
+    public async Task DeltaPoll_SendsImmutableIdHeader_OnTheStoredDeltaLinkRequest()
+    {
+        // The header must ride on the persisted deltaLink follow-up (not just the initial request),
+        // or delta-delivered ids won't match the immutable ids the folder sync stores (#366).
+        var account = GraphAccount();
+        await _store.SetDeltaTokenAsync(account.Id, "Inbox",
+            "https://graph.microsoft.com/v1.0/me/mailFolders/Inbox/messages/delta?$deltatoken=SEEDED");
+
+        var handler = new StubHttpHandler(_ =>
+            (HttpStatusCode.OK, """{"value":[],"@odata.deltaLink":"https://graph.microsoft.com/v1.0/x?$deltatoken=NEXT"}"""));
+
+        using var notifier = MakeNotifier(handler);
+        notifier.StartWatchers(new[] { account }, TestContext.Current.CancellationToken);
+        await WaitForAsync(() => Task.FromResult(!handler.Prefers.IsEmpty));
+        notifier.StopWatchers();
+
+        Assert.Contains("/messages/delta", handler.Requests.First());
+        Assert.Equal("IdType=\"ImmutableId\"", handler.Prefers.First());
     }
 
     [Fact]
