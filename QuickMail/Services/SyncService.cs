@@ -314,6 +314,18 @@ public class SyncService : ISyncService
         return incoming;
     }
 
+    /// <summary>
+    /// Full sync of a single folder: fetches messages newer than the local high-water mark (raising
+    /// <see cref="FolderSynced"/> so the current view merges them in) and then reconciles remote
+    /// deletions (raising <see cref="MessagesRemoved"/>). This is the same work the startup full sync
+    /// does per folder, exposed for the periodic all-folder sweep — non-Inbox folders have no live
+    /// watcher (Graph delta and IMAP IDLE cover only the Inbox), so mail a server-side rule files into
+    /// a custom folder is otherwise invisible until the folder is opened or the app restarts (#366).
+    /// Returns the genuinely-new arrivals (empty when none).
+    /// </summary>
+    public async Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+        => await SyncFolderAsync(account, folder, ct);
+
     private async Task<List<MailMessageSummary>> SyncFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
     {
         // ── New messages ─────────────────────────────────────────────────────────

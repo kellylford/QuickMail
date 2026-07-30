@@ -52,6 +52,14 @@ public interface ISyncService
     Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
 
     /// <summary>
+    /// Full sync of one folder: fetches new messages (raising <see cref="FolderSynced"/>) and
+    /// reconciles remote deletions (raising <see cref="MessagesRemoved"/>). Used by the periodic
+    /// all-folder sweep to keep non-Inbox folders — which have no live watcher — current with mail a
+    /// server-side rule filed there while the app runs (#366). Returns the new arrivals (empty when none).
+    /// </summary>
+    Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
+
+    /// <summary>
     /// Reconciles one folder's local cache against the server, removing (and raising
     /// <see cref="MessagesRemoved"/> for) any message deleted or moved away by another client. Used
     /// to reconcile a folder on open and on the periodic tick, since the live/add-only sync paths do

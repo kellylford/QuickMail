@@ -290,6 +290,30 @@ public class SyncServiceRuleApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task SyncFolderFull_FetchesNewArrivals_AndReconcilesDeletions()
+    {
+        // The periodic all-folder sweep (#366) relies on this doing both halves in one call: pull new
+        // mail (a server rule filed into a custom folder) AND drop a message deleted elsewhere.
+        await _store.UpsertSummariesAsync([Message("ghost")]);          // present locally, gone on server
+        var imap = new FetchStubMailService([Message("fresh")]);        // server view = [fresh]
+        var sync = Build(imap, new CapturingRuleService());
+
+        var synced = new List<MailMessageSummary>();
+        sync.FolderSynced    += list => synced.AddRange(list);
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        var incoming = await sync.SyncFolderFullAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.Contains(incoming, m => m.MessageId == "fresh");         // new arrival returned
+        Assert.Contains(synced,   m => m.MessageId == "fresh");         // and surfaced via FolderSynced
+        Assert.Equal("ghost", Assert.Single(removed).MessageId);       // deletion reconciled
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.Contains("fresh", stored);
+        Assert.DoesNotContain("ghost", stored);
+    }
+
+    [Fact]
     public async Task Reconcile_NoOp_WhenNoLocalData()
     {
         // Nothing cached yet → nothing to reconcile, and (importantly) no false deletions even if the

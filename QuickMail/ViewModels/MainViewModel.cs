@@ -2219,46 +2219,58 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                 if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
 
-                // Snapshot the IMAP inboxes to sync on the UI thread (Accounts/_cachedFolders are
-                // UI-thread-owned). Graph accounts are skipped — they have their own delta poll.
-                var jobs = new List<(AccountModel Account, MailFolderModel Inbox)>();
+                // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox
+                // folders have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the
+                // Inbox — so mail a server-side rule files into a custom folder at delivery is invisible
+                // until the folder is opened or the app restarts (#366). This periodic sweep syncs each
+                // folder fully (fetch new + reconcile deletions). Accounts/_cachedFolders are
+                // UI-thread-owned, so snapshot on the UI thread. (The Inbox is included but cheap —
+                // already kept current by the live watcher, so it usually has nothing new to fetch.)
+                var jobs = new List<(AccountModel Account, MailFolderModel Folder, bool IsInbox)>();
                 _ui.Invoke(() =>
                 {
                     foreach (var account in Accounts)
                     {
-                        if (account.BackendKind != BackendKind.ImapSmtp) continue;
                         if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
-
-                        var inbox = folders.FirstOrDefault(f =>
-                            f.Kind == Models.SpecialFolderKind.Inbox ||
-                            string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
-                        if (inbox != null) jobs.Add((account, inbox));
+                        foreach (var folder in folders)
+                        {
+                            if (folder.ExcludeFromAllMail) continue;
+                            var isInbox = folder.Kind == Models.SpecialFolderKind.Inbox ||
+                                          string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase);
+                            jobs.Add((account, folder, isInbox));
+                        }
                     }
                 });
 
-                foreach (var (account, inbox) in jobs)
+                foreach (var (account, folder, isInbox) in jobs)
                 {
                     if (ct.IsCancellationRequested) break;
                     try
                     {
-                        // Fetch + SQLite upsert run off the UI thread; SyncOneFolderAsync marshals its
-                        // FolderSynced event to the UI thread internally.
-                        var incoming = await _syncService.SyncOneFolderAsync(account, inbox, ct)
+                        // Fetch new (FolderSynced merges them into the current view) + reconcile
+                        // deletions (MessagesRemoved). Runs off the UI thread; the events marshal back.
+                        var incoming = await _syncService.SyncFolderFullAsync(account, folder, ct)
                             .ConfigureAwait(false);
-                        LogService.Debug($"Fallback sync [{account.AccountLabel}] inbox: {incoming.Count} fetched.");
+                        if (incoming.Count > 0)
+                            LogService.Debug($"Sweep sync [{account.AccountLabel}]/{folder.FullName}: {incoming.Count} new.");
 
-                        // Marshal the UI-owned follow-ups back to the UI thread: notify for genuinely-new
-                        // arrivals (the single-thread-owned de-dupe set prevents re-notifying mail IDLE
-                        // already flagged) and refresh unread counts (debounced, STATUS-authoritative).
-                        _ui.Post(() =>
-                        {
-                            if (incoming.Count > 0)
-                                MaybeNotifyNewMail(account, incoming);
-                            ScheduleFolderCountRefresh(account.Id);
-                        });
+                        if (incoming.Count > 0)
+                            _ui.Post(() =>
+                            {
+                                // Toast only for the Inbox (as before) — filtered mail in custom folders
+                                // shouldn't pop notifications — but refresh counts for any folder change.
+                                if (isInbox)
+                                    MaybeNotifyNewMail(account, incoming);
+                                ScheduleFolderCountRefresh(account.Id);
+                            });
                     }
                     catch (OperationCanceledException) { throw; }
-                    catch (Exception ex) { LogService.Log($"Fallback sync {account.AccountLabel}", ex); }
+                    catch (Exception ex) { LogService.Log($"Sweep sync {account.AccountLabel}/{folder.FullName}", ex); }
+
+                    // Pace between folders so a full sweep of a large mailbox doesn't burst Graph into a
+                    // 503 "application request queue is full". Sequential + a short gap keeps it gentle.
+                    try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { break; }
                 }
             }
         }
