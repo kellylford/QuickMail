@@ -216,9 +216,15 @@
                     Command="{Binding SendCommand}"
                     AutomationProperties.Name="Send message"
                     AutomationProperties.AcceleratorKey="Alt+S"
-                    IsDefault="True"
                     MinWidth="80"
                     TabIndex="7"/>
+            <!-- Deliberately NOT IsDefault. A default button makes Enter send the
+                 message from any control that does not handle Enter itself — the
+                 From combo, the compose-mode combo, the Subject box, the attachment
+                 list. Choosing a sending account with arrow-then-Enter would send
+                 the half-written message and disclose its contents (issue #201).
+                 Send is reachable by Alt+S, Ctrl+Enter, or Enter/Space with the
+                 Send button focused. Do not re-add IsDefault. -->
             <ComboBox DockPanel.Dock="Left"
                       x:Name="ModeSelector"
                       MinWidth="110" Margin="0,0,6,0"
@@ -273,7 +279,8 @@
                       AutomationProperties.Name="From account"
                       AutomationProperties.AcceleratorKey="Alt+M"
                       AutomationProperties.HelpText="Choose which account to send from"
-                      Margin="0,4" TabIndex="0"/>
+                      Margin="0,4" TabIndex="0"
+                      PreviewKeyDown="FromCombo_PreviewKeyDown"/>
 
             <!-- To -->
             <TextBlock Grid.Row="1" Grid.Column="0"

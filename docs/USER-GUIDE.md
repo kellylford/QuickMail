@@ -560,6 +560,14 @@ Press **F6** to cycle between the address fields (To, Cc, Bcc), the subject, and
 | `Alt+M` | From account |
 | `Alt+Y` | Message body |
 
+### Choosing Which Account Sends
+
+Press **Alt+M** to reach the **From** list, then arrow to the account you want. Press **Enter** and QuickMail confirms your choice — "IdeaPlace used as From address". You can also expand the list with **Alt+Down Arrow**, arrow to an account, and press Enter; the same confirmation follows.
+
+Arrowing past accounts does not announce anything extra, since your screen reader is already reading each account name as you go. The confirmation comes when the choice settles — on Enter, when the expanded list closes on a different account, or when you leave the From field having changed it. It uses the **Announce action results** setting, so turning that off turns this off with it.
+
+Enter in the From list never sends the message. Sending is **Alt+S** or **Ctrl+Enter**.
+
 ### Address Autocomplete
 
 Start typing a name or address in To, Cc, or Bcc. QuickMail searches your address book and recent contacts. Arrow down to choose a suggestion; press Enter or Tab to accept. Press Escape to dismiss without accepting.

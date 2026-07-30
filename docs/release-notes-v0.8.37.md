@@ -108,6 +108,18 @@ The record is written to `connection.log` beside QuickMail's other settings, is 
 
 ---
 
+## Fixed: choosing a sending account could send the message
+
+Pressing Enter after arrowing to an account in the compose window's **From** list sent the message ([#201](https://github.com/kellylford/QuickMail/issues/201)). Not chose the account — sent the mail, half-written, to whoever was already in the To field. Choosing a mode from the compose-mode list, or pressing Enter in the **Subject** box or the attachment list, did the same thing.
+
+The Send button was marked as the window's default button, which in Windows means Enter activates it from anywhere in the window that does not use Enter for something of its own. A closed list is exactly such a place: arrowing through it already changes the selection, so Enter had nothing to do there and went to Send instead. That default is now removed. Enter no longer sends from anywhere in the compose window.
+
+Send is still **Alt+S**, **Ctrl+Enter**, or Enter or Space with the Send button focused.
+
+**Enter on the From list now confirms the account.** Since the keystroke no longer sends, it says which account you landed on — "IdeaPlace used as From address". You also hear it when you pick an account from the expanded list, and when you leave the From field having changed it. Arrowing past accounts stays quiet, because your screen reader is already reading each one. This uses the **Announce action results** setting, so turning that off turns this off with it.
+
+---
+
 ## Fixed: sending mail gave no feedback
 
 A report of "sending an email gives no feedback, and does not close the compose window" ([#396](https://github.com/kellylford/QuickMail/issues/396)) turned out to be four separate problems stacked on top of each other. All four are fixed.
