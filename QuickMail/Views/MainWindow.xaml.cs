@@ -3072,6 +3072,20 @@ public partial class MainWindow : Window
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
+        // Debug screenshot capture (#175): the rendered reading pane is the surface
+        // PrintWindow exists for. Deferred to ApplicationIdle because WebView2
+        // presents its frame after NavigationCompleted — a synchronous capture can
+        // still show the previous document. Skipped on timeout: the page may never
+        // have rendered. No-op unless /debug and the session toggle are on.
+        if (completed)
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+            {
+                // A newer render may have started before idle — skip rather than
+                // save the next message's pixels under this message's label.
+                if (renderVersion != _messageBodyRenderVersion) return;
+                (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"ReadingPane-{detail.Subject}");
+            });
+
         await FocusMessageBodyAsync(renderVersion, detail.Subject);
     }
 
@@ -5579,7 +5593,8 @@ public partial class MainWindow : Window
             .Select(f => f.Source)
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
+        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
+            (Application.Current as App)?.ScreenshotCapture);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
