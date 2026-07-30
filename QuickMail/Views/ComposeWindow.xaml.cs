@@ -196,8 +196,16 @@ public partial class ComposeWindow : Window
 
         // Reply / Reply-All: To is already filled in, so land in the body at the top.
         // New compose / Forward: To is empty, so land in the To field.
+        // Announce the sending account once the choice has settled, not on every arrow
+        // press — the screen reader already reads each account name as you pass it.
+        FromCombo.DropDownClosed    += (_, _) => AnnounceSenderAccount(onlyIfChanged: true);
+        FromCombo.LostKeyboardFocus += (_, _) => AnnounceSenderAccount(onlyIfChanged: true);
+
         Loaded += (_, _) =>
         {
+            // Whatever account the window opened on is already the baseline, so leaving
+            // the From combo without changing anything stays silent.
+            _announcedSenderAccountId = _vm.SenderAccount?.Id;
             ApplyDefaultComposeMode();
             if (string.IsNullOrWhiteSpace(_vm.To))
             {
@@ -407,18 +415,46 @@ public partial class ComposeWindow : Window
     }
 
     /// <summary>
-    /// Swallows Enter on the From combo when its dropdown is closed. Arrowing through a
-    /// closed combo already changes the selected account, so Enter has nothing left to
-    /// do — but WPF lets an unhandled Enter travel on to any default button, which used
-    /// to send the message (issue #201). The Send button is no longer IsDefault; this
-    /// keeps the reported gesture inert even if a default button is reintroduced.
+    /// Swallows Enter on the From combo when its dropdown is closed, and confirms the
+    /// chosen account out loud instead. Arrowing through a closed combo already changes
+    /// the selected account, so Enter has nothing left to select — but WPF lets an
+    /// unhandled Enter travel on to any default button, which used to send the message
+    /// (issue #201). The Send button is no longer IsDefault; this keeps the reported
+    /// gesture inert even if a default button is reintroduced.
     /// Enter with the dropdown open is left alone so the combo can commit the highlighted
-    /// item and close normally.
+    /// item and close normally — DropDownClosed does the announcing on that path.
     /// </summary>
     private void FromCombo_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.None && !FromCombo.IsDropDownOpen)
+        {
             e.Handled = true;
+            // Enter here is an explicit "use this account", so confirm it even when the
+            // account did not change — the user asked, so answer.
+            AnnounceSenderAccount(onlyIfChanged: false);
+        }
+    }
+
+    /// <summary>The account last announced as the From address, so a settled choice is announced once.</summary>
+    private Guid? _announcedSenderAccountId;
+
+    /// <summary>
+    /// Announces the sending account as a Result — it is the outcome of an action the user
+    /// just took, not background progress. Called when the choice settles: Enter on the
+    /// closed combo, the dropdown closing, or focus leaving the combo. Announcing on every
+    /// SelectionChanged would speak over the screen reader's own reading of each account
+    /// name while arrowing through the closed combo.
+    /// </summary>
+    private void AnnounceSenderAccount(bool onlyIfChanged)
+    {
+        var account = _vm.SenderAccount;
+        if (account is null) return;
+        if (onlyIfChanged && account.Id == _announcedSenderAccountId) return;
+
+        _announcedSenderAccountId = account.Id;
+        AccessibilityHelper.Announce(this,
+            $"{account.AccountLabel} used as From address",
+            category: AnnouncementCategory.Result);
     }
 
     internal void SuggestionList_PreviewKeyDown(object sender, KeyEventArgs e)
