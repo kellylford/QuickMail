@@ -191,6 +191,16 @@ public class SyncService : ISyncService
 
         if (!hasEnabledRules) return fetched;
 
+        // #336: client rules fire ONLY on the Inbox. Non-Inbox folders are still fetched and cached
+        // above — we just don't run rules against them. This is the classic mail-rules model (rules
+        // process mail as it arrives in the Inbox) and it prevents double-processing: a server-side
+        // rule (or a manual move) that files a message into another folder must not then be re-acted
+        // on by a matching client rule when QuickMail syncs that folder, and a rule must never yank
+        // back mail the user manually filed elsewhere. Matches the Inbox test used across the VM.
+        if (folder.Kind != SpecialFolderKind.Inbox &&
+            !string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase))
+            return fetched;
+
         // Store-less (online) baseline: the first fetch per folder is the last-50 reconciliation
         // batch, not new mail. Mark it seen WITHOUT running rules, so a move/delete/mark-read rule
         // never rewrites up-to-50 pre-existing messages on a delete or archive reconciliation.
