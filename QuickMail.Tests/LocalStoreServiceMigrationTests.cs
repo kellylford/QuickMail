@@ -132,6 +132,9 @@ public class LocalStoreServiceMigrationTests
         await store.SetDeltaTokenAsync(graph, "Inbox", "https://graph.microsoft.com/deltaLink");
         await store.UpsertSummariesAsync([new MailMessageSummary { MessageId = "i1", AccountId = imap, FolderName = "Inbox", Subject = "i", Date = DateTimeOffset.UtcNow }]);
         await store.UpsertDetailAsync(new MailMessageDetail { MessageId = "i1", AccountId = imap, FolderName = "Inbox", PlainTextBody = "ib" });
+        // A calendar event on the cleared (graph) account — finding 3: the clear must NOT delete
+        // CalendarEvent rows, or harvested invites lose their "open source message" link permanently.
+        await store.UpsertCalendarEventAsync(new CalendarEvent { Uid = "evt1", AccountId = graph, Summary = "meeting", StartTimeTicks = DateTime.UtcNow.Ticks });
 
         await store.ClearCachedMailAsync([graph]);
 
@@ -141,6 +144,7 @@ public class LocalStoreServiceMigrationTests
 
         Assert.Single(await store.LoadFolderSummariesAsync(imap, "Inbox"));   // IMAP summary survives
         Assert.NotNull(await store.LoadDetailAsync(imap, "Inbox", "i1"));     // IMAP body survives (finding 3)
+        Assert.Contains(await store.LoadCalendarEventsAsync(), e => e.Uid == "evt1"); // calendar survives the clear (finding 3)
     }
 
     [Fact]

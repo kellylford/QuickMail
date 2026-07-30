@@ -228,6 +228,36 @@ public class GraphMailServiceTests
     }
 
     [Fact]
+    public async Task FolderIdEnumeration_AndEmptyTrash_SendImmutableIdHeader()
+    {
+        // GetFolderMessageIdsAsync drives reconciliation (#366) and EmptyTrashAsync enumerates then
+        // deletes — both must request/act on immutable ids so they match the immutable ids the cache
+        // holds. Enumerations return two ids; the trash folder id is resolved at connect.
+        // Any request carrying "/messages" (both folder enumerations and the per-message deletes)
+        // returns the id list; connect-time well-known lookups fall through to "{}".
+        var (svc, h) = Make(url =>
+              url.Contains("/me?")        ? (HttpStatusCode.OK, MeJson)
+            : url.Contains("/messages")   ? (HttpStatusCode.OK, """{"value":[{"id":"x1"},{"id":"x2"}]}""")
+            : (HttpStatusCode.OK, "{}"));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        var ids = await svc.GetFolderMessageIdsAsync(account.Id, "inbox", TestContext.Current.CancellationToken);
+        Assert.Equal(new[] { "x1", "x2" }, ids);
+        await svc.EmptyTrashAsync(account.Id, TestContext.Current.CancellationToken);
+
+        // Folder enumeration (reconcile) requests immutable ids…
+        Assert.Equal("IdType=\"ImmutableId\"",
+            Assert.Single(h.HeaderCalls, c => c.Url.Contains("/mailFolders/inbox/messages")).Prefer);
+        // …the trash enumeration does too…
+        Assert.Equal("IdType=\"ImmutableId\"",
+            Assert.Single(h.HeaderCalls, c => c.Url.Contains("/mailFolders/deleteditems/messages")).Prefer);
+        // …and the per-message trash deletes carry it (else Graph 404s on the immutable id).
+        Assert.All(h.HeaderCalls.Where(c => c.Url.Contains("/me/messages/x")),
+            c => Assert.Equal("IdType=\"ImmutableId\"", c.Prefer));
+    }
+
+    [Fact]
     public async Task GetMessageSummariesAsync_MapsFields()
     {
         const string msgs = """
