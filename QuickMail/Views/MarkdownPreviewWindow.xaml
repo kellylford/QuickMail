@@ -8,6 +8,7 @@
         Height="600" Width="760"
         MinHeight="300" MinWidth="400"
         WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Theme.WindowBackground}"
         Closing="OnClosing"
         PreviewKeyDown="OnPreviewKeyDown">
     <Grid>
