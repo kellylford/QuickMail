@@ -95,6 +95,13 @@ public class SelectorItemAccessibilityTests
         Assert.Equal("Spam rule", new MailRule { Name = "Spam rule" }.ToString());
         Assert.Equal("Work", new AccountModel { AccountName = "Work" }.ToString());
 
+        // Unified rules manager: the account picker (AccountCombo) and the merged rules list
+        // (RulesListBox) — neither has a DisplayMemberPath/ItemTemplate, so ToString() drives the name.
+        Assert.Equal("Work", new AccountOption { DisplayName = "Work" }.ToString());
+        var unifiedRow = UnifiedRuleRow.ForClient(new MailRule { Name = "Newsletter", AccountId = System.Guid.NewGuid() });
+        Assert.Equal(unifiedRow.RowText, unifiedRow.ToString());
+        Assert.Contains("Newsletter", unifiedRow.ToString());
+
         // Provider combo in the Add Account dialog.
         Assert.Equal("Gmail", new ProviderCatalog().ById(ProviderCatalog.GmailId)!.ToString());
 

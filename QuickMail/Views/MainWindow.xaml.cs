@@ -5925,7 +5925,7 @@ public partial class MainWindow : Window
             _vm.SelectViewCommand.Execute(viewToApply.Id.ToString());
     }
 
-    private RulesManagerWindow? _rulesWindow;
+    private Window? _rulesWindow;
 
     private void OpenRulesManager(MailRule? template = null)
     {
@@ -5935,7 +5935,11 @@ public partial class MainWindow : Window
         // to the open window rather than silently dropping it.
         if (_rulesWindow is { IsLoaded: true } existing)
         {
-            if (template != null) existing.PrefillFromTemplate(template);
+            if (template != null)
+            {
+                if (existing is RulesManagerWindow rmw) rmw.PrefillFromTemplate(template);
+                else if (existing is UnifiedRulesWindow urw) urw.PrefillFromTemplate(template);
+            }
             existing.Activate();
             return;
         }
@@ -5945,46 +5949,55 @@ public partial class MainWindow : Window
         var previousFocus = Keyboard.FocusedElement as IInputElement;
 
         var accounts = _vm.Accounts.ToList();
-        var selectedMessages = _vm.Messages.ToList();
 
-        var rulesVm = new RulesManagerViewModel(
-            _ruleService, accounts,
-            prefillTemplate: template,
-            selectedMessagesForTest: selectedMessages,
-            configService: _configService);
-
-        // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner
-        // performs the run and returns how many messages were moved or deleted for the VM to report.
-        // ApplyRulesToExisting loads all cached summaries and matches every rule against them, so run
-        // it off the UI thread (as the on-close path does) to keep the dispatcher responsive.
-        rulesVm.RunOnExistingRequested += async () =>
+        // Unowned (issue #347) so the window reads its own title, not the main window's. Modeless
+        // (.Show) — a modal loop over the live WebView2 reading pane hard-deadlocks with a screen
+        // reader (GrabAddresses). Choose the layout: the unified single-list manager (spec §20) when
+        // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
+        // shared Closed handler below works for either window type.
+        // On-demand "Run on Existing Mail" (issue #346): the VM has no local store, so the owner runs
+        // client rules over cached mail off the UI thread and returns how many were moved/deleted.
+        async Task<int> RunClientRulesOnExisting()
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var removed = await Task.Run(
-                () => _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token));
+            var removed = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token));
             if (removed.Count > 0)
-                _vm.RefreshCommand.Execute(null);   // back on the UI thread after the await
+                _vm.RefreshCommand.Execute(null);
             return removed.Count;
-        };
+        }
 
-        // No Owner (issue #347): an owned window nests under MainWindow in the UIA tree, so some
-        // screen readers read the topmost ancestor's title (the main window) instead of "Rules
-        // Manager". Leaving it unowned makes it an independent peer that reads its own title — the
-        // same fix compose and standalone message windows use. Unowned windows aren't auto-closed
-        // with the main window, so it's tracked in _rulesWindow and closed in OnClosed.
-        // Read-only server-rules peek (#333): when a Graph account exists, surface its Exchange
-        // messageRules in the Rules Manager so the user can see them. Editing lands in a follow-up.
-        ServerRulesViewModel? serverRulesVm = null;
+        // Unowned (issue #347) so the window reads its own title, not the main window's. Modeless
+        // (.Show) — a modal loop over the live WebView2 reading pane hard-deadlocks with a screen
+        // reader (GrabAddresses). Choose the layout: the unified single-list manager (spec §20) when
+        // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
+        // shared Closed handler below works for either window type.
+        Window dialog;
+        UnifiedRulesWindow? unifiedWindow = null;
         if (_serverRuleService != null
             && _featureGate.IsEnabled(FeatureFlag.ServerRules)
             && accounts.Any(a => a.BackendKind == BackendKind.MicrosoftGraph))
-            // Seed the picker with the account the user is currently in, so the Rules Manager opens
-            // on that account's rules rather than always the first Graph account (#333). Null on
-            // aggregate views → VM falls back to the first account.
-            serverRulesVm = new ServerRulesViewModel(
-                _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id);
+        {
+            // Seed the picker with the account the user is currently in (null on aggregate views →
+            // VM falls back to the first account).
+            var unifiedVm = new UnifiedRulesViewModel(
+                _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id);
+            unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
+            // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
+            unifiedWindow = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template);
+            dialog = unifiedWindow;
+        }
+        else
+        {
+            var selectedMessages = _vm.Messages.ToList();
+            var rulesVm = new RulesManagerViewModel(
+                _ruleService, accounts,
+                prefillTemplate: template,
+                selectedMessagesForTest: selectedMessages,
+                configService: _configService);
+            rulesVm.RunOnExistingRequested += RunClientRulesOnExisting;
+            dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm: null);
+        }
 
-        var dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm);
         _rulesWindow = dialog;
 
         // Modeless (.Show, NOT .ShowDialog). Opening this window modally over MainWindow's
