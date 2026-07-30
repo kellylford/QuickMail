@@ -15,7 +15,7 @@
     4. Print a summary and exit non-zero if any entry failed or produced no PNG.
 
   AI review (#180 Phase 4) runs over the run folder afterwards using
-  scripts/ui-review-prompt.md — from Claude Code:  "review the run folder at <path>
+  scripts/ui-review-prompt.md - from Claude Code:  "review the run folder at <path>
   with scripts/ui-review-prompt.md". This script stops at the collection step so the
   orchestration stays deterministic and the judgment stays in the model.
 
@@ -27,7 +27,9 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Plan = "$PSScriptRoot\ui-probe-plan.json",
+    # Resolved below: $PSScriptRoot is empty inside param defaults under
+    # Windows PowerShell 5.1 when invoked with -File.
+    [string]$Plan = "",
     [string]$RunDir = "",
     [string]$ProfileDir = "",
     [int]$TimeoutSeconds = 45,
@@ -35,6 +37,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $Plan) { $Plan = Join-Path $PSScriptRoot 'ui-probe-plan.json' }
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $exe      = Join-Path $repoRoot 'QuickMail\bin\Debug\QuickMail.exe'
 $fixtures = Join-Path $repoRoot 'Tools\QuickMail.Fixtures\QuickMail.Fixtures.csproj'
@@ -81,7 +84,8 @@ foreach ($entry in $planEntries) {
 
     # Quote path arguments explicitly: Windows PowerShell 5.1's Start-Process
     # joins the array without quoting, so a space in TEMP would split the args.
-    $args = @(
+    # ($probeArgs, not $args - $args is a PowerShell automatic variable.)
+    $probeArgs = @(
         '--ui-probe', $entry.surface,
         '--theme', $entry.theme,
         '--text-scale', "$($entry.scale)",
@@ -89,7 +93,7 @@ foreach ($entry in $planEntries) {
         '--capture-dir', ('"{0}"' -f $RunDir),
         '--capture-tag', $tag
     )
-    $proc = Start-Process -FilePath $exe -ArgumentList $args -PassThru
+    $proc = Start-Process -FilePath $exe -ArgumentList $probeArgs -PassThru
     $exited = $proc.WaitForExit($TimeoutSeconds * 1000)
     if (-not $exited) {
         try { $proc.Kill() } catch {}
@@ -115,5 +119,5 @@ if ($failed.Count -gt 0) {
     $failed | ForEach-Object { Write-Host "  $_" }
     exit 1
 }
-Write-Host "Next: AI review — run the checklist in scripts/ui-review-prompt.md over $RunDir"
+Write-Host "Next: AI review - run the checklist in scripts/ui-review-prompt.md over $RunDir"
 exit 0

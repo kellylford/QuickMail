@@ -1371,9 +1371,14 @@ public partial class MainWindow : Window
         // Create the WebView2 environment — always needed, shared with MessageWindow instances.
         try
         {
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "QuickMail", "WebView2");
+            // ui-probe (#180): an isolated, throwaway user-data folder under the
+            // capture dir — the probe must never write outside its own dirs, and
+            // must not contend with a live QuickMail's shared browser instance.
+            var userDataFolder = (Application.Current as App)?.UiProbe is { } probeOptions
+                ? Path.Combine(probeOptions.CaptureDir, "webview2-data")
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "QuickMail", "WebView2");
             _webViewEnvironment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         }
         catch (Exception ex)
@@ -1444,6 +1449,14 @@ public partial class MainWindow : Window
 
     /// <summary>Opens the command palette exactly as Ctrl+Shift+P would (modal).</summary>
     internal void OpenCommandPaletteForProbe() => OpenCommandPalette();
+
+    /// <summary>
+    /// Opens AND renders a message exactly as a notification activation would —
+    /// the VM command alone loads the detail but the body render lives in this
+    /// window's open path, so the probe must come through here.
+    /// </summary>
+    internal Task OpenMessageForProbeAsync(Guid accountId, string folder, string messageId) =>
+        OpenMessageByIdentityAsync(accountId, folder, messageId);
 
     /// <summary>
     /// Exits the app with the given code, bypassing close-to-tray (which would
