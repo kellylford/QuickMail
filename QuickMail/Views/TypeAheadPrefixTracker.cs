@@ -20,7 +20,7 @@ namespace QuickMail.Views;
 /// preempt single-key command shortcuts) and the ordinary <c>PreviewTextInput</c> route. A
 /// matched KeyDown marks the event handled, which suppresses the TextInput for that keystroke.
 /// To keep an unmatched KeyDown from double-appending when its TextInput arrives, the KeyDown
-/// route must use <see cref="TryPeek"/> and only <see cref="TryAppend"/> (commit) on a match.</para>
+/// route must use <see cref="TryPeek"/> and only <see cref="Commit"/> on a match.</para>
 /// </summary>
 public sealed class TypeAheadPrefixTracker
 {
@@ -63,6 +63,19 @@ public sealed class TypeAheadPrefixTracker
         return true;
     }
 
+    /// <summary>
+    /// Records a prefix obtained from <see cref="TryPeek"/>. The KeyDown route peeks, matches,
+    /// and then commits exactly the prefix it matched — recomputing via <see cref="TryAppend"/>
+    /// could land on the other side of the reset boundary and record a different prefix than
+    /// the one the selection just moved on.
+    /// </summary>
+    public void Commit(string prefix, object scope)
+    {
+        _buffer = prefix;
+        _scope = scope;
+        _lastInputUtc = _clock.GetUtcNow();
+    }
+
     private bool TryCompute(string? text, object scope, DateTimeOffset now, out string prefix)
     {
         prefix = string.Empty;
@@ -75,11 +88,21 @@ public sealed class TypeAheadPrefixTracker
             return false;
 
         // Strict '>' so input at exactly the reset delay still accumulates.
-        prefix = !ReferenceEquals(_scope, scope) || now - _lastInputUtc > _resetDelay
-            ? trimmed
-            : _buffer + trimmed;
+        if (!ReferenceEquals(_scope, scope) || now - _lastInputUtc > _resetDelay)
+            prefix = trimmed;
+        else if (IsRepeatOfBuffer(trimmed))
+            // The same single letter again keeps the one-character prefix instead of building
+            // "ss": the matcher searches from after the current selection, so each press cycles
+            // to the next match — the behavior WPF's TextSearch special-cases the same way.
+            prefix = _buffer;
+        else
+            prefix = _buffer + trimmed;
         return true;
     }
+
+    private bool IsRepeatOfBuffer(string trimmed) =>
+        trimmed.Length == 1 && _buffer.Length > 0 &&
+        _buffer.All(c => char.ToUpperInvariant(c) == char.ToUpperInvariant(trimmed[0]));
 }
 
 /// <summary>

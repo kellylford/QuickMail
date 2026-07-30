@@ -27,9 +27,10 @@
 //
 // Note this does NOT mean the app has no prefix accumulator of its own — it does.
 // TypeAheadPrefixTracker (extracted from MainWindow for issue #415) hand-rolls one for
-// the folder tree, message list, group trees, and the folder picker's tree, shipped in
-// v0.5.5. It is covered deterministically by TypeAheadLogicTests, and it is not what
-// the removed tests covered.
+// the message list and group trees (shipped in v0.5.5), and — since #418 — the folder
+// tree and the folder picker's tree. (The v0.5.5 notes described the folder tree as
+// accumulating, but its code was always single-shot until #418.) The tracker is covered
+// deterministically by TypeAheadLogicTests, and it is not what the removed tests covered.
 
 using System;
 using System.Collections.Generic;

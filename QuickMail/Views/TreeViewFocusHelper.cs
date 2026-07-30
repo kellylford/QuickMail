@@ -74,6 +74,18 @@ public static class TreeViewFocusHelper
     }
 
     /// <summary>
+    /// Whether the currently held modifiers are compatible with type-ahead text input: none,
+    /// Shift (capital letters), or Ctrl+Alt (AltGr, which produces ordinary characters on
+    /// many non-US layouts). Bare Ctrl or Alt combinations are shortcut/menu territory and
+    /// excluded. Used by the PreviewTextInput routes; the PreviewKeyDown route
+    /// (<see cref="TryGetTypeAheadKeyText"/>) stays modifier-free by design.
+    /// </summary>
+    public static bool ModifiersAllowTypeAhead =>
+        Keyboard.Modifiers is ModifierKeys.None
+                           or ModifierKeys.Shift
+                           or (ModifierKeys.Control | ModifierKeys.Alt);
+
+    /// <summary>
     /// Extracts a single-character type-ahead search string from a key event.
     /// Returns false when modifiers are held or the key is not a letter/digit.
     /// </summary>

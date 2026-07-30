@@ -313,7 +313,7 @@ public partial class FolderPickerWindow : Window
     // hand-rolled rather than WPF TextSearch.
     private void FolderTreeView_PreviewTextInput(object sender, TextCompositionEventArgs e)
     {
-        if (Keyboard.Modifiers != ModifierKeys.None)
+        if (!TreeViewFocusHelper.ModifiersAllowTypeAhead)
             return;
 
         if (FolderTreeView.ItemsSource is IEnumerable<FolderTreeNode> roots &&
@@ -322,19 +322,31 @@ public partial class FolderPickerWindow : Window
             e.Handled = true;
     }
 
-    // Alt+N opens New Folder. Wired explicitly (rather than a button mnemonic) so a bare "n" in the
-    // folder tree stays available for type-ahead instead of triggering the button (see the XAML note
-    // on NewFolderButton). Handled window-wide so it works whatever picker control has focus.
+    // Alt+N (New Folder), Alt+O (Open), Alt+C (Cancel) are wired explicitly rather than as
+    // button mnemonics, because a bare mnemonic letter fires without Alt when focus isn't in a
+    // text field and steals type-ahead (see the XAML notes on the buttons). Handled window-wide
+    // so they work whatever picker control has focus.
     private void FolderPicker_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // With Alt held, the character arrives as a System key; the real key is in SystemKey.
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key == Key.N
-            && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
-            && NewFolderButton.Visibility == Visibility.Visible)
+        if ((Keyboard.Modifiers & ModifierKeys.Alt) != ModifierKeys.Alt)
+            return;
+
+        switch (key)
         {
-            e.Handled = true;
-            NewFolderButton_Click(NewFolderButton, new RoutedEventArgs());
+            case Key.N when NewFolderButton.Visibility == Visibility.Visible:
+                e.Handled = true;
+                NewFolderButton_Click(NewFolderButton, new RoutedEventArgs());
+                break;
+            case Key.O:
+                e.Handled = true;
+                Commit();
+                break;
+            case Key.C:
+                e.Handled = true;
+                DialogResult = false;
+                break;
         }
     }
 

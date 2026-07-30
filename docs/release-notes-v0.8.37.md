@@ -159,7 +159,11 @@ Two related repairs in the same picker:
 - **The flat "Go to Folder" list matched against the wrong text.** Typing a letter there searched an internal name rather than the folder names on screen, so it went nowhere useful. It now matches the folder path you see.
 - **Typing "o" or "c" could press a button.** The Open and Cancel buttons carried shortcut letters that fire on a bare keypress when focus is in a list, so an unmatched type-ahead letter could activate one of them — "c" closed the picker. The same problem was fixed for the New Folder button in v0.8.32; Open and Cancel now follow. Enter still opens the selected folder and Escape still cancels.
 
-**In the main window's folder tree, type-ahead now continues a prefix again.** Typing "s", "e" in quick succession finds "Sent" rather than treating each letter as a fresh first-letter search. This is how the feature was described when it shipped in v0.5.5, and how the message list already behaved; the folder tree had lost the continuation somewhere along the way.
+**In the main window's folder tree, type-ahead now continues a prefix.** Typing "s", "e" in quick succession finds "Sent" rather than treating each letter as a fresh first-letter search. The v0.5.5 notes described the folder tree working this way, but the code never actually did — each letter was always a fresh search; the message list is where continuation really lived. The tree now genuinely does what those notes said.
+
+**Repeating a letter now cycles through matches everywhere.** Pressing "s" twice quickly used to build the prefix "ss", which matches nothing, so rapid repeats went dead until the timeout passed. A repeated letter now keeps the single-letter prefix and moves to the next match — the standard list behavior — in the message list, the grouped views, both folder trees, and the picker.
+
+One more small change in the same code: **a capital letter now works for type-ahead.** Shift+S was silently ignored in the message list and grouped views; it now matches the same as "s". (Matching was always case-insensitive once the letter got through.)
 
 ---
 

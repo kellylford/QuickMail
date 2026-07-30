@@ -1876,7 +1876,7 @@ public partial class MainWindow : Window
             TryPeekTypeAheadPrefix(searchText, FolderList, out var peeked) &&
             TreeViewFocusHelper.TrySelectNextMatch(FolderList, FolderList.Items.OfType<FolderTreeNode>(), peeked))
         {
-            CommitTypeAheadPrefix(searchText, FolderList);
+            CommitTypeAheadPrefix(peeked, FolderList);
             e.Handled = true;
             return;
         }
@@ -2008,7 +2008,7 @@ public partial class MainWindow : Window
     private bool TryBuildTypeAheadPrefix(string? text, object scope, out string prefix)
     {
         prefix = string.Empty;
-        return Keyboard.Modifiers == ModifierKeys.None && _typeAhead.TryAppend(text, scope, out prefix);
+        return TreeViewFocusHelper.ModifiersAllowTypeAhead && _typeAhead.TryAppend(text, scope, out prefix);
     }
 
     // Peek route (PreviewKeyDown): computes the prefix without recording it. The KeyDown site
@@ -2018,10 +2018,11 @@ public partial class MainWindow : Window
     private bool TryPeekTypeAheadPrefix(string? text, object scope, out string prefix)
     {
         prefix = string.Empty;
-        return Keyboard.Modifiers == ModifierKeys.None && _typeAhead.TryPeek(text, scope, out prefix);
+        return TreeViewFocusHelper.ModifiersAllowTypeAhead && _typeAhead.TryPeek(text, scope, out prefix);
     }
 
-    private void CommitTypeAheadPrefix(string? text, object scope) => _typeAhead.TryAppend(text, scope, out _);
+    // Commits the exact prefix the KeyDown route peeked and matched on.
+    private void CommitTypeAheadPrefix(string prefix, object scope) => _typeAhead.Commit(prefix, scope);
 
     private static bool TryGetTypeAheadKeyText(KeyEventArgs e, out string text)
         => TreeViewFocusHelper.TryGetTypeAheadKeyText(e, out text);
@@ -2598,7 +2599,7 @@ public partial class MainWindow : Window
             TryPeekTypeAheadPrefix(searchText, MessageList, out var peeked) &&
             TrySelectMessageListMatch(peeked))
         {
-            CommitTypeAheadPrefix(searchText, MessageList);
+            CommitTypeAheadPrefix(peeked, MessageList);
             e.Handled = true;
             return;
         }
@@ -3845,7 +3846,7 @@ public partial class MainWindow : Window
                 GetVisibleConversationItems(_vm.Conversations).ToList(),
                 peeked))
         {
-            CommitTypeAheadPrefix(searchText, ConversationTree);
+            CommitTypeAheadPrefix(peeked, ConversationTree);
             e.Handled = true;
             return;
         }
@@ -4452,7 +4453,7 @@ public partial class MainWindow : Window
                 GetVisibleSenderItems(_vm.SenderGroups).ToList(),
                 peeked))
         {
-            CommitTypeAheadPrefix(searchText, SenderGroupTree);
+            CommitTypeAheadPrefix(peeked, SenderGroupTree);
             e.Handled = true;
             return;
         }
@@ -4629,7 +4630,7 @@ public partial class MainWindow : Window
                 GetVisibleSenderItems(_vm.ToGroups).ToList(),
                 peeked))
         {
-            CommitTypeAheadPrefix(searchText, ToGroupTree);
+            CommitTypeAheadPrefix(peeked, ToGroupTree);
             e.Handled = true;
             return;
         }

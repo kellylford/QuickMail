@@ -187,6 +187,42 @@ public class TypeAheadLogicTests
         Assert.Equal("newy", prefix);
     }
 
+    // ── Accumulator: repeated-letter cycling ─────────────────────────────────
+    // The same single letter pressed again within the window keeps the one-character
+    // prefix instead of building "ss"; the matcher searches from after the current
+    // selection, so each press cycles to the next match — as WPF's TextSearch does.
+
+    [Fact]
+    public void RepeatedLetterWithinTheWindow_KeepsTheSingleCharacterPrefix()
+    {
+        var (tracker, _) = Make();
+        tracker.TryAppend("s", ScopeA, out _);
+
+        Assert.True(tracker.TryAppend("s", ScopeA, out var prefix));
+        Assert.Equal("s", prefix);
+    }
+
+    [Fact]
+    public void RepeatedLetter_MatchesCaseInsensitively()
+    {
+        var (tracker, _) = Make();
+        tracker.TryAppend("s", ScopeA, out _);
+
+        Assert.True(tracker.TryAppend("S", ScopeA, out var prefix));
+        Assert.Equal("s", prefix);
+    }
+
+    [Fact]
+    public void RepeatThenADifferentLetter_ResumesAccumulating()
+    {
+        var (tracker, _) = Make();
+        tracker.TryAppend("s", ScopeA, out _);
+        tracker.TryAppend("s", ScopeA, out _);
+
+        Assert.True(tracker.TryAppend("e", ScopeA, out var prefix));
+        Assert.Equal("se", prefix);
+    }
+
     // ── Accumulator: peek vs append ──────────────────────────────────────────
 
     [Fact]
@@ -203,17 +239,35 @@ public class TypeAheadLogicTests
     }
 
     [Fact]
-    public void AppendAfterPeek_CommitsWhatWasPeeked()
+    public void Commit_RecordsThePeekedPrefixExactly()
     {
-        // The KeyDown route peeks, and commits via TryAppend only on a match; the committed
-        // prefix must equal the peeked one so the next keystroke extends what the user saw.
+        // The KeyDown route peeks, matches, then commits the very prefix it matched on —
+        // recomputing could straddle the reset boundary and record a different one.
         var (tracker, _) = Make();
         tracker.TryAppend("b", ScopeA, out _);
 
         Assert.True(tracker.TryPeek("r", ScopeA, out var peeked));
-        Assert.True(tracker.TryAppend("r", ScopeA, out var committed));
-        Assert.Equal(peeked, committed);
-        Assert.Equal("br", committed);
+        Assert.Equal("br", peeked);
+        tracker.Commit(peeked, ScopeA);
+
+        Assert.True(tracker.TryAppend("o", ScopeA, out var prefix));
+        Assert.Equal("bro", prefix);
+    }
+
+    [Fact]
+    public void Commit_RefreshesTheWindow()
+    {
+        var (tracker, clock) = Make();
+        tracker.TryAppend("b", ScopeA, out _);
+
+        clock.Advance(TimeSpan.FromMilliseconds(900));
+        tracker.TryPeek("r", ScopeA, out var peeked);
+        tracker.Commit(peeked, ScopeA);
+
+        // 1.8s after the first keystroke but only 900ms after the commit: still one prefix.
+        clock.Advance(TimeSpan.FromMilliseconds(900));
+        Assert.True(tracker.TryAppend("o", ScopeA, out var prefix));
+        Assert.Equal("bro", prefix);
     }
 
     [Fact]
