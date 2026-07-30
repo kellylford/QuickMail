@@ -240,9 +240,14 @@ jobs:
           # classes come from the test binary itself, so this cannot rot the way a hardcoded floor
           # does. Informational — the shortfall is a pre-existing crash (issue #211, closed but
           # evidently not fixed) and failing on it would block releases on an unrelated bug.
-          $ranClasses = @($doc.TestRun.Results.UnitTestResult |
-            ForEach-Object { ($_.testName -split '\.')[0..(($_.testName -split '\.').Count - 2)] -join '.' } |
-            Sort-Object -Unique)
+          # Strip [Theory] arguments before splitting: a theory's testName is
+          # "Class.Method(arg: \"Some.File.xaml\")", and those argument values contain dots, so
+          # splitting the raw name and dropping the last segment yields garbage class names.
+          $ranClasses = @($doc.TestRun.Results.UnitTestResult | ForEach-Object {
+              $bare  = ($_.testName -split '\(')[0]
+              $parts = $bare -split '\.'
+              if ($parts.Count -ge 2) { $parts[0..($parts.Count - 2)] -join '.' }
+            } | Sort-Object -Unique)
           $listed = dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --no-build --list-tests 2>$null
           $allClasses = @($listed |
             Select-String -Pattern '^\s+(QuickMail\.Tests\.[A-Za-z0-9_]+)\.' |
