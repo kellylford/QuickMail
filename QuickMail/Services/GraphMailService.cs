@@ -224,8 +224,13 @@ public class GraphMailService : IMailService, IConnectionProbe
         AccountModel account, string folderName, int limit, DateTime? since, CancellationToken ct)
     {
         var top = limit > 0 ? Math.Min(limit, 999) : 500;
+        // internetMessageId is REQUIRED: it is the RFC 5322 Message-ID, the stable cross-copy identity
+        // aggregate views (All Mail etc.) use to collapse duplicates (MessageDeduplicator). Without it
+        // every Graph summary has an empty Message-ID, so dedup falls back to (folder, per-fetch id) —
+        // and any path that yields a slightly different folder/id representation shows the SAME message
+        // twice. Omitting it here is what caused duplicate rows in All Mail (#366).
         var path = $"/me/mailFolders/{folderName}/messages?$top={top}&$orderby=receivedDateTime desc" +
-                   "&$select=id,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag";
+                   "&$select=id,internetMessageId,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag";
         if (since.HasValue)
             path += $"&$filter=receivedDateTime ge {since.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}";
 
