@@ -379,7 +379,7 @@ collects labeled PNGs. Review the run folder with the checklist in
   windows: captures come out white, and focus/clipboard-dependent tests flake. The
   driver exits 4 and the script refuses to run when locked. (Also check
   `Get-Process LogonUI` before blaming code for white captures or rotating test flakes.)
-- Every WPF control type used in Views must have an implicit style in
+- Every WPF control type used in Views/ and Controls/ must have an implicit style in
   `Styles/ThemedControls.xaml` or a reviewed exemption — enforced by
   `ThemedControlCoverageTests`. WPF default chrome ignores theming; the unstyled ToolBar
   shipped washed-out for months and passed every sighted spot-check.
