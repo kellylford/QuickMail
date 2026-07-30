@@ -126,6 +126,39 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _googleSignIn;
 
+    // ── Diagnostics (debug-only, #175) ─────────────────────────────────────────────
+    // Deliberately NOT [ObservableProperty] over a field: the value lives on the
+    // session service, never in ConfigModel/config.ini — non-persistence is the
+    // safety story. The row is collapsed entirely outside /debug.
+
+    private readonly IScreenshotCaptureService? _screenshotCapture;
+
+    public bool IsDebugDiagnosticsVisible => LogService.DebugMode && _screenshotCapture != null;
+
+    /// <summary>
+    /// Meta-announcement about the diagnostic mode. The View forwards it to
+    /// AccessibilityHelper.Announce with force:true (like the custom-announcements
+    /// toggle, it must be heard regardless of announcement preferences).
+    /// </summary>
+    public event System.Action<string>? DiagnosticsAnnouncementRequested;
+
+    public bool ScreenshotCaptureEnabled
+    {
+        get => _screenshotCapture?.Enabled == true;
+        set
+        {
+            if (_screenshotCapture is null || _screenshotCapture.Enabled == value) return;
+            _screenshotCapture.Enabled = value;
+            OnPropertyChanged(nameof(ScreenshotCaptureEnabled));
+            DiagnosticsAnnouncementRequested?.Invoke(value
+                ? "Screenshot capture on. QuickMail is saving screen images to disk this session."
+                : "Screenshot capture off.");
+        }
+    }
+
+    [RelayCommand]
+    private void OpenScreenshotsFolder() => _screenshotCapture?.OpenFolder();
+
     /// <summary>Reads a [features] flag, treating anything unparseable or absent as the default.</summary>
     private static bool ReadFeature(ConfigModel cfg, FeatureFlag flag, bool fallback) =>
         cfg.Features.TryGetValue(flag.ToString(), out var raw) && bool.TryParse(raw, out var parsed)
@@ -253,9 +286,11 @@ public partial class SettingsViewModel : ObservableObject
         IConfigService configService,
         ICommandRegistry registry,
         IThemeService? themeService = null,
-        System.Collections.Generic.IEnumerable<string>? fontFamilies = null)
+        System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
+        IScreenshotCaptureService? screenshotCapture = null)
     {
         _configService = configService;
+        _screenshotCapture = screenshotCapture;
         var cfg = configService.Load();
 
         // Appearance: themes from the service; installed fonts from the View

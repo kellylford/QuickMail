@@ -20,7 +20,14 @@ public partial class SettingsDialog : Window
         _vm = vm;
         InitializeComponent();
         DataContext = vm;
+        vm.DiagnosticsAnnouncementRequested += OnDiagnosticsAnnouncement;
+        Closed += (_, _) => vm.DiagnosticsAnnouncementRequested -= OnDiagnosticsAnnouncement;
     }
+
+    // Meta-announcement about screenshot capture (#175): force bypasses the
+    // user's announcement preferences, matching the custom-announcements toggle.
+    private void OnDiagnosticsAnnouncement(string text) =>
+        AccessibilityHelper.Announce(this, text, interrupt: false, AnnouncementCategory.Status, force: true);
 
     private void Window_Loaded(object sender, RoutedEventArgs e)
     {

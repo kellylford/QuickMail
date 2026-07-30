@@ -358,6 +358,9 @@ public partial class MessageWindow : Window
 
         if (version != _renderVersion) return;
 
+        // Debug screenshot capture (#175): rendered body in frame (no-op unless enabled).
+        (Application.Current as App)?.ScreenshotCapture?.Capture(this, "MessageWindow-Rendered");
+
         await FocusMessageBodyAsync(version, detail.Subject);
     }
 

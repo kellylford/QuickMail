@@ -11,6 +11,14 @@ namespace QuickMail;
 [SuppressMessage("Design", "CA1001", Justification = "Disposable fields are disposed in OnExit; WPF Application does not support IDisposable.")]
 public partial class App : Application
 {
+    /// <summary>
+    /// Debug screenshot capture (#175). Exposed so view code-behind (Settings
+    /// composition, reading-pane render-complete) can reach the session service
+    /// without threading it through every constructor; NullScreenshotCaptureService
+    /// outside /debug.
+    /// </summary>
+    public IScreenshotCaptureService? ScreenshotCapture { get; private set; }
+
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
@@ -181,6 +189,18 @@ public partial class App : Application
         if (onlineMode)
             LogService.Log("Online mode enabled — SQLite cache bypassed.");
 
+        // Debug screenshot capture (#175): the real engine exists only under /debug;
+        // otherwise a null object keeps the feature structurally unreachable. One
+        // class handler covers all Window subclasses — no per-window edits.
+        ScreenshotCapture = LogService.DebugMode
+            ? new ScreenshotCaptureService(profile)
+            : new NullScreenshotCaptureService();
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+            new RoutedEventHandler((s, _) =>
+            {
+                if (s is Window w) ScreenshotCapture?.OnWindowLoaded(w);
+            }));
+
         // Install global exception handlers BEFORE anything else so an exception
         // in startup wiring or any background task is captured in the log instead
         // of disappearing with the process. (review §1.2)
@@ -328,7 +348,7 @@ public partial class App : Application
 
             var mainVm = new MainViewModel(
                 mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
+                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService, screenshotCapture: ScreenshotCapture,
                 themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
                 graphCalendarSyncService: graphCalendarSync, truthProbe: _truthProbe);
             mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
@@ -381,6 +401,7 @@ public partial class App : Application
         _notificationService?.Dispose(); // unhooks the toast-activation static event
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
         _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
+        ScreenshotCapture?.Dispose(); // flushes any in-flight PNG save (best effort, bounded)
         base.OnExit(e);
     }
 

@@ -442,6 +442,24 @@
                                            FontFamily="{DynamicResource Theme.FontFamilyMono}"/>
                             </StackPanel>
                         </GroupBox>
+
+                        <!-- Diagnostics (debug builds only, #175). The toggle is session-only
+                             and never written to config.ini. -->
+                        <GroupBox Header="_Diagnostics (debug)" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Diagnostics settings"
+                                  Visibility="{Binding IsDebugDiagnosticsVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel>
+                                <CheckBox Content="Capture _screenshots of new windows"
+                                          IsChecked="{Binding ScreenshotCaptureEnabled, Mode=TwoWay}"
+                                          AutomationProperties.Name="Capture screenshots of new windows"/>
+                                <TextBlock Text="Saves a picture of each window you open, for visual review. This session only — it turns itself off when QuickMail closes, and every window's title bar warns while it is on. Images stay on this computer."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
+                                <Button Content="_Open screenshots folder"
+                                        Command="{Binding OpenScreenshotsFolderCommand}"
+                                        HorizontalAlignment="Left"
+                                        AutomationProperties.Name="Open screenshots folder"/>
+                            </StackPanel>
+                        </GroupBox>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

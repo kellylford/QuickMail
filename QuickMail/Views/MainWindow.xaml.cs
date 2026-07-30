@@ -3072,6 +3072,11 @@ public partial class MainWindow : Window
         if (renderVersion != _messageBodyRenderVersion)
             return;
 
+        // Debug screenshot capture (#175): the rendered reading pane is the surface
+        // PrintWindow exists for — capture after navigation completes so the HTML
+        // body is in the frame. No-op unless /debug and the session toggle are on.
+        (Application.Current as App)?.ScreenshotCapture?.Capture(this, "ReadingPane");
+
         await FocusMessageBodyAsync(renderVersion, detail.Subject);
     }
 
@@ -5579,7 +5584,8 @@ public partial class MainWindow : Window
             .Select(f => f.Source)
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
+        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
+            (Application.Current as App)?.ScreenshotCapture);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
