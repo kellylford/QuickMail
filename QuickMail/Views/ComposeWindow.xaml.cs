@@ -406,6 +406,21 @@ public partial class ComposeWindow : Window
         }, DispatcherPriority.Background);
     }
 
+    /// <summary>
+    /// Swallows Enter on the From combo when its dropdown is closed. Arrowing through a
+    /// closed combo already changes the selected account, so Enter has nothing left to
+    /// do — but WPF lets an unhandled Enter travel on to any default button, which used
+    /// to send the message (issue #201). The Send button is no longer IsDefault; this
+    /// keeps the reported gesture inert even if a default button is reintroduced.
+    /// Enter with the dropdown open is left alone so the combo can commit the highlighted
+    /// item and close normally.
+    /// </summary>
+    private void FromCombo_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Return && Keyboard.Modifiers == ModifierKeys.None && !FromCombo.IsDropDownOpen)
+            e.Handled = true;
+    }
+
     internal void SuggestionList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter || e.Key == Key.Tab)
