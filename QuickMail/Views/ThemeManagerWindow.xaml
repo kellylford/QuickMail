@@ -59,9 +59,15 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <!-- Action buttons — F6 stop 2 -->
+        <!-- Action buttons — F6 stop 2. The ScrollViewer keeps every button
+             reachable when large text scales outgrow the fixed window height
+             (at 150% the column clipped the Import button — sweep finding,
+             #421); keyboard focus scrolls the focused button into view. -->
+        <ScrollViewer Grid.Row="0" Grid.Column="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      Focusable="False">
         <StackPanel x:Name="ButtonColumn"
-                    Grid.Row="0" Grid.Column="1"
                     Margin="10,0,0,0"
                     KeyboardNavigation.TabNavigation="Continue">
             <Button Content="_Apply"
@@ -100,6 +106,7 @@
                     MinWidth="140" Margin="0,12,0,0"
                     AutomationProperties.Name="Open themes folder"/>
         </StackPanel>
+        </ScrollViewer>
 
         <!-- Theme description — a read-only account of the selected theme's colors
              and where they are used, for users who cannot see the swatches.
