@@ -3073,9 +3073,13 @@ public partial class MainWindow : Window
             return;
 
         // Debug screenshot capture (#175): the rendered reading pane is the surface
-        // PrintWindow exists for — capture after navigation completes so the HTML
-        // body is in the frame. No-op unless /debug and the session toggle are on.
-        (Application.Current as App)?.ScreenshotCapture?.Capture(this, "ReadingPane");
+        // PrintWindow exists for. Deferred to ApplicationIdle because WebView2
+        // presents its frame after NavigationCompleted — a synchronous capture can
+        // still show the previous document. Skipped on timeout: the page may never
+        // have rendered. No-op unless /debug and the session toggle are on.
+        if (completed)
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+                (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"ReadingPane-{detail.Subject}"));
 
         await FocusMessageBodyAsync(renderVersion, detail.Subject);
     }

@@ -123,7 +123,7 @@ public class ScreenshotCaptureServiceTests : IDisposable
     {
         using var svc = NewService();
         var grabs = 0;
-        svc.PixelGrabber = _ => { grabs++; return null; };
+        svc.PixelGrabber = _ => { grabs++; return TinyFrame(); };   // successful grabs consume the cap
         svc.Enabled = true;
         var window = new Window();
 
@@ -131,6 +131,24 @@ public class ScreenshotCaptureServiceTests : IDisposable
             svc.Capture(window, $"Window{i}");   // distinct labels bypass the debounce
 
         Assert.Equal(500, grabs);
+    }
+
+    [StaFact]
+    public void Capture_FailedGrabs_DoNotConsumeTheCapOrNumbering()
+    {
+        var svc = NewService();
+        var calls = 0;
+        // First grab fails, second succeeds — the file must still be 0001.
+        svc.PixelGrabber = _ => ++calls == 1 ? null : TinyFrame();
+        svc.Enabled = true;
+        var window = new Window();
+
+        svc.Capture(window, "First");
+        svc.Capture(window, "Second");
+        svc.Dispose();
+
+        var file = Assert.Single(Directory.GetFiles(svc.SessionFolder, "*.png"));
+        Assert.Equal("0001-Second.png", Path.GetFileName(file));
     }
 
     [StaFact]
@@ -163,32 +181,72 @@ public class ScreenshotCaptureServiceTests : IDisposable
     [StaFact]
     public void TitleSuffix_AppliedAndRemoved_OnStaticTitles()
     {
+        using var svc = NewService();
         var window = new Window { Title = "Address Book" };
 
-        ScreenshotCaptureService.ApplyTitleSuffix(window, enabled: true);
+        svc.ApplyTitleSuffix(window, enabled: true);
         Assert.Equal("Address Book" + IScreenshotCaptureService.TitleSuffix, window.Title);
 
         // Idempotent — applying twice must not double the suffix.
-        ScreenshotCaptureService.ApplyTitleSuffix(window, enabled: true);
+        svc.ApplyTitleSuffix(window, enabled: true);
         Assert.Equal("Address Book" + IScreenshotCaptureService.TitleSuffix, window.Title);
 
-        ScreenshotCaptureService.ApplyTitleSuffix(window, enabled: false);
+        svc.ApplyTitleSuffix(window, enabled: false);
         Assert.Equal("Address Book", window.Title);
     }
 
     [StaFact]
-    public void TitleSuffix_NeverTouchesDataBoundTitles()
+    public void TitleSuffix_OverlaysBoundTitles_WithoutDetachingTheBinding()
     {
-        // MainWindow's Title binds to MainViewModel.WindowTitle, which appends
-        // the suffix itself; a direct assignment would detach that binding.
-        var window = new Window { DataContext = new { Name = "Inbox - QuickMail" } };
+        // Compose, MessageWindow, and friends bind Title to a VM property. The
+        // suffix must appear there too (the safety warning covers real mail
+        // content), and the binding must survive so later VM updates land.
+        using var svc = NewService();
+        svc.Enabled = true;
+        var window = new Window { DataContext = new { Name = "Re: hello - QuickMail" } };
         BindingOperations.SetBinding(window, Window.TitleProperty, new Binding("Name"));
-        Assert.Equal("Inbox - QuickMail", window.Title);
 
-        ScreenshotCaptureService.ApplyTitleSuffix(window, enabled: true);
-
-        Assert.Equal("Inbox - QuickMail", window.Title);
+        svc.ApplyTitleSuffix(window, enabled: true);
+        Assert.Equal("Re: hello - QuickMail" + IScreenshotCaptureService.TitleSuffix, window.Title);
         Assert.NotNull(BindingOperations.GetBindingExpression(window, Window.TitleProperty));
+
+        // A binding push (VM title recompute) must get the suffix re-applied.
+        window.DataContext = new { Name = "Fwd: other - QuickMail" };
+        Assert.Equal("Fwd: other - QuickMail" + IScreenshotCaptureService.TitleSuffix, window.Title);
+
+        svc.ApplyTitleSuffix(window, enabled: false);
+        Assert.Equal("Fwd: other - QuickMail", window.Title);
+        Assert.NotNull(BindingOperations.GetBindingExpression(window, Window.TitleProperty));
+    }
+
+    [StaFact]
+    public void OnWindowLoaded_AppliesSuffix_AndCapturesAtIdle()
+    {
+        using var svc = NewService();
+        var grabs = 0;
+        svc.PixelGrabber = _ => { grabs++; return null; };
+        svc.Enabled = true;
+        var window = new Window { Title = "Rules Manager" };
+
+        svc.OnWindowLoaded(window);
+
+        Assert.EndsWith(IScreenshotCaptureService.TitleSuffix, window.Title, StringComparison.Ordinal);
+        Assert.Equal(0, grabs);      // capture is deferred, not synchronous
+
+        DrainDispatcherToIdle();
+        Assert.Equal(1, grabs);
+    }
+
+    /// <summary>Runs the STA dispatcher queue down past ApplicationIdle priority.</summary>
+    private static void DrainDispatcherToIdle()
+    {
+        // SystemIdle is the lowest priority, so this sentinel runs only after
+        // every ApplicationIdle callback already has.
+        var frame = new System.Windows.Threading.DispatcherFrame();
+        System.Windows.Threading.Dispatcher.CurrentDispatcher.BeginInvoke(
+            System.Windows.Threading.DispatcherPriority.SystemIdle,
+            new Action(() => frame.Continue = false));
+        System.Windows.Threading.Dispatcher.PushFrame(frame);
     }
 
     // ── MainViewModel title integration ───────────────────────────────────────

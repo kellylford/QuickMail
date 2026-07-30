@@ -149,10 +149,16 @@ public partial class SettingsViewModel : ObservableObject
         {
             if (_screenshotCapture is null || _screenshotCapture.Enabled == value) return;
             _screenshotCapture.Enabled = value;
+            // Announce what actually happened, not what was requested — the
+            // service refuses to enable if its folder cannot be created.
+            var actual = _screenshotCapture.Enabled;
             OnPropertyChanged(nameof(ScreenshotCaptureEnabled));
-            DiagnosticsAnnouncementRequested?.Invoke(value
-                ? "Screenshot capture on. QuickMail is saving screen images to disk this session."
-                : "Screenshot capture off.");
+            DiagnosticsAnnouncementRequested?.Invoke(
+                actual != value
+                    ? "Screenshot capture could not be turned on. Check the log for details."
+                    : actual
+                        ? "Screenshot capture on. QuickMail is saving screen images to disk this session."
+                        : "Screenshot capture off.");
         }
     }
 

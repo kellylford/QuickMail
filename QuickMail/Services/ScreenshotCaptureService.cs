@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows;
@@ -100,24 +101,13 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
     {
         if (!_enabled || _disposed) return;
 
-        int frameNumber;
         lock (_gate)
         {
             var now = Environment.TickCount64;
             if (_lastCaptureByLabel.TryGetValue(label, out var last) && now - last < DebounceMs)
                 return;
             _lastCaptureByLabel[label] = now;
-
-            if (_counter >= MaxImagesPerSession)
-            {
-                if (!_capReported)
-                {
-                    LogService.Debug($"Screenshot session cap ({MaxImagesPerSession}) reached; capture stopped for this session.");
-                    _capReported = true;
-                }
-                return;
-            }
-            frameNumber = ++_counter;
+            if (IsAtSessionCap()) return;
         }
 
         BitmapSource? frame = null;
@@ -132,6 +122,15 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         if (frame is null) return;
         frame.Freeze();
 
+        // The counter is consumed only by a successful grab, so failed grabs
+        // neither burn the session cap nor leave gaps in the numbering.
+        int frameNumber;
+        lock (_gate)
+        {
+            if (IsAtSessionCap()) return;
+            frameNumber = ++_counter;
+        }
+
         var path = Path.Combine(SessionFolder, $"{frameNumber:D4}-{Slug(label)}.png");
         var save = Task.Run(() => SavePng(frame, path));
         lock (_gate)
@@ -139,6 +138,18 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
             _pendingSaves.RemoveAll(t => t.IsCompleted);
             _pendingSaves.Add(save);
         }
+    }
+
+    /// <summary>Callers must hold <see cref="_gate"/>.</summary>
+    private bool IsAtSessionCap()
+    {
+        if (_counter < MaxImagesPerSession) return false;
+        if (!_capReported)
+        {
+            LogService.Debug($"Screenshot session cap ({MaxImagesPerSession}) reached; capture stopped for this session.");
+            _capReported = true;
+        }
+        return true;
     }
 
     public void OpenFolder()
@@ -159,6 +170,8 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         if (_disposed) return;
         _disposed = true;
         _enabled = false;
+        foreach (var window in _titleKeepers.Keys.ToList())
+            DetachTitleKeeper(window, refreshFromBinding: false);
         Task[] pending;
         lock (_gate) pending = _pendingSaves.ToArray();
         try
@@ -175,25 +188,72 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
 
     // ── Title suffix ──────────────────────────────────────────────────────────
 
-    private static void UpdateAllTitleSuffixes(bool enabled)
+    private static readonly System.ComponentModel.DependencyPropertyDescriptor TitleDescriptor =
+        System.ComponentModel.DependencyPropertyDescriptor.FromProperty(Window.TitleProperty, typeof(Window));
+
+    private readonly Dictionary<Window, EventHandler> _titleKeepers = new();
+
+    private void UpdateAllTitleSuffixes(bool enabled)
     {
         if (Application.Current is null) return;
         foreach (Window w in Application.Current.Windows)
             ApplyTitleSuffix(w, enabled);
     }
 
-    internal static void ApplyTitleSuffix(Window window, bool enabled)
+    internal void ApplyTitleSuffix(Window window, bool enabled)
     {
-        // A data-bound Title (MainWindow → MainViewModel.WindowTitle) incorporates
-        // the suffix in its own getter; assigning here would detach the binding.
-        if (BindingOperations.GetBindingExpression(window, Window.TitleProperty) != null)
+        if (BindingOperations.GetBindingExpression(window, Window.TitleProperty) is null)
+        {
+            // Static title: direct, idempotent assignment.
+            var title = window.Title ?? string.Empty;
+            var has = title.EndsWith(IScreenshotCaptureService.TitleSuffix, StringComparison.Ordinal);
+            if (enabled && !has)
+                window.Title = title + IScreenshotCaptureService.TitleSuffix;
+            else if (!enabled && has)
+                window.Title = title[..^IScreenshotCaptureService.TitleSuffix.Length];
             return;
+        }
+
+        // Data-bound title (MainWindow, Compose, MessageWindow, …): assignment
+        // would detach the binding, so overlay via SetCurrentValue and re-apply
+        // whenever the binding pushes a fresh base title.
+        if (enabled) AttachTitleKeeper(window);
+        else DetachTitleKeeper(window, refreshFromBinding: true);
+    }
+
+    private void AttachTitleKeeper(Window window)
+    {
+        if (_titleKeepers.ContainsKey(window)) return;
+        EventHandler onTitleChanged = (_, _) => EnsureBoundTitleSuffix(window);
+        TitleDescriptor.AddValueChanged(window, onTitleChanged);
+        _titleKeepers[window] = onTitleChanged;
+        window.Closed += OnKeeperWindowClosed;   // paired -= in DetachTitleKeeper
+        EnsureBoundTitleSuffix(window);
+    }
+
+    private void EnsureBoundTitleSuffix(Window window)
+    {
+        if (!_enabled) return;
         var title = window.Title ?? string.Empty;
-        var has = title.EndsWith(IScreenshotCaptureService.TitleSuffix, StringComparison.Ordinal);
-        if (enabled && !has)
-            window.Title = title + IScreenshotCaptureService.TitleSuffix;
-        else if (!enabled && has)
-            window.Title = title[..^IScreenshotCaptureService.TitleSuffix.Length];
+        // Re-entrancy guard: our own SetCurrentValue fires the change handler once
+        // more with the suffix already present.
+        if (title.EndsWith(IScreenshotCaptureService.TitleSuffix, StringComparison.Ordinal)) return;
+        window.SetCurrentValue(Window.TitleProperty, title + IScreenshotCaptureService.TitleSuffix);
+    }
+
+    private void DetachTitleKeeper(Window window, bool refreshFromBinding)
+    {
+        if (!_titleKeepers.Remove(window, out var onTitleChanged)) return;
+        TitleDescriptor.RemoveValueChanged(window, onTitleChanged);
+        window.Closed -= OnKeeperWindowClosed;
+        if (refreshFromBinding)
+            BindingOperations.GetBindingExpression(window, Window.TitleProperty)?.UpdateTarget();
+    }
+
+    private void OnKeeperWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is Window window)
+            DetachTitleKeeper(window, refreshFromBinding: false);
     }
 
     // ── Filename slug ─────────────────────────────────────────────────────────
@@ -229,9 +289,9 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         var previous = SelectObject(memDc, hBitmap);
         try
         {
-            PrintWindow(hwnd, memDc, PW_RENDERFULLCONTENT);
+            var printed = PrintWindow(hwnd, memDc, PW_RENDERFULLCONTENT);
             SelectObject(memDc, previous);          // deselect before reading pixels
-            var source = FromHBitmap(hBitmap);
+            var source = printed ? FromHBitmap(hBitmap) : null;
 
             if (source is null || IsSingleColor(source))
             {

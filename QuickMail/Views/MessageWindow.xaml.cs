@@ -358,8 +358,11 @@ public partial class MessageWindow : Window
 
         if (version != _renderVersion) return;
 
-        // Debug screenshot capture (#175): rendered body in frame (no-op unless enabled).
-        (Application.Current as App)?.ScreenshotCapture?.Capture(this, "MessageWindow-Rendered");
+        // Debug screenshot capture (#175): deferred to ApplicationIdle so WebView2
+        // has presented the frame; skipped on timeout (page may never have rendered).
+        if (completed)
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+                (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"MessageWindow-{detail.Subject}"));
 
         await FocusMessageBodyAsync(version, detail.Subject);
     }
