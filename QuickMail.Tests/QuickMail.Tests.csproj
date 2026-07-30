@@ -35,7 +35,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\QuickMail\QuickMail.csproj" />
-    <ProjectReference Include="..\tools\QuickMail.Fixtures\QuickMail.Fixtures.csproj" />
+    <ProjectReference Include="..\Tools\QuickMail.Fixtures\QuickMail.Fixtures.csproj" />
   </ItemGroup>
 
   <ItemGroup>

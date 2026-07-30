@@ -84,7 +84,11 @@ internal sealed class UiProbeDriver
 
     private async Task<bool> RunSurfaceAsync(string surface, int index)
     {
-        var tag = _options.CaptureTag ?? $"{index:D2}-{surface}";
+        // With multiple surfaces, a bare --capture-tag would make every shot
+        // overwrite the last; suffix the index so each keeps a distinct file.
+        var tag = _options.CaptureTag is { } custom
+            ? _options.Surfaces.Count > 1 ? $"{custom}-{index:D2}" : custom
+            : $"{index:D2}-{surface}";
         var path = Path.Combine(_options.CaptureDir, tag + ".png");
         LogService.Debug($"ui-probe: {surface} -> {path}");
 
@@ -212,16 +216,23 @@ internal sealed class UiProbeDriver
             return false;
         }
 
-        await IdleAsync();
-        if (prepare != null)
+        try
         {
-            prepare(child);
+            await IdleAsync();
+            if (prepare != null)
+            {
+                prepare(child);
+                await IdleAsync();
+            }
+            return await CaptureSettledAsync(child, path);
+        }
+        finally
+        {
+            // Always close: a leaked modal child would leave its nested message
+            // loop running while RunAsync tries to shut the app down.
+            try { child.Close(); } catch (Exception ex) { LogService.Debug($"ui-probe: child close failed: {ex.Message}"); }
             await IdleAsync();
         }
-        var ok = await CaptureSettledAsync(child, path);
-        child.Close();
-        await IdleAsync();
-        return ok;
     }
 
     /// <summary>Selects the TabItem whose header contains the fragment (e.g. Appearance).</summary>

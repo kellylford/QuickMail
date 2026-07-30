@@ -11,7 +11,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuickMail.IntegrationTests"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuickMail.Fixtures", "tools\QuickMail.Fixtures\QuickMail.Fixtures.csproj", "{325F9F3C-7A15-4DE0-A1C6-C83A35B9D125}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QuickMail.Fixtures", "Tools\QuickMail.Fixtures\QuickMail.Fixtures.csproj", "{325F9F3C-7A15-4DE0-A1C6-C83A35B9D125}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
