@@ -250,6 +250,31 @@ public class SyncServiceRuleApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task GraphInbox_ByKind_RunsRules_EvenWithOpaqueFolderId()
+    {
+        // #336 gate is (Kind == Inbox || FullName == "INBOX"). For Graph the FullName is an opaque
+        // folder id, never the literal "INBOX", so Kind is the ONLY thing keeping client rules alive
+        // on a Graph inbox. This pins that: a future simplification to a FullName-only check would
+        // silently stop running rules on every Graph inbox, and this test would go red.
+        var graphInbox = new MailFolderModel
+        {
+            FullName = "AAMkADRmODc0NTk2LWI5ZGIt", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox,
+        };
+        var msg = new MailMessageSummary
+        {
+            MessageId = "42", AccountId = _accountId, FolderName = "AAMkADRmODc0NTk2LWI5ZGIt",
+            From = "Amy <amy@x.com>", To = "me@example.com", Subject = "hello", IsRead = true,
+        };
+        var rules = new CapturingRuleService();
+        var sync = Build(new FetchStubMailService([msg]), rules);
+
+        await sync.SyncOneFolderAsync(Account(), graphInbox, CancellationToken.None);
+
+        var batch = Assert.Single(rules.Calls);                     // engine WAS invoked (via Kind)
+        Assert.Equal("42", Assert.Single(batch).MessageId);
+    }
+
+    [Fact]
     public async Task LiveIdleSync_RuleRemovedMessage_StrippedFromBatch_DeletedFromStore_AndRaisesMessagesRemoved()
     {
         // A move/delete rule returns the message in RemovedMessages. The chokepoint must drop it
