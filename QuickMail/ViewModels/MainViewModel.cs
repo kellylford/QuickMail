@@ -2651,22 +2651,40 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// #423: stamps each row's human-readable source folder so the accessible name can announce it in
-    /// aggregate/virtual views. <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph
+    /// #423: stamps each row's source location so the accessible name can announce it in aggregate/
+    /// virtual views, as "&lt;account&gt; -- &lt;folder&gt;" (e.g. "icanbrew -- Inbox"). Account-qualified
+    /// so a multi-account user can tell one account's Inbox row from another's — folder-only announced
+    /// both as just "Inbox". <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph
     /// folder id, or an IMAP path), so we map it through the cached folder list to the display name.
-    /// Falls back to empty (announce nothing) rather than the raw id when the folder isn't in the cache
+    /// Falls back to empty (announce nothing) rather than a raw id when the folder isn't in the cache
     /// yet — e.g. the very first cached load before folders are known. Only called for virtual views;
     /// single-folder views leave <see cref="MailMessageSummary.FolderDisplayName"/> empty (folder implied).
     /// </summary>
     private void ApplyFolderDisplayNames(IReadOnlyList<MailMessageSummary> list)
     {
+        if (list.Count == 0) return;
+
+        // Precompute lookups once so this is O(messages), not O(messages × folders) (Kelly's review):
+        // account id → label, and (account, folder-name lowercased) → folder display name.
+        var accountLabels = new Dictionary<Guid, string>();
+        foreach (var a in Accounts) accountLabels[a.Id] = a.AccountLabel;
+        var folderNames = new Dictionary<(Guid, string), string>();
+        foreach (var kvp in _cachedFolders)
+            foreach (var f in kvp.Value)
+                folderNames[(kvp.Key, f.FullName.ToLowerInvariant())] = f.DisplayName;
+
         foreach (var m in list)
         {
-            string? name = null;
-            if (_cachedFolders.TryGetValue(m.AccountId, out var folders))
-                name = folders.FirstOrDefault(f =>
-                    string.Equals(f.FullName, m.FolderName, StringComparison.OrdinalIgnoreCase))?.DisplayName;
-            m.FolderDisplayName = name ?? string.Empty;
+            // Folder must be known — never announce a raw backend id.
+            if (!folderNames.TryGetValue((m.AccountId, m.FolderName.ToLowerInvariant()), out var folder)
+                || string.IsNullOrEmpty(folder))
+            {
+                m.FolderDisplayName = string.Empty;
+                continue;
+            }
+            m.FolderDisplayName = accountLabels.TryGetValue(m.AccountId, out var label) && !string.IsNullOrEmpty(label)
+                ? $"{label} -- {folder}"
+                : folder;
         }
     }
 
