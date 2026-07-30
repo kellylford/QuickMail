@@ -329,8 +329,10 @@ public partial class FolderPickerWindow : Window
     private void FolderPicker_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // With Alt held, the character arrives as a System key; the real key is in SystemKey.
+        // Exactly Alt, not "Alt among others": AltGr reports as Ctrl+Alt, and on layouts where
+        // AltGr+O/C/N produce letters those keystrokes must reach type-ahead, not the buttons.
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if ((Keyboard.Modifiers & ModifierKeys.Alt) != ModifierKeys.Alt)
+        if (Keyboard.Modifiers != ModifierKeys.Alt)
             return;
 
         switch (key)
