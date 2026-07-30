@@ -2385,6 +2385,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             toInsert.Add(msg);
         }
 
+        // #423: live arrivals into an aggregate view must announce their source folder too.
+        if (IsVirtualFolder(selected))
+            ApplyFolderDisplayNames(toInsert);
+
         // Batch all inserts into a single CollectionChanged(Reset) notification.
         // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
         // causes the ListView to emit a UIA StructureChanged(ChildAdded) event per insert.
@@ -2619,7 +2623,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
         // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
         if (IsVirtualFolder(SelectedFolder))
+        {
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
+            ApplyFolderDisplayNames(list);
+        }
         _rawMessages = list;
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
@@ -2641,6 +2648,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (string.Equals(f.FullName, msg.FolderName, StringComparison.OrdinalIgnoreCase))
                     return f.Kind;
         return SpecialFolderKind.None;
+    }
+
+    /// <summary>
+    /// #423: stamps each row's human-readable source folder so the accessible name can announce it in
+    /// aggregate/virtual views. <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph
+    /// folder id, or an IMAP path), so we map it through the cached folder list to the display name.
+    /// Falls back to empty (announce nothing) rather than the raw id when the folder isn't in the cache
+    /// yet — e.g. the very first cached load before folders are known. Only called for virtual views;
+    /// single-folder views leave <see cref="MailMessageSummary.FolderDisplayName"/> empty (folder implied).
+    /// </summary>
+    private void ApplyFolderDisplayNames(IReadOnlyList<MailMessageSummary> list)
+    {
+        foreach (var m in list)
+        {
+            string? name = null;
+            if (_cachedFolders.TryGetValue(m.AccountId, out var folders))
+                name = folders.FirstOrDefault(f =>
+                    string.Equals(f.FullName, m.FolderName, StringComparison.OrdinalIgnoreCase))?.DisplayName;
+            m.FolderDisplayName = name ?? string.Empty;
+        }
     }
 
     // Re-applies the status filter and search text to _rawMessages.
@@ -4001,6 +4028,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var newMessages = accountResults.SelectMany(r => r).ToList();
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                 return;
+
+            // #423: All Mail's incremental adds go through InsertMessageSorted (not SetMessages), so
+            // stamp the source folder here too — otherwise newly-fetched rows announce no folder.
+            ApplyFolderDisplayNames(newMessages);
 
             if (needsRecipientRepair)
             {
