@@ -270,7 +270,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         if (!IsMeetingMessage(m.ODataType)) return;
         try
         {
-            var mime = await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", ct);
+            var mime = await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", ImmutableIdHeader, ct);
             using var stream = new MemoryStream(mime);
             var message = await MimeMessage.LoadAsync(stream, ct);
             var calendar = message.BodyParts.OfType<TextPart>()
@@ -300,13 +300,13 @@ public class GraphMailService : IMailService, IConnectionProbe
         => GetMessageDetailAsync(accountId, folderName, messageId, ct);
 
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
-        => _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}", new { isRead = true }, ct);
+        => _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}", new { isRead = true }, ImmutableIdHeader, ct);
 
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
     {
         var status = flagged ? "flagged" : "notFlagged";
         return _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}",
-            new { flag = new { flagStatus = status } }, ct);
+            new { flag = new { flagStatus = status } }, ImmutableIdHeader, ct);
     }
 
     // ── Status / reconciliation ──────────────────────────────────────────────────
@@ -350,7 +350,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.PatchAsync(account, $"/me/messages/{id}", new { isRead = true }, ct);
+            await _client.PatchAsync(account, $"/me/messages/{id}", new { isRead = true }, ImmutableIdHeader, ct);
     }
 
     public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
@@ -363,7 +363,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.DeleteAsync(account, $"/me/messages/{id}", ct);
+            await _client.DeleteAsync(account, $"/me/messages/{id}", ImmutableIdHeader, ct);
     }
 
     public async Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
@@ -373,7 +373,7 @@ public class GraphMailService : IMailService, IConnectionProbe
             account, $"/me/mailFolders/{DeletedItemsFolderId}/messages?$select=id&$top=999",
             scopes: null, silentOnly: false, ImmutableIdHeader, ct);
         foreach (var m in msgs)
-            await _client.DeleteAsync(account, $"/me/messages/{m.Id}", ct);
+            await _client.DeleteAsync(account, $"/me/messages/{m.Id}", ImmutableIdHeader, ct);
         return msgs.Count;
     }
 
@@ -391,7 +391,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         var newId = created?.Id ?? string.Empty;
 
         if (!string.IsNullOrEmpty(replaceMessageId) && !string.IsNullOrEmpty(newId))
-            await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", ct);
+            await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", ImmutableIdHeader, ct);
 
         return newId;
     }
@@ -402,20 +402,20 @@ public class GraphMailService : IMailService, IConnectionProbe
 
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
         // partSpecifier carries the Graph attachment id (set by MapToDetail).
-        => _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/attachments/{partSpecifier}/$value", ct);
+        => _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/attachments/{partSpecifier}/$value", ImmutableIdHeader, ct);
 
     public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.PostAsync(account, $"/me/messages/{id}/copy", new { destinationId = destinationFolder }, ct);
+            await _client.PostAsync(account, $"/me/messages/{id}/copy", new { destinationId = destinationFolder }, ImmutableIdHeader, ct);
     }
 
     public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.PostAsync(account, $"/me/messages/{id}/move", new { destinationId = destinationFolder }, ct);
+            await _client.PostAsync(account, $"/me/messages/{id}/move", new { destinationId = destinationFolder }, ImmutableIdHeader, ct);
     }
 
     public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
