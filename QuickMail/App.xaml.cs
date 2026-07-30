@@ -264,6 +264,16 @@ public partial class App : Application
             // BackendKind rather than defaulting to IMAP.
             var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend }, BackendFor);
 
+            // ui-probe (#180 Decision D): network hard-off at the DI root. EVERY
+            // consumer of the mail/send/oauth services gets the offline no-op —
+            // including RuleService (whose rules-apply path runs when the rules
+            // window closes) and SyncService — so the probe is structurally
+            // incapable of connecting, syncing, or sending, not merely unlikely to.
+            var probeMode = UiProbe != null;
+            IMailService effectiveMail = probeMode ? new ProbeOfflineMailService() : mailRouter;
+            ISendMailService effectiveSmtp = probeMode ? new ProbeOfflineSendMailService() : smtpService;
+            IOAuthService effectiveOAuth = probeMode ? new ProbeOfflineOAuthService() : oauthService;
+
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
                 localStore.Initialize();
@@ -298,11 +308,11 @@ public partial class App : Application
             _templateService = new TemplateService(profile);
             var templateService = _templateService;
             // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).
-            var ruleService = new RuleService(mailRouter, localStore, profile.ProfileDir, accountService);
+            var ruleService = new RuleService(effectiveMail, localStore, profile.ProfileDir, accountService);
             // Server-side (Exchange/Graph) Inbox rules — read/manage a Graph account's messageRules.
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
-            var syncService = new SyncService(mailRouter, localStore, configService, ruleService);
+            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService);
 
             // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
             // gets its own People API client (owns an HttpClient → disposed in OnExit).
@@ -343,7 +353,7 @@ public partial class App : Application
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
 
             var viewService = new ViewService(profile);
-            var flagService = new FlagService(profile, configService, localStore, mailRouter);
+            var flagService = new FlagService(profile, configService, localStore, effectiveMail);
             var customDictionary = new CustomDictionaryService(profile);
 
             // Calendar service: harvests events from the local message cache.
@@ -373,17 +383,9 @@ public partial class App : Application
             // Through the ROUTER, not the IMAP backend: each account must be probed by the backend
             // that actually owns it. Probing a Graph account with the IMAP backend is what produced
             // the first live false alarm.
-            _truthProbe = new ConnectionTruthProbe(
+            _truthProbe = probeMode ? null : new ConnectionTruthProbe(
                 mailRouter,
                 id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
-
-            // ui-probe (#180 Decision D): network hard-off at the DI root. The VM and
-            // window get offline no-op backends and null background services, so the
-            // probe is structurally incapable of connecting, syncing, or sending.
-            var probeMode = UiProbe != null;
-            IMailService effectiveMail = probeMode ? new ProbeOfflineMailService() : mailRouter;
-            ISendMailService effectiveSmtp = probeMode ? new ProbeOfflineSendMailService() : smtpService;
-            IOAuthService effectiveOAuth = probeMode ? new ProbeOfflineOAuthService() : oauthService;
 
             var mainVm = new MainViewModel(
                 effectiveMail, accountService, credentialService, localStore, effectiveOAuth, syncService, configService, commandRegistry, viewService, ruleService, effectiveSmtp,
@@ -524,6 +526,16 @@ public partial class App : Application
     {
         for (var cur = e.Exception; cur != null; cur = cur.InnerException)
             LogService.Log("Dispatcher", cur);
+
+        // ui-probe (#180): unattended — a modal error box would park the run on an
+        // invisible dialog until the orchestrator's kill timeout and destroy the
+        // diagnostic exit code. Log (done above) and exit distinctly instead.
+        if ((Current as App)?.UiProbe != null)
+        {
+            e.Handled = true;
+            Current!.Shutdown(3);
+            return;
+        }
 
         // Keep the process alive so the user isn't left staring at a vanished window.
         // The log captures the cause; the next user action will either succeed or

@@ -37,7 +37,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $exe      = Join-Path $repoRoot 'QuickMail\bin\Debug\QuickMail.exe'
-$fixtures = Join-Path $repoRoot 'tools\QuickMail.Fixtures\QuickMail.Fixtures.csproj'
+$fixtures = Join-Path $repoRoot 'Tools\QuickMail.Fixtures\QuickMail.Fixtures.csproj'
 
 if (-not $RunDir) {
     $RunDir = Join-Path $env:TEMP ("qm-ui-probe\" + (Get-Date -Format 'yyyyMMdd-HHmmss'))
@@ -79,12 +79,14 @@ foreach ($entry in $planEntries) {
     $tag = "{0:D2}-{1}-{2}-{3}" -f $index, $entry.surface, $entry.theme, $entry.scale
     Write-Host ("[{0}/{1}] {2}" -f $index, $planEntries.Count, $tag)
 
+    # Quote path arguments explicitly: Windows PowerShell 5.1's Start-Process
+    # joins the array without quoting, so a space in TEMP would split the args.
     $args = @(
         '--ui-probe', $entry.surface,
         '--theme', $entry.theme,
         '--text-scale', "$($entry.scale)",
-        '--profileDir', $ProfileDir,
-        '--capture-dir', $RunDir,
+        '--profileDir', ('"{0}"' -f $ProfileDir),
+        '--capture-dir', ('"{0}"' -f $RunDir),
         '--capture-tag', $tag
     )
     $proc = Start-Process -FilePath $exe -ArgumentList $args -PassThru
