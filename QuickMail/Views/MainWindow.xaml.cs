@@ -3079,7 +3079,12 @@ public partial class MainWindow : Window
         // have rendered. No-op unless /debug and the session toggle are on.
         if (completed)
             _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
-                (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"ReadingPane-{detail.Subject}"));
+            {
+                // A newer render may have started before idle — skip rather than
+                // save the next message's pixels under this message's label.
+                if (renderVersion != _messageBodyRenderVersion) return;
+                (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"ReadingPane-{detail.Subject}");
+            });
 
         await FocusMessageBodyAsync(renderVersion, detail.Subject);
     }

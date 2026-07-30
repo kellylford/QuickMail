@@ -103,11 +103,13 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
 
         lock (_gate)
         {
+            // Cap first: once capped, new labels must not keep growing the
+            // debounce map for the rest of the session.
+            if (IsAtSessionCap()) return;
             var now = Environment.TickCount64;
             if (_lastCaptureByLabel.TryGetValue(label, out var last) && now - last < DebounceMs)
                 return;
             _lastCaptureByLabel[label] = now;
-            if (IsAtSessionCap()) return;
         }
 
         BitmapSource? frame = null;
