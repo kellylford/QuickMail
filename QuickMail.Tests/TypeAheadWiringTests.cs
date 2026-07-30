@@ -3,55 +3,71 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Xml.Linq;
 using QuickMail.Models;
 using Xunit;
 
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Deterministic guards for first-letter (type-ahead) navigation wiring — issue #371, and the
-/// stable replacement for the input-driven assertions that used to carry this (issue #380).
+/// Deterministic guards for first-letter (type-ahead) wiring on the lists that use WPF's built-in
+/// <c>TextSearch</c> — issue #371, and the stable replacement for the input-driven assertions that
+/// used to carry it (issue #380).
 ///
-/// <para>
-/// Type-ahead on these lists breaks in exactly two silent ways, and both are assertable without
-/// simulating a single keystroke:
-/// </para>
+/// <para>Two silent failure modes, both assertable without simulating a keystroke:</para>
 /// <list type="number">
-/// <item><b>The declaration disappears.</b> Several of these lists use an <c>ItemTemplate</c> whose
-/// root is a panel, so WPF's <c>TextSearch</c> has no text to match unless the list declares
-/// <c>TextSearch.TextPath</c> explicitly. Drop the attribute and typing a letter does nothing.</item>
-/// <item><b>The target property is renamed.</b> <c>TextPath</c> is a string, so renaming the
-/// underlying CLR property leaves the XAML compiling and binding silently resolving to nothing.
-/// This is the failure a XAML-only check would miss, so each row names the item type and the test
-/// reflects the property.</item>
+/// <item><b>The declaration disappears.</b> Several of these lists use an <c>ItemTemplate</c> rooted
+/// in a panel, so <c>TextSearch</c> has no text to match unless the list declares
+/// <c>TextSearch.TextPath</c>. Drop the attribute and typing a letter does nothing.</item>
+/// <item><b>The target property is renamed.</b> <c>TextPath</c> is a string, so renaming the CLR
+/// property leaves the XAML compiling and the lookup silently resolving to nothing. A text-only
+/// check cannot catch this, so each row names the item type and the test reflects the property.</item>
 /// </list>
 ///
 /// <para>
-/// Why these are plain <c>[Fact]</c>s: they read the checked-in XAML as text and use reflection.
-/// No <c>Application</c>, no STA thread, no shown window, no synthesized input, no dependence on
-/// elapsed time — so nothing on the host machine can perturb them. The end-to-end proof that a real
-/// keystroke reaches <c>TextSearch</c> lives in <see cref="AddressBookTypeAheadTests"/> behind
-/// <see cref="InputStaFactAttribute"/>.
+/// Plain <c>[Fact]</c>s: XML parsing plus reflection. No <c>Application</c>, STA thread, shown
+/// window, synthesized input, or dependence on elapsed time, so nothing on the host can perturb them.
 /// </para>
+///
+/// <para><b>What these do NOT cover</b> — stated so the list is not mistaken for exhaustive:</para>
+/// <list type="bullet">
+/// <item>They enumerate lists that <i>already declare</i> a TextPath, so they can never flag a list
+/// that <i>needs</i> one and lacks it.</item>
+/// <item>Nothing ties a row's <c>ItemType</c> to the list's real <c>ItemsSource</c>. Retargeting a
+/// list to a different item type that lacks the property is as silent as the rename this does catch.</item>
+/// <item>QuickMail's own hand-rolled accumulator (<c>MainWindow.xaml.cs TryBuildTypeAheadPrefix</c>,
+/// serving the folder tree, message list and group trees via <c>PreviewTextInput</c>) is a separate
+/// mechanism that declares no TextPath and is not covered here or anywhere (issue #415).</item>
+/// <item>Keys stolen before <c>TextSearch</c> sees them (mnemonics, <c>PreviewKeyDown</c> handlers) —
+/// the way type-ahead has actually broken in this repo. See the notes in
+/// <see cref="AddressBookTypeAheadTests"/>.</item>
+/// <item>These read source text, so they pass on XAML that does not compile.</item>
+/// </list>
 /// </summary>
 public class TypeAheadWiringTests
 {
     /// <summary>
-    /// One row per list in the app that offers type-ahead. <see cref="EveryTypeAheadListInTheApp_IsRegisteredHere"/>
-    /// fails if a new one is added without being registered, so this table cannot silently go stale.
+    /// One row per list that uses WPF <c>TextSearch</c>. <c>Xaml</c> is relative to <c>QuickMail/</c>
+    /// so <c>Views/</c> and <c>Controls/</c> can both be registered and same-named files cannot
+    /// collide. <see cref="EveryTextSearchListInTheApp_IsRegisteredHere"/> fails if one is added
+    /// without a row here.
     /// </summary>
-    private sealed record Site(string XamlFile, string ElementName, string TextPath, Type ItemType);
+    private sealed record Site(string Xaml, string ElementName, string TextPath, Type ItemType);
 
     private static readonly Site[] Sites =
     [
-        new("AddressBookWindow.xaml",   "ContactList",      "TypeAheadText",            typeof(ContactModel)),
-        new("AddressBookWindow.xaml",   "GroupsList",       "Name",                     typeof(GroupModel)),
-        new("AddressBookWindow.xaml",   "GroupMembersList", "TypeAheadText",            typeof(ContactModel)),
-        new("AccountManagerDialog.xaml","AccountListBox",   "AccountLabelWithDefault",  typeof(AccountModel)),
-        new("MainWindow.xaml",          "AccountList",      "AccountLabel",             typeof(AccountModel)),
-        new("CommandPaletteWindow.xaml","CommandList",      "Title",                    typeof(CommandDefinition)),
-        new("FolderPickerWindow.xaml",  "FolderTreeView",   "Label",                    typeof(FolderTreeNode)),
+        new("Views/AddressBookWindow.xaml",    "ContactList",      "TypeAheadText",           typeof(ContactModel)),
+        new("Views/AddressBookWindow.xaml",    "GroupsList",       "Name",                    typeof(GroupModel)),
+        new("Views/AddressBookWindow.xaml",    "GroupMembersList", "TypeAheadText",           typeof(ContactModel)),
+        new("Views/AccountManagerDialog.xaml", "AccountListBox",   "AccountLabelWithDefault", typeof(AccountModel)),
+        new("Views/MainWindow.xaml",           "AccountList",      "AccountLabel",            typeof(AccountModel)),
+        new("Views/CommandPaletteWindow.xaml", "CommandList",      "Title",                   typeof(CommandDefinition)),
+        new("Views/FolderPickerWindow.xaml",   "FolderTreeView",   "Label",                   typeof(FolderTreeNode)),
     ];
+
+    private static readonly XNamespace X = "http://schemas.microsoft.com/winfx/2006/xaml";
+    private const string TextPathAttr = "TextSearch.TextPath";
+    private const string TextEnabledAttr = "IsTextSearchEnabled";
 
     // ── The guards ───────────────────────────────────────────────────────────
 
@@ -61,16 +77,20 @@ public class TypeAheadWiringTests
         var problems = new List<string>();
         foreach (var site in Sites)
         {
-            var tag = OpeningTag(site);
-            if (tag.Length == 0)
+            var element = FindElement(site);
+            if (element is null)
             {
-                problems.Add($"{site.XamlFile}: no element named '{site.ElementName}' found.");
+                problems.Add($"{site.Xaml}: no element with x:Name=\"{site.ElementName}\" found.");
                 continue;
             }
-            var expected = $"TextSearch.TextPath=\"{site.TextPath}\"";
-            if (!tag.Contains(expected, StringComparison.Ordinal))
-                problems.Add($"{site.XamlFile}/{site.ElementName}: expected {expected}. "
+
+            var declared = (string?)element.Attribute(TextPathAttr);
+            if (declared is null)
+                problems.Add($"{site.Xaml}/{site.ElementName}: no {TextPathAttr}. "
                            + "Without it, typing a letter on this list does nothing.");
+            else if (declared != site.TextPath)
+                problems.Add($"{site.Xaml}/{site.ElementName}: {TextPathAttr} is \"{declared}\", "
+                           + $"expected \"{site.TextPath}\".");
         }
 
         Assert.True(problems.Count == 0, Report("Type-ahead declaration missing or changed", problems));
@@ -82,15 +102,25 @@ public class TypeAheadWiringTests
         var problems = new List<string>();
         foreach (var site in Sites)
         {
-            var prop = site.ItemType.GetProperty(
-                site.TextPath, BindingFlags.Public | BindingFlags.Instance);
-
-            if (prop is null)
-                problems.Add($"{site.XamlFile}/{site.ElementName}: TextSearch.TextPath=\"{site.TextPath}\" "
-                           + $"has no public instance property on {site.ItemType.Name}. "
-                           + "A rename here breaks type-ahead silently — XAML still compiles.");
-            else if (!prop.CanRead)
-                problems.Add($"{site.XamlFile}/{site.ElementName}: {site.ItemType.Name}.{site.TextPath} is not readable.");
+            // TextPath supports dotted paths (e.g. "Folder.Name"); every segment must resolve.
+            var owner = site.ItemType;
+            foreach (var segment in site.TextPath.Split('.'))
+            {
+                var prop = owner.GetProperty(segment, BindingFlags.Public | BindingFlags.Instance);
+                if (prop is null)
+                {
+                    problems.Add($"{site.Xaml}/{site.ElementName}: {TextPathAttr}=\"{site.TextPath}\" — "
+                               + $"'{segment}' is not a public instance property on {owner.Name}. "
+                               + "A rename here breaks type-ahead silently; the XAML still compiles.");
+                    break;
+                }
+                if (!prop.CanRead)
+                {
+                    problems.Add($"{site.Xaml}/{site.ElementName}: {owner.Name}.{segment} is not readable.");
+                    break;
+                }
+                owner = prop.PropertyType;
+            }
         }
 
         Assert.True(problems.Count == 0, Report("Type-ahead TextPath does not resolve", problems));
@@ -99,51 +129,51 @@ public class TypeAheadWiringTests
     [Fact]
     public void NoTypeAheadList_DisablesTextSearch()
     {
-        // IsTextSearchEnabled defaults to true, so most sites omit it. Declaring a TextPath and then
-        // turning the feature off is contradictory and would break type-ahead just as thoroughly as
-        // deleting the path.
         var problems = new List<string>();
         foreach (var site in Sites)
         {
-            var tag = OpeningTag(site);
-            if (tag.Contains("IsTextSearchEnabled=\"False\"", StringComparison.OrdinalIgnoreCase))
-                problems.Add($"{site.XamlFile}/{site.ElementName}: declares a TextPath but sets IsTextSearchEnabled=\"False\".");
+            var enabled = (string?)FindElement(site)?.Attribute(TextEnabledAttr);
+            if (string.Equals(enabled, "False", StringComparison.OrdinalIgnoreCase))
+                problems.Add($"{site.Xaml}/{site.ElementName}: declares {TextPathAttr} but sets "
+                           + $"{TextEnabledAttr}=\"False\", which turns type-ahead off anyway.");
         }
 
         Assert.True(problems.Count == 0, Report("Type-ahead disabled on a list that declares a TextPath", problems));
     }
 
     [Fact]
-    public void EveryTypeAheadListInTheApp_IsRegisteredHere()
+    public void EveryTextSearchListInTheApp_IsRegisteredHere()
     {
-        // Keeps the table honest: a new type-ahead list must be registered above, which forces the
-        // author to name its item type and get the reflection guard for free.
-        var root = RepoRoot();
-        var registered = Sites
-            .Select(s => (s.XamlFile, s.ElementName))
-            .ToHashSet();
-
+        var registered = Sites.Select(s => (s.Xaml, s.ElementName)).ToHashSet();
         var problems = new List<string>();
-        foreach (var file in XamlFiles(root))
+
+        foreach (var (relative, doc) in XamlDocuments())
         {
-            var text = ReadXaml(file);
-            var name = Path.GetFileName(file);
-
-            for (var at = text.IndexOf("TextSearch.TextPath", StringComparison.Ordinal); at >= 0;
-                     at = text.IndexOf("TextSearch.TextPath", at + 1, StringComparison.Ordinal))
+            // Elements carrying the attached property directly.
+            foreach (var element in doc.Descendants().Where(e => e.Attribute(TextPathAttr) != null))
             {
-                var tag = EnclosingOpeningTag(text, at);
-                var elementName = AttributeValue(tag, "x:Name");
+                var name = (string?)element.Attribute(X + "Name");
+                if (name is null)
+                    problems.Add($"{relative}: <{element.Name.LocalName}> declares {TextPathAttr} but has no "
+                               + "x:Name, so it cannot be registered. Give the element an x:Name.");
+                else if (!registered.Contains((relative, name)))
+                    problems.Add($"{relative}/{name}: type-ahead list not registered in TypeAheadWiringTests.Sites.");
+            }
 
-                if (elementName is null)
-                    problems.Add($"{name}: a TextSearch.TextPath is declared on an element with no x:Name, "
-                               + "so it cannot be registered in TypeAheadWiringTests. Give the element an x:Name.");
-                else if (!registered.Contains((name, elementName)))
-                    problems.Add($"{name}/{elementName}: type-ahead list not registered in TypeAheadWiringTests.Sites.");
+            // Style/Setter route: a <Setter Property="TextSearch.TextPath"> applies to every element
+            // the style targets, so it cannot be attributed to one named list. The guards above are
+            // element-scoped and would silently not cover it, so flag it rather than pass.
+            foreach (var _ in doc.Descendants()
+                                 .Where(e => e.Name.LocalName == "Setter"
+                                          && (string?)e.Attribute("Property") == TextPathAttr))
+            {
+                problems.Add($"{relative}: {TextPathAttr} is set via a <Setter>, which these guards do not "
+                           + "cover (they are element-scoped). Declare it on the list element instead, or "
+                           + "extend TypeAheadWiringTests to resolve styles.");
             }
         }
 
-        Assert.True(problems.Count == 0, Report("Unregistered type-ahead list", problems));
+        Assert.True(problems.Count == 0, Report("Unregistered or uncoverable type-ahead list", problems));
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -151,78 +181,41 @@ public class TypeAheadWiringTests
     private static string Report(string headline, List<string> problems) =>
         $"{headline}:{Environment.NewLine}  " + string.Join(Environment.NewLine + "  ", problems);
 
-    private static string OpeningTag(Site site)
+    private static XElement? FindElement(Site site)
     {
-        var path = Path.Combine(RepoRoot(), "QuickMail", "Views", site.XamlFile);
+        var path = Path.Combine(RepoRoot(), "QuickMail", site.Xaml.Replace('/', Path.DirectorySeparatorChar));
         Assert.True(File.Exists(path), $"XAML file not found: {path}");
-        var text = ReadXaml(path);
 
-        var at = text.IndexOf($"x:Name=\"{site.ElementName}\"", StringComparison.Ordinal);
-        return at < 0 ? string.Empty : EnclosingOpeningTag(text, at);
+        // XDocument skips comments when walking Descendants(), so a commented-out or merely
+        // described attribute cannot read as a live declaration in either direction. It also handles
+        // single-quoted attributes, whitespace around '=', and entity escapes — all of which a
+        // hand-rolled text scan gets wrong, and wrongly reported as a confusing failure.
+        return XDocument.Load(path)
+            .Descendants()
+            .FirstOrDefault(e => (string?)e.Attribute(X + "Name") == site.ElementName);
     }
 
     /// <summary>
-    /// Reads a XAML file with XML comments removed. These files document their own type-ahead
-    /// wiring in prose (AddressBookWindow.xaml has a comment naming TextSearch.TextPath), and a
-    /// commented-out or merely described attribute must not read as a live declaration in either
-    /// direction — it would both mask a real removal and raise a phantom unregistered site.
+    /// Every XAML file under Views/, Controls/ and Styles/, recursively — Styles/ because that is
+    /// where a Style-based TextSearch setter would live, and recursively so a new subdirectory cannot
+    /// become a blind spot. Matches ThemeRegressionGuardTests' directory set.
     /// </summary>
-    private static string ReadXaml(string path)
+    private static IEnumerable<(string Relative, XDocument Doc)> XamlDocuments()
     {
-        var text = File.ReadAllText(path);
-        var sb = new System.Text.StringBuilder(text.Length);
-        var i = 0;
-        while (i < text.Length)
+        var root = RepoRoot();
+        var projectDir = Path.Combine(root, "QuickMail");
+
+        foreach (var sub in new[] { "Views", "Controls", "Styles" })
         {
-            var open = text.IndexOf("<!--", i, StringComparison.Ordinal);
-            if (open < 0) { sb.Append(text, i, text.Length - i); break; }
-            sb.Append(text, i, open - i);
-            var close = text.IndexOf("-->", open + 4, StringComparison.Ordinal);
-            if (close < 0) break;              // unterminated comment: drop the remainder
-            i = close + 3;
-        }
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// The full opening tag containing the character at <paramref name="index"/> — from its '&lt;'
-    /// through the matching '&gt;', ignoring '&gt;' inside attribute values. Attributes routinely
-    /// span many lines in this codebase, so a line-based match would miss them.
-    /// </summary>
-    private static string EnclosingOpeningTag(string text, int index)
-    {
-        var start = text.LastIndexOf('<', index);
-        if (start < 0) return string.Empty;
-
-        var inQuote = false;
-        for (var i = start; i < text.Length; i++)
-        {
-            var c = text[i];
-            if (c == '"') inQuote = !inQuote;
-            else if (c == '>' && !inQuote) return text[start..(i + 1)];
-        }
-        return string.Empty;
-    }
-
-    private static string? AttributeValue(string tag, string attribute)
-    {
-        var needle = $"{attribute}=\"";
-        var at = tag.IndexOf(needle, StringComparison.Ordinal);
-        if (at < 0) return null;
-        var valueStart = at + needle.Length;
-        var end = tag.IndexOf('"', valueStart);
-        return end < 0 ? null : tag[valueStart..end];
-    }
-
-    // Views + Controls: the places a type-ahead list can live. Mirrors ThemeRegressionGuardTests.
-    private static IEnumerable<string> XamlFiles(string root)
-    {
-        foreach (var sub in new[] { "Views", "Controls" })
-        {
-            var dir = Path.Combine(root, "QuickMail", sub);
+            var dir = Path.Combine(projectDir, sub);
             if (!Directory.Exists(dir)) continue;
-            foreach (var file in Directory.EnumerateFiles(dir, "*.xaml"))
-                yield return file;
+
+            foreach (var file in Directory.EnumerateFiles(dir, "*.xaml", SearchOption.AllDirectories))
+            {
+                var relative = Path.GetRelativePath(projectDir, file)
+                                   .Replace(Path.DirectorySeparatorChar, '/');
+                yield return (relative, XDocument.Load(file));
+            }
         }
     }
 
@@ -233,7 +226,6 @@ public class TypeAheadWiringTests
             if (Directory.Exists(Path.Combine(dir.FullName, "QuickMail", "Views")))
                 return dir.FullName;
         }
-        throw new InvalidOperationException(
-            $"Repo source tree not found from {AppContext.BaseDirectory}.");
+        throw new InvalidOperationException($"Repo source tree not found from {AppContext.BaseDirectory}.");
     }
 }

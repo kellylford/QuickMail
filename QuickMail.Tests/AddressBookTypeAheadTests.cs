@@ -1,24 +1,35 @@
-// End-to-end proof that a real keystroke reaches WPF's TextSearch on the Address Book
-// lists — issue #371.
+// Type-ahead on the Address Book lists — issue #371. These raise TextInput events at a
+// shown window, so they are opt-in (QUICKMAIL_RUN_INPUT_TESTS=1, which CI sets) and
+// report as skipped with a reason elsewhere. See issue #380 for the flakiness.
 //
-// These drive real TextInput events through the WPF input pipeline against a shown
-// window, which makes them sensitive to anything else on the machine that reacts to
-// windows appearing and selection changing. They are therefore opt-in via
-// [InputStaFact] (QUICKMAIL_RUN_INPUT_TESTS=1, which CI sets) and report as skipped
-// with a reason elsewhere — see issue #380.
+// Scope, stated precisely because the earlier version of this comment overstated it:
 //
-// The regressions this file was originally written to catch — a removed
-// TextSearch.TextPath, or a renamed source property — are now covered
-// deterministically and unconditionally by TypeAheadWiringTests, across every
-// type-ahead list in the app rather than just these two. Skipping this file locally
-// loses no protection for anything QuickMail owns.
+//  * These are NOT end-to-end. SendText raises UIElement.TextInputEvent directly on the
+//    list, so key translation, PreviewKeyDown, PreviewTextInput and AccessKeyManager are
+//    all bypassed. A key stolen before TextSearch sees it will NOT fail these tests —
+//    and that is how type-ahead has actually broken here twice (release notes v0.8.32:
+//    the picker's "_New" mnemonic firing on the type-ahead "n", and bare-K competing with
+//    folder-tree type-ahead). Those paths remain uncovered.
 //
-// Two tests were deliberately removed rather than gated (issue #380): they asserted
-// that "b"+"r" accumulates into the prefix "br" and that a repeated "b" cycles to the
-// next match. That is WPF's own TextSearch behaviour, which QuickMail neither
-// implements nor can break, and verifying it requires the two synthesized keystrokes
-// to land inside WPF's accumulation window — a real-elapsed-time dependency that made
-// them the least reliable tests in the suite while asserting nothing about this app.
+//  * The declaration-and-property wiring these were written to guard is now asserted
+//    deterministically by TypeAheadWiringTests, which is why gating them is acceptable.
+//
+//  * Gating is not a fix. Issue #380 diagnoses a harness readiness bug — a fire-once
+//    DoEvents() that assumes a single dispatcher pump is enough — and proposes a bounded
+//    wait on ContainersGenerated plus focus actually landing. That is NOT implemented
+//    here; these tests are simply no longer run by default on developer machines.
+//
+// Two tests were removed rather than gated (issue #380): they asserted that "b"+"r"
+// accumulates into the prefix "br", and that a repeated "b" cycles to the next match.
+// That is WPF's TextSearch doing the accumulating on these particular lists, and the
+// assertions needed both synthesized keystrokes to land inside its reset window, which
+// made them the least reliable tests in the suite.
+//
+// Note this does NOT mean the app has no prefix accumulator of its own — it does.
+// MainWindow.xaml.cs TryBuildTypeAheadPrefix hand-rolls one (_typeAheadBuffer,
+// _typeAheadScope, TypeAheadResetDelay) for the folder tree, message list and group
+// trees, shipped in v0.5.5. That code has no tests, before or after this change
+// (issue #415), and it is not what the removed tests covered.
 
 using System;
 using System.Collections.Generic;
@@ -41,7 +52,8 @@ public class AddressBookTypeAheadTests
     private static string TempDir() =>
         Path.Combine(Path.GetTempPath(), $"QM-TypeAheadTests-{Guid.NewGuid():N}");
 
-    [InputStaFact]
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
     public void ContactList_TypingFirstLetter_SelectsMatchingContact()
     {
         EnsureApplication();
@@ -67,7 +79,8 @@ public class AddressBookTypeAheadTests
         }
     }
 
-    [InputStaFact]
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
     public void ContactList_NamelessContact_IsReachableByAddress()
     {
         // Prior-recipient contacts often have no display name. TypeAheadText falls
@@ -96,7 +109,8 @@ public class AddressBookTypeAheadTests
         }
     }
 
-    [InputStaFact]
+    [StaFact(Skip = InputTests.SkipReason,
+             SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
     public void GroupsList_TypingFirstLetter_SelectsMatchingGroup()
     {
         EnsureApplication();
