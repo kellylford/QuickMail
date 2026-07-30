@@ -131,6 +131,46 @@ public class GraphMailServiceMutationTests : IDisposable
         Assert.Equal(3, h.Calls.Count(c => c.Method == "DELETE" && c.Url.Contains("/me/messages/")));
     }
 
+    // ── Stale-id (mutable Graph id) tolerance — #366 ──────────────────────────────────────────
+    private const string NotFoundJson = """{"error":{"code":"ErrorItemNotFound","message":"not found"}}""";
+
+    [Fact]
+    public async Task PermanentlyDeleteBatchAsync_StaleId404_IsTreatedAsDeleted_AndDoesNotAbortTheBatch()
+    {
+        // A stale/mutated Graph id returns 404. The delete must NOT throw — throwing drives the
+        // "delete may not have completed → re-sync" path that resurrects the message.
+        var (svc, h, acct) = await ConnectedAsync(url =>
+            url.EndsWith("/me/messages/gone") ? (HttpStatusCode.NotFound, NotFoundJson) : Ok());
+
+        await svc.PermanentlyDeleteBatchAsync(acct.Id, "deleteditems", new[] { "gone", "live" });
+
+        Assert.Contains(h.Calls, c => c.Method == "DELETE" && c.Url.EndsWith("/me/messages/gone"));
+        Assert.Contains(h.Calls, c => c.Method == "DELETE" && c.Url.EndsWith("/me/messages/live"));
+    }
+
+    [Fact]
+    public async Task MoveMessagesAsync_StaleId404_IsTreatedAsDone_NotThrown()
+    {
+        var (svc, h, acct) = await ConnectedAsync(url =>
+            url.Contains("/me/messages/gone/move") ? (HttpStatusCode.NotFound, NotFoundJson) : Ok());
+
+        await svc.MoveMessagesAsync(acct.Id, "inbox", new[] { "gone", "live" }, "archive");
+
+        Assert.Contains(h.Calls, c => c.Url.Contains("/me/messages/gone/move"));
+        Assert.Contains(h.Calls, c => c.Url.Contains("/me/messages/live/move"));
+    }
+
+    [Fact]
+    public async Task Delete_NonNotFoundError_StillThrows()
+    {
+        // Only a 404 (already-gone) is swallowed; a real failure must still surface.
+        var (svc, _, acct) = await ConnectedAsync(url =>
+            url.EndsWith("/me/messages/boom") ? (HttpStatusCode.InternalServerError, "{}") : Ok());
+
+        await Assert.ThrowsAsync<HttpRequestException>(
+            () => svc.PermanentlyDeleteBatchAsync(acct.Id, "deleteditems", new[] { "boom" }));
+    }
+
     [Fact]
     public async Task MarkReadBatchAsync_PatchesIsReadPerMessage()
     {
