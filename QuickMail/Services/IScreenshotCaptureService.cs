@@ -38,4 +38,13 @@ public interface IScreenshotCaptureService : IDisposable
 
     /// <summary>Opens the session folder in File Explorer.</summary>
     void OpenFolder();
+
+    /// <summary>
+    /// Programmatic capture to an exact path (the #180 probe driver's entry
+    /// point): grabs and saves synchronously, independent of <see cref="Enabled"/>
+    /// — the probe wants deterministic filenames without the session machinery
+    /// (numbering, debounce, title warning). Returns false if the grab or save
+    /// failed.
+    /// </summary>
+    bool CaptureToFile(Window window, string filePath);
 }

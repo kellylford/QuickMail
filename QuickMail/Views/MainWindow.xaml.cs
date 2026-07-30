@@ -1371,9 +1371,14 @@ public partial class MainWindow : Window
         // Create the WebView2 environment — always needed, shared with MessageWindow instances.
         try
         {
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "QuickMail", "WebView2");
+            // ui-probe (#180): an isolated, throwaway user-data folder under the
+            // capture dir — the probe must never write outside its own dirs, and
+            // must not contend with a live QuickMail's shared browser instance.
+            var userDataFolder = (Application.Current as App)?.UiProbe is { } probeOptions
+                ? Path.Combine(probeOptions.CaptureDir, "webview2-data")
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "QuickMail", "WebView2");
             _webViewEnvironment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         }
         catch (Exception ex)
@@ -1389,7 +1394,13 @@ public partial class MainWindow : Window
         if (_vm.MessageOpenMode != MessageOpenMode.Window)
             await InitReadingPaneWebViewAsync();
 
-        _ = _vm.CheckForUpdateInBackgroundAsync();
+        // ui-probe (#180): no update check, no background sync, no startup dialogs —
+        // the probe boots offline against the fixture cache, drives to its surface,
+        // captures, and exits. Everything network- or dialog-shaped is gated off.
+        var uiProbe = (Application.Current as App)?.UiProbe;
+
+        if (uiProbe is null)
+            _ = _vm.CheckForUpdateInBackgroundAsync();
 
         var firstAccount = _vm.Accounts.FirstOrDefault();
         if (firstAccount == null)
@@ -1409,6 +1420,15 @@ public partial class MainWindow : Window
         // Populate the Views menu from saved views loaded at startup.
         RebuildViewsMenu();
 
+        if (uiProbe != null)
+        {
+            // Fire-and-forget by design: the driver owns the rest of the process
+            // lifetime and exits the app with its own code when done.
+            var capture = ((App)Application.Current).ScreenshotCapture!;
+            _ = new UiProbeDriver(this, _vm, _registry, uiProbe, capture).RunAsync();
+            return;
+        }
+
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
 
@@ -1421,6 +1441,39 @@ public partial class MainWindow : Window
         // offer so a first-run-after-migration launch never stacks two dialogs.
         _vm.MaybeShowUpdateInstalledNotice();
     }
+
+    // ── ui-probe hooks (#180) — internal, driver-only; never user-reachable ──
+
+    /// <summary>Opens the Settings dialog exactly as the menu item would (modal).</summary>
+    internal void ShowSettingsDialogForProbe() => MenuSettings_Click(this, new RoutedEventArgs());
+
+    /// <summary>Opens the command palette exactly as Ctrl+Shift+P would (modal).</summary>
+    internal void OpenCommandPaletteForProbe() => OpenCommandPalette();
+
+    /// <summary>
+    /// Opens AND renders a message exactly as a notification activation would —
+    /// the VM command alone loads the detail but the body render lives in this
+    /// window's open path, so the probe must come through here.
+    /// </summary>
+    internal Task OpenMessageForProbeAsync(Guid accountId, string folder, string messageId) =>
+        OpenMessageByIdentityAsync(accountId, folder, messageId);
+
+    /// <summary>
+    /// Exits the app with the given code, bypassing close-to-tray (which would
+    /// otherwise turn the probe's exit into a minimize and hang the orchestrator).
+    /// </summary>
+    internal void ForceExit(int exitCode)
+    {
+        _explicitExit = true;
+        Application.Current.Shutdown(exitCode);
+    }
+
+    /// <summary>
+    /// Raised when the reading pane has finished rendering a message body —
+    /// after WebView2 NavigationCompleted and the idle turn that lets the frame
+    /// present. The probe driver's settle signal for the reading-pane surface.
+    /// </summary>
+    internal event Action? MessageBodyRendered;
 
     // WM_CONTEXTMENU hook: fires synchronously before DefWindowProc so we can ensure
     // Keyboard.FocusedElement is non-null before WPF routes ContextMenuOpening.
@@ -3084,6 +3137,7 @@ public partial class MainWindow : Window
                 // save the next message's pixels under this message's label.
                 if (renderVersion != _messageBodyRenderVersion) return;
                 (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"ReadingPane-{detail.Subject}");
+                MessageBodyRendered?.Invoke();
             });
 
         await FocusMessageBodyAsync(renderVersion, detail.Subject);

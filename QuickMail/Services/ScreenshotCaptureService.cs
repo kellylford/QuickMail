@@ -154,6 +154,33 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         return true;
     }
 
+    public bool CaptureToFile(Window window, string filePath)
+    {
+        if (_disposed) return false;
+        BitmapSource? frame = null;
+        try
+        {
+            frame = (PixelGrabber ?? GrabWindowPixels)(window);
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"CaptureToFile grab failed for {Path.GetFileName(filePath)}: {ex.Message}");
+        }
+        if (frame is null) return false;
+        frame.Freeze();
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
+        }
+        catch (Exception ex)
+        {
+            LogService.Debug($"CaptureToFile folder creation failed: {ex.Message}");
+            return false;
+        }
+        SavePng(frame, filePath);
+        return File.Exists(filePath);
+    }
+
     public void OpenFolder()
     {
         try
