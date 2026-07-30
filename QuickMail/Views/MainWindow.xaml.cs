@@ -123,7 +123,9 @@ public class StringToBrushConverter : IValueConverter
 
 /// <summary>
 /// Builds the accessible name string for a message row, optionally prepending the flag label.
-/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus, HasAttachments].
+/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus,
+/// HasAttachments, FolderDisplayName]. The 9th (FolderDisplayName) is appended only in aggregate
+/// views (#423); older 8-value bindings still work (the value is treated as absent).
 /// </summary>
 public class MessageAccessibleNameConverter : IMultiValueConverter
 {

@@ -4582,6 +4582,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 : await FetchAccountNewMessagesAsync(account, ct);
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+            // #423: per-account All Mail's incremental adds go through InsertMessageSorted (not
+            // SetMessages), so stamp the source folder here too — otherwise the newest rows (at the
+            // top) announce no folder while the cached rows below them do. Mirrors FetchAllMailAsync.
+            // The OnlineMode branch below is already covered — it flows through SetMessages.
+            ApplyFolderDisplayNames(newMessages);
+
             if (OnlineMode)
             {
                 var sorted = newMessages.OrderByDescending(m => m.Date).ToList();
