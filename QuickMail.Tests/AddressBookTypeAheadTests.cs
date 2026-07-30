@@ -1,12 +1,24 @@
-// Regression tests for first-letter (type-ahead) navigation in the Address Book
+// End-to-end proof that a real keystroke reaches WPF's TextSearch on the Address Book
 // lists — issue #371.
 //
-// The contact list uses an ItemTemplate whose root is a Grid, so WPF's TextSearch
-// has no text to match unless the list declares TextSearch.TextPath explicitly.
-// Without it, typing a letter with focus on the list does nothing at all. These
-// tests drive real TextInput events through the WPF input pipeline so a regression
-// (a removed TextPath, or a renamed source property) fails here rather than in the
-// running app.
+// These drive real TextInput events through the WPF input pipeline against a shown
+// window, which makes them sensitive to anything else on the machine that reacts to
+// windows appearing and selection changing. They are therefore opt-in via
+// [InputStaFact] (QUICKMAIL_RUN_INPUT_TESTS=1, which CI sets) and report as skipped
+// with a reason elsewhere — see issue #380.
+//
+// The regressions this file was originally written to catch — a removed
+// TextSearch.TextPath, or a renamed source property — are now covered
+// deterministically and unconditionally by TypeAheadWiringTests, across every
+// type-ahead list in the app rather than just these two. Skipping this file locally
+// loses no protection for anything QuickMail owns.
+//
+// Two tests were deliberately removed rather than gated (issue #380): they asserted
+// that "b"+"r" accumulates into the prefix "br" and that a repeated "b" cycles to the
+// next match. That is WPF's own TextSearch behaviour, which QuickMail neither
+// implements nor can break, and verifying it requires the two synthesized keystrokes
+// to land inside WPF's accumulation window — a real-elapsed-time dependency that made
+// them the least reliable tests in the suite while asserting nothing about this app.
 
 using System;
 using System.Collections.Generic;
@@ -29,7 +41,7 @@ public class AddressBookTypeAheadTests
     private static string TempDir() =>
         Path.Combine(Path.GetTempPath(), $"QM-TypeAheadTests-{Guid.NewGuid():N}");
 
-    [StaFact]
+    [InputStaFact]
     public void ContactList_TypingFirstLetter_SelectsMatchingContact()
     {
         EnsureApplication();
@@ -55,67 +67,7 @@ public class AddressBookTypeAheadTests
         }
     }
 
-    [StaFact]
-    public void ContactList_RepeatingSameLetter_CyclesThroughMatches()
-    {
-        // Two contacts start with "B". Pressing B twice should land on the second
-        // one — WPF treats a repeat of the same character as "next match", not as
-        // a two-character prefix.
-        EnsureApplication();
-        var (_, window, dir) = BuildWindowWithContacts();
-        try
-        {
-            var list = window.FindName("ContactList") as ListView;
-            Assert.NotNull(list);
-            list!.Focus();
-            DoEvents();
-
-            SendText(list, "b");
-            DoEvents();
-            SendText(list, "b");
-            DoEvents();
-
-            var selected = list.SelectedItem as ContactModel;
-            Assert.NotNull(selected);
-            Assert.Equal("Brenda Cole", selected!.DisplayName);
-        }
-        finally
-        {
-            window.Close();
-            DeleteDir(dir);
-        }
-    }
-
-    [StaFact]
-    public void ContactList_TypingMultipleLetters_MatchesLongerPrefix()
-    {
-        // Typed characters accumulate within the type-ahead timeout, so "br"
-        // should skip past "Bob Baker" and land on "Brenda Cole".
-        EnsureApplication();
-        var (_, window, dir) = BuildWindowWithContacts();
-        try
-        {
-            var list = window.FindName("ContactList") as ListView;
-            Assert.NotNull(list);
-            list!.Focus();
-            DoEvents();
-
-            SendText(list, "b");
-            SendText(list, "r");
-            DoEvents();
-
-            var selected = list.SelectedItem as ContactModel;
-            Assert.NotNull(selected);
-            Assert.Equal("Brenda Cole", selected!.DisplayName);
-        }
-        finally
-        {
-            window.Close();
-            DeleteDir(dir);
-        }
-    }
-
-    [StaFact]
+    [InputStaFact]
     public void ContactList_NamelessContact_IsReachableByAddress()
     {
         // Prior-recipient contacts often have no display name. TypeAheadText falls
@@ -144,7 +96,7 @@ public class AddressBookTypeAheadTests
         }
     }
 
-    [StaFact]
+    [InputStaFact]
     public void GroupsList_TypingFirstLetter_SelectsMatchingGroup()
     {
         EnsureApplication();

@@ -158,6 +158,14 @@ jobs:
 
       - name: Test
         shell: pwsh
+        env:
+          # Synthesized-input tests ([InputStaFact]) are opt-in and skipped by default: they drive
+          # real keystrokes at a shown window and depend on focus and elapsed time, so any tool on
+          # the machine that reacts to windows appearing perturbs them (issue #380). A CI runner is
+          # the one environment that can honestly assert "nothing else is running", so they run
+          # here. If this variable is ever dropped, the guard below fails the job rather than
+          # letting them silently run nowhere.
+          QUICKMAIL_RUN_INPUT_TESTS: "1"
         # PropertiesViewModelTests and ReportBugViewModelTests exercise real clipboard access
         # (Clipboard.SetText), which is unreliable on GitHub-hosted Windows runners — no
         # interactive desktop session backs the clipboard, so these intermittently throw
@@ -198,6 +206,39 @@ jobs:
             Write-Error "Real test failures detected: failed=$failed error=$errors."
             exit 1
           }
+
+          # The opt-in synthesized-input tests must actually have executed here. Their whole
+          # justification for being skipped on developer machines is that CI runs them, so if the
+          # env var above is dropped or the attribute gate breaks, that claim becomes false and the
+          # tests silently protect nothing. Fail loudly instead.
+          $inputTests = @($doc.TestRun.Results.UnitTestResult |
+            Where-Object { $_.testName -like '*AddressBookTypeAheadTests*' -and $_.outcome -eq 'Passed' })
+          if ($inputTests.Count -lt 3) {
+            Write-Error ("Synthesized-input tests did not run here (found $($inputTests.Count) passed, expected at least 3). " +
+                         "They are skipped by default and rely on QUICKMAIL_RUN_INPUT_TESTS=1 being set for this step; " +
+                         "without it they run nowhere. See issue #380.")
+            exit 1
+          }
+          Write-Host "Synthesized-input tests executed: $($inputTests.Count) passed."
+
+          # Volume floor. The check above this used to be `total -le 0`, which cannot tell a run
+          # that finished from a run whose host died two-thirds of the way through: the tests that
+          # never ran are simply absent from the trx, `failed` stays 0, and the job goes green.
+          # A measured example — run 30494203436 on main reported total=1435 with exit=1, while the
+          # same commit runs ~2195 cases locally; 48 test classes never executed at all, including
+          # every connection-diagnostics and Graph-service class.
+          #
+          # This is a WARNING, not a failure, on purpose: the shortfall is a pre-existing crash
+          # (see the teardown note above and issue #211, which is closed but evidently not fixed)
+          # and turning it red would block releases on an unrelated bug. Raise it to `exit 1` once
+          # the crash is fixed — the number below is the tripwire, not a target.
+          $expectedFloor = 2100
+          if ($total -lt $expectedFloor) {
+            Write-Warning ("Only $total test cases were recorded, below the expected floor of $expectedFloor. " +
+                           "Tests that never ran are absent from the trx, so 'failed=0' does NOT mean the suite passed. " +
+                           "Investigate the host crash before trusting this run. See issue #380.")
+          }
+
           if ($testExit -ne 0) {
             Write-Warning "dotnet test exited $testExit but all $passed tests passed (failed=0, error=0). Treating as the benign WPF STA test-host teardown crash (HwndSubclass.SubclassWndProc / Thread.get_CurrentThread NRE, issue #211)."
           }
