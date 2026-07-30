@@ -345,6 +345,45 @@ Before a feature branch is committed:
 5. **Test in `--online` mode** for any feature that calls `LocalStoreService`. Run with `--online` and verify the feature works correctly from IMAP alone. Features that only pass in normal mode are incomplete.
 6. **If the feature affects startup state, verify it activates before the user sees content.** Any feature that influences what the user sees or hears at launch (default view, folder selection, announcement text, connection status, etc.) must be applied in `InitialLoadAsync`, not deferred to the end of `StartBackgroundSyncAsync`. Deferring to post-sync means the user sees a different state for 20–40 seconds before the feature takes effect.
 
+## Visual Quality — Enforced
+
+QuickMail is built screen-reader-first by a developer who cannot see the screen. The
+visual channel is covered by measurement and tooling, never by assumption.
+
+### Grounding rules for any visual claim
+
+- **No screenshot, no claim.** A statement about how the UI looks must cite a specific
+  captured image. Reviews written from memory or general knowledge of "how WPF looks"
+  are speculation, and speculation is not a work item.
+- **Contrast is computed, never eyeballed.** Use the WCAG math in `BuiltInThemeTests`
+  against the theme token JSON. (History: an external review claimed text-contrast
+  problems that measured 7:1–15:1, and missed real border/focus failures that
+  measurement caught in minutes.)
+- **Hedged language is a rejection signal.** "Can/may/likely/risks being" describes a
+  color family, not this app. Findings state what is visible, in which image.
+
+### The visual verification harness (#175/#180)
+
+```bat
+powershell -File scripts\ui-probe.ps1
+```
+
+Seeds a deterministic fixture profile (Tools/QuickMail.Fixtures), launches the real exe
+offline once per (surface × theme × scale) entry in `scripts/ui-probe-plan.json`, and
+collects labeled PNGs. Review the run folder with the checklist in
+`scripts/ui-review-prompt.md`. Notes:
+
+- **Run it after any change to `Views/`, `Styles/`, or `Themes/`** — at minimum the
+  affected surfaces in parchment + dark.
+- **The desktop session must be unlocked.** On a locked session DWM never composites new
+  windows: captures come out white, and focus/clipboard-dependent tests flake. The
+  driver exits 4 and the script refuses to run when locked. (Also check
+  `Get-Process LogonUI` before blaming code for white captures or rotating test flakes.)
+- Every WPF control type used in Views must have an implicit style in
+  `Styles/ThemedControls.xaml` or a reviewed exemption — enforced by
+  `ThemedControlCoverageTests`. WPF default chrome ignores theming; the unstyled ToolBar
+  shipped washed-out for months and passed every sighted spot-check.
+
 ## Spec Writing Requirements
 
 When AI generates a spec from a conceptual directive, the spec is not ready for implementation until it includes all three of these sections.

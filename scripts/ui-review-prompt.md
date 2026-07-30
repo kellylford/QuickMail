@@ -35,6 +35,12 @@ Ground rules — these are non-negotiable:
    Reading pane: rendered HTML body text. Address book: seeded contacts. Rules: one rule.
    Calendar: seeded events. Theme manager: theme list with a description.)
 
+Expected probe-mode state (do NOT flag as errors): the account shows "Disconnected",
+and the status bar reads "9 messages (cached — syncing…)  Never synced  Connecting…  Rules:
+1 active…". The probe runs fully offline against a cache, so these strings are the app's
+normal never-connected state and are identical in every run. A red error banner or an
+exception dialog is still check 6.
+
 ## Output
 
 For each image, emit one JSON object (all of them wrapped in a top-level array):
