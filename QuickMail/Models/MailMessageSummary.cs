@@ -9,6 +9,11 @@ public partial class MailMessageSummary : ObservableObject
     public Guid AccountId { get; set; }
     public string FolderName { get; set; } = string.Empty;
 
+    /// <summary>Human-readable source folder, populated only in aggregate/virtual views (All Mail,
+    /// All Inboxes, saved views, From/To groups) so the row can say where the message lives (#423).
+    /// Empty in single-folder views, where the folder is implied.</summary>
+    public string FolderDisplayName { get; set; } = string.Empty;
+
     /// <summary>
     /// The RFC 5322 Message-ID header, a stable identity for the *same physical message* across
     /// every folder/label it appears in (unlike <see cref="MessageId"/>, which is a per-folder

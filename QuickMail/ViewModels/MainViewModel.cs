@@ -1570,6 +1570,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 vf.AccountId, vf.FolderFullName, maxKey, initialCount, ct);
                         }
                     }
+                    // Aggregate view — stamp each message with its source folder so the row can say
+                    // where it lives (#423). Single-folder loads don't go through here, so their
+                    // FolderDisplayName stays empty and the folder isn't shown.
+                    foreach (var m in msgs) m.FolderDisplayName = vf.FolderDisplayName;
                     newMessages.AddRange(msgs);
                 }
                 catch (OperationCanceledException) { throw; }
