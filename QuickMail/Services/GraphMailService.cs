@@ -46,6 +46,16 @@ public class GraphMailService : IMailService, IConnectionProbe
         ("archive",      SpecialFolderKind.Archive),
     };
 
+    // Ask Graph for IMMUTABLE message ids (#366). Default ids are derived from a message's folder
+    // location and change key, so they go stale when a message moves between folders OR from
+    // server-side mailbox operations the app never sees — a stale cached id then 404s on
+    // delete/move/patch/prefetch, and the failed delete + re-sync makes mail reappear. Immutable ids
+    // stay constant, so a cached id remains valid. Sent on every read that RETURNS a message id; the
+    // local cache is rebuilt once on upgrade (LocalStoreService migration 5→6) so no mutable id
+    // lingers to be mixed with immutable ones. Shared with GraphChangeNotifier's delta poll.
+    internal static readonly IReadOnlyDictionary<string, string> ImmutableIdHeader =
+        new Dictionary<string, string> { ["Prefer"] = "IdType=\"ImmutableId\"" };
+
     public GraphMailService(IOAuthService oauth, IConfigService? config = null, HttpClient? http = null)
     {
         _client = new GraphClient(oauth, http);
@@ -230,7 +240,7 @@ public class GraphMailService : IMailService, IConnectionProbe
             path += $"&$filter=receivedDateTime ge {since.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}";
 
         // Single page only — $top bounds the result like IMAP's initialCount (no nextLink following).
-        var page = await _client.GetAsync<GraphCollection<GraphMessage>>(account, path, ct);
+        var page = await _client.GetAsync<GraphCollection<GraphMessage>>(account, path, ImmutableIdHeader, ct);
         return (page?.Value ?? new List<GraphMessage>())
             .Select(m => MapToSummary(m, account.Id, folderName)).ToList();
     }
@@ -242,7 +252,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         var path = $"/me/messages/{messageId}" +
                    "?$select=id,subject,body,from,toRecipients,ccRecipients,replyTo,internetMessageId,receivedDateTime,isRead,hasAttachments" +
                    "&$expand=attachments($select=id,name,contentType,size,isInline)";
-        var m = await _client.GetAsync<GraphMessage>(Account(accountId), path, ct)
+        var m = await _client.GetAsync<GraphMessage>(Account(accountId), path, ImmutableIdHeader, ct)
             ?? throw new InvalidOperationException($"Graph message {messageId} not found.");
         var detail = MapToDetail(m, accountId, folderName);
         await TryAttachCalendarInviteAsync(accountId, messageId, m, detail, ct);
@@ -310,7 +320,8 @@ public class GraphMailService : IMailService, IConnectionProbe
     public async Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
         var msgs = await _client.GetAllPagesAsync<GraphMessage>(
-            Account(accountId), $"/me/mailFolders/{folderName}/messages?$select=id&$top=999", ct);
+            Account(accountId), $"/me/mailFolders/{folderName}/messages?$select=id&$top=999",
+            scopes: null, silentOnly: false, ImmutableIdHeader, ct);
         return msgs.Select(m => m.Id).ToList();
     }
 
@@ -359,7 +370,8 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var account = Account(accountId);
         var msgs = await _client.GetAllPagesAsync<GraphMessage>(
-            account, $"/me/mailFolders/{DeletedItemsFolderId}/messages?$select=id&$top=999", ct);
+            account, $"/me/mailFolders/{DeletedItemsFolderId}/messages?$select=id&$top=999",
+            scopes: null, silentOnly: false, ImmutableIdHeader, ct);
         foreach (var m in msgs)
             await _client.DeleteAsync(account, $"/me/messages/{m.Id}", ct);
         return msgs.Count;
@@ -375,7 +387,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         // the two must leave the content recoverable (at worst a duplicate draft) rather than gone.
         var mime = MimeMessageBuilder.Build(draft, account, MimeMessageBuilder.AppUserAgent);
         var body = await MimeMessageBuilder.ToBase64BytesAsync(mime, ct);
-        var created = await _client.PostRawReadAsync<GraphMessage>(account, "/me/messages", body, "text/plain", ct);
+        var created = await _client.PostRawReadAsync<GraphMessage>(account, "/me/messages", body, "text/plain", ImmutableIdHeader, ct);
         var newId = created?.Id ?? string.Empty;
 
         if (!string.IsNullOrEmpty(replaceMessageId) && !string.IsNullOrEmpty(newId))

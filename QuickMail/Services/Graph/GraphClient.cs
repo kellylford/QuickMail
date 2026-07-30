@@ -40,9 +40,14 @@ public sealed class GraphClient : IDisposable
         _retryDelayWhenNoHeader = defaultRetryDelay ?? TimeSpan.FromSeconds(2);
     }
 
-    public async Task<T?> GetAsync<T>(AccountModel account, string path, CancellationToken ct = default)
+    public Task<T?> GetAsync<T>(AccountModel account, string path, CancellationToken ct = default)
+        => GetAsync<T>(account, path, headers: null, ct);
+
+    /// <summary>GET with extra request headers — e.g. <c>Prefer: IdType="ImmutableId"</c> (#366).</summary>
+    public async Task<T?> GetAsync<T>(AccountModel account, string path,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
-        using var resp = await SendAsync(account, HttpMethod.Get, path, null, ct);
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
         return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
     }
@@ -141,15 +146,21 @@ public sealed class GraphClient : IDisposable
     /// POSTs an already-encoded raw body and deserializes the JSON response. Used to create a draft
     /// from MIME (<c>POST /me/messages</c>), where the created message's id is needed back.
     /// </summary>
-    public async Task<T?> PostRawReadAsync<T>(
+    public Task<T?> PostRawReadAsync<T>(
         AccountModel account, string path, byte[] body, string contentType, CancellationToken ct = default)
+        => PostRawReadAsync<T>(account, path, body, contentType, headers: null, ct);
+
+    /// <summary>As above, with extra request headers (e.g. immutable-id Prefer for the draft read-back, #366).</summary>
+    public async Task<T?> PostRawReadAsync<T>(
+        AccountModel account, string path, byte[] body, string contentType,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
         using var resp = await SendAsync(account, HttpMethod.Post, path, () =>
         {
             var content = new ByteArrayContent(body);
             content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
             return content;
-        }, ct);
+        }, scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
         return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
     }
@@ -185,9 +196,14 @@ public sealed class GraphClient : IDisposable
     }
 
     /// <summary>GETs a raw byte payload (attachment <c>$value</c> download).</summary>
-    public async Task<byte[]> GetBytesAsync(AccountModel account, string path, CancellationToken ct = default)
+    public Task<byte[]> GetBytesAsync(AccountModel account, string path, CancellationToken ct = default)
+        => GetBytesAsync(account, path, headers: null, ct);
+
+    /// <summary>As above, with extra request headers (e.g. immutable-id Prefer, #366).</summary>
+    public async Task<byte[]> GetBytesAsync(AccountModel account, string path,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
-        using var resp = await SendAsync(account, HttpMethod.Get, path, null, ct);
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }

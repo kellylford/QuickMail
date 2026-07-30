@@ -87,7 +87,9 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
                 // page's @odata.deltaLink as the cursor for the next tick.
                 while (!string.IsNullOrEmpty(url))
                 {
-                    var resp = await _client.GetAsync<GraphDeltaResponse>(account, url, ct);
+                    // Immutable ids on every delta request (initial + nextLink + deltaLink), so
+                    // delta-delivered ids match the immutable ids the folder sync stores (#366).
+                    var resp = await _client.GetAsync<GraphDeltaResponse>(account, url, GraphMailService.ImmutableIdHeader, ct);
                     if (resp?.Value?.Length > 0)
                         sawMessages = true;
 

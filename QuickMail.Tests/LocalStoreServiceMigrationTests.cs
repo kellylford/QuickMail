@@ -115,6 +115,49 @@ public class LocalStoreServiceMigrationTests
         return (string?)cmd.ExecuteScalar() ?? "";
     }
 
+    private static void SetUserVersion(string dbPath, int version)
+    {
+        using var conn = new SqliteConnection($"Data Source={dbPath};Mode=ReadWrite;");
+        conn.Open();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"PRAGMA user_version = {version};";
+        cmd.ExecuteNonQuery();
+    }
+
+    [Fact]
+    public async Task Migration_FromV5_ClearsCachedMailAndDeltaCursors_ForImmutableIds()
+    {
+        // #366 immutable-id switch: a v5 store holds mail cached under OLD mutable ids and a Graph
+        // delta cursor built with them. The 5→6 migration must clear both message tables and the
+        // delta cursors so the next sync repopulates with immutable ids (no mixing).
+        var dir = NewTempDir();
+        var dbPath = Path.Combine(dir, "mail.db");
+        var accountId = Guid.NewGuid();
+
+        var store = new LocalStoreService(new ProfileContext(dir));
+        store.Initialize();
+        await store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "AAMkstale", AccountId = accountId, FolderName = "Inbox",
+            Subject = "s", Date = DateTimeOffset.UtcNow,
+        }]);
+        await store.UpsertDetailAsync(new MailMessageDetail
+        {
+            MessageId = "AAMkstale", AccountId = accountId, FolderName = "Inbox", PlainTextBody = "body",
+        });
+        await store.SetDeltaTokenAsync(accountId, "Inbox", "https://graph.microsoft.com/deltaLink-mutable");
+
+        // Pretend this DB predates the immutable-id switch, then re-open so the 5→6 migration runs.
+        SetUserVersion(dbPath, 5);
+        var upgraded = new LocalStoreService(new ProfileContext(dir));
+        upgraded.Initialize();
+
+        Assert.Empty(await upgraded.LoadAllSummariesAsync());                          // summaries cleared
+        Assert.Null(await upgraded.LoadDetailAsync(accountId, "Inbox", "AAMkstale"));  // details cleared
+        Assert.Null(await upgraded.GetDeltaTokenAsync(accountId, "Inbox"));            // delta cursor reset
+        Assert.Equal(6, ReadUserVersion(dbPath));
+    }
+
     [Fact]
     public async Task Migration_FromV1_ConvertsIdsToText_AndClearsSummariesForMessageIdBackfill()
     {
@@ -127,17 +170,15 @@ public class LocalStoreServiceMigrationTests
         store.Initialize();
 
         // The v5 migration purges MessageSummary so the next sync can backfill internet_message_id
-        // (issue #220 — needed to collapse Gmail's per-folder duplicate copies). Bodies in
-        // MessageDetail are untouched, and the next sync repopulates summaries.
+        // (issue #220), and the v6 immutable-id migration (#366) clears both tables again — so after
+        // a full v1→v6 upgrade the cache is empty and the next sync repopulates it.
         var loaded = await store.LoadAllSummariesAsync();
         Assert.Empty(loaded);
 
-        // The MessageDetail row survives the v2 rebuild and the v5 summary purge, keyed by text id.
+        // MessageDetail no longer survives: the v6 migration clears it too (its key is the changing
+        // Graph message id). Bodies re-fetch on open.
         var detail = await store.LoadDetailAsync(accountId, "Inbox", "42");
-        Assert.NotNull(detail);
-        Assert.Equal("42", detail!.MessageId);
-        Assert.Equal("recipient@x.com", detail.To);
-        Assert.Equal("body forty-two", detail.PlainTextBody);
+        Assert.Null(detail);
 
         // unique_id column is now TEXT on both tables; the new identity column exists.
         Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "unique_id"));
@@ -156,7 +197,7 @@ public class LocalStoreServiceMigrationTests
         store.Initialize();
 
         Assert.True(File.Exists(dbPath + ".pre-v2"), "pre-v2 backup should be created");
-        Assert.Equal(5, ReadUserVersion(dbPath));
+        Assert.Equal(6, ReadUserVersion(dbPath));
         Assert.True(TableExists(dbPath, "DeltaToken"), "DeltaToken table should exist after migration");
         Assert.True(TableExists(dbPath, "CalendarEvent"), "CalendarEvent table should exist after migration");
     }
@@ -192,7 +233,7 @@ public class LocalStoreServiceMigrationTests
         store.Initialize();
 
         Assert.False(File.Exists(dbPath + ".pre-v2"), "fresh DB must not produce a backup");
-        Assert.Equal(5, ReadUserVersion(dbPath));
+        Assert.Equal(6, ReadUserVersion(dbPath));
         Assert.True(TableExists(dbPath, "DeltaToken"));
         Assert.True(TableExists(dbPath, "CalendarEvent"));
         Assert.Equal("TEXT", ColumnType(dbPath, "MessageSummary", "unique_id"));

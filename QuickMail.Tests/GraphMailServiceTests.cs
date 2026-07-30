@@ -19,6 +19,8 @@ public class GraphMailServiceTests
     {
         private readonly Func<string, (HttpStatusCode Status, string Json)> _respond;
         public List<string> Requests { get; } = new();
+        // Per-request Prefer header (null if absent) — lets tests assert immutable-id requests (#366).
+        public List<(string Url, string? Prefer)> HeaderCalls { get; } = new();
 
         public StubHttpHandler(Func<string, (HttpStatusCode, string)> respond) => _respond = respond;
 
@@ -26,6 +28,7 @@ public class GraphMailServiceTests
         {
             var url = request.RequestUri!.ToString();
             Requests.Add(url);
+            HeaderCalls.Add((url, request.Headers.TryGetValues("Prefer", out var p) ? string.Join(",", p) : null));
             var (status, json) = _respond(url);
             return Task.FromResult(new HttpResponseMessage(status)
             {
@@ -175,6 +178,35 @@ public class GraphMailServiceTests
         Assert.Equal("c1", folders.Single(f => f.FullName == "g1").ParentId);
         // f2 had no children, so no descent request was made for it.
         Assert.DoesNotContain(handler.Requests, r => r.Contains("/mailFolders/f2/childFolders"));
+    }
+
+    // ── Immutable-id requests (#366) ───────────────────────────────────────────────────────────
+    [Fact]
+    public async Task GetMessageSummariesAsync_RequestsImmutableIds()
+    {
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, """{"value":[]}"""));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        await svc.GetMessageSummariesAsync(account.Id, "inbox", 50, TestContext.Current.CancellationToken);
+
+        var read = Assert.Single(h.HeaderCalls, c => c.Url.Contains("/mailFolders/inbox/messages"));
+        Assert.Contains("ImmutableId", read.Prefer ?? "");
+    }
+
+    [Fact]
+    public async Task GetMessageDetailAsync_RequestsImmutableIds()
+    {
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, """{"id":"m1"}"""));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+
+        var read = Assert.Single(h.HeaderCalls, c => c.Url.Contains("/me/messages/m1"));
+        Assert.Contains("ImmutableId", read.Prefer ?? "");
+        // Scoping check: the /me identity probe is not a message read and carries no Prefer.
+        Assert.All(h.HeaderCalls.Where(c => c.Url.Contains("/me?")), c => Assert.Null(c.Prefer));
     }
 
     [Fact]

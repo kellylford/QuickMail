@@ -160,8 +160,12 @@ public class LocalStoreService : ILocalStoreService
     //           duplicate-collapse). The Message-ID can't be reconstructed from cached rows, and
     //           the cache repopulates automatically on the next launch's sync. MessageDetail (bodies)
     //           is left intact — same key, still valid.
-    // Add new migrations as: if (version < 5) { ...; }
-    private const int CurrentSchemaVersion = 5;
+    //   5 → 6   clear MessageSummary + MessageDetail + DeltaToken for the Graph immutable-id switch
+    //           (#366). Cached rows hold OLD mutable ids; the next sync repopulates with immutable
+    //           ids. MessageDetail is cleared too (its key is the changing message id), and the Graph
+    //           delta cursors are reset so the first post-upgrade delta re-enumerates under the header.
+    // Add new migrations as: if (version < 6) { ...; }
+    private const int CurrentSchemaVersion = 6;
 
     private static void RunDataMigrations(SqliteConnection conn)
     {
@@ -282,6 +286,20 @@ public class LocalStoreService : ILocalStoreService
             // aggregate views need to collapse Gmail's per-folder duplicate copies (issue #220).
             using var clearCmd = conn.CreateCommand();
             clearCmd.CommandText = "DELETE FROM MessageSummary;";
+            clearCmd.ExecuteNonQuery();
+        }
+
+        if (version < 6)
+        {
+            // Graph immutable-id switch (#366): QuickMail now requests immutable message ids. Cached
+            // rows still hold the OLD mutable ids, which must not be mixed with immutable ones (a
+            // stored mutable id would 404 against an immutable-id operation). Clear the cached mail so
+            // the next sync repopulates with immutable ids, and reset the Graph delta cursors — the
+            // stored @odata.deltaLink was built with mutable ids, so the first post-upgrade delta must
+            // re-enumerate under the immutable-id header. IMAP accounts simply re-sync (their ids are
+            // stable). MessageDetail is cleared too because its key is the (now-changing) message id.
+            using var clearCmd = conn.CreateCommand();
+            clearCmd.CommandText = "DELETE FROM MessageSummary; DELETE FROM MessageDetail; DELETE FROM DeltaToken;";
             clearCmd.ExecuteNonQuery();
         }
 
