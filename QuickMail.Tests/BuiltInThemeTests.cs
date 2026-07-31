@@ -114,6 +114,48 @@ public class BuiltInThemeTests
         AssertContrast(t, "textPrimary", "selectionInactive", 4.5);
     }
 
+    /// <summary>
+    /// Border policy (#421): borders that identify a control or separate
+    /// functional regions are non-text indicators (WCAG 1.4.11) and need 3:1;
+    /// borderSubtle is decorative but must not vanish — its floor is a
+    /// deliberate 1.5:1, not drift. Every built-in shipped borders at
+    /// 1.3–2.4:1 before this test existed.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BuiltInIds))]
+    public void ContrastPolicy_Borders_AreVisible(string id)
+    {
+        var t = ResolvedBuiltIns().First(x => x.Id == id);
+        foreach (var bg in new[] { "windowBackground", "surfaceBackground", "chromeBackground" })
+            AssertContrast(t, "border", bg, 3.0);
+        AssertContrast(t, "inputBorder", "inputBackground", 3.0);
+        AssertContrast(t, "borderSubtle", "windowBackground", 1.5);
+    }
+
+    /// <summary>
+    /// The focus visual is a two-tone ring: focusIndicator dash over a
+    /// windowBackground halo. Focus stays visible on any fill only if, for the
+    /// worst case (a selected row), at least the halo clears 3:1 against
+    /// selectionBackground — focusIndicator alone ran 2.2–2.3:1 on selection in
+    /// every light theme before #421.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(BuiltInIds))]
+    public void ContrastPolicy_FocusRing_VisibleOnSelection(string id)
+    {
+        var t = ResolvedBuiltIns().First(x => x.Id == id);
+        AssertContrast(t, "windowBackground", "selectionBackground", 3.0);
+    }
+
+    /// <summary>accentSubtle is the hover fill; primary text on it must stay AA.</summary>
+    [Theory]
+    [MemberData(nameof(BuiltInIds))]
+    public void ContrastPolicy_TextOnHoverFill_MeetsAA(string id)
+    {
+        var t = ResolvedBuiltIns().First(x => x.Id == id);
+        AssertContrast(t, "textPrimary", "accentSubtle", 4.5);
+    }
+
     [Theory]
     [MemberData(nameof(BuiltInIds))]
     public void ContrastPolicy_StatusColors_MeetAA(string id)

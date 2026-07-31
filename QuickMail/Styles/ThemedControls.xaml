@@ -122,6 +122,118 @@
         <Setter Property="BorderBrush" Value="Transparent"/>
     </Style>
 
+    <!-- ── ToolBar ────────────────────────────────────────────────────────── -->
+    <!-- WPF's default ToolBar chrome is a hardcoded light gradient that ignores
+         theming entirely: in dark themes the themed near-white button text lands
+         on that light strip at ~1.1:1 and reads as disabled (issue #421). The
+         template below replaces it with Theme.ChromeBackground and keeps the
+         overflow mechanism (PART names are contractual). No drag grip: QuickMail
+         trays are locked or single-band. -->
+
+    <Style TargetType="ToolBarTray">
+        <Setter Property="Background" Value="{DynamicResource Theme.ChromeBackground}"/>
+    </Style>
+
+    <Style TargetType="ToolBar">
+        <Setter Property="Background" Value="{DynamicResource Theme.ChromeBackground}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ToolBar">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{DynamicResource Theme.BorderSubtle}"
+                            BorderThickness="0,0,0,1"
+                            SnapsToDevicePixels="True">
+                        <DockPanel>
+                            <ToggleButton x:Name="OverflowButton"
+                                          DockPanel.Dock="Right"
+                                          Style="{x:Null}"
+                                          FocusVisualStyle="{DynamicResource FocusVisual}"
+                                          AutomationProperties.Name="More commands"
+                                          ClickMode="Press"
+                                          IsChecked="{Binding IsOverflowOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Visibility="Collapsed">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="bg" Background="Transparent" Padding="4,2">
+                                            <TextBlock Text="&#x00BB;"
+                                                       Foreground="{DynamicResource Theme.TextPrimary}"
+                                                       VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource Theme.AccentSubtle}"/>
+                                            </Trigger>
+                                            <Trigger Property="IsChecked" Value="True">
+                                                <Setter TargetName="bg" Property="Background" Value="{DynamicResource Theme.AccentSubtle}"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <Popup x:Name="OverflowPopup"
+                                   AllowsTransparency="True"
+                                   Placement="Bottom"
+                                   IsOpen="{Binding IsOverflowOpen, RelativeSource={RelativeSource TemplatedParent}}"
+                                   StaysOpen="False"
+                                   Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Border Background="{DynamicResource Theme.SurfaceBackground}"
+                                        BorderBrush="{DynamicResource Theme.Border}"
+                                        BorderThickness="1">
+                                    <ToolBarOverflowPanel x:Name="PART_ToolBarOverflowPanel"
+                                                          Margin="2"
+                                                          WrapWidth="200"
+                                                          Focusable="True"
+                                                          FocusVisualStyle="{x:Null}"
+                                                          KeyboardNavigation.TabNavigation="Cycle"
+                                                          KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                                </Border>
+                            </Popup>
+                            <ToolBarPanel x:Name="PART_ToolBarPanel"
+                                          IsItemsHost="True"
+                                          Margin="2,1"/>
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="HasOverflowItems" Value="True">
+                            <Setter TargetName="OverflowButton" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Controls placed inside a ToolBar resolve their style through these keys,
+         NOT through the implicit type styles above — without these mappings a
+         plain <Button> in a toolbar silently falls back to WPF's default look. -->
+    <Style x:Key="{x:Static ToolBar.ButtonStyleKey}" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="Margin" Value="1,0"/>
+    </Style>
+    <Style x:Key="{x:Static ToolBar.ToggleButtonStyleKey}" TargetType="ToggleButton" BasedOn="{StaticResource {x:Type ToggleButton}}">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+        <Setter Property="Margin" Value="1,0"/>
+    </Style>
+    <Style x:Key="{x:Static ToolBar.CheckBoxStyleKey}" TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}"/>
+    <Style x:Key="{x:Static ToolBar.RadioButtonStyleKey}" TargetType="RadioButton" BasedOn="{StaticResource {x:Type RadioButton}}"/>
+    <Style x:Key="{x:Static ToolBar.TextBoxStyleKey}" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}"/>
+    <Style x:Key="{x:Static ToolBar.ComboBoxStyleKey}" TargetType="ComboBox" BasedOn="{StaticResource {x:Type ComboBox}}"/>
+    <Style x:Key="{x:Static ToolBar.SeparatorStyleKey}" TargetType="Separator">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Separator">
+                    <Rectangle Width="1" Margin="4,3"
+                               Fill="{DynamicResource Theme.Border}"
+                               SnapsToDevicePixels="True"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ── Text input ─────────────────────────────────────────────────────── -->
 
     <Style TargetType="TextBox">
@@ -408,6 +520,13 @@
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
+    </Style>
+
+    <!-- Bare separators outside menus/toolbars/status bars (those contexts use
+         their own keyed styles above/below): a themed horizontal hairline. -->
+    <Style TargetType="Separator">
+        <Setter Property="Background" Value="{DynamicResource Theme.BorderSubtle}"/>
+        <Setter Property="Margin" Value="0,4"/>
     </Style>
 
     <!-- ── ScrollBar ──────────────────────────────────────────────────────── -->
@@ -883,7 +1002,8 @@
          column layout is preserved. -->
     <Style x:Key="{x:Static GridView.GridViewItemContainerStyleKey}" TargetType="ListViewItem">
         <Setter Property="FocusVisualStyle" Value="{DynamicResource FocusVisual}"/>
-        <Setter Property="Padding" Value="2"/>
+        <!-- 4,3 (was 2): visual review found 2px rows too dense to scan (#421). -->
+        <Setter Property="Padding" Value="4,3"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="Template">
             <Setter.Value>
@@ -1087,6 +1207,128 @@
 
     <Style TargetType="GridSplitter">
         <Setter Property="Background" Value="{DynamicResource Theme.BorderSubtle}"/>
+    </Style>
+
+    <!-- Default WPF Expander chrome ignores theming (black chevron, light header
+         hover). Down-direction only — every Expander in the app expands down. -->
+    <Style TargetType="Expander">
+        <Setter Property="Foreground" Value="{DynamicResource Theme.TextPrimary}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <DockPanel>
+                        <!-- "HeaderSite" matches the name in WPF's default Expander
+                             template; the tab-order tests identify the header stop
+                             by that name. -->
+                        <ToggleButton x:Name="HeaderSite"
+                                      DockPanel.Dock="Top"
+                                      Style="{x:Null}"
+                                      FocusVisualStyle="{DynamicResource FocusVisual}"
+                                      Content="{TemplateBinding Header}"
+                                      ContentTemplate="{TemplateBinding HeaderTemplate}"
+                                      Foreground="{TemplateBinding Foreground}"
+                                      IsChecked="{Binding IsExpanded, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="bg" Background="Transparent" Padding="4,3">
+                                        <DockPanel>
+                                            <Path x:Name="Chevron" DockPanel.Dock="Left"
+                                                  Width="10" Height="10" Margin="1,0,7,0"
+                                                  Data="M 3,1 L 8,5 L 3,9"
+                                                  Stroke="{DynamicResource Theme.TextSecondary}"
+                                                  StrokeThickness="1.6"
+                                                  VerticalAlignment="Center"
+                                                  RenderTransformOrigin="0.5,0.5">
+                                                <Path.RenderTransform>
+                                                    <RotateTransform Angle="0"/>
+                                                </Path.RenderTransform>
+                                            </Path>
+                                            <ContentPresenter VerticalAlignment="Center"
+                                                              RecognizesAccessKey="True"/>
+                                        </DockPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bg" Property="Background" Value="{DynamicResource Theme.AccentSubtle}"/>
+                                        </Trigger>
+                                        <Trigger Property="IsChecked" Value="True">
+                                            <Setter TargetName="Chevron" Property="RenderTransform">
+                                                <Setter.Value>
+                                                    <RotateTransform Angle="90"/>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter x:Name="ExpandSite"
+                                          Margin="18,2,0,0"
+                                          Visibility="Collapsed"/>
+                    </DockPanel>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True">
+                            <Setter TargetName="ExpandSite" Property="Visibility" Value="Visible"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Default WPF ProgressBar is Aero green regardless of theme. Determinate
+         fills with accent via PART_Indicator (the control sizes it); the sole
+         indeterminate use (status bar) shows a full-width breathing accent bar —
+         deliberately no marquee animation, which needs width math a template
+         cannot express cleanly. -->
+    <Style TargetType="ProgressBar">
+        <Setter Property="Background" Value="{DynamicResource Theme.SurfaceBackground}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Theme.Accent}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Theme.Border}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ProgressBar">
+                    <Border Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="2"
+                            SnapsToDevicePixels="True">
+                        <Grid ClipToBounds="True">
+                            <Rectangle x:Name="PART_Track" Fill="Transparent"/>
+                            <Border x:Name="PART_Indicator"
+                                    HorizontalAlignment="Left"
+                                    Background="{TemplateBinding Foreground}"
+                                    CornerRadius="1"/>
+                            <Border x:Name="PulseBar"
+                                    Background="{TemplateBinding Foreground}"
+                                    CornerRadius="1"
+                                    Opacity="0.3"
+                                    Visibility="Collapsed"/>
+                        </Grid>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsIndeterminate" Value="True">
+                            <Setter TargetName="PART_Indicator" Property="Visibility" Value="Collapsed"/>
+                            <Setter TargetName="PulseBar" Property="Visibility" Value="Visible"/>
+                            <Trigger.EnterActions>
+                                <BeginStoryboard x:Name="PulseStoryboard">
+                                    <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                        <DoubleAnimation Storyboard.TargetName="PulseBar"
+                                                         Storyboard.TargetProperty="Opacity"
+                                                         From="0.25" To="0.7" Duration="0:0:0.9"/>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <StopStoryboard BeginStoryboardName="PulseStoryboard"/>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
     </Style>
 
 </ResourceDictionary>

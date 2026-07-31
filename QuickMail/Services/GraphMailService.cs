@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -353,11 +354,24 @@ public class GraphMailService : IMailService, IConnectionProbe
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         => MoveMessagesAsync(accountId, folderName, messageIds, DeletedItemsFolderId, ct);
 
+    // Graph message ids are mutable — they change when a message moves between folders (server rules,
+    // Outlook, any move), so a cached id can go stale and a delete/move against it returns 404
+    // ErrorItemNotFound (#366). A 404 means the message is already gone from that id, so the caller's
+    // intent (remove it from here) is satisfied: treat it as done instead of throwing, which would
+    // otherwise drive the "delete may not have completed — refreshing" path that re-syncs the folder
+    // and makes the message reappear. Immutable ids (Part B / #366) remove the staleness; this keeps
+    // a stray stale id from resurrecting a message in the meantime.
+    private static bool IsAlreadyGone(HttpRequestException ex) => ex.StatusCode == HttpStatusCode.NotFound;
+
     public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.DeleteAsync(account, $"/me/messages/{id}", ct);
+        {
+            try { await _client.DeleteAsync(account, $"/me/messages/{id}", ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: delete {id} → 404, already gone; treating as deleted (#366)."); }
+        }
     }
 
     public async Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
@@ -366,7 +380,11 @@ public class GraphMailService : IMailService, IConnectionProbe
         var msgs = await _client.GetAllPagesAsync<GraphMessage>(
             account, $"/me/mailFolders/{DeletedItemsFolderId}/messages?$select=id&$top=999", ct);
         foreach (var m in msgs)
-            await _client.DeleteAsync(account, $"/me/messages/{m.Id}", ct);
+        {
+            try { await _client.DeleteAsync(account, $"/me/messages/{m.Id}", ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: empty-trash delete {m.Id} → 404, already gone (#366)."); }
+        }
         return msgs.Count;
     }
 
@@ -384,7 +402,13 @@ public class GraphMailService : IMailService, IConnectionProbe
         var newId = created?.Id ?? string.Empty;
 
         if (!string.IsNullOrEmpty(replaceMessageId) && !string.IsNullOrEmpty(newId))
-            await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", ct);
+        {
+            // The prior draft's id may be stale (a 404) — the new copy is already saved, so a
+            // failure to remove the old one is at worst a duplicate draft, never lost content (#366).
+            try { await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: replace-draft delete {replaceMessageId} → 404, already gone (#366)."); }
+        }
 
         return newId;
     }
@@ -408,7 +432,14 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.PostAsync(account, $"/me/messages/{id}/move", new { destinationId = destinationFolder }, ct);
+        {
+            // Includes move-to-trash (delete). A 404 means this id already moved/was reassigned, so
+            // the message isn't here to move — treat as done rather than surfacing a hard failure that
+            // would re-sync and resurrect it (#366).
+            try { await _client.PostAsync(account, $"/me/messages/{id}/move", new { destinationId = destinationFolder }, ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: move {id} → 404, already gone/moved; treating as done (#366)."); }
+        }
     }
 
     public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)
