@@ -189,9 +189,17 @@ public class SyncService : ISyncService
     /// </summary>
     private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
         AccountModel account, MailFolderModel folder,
-        List<MailMessageSummary> fetched, bool persisted, CancellationToken ct)
+        List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct)
     {
-        if (fetched.Count == 0) return fetched;
+        if (fetched.Count == 0)
+        {
+            // F4: an empty folder at upgrade has no pre-existing mail to baseline, but still consume the
+            // baseline on the full sync so a later genuinely-new message runs rules normally rather than
+            // being swallowed by a baseline deferred to it.
+            if (consumeRebuildBaseline && _rebuildAccounts.ContainsKey(account.Id))
+                _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0);
+            return fetched;
+        }
 
         // No enabled rules → no id scan, no guard bookkeeping; a rule-less profile pays nothing.
         // (LoadRules() is cached after first load.) Still persist so the cache/UI reflect the fetch.
@@ -223,14 +231,23 @@ public class SyncService : ISyncService
         }
 
         // Persisted rebuild baseline (#366/N5): after the one-time immutable-id cache wipe, the store is
-        // empty, so the first re-fetch per folder would read every pre-existing message as "new" and
-        // re-run rules over old mail on upgrade day (move/delete/mark-read). For the wiped accounts only,
-        // treat the first post-wipe sync per folder as a baseline — the messages are already upserted
-        // above, so returning here marks them seen (the next sync's store snapshot will hold them)
-        // WITHOUT running rules. Rules resume on genuinely-new mail from then on.
+        // empty, so a re-fetch reads every pre-existing message as "new" and would re-run rules over old
+        // mail on upgrade day (move/delete/mark-read). While a wiped account's folder is not yet
+        // baselined, skip rules on its re-fetched mail.
+        //
+        // F2 (race): the delta poll's IDLE last-50 fetch runs concurrently with the full sync's larger
+        // window on upgrade launches, and nothing serializes them. Only the FULL sync consumes (marks
+        // the folder baselined); the IDLE path skips rules WITHOUT consuming. So if IDLE wins the race it
+        // can't burn the baseline on 50 messages and leave the full sync's larger remainder — read as new
+        // against the just-upserted 50 — to re-fire. The full sync always finds the folder un-baselined
+        // and skips its whole batch. Once the full sync consumes, rules resume normally on both paths.
         if (persisted && _rebuildAccounts.ContainsKey(account.Id)
-            && _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0))
+            && !_rebuildBaselined.ContainsKey((account.Id, folder.FullName)))
+        {
+            if (consumeRebuildBaseline)
+                _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0);
             return fetched;
+        }
 
         var newArrivals = new List<MailMessageSummary>();
         foreach (var m in fetched)
@@ -322,7 +339,7 @@ public class SyncService : ISyncService
         {
             // Upsert + client rules happen inside the shared chokepoint so live-arriving mail is
             // subject to rules exactly like the full sync.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: false, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
@@ -338,7 +355,7 @@ public class SyncService : ISyncService
         if (incoming.Count > 0)
         {
             // Online mode keeps no local store, so rules dedupe via the in-session guard only.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: false, ct);
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: false, consumeRebuildBaseline: false, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
@@ -369,7 +386,7 @@ public class SyncService : ISyncService
             // syncs use). It strips rule-moved/deleted messages from the batch and raises
             // RulesApplied / MessagesRemoved; here we just surface the survivors to the UI —
             // immediately, without waiting for body preview fetches.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: true, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
 

@@ -1954,8 +1954,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // below repopulates it. Say so rather than showing a silent empty inbox. Announce it via
             // the IMMEDIATE (interrupt) path, not SetStatus — the debounced status announce would be
             // overwritten within 500 ms by the "Connecting and syncing…" write below and never spoken
-            // (review N1). The visible status bar also carries the notice (set below when the cache is
-            // empty, which it is right after the wipe) so sighted users see the explanation too.
+            // (review N1). This announce channel is the one that reliably reaches the user. (The
+            // visible status bar shows the notice briefly too — set below when the cache is empty — but
+            // StartBackgroundSyncAsync overwrites it with a connect/sync status moments later, so don't
+            // rely on the status bar for the explanation; review F1.)
             ImmutableIdRebuildAnnouncePending = false;
             Announce(ImmutableIdRebuildNotice, AnnouncementCategory.Status);
         }
