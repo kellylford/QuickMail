@@ -2664,19 +2664,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (list.Count == 0) return;
 
+        // FolderDisplayName is a plain settable string, not an observable property — safe here because
+        // this only stamps freshly-materialized summaries in an aggregate load, and single-folder loads
+        // build their own fresh instances from SQLite (so a stamped instance never leaks into a
+        // single-folder view where the folder should be implied). Keep that invariant if reusing rows.
+        //
         // Precompute lookups once so this is O(messages), not O(messages × folders) (Kelly's review):
-        // account id → label, and (account, folder-name lowercased) → folder display name.
+        // account id → label, and (account, folder full-name) → folder display name. Keys are matched
+        // case-sensitively (Ordinal): a message's FolderName is captured from the same folder.FullName
+        // (a case-sensitive Graph id or IMAP path), so exact match is correct; a mismatch just falls
+        // back to announcing nothing rather than a raw id.
         var accountLabels = new Dictionary<Guid, string>();
         foreach (var a in Accounts) accountLabels[a.Id] = a.AccountLabel;
         var folderNames = new Dictionary<(Guid, string), string>();
         foreach (var kvp in _cachedFolders)
             foreach (var f in kvp.Value)
-                folderNames[(kvp.Key, f.FullName.ToLowerInvariant())] = f.DisplayName;
+                folderNames[(kvp.Key, f.FullName)] = f.DisplayName;
 
         foreach (var m in list)
         {
             // Folder must be known — never announce a raw backend id.
-            if (!folderNames.TryGetValue((m.AccountId, m.FolderName.ToLowerInvariant()), out var folder)
+            if (!folderNames.TryGetValue((m.AccountId, m.FolderName), out var folder)
                 || string.IsNullOrEmpty(folder))
             {
                 m.FolderDisplayName = string.Empty;
