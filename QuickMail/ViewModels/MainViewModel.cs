@@ -1604,6 +1604,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 vf.AccountId, vf.FolderFullName, maxKey, initialCount, ct);
                         }
                     }
+                    // Aggregate view — stamp each message with the stored view's plain folder name as a
+                    // fallback; ApplyFolderDisplayNames below overwrites it with the account-qualified
+                    // form for folders known to the cache (#423). Single-folder loads don't come here.
+                    foreach (var m in msgs) m.FolderDisplayName = vf.FolderDisplayName;
                     newMessages.AddRange(msgs);
                 }
                 catch (OperationCanceledException) { throw; }
@@ -1613,6 +1617,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            // #423 (Kelly round 2): Phase 2 inserts via InsertMessageSorted (not SetMessages), so these
+            // freshly-fetched rows must be account-qualified here too — otherwise a multi-account saved
+            // view shows qualified cached rows next to unqualified fresh ones. Keeps the plain stamp
+            // above as the miss fallback for folders not in the cache.
+            ApplyFolderDisplayNames(newMessages);
 
             // A saved view can span folders (and Gmail copies), so key by global message identity
             // to collapse duplicate copies against what is already shown (issue #220).
@@ -2421,6 +2431,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             toInsert.Add(msg);
         }
 
+        // #423: live arrivals into an aggregate view must announce their source folder too.
+        if (IsVirtualFolder(selected))
+            ApplyFolderDisplayNames(toInsert);
+
         // Batch all inserts into a single CollectionChanged(Reset) notification.
         // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
         // causes the ListView to emit a UIA StructureChanged(ChildAdded) event per insert.
@@ -2655,7 +2669,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
         // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
         if (IsVirtualFolder(SelectedFolder))
+        {
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
+            ApplyFolderDisplayNames(list);
+        }
         _rawMessages = list;
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
@@ -2677,6 +2694,108 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (string.Equals(f.FullName, msg.FolderName, StringComparison.OrdinalIgnoreCase))
                     return f.Kind;
         return SpecialFolderKind.None;
+    }
+
+    /// <summary>
+    /// #423: stamps each row's source location so the accessible name can announce it in aggregate/
+    /// virtual views. Account-qualified as "&lt;account&gt; -- &lt;folder&gt;" (e.g. "icanbrew -- Inbox")
+    /// ONLY when the current VIEW spans more than one account — decided by
+    /// <see cref="AggregateSpansMultipleAccounts"/> from the view identity (per-account All Mail vs
+    /// global aggregate vs the saved view's folder set), NOT from the visible rows, so a global All Mail
+    /// dominated by one account's mail still qualifies. A single-account view (per-account All Mail, a
+    /// single-account saved view) announces the folder alone ("Inbox") to avoid repeating the account.
+    /// <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph folder id, or an IMAP
+    /// path), mapped through the cached folder list to the display name. On a lookup miss the existing
+    /// value is left untouched (empty for fresh rows, or a caller-supplied plain-name fallback) — never
+    /// a raw id. Only called for virtual views; single-folder views leave
+    /// <see cref="MailMessageSummary.FolderDisplayName"/> empty (folder implied).
+    /// </summary>
+    private void ApplyFolderDisplayNames(List<MailMessageSummary> list)
+    {
+        if (list.Count == 0) return;
+
+        // Precompute lookups once so this is O(messages), not O(messages × folders) (Kelly's review):
+        // account id → label, and (account, folder full-name) → folder display name.
+        var accountLabels = new Dictionary<Guid, string>();
+        foreach (var a in Accounts) accountLabels[a.Id] = a.AccountLabel;
+        var folderNames = new Dictionary<(Guid, string), string>();
+        foreach (var kvp in _cachedFolders)
+            foreach (var f in kvp.Value)
+                folderNames[(kvp.Key, f.FullName)] = f.DisplayName;
+
+        StampFolderDisplayNames(list, AggregateSpansMultipleAccounts(), accountLabels, folderNames);
+    }
+
+    /// <summary>
+    /// Whether the current aggregate/virtual view spans more than one account — the account prefix is
+    /// added only then (#423). Decided by the VIEW, not by which accounts happen to be visible: global
+    /// All Mail spans every account even if one dominates the list and the others are barely present,
+    /// while per-account All Mail is a single account whose name is already implied. A single-account
+    /// saved view stays folder-only; a multi-account one qualifies.
+    /// </summary>
+    private bool AggregateSpansMultipleAccounts()
+        => AggregateSpansMultipleAccounts(SelectedFolder?.FullName, SavedViews, Accounts.Count);
+
+    /// <summary>
+    /// Pure decision for the account-qualification (#423), extracted so it's directly testable — this
+    /// is the piece that regressed once (a content-based version dropped the prefix when one account
+    /// dominated the list). Decided by the VIEW identity, never by row content: per-account All Mail →
+    /// one account (false); a saved view → the distinct accounts among its folders; global aggregates
+    /// (All Mail / All Inboxes / Sent / Trash / Flagged) and contact-mail → <paramref name="accountCount"/>
+    /// &gt; 1, since they span every account.
+    /// </summary>
+    internal static bool AggregateSpansMultipleAccounts(
+        string? viewFullName, IEnumerable<SavedView> savedViews, int accountCount)
+    {
+        if (viewFullName == null) return false;
+
+        // Per-account All Mail → the single account is already implied by the view itself.
+        if (TryGetAccountIdFromSentinel(viewFullName, out _)) return false;
+
+        // Saved view → count the distinct accounts among its folders.
+        if (TryGetViewIdFromSentinel(viewFullName, out var viewId) ||
+            TryGetViewAllIdFromSentinel(viewFullName, out viewId))
+        {
+            var sv = savedViews.FirstOrDefault(v => v.Id == viewId);
+            if (sv != null)
+                return sv.Folders.Select(f => f.AccountId).Distinct().Count() > 1;
+        }
+
+        return accountCount > 1;
+    }
+
+    /// <summary>
+    /// Pure stamping logic for <see cref="ApplyFolderDisplayNames"/>, extracted so the format and its
+    /// fallbacks are directly testable (#423). Sets each row's
+    /// <see cref="MailMessageSummary.FolderDisplayName"/> to the folder alone ("Inbox"), or account-
+    /// qualified "&lt;account&gt; -- &lt;folder&gt;" when <paramref name="qualifyAccount"/> is set.
+    /// </summary>
+    /// <param name="list">The batch to stamp.</param>
+    /// <param name="qualifyAccount">True to prefix "&lt;account&gt; -- " (view spans &gt;1 account).</param>
+    /// <param name="accountLabels">account id → display label.</param>
+    /// <param name="folderNames">(account, folder full-name) → folder display name; case-sensitive
+    /// (Ordinal): FolderName is captured from the same folder.FullName (a Graph id / IMAP path).</param>
+    internal static void StampFolderDisplayNames(
+        List<MailMessageSummary> list,
+        bool qualifyAccount,
+        IReadOnlyDictionary<Guid, string> accountLabels,
+        IReadOnlyDictionary<(Guid, string), string> folderNames)
+    {
+        if (list.Count == 0) return;
+
+        foreach (var m in list)
+        {
+            // Folder must be known — never announce a raw backend id. On a miss leave whatever's there
+            // (empty for fresh rows, or a caller's plain-name fallback), don't clobber it to empty.
+            if (!folderNames.TryGetValue((m.AccountId, m.FolderName), out var folder)
+                || string.IsNullOrEmpty(folder))
+                continue;
+
+            m.FolderDisplayName = qualifyAccount
+                && accountLabels.TryGetValue(m.AccountId, out var label) && !string.IsNullOrEmpty(label)
+                ? $"{label} -- {folder}"
+                : folder;
+        }
     }
 
     // Re-applies the status filter and search text to _rawMessages.
@@ -4040,6 +4159,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                 return;
 
+            // #423: All Mail's incremental adds go through InsertMessageSorted (not SetMessages), so
+            // stamp the source folder here too — otherwise newly-fetched rows announce no folder.
+            ApplyFolderDisplayNames(newMessages);
+
             if (needsRecipientRepair)
             {
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
@@ -4585,6 +4708,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 ? await FetchAccountAllFoldersAsync(account, ct)
                 : await FetchAccountNewMessagesAsync(account, ct);
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            // #423: per-account All Mail's incremental adds go through InsertMessageSorted (not
+            // SetMessages), so stamp the source folder here too — otherwise the newest rows (at the
+            // top) announce no folder while the cached rows below them do. Mirrors FetchAllMailAsync.
+            // The OnlineMode branch below is already covered — it flows through SetMessages.
+            ApplyFolderDisplayNames(newMessages);
 
             if (OnlineMode)
             {

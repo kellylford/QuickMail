@@ -123,7 +123,9 @@ public class StringToBrushConverter : IValueConverter
 
 /// <summary>
 /// Builds the accessible name string for a message row, optionally prepending the flag label.
-/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus, HasAttachments].
+/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus,
+/// HasAttachments, FolderDisplayName]. The 9th (FolderDisplayName) is appended only in aggregate
+/// views (#423); older 8-value bindings still work (the value is treated as absent).
 /// </summary>
 public class MessageAccessibleNameConverter : IMultiValueConverter
 {
@@ -138,11 +140,14 @@ public class MessageAccessibleNameConverter : IMultiValueConverter
         var dateDisplay     = values[5] as string ?? string.Empty;
         var announceFlag    = values[6] is bool b && b;
         var hasAttachments  = values.Length >= 8 && values[7] is bool ba && ba;
+        // Source folder — set only in aggregate views (#423); empty elsewhere, so it's omitted.
+        var folder          = values.Length >= 9 ? values[8] as string ?? string.Empty : string.Empty;
         var flagPrefix      = announceFlag && !string.IsNullOrEmpty(flagLabel)
                                 ? flagLabel + ". "
                                 : string.Empty;
         var attachmentPart = hasAttachments ? "attachments. " : string.Empty;
-        return $"{flagPrefix}{readStatusLabel}. {attachmentPart}{from}. {subject}. {preview}. {dateDisplay}.";
+        var folderPart     = string.IsNullOrEmpty(folder) ? string.Empty : $" {folder}.";
+        return $"{flagPrefix}{readStatusLabel}. {attachmentPart}{from}. {subject}. {preview}. {dateDisplay}.{folderPart}";
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
