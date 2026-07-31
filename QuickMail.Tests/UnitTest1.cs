@@ -268,6 +268,22 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void RowFieldsWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new RowFieldsViewModel(new StubRowLayoutService(), new StubConfigService());
+        var window = new RowFieldsWindow(vm);
+        Assert.NotNull(window);
+
+        // The panes the F6 ring cycles must all exist by these names, or the cycle silently
+        // strands focus. `as` + NotNull so a rename fails here, not with a NullReferenceException.
+        foreach (var name in new[] { "RowTypeList", "FieldList", "OptionsPanel", "PreviewBox", "ButtonBar" })
+            Assert.NotNull(window.FindName(name) as System.Windows.UIElement);
+
+        window.Close();
+    }
+
+    [StaFact]
     public void ReportBugWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

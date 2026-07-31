@@ -317,10 +317,15 @@
                                           Margin="16,4,0,0"
                                           AutomationProperties.Name="Announce block type such as heading level when the caret moves to a different paragraph in HTML compose mode"/>
 
-                                <CheckBox Content="Announce fla_g status"
-                                          IsChecked="{Binding AnnounceFlagStatus, Mode=TwoWay}"
-                                          Margin="16,4,0,0"
-                                          AutomationProperties.Name="Announce flag status"/>
+                                <!-- "Announce flag status" used to live here. Flag is now one
+                                     orderable field among many, so the checkbox would be a second
+                                     control for something the chooser already owns. The config key
+                                     is kept and honoured once, to seed the default layout. -->
+                                <TextBlock Text="Which fields message list rows speak, and in what order, is set in View → Message List Fields."
+                                           TextWrapping="Wrap"
+                                           Margin="16,8,0,0"
+                                           Foreground="{DynamicResource Theme.TextSecondary}"
+                                           FontSize="{DynamicResource Theme.FontSizeSmall}"/>
 
                                 <CheckBox Content="Show field _labels in the contact list"
                                           IsChecked="{Binding ContactListShowFieldLabels, Mode=TwoWay}"

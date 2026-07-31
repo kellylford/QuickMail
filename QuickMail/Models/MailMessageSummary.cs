@@ -36,7 +36,15 @@ public partial class MailMessageSummary : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]
     [NotifyPropertyChangedFor(nameof(ReadStatusLabel))]
+    [NotifyPropertyChangedFor(nameof(IsUnread))]
     private bool _isRead;
+
+    /// <summary>
+    /// Positive form of <see cref="IsRead"/>. The spoken "Unread" field is phrased positively so
+    /// that <see cref="Models.SpeakMode.WhenTrue"/> means "say it only when the message is unread"
+    /// — the common request — rather than the inverse.
+    /// </summary>
+    public bool IsUnread => !IsRead;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusDisplay))]

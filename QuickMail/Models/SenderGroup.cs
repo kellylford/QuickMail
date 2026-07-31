@@ -41,6 +41,12 @@ public sealed class SenderGroup : INotifyPropertyChanged
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagLabel)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FlagColorHex)));
         }
+        // The row speaks HasUnread, so reading the last unread message in the group has to
+        // refresh the node's name — otherwise it keeps saying "Has unread" after it stops being true.
+        else if (e.PropertyName is nameof(MailMessageSummary.IsRead))
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasUnread)));
+        }
     }
 
     // ── Computed from the group / newest message ──────────────────────────────
@@ -72,19 +78,9 @@ public sealed class SenderGroup : INotifyPropertyChanged
     /// <summary>The color of the first flagged message's flag, or null if none are flagged.</summary>
     public string? FlagColorHex => Messages.FirstOrDefault(m => m.IsFlagged)?.FlagColorHex;
 
-    /// <summary>Accessibility label read by screen readers when the tree node receives focus.</summary>
-    public string AutomationName
-    {
-        get
-        {
-            var countWord = Count == 1 ? "message" : "messages";
-            var unread    = HasUnread ? " Has unread." : string.Empty;
-            var flagged   = HasFlagged ? $" {FlagLabel}." : string.Empty;
-            return string.IsNullOrWhiteSpace(Preview)
-                ? $"{SenderName}. {Count} {countWord}.{flagged}{unread} {DateDisplay}."
-                : $"{SenderName}. {Count} {countWord}.{flagged}{unread} {Preview}. {DateDisplay}.";
-        }
-    }
+    // The accessibility label is no longer built here. Which fields a sender/recipient group row
+    // speaks, and in what order, is the user's RowKind.SenderGroup layout — composed by
+    // Helpers.RowSpeechBuilder and bound by Views.RowSpeech. The properties above are its inputs.
 
     // ── IsExpanded (INotifyPropertyChanged for TwoWay binding) ───────────────
 

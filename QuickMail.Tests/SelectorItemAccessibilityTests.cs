@@ -115,6 +115,15 @@ public class SelectorItemAccessibilityTests
         var group = new GroupModel { Name = "Team" };
         Assert.Equal(group.Display, group.ToString());
 
+        // Message List Fields chooser: the row-type ComboBox and the field ListBox. The field
+        // rows render a CheckBox, which drives only the visual — the item's name is ToString().
+        Assert.Equal("Messages", new RowKindOption(RowKind.Message, "Messages").ToString());
+        var fieldRow = new RowFieldRow(
+            RowFieldCatalog.Find(RowKind.Message, "subject")!,
+            new RowFieldSetting { Id = "subject", Enabled = true },
+            onChanged: () => { });
+        Assert.Equal("Subject", fieldRow.ToString());
+
         // Connection Diagnostics lists. The account row must speak the disagreement, not just the
         // label — "shown as disconnected but the server answered" is the entire point of that list.
         var row = new ConnectionAccountRow

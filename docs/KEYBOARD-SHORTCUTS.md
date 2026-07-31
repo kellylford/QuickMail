@@ -62,6 +62,25 @@
 | *(unassigned)* | `theme.apply.{id}` | Theme: [name] — one per available theme |
 | *(unassigned)* | `view.density.comfortable` | Density: Comfortable |
 | *(unassigned)* | `view.density.compact` | Density: Compact |
+| *(unassigned)* | `view.rowFields` | Message List Fields… |
+
+## Message List Fields Window
+
+Opened from **View → Message List Fields…** or the command palette (`view.rowFields`). Left
+unassigned deliberately: like the Flag and Theme managers it is a settings surface, and the
+remaining `Ctrl+Shift` chords are worth more to per-message actions.
+
+The window is **modeless**, so you can leave it open and arrow the message list behind it to hear
+each change immediately. It has no OK/Cancel — every change saves as you make it.
+
+| Key | Action |
+|-----|--------|
+| `F6` / `Shift+F6` | Cycle panes: Row type → Fields → Field options → Spoken preview → Buttons |
+| `Up` / `Down` | Move between fields |
+| `Space` | Turn the selected field on or off |
+| `Alt+Up` / `Alt+Down` | Move the selected field earlier or later in the spoken order |
+| `Ctrl+Shift+P` | Window-local command palette (move, toggle, reset, labels, close) |
+| `Escape` | Close |
 
 ## Compose Window
 

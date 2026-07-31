@@ -266,6 +266,27 @@ sealed class StubViewService : IViewService
     public void Save(List<SavedView> views) { }
 }
 
+/// <summary>In-memory spoken field layouts — no rowlayout.json, no disk.</summary>
+sealed class StubRowLayoutService : IRowLayoutService
+{
+    private RowLayouts _layouts = RowFieldCatalog.DefaultLayouts();
+
+    public int SaveCount { get; private set; }
+
+    public event EventHandler? LayoutsChanged;
+
+    // Clone on the way out so callers cannot mutate the stored copy without saving —
+    // matching the real service, where Load() deserializes a fresh object each time.
+    public RowLayouts Load() => _layouts.Clone();
+
+    public void Save(RowLayouts layouts)
+    {
+        _layouts = layouts.Clone();
+        SaveCount++;
+        LayoutsChanged?.Invoke(this, EventArgs.Empty);
+    }
+}
+
 sealed class StubRuleService : IRuleService
 {
     public List<MailRule> LoadedRules { get; set; } = [];

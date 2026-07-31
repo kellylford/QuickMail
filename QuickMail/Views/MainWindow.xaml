@@ -23,7 +23,6 @@
         <local:BoolToGridLengthConverter        x:Key="BoolToGridLengthConverter"/>
         <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
         <local:StringToBrushConverter           x:Key="StringToBrushConverter"/>
-        <local:MessageAccessibleNameConverter   x:Key="MessageAccessibleNameConverter"/>
 
         <!-- ── Shared context menus ── -->
 
@@ -441,6 +440,10 @@
                               Command="{Binding SetListDensityCommand}"
                               CommandParameter="compact"/>
                 </MenuItem>
+                <!-- Which fields each kind of list row speaks, and in what order.
+                     Registered as view.rowFields; opened modeless. -->
+                <MenuItem x:Name="RowFieldsMenuItem"
+                          Header="Message List Fi_elds…"/>
                 <MenuItem Header="F_ilter">
                     <MenuItem Header="S_how All"
                               IsCheckable="True"
@@ -1495,22 +1498,10 @@
                                         <Binding Path="FlagColorHex" Converter="{StaticResource StringToBrushConverter}"/>
                                     </Setter.Value>
                                 </Setter>
-                                <Setter Property="AutomationProperties.Name">
-                                    <Setter.Value>
-                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
-                                            <Binding Path="FlagLabel"/>
-                                            <Binding Path="ReadStatusLabel"/>
-                                            <Binding Path="From"/>
-                                            <Binding Path="Subject"/>
-                                            <Binding Path="Preview"/>
-                                            <Binding Path="DateDisplay"/>
-                                            <Binding Path="DataContext.AnnounceFlagStatus"
-                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
-                                            <Binding Path="HasAttachments"/>
-                                            <Binding Path="FolderDisplayName"/>
-                                        </MultiBinding>
-                                    </Setter.Value>
-                                </Setter>
+                                <!-- Spoken name. Which fields are said and in what order comes from
+                                     the user's layout (Message List Fields window), not from this
+                                     template: RowSpeech installs the binding from RowFieldCatalog. -->
+                                <Setter Property="local:RowSpeech.Kind" Value="{x:Static models:RowKind.Message}"/>
                                 <!-- Token-driven row template. The default GridView container paints
                                      selection with hardcoded light colors that are unreadable on a
                                      dark theme; under High Contrast the token brushes resolve to the
@@ -1609,22 +1600,10 @@
                             <!-- Style for level-2 message rows (children of a conversation node) -->
                             <Style x:Key="MessageTreeItemStyle" TargetType="TreeViewItem"
                                    BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                                <Setter Property="AutomationProperties.Name">
-                                    <Setter.Value>
-                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
-                                            <Binding Path="FlagLabel"/>
-                                            <Binding Path="ReadStatusLabel"/>
-                                            <Binding Path="From"/>
-                                            <Binding Path="Subject"/>
-                                            <Binding Path="Preview"/>
-                                            <Binding Path="DateDisplay"/>
-                                            <Binding Path="DataContext.AnnounceFlagStatus"
-                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
-                                            <Binding Path="HasAttachments"/>
-                                            <Binding Path="FolderDisplayName"/>
-                                        </MultiBinding>
-                                    </Setter.Value>
-                                </Setter>
+                                <!-- Spoken name. Which fields are said and in what order comes from
+                                     the user's layout (Message List Fields window), not from this
+                                     template: RowSpeech installs the binding from RowFieldCatalog. -->
+                                <Setter Property="local:RowSpeech.Kind" Value="{x:Static models:RowKind.Message}"/>
                                 <!-- ContextMenu is intentionally omitted: ConversationTree_ContextMenuOpening
                                      assigns MessageContextMenu at the tree level so PlacementTarget.DataContext
                                      resolves to MainViewModel instead of MailMessageSummary. -->
@@ -1713,7 +1692,7 @@
                             <!-- Style for root-level conversation group nodes: starts collapsed -->
                             <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                                <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                                <Setter Property="local:RowSpeech.Kind" Value="{x:Static models:RowKind.Conversation}"/>
                             </Style>
                         </TreeView.ItemContainerStyle>
                     </TreeView>
@@ -1749,22 +1728,10 @@
                             <!-- Style for level-2 message rows (children of a sender group node) -->
                             <Style x:Key="SenderMessageTreeItemStyle" TargetType="TreeViewItem"
                                    BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                                <Setter Property="AutomationProperties.Name">
-                                    <Setter.Value>
-                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
-                                            <Binding Path="FlagLabel"/>
-                                            <Binding Path="ReadStatusLabel"/>
-                                            <Binding Path="From"/>
-                                            <Binding Path="Subject"/>
-                                            <Binding Path="Preview"/>
-                                            <Binding Path="DateDisplay"/>
-                                            <Binding Path="DataContext.AnnounceFlagStatus"
-                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
-                                            <Binding Path="HasAttachments"/>
-                                            <Binding Path="FolderDisplayName"/>
-                                        </MultiBinding>
-                                    </Setter.Value>
-                                </Setter>
+                                <!-- Spoken name. Which fields are said and in what order comes from
+                                     the user's layout (Message List Fields window), not from this
+                                     template: RowSpeech installs the binding from RowFieldCatalog. -->
+                                <Setter Property="local:RowSpeech.Kind" Value="{x:Static models:RowKind.Message}"/>
                                 <!-- ContextMenu is intentionally omitted here: SenderGroupTree_ContextMenuOpening
                                      assigns MessageContextMenu at the tree level so PlacementTarget.DataContext
                                      resolves to MainViewModel instead of MailMessageSummary. -->
@@ -1853,7 +1820,7 @@
                             <!-- Style for root-level sender group nodes: starts collapsed -->
                             <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                                <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                                <Setter Property="local:RowSpeech.Kind" Value="{x:Static models:RowKind.SenderGroup}"/>
                             </Style>
                         </TreeView.ItemContainerStyle>
                     </TreeView>
@@ -1889,22 +1856,10 @@
                             <!-- Style for level-2 message rows (children of a recipient group node) -->
                             <Style x:Key="ToMessageTreeItemStyle" TargetType="TreeViewItem"
                                    BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                                <Setter Property="AutomationProperties.Name">
-                                    <Setter.Value>
-                                        <MultiBinding Converter="{StaticResource MessageAccessibleNameConverter}">
-                                            <Binding Path="FlagLabel"/>
-                                            <Binding Path="ReadStatusLabel"/>
-                                            <Binding Path="From"/>
-                                            <Binding Path="Subject"/>
-                                            <Binding Path="Preview"/>
-                                            <Binding Path="DateDisplay"/>
-                                            <Binding Path="DataContext.AnnounceFlagStatus"
-                                                     RelativeSource="{RelativeSource AncestorType=Window}"/>
-                                            <Binding Path="HasAttachments"/>
-                                            <Binding Path="FolderDisplayName"/>
-                                        </MultiBinding>
-                                    </Setter.Value>
-                                </Setter>
+                                <!-- Spoken name. Which fields are said and in what order comes from
+                                     the user's layout (Message List Fields window), not from this
+                                     template: RowSpeech installs the binding from RowFieldCatalog. -->
+                                <Setter Property="local:RowSpeech.Kind" Value="{x:Static models:RowKind.Message}"/>
                             </Style>
 
                             <!-- Level 1: recipient group header with address + count + newest subject -->
@@ -1987,10 +1942,11 @@
                             </DataTemplate>
                         </TreeView.Resources>
                         <TreeView.ItemContainerStyle>
-                            <!-- Style for root-level recipient group nodes: starts collapsed -->
+                            <!-- Style for root-level recipient group nodes: starts collapsed.
+                                 Recipient groups reuse SenderGroup rows and therefore its layout. -->
                             <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
                                 <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
-                                <Setter Property="AutomationProperties.Name" Value="{Binding AutomationName}"/>
+                                <Setter Property="local:RowSpeech.Kind" Value="{x:Static models:RowKind.SenderGroup}"/>
                             </Style>
                         </TreeView.ItemContainerStyle>
                     </TreeView>

@@ -29,6 +29,26 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void SaveThenLoad_RoundTripsFieldLabelSettings()
+    {
+        // Same failure shape as the calendar regression below, and RuleListShowFieldLabels really
+        // had it: the property and the Settings writer existed, but ConfigService had neither a
+        // parse case nor a writer block, so it silently reset on every launch. A setting is not
+        // wired up until it survives this round trip.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.MessageListShowFieldLabels = true;
+        config.RuleListShowFieldLabels    = true;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.True(reloaded.MessageListShowFieldLabels);
+        Assert.True(reloaded.RuleListShowFieldLabels);
+    }
+
+    [Fact]
     public void SaveThenLoad_RoundTripsCalendarSettings()
     {
         // Regression test: ShowDeclinedEvents and CalendarPaneOpen were being written by

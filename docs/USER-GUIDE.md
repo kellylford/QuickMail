@@ -25,6 +25,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Reporting Issues](#reporting-issues)
 - [Settings](#settings)
 - [Themes](#themes)
+- [Message List Fields](#message-list-fields)
 - [Screen Reader Announcements](#screen-reader-announcements)
 - [Keyboard Shortcuts](#keyboard-shortcuts)
 
@@ -1353,6 +1354,57 @@ In every theme, the selected item in a list or tree is a solid band of the theme
 **Heather** — a muted light theme: an off-white background (Ghost White) with a cool gray accent (Dim Gray) instead of a saturated color. The selected item is a plum-gray band with white text. This is the most subdued of the built-in themes.
 
 The four light themes are close cousins. Ember, Fjord, and Heather each change only four colors from Parchment: the main window background tint, the accent color, the soft accent-fill color, and the selection color (which matches the accent, so selection is where each theme's personality shows most). Everything else — panels and toolbars, borders, body and secondary text, the medium-blue hyperlink color, the focus outline, and the four status colors (error, warning, success, information) — is inherited unchanged from Parchment. Parchment Dark is the only theme with a fully dark palette.
+
+---
+
+## Message List Fields
+
+Each row in a message list is spoken as a single line — sender, subject, date, and so on. **View → Message List Fields…** lets you decide which of those pieces are spoken and in what order.
+
+Open it and you get a list of every available field. Check a field to have it spoken, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** (or the Move Up and Move Down buttons) to change where it falls in the line. The **Spoken preview** box at the bottom shows a sample row exactly as it would be read, updating as you go.
+
+There is no OK or Cancel — changes save as you make them, and take effect immediately. The window is modeless, so you can leave it open, arrow through the message list behind it, and hear the result.
+
+### Row types
+
+The **Row type** list at the top chooses which kind of row you are editing. Each keeps its own arrangement:
+
+- **Messages** — individual messages, in the flat list and inside all three group trees.
+- **Conversation groups** — the top-level rows in the Conversations view.
+- **Sender and recipient groups** — the top-level rows in the From and To views.
+
+### Fields for messages
+
+| Field | Speaks |
+|-------|--------|
+| Flag | The flag's name, when the message is flagged |
+| Status (combined) | One word: "replied", "forwarded", "unread", or "read" |
+| Attachments | "attachments" |
+| From, Subject, Preview, Date, To | The field's text |
+| Source folder | Where the message lives — only in aggregate views such as All Archive, where it is account-qualified when the view spans accounts |
+| Unread, Replied, Forwarded | Each state on its own, so you can arrange them separately |
+| Mailing list | "mailing list" |
+
+Conversation and sender group rows offer their own set, including the message count and whether the group has unread mail.
+
+### Speaking a state only when it applies
+
+Fields such as **Unread**, **Replied**, and **Attachments** are states rather than text, so selecting one offers a choice:
+
+- **Speak only when true** — say "unread" on unread messages and nothing at all on read ones.
+- **Always speak** — say "unread" or "read", whichever applies.
+
+This is how you get "tell me about unread but never say read": turn **Status (combined)** off, turn **Unread** on, and leave it on *Speak only when true*. Fields with no meaningful opposite — Attachments, for example — stay silent when false in either mode.
+
+### Field labels
+
+**Speak field labels** prefixes each text field with its name, so a row reads "From: Chris Lee. Subject: Budget review." rather than "Chris Lee. Budget review." It applies to all three row types. States and counts are never labelled, since "unread" and "3 messages" already say what they are.
+
+### Starting over
+
+**Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, leaving the other two alone.
+
+Empty fields are skipped rather than leaving a gap, so a message with no preview or no subject reads without a pause where it would have been.
 
 ---
 
