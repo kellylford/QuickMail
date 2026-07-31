@@ -304,12 +304,32 @@ public partial class App : Application
                     var graphIds = new List<Guid>();
                     foreach (var a in accounts)
                         if (a.BackendKind == BackendKind.MicrosoftGraph) graphIds.Add(a.Id);
-                    if (graphIds.Count > 0)
+
+                    if (graphIds.Count == 0)
                     {
-                        localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
-                        immutableIdRebuilt = true;
+                        // No Graph accounts → nothing to rebuild. Mark done so we don't re-scan every
+                        // launch; a Graph account added later starts fresh with immutable ids anyway.
+                        try { System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o")); } catch { }
                     }
-                    try { System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o")); } catch { }
+                    else
+                    {
+                        // Isolate the clear so a failure (locked/corrupt SQLite, disk full) can NEVER
+                        // crash startup: the outer OnStartup catch rethrows, so an unguarded throw here
+                        // would kill the process before the marker is written — a permanent startup
+                        // crash-loop the user could only escape by deleting the profile. On failure we
+                        // log and leave the marker unwritten so the next launch retries; only a
+                        // successful clear marks it done and announces the one-time re-sync.
+                        try
+                        {
+                            localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
+                            immutableIdRebuilt = true;
+                            System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o"));
+                        }
+                        catch (Exception rebuildEx)
+                        {
+                            LogService.Log("Immutable-id cache rebuild failed; will retry next launch.", rebuildEx);
+                        }
+                    }
                 }
             }
 
