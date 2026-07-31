@@ -197,6 +197,13 @@ public class SyncService : ISyncService
         // rule (or a manual move) that files a message into another folder must not then be re-acted
         // on by a matching client rule when QuickMail syncs that folder, and a rule must never yank
         // back mail the user manually filed elsewhere. Matches the Inbox test used across the VM.
+        //
+        // IMPORTANT (review L5): for Graph accounts, folder.FullName is an opaque id that never equals
+        // "INBOX", so folder.Kind == Inbox is the ONLY thing keeping client rules alive on a Graph
+        // inbox. Every current caller resolves the inbox model from _cachedFolders (where Kind is set),
+        // so this holds — but any new sync entry point that hands this method a Graph inbox with
+        // Kind == None would silently stop running rules on it. Keep Kind set on the inbox model, or
+        // route inbox resolution through the shared predicate. Pinned by GraphInbox_ByKind_RunsRules.
         if (folder.Kind != SpecialFolderKind.Inbox &&
             !string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase))
             return fetched;
