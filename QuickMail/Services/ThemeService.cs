@@ -503,7 +503,9 @@ public class ThemeService : IThemeService
         dict[ThemeKeys.FontSizeLarge] = baseSize + 2;
         dict[ThemeKeys.FontSizeHeader] = baseSize + 5;
 
-        dict[ThemeKeys.FocusThickness] = _thickFocus ? 4.0 : 2.0;
+        var focusThickness = _thickFocus ? 4.0 : 2.0;
+        dict[ThemeKeys.FocusThickness] = focusThickness;
+        dict[ThemeKeys.FocusHaloThickness] = focusThickness + 2.0;
 
         return dict;
     }
