@@ -52,3 +52,4 @@ QuickMail.Tests/TestResults/
 
 # Local integration-test servers (GreenMail jar cache, logs, pids)
 .testservers/
+*_wpftmp.csproj

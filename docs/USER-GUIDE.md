@@ -658,6 +658,8 @@ Control announcement behavior in **Settings → Screen Reader Announcements**:
 
 Attach files with `Ctrl+Shift+A` in the compose window, by pasting files from the clipboard (`Ctrl+V`), or by dragging and dropping them onto the window. A screen reader announces how many files were attached.
 
+Press **Alt+A** to move focus to the list of files already attached — the same key that reaches the attachment list of a message you are reading. Arrow through the list and press **Delete** to remove the selected file. If the message has nothing attached yet, QuickMail announces "No attachments."
+
 ### Message Templates
 
 Save a message you write often — a standard reply, a form response — as a reusable template.
@@ -1435,6 +1437,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Ctrl+T` | Announce formatting at cursor |
 | `Ctrl+Shift+T` | Show formatting in browsable list |
 | `Ctrl+Shift+A` | Add attachment |
+| `Alt+A` | Focus attachment list |
 | `Ctrl+K` | Check addresses |
 | `Ctrl+Shift+P` | Command palette |
 | `Escape` | Close window (when no menu or dropdown is open) |

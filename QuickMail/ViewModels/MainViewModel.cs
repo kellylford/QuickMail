@@ -25,6 +25,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Verifies, independently of the app's own connection state, whether an account shown as
     // disconnected really is. Optional so tests and the stub-service constructors are unaffected.
     private readonly ConnectionTruthProbe? _truthProbe;
+    private readonly IScreenshotCaptureService? _screenshotCapture;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
@@ -109,8 +110,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// background work (sync, prefetch, message loads) unwinds via OperationCanceledException
     /// instead of being killed with the process, then releases the CTS handles and timer.
     /// </summary>
+    private void OnScreenshotCaptureEnabledChanged(object? sender, EventArgs e) =>
+        OnPropertyChanged(nameof(WindowTitle));
+
     public void Dispose()
     {
+        if (_screenshotCapture != null)
+            _screenshotCapture.EnabledChanged -= OnScreenshotCaptureEnabledChanged;
         DrainCts(ref _connectCts);
         DrainCts(ref _folderCts);
         DrainCts(ref _messageLoadCts);
@@ -769,6 +775,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         get
         {
+            // The suffix lives in the getter (not applied externally) so any
+            // WindowTitle recompute keeps the capture warning while enabled.
+            var title = ComputeWindowTitle();
+            return _screenshotCapture?.Enabled == true
+                ? title + IScreenshotCaptureService.TitleSuffix
+                : title;
+        }
+    }
+
+    private string ComputeWindowTitle()
+    {
             if (IsMessageOpen && !string.IsNullOrWhiteSpace(MessageDetail?.Subject))
                 return $"{MessageDetail.Subject} - QuickMail";
             if (ActiveView != null)
@@ -796,7 +813,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return $"{folderPart}{suffix} - QuickMail";
             }
             return "QuickMail";
-        }
     }
 
     // ── Tab & Window Management (Phase 6) ────────────────────────────────────────
@@ -1054,9 +1070,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         INotificationService? notificationService = null,
         IContactSyncService? contactSyncService = null,
         IGraphCalendarSyncService? graphCalendarSyncService = null,
-        ConnectionTruthProbe? truthProbe = null)
+        ConnectionTruthProbe? truthProbe = null,
+        IScreenshotCaptureService? screenshotCapture = null)
     {
         _truthProbe = truthProbe;
+        _screenshotCapture = screenshotCapture;
+        if (_screenshotCapture != null)
+            _screenshotCapture.EnabledChanged += OnScreenshotCaptureEnabledChanged;
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
         _changeNotifier  = changeNotifier;
@@ -1086,6 +1106,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
+        _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
@@ -1644,6 +1665,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
 
+        // Keep the View menu's density check marks in sync with a Settings save.
+        ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
+
         ShowMessageStatus = cfg.ShowMessageStatus;
         ReadAsPlainText   = cfg.ReadAsPlainText;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
@@ -1760,6 +1784,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
             execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 4)));
+
+        // Density (#421): the same setting the Settings dialog persists, adjustable
+        // from the View menu, the palette, and (via these registrations) a hotkey.
+        registry.Register(new CommandDefinition(
+            id: "view.density.comfortable", category: "View", title: "Density: Comfortable",
+            execute: () => SetListDensity("comfortable")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.density.compact", category: "View", title: "Density: Compact",
+            execute: () => SetListDensity("compact")));
 
         registry.Register(new CommandDefinition(
             id: "account.manage", category: "Account", title: "Manage Accounts",
@@ -6388,6 +6422,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SetViewMode(string? mode)
     {
         ViewMode = ConfigModel.ParseViewMode(mode);
+    }
+
+    // ── List density command (#421, View menu) ────────────────────────────────
+
+    /// <summary>Current message-list density ("comfortable"/"compact"); drives
+    /// the View menu check marks. The token publish itself lives in ThemeService.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsListDensityComfortable))]
+    [NotifyPropertyChangedFor(nameof(IsListDensityCompact))]
+    private string _listDensity = "comfortable";
+
+    public bool IsListDensityComfortable => ListDensity == "comfortable";
+    public bool IsListDensityCompact => ListDensity == "compact";
+
+    /// <summary>
+    /// Same setting the Settings dialog persists — the View menu adjusts it in
+    /// place. Density is padding-only, so ThemeService re-publishes without
+    /// raising ThemeChanged; the result announcement here is the only speech.
+    /// </summary>
+    [RelayCommand]
+    private void SetListDensity(string? density)
+    {
+        var normalized = string.Equals(density, "compact", StringComparison.OrdinalIgnoreCase) ? "compact" : "comfortable";
+        if (normalized == ListDensity) return;
+        ListDensity = normalized;
+
+        var cfg = _configService.Load();
+        cfg.AppearanceListDensity = normalized;
+        _configService.Save(cfg);
+        _themeService?.ApplyAppearance(cfg);
+
+        Announce(normalized == "compact" ? "Compact density." : "Comfortable density.");
     }
 
     // ── Search command ────────────────────────────────────────────────────────

@@ -243,6 +243,9 @@ public class ConfigService : IConfigService
                         break;
                     case "appearanceunderlinelinks":   config.AppearanceUnderlineLinks   = ParseBool(value); break;
                     case "appearancethickfocus":       config.AppearanceThickFocus       = ParseBool(value); break;
+                    case "appearancelistdensity":
+                        config.AppearanceListDensity = string.Equals(value, "compact", StringComparison.OrdinalIgnoreCase) ? "compact" : "comfortable";
+                        break;
                     case "appearanceforcemessagetheme": config.AppearanceForceMessageTheme = ParseBool(value); break;
                     case "customannouncements":  config.CustomAnnouncements = ParseBool(value); break;
                     case "announcehints":        config.AnnounceHints        = ParseBool(value); break;
@@ -448,6 +451,10 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"AppearanceThickFocus = {(config.AppearanceThickFocus ? "on" : "off")}");
         sb.AppendLine("# Thicker keyboard focus indicators. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AppearanceListDensity = {config.AppearanceListDensity}");
+        sb.AppendLine("# Message list row spacing. Values: comfortable, compact.");
         sb.AppendLine();
 
         sb.AppendLine($"AppearanceForceMessageTheme = {(config.AppearanceForceMessageTheme ? "on" : "off")}");
