@@ -56,20 +56,25 @@ if (-not $NoBuild) {
 }
 if (-not (Test-Path $exe)) { throw "Not found: $exe (build first or drop -NoBuild)" }
 
+# A locked session means DWM never composites new windows: every capture would
+# come out white. Fail fast BEFORE seeding - a run aborted here used to leave a
+# half-seeded profile behind, and re-running into the same RunDir then failed
+# with duplicate fixture data.
+if (Get-Process LogonUI -ErrorAction SilentlyContinue) {
+    throw "The desktop session is locked. WPF windows cannot render on the secure desktop, so probe captures would be blank. Unlock the machine (or use an unlocked/virtual desktop session) and retry."
+}
+
 if (-not $ProfileDir) {
     $ProfileDir = Join-Path $RunDir 'profile'
+    # The auto-seeded profile is a throwaway; a leftover from an earlier aborted
+    # run would make the (append-style) generator fail on duplicates.
+    if (Test-Path $ProfileDir) { Remove-Item -Recurse -Force $ProfileDir }
     Write-Host "Seeding fixture profile at $ProfileDir ..."
     dotnet run --project $fixtures -c Debug --no-build -- --out $ProfileDir
     if ($LASTEXITCODE -ne 0) { throw "Fixture generation failed." }
 }
 if (-not (Test-Path (Join-Path $ProfileDir 'mail.db'))) {
     throw "Fixture profile at $ProfileDir has no mail.db."
-}
-
-# A locked session means DWM never composites new windows: every capture would
-# come out white. Fail fast with a clear message instead of a folder of blanks.
-if (Get-Process LogonUI -ErrorAction SilentlyContinue) {
-    throw "The desktop session is locked. WPF windows cannot render on the secure desktop, so probe captures would be blank. Unlock the machine (or use an unlocked/virtual desktop session) and retry."
 }
 
 $planEntries = (Get-Content $Plan -Raw | ConvertFrom-Json).entries

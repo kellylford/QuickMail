@@ -227,6 +227,54 @@ public class SyncServiceRuleApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task NonInboxFolder_DoesNotRunRules_ButStillCachesTheMessages()
+    {
+        // #336: client rules fire only on the Inbox. Syncing a non-Inbox folder must NOT invoke the
+        // rule engine (so a message a server rule / manual move already filed there isn't double-acted
+        // on), but the message must still be fetched and cached.
+        var archive = new MailFolderModel { FullName = "Archive", DisplayName = "Archive" }; // Kind = None
+        var msg = new MailMessageSummary
+        {
+            MessageId = "900", AccountId = _accountId, FolderName = "Archive",
+            From = "Tim <tim@bits-acb.org>", To = "me@example.com", Subject = "hello", IsRead = true,
+        };
+        var rules = new CapturingRuleService();
+        var sync = Build(new FetchStubMailService([msg]), rules);
+
+        var forwarded = await sync.SyncOneFolderAsync(Account(), archive, CancellationToken.None);
+
+        Assert.Empty(rules.Calls);                                  // engine never invoked outside Inbox
+        Assert.Contains(forwarded, m => m.MessageId == "900");      // message still surfaced to the UI
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "Archive");
+        Assert.Contains("900", stored);                             // and still cached
+    }
+
+    [Fact]
+    public async Task GraphInbox_ByKind_RunsRules_EvenWithOpaqueFolderId()
+    {
+        // #336 gate is (Kind == Inbox || FullName == "INBOX"). For Graph the FullName is an opaque
+        // folder id, never the literal "INBOX", so Kind is the ONLY thing keeping client rules alive
+        // on a Graph inbox. This pins that: a future simplification to a FullName-only check would
+        // silently stop running rules on every Graph inbox, and this test would go red.
+        var graphInbox = new MailFolderModel
+        {
+            FullName = "AAMkADRmODc0NTk2LWI5ZGIt", DisplayName = "Inbox", Kind = SpecialFolderKind.Inbox,
+        };
+        var msg = new MailMessageSummary
+        {
+            MessageId = "42", AccountId = _accountId, FolderName = "AAMkADRmODc0NTk2LWI5ZGIt",
+            From = "Amy <amy@x.com>", To = "me@example.com", Subject = "hello", IsRead = true,
+        };
+        var rules = new CapturingRuleService();
+        var sync = Build(new FetchStubMailService([msg]), rules);
+
+        await sync.SyncOneFolderAsync(Account(), graphInbox, CancellationToken.None);
+
+        var batch = Assert.Single(rules.Calls);                     // engine WAS invoked (via Kind)
+        Assert.Equal("42", Assert.Single(batch).MessageId);
+    }
+
+    [Fact]
     public async Task LiveIdleSync_RuleRemovedMessage_StrippedFromBatch_DeletedFromStore_AndRaisesMessagesRemoved()
     {
         // A move/delete rule returns the message in RemovedMessages. The chokepoint must drop it

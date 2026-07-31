@@ -68,6 +68,7 @@ public class SavedViewsManagerTests
             "AllInboxes" => "All Inboxes",
             "AllDrafts"  => "All Drafts",
             "AllSent"    => "All Sent",
+            "AllArchive" => "All Archive",
             "AllTrash"   => "All Trash",
             _            => keySuffix,
         };
@@ -121,6 +122,7 @@ public class SavedViewsManagerTests
     [InlineData("AllInboxes")]
     [InlineData("AllDrafts")]
     [InlineData("AllSent")]
+    [InlineData("AllArchive")]
     [InlineData("AllTrash")]
     public void SaveAsNew_VirtualFolder_SetsVirtualFolderKey_WithoutSentinelPrefix(string keySuffix)
     {
@@ -140,6 +142,7 @@ public class SavedViewsManagerTests
     [InlineData("AllInboxes", "All Inboxes")]
     [InlineData("AllDrafts",  "All Drafts")]
     [InlineData("AllSent",    "All Sent")]
+    [InlineData("AllArchive", "All Archive")]
     [InlineData("AllTrash",   "All Trash")]
     public void SelectedFoldersSummary_VirtualFolderView_ShowsReadableName(
         string key, string expectedLabel)
@@ -360,6 +363,7 @@ public class SavedViewsMainViewModelTests
             new() { FullName = "\x00" + "AllInboxes", DisplayName = "All Inboxes" },
             new() { FullName = "\x00" + "AllDrafts",  DisplayName = "All Drafts"  },
             new() { FullName = "\x00" + "AllSent",    DisplayName = "All Sent"    },
+            new() { FullName = "\x00" + "AllArchive", DisplayName = "All Archive" },
             new() { FullName = "\x00" + "AllTrash",   DisplayName = "All Trash"   },
         };
     }
@@ -611,6 +615,7 @@ public class SavedViewsMainViewModelTests
     [InlineData("AllInboxes")]
     [InlineData("AllDrafts")]
     [InlineData("AllSent")]
+    [InlineData("AllArchive")]
     [InlineData("AllTrash")]
     public async Task ApplyView_VirtualFolderKey_SelectedFolderHasSentinelPrefix(string keySuffix)
     {
