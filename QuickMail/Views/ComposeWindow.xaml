@@ -388,7 +388,8 @@
                      KeyboardNavigation.TabNavigation="Once"
                      KeyboardNavigation.DirectionalNavigation="Contained"
                      AutomationProperties.Name="Attachments"
-                     PreviewKeyDown="AttachmentList_PreviewKeyDown">
+                     PreviewKeyDown="AttachmentList_PreviewKeyDown"
+                     GotKeyboardFocus="AttachmentList_GotKeyboardFocus">
                 <ListBox.Style>
                     <Style TargetType="ListBox">
                         <Style.Triggers>

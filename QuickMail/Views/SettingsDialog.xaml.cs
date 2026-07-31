@@ -172,6 +172,10 @@ public partial class SettingsDialog : Window
     private void RadioButton_Checked(object sender, RoutedEventArgs e)
     {
         if (sender is not RadioButton { IsLoaded: true } rb) return;
+        // Arrowing through the group already moves focus to this button, and the focus change
+        // carries the option name and its checked state. Announcing here too would say the
+        // option twice on every arrow press (issue #441).
+        if (RadioGroupNavigation.IsMovingSelection) return;
         var name = AutomationProperties.GetName(rb);
         if (string.IsNullOrEmpty(name))
             name = rb.Content?.ToString() ?? string.Empty;
