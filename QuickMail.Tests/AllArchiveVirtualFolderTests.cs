@@ -254,7 +254,7 @@ public class AllArchiveVirtualFolderTests
         await SelectFolder(vm, MainViewModel.AllArchiveFolder);
 
         Assert.Equal(new[] { "a" }, vm.Messages.Select(m => m.MessageId).ToArray());
-        Assert.Equal("1 messages in All Archive.", vm.StatusText);
+        Assert.Equal("1 message in All Archive.", vm.StatusText);
     }
 
     [Fact]
@@ -292,7 +292,96 @@ public class AllArchiveVirtualFolderTests
         await SelectFolder(vm, MainViewModel.AllSentFolder);
 
         Assert.Equal(new[] { "sent" }, vm.Messages.Select(m => m.MessageId).ToArray());
-        Assert.Equal("1 messages in All Sent.", vm.StatusText);
+        Assert.Equal("1 message in All Sent.", vm.StatusText);
+    }
+
+    // The status line is spoken, so "1 messages" is a defect rather than a cosmetic one. Pinning
+    // both arms here because the count text is shared by all five folder-scoped aggregates.
+    [Fact]
+    public async Task SelectAllArchive_TwoMessages_UsesThePluralNoun()
+    {
+        var (vm, _) = await MakeVmAsync(
+            [Account(AccountA, "Work")],
+            new() { [AccountA] = [Folder(AccountA, "Archive", SpecialFolderKind.Archive)] },
+            new()
+            {
+                [(AccountA, "Archive")] = [Msg(AccountA, "Archive", "a", 2),
+                                           Msg(AccountA, "Archive", "b", 1)],
+            });
+
+        await SelectFolder(vm, MainViewModel.AllArchiveFolder);
+
+        Assert.Equal("2 messages in All Archive.", vm.StatusText);
+    }
+
+    // Every folder-scoped aggregate must have its own name in the status line — the display-name
+    // lookup used to fall back to "All Archive" for anything it did not recognise.
+    [Theory]
+    [InlineData("AllInboxes", "INBOX",  SpecialFolderKind.Inbox,  "All Inboxes")]
+    [InlineData("AllDrafts",  "Drafts", SpecialFolderKind.Drafts, "All Drafts")]
+    [InlineData("AllTrash",   "Trash",  SpecialFolderKind.Trash,  "All Trash")]
+    public async Task SelectFolderScopedAggregate_StatusNamesThatAggregate(
+        string keySuffix, string folderName, SpecialFolderKind kind, string expectedName)
+    {
+        var (vm, _) = await MakeVmAsync(
+            [Account(AccountA, "Work")],
+            new() { [AccountA] = [Folder(AccountA, folderName, kind)] },
+            new() { [(AccountA, folderName)] = [Msg(AccountA, folderName, "m", 0)] });
+
+        var sentinel = vm.Folders.First(f => f.FullName == "\x00" + keySuffix);
+        await SelectFolder(vm, sentinel);
+
+        Assert.Equal($"1 message in {expectedName}.", vm.StatusText);
+    }
+
+    // ── Changing an account's archive destination while All Archive is open ──
+
+    [Fact]
+    public async Task SetArchiveFolder_WhileViewingAllArchive_ReloadsAgainstTheNewDestination()
+    {
+        var (vm, _) = await MakeVmAsync(
+            [Account(AccountA, "Work")],
+            new()
+            {
+                [AccountA] = [Folder(AccountA, "Archive", SpecialFolderKind.Archive),
+                              Folder(AccountA, "Keep",    SpecialFolderKind.None)],
+            },
+            new()
+            {
+                [(AccountA, "Archive")] = [Msg(AccountA, "Archive", "server", 1)],
+                [(AccountA, "Keep")]    = [Msg(AccountA, "Keep",    "keep",   0)],
+            });
+
+        await SelectFolder(vm, MainViewModel.AllArchiveFolder);
+        Assert.Equal(new[] { "server" }, vm.Messages.Select(m => m.MessageId).ToArray());
+
+        await vm.SetArchiveFolderAsync(AccountA, "Keep");
+
+        Assert.Equal(new[] { "keep" }, vm.Messages.Select(m => m.MessageId).ToArray());
+    }
+
+    [Fact]
+    public async Task SetArchiveFolder_WhileViewingAnotherFolder_DoesNotDisturbTheList()
+    {
+        var (vm, _) = await MakeVmAsync(
+            [Account(AccountA, "Work")],
+            new()
+            {
+                [AccountA] = [Folder(AccountA, "Sent",    SpecialFolderKind.Sent),
+                              Folder(AccountA, "Archive", SpecialFolderKind.Archive),
+                              Folder(AccountA, "Keep",    SpecialFolderKind.None)],
+            },
+            new()
+            {
+                [(AccountA, "Sent")]    = [Msg(AccountA, "Sent",    "sent", 0)],
+                [(AccountA, "Archive")] = [Msg(AccountA, "Archive", "arch", 0)],
+            });
+
+        await SelectFolder(vm, MainViewModel.AllSentFolder);
+        await vm.SetArchiveFolderAsync(AccountA, "Keep");
+
+        Assert.Equal(new[] { "sent" }, vm.Messages.Select(m => m.MessageId).ToArray());
+        Assert.Equal(MainViewModel.AllSentFolder.FullName, vm.SelectedFolder?.FullName);
     }
 
     // ── Live arrivals ────────────────────────────────────────────────────────

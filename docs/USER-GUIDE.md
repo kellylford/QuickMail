@@ -375,7 +375,7 @@ You can also jump directly to any pane:
 
 ### Unified Inbox
 
-Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, **All Archive**, **All Trash**, and **All Flagged**, each merging that kind of folder across every account.
+Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, and **All Trash**, each merging that kind of folder across every account; **All Archive**, which follows each account's own archive setting; and **All Flagged**, which collects flagged messages from every folder rather than from one kind of folder.
 
 ### Creating Folders
 

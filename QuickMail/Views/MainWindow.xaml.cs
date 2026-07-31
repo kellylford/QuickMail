@@ -5378,26 +5378,30 @@ public partial class MainWindow : Window
     // Per-account, no global archive folder. "Set as Archive Folder" stores the folder's FullName on
     // its account; "Use Automatic Archive Folder" clears it so QuickMail falls back to the server's
     // flagged Archive folder. Both are keyboard-reachable from the folder tree context menu.
-    private void FolderContextMenu_SetArchive_Click(object sender, RoutedEventArgs e)
+    // async void: the VM returns the All Archive reload when that aggregate is displayed, so the
+    // list stops showing the previous archive's messages. Nothing waits on these handlers.
+    private async void FolderContextMenu_SetArchive_Click(object sender, RoutedEventArgs e)
     {
         var node = GetContextMenuFolderNode(sender);
         if (node is null || node.IsHeader || node.Folder is not { } folder ||
             folder.AccountId == Guid.Empty || folder.FullName.Length == 0 || folder.FullName[0] == '\0')
             return;
-        _vm.SetArchiveFolder(folder.AccountId, folder.FullName);
+        var reload = _vm.SetArchiveFolderAsync(folder.AccountId, folder.FullName);
         AccessibilityHelper.Announce(this,
             $"{folder.DisplayName} set as the Archive folder for this account.",
             category: AnnouncementCategory.Result);
+        await reload;
     }
 
-    private void FolderContextMenu_ClearArchive_Click(object sender, RoutedEventArgs e)
+    private async void FolderContextMenu_ClearArchive_Click(object sender, RoutedEventArgs e)
     {
         var node = GetContextMenuFolderNode(sender);
         if (node?.Folder is not { } folder || folder.AccountId == Guid.Empty) return;
-        _vm.SetArchiveFolder(folder.AccountId, null);
+        var reload = _vm.SetArchiveFolderAsync(folder.AccountId, null);
         AccessibilityHelper.Announce(this,
             "This account will use its automatic Archive folder.",
             category: AnnouncementCategory.Result);
+        await reload;
     }
 
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the

@@ -3212,7 +3212,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             roots.Add(viewsGroup);
         }
 
-        // "All Mail" is a top-level group header with 5 virtual sub-folder children.
+        // "All Mail" is a top-level group header with 7 virtual sub-folder children.
         var allMailGroup = new FolderTreeNode
         {
             IsHeader   = true,
@@ -4703,13 +4703,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Canonical display name for a folder-scoped aggregate sentinel.</summary>
+    /// <summary>
+    /// Canonical display name for a folder-scoped aggregate sentinel. Throws rather than falling
+    /// back to a default so that a sixth aggregate added to <see cref="IsFolderScopedAggregate"/>
+    /// and forgotten here fails loudly instead of silently inheriting another folder's name in its
+    /// status text, its loading text, and its log tag.
+    /// </summary>
     private static string FolderScopedAggregateDisplayName(string fullName) =>
         string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ? AllInboxesFolder.DisplayName
         : string.Equals(fullName, AllDraftsFolder.FullName,  StringComparison.Ordinal) ? AllDraftsFolder.DisplayName
         : string.Equals(fullName, AllSentFolder.FullName,    StringComparison.Ordinal) ? AllSentFolder.DisplayName
         : string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ? AllTrashFolder.DisplayName
-        : AllArchiveFolder.DisplayName;
+        : string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal) ? AllArchiveFolder.DisplayName
+        : throw new ArgumentOutOfRangeException(
+            nameof(fullName), "Not a folder-scoped aggregate sentinel.");
 
     private async Task FetchVirtualFolderAsync(string fullName)
     {
@@ -4743,7 +4750,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             SetMessages(sorted);
             StatusText = sorted.Count == 0
                 ? $"No messages in {displayName}."
-                : $"{sorted.Count} messages in {displayName}.";
+                : $"{sorted.Count} {(sorted.Count == 1 ? "message" : "messages")} in {displayName}.";
             if (!OnlineMode)
                 _localStore.UpsertSummariesAsync(sorted).LogFaults("local store: upsert summaries");
         }
@@ -5024,12 +5031,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// and persists it to accounts.json. Invoked from the folder tree's Set / Use-automatic Archive
     /// commands. There is deliberately no global archive folder — this is per account.
     /// </summary>
-    public void SetArchiveFolder(Guid accountId, string? fullName)
+    /// <returns>
+    /// The reload of the All Archive list when that aggregate is on screen, so a caller (or a test)
+    /// can await it; an already-completed task otherwise.
+    /// </returns>
+    public Task SetArchiveFolderAsync(Guid accountId, string? fullName)
     {
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account == null) return;
+        if (account == null) return Task.CompletedTask;
         account.ArchiveFolderFullName = string.IsNullOrEmpty(fullName) ? null : fullName;
         _accountService.SaveAccounts([.. Accounts]);
+
+        // All Archive is the one aggregate whose membership a user action can change. Its list was
+        // resolved against the old destination, while OnFolderSynced starts filtering on the new
+        // one immediately — so without this reload a later sync would append the new archive's
+        // messages alongside the old archive's, showing both at once. Reachable via the folder
+        // tree's context menu, which acts on the right-clicked node rather than on the selection
+        // and so leaves All Archive selected.
+        return string.Equals(SelectedFolder?.FullName, AllArchiveFolder.FullName, StringComparison.Ordinal)
+            ? FetchVirtualAsync(SelectedFolder!)
+            : Task.CompletedTask;
     }
 
     /// <summary>
