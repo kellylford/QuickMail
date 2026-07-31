@@ -57,7 +57,7 @@ The **All Mail** group in the folder tree gathers each kind of folder across eve
 
 It follows each account's own archive setting rather than guessing. If you pointed an account at a particular folder with **Set as Archive Folder**, that is the folder All Archive reads, so the list is exactly the mail **Move to Archive** put there. Accounts with no Archive folder contribute nothing rather than causing an error.
 
-One consequence worth knowing: a Gmail account whose Archive folder is set to **[Gmail]/All Mail** contributes its entire mailbox, because in Gmail that folder *is* the archive. (#452)
+One thing to know if you use Gmail: the guide now recommends creating a Gmail label named **Archive** and pointing the account at it with **Set as Archive Folder**, rather than at **[Gmail]/All Mail**. Both archive correctly, but an account pointed at All Mail contributes its entire mailbox to All Archive, because for that account All Mail *is* the archive. A label gives you a folder holding only what you archived. (#452)
 
 ## Fixed: typing a letter jumps to a contact in the address book
 
