@@ -60,6 +60,8 @@
 | *(unassigned)* | `theme.next` | Next Theme |
 | *(unassigned)* | `theme.previous` | Previous Theme |
 | *(unassigned)* | `theme.apply.{id}` | Theme: [name] — one per available theme |
+| *(unassigned)* | `view.density.comfortable` | Density: Comfortable |
+| *(unassigned)* | `view.density.compact` | Density: Compact |
 
 ## Compose Window
 

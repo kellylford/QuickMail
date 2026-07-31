@@ -228,6 +228,32 @@ public class ThemeServiceTests : IDisposable
             svc.BuildTokenDictionary(svc.ResolvedTheme)[ThemeKeys.ListRowPadding]);
     }
 
+    /// <summary>
+    /// A density-only change re-publishes the dictionary (padding must swap)
+    /// but must NOT raise ThemeChanged — subscribers announce "Theme changed
+    /// to …" and re-render the reading pane, both wrong for padding. A real
+    /// theme change still raises.
+    /// </summary>
+    [StaFact]
+    public void ThemeChanged_NotRaisedForDensityOnlyChanges()
+    {
+        using var svc = NewService();
+        var cfg = Config("parchment");
+        svc.Initialize(cfg);
+        var raised = 0;
+        svc.ThemeChanged += (_, _) => raised++;
+
+        cfg.AppearanceListDensity = "compact";
+        svc.ApplyAppearance(cfg);
+        Assert.Equal(0, raised);
+        Assert.Equal(new Thickness(2, 1, 2, 1),
+            svc.BuildTokenDictionary(svc.ResolvedTheme)[ThemeKeys.ListRowPadding]);   // republished anyway
+
+        cfg.AppearanceThemeId = "dark";
+        svc.ApplyAppearance(cfg);
+        Assert.Equal(1, raised);
+    }
+
     // ── WebView2 CSS bridge ───────────────────────────────────────────────────
 
     [StaFact]
