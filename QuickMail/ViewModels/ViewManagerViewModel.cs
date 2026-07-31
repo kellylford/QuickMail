@@ -120,7 +120,9 @@ public partial class ViewManagerViewModel : ObservableObject
         "AllInboxes" => "All Inboxes",
         "AllDrafts"  => "All Drafts",
         "AllSent"    => "All Sent",
+        "AllArchive" => "All Archive",
         "AllTrash"   => "All Trash",
+        "AllFlagged" => "All Flagged",
         var k when k.StartsWith("AccountMail:", StringComparison.Ordinal) => "Account Mail",
         _            => "Virtual folder",
     };

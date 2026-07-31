@@ -107,6 +107,10 @@ Virtual folders use `FullName` sentinel strings starting with `\x00` to distingu
 | `\x00AllMail` | Union of all non-excluded folders across all accounts |
 | `\x00AllInboxes` | Inbox only from each account |
 | `\x00AllDrafts` / `\x00AllSent` / `\x00AllTrash` | Global drafts/sent/trash |
+| `\x00AllArchive` | Every account's archive destination |
+| `\x00AllFlagged` | Flagged messages across all accounts |
 | `\x00AccountMail:{guid}` | All folders for one account |
 
 Trash, Junk, Sent, and Drafts are excluded from `\x00AllMail` via `folder.ExcludeFromAllMail`. When a virtual folder is selected, `MainViewModel` queries multiple real folders and merges results sorted newest-first.
+
+`AllInboxes`, `AllDrafts`, `AllSent`, `AllTrash`, and `AllArchive` are the **folder-scoped aggregates**: their contents are the union of a specific set of real folders on every account. `IsFolderScopedAggregate` identifies them and `FolderScopedAggregateSources` resolves the (account, folder) pairs — the first four by `SpecialFolderKind`, `AllArchive` through `ResolveArchiveFolder` so a per-account `ArchiveFolderFullName` override is honoured and the aggregate always shows exactly where **Move to Archive** writes. Both `FetchVirtualFolderAsync` and the live-arrival filter in `OnFolderSynced` read that one helper, so a freshly synced message and a loaded list can never disagree about membership. `AllMail` (union of everything non-excluded) and `AllFlagged` (a message-level predicate) resolve their sources differently and are deliberately not in this family.

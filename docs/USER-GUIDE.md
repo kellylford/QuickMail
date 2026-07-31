@@ -375,7 +375,7 @@ You can also jump directly to any pane:
 
 ### Unified Inbox
 
-Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date.
+Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, **All Archive**, **All Trash**, and **All Flagged**, each merging that kind of folder across every account.
 
 ### Creating Folders
 
@@ -524,6 +524,8 @@ The command is named **Move to Archive** — it is on the message menu and the m
 **Each account archives to its own folder** — there is no single shared Archive folder. QuickMail uses the folder your provider marks as the Archive folder automatically, so most accounts need no setup. To choose a different folder, select a folder in the folder tree, open its context menu (Shift+F10), and choose **Set as Archive Folder**; choose **Use Automatic Archive Folder** to return to the automatic one.
 
 Gmail has no dedicated Archive folder — its archive is **All Mail**. To archive Gmail messages, set **[Gmail]/All Mail** as that account's Archive folder; archiving then removes the message from the inbox, which is exactly what archiving means in Gmail. If an account has no Archive folder and you have not set one, QuickMail tells you rather than doing nothing.
+
+**All Archive** in the folder tree gathers every account's archived mail into one list, alongside All Inboxes, All Drafts, All Sent, and All Trash. It follows each account's own archive setting — including a folder you chose with **Set as Archive Folder** — so it shows exactly the mail **Move to Archive** put there. Accounts with no Archive folder simply contribute nothing. One consequence worth knowing: if you set a Gmail account's Archive folder to **[Gmail]/All Mail**, that account's entire mailbox appears in All Archive, because in Gmail that folder *is* the archive.
 
 ### Tabs
 

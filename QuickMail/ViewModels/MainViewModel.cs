@@ -221,6 +221,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         FullName    = "\u0000AllTrash",
         DisplayName = "All Trash"
     };
+
+    /// <summary>
+    /// Every account's Archive destination merged into one list (issue #452). Unlike the other
+    /// kind-scoped aggregates this resolves through <see cref="ResolveArchiveFolder"/>, so it lists
+    /// exactly the folders <c>Move to Archive</c> writes to — including a per-account override that
+    /// points at a folder the server does not flag as Archive.
+    /// </summary>
+    public static readonly MailFolderModel AllArchiveFolder = new()
+    {
+        FullName    = "\u0000AllArchive",
+        DisplayName = "All Archive"
+    };
     public static readonly MailFolderModel AllFlaggedFolder = new()
     {
         FullName    = "\u0000AllFlagged",
@@ -460,6 +472,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                string.Equals(folder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllArchiveFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
                IsCalendarFolderName(folder.FullName);
     }
@@ -2320,22 +2333,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // All Flagged Mail — only accept flagged incoming messages.
             relevant = incoming.Where(m => m.IsFlagged);
         }
-        else if (selected.FullName == AllInboxesFolder.FullName ||
-                 selected.FullName == AllDraftsFolder.FullName  ||
-                 selected.FullName == AllSentFolder.FullName    ||
-                 selected.FullName == AllTrashFolder.FullName)
+        else if (IsFolderScopedAggregate(selected.FullName))
         {
-            // Kind-specific virtual folders (All Inboxes / Drafts / Sent / Trash) —
-            // accept messages whose source folder has the matching SpecialFolderKind.
-            // Build a lookup set once so the per-message check is O(1).
-            var targetKind = selected.FullName == AllInboxesFolder.FullName ? SpecialFolderKind.Inbox
-                           : selected.FullName == AllDraftsFolder.FullName  ? SpecialFolderKind.Drafts
-                           : selected.FullName == AllSentFolder.FullName    ? SpecialFolderKind.Sent
-                           : SpecialFolderKind.Trash;
+            // Folder-scoped virtual folders (All Inboxes / Drafts / Sent / Trash / Archive) —
+            // accept messages that came from one of the real folders the aggregate spans.
+            // Build a lookup set once so the per-message check is O(1). Sourcing it from the
+            // same helper the fetch uses keeps live arrivals and the loaded list in agreement.
             var matchingFolderKeys = new HashSet<(Guid, string)>(
-                _cachedFolders.SelectMany(kvp => kvp.Value
-                    .Where(f => f.Kind == targetKind)
-                    .Select(f => (kvp.Key, f.FullName.ToUpperInvariant()))));
+                FolderScopedAggregateSources(selected.FullName)
+                    .Select(s => (s.Account.Id, s.Folder.FullName.ToUpperInvariant())));
             relevant = incoming.Where(m =>
                 matchingFolderKeys.Contains((m.AccountId, m.FolderName.ToUpperInvariant())));
         }
@@ -3066,7 +3072,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var saved = SelectedFolder;
         var items = new List<MailFolderModel>
         {
-            AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder, AllTrashFolder
+            AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder,
+            AllArchiveFolder, AllTrashFolder
         };
 
         foreach (var account in Accounts)
@@ -3216,6 +3223,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllInboxesFolder, Label = AllInboxesFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllDraftsFolder,  Label = AllDraftsFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllSentFolder,    Label = AllSentFolder.DisplayName });
+        allMailGroup.Children.Add(new FolderTreeNode { Folder = AllArchiveFolder, Label = AllArchiveFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllTrashFolder,   Label = AllTrashFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllFlaggedFolder, Label = AllFlaggedFolder.DisplayName });
         roots.Add(allMailGroup);
@@ -4200,10 +4208,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private Task FetchVirtualAsync(MailFolderModel folder)
     {
         if (folder.FullName == AllMailFolder.FullName)    return FetchAllMailAsync();
-        if (folder.FullName == AllInboxesFolder.FullName) return FetchVirtualFolderAsync(SpecialFolderKind.Inbox,  "All Inboxes");
-        if (folder.FullName == AllDraftsFolder.FullName)  return FetchVirtualFolderAsync(SpecialFolderKind.Drafts, "All Drafts");
-        if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   "All Sent");
-        if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
+        if (IsFolderScopedAggregate(folder.FullName))     return FetchVirtualFolderAsync(folder.FullName);
         if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
         if (TryGetContactMailFromSentinel(folder.FullName, out var contactAddress, out var contactDirection))
@@ -4648,8 +4653,67 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task FetchVirtualFolderAsync(SpecialFolderKind kind, string displayName)
+    /// <summary>
+    /// The folder-scoped aggregates: virtual folders whose contents are the union of a specific set
+    /// of real folders on every account. All Mail (union of everything non-excluded), All Flagged
+    /// (a message-level predicate) and the saved-view / contact-mail sentinels are deliberately not
+    /// in this family — they resolve their sources differently.
+    /// </summary>
+    private static bool IsFolderScopedAggregate(string? fullName) =>
+        fullName != null &&
+        (string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ||
+         string.Equals(fullName, AllDraftsFolder.FullName,  StringComparison.Ordinal) ||
+         string.Equals(fullName, AllSentFolder.FullName,    StringComparison.Ordinal) ||
+         string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ||
+         string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal));
+
+    /// <summary>
+    /// The real (account, folder) pairs a folder-scoped aggregate spans. All Inboxes / Drafts / Sent
+    /// / Trash match on <see cref="SpecialFolderKind"/>; All Archive resolves each account's archive
+    /// destination through <see cref="ResolveArchiveFolder"/> so a per-account override is honored
+    /// and the aggregate always shows exactly where Move to Archive puts mail. Accounts whose folder
+    /// list has not been cached yet, and accounts with no archive destination, contribute nothing.
+    /// Both the fetch and the live-arrival filter read this, so they can never disagree.
+    /// </summary>
+    private IEnumerable<(AccountModel Account, MailFolderModel Folder)> FolderScopedAggregateSources(
+        string fullName)
     {
+        var isArchive = string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal);
+        var kind = string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ? SpecialFolderKind.Inbox
+                 : string.Equals(fullName, AllDraftsFolder.FullName,  StringComparison.Ordinal) ? SpecialFolderKind.Drafts
+                 : string.Equals(fullName, AllSentFolder.FullName,    StringComparison.Ordinal) ? SpecialFolderKind.Sent
+                 : string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ? SpecialFolderKind.Trash
+                 : SpecialFolderKind.None;
+        if (!isArchive && kind == SpecialFolderKind.None) yield break;
+
+        foreach (var account in Accounts)
+        {
+            if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+
+            if (isArchive)
+            {
+                var dest = ResolveArchiveFolder(account.Id);
+                if (dest != null) yield return (account, dest);
+                continue;
+            }
+
+            foreach (var folder in folders)
+                if (folder.Kind == kind)
+                    yield return (account, folder);
+        }
+    }
+
+    /// <summary>Canonical display name for a folder-scoped aggregate sentinel.</summary>
+    private static string FolderScopedAggregateDisplayName(string fullName) =>
+        string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ? AllInboxesFolder.DisplayName
+        : string.Equals(fullName, AllDraftsFolder.FullName,  StringComparison.Ordinal) ? AllDraftsFolder.DisplayName
+        : string.Equals(fullName, AllSentFolder.FullName,    StringComparison.Ordinal) ? AllSentFolder.DisplayName
+        : string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ? AllTrashFolder.DisplayName
+        : AllArchiveFolder.DisplayName;
+
+    private async Task FetchVirtualFolderAsync(string fullName)
+    {
+        var displayName = FolderScopedAggregateDisplayName(fullName);
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
@@ -4663,9 +4727,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var perAccountTasks = Accounts
-                .Where(a => _cachedFolders.ContainsKey(a.Id))
-                .Select(account => FetchAccountByKindAsync(account, kind, ct));
+            var perAccountTasks = FolderScopedAggregateSources(fullName)
+                .GroupBy(s => s.Account)
+                .Select(g => FetchAccountFoldersAsync(g.Key, g.Select(s => s.Folder).ToList(), ct));
 
             var accountResults = await Task.WhenAll(perAccountTasks);
             foreach (var batch in accountResults)
@@ -4711,15 +4775,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         left.AccountId == right.AccountId &&
         string.Equals(left.FullName, right.FullName, StringComparison.OrdinalIgnoreCase);
 
-    private async Task<List<MailMessageSummary>> FetchAccountByKindAsync(
-        AccountModel account, SpecialFolderKind kind, CancellationToken ct)
+    private async Task<List<MailMessageSummary>> FetchAccountFoldersAsync(
+        AccountModel account, List<MailFolderModel> folders, CancellationToken ct)
     {
         var result = new List<MailMessageSummary>();
-        if (!_cachedFolders.TryGetValue(account.Id, out var folders)) return result;
 
         foreach (var folder in folders)
         {
-            if (folder.Kind != kind) continue;
             ct.ThrowIfCancellationRequested();
             try
             {

@@ -1852,7 +1852,7 @@ public partial class MainWindow : Window
             {
                 MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
                 MainViewModel.AllDraftsFolder,  MainViewModel.AllSentFolder,
-                MainViewModel.AllTrashFolder
+                MainViewModel.AllArchiveFolder, MainViewModel.AllTrashFolder
             },
             initialFolder: _vm.SelectedFolder,
             accountMailFolders: acctMailFolders) { Owner = this };
