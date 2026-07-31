@@ -282,7 +282,7 @@ sealed class StubRuleService : IRuleService
         => messages.ToList(); // Stub matches everything
 
     public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
-        ILocalStoreService store, CancellationToken ct)
+        ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
         => Task.FromResult(new List<MailMessageSummary>());
 }
 
