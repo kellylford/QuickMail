@@ -224,9 +224,22 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
 
     private void UpdateAllTitleSuffixes(bool enabled)
     {
-        if (Application.Current is null) return;
-        foreach (Window w in Application.Current.Windows)
+        // Windows are thread-affine. Production always toggles Enabled on the UI
+        // thread (the Settings checkbox), but under parallel test runs another
+        // test collection can own a live Application on a different thread —
+        // touching its windows from here throws InvalidOperationException, and a
+        // title keeper attached cross-thread can later crash the whole process
+        // from WPF plumbing with no handler (#433). Never walk windows we don't
+        // own the dispatcher for.
+        var app = Application.Current;
+        if (app is null || !app.Dispatcher.CheckAccess()) return;
+        foreach (Window w in app.Windows)
+        {
+            // Application.Windows can hold windows created on other threads
+            // (leaked by parallel tests); skip any we don't own.
+            if (!w.CheckAccess()) continue;
             ApplyTitleSuffix(w, enabled);
+        }
     }
 
     internal void ApplyTitleSuffix(Window window, bool enabled)

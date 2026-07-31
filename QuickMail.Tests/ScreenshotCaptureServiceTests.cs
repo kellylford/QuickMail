@@ -16,7 +16,13 @@ namespace QuickMail.Tests;
 /// PixelGrabber seam so none of these tests need a real HWND; what is under
 /// test is the session policy — foldering, slugs, debounce, the cap, and the
 /// off-by-default safety story.
+///
+/// In the WpfTests collection because these tests create Window objects and
+/// toggle Enabled (which walks Application.Current.Windows): running them in
+/// parallel with the windowed test classes intermittently crashed the CI test
+/// process with a cross-thread InvalidOperationException (#433).
 /// </summary>
+[Collection("WpfTests")]
 public class ScreenshotCaptureServiceTests : IDisposable
 {
     private readonly string _profileDir =
