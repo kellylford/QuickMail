@@ -100,6 +100,7 @@ public class AllArchiveVirtualFolderTests
         public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
             => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
+        public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
     }
 
     private static readonly Guid AccountA = Guid.Parse("11111111-1111-1111-1111-111111111111");
