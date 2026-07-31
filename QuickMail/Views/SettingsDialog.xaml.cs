@@ -70,7 +70,11 @@ public partial class SettingsDialog : Window
             ConnectionJournal.DeleteLog();
             // Static + profile-keyed: works in normal launches too, where only the
             // null capture service is wired but old /debug screenshots may remain.
-            if ((Application.Current as App)?.Profile is { } profile)
+            // Flush first so no in-flight save holds a handle open against the
+            // delete or resurrects a capture after it.
+            var app = Application.Current as App;
+            (app?.ScreenshotCapture as ScreenshotCaptureService)?.FlushPendingSaves(TimeSpan.FromSeconds(3));
+            if (app?.Profile is { } profile)
                 ScreenshotCaptureService.DeleteAllCaptures(profile.ProfileDir);
         }
 

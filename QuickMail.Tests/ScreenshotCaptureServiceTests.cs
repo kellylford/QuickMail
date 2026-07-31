@@ -344,11 +344,11 @@ public class ScreenshotCaptureServiceTests : IDisposable
         var window = new Window();
 
         svc.Capture(window, "BeforeDelete");
-        // Saves are async: wait for the file so no in-flight save can recreate
-        // the folder after the delete below (SavePng recreates missing dirs).
+        // Saves are async, and File.Exists turns true while the writer still
+        // holds the handle — flush so the save is fully finished before the
+        // delete, exactly as the Settings handler does.
+        svc.FlushPendingSaves(TimeSpan.FromSeconds(5));
         var before = Path.Combine(svc.SessionFolder, "0001-BeforeDelete.png");
-        for (var i = 0; i < 40 && !File.Exists(before); i++)
-            System.Threading.Thread.Sleep(50);
         Assert.True(File.Exists(before), "BeforeDelete capture never landed");
 
         // Two sessions: simulate an older leftover folder alongside the live one.
