@@ -202,6 +202,32 @@ public class ThemeServiceTests : IDisposable
         Assert.Equal("Verdana", ((FontFamily)dict[ThemeKeys.FontFamily]).Source);
     }
 
+    /// <summary>
+    /// Density (#421) publishes padding only. Comfortable is the default;
+    /// compact reproduces the original shipped rendering; anything else
+    /// normalizes to comfortable. ApplyAppearance with a changed density must
+    /// re-publish (the signature includes it).
+    /// </summary>
+    [StaFact]
+    public void TokenDictionary_ListDensity_PublishesPaddingOnly()
+    {
+        using var svc = NewService();
+        var cfg = Config("parchment");
+        svc.Initialize(cfg);
+        Assert.Equal(new Thickness(4, 3, 4, 3),
+            svc.BuildTokenDictionary(svc.ResolvedTheme)[ThemeKeys.ListRowPadding]);
+
+        cfg.AppearanceListDensity = "compact";
+        svc.ApplyAppearance(cfg);
+        Assert.Equal(new Thickness(2, 1, 2, 1),
+            svc.BuildTokenDictionary(svc.ResolvedTheme)[ThemeKeys.ListRowPadding]);
+
+        cfg.AppearanceListDensity = "SomethingElse";
+        svc.ApplyAppearance(cfg);
+        Assert.Equal(new Thickness(4, 3, 4, 3),
+            svc.BuildTokenDictionary(svc.ResolvedTheme)[ThemeKeys.ListRowPadding]);
+    }
+
     // ── WebView2 CSS bridge ───────────────────────────────────────────────────
 
     [StaFact]

@@ -44,6 +44,7 @@ public class ThemeService : IThemeService
     private string _fontFamilyOverride = string.Empty;
     private bool _underlineLinks;
     private bool _thickFocus;
+    private bool _compactList;
 
     // Published dictionaries (tracked by reference for atomic replacement).
     private ResourceDictionary? _publishedTokens;
@@ -225,6 +226,7 @@ public class ThemeService : IThemeService
         _fontFamilyOverride = config.AppearanceFontFamily?.Trim() ?? string.Empty;
         _underlineLinks = config.AppearanceUnderlineLinks;
         _thickFocus = config.AppearanceThickFocus;
+        _compactList = string.Equals(config.AppearanceListDensity, "compact", StringComparison.OrdinalIgnoreCase);
     }
 
     public IReadOnlyList<ThemeDefinition> GetAvailableThemes()
@@ -437,7 +439,7 @@ public class ThemeService : IThemeService
         var c = CultureInfo.InvariantCulture;
         return $"{_isHighContrast}|{resolved.Id}|{string.Join(",", resolved.Colors.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value))}"
             + $"|{resolved.Typography.FontFamily}|{resolved.Typography.MonoFontFamily}|{resolved.Typography.BaseFontSize.ToString(c)}"
-            + $"|{_textScale.ToString(c)}|{_fontFamilyOverride}|{_underlineLinks}|{_thickFocus}";
+            + $"|{_textScale.ToString(c)}|{_fontFamilyOverride}|{_underlineLinks}|{_thickFocus}|{_compactList}";
     }
 
     private void PublishDictionary(ThemeDefinition resolved)
@@ -506,6 +508,11 @@ public class ThemeService : IThemeService
         var focusThickness = _thickFocus ? 4.0 : 2.0;
         dict[ThemeKeys.FocusThickness] = focusThickness;
         dict[ThemeKeys.FocusHaloThickness] = focusThickness + 2.0;
+
+        // Density = padding only (#421): the UIA tree and announcements are
+        // identical in both modes, by design. Compact reproduces the message
+        // list's original shipped rendering (its template hardcoded 2,1).
+        dict[ThemeKeys.ListRowPadding] = _compactList ? new Thickness(2, 1, 2, 1) : new Thickness(4, 3, 4, 3);
 
         return dict;
     }
