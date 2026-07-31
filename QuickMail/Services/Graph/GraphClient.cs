@@ -76,8 +76,9 @@ public sealed class GraphClient : IDisposable
 
     /// <summary>
     /// As the silent-aware overload, plus extra request headers applied to every page request.
-    /// Used by calendar sync (<c>Prefer: outlook.timezone="UTC"</c>) and by mail folder/id
-    /// enumeration (<c>Prefer: IdType="ImmutableId"</c>, #366).
+    /// Used by calendar sync (<c>Prefer: outlook.timezone="UTC"</c>) and by mail message-id / trash
+    /// enumeration (<c>Prefer: IdType="ImmutableId"</c>, #366). Folder enumeration does NOT send the
+    /// header — the Prefer id-type governs message ids, not <c>mailFolder</c> ids.
     /// </summary>
     public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly,
         IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)

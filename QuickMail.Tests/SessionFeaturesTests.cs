@@ -283,6 +283,7 @@ public class IdleNewMailTests
             return Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
         }
 
+        public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
     }
 

@@ -248,4 +248,45 @@ public class SyncServiceRuleApplicationTests : IDisposable
         Assert.DoesNotContain("500", stored);                          // deleted from store
         Assert.Contains("501", stored);                                // survivor persisted
     }
+
+    [Fact]
+    public async Task RebuildBaseline_FirstPersistedSync_CachesButSkipsRules_ThenRulesResume()
+    {
+        // #366/N5: after the one-time immutable-id cache wipe, the first re-sync per folder must NOT
+        // re-run rules over the pre-existing mail it re-fetches (it was already processed on first
+        // arrival, and the wipe just erased the store's memory). Rules resume on genuinely-new mail.
+        var rules = new CapturingRuleService();
+        var imap = new FetchStubMailService([Message("old1"), Message("old2")]);
+        var sync = Build(imap, rules);
+        sync.SeedRebuildBaseline(new[] { _accountId });
+
+        // First post-wipe sync: messages are cached but the rule engine is NOT invoked.
+        var first = await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+        Assert.Empty(rules.Calls);
+        Assert.Contains(first, m => m.MessageId == "old1");
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.Contains("old1", stored);
+        Assert.Contains("old2", stored);
+
+        // A genuinely-new message on the next sync → rules run on it only, not the baselined old mail.
+        imap.Batch.Add(Message("new1"));
+        await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+        var batch = Assert.Single(rules.Calls);
+        Assert.Equal("new1", Assert.Single(batch).MessageId);
+    }
+
+    [Fact]
+    public async Task RebuildBaseline_OnlyAffectsSeededAccounts()
+    {
+        // An account NOT seeded for rebuild runs rules on its first sync as usual — the baseline is not
+        // a blanket first-sync skip.
+        var rules = new CapturingRuleService();
+        var sync = Build(new FetchStubMailService([Message("100")]), rules);
+        sync.SeedRebuildBaseline(new[] { Guid.NewGuid() }); // a different account
+
+        await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+
+        var batch = Assert.Single(rules.Calls);            // rules ran (this account wasn't baselined)
+        Assert.Equal("100", Assert.Single(batch).MessageId);
+    }
 }

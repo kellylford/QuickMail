@@ -47,6 +47,26 @@ public class SyncService : ISyncService
     // (account, folder) pairs whose store-less baseline has been established (first online fetch seen).
     private readonly ConcurrentDictionary<(Guid Account, string Folder), byte> _onlineBaselined = new();
 
+    // Accounts whose cache was wiped by the one-time immutable-id rebuild (#366): the first persisted
+    // sync of each of their folders is a baseline (mark-seen, no rules) so pre-existing mail — already
+    // processed when it first arrived — isn't re-run through rules on upgrade day. Seeded via
+    // SeedRebuildBaseline; _rebuildBaselined tracks which (account, folder) pairs have been baselined.
+    private readonly ConcurrentDictionary<Guid, byte> _rebuildAccounts = new();
+    private readonly ConcurrentDictionary<(Guid Account, string Folder), byte> _rebuildBaselined = new();
+
+    /// <summary>
+    /// Marks the given accounts as freshly cache-wiped by the one-time immutable-id rebuild (#366).
+    /// The first persisted sync of each of their folders then caches the fetched messages but does NOT
+    /// run client rules on them — they are pre-existing mail (rules already ran when it first arrived),
+    /// not new arrivals, and the wipe erased the store's "already seen" memory. Rules resume on
+    /// genuinely-new mail from the next sync. No-op for accounts not passed here. Call once at startup,
+    /// right after the rebuild clears the cache and before any sync runs.
+    /// </summary>
+    public void SeedRebuildBaseline(IEnumerable<Guid> accountIds)
+    {
+        foreach (var id in accountIds) _rebuildAccounts.TryAdd(id, 0);
+    }
+
     public async Task SyncAllAccountsAsync(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
@@ -201,6 +221,16 @@ public class SyncService : ISyncService
                 _rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0);
             return fetched;
         }
+
+        // Persisted rebuild baseline (#366/N5): after the one-time immutable-id cache wipe, the store is
+        // empty, so the first re-fetch per folder would read every pre-existing message as "new" and
+        // re-run rules over old mail on upgrade day (move/delete/mark-read). For the wiped accounts only,
+        // treat the first post-wipe sync per folder as a baseline — the messages are already upserted
+        // above, so returning here marks them seen (the next sync's store snapshot will hold them)
+        // WITHOUT running rules. Rules resume on genuinely-new mail from then on.
+        if (persisted && _rebuildAccounts.ContainsKey(account.Id)
+            && _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0))
+            return fetched;
 
         var newArrivals = new List<MailMessageSummary>();
         foreach (var m in fetched)

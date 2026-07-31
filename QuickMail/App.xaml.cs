@@ -305,7 +305,9 @@ public partial class App : Application
             // them — survive; a marker file gates it to run exactly once. The VM announces the
             // resulting one-time re-sync. Skipped in --online mode (no local store).
             bool immutableIdRebuilt = false;
-            if (!onlineMode)
+            var rebuiltGraphAccountIds = new List<Guid>(); // seeded to SyncService below so the first
+                                                           // post-wipe sync doesn't re-run rules (#366/N5)
+            if (!onlineMode && !probeMode) // never touch a --ui-probe fixture profile (review nit)
             {
                 var rebuildMarker = System.IO.Path.Combine(profile.ProfileDir, ".immutable-id-rebuilt");
                 if (!System.IO.File.Exists(rebuildMarker))
@@ -332,6 +334,7 @@ public partial class App : Application
                         {
                             localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
                             immutableIdRebuilt = true;
+                            rebuiltGraphAccountIds = graphIds;
                             System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o"));
                         }
                         catch (Exception rebuildEx)
@@ -365,6 +368,9 @@ public partial class App : Application
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
             var syncService = new SyncService(effectiveMail, localStore, configService, ruleService);
+            // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
+            // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
+            if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
 
             // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
             // gets its own People API client (owns an HttpClient → disposed in OnExit).

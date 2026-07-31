@@ -1924,14 +1924,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ── Startup ──────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Shows All Mail from the local store immediately (no network).
-    /// Called first in OnLoaded so the UI is populated before any IMAP work begins.
-    /// </summary>
     /// <summary>Set by App startup when the one-time Graph immutable-id cache rebuild (#366) cleared
     /// cached mail; InitialLoadAsync announces the resulting re-sync so the empty inbox isn't a mystery.</summary>
     public bool ImmutableIdRebuildAnnouncePending { get; set; }
 
+    // The one-time re-sync notice, shared between the immediate announce and the visible status.
+    private const string ImmutableIdRebuildNotice =
+        "Microsoft 365 mail is doing a one-time re-sync — this may take a few minutes.";
+
+    /// <summary>
+    /// Shows All Mail from the local store immediately (no network).
+    /// Called first in OnLoaded so the UI is populated before any IMAP work begins.
+    /// </summary>
     public async Task InitialLoadAsync()
     {
         SelectedFolder = AllMailFolder;
@@ -1943,13 +1947,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var d in defs.OrderBy(d => d.SortOrder))
                 FlagDefinitions.Add(d);
         }
-        if (ImmutableIdRebuildAnnouncePending)
+        var rebuildNotice = ImmutableIdRebuildAnnouncePending;
+        if (rebuildNotice)
         {
             // One-time: cached Microsoft 365 mail was cleared to switch to immutable ids; the sync
-            // below repopulates it. Say so (Status + status bar) rather than showing a silent empty inbox.
+            // below repopulates it. Say so rather than showing a silent empty inbox. Announce it via
+            // the IMMEDIATE (interrupt) path, not SetStatus — the debounced status announce would be
+            // overwritten within 500 ms by the "Connecting and syncing…" write below and never spoken
+            // (review N1). The visible status bar also carries the notice (set below when the cache is
+            // empty, which it is right after the wipe) so sighted users see the explanation too.
             ImmutableIdRebuildAnnouncePending = false;
-            SetStatus("Microsoft 365 mail is doing a one-time re-sync — this may take a few minutes.",
-                AnnouncementCategory.Status);
+            Announce(ImmutableIdRebuildNotice, AnnouncementCategory.Status);
         }
         if (OnlineMode)
         {
@@ -1962,7 +1970,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SetMessages(cached);
         StatusText = cached.Count > 0
             ? $"{cached.Count} messages (cached — syncing…)"
-            : "Connecting and syncing…";
+            : rebuildNotice ? ImmutableIdRebuildNotice : "Connecting and syncing…";
         ConnectionStatusText = "Connecting…";
         StartPrefetchTopOfFolder();
         // Drop calendar events left behind by accounts that no longer exist — e.g. an account removed
