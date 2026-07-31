@@ -47,6 +47,18 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 - **TemplateServiceTests** / **TemplatePickerViewModelTests** — message template CRUD
 - **ProfileContextTests** — profile directory validation
 - **IcsModelTests**, **MessageFilterTests**, **TutorialViewModelTests**, **SessionFeaturesTests**, **BatchObservableCollectionTests**
+- **TypeAheadWiringTests** — deterministic guards that every WPF `TextSearch` list declares a `TextSearch.TextPath` and that the path resolves to a real property on its item type. Register any new type-ahead list in its `Sites` table; the suite fails if you don't.
+
+### Synthesized-input tests are opt-in
+
+Tests that drive real keystrokes at a shown window are gated behind `QUICKMAIL_RUN_INPUT_TESTS=1` (CI sets it) and skip with a visible reason otherwise — they depend on focus and elapsed time, so anything on the machine that reacts to windows appearing perturbs them (issue #380). Gate a new one with:
+
+```csharp
+[StaFact(Skip = InputTests.SkipReason,
+         SkipUnless = nameof(InputTests.Enabled), SkipType = typeof(InputTests))]
+```
+
+Do **not** subclass `FactAttribute` to do this — that trips `xUnit3003` (losing the source-file/line info IDE test navigation uses) and is evaluated at discovery rather than execution.
 
 ## User Guide Publishing
 
@@ -117,6 +129,7 @@ All custom screen reader announcements are user-configurable and governed by `Co
   - `AnnouncementCategory.Status` → respects `AnnounceStatus` setting (sync progress, loading, connection state)
   - `AnnouncementCategory.Result` → respects `AnnounceResults` setting (search counts, operation confirmations)
 - **`force: true`** bypasses config settings — use only for meta-announcements (e.g. "Custom announcements toggled on/off"). All regular content respects user preferences.
+- **Never announce what the platform already reports.** A standard control's own name, role, value, or state change — a radio button being chosen, a checkbox toggling, a list selection moving — is reported already, and how much of it is spoken is a decision the user has made in their own software. Announcing on top of that overrides their decision: an accessibility defect, not an accessibility feature. If a state change is not being reported, the control is behaving wrongly — fix the control. Settings announced radio-button choices for exactly this reason (f71f86f) when the real fault was that arrowing moved focus without selecting anything (#441); the announcement was deleted once the groups behaved correctly. A flag that mutes a custom announcement in some cases is a sign the announcement should not exist in any.
 - **Do not bake instructional text into `AutomationProperties.Name`** on controls. Keep the name a short identifying label ("Search messages", not "Search messages. Press Tab to move to results."). If the instruction is worth surfacing, deliver it as a `Hint` announce at the moment the control is focused or activated.
 
 **Example**: Sync status updates use `AnnouncementCategory.Status` so users who disable background progress announcements won't hear every folder completion. Message counts at sync end use `AnnouncementCategory.Status` (when `AnnounceStatus` is on) and appear as visual status bar text regardless (for sighted users and always-visible state).
@@ -332,6 +345,45 @@ Before a feature branch is committed:
 4. **No silent empty state from caught exceptions.** A `catch` block that swallows an exception and leaves the UI blank is never acceptable. If a primary data source fails (e.g. SQLite unavailable in `--online` mode), the catch must fall through to a visible fallback (e.g. IMAP fetch) or surface an error. Catch blocks that silently return convert failures into debugging marathons. See the **standard fetch pattern** in `docs/ARCHITECTURE.md` — the local store and IMAP calls must be in separate catch scopes so a local store failure does not prevent the IMAP fallback from running.
 5. **Test in `--online` mode** for any feature that calls `LocalStoreService`. Run with `--online` and verify the feature works correctly from IMAP alone. Features that only pass in normal mode are incomplete.
 6. **If the feature affects startup state, verify it activates before the user sees content.** Any feature that influences what the user sees or hears at launch (default view, folder selection, announcement text, connection status, etc.) must be applied in `InitialLoadAsync`, not deferred to the end of `StartBackgroundSyncAsync`. Deferring to post-sync means the user sees a different state for 20–40 seconds before the feature takes effect.
+
+## Visual Quality — Enforced
+
+QuickMail is built screen-reader-first by a developer who cannot see the screen. The
+visual channel is covered by measurement and tooling, never by assumption.
+
+### Grounding rules for any visual claim
+
+- **No screenshot, no claim.** A statement about how the UI looks must cite a specific
+  captured image. Reviews written from memory or general knowledge of "how WPF looks"
+  are speculation, and speculation is not a work item.
+- **Contrast is computed, never eyeballed.** Use the WCAG math in `BuiltInThemeTests`
+  against the theme token JSON. (History: an external review claimed text-contrast
+  problems that measured 7:1–15:1, and missed real border/focus failures that
+  measurement caught in minutes.)
+- **Hedged language is a rejection signal.** "Can/may/likely/risks being" describes a
+  color family, not this app. Findings state what is visible, in which image.
+
+### The visual verification harness (#175/#180)
+
+```bat
+powershell -File scripts\ui-probe.ps1
+```
+
+Seeds a deterministic fixture profile (Tools/QuickMail.Fixtures), launches the real exe
+offline once per (surface × theme × scale) entry in `scripts/ui-probe-plan.json`, and
+collects labeled PNGs. Review the run folder with the checklist in
+`scripts/ui-review-prompt.md`. Notes:
+
+- **Run it after any change to `Views/`, `Styles/`, or `Themes/`** — at minimum the
+  affected surfaces in parchment + dark.
+- **The desktop session must be unlocked.** On a locked session DWM never composites new
+  windows: captures come out white, and focus/clipboard-dependent tests flake. The
+  driver exits 4 and the script refuses to run when locked. (Also check
+  `Get-Process LogonUI` before blaming code for white captures or rotating test flakes.)
+- Every WPF control type used in Views/ and Controls/ must have an implicit style in
+  `Styles/ThemedControls.xaml` or a reviewed exemption — enforced by
+  `ThemedControlCoverageTests`. WPF default chrome ignores theming; the unstyled ToolBar
+  shipped washed-out for months and passed every sighted spot-check.
 
 ## Spec Writing Requirements
 

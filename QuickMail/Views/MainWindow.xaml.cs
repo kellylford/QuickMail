@@ -156,8 +156,6 @@ public class MessageAccessibleNameConverter : IMultiValueConverter
 
 public partial class MainWindow : Window
 {
-    private static readonly TimeSpan TypeAheadResetDelay = TimeSpan.FromSeconds(1);
-
     private readonly MainViewModel _vm;
     private readonly ISendMailService _smtp;
     private readonly IAccountService _accountService;
@@ -170,9 +168,7 @@ public partial class MainWindow : Window
     private readonly ICommandRegistry _registry;
     private bool _webViewReady;
     private CoreWebView2Environment? _webViewEnvironment;
-    private string _typeAheadBuffer = string.Empty;
-    private DateTime _typeAheadLastInputUtc = DateTime.MinValue;
-    private object? _typeAheadScope;
+    private readonly TypeAheadPrefixTracker _typeAhead = new();
     private int _messageBodyRenderVersion;
 
     // Tracks which pane (GetFocusedPaneIndex) was active when the window last deactivated
@@ -1380,9 +1376,14 @@ public partial class MainWindow : Window
         // Create the WebView2 environment — always needed, shared with MessageWindow instances.
         try
         {
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "QuickMail", "WebView2");
+            // ui-probe (#180): an isolated, throwaway user-data folder under the
+            // capture dir — the probe must never write outside its own dirs, and
+            // must not contend with a live QuickMail's shared browser instance.
+            var userDataFolder = (Application.Current as App)?.UiProbe is { } probeOptions
+                ? Path.Combine(probeOptions.CaptureDir, "webview2-data")
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "QuickMail", "WebView2");
             _webViewEnvironment = await CoreWebView2Environment.CreateAsync(null, userDataFolder);
         }
         catch (Exception ex)
@@ -1398,7 +1399,13 @@ public partial class MainWindow : Window
         if (_vm.MessageOpenMode != MessageOpenMode.Window)
             await InitReadingPaneWebViewAsync();
 
-        _ = _vm.CheckForUpdateInBackgroundAsync();
+        // ui-probe (#180): no update check, no background sync, no startup dialogs —
+        // the probe boots offline against the fixture cache, drives to its surface,
+        // captures, and exits. Everything network- or dialog-shaped is gated off.
+        var uiProbe = (Application.Current as App)?.UiProbe;
+
+        if (uiProbe is null)
+            _ = _vm.CheckForUpdateInBackgroundAsync();
 
         var firstAccount = _vm.Accounts.FirstOrDefault();
         if (firstAccount == null)
@@ -1418,6 +1425,15 @@ public partial class MainWindow : Window
         // Populate the Views menu from saved views loaded at startup.
         RebuildViewsMenu();
 
+        if (uiProbe != null)
+        {
+            // Fire-and-forget by design: the driver owns the rest of the process
+            // lifetime and exits the app with its own code when done.
+            var capture = ((App)Application.Current).ScreenshotCapture!;
+            _ = new UiProbeDriver(this, _vm, _registry, uiProbe, capture).RunAsync();
+            return;
+        }
+
         // Connect accounts and sync new mail in the background; messages trickle in via FolderSynced.
         _ = _vm.StartBackgroundSyncAsync();
 
@@ -1430,6 +1446,39 @@ public partial class MainWindow : Window
         // offer so a first-run-after-migration launch never stacks two dialogs.
         _vm.MaybeShowUpdateInstalledNotice();
     }
+
+    // ── ui-probe hooks (#180) — internal, driver-only; never user-reachable ──
+
+    /// <summary>Opens the Settings dialog exactly as the menu item would (modal).</summary>
+    internal void ShowSettingsDialogForProbe() => MenuSettings_Click(this, new RoutedEventArgs());
+
+    /// <summary>Opens the command palette exactly as Ctrl+Shift+P would (modal).</summary>
+    internal void OpenCommandPaletteForProbe() => OpenCommandPalette();
+
+    /// <summary>
+    /// Opens AND renders a message exactly as a notification activation would —
+    /// the VM command alone loads the detail but the body render lives in this
+    /// window's open path, so the probe must come through here.
+    /// </summary>
+    internal Task OpenMessageForProbeAsync(Guid accountId, string folder, string messageId) =>
+        OpenMessageByIdentityAsync(accountId, folder, messageId);
+
+    /// <summary>
+    /// Exits the app with the given code, bypassing close-to-tray (which would
+    /// otherwise turn the probe's exit into a minimize and hang the orchestrator).
+    /// </summary>
+    internal void ForceExit(int exitCode)
+    {
+        _explicitExit = true;
+        Application.Current.Shutdown(exitCode);
+    }
+
+    /// <summary>
+    /// Raised when the reading pane has finished rendering a message body —
+    /// after WebView2 NavigationCompleted and the idle turn that lets the frame
+    /// present. The probe driver's settle signal for the reading-pane surface.
+    /// </summary>
+    internal event Action? MessageBodyRendered;
 
     // WM_CONTEXTMENU hook: fires synchronously before DefWindowProc so we can ensure
     // Keyboard.FocusedElement is non-null before WPF routes ContextMenuOpening.
@@ -1808,7 +1857,7 @@ public partial class MainWindow : Window
             {
                 MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
                 MainViewModel.AllDraftsFolder,  MainViewModel.AllSentFolder,
-                MainViewModel.AllTrashFolder
+                MainViewModel.AllArchiveFolder, MainViewModel.AllTrashFolder
             },
             initialFolder: _vm.SelectedFolder,
             accountMailFolders: acctMailFolders) { Owner = this };
@@ -1882,8 +1931,10 @@ public partial class MainWindow : Window
     private async void FolderList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleFolderTreeTypeAhead(FolderList, FolderList.Items.OfType<FolderTreeNode>(), searchText))
+            TryPeekTypeAheadPrefix(searchText, FolderList, out var peeked) &&
+            TreeViewFocusHelper.TrySelectNextMatch(FolderList, FolderList.Items.OfType<FolderTreeNode>(), peeked))
         {
+            CommitTypeAheadPrefix(peeked, FolderList);
             e.Handled = true;
             return;
         }
@@ -1922,10 +1973,13 @@ public partial class MainWindow : Window
         }, DispatcherPriority.Input);
     }
 
-    // First-letter navigation for the folder TreeView (TreeView has no built-in TextSearch).
+    // Type-ahead for the folder TreeView. Hand-rolled because WPF's TextSearch is disabled by
+    // default on TreeView/TreeViewItem, and even when enabled it only matches one level's
+    // items — never the visible tree as a whole (see TreeViewFocusHelper.TrySelectNextMatch).
     private void FolderList_PreviewTextInput(object sender, System.Windows.Input.TextCompositionEventArgs e)
     {
-        if (TryHandleFolderTreeTypeAhead(FolderList, FolderList.Items.OfType<FolderTreeNode>(), e.Text))
+        if (TryBuildTypeAheadPrefix(e.Text, FolderList, out var prefix) &&
+            TreeViewFocusHelper.TrySelectNextMatch(FolderList, FolderList.Items.OfType<FolderTreeNode>(), prefix))
             e.Handled = true;
     }
 
@@ -1934,11 +1988,6 @@ public partial class MainWindow : Window
         if (TryHandleMessageListTypeAhead(e.Text))
             e.Handled = true;
     }
-
-    // Recursively yields visible (expanded) FolderTreeNode items in depth-first order.
-    private static System.Collections.Generic.IEnumerable<FolderTreeNode> GetVisibleTreeNodes(
-        System.Collections.Generic.IEnumerable<FolderTreeNode> nodes)
-        => TreeViewFocusHelper.GetVisibleTreeNodes(nodes);
 
     // Walks the TreeView container hierarchy to find and select the target node.
     private static bool SelectTreeViewNode(System.Windows.Controls.ItemsControl parent, FolderTreeNode target, bool focusNode = true)
@@ -1991,80 +2040,47 @@ public partial class MainWindow : Window
     }
 
 
-    private static bool TryHandleFolderTreeTypeAhead(TreeView tree, System.Collections.Generic.IEnumerable<FolderTreeNode> roots, string? text)
-    {
-        if (string.IsNullOrEmpty(text) || char.IsControl(text[0]))
-            return false;
-
-        var allNodes = GetVisibleTreeNodes(roots).ToList();
-        if (allNodes.Count == 0)
-            return false;
-
-        var current = tree.SelectedItem as FolderTreeNode;
-        var startIdx = current != null ? allNodes.IndexOf(current) : -1;
-
-        for (int i = 1; i <= allNodes.Count; i++)
-        {
-            var candidate = allNodes[(startIdx + i) % allNodes.Count];
-            if (!candidate.Label.StartsWith(text, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            return SelectTreeViewNode(tree, candidate);
-        }
-
-        return false;
-    }
-
     private bool TryHandleMessageListTypeAhead(string? text)
+        => TryBuildTypeAheadPrefix(text, MessageList, out var prefix)
+           && TrySelectMessageListMatch(prefix);
+
+    private bool TrySelectMessageListMatch(string prefix)
     {
-        if (!TryBuildTypeAheadPrefix(text, MessageList, out var prefix))
-            return false;
-
         var items = MessageList.Items.OfType<MailMessageSummary>().ToList();
-        if (items.Count == 0)
-            return false;
-
         var current = MessageList.SelectedItem as MailMessageSummary;
         var startIdx = current != null ? items.IndexOf(current) : -1;
 
-        for (int i = 1; i <= items.Count; i++)
-        {
-            var candidate = items[(startIdx + i) % items.Count];
-            if (!GetTypeAheadText(candidate).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
+        var idx = TypeAheadMatcher.FindNext(items, GetTypeAheadText, startIdx, prefix);
+        if (idx < 0)
+            return false;
 
-            MessageList.SelectedItem = candidate;
-            MessageList.ScrollIntoView(candidate);
-            var targetIndex = MessageList.Items.IndexOf(candidate);
-            Dispatcher.InvokeAsync(() => FocusItemAt(targetIndex), DispatcherPriority.Input);
-            return true;
-        }
-
-        return false;
+        var candidate = items[idx];
+        MessageList.SelectedItem = candidate;
+        MessageList.ScrollIntoView(candidate);
+        var targetIndex = MessageList.Items.IndexOf(candidate);
+        Dispatcher.InvokeAsync(() => FocusItemAt(targetIndex), DispatcherPriority.Input);
+        return true;
     }
 
+    // Commit route (PreviewTextInput): records the keystroke so the next one extends the prefix.
     private bool TryBuildTypeAheadPrefix(string? text, object scope, out string prefix)
     {
         prefix = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(text) || Keyboard.Modifiers != ModifierKeys.None)
-            return false;
-
-        var trimmed = text.Trim();
-        if (trimmed.Length == 0 || trimmed.Any(char.IsControl))
-            return false;
-
-        var now = DateTime.UtcNow;
-        if (!ReferenceEquals(_typeAheadScope, scope) || now - _typeAheadLastInputUtc > TypeAheadResetDelay)
-            _typeAheadBuffer = trimmed;
-        else
-            _typeAheadBuffer += trimmed;
-
-        _typeAheadScope = scope;
-        _typeAheadLastInputUtc = now;
-        prefix = _typeAheadBuffer;
-        return true;
+        return TreeViewFocusHelper.ModifiersAllowTypeAhead && _typeAhead.TryAppend(text, scope, out prefix);
     }
+
+    // Peek route (PreviewKeyDown): computes the prefix without recording it. The KeyDown site
+    // commits only on a match — a matched KeyDown is marked handled (suppressing the TextInput
+    // for that keystroke), while an unmatched one falls through to PreviewTextInput, which
+    // commits. Committing on both routes would append the same keystroke twice.
+    private bool TryPeekTypeAheadPrefix(string? text, object scope, out string prefix)
+    {
+        prefix = string.Empty;
+        return TreeViewFocusHelper.ModifiersAllowTypeAhead && _typeAhead.TryPeek(text, scope, out prefix);
+    }
+
+    // Commits the exact prefix the KeyDown route peeked and matched on.
+    private void CommitTypeAheadPrefix(string prefix, object scope) => _typeAhead.Commit(prefix, scope);
 
     private static bool TryGetTypeAheadKeyText(KeyEventArgs e, out string text)
         => TreeViewFocusHelper.TryGetTypeAheadKeyText(e, out text);
@@ -2135,49 +2151,27 @@ public partial class MainWindow : Window
         return null;
     }
 
-    private static void HandleMessageTreeTypeAhead(
-        TreeView tree,
-        object? currentSelection,
-        System.Collections.Generic.List<object> visibleItems,
-        string prefix,
-        TextCompositionEventArgs e)
-    {
-        if (visibleItems.Count == 0) return;
-
-        var startIdx = currentSelection != null ? visibleItems.IndexOf(currentSelection) : -1;
-        for (int i = 1; i <= visibleItems.Count; i++)
-        {
-            var candidate = visibleItems[(startIdx + i) % visibleItems.Count];
-            if (!GetTypeAheadText(candidate).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            FocusTreeItem(tree, candidate);
-            e.Handled = true;
-            return;
-        }
-    }
-
     private bool TryHandleMessageTreeTypeAhead(
         TreeView tree,
         object? currentSelection,
         System.Collections.Generic.List<object> visibleItems,
         string? text)
+        => TryBuildTypeAheadPrefix(text, tree, out var prefix)
+           && TrySelectTreeMatch(tree, currentSelection, visibleItems, prefix);
+
+    private static bool TrySelectTreeMatch(
+        TreeView tree,
+        object? currentSelection,
+        System.Collections.Generic.List<object> visibleItems,
+        string prefix)
     {
-        if (!TryBuildTypeAheadPrefix(text, tree, out var prefix) || visibleItems.Count == 0)
+        var startIdx = currentSelection != null ? visibleItems.IndexOf(currentSelection) : -1;
+        var idx = TypeAheadMatcher.FindNext(visibleItems, GetTypeAheadText, startIdx, prefix);
+        if (idx < 0)
             return false;
 
-        var startIdx = currentSelection != null ? visibleItems.IndexOf(currentSelection) : -1;
-        for (int i = 1; i <= visibleItems.Count; i++)
-        {
-            var candidate = visibleItems[(startIdx + i) % visibleItems.Count];
-            if (!GetTypeAheadText(candidate).StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            FocusTreeItem(tree, candidate);
-            return true;
-        }
-
-        return false;
+        FocusTreeItem(tree, visibleItems[idx]);
+        return true;
     }
 
     // Focuses the first (or currently selected) ListViewItem so Up/Down arrow work
@@ -2659,8 +2653,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (TryGetTypeAheadKeyText(e, out var searchText) && TryHandleMessageListTypeAhead(searchText))
+        if (TryGetTypeAheadKeyText(e, out var searchText) &&
+            TryPeekTypeAheadPrefix(searchText, MessageList, out var peeked) &&
+            TrySelectMessageListMatch(peeked))
         {
+            CommitTypeAheadPrefix(peeked, MessageList);
             e.Handled = true;
             return;
         }
@@ -3132,6 +3129,21 @@ public partial class MainWindow : Window
 
         if (renderVersion != _messageBodyRenderVersion)
             return;
+
+        // Debug screenshot capture (#175): the rendered reading pane is the surface
+        // PrintWindow exists for. Deferred to ApplicationIdle because WebView2
+        // presents its frame after NavigationCompleted — a synchronous capture can
+        // still show the previous document. Skipped on timeout: the page may never
+        // have rendered. No-op unless /debug and the session toggle are on.
+        if (completed)
+            _ = Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, () =>
+            {
+                // A newer render may have started before idle — skip rather than
+                // save the next message's pixels under this message's label.
+                if (renderVersion != _messageBodyRenderVersion) return;
+                (Application.Current as App)?.ScreenshotCapture?.Capture(this, $"ReadingPane-{detail.Subject}");
+                MessageBodyRendered?.Invoke();
+            });
 
         await FocusMessageBodyAsync(renderVersion, detail.Subject);
     }
@@ -3900,12 +3912,14 @@ public partial class MainWindow : Window
         }
 
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleMessageTreeTypeAhead(
+            TryPeekTypeAheadPrefix(searchText, ConversationTree, out var peeked) &&
+            TrySelectTreeMatch(
                 ConversationTree,
                 ConversationTree.SelectedItem,
                 GetVisibleConversationItems(_vm.Conversations).ToList(),
-                searchText))
+                peeked))
         {
+            CommitTypeAheadPrefix(peeked, ConversationTree);
             e.Handled = true;
             return;
         }
@@ -4505,12 +4519,14 @@ public partial class MainWindow : Window
         }
 
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleMessageTreeTypeAhead(
+            TryPeekTypeAheadPrefix(searchText, SenderGroupTree, out var peeked) &&
+            TrySelectTreeMatch(
                 SenderGroupTree,
                 SenderGroupTree.SelectedItem,
                 GetVisibleSenderItems(_vm.SenderGroups).ToList(),
-                searchText))
+                peeked))
         {
+            CommitTypeAheadPrefix(peeked, SenderGroupTree);
             e.Handled = true;
             return;
         }
@@ -4680,12 +4696,14 @@ public partial class MainWindow : Window
         }
 
         if (TryGetTypeAheadKeyText(e, out var searchText) &&
-            TryHandleMessageTreeTypeAhead(
+            TryPeekTypeAheadPrefix(searchText, ToGroupTree, out var peeked) &&
+            TrySelectTreeMatch(
                 ToGroupTree,
                 ToGroupTree.SelectedItem,
                 GetVisibleSenderItems(_vm.ToGroups).ToList(),
-                searchText))
+                peeked))
         {
+            CommitTypeAheadPrefix(peeked, ToGroupTree);
             e.Handled = true;
             return;
         }
@@ -5365,26 +5383,30 @@ public partial class MainWindow : Window
     // Per-account, no global archive folder. "Set as Archive Folder" stores the folder's FullName on
     // its account; "Use Automatic Archive Folder" clears it so QuickMail falls back to the server's
     // flagged Archive folder. Both are keyboard-reachable from the folder tree context menu.
-    private void FolderContextMenu_SetArchive_Click(object sender, RoutedEventArgs e)
+    // async void: the VM returns the All Archive reload when that aggregate is displayed, so the
+    // list stops showing the previous archive's messages. Nothing waits on these handlers.
+    private async void FolderContextMenu_SetArchive_Click(object sender, RoutedEventArgs e)
     {
         var node = GetContextMenuFolderNode(sender);
         if (node is null || node.IsHeader || node.Folder is not { } folder ||
             folder.AccountId == Guid.Empty || folder.FullName.Length == 0 || folder.FullName[0] == '\0')
             return;
-        _vm.SetArchiveFolder(folder.AccountId, folder.FullName);
+        var reload = _vm.SetArchiveFolderAsync(folder.AccountId, folder.FullName);
         AccessibilityHelper.Announce(this,
             $"{folder.DisplayName} set as the Archive folder for this account.",
             category: AnnouncementCategory.Result);
+        await reload;
     }
 
-    private void FolderContextMenu_ClearArchive_Click(object sender, RoutedEventArgs e)
+    private async void FolderContextMenu_ClearArchive_Click(object sender, RoutedEventArgs e)
     {
         var node = GetContextMenuFolderNode(sender);
         if (node?.Folder is not { } folder || folder.AccountId == Guid.Empty) return;
-        _vm.SetArchiveFolder(folder.AccountId, null);
+        var reload = _vm.SetArchiveFolderAsync(folder.AccountId, null);
         AccessibilityHelper.Announce(this,
             "This account will use its automatic Archive folder.",
             category: AnnouncementCategory.Result);
+        await reload;
     }
 
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
@@ -5634,7 +5656,8 @@ public partial class MainWindow : Window
             .Select(f => f.Source)
             .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames);
+        var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
+            (Application.Current as App)?.ScreenshotCapture);
         var dialog = new SettingsDialog(vm) { Owner = this };
         if (dialog.ShowDialog() == true)
         {
@@ -5683,15 +5706,9 @@ public partial class MainWindow : Window
         window.Show();
     }
 
-    // ── Tools menu (theme actions dispatch through the registered commands so the
-    //    Command Palette and any custom hotkeys stay the single source of truth) ──
+    // ── View menu theme entry (moved from Tools; Next/Previous Theme are
+    //    palette-only commands — theme.next / theme.previous — by design) ──
     private void MenuManageThemes_Click(object sender, RoutedEventArgs e) => OpenThemeManager();
-
-    private void MenuNextTheme_Click(object sender, RoutedEventArgs e)
-        => _registry.FindById("theme.next")?.Execute();
-
-    private void MenuPreviousTheme_Click(object sender, RoutedEventArgs e)
-        => _registry.FindById("theme.previous")?.Execute();
 
     private void MenuGrabAddresses_Click(object sender, RoutedEventArgs e)
         => GrabAddressesFromMessage();
@@ -6024,27 +6041,11 @@ public partial class MainWindow : Window
             // Refresh the rules status text now that the window has closed.
             _vm.UpdateRulesStatusText();
 
-            // Apply rules to existing cached mail so newly created/edited rules
-            // take effect immediately without waiting for the next sync.
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                    var removed = await _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token);
-                    if (removed.Count > 0)
-                    {
-                        await Dispatcher.InvokeAsync(() =>
-                        {
-                            _vm.RefreshCommand.Execute(null);
-                        });
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogService.Log("ApplyRulesToExisting failed", ex);
-                }
-            });
+            // #336: closing the Rules Manager no longer reprocesses the whole cache. Client rules
+            // apply to newly-arrived Inbox mail only; retroactively tidying existing mail is now an
+            // explicit, user-invoked action ("Run on Existing Mail", #346) rather than an implicit
+            // side-effect of closing this dialog, which used to silently move/delete cached mail and
+            // could double-act on messages a server-side rule had already filed elsewhere.
         };
 
         dialog.Show();
