@@ -2628,13 +2628,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Note: on the very first cached load (InitialLoadAsync) _cachedFolders is not yet populated,
         // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
         // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
-        var isVirtual = IsVirtualFolder(SelectedFolder);
-        if (isVirtual)
+        if (IsVirtualFolder(SelectedFolder))
+        {
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
-        _rawMessages = list;
-        // Stamp AFTER _rawMessages is set — the account-qualification decision reads the current view.
-        if (isVirtual)
             ApplyFolderDisplayNames(list);
+        }
+        _rawMessages = list;
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
         else
@@ -2682,35 +2681,56 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var f in kvp.Value)
                 folderNames[(kvp.Key, f.FullName)] = f.DisplayName;
 
-        // _rawMessages (set before this runs) is the current view for the account-span decision.
-        StampFolderDisplayNames(list, _rawMessages, accountLabels, folderNames);
+        StampFolderDisplayNames(list, AggregateSpansMultipleAccounts(), accountLabels, folderNames);
     }
 
     /// <summary>
-    /// Pure stamping logic for <see cref="ApplyFolderDisplayNames"/>, extracted so the account-qualify
-    /// rule and its fallbacks are directly testable (#423). Sets each row's
+    /// Whether the current aggregate/virtual view spans more than one account — the account prefix is
+    /// added only then (#423). Decided by the VIEW, not by which accounts happen to be visible: global
+    /// All Mail spans every account even if one dominates the list and the others are barely present,
+    /// while per-account All Mail is a single account whose name is already implied. A single-account
+    /// saved view stays folder-only; a multi-account one qualifies.
+    /// </summary>
+    private bool AggregateSpansMultipleAccounts()
+    {
+        var view = SelectedFolder;
+        if (view == null) return false;
+
+        // Per-account All Mail → the single account is already implied by the view itself.
+        if (TryGetAccountIdFromSentinel(view.FullName, out _)) return false;
+
+        // Saved view → count the distinct accounts among its folders.
+        if (TryGetViewIdFromSentinel(view.FullName, out var viewId) ||
+            TryGetViewAllIdFromSentinel(view.FullName, out viewId))
+        {
+            var sv = SavedViews.FirstOrDefault(v => v.Id == viewId);
+            if (sv != null)
+                return sv.Folders.Select(f => f.AccountId).Distinct().Count() > 1;
+        }
+
+        // Global aggregates (All Mail / All Inboxes / Sent / Trash / Flagged) and contact-mail results
+        // span every account → qualify when more than one account is configured.
+        return Accounts.Count > 1;
+    }
+
+    /// <summary>
+    /// Pure stamping logic for <see cref="ApplyFolderDisplayNames"/>, extracted so the format and its
+    /// fallbacks are directly testable (#423). Sets each row's
     /// <see cref="MailMessageSummary.FolderDisplayName"/> to the folder alone ("Inbox"), or account-
-    /// qualified "&lt;account&gt; -- &lt;folder&gt;" when the aggregate spans more than one account.
+    /// qualified "&lt;account&gt; -- &lt;folder&gt;" when <paramref name="qualifyAccount"/> is set.
     /// </summary>
     /// <param name="list">The batch to stamp.</param>
-    /// <param name="viewScope">The full current view, unioned with the batch to decide account-span so
-    /// an incremental batch stamps consistently with the initial load (a stale scope can only ADD
-    /// accounts, erring toward showing the prefix — redundant — rather than dropping it — ambiguous).</param>
+    /// <param name="qualifyAccount">True to prefix "&lt;account&gt; -- " (view spans &gt;1 account).</param>
     /// <param name="accountLabels">account id → display label.</param>
     /// <param name="folderNames">(account, folder full-name) → folder display name; case-sensitive
     /// (Ordinal): FolderName is captured from the same folder.FullName (a Graph id / IMAP path).</param>
     internal static void StampFolderDisplayNames(
         IReadOnlyList<MailMessageSummary> list,
-        IReadOnlyList<MailMessageSummary> viewScope,
+        bool qualifyAccount,
         IReadOnlyDictionary<Guid, string> accountLabels,
         IReadOnlyDictionary<(Guid, string), string> folderNames)
     {
         if (list.Count == 0) return;
-
-        var accountsInView = new HashSet<Guid>();
-        foreach (var m in viewScope) accountsInView.Add(m.AccountId);
-        foreach (var m in list)      accountsInView.Add(m.AccountId);
-        bool qualifyAccount = accountsInView.Count > 1;
 
         foreach (var m in list)
         {

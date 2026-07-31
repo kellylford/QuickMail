@@ -7,8 +7,10 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// #423: locks the VM-side folder-name composition for aggregate views — account-qualified only when
-/// the view spans more than one account, folder-only otherwise, and the two miss fallbacks.
+/// #423: locks the VM-side folder-name composition for aggregate views — account-qualified when the
+/// view spans more than one account, folder-only otherwise, plus the two miss fallbacks. The
+/// spans-multiple-accounts decision itself is view-based (per-account All Mail vs global All Mail vs
+/// saved views) and lives in the VM; here we pin the pure formatting given that decision.
 /// </summary>
 public class FolderDisplayNameStampTests
 {
@@ -32,7 +34,7 @@ public class FolderDisplayNameStampTests
         var b = Msg(B, "AAMk-inbox-b");
         var list = new List<MailMessageSummary> { a, b };
 
-        MainViewModel.StampFolderDisplayNames(list, list, Labels, Folders);
+        MainViewModel.StampFolderDisplayNames(list, qualifyAccount: true, Labels, Folders);
 
         Assert.Equal("kelly -- Inbox", a.FolderDisplayName);
         Assert.Equal("tim -- Inbox", b.FolderDisplayName);
@@ -41,28 +43,14 @@ public class FolderDisplayNameStampTests
     [Fact]
     public void SingleAccountView_AnnouncesFolderOnly()
     {
-        // Only one account in the view → the account is implied, so no redundant prefix.
+        // qualifyAccount false (the view implies the account) → the account is not prefixed even though
+        // a label is available for it.
         var a1 = Msg(A, "AAMk-inbox-a");
         var list = new List<MailMessageSummary> { a1 };
 
-        MainViewModel.StampFolderDisplayNames(list, list, Labels, Folders);
+        MainViewModel.StampFolderDisplayNames(list, qualifyAccount: false, Labels, Folders);
 
         Assert.Equal("Inbox", a1.FolderDisplayName);
-    }
-
-    [Fact]
-    public void IncrementalBatch_UsesFullViewScope_NotJustTheBatch()
-    {
-        // A live arrival from one account into a two-account view must still qualify — the decision is
-        // based on the whole view scope, not the single-account batch.
-        var existingA = Msg(A, "AAMk-inbox-a");
-        var existingB = Msg(B, "AAMk-inbox-b");
-        var arrival   = Msg(A, "AAMk-inbox-a");
-        var viewScope = new List<MailMessageSummary> { existingA, existingB };
-
-        MainViewModel.StampFolderDisplayNames(new[] { arrival }, viewScope, Labels, Folders);
-
-        Assert.Equal("kelly -- Inbox", arrival.FolderDisplayName);
     }
 
     [Fact]
@@ -72,9 +60,9 @@ public class FolderDisplayNameStampTests
         // never overwrite with the raw id and never announce it.
         var m = Msg(A, "AAMk-unknown-folder");
         m.FolderDisplayName = "Newsletters"; // caller-supplied fallback (e.g. saved-view stored name)
-        var list = new List<MailMessageSummary> { m, Msg(B, "AAMk-inbox-b") };
+        var list = new List<MailMessageSummary> { m };
 
-        MainViewModel.StampFolderDisplayNames(list, list, Labels, Folders);
+        MainViewModel.StampFolderDisplayNames(list, qualifyAccount: true, Labels, Folders);
 
         Assert.Equal("Newsletters", m.FolderDisplayName);            // fallback preserved
         Assert.DoesNotContain("AAMk", m.FolderDisplayName);          // never the raw id
@@ -83,14 +71,13 @@ public class FolderDisplayNameStampTests
     [Fact]
     public void MissingAccountLabel_FallsBackToFolderAlone()
     {
-        // Two accounts in view (so qualification is on), but one has no label → folder alone, never a
-        // dangling "account -- ".
+        // Qualifying, but one account has no label → folder alone, never a dangling "account -- ".
         var a = Msg(A, "AAMk-inbox-a");
         var b = Msg(B, "AAMk-inbox-b");
         var labels = new Dictionary<Guid, string> { [A] = "kelly" }; // B has no label
         var list = new List<MailMessageSummary> { a, b };
 
-        MainViewModel.StampFolderDisplayNames(list, list, labels, Folders);
+        MainViewModel.StampFolderDisplayNames(list, qualifyAccount: true, labels, Folders);
 
         Assert.Equal("kelly -- Inbox", a.FolderDisplayName);
         Assert.Equal("Inbox", b.FolderDisplayName);                  // no "-- " with an empty label
