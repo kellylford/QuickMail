@@ -280,7 +280,15 @@ jobs:
         # -warnaserror: CI fails on ANY compiler/analyzer warning so a warning can never
         # land on main or ship in a release. Local build.bat stays permissive for WIP;
         # this is the enforcement point. Keep the tree warning-free or the build breaks.
-        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
+        #
+        # The clean is load-bearing: the Test step above already built Release, so
+        # without it this publish is an incremental no-op — the compiler (and thus
+        # every analyzer) never re-runs and -warnaserror has nothing to catch. That
+        # is how analyzer errors reached main twice and broke only the on-demand
+        # installer build, which compiles cold (runs 30597553629, 30635331364).
+        run: |
+          dotnet clean QuickMail/QuickMail.csproj -c Release -v quiet
+          dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
         # PublishSingleFile, SelfContained, RuntimeIdentifier, ReadyToRun are set in .csproj
 
       - name: Upload artifact
