@@ -1,7 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Helpers;
@@ -169,19 +167,12 @@ public partial class SettingsDialog : Window
         }
     }
 
-    private void RadioButton_Checked(object sender, RoutedEventArgs e)
-    {
-        if (sender is not RadioButton { IsLoaded: true } rb) return;
-        // Arrowing through the group already moves focus to this button, and the focus change
-        // carries the option name and its checked state. Announcing here too would say the
-        // option twice on every arrow press (issue #441).
-        if (RadioGroupNavigation.IsMovingSelection) return;
-        var name = AutomationProperties.GetName(rb);
-        if (string.IsNullOrEmpty(name))
-            name = rb.Content?.ToString() ?? string.Empty;
-        if (!string.IsNullOrEmpty(name))
-            AccessibilityHelper.Announce(rb, name, category: AnnouncementCategory.Result);
-    }
+    // There is deliberately no Checked handler for the settings radio buttons. Speaking the
+    // option ourselves duplicates what the platform already reports and overrides the behaviour
+    // the user has configured in their own software — a defect, not a feature. One was added in
+    // f71f86f to compensate for choices that were not being announced, but the real fault was
+    // that arrowing moved focus without selecting anything (issue #441); with selection
+    // following focus, the ordinary focus and state reporting covers it.
 
     private void RestoreDefaultButton_Click(object sender, RoutedEventArgs e)
     {
