@@ -1570,9 +1570,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 vf.AccountId, vf.FolderFullName, maxKey, initialCount, ct);
                         }
                     }
-                    // Aggregate view — stamp each message with its source folder so the row can say
-                    // where it lives (#423). Single-folder loads don't go through here, so their
-                    // FolderDisplayName stays empty and the folder isn't shown.
+                    // Aggregate view — stamp each message with the stored view's plain folder name as a
+                    // fallback; ApplyFolderDisplayNames below overwrites it with the account-qualified
+                    // form for folders known to the cache (#423). Single-folder loads don't come here.
                     foreach (var m in msgs) m.FolderDisplayName = vf.FolderDisplayName;
                     newMessages.AddRange(msgs);
                 }
@@ -1583,6 +1583,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            // #423 (Kelly round 2): Phase 2 inserts via InsertMessageSorted (not SetMessages), so these
+            // freshly-fetched rows must be account-qualified here too — otherwise a multi-account saved
+            // view shows qualified cached rows next to unqualified fresh ones. Keeps the plain stamp
+            // above as the miss fallback for folders not in the cache.
+            ApplyFolderDisplayNames(newMessages);
 
             // A saved view can span folders (and Gmail copies), so key by global message identity
             // to collapse duplicate copies against what is already shown (issue #220).
@@ -2622,12 +2628,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Note: on the very first cached load (InitialLoadAsync) _cachedFolders is not yet populated,
         // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
         // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
-        if (IsVirtualFolder(SelectedFolder))
-        {
+        var isVirtual = IsVirtualFolder(SelectedFolder);
+        if (isVirtual)
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
-            ApplyFolderDisplayNames(list);
-        }
         _rawMessages = list;
+        // Stamp AFTER _rawMessages is set — the account-qualification decision reads the current view.
+        if (isVirtual)
+            ApplyFolderDisplayNames(list);
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
         else
@@ -2652,28 +2659,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// #423: stamps each row's source location so the accessible name can announce it in aggregate/
-    /// virtual views, as "&lt;account&gt; -- &lt;folder&gt;" (e.g. "icanbrew -- Inbox"). Account-qualified
-    /// so a multi-account user can tell one account's Inbox row from another's — folder-only announced
-    /// both as just "Inbox". <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph
-    /// folder id, or an IMAP path), so we map it through the cached folder list to the display name.
-    /// Falls back to empty (announce nothing) rather than a raw id when the folder isn't in the cache
-    /// yet — e.g. the very first cached load before folders are known. Only called for virtual views;
-    /// single-folder views leave <see cref="MailMessageSummary.FolderDisplayName"/> empty (folder implied).
+    /// virtual views. Account-qualified as "&lt;account&gt; -- &lt;folder&gt;" (e.g. "icanbrew -- Inbox")
+    /// ONLY when the current aggregate actually spans more than one account — a single-account list
+    /// (per-account All Mail, or any view whose rows are all one account) already implies the account,
+    /// so it announces the folder alone ("Inbox") to avoid repeating the account on every row.
+    /// <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph folder id, or an IMAP
+    /// path), mapped through the cached folder list to the display name. On a lookup miss the existing
+    /// value is left untouched (empty for fresh rows, or a caller-supplied plain-name fallback) — never
+    /// a raw id. Only called for virtual views; single-folder views leave
+    /// <see cref="MailMessageSummary.FolderDisplayName"/> empty (folder implied).
     /// </summary>
     private void ApplyFolderDisplayNames(IReadOnlyList<MailMessageSummary> list)
     {
         if (list.Count == 0) return;
 
-        // FolderDisplayName is a plain settable string, not an observable property — safe here because
-        // this only stamps freshly-materialized summaries in an aggregate load, and single-folder loads
-        // build their own fresh instances from SQLite (so a stamped instance never leaks into a
-        // single-folder view where the folder should be implied). Keep that invariant if reusing rows.
-        //
         // Precompute lookups once so this is O(messages), not O(messages × folders) (Kelly's review):
-        // account id → label, and (account, folder full-name) → folder display name. Keys are matched
-        // case-sensitively (Ordinal): a message's FolderName is captured from the same folder.FullName
-        // (a case-sensitive Graph id or IMAP path), so exact match is correct; a mismatch just falls
-        // back to announcing nothing rather than a raw id.
+        // account id → label, and (account, folder full-name) → folder display name.
         var accountLabels = new Dictionary<Guid, string>();
         foreach (var a in Accounts) accountLabels[a.Id] = a.AccountLabel;
         var folderNames = new Dictionary<(Guid, string), string>();
@@ -2681,16 +2682,46 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var f in kvp.Value)
                 folderNames[(kvp.Key, f.FullName)] = f.DisplayName;
 
+        // _rawMessages (set before this runs) is the current view for the account-span decision.
+        StampFolderDisplayNames(list, _rawMessages, accountLabels, folderNames);
+    }
+
+    /// <summary>
+    /// Pure stamping logic for <see cref="ApplyFolderDisplayNames"/>, extracted so the account-qualify
+    /// rule and its fallbacks are directly testable (#423). Sets each row's
+    /// <see cref="MailMessageSummary.FolderDisplayName"/> to the folder alone ("Inbox"), or account-
+    /// qualified "&lt;account&gt; -- &lt;folder&gt;" when the aggregate spans more than one account.
+    /// </summary>
+    /// <param name="list">The batch to stamp.</param>
+    /// <param name="viewScope">The full current view, unioned with the batch to decide account-span so
+    /// an incremental batch stamps consistently with the initial load (a stale scope can only ADD
+    /// accounts, erring toward showing the prefix — redundant — rather than dropping it — ambiguous).</param>
+    /// <param name="accountLabels">account id → display label.</param>
+    /// <param name="folderNames">(account, folder full-name) → folder display name; case-sensitive
+    /// (Ordinal): FolderName is captured from the same folder.FullName (a Graph id / IMAP path).</param>
+    internal static void StampFolderDisplayNames(
+        IReadOnlyList<MailMessageSummary> list,
+        IReadOnlyList<MailMessageSummary> viewScope,
+        IReadOnlyDictionary<Guid, string> accountLabels,
+        IReadOnlyDictionary<(Guid, string), string> folderNames)
+    {
+        if (list.Count == 0) return;
+
+        var accountsInView = new HashSet<Guid>();
+        foreach (var m in viewScope) accountsInView.Add(m.AccountId);
+        foreach (var m in list)      accountsInView.Add(m.AccountId);
+        bool qualifyAccount = accountsInView.Count > 1;
+
         foreach (var m in list)
         {
-            // Folder must be known — never announce a raw backend id.
+            // Folder must be known — never announce a raw backend id. On a miss leave whatever's there
+            // (empty for fresh rows, or a caller's plain-name fallback), don't clobber it to empty.
             if (!folderNames.TryGetValue((m.AccountId, m.FolderName), out var folder)
                 || string.IsNullOrEmpty(folder))
-            {
-                m.FolderDisplayName = string.Empty;
                 continue;
-            }
-            m.FolderDisplayName = accountLabels.TryGetValue(m.AccountId, out var label) && !string.IsNullOrEmpty(label)
+
+            m.FolderDisplayName = qualifyAccount
+                && accountLabels.TryGetValue(m.AccountId, out var label) && !string.IsNullOrEmpty(label)
                 ? $"{label} -- {folder}"
                 : folder;
         }

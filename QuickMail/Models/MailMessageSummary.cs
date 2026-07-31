@@ -9,9 +9,11 @@ public partial class MailMessageSummary : ObservableObject
     public Guid AccountId { get; set; }
     public string FolderName { get; set; } = string.Empty;
 
-    /// <summary>Human-readable source folder, populated only in aggregate/virtual views (All Mail,
-    /// All Inboxes, saved views, From/To groups) so the row can say where the message lives (#423).
-    /// Empty in single-folder views, where the folder is implied.</summary>
+    /// <summary>Human-readable source location for the row's accessible name, populated only in
+    /// aggregate/virtual views (All Mail, All Inboxes, saved views, From/To groups) so the row can say
+    /// where the message lives (#423). Holds the folder alone ("Inbox"), or an account-qualified
+    /// "&lt;account&gt; -- &lt;folder&gt;" when the aggregate spans more than one account. Empty in
+    /// single-folder views, where the folder is implied.</summary>
     public string FolderDisplayName { get; set; } = string.Empty;
 
     /// <summary>
