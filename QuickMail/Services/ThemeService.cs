@@ -56,6 +56,7 @@ public class ThemeService : IThemeService
     private bool _initialized;
     private bool _disposed;
     private string _lastPublishedSignature = string.Empty;
+    private string _lastAnnounceSignature = string.Empty;
 
     /// <summary>Test hook: overrides the OS light/dark probe (default reads AppsUseLightTheme).</summary>
     internal Func<bool> OsLightModeProbe { get; set; } = ReadOsLightMode;
@@ -416,12 +417,20 @@ public class ThemeService : IThemeService
         if (signature == _lastPublishedSignature && wasHc == _isHighContrast)
             return; // effective theme unchanged — no dictionary churn, no event
 
+        // Density-only changes re-publish the token dictionary (the row-padding
+        // resource must swap) but must NOT raise ThemeChanged: subscribers
+        // announce "Theme changed to …" and re-render the reading pane, both
+        // wrong when only list padding moved (#421 density on the View menu).
+        var announceSignature = BuildAnnounceSignature(resolved);
+        var themeActuallyChanged = announceSignature != _lastAnnounceSignature || wasHc != _isHighContrast;
+
         _resolved = resolved;
         _lastPublishedSignature = signature;
+        _lastAnnounceSignature = announceSignature;
 
         PublishDictionary(resolved);
 
-        if (raiseEvent)
+        if (raiseEvent && themeActuallyChanged)
         {
             // Raised on the Dispatcher thread per the interface contract.
             if (_dispatcher is null || _dispatcher.CheckAccess())
@@ -431,7 +440,10 @@ public class ThemeService : IThemeService
         }
     }
 
-    private string BuildSignature(ThemeDefinition resolved)
+    /// <summary>Everything that makes a change worth ANNOUNCING (and re-rendering
+    /// the reading pane for) — deliberately excludes list density, which is
+    /// padding-only and announces as its own result at the call site.</summary>
+    private string BuildAnnounceSignature(ThemeDefinition resolved)
     {
         // Format doubles with InvariantCulture (like the rest of this file) so the
         // signature is locale-stable — it is only compared to itself today, but a
@@ -439,8 +451,12 @@ public class ThemeService : IThemeService
         var c = CultureInfo.InvariantCulture;
         return $"{_isHighContrast}|{resolved.Id}|{string.Join(",", resolved.Colors.OrderBy(kv => kv.Key, StringComparer.Ordinal).Select(kv => kv.Value))}"
             + $"|{resolved.Typography.FontFamily}|{resolved.Typography.MonoFontFamily}|{resolved.Typography.BaseFontSize.ToString(c)}"
-            + $"|{_textScale.ToString(c)}|{_fontFamilyOverride}|{_underlineLinks}|{_thickFocus}|{_compactList}";
+            + $"|{_textScale.ToString(c)}|{_fontFamilyOverride}|{_underlineLinks}|{_thickFocus}";
     }
+
+    /// <summary>Everything that requires RE-PUBLISHING the token dictionary.</summary>
+    private string BuildSignature(ThemeDefinition resolved) =>
+        BuildAnnounceSignature(resolved) + $"|{_compactList}";
 
     private void PublishDictionary(ThemeDefinition resolved)
     {

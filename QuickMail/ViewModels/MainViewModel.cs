@@ -1106,6 +1106,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
+        _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
@@ -1664,6 +1665,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
 
+        // Keep the View menu's density check marks in sync with a Settings save.
+        ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
+
         ShowMessageStatus = cfg.ShowMessageStatus;
         ReadAsPlainText   = cfg.ReadAsPlainText;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
@@ -1780,6 +1784,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
             execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 4)));
+
+        // Density (#421): the same setting the Settings dialog persists, adjustable
+        // from the View menu, the palette, and (via these registrations) a hotkey.
+        registry.Register(new CommandDefinition(
+            id: "view.density.comfortable", category: "View", title: "Density: Comfortable",
+            execute: () => SetListDensity("comfortable")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.density.compact", category: "View", title: "Density: Compact",
+            execute: () => SetListDensity("compact")));
 
         registry.Register(new CommandDefinition(
             id: "account.manage", category: "Account", title: "Manage Accounts",
@@ -6408,6 +6422,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SetViewMode(string? mode)
     {
         ViewMode = ConfigModel.ParseViewMode(mode);
+    }
+
+    // ── List density command (#421, View menu) ────────────────────────────────
+
+    /// <summary>Current message-list density ("comfortable"/"compact"); drives
+    /// the View menu check marks. The token publish itself lives in ThemeService.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsListDensityComfortable))]
+    [NotifyPropertyChangedFor(nameof(IsListDensityCompact))]
+    private string _listDensity = "comfortable";
+
+    public bool IsListDensityComfortable => ListDensity == "comfortable";
+    public bool IsListDensityCompact => ListDensity == "compact";
+
+    /// <summary>
+    /// Same setting the Settings dialog persists — the View menu adjusts it in
+    /// place. Density is padding-only, so ThemeService re-publishes without
+    /// raising ThemeChanged; the result announcement here is the only speech.
+    /// </summary>
+    [RelayCommand]
+    private void SetListDensity(string? density)
+    {
+        var normalized = density?.ToLowerInvariant() == "compact" ? "compact" : "comfortable";
+        if (normalized == ListDensity) return;
+        ListDensity = normalized;
+
+        var cfg = _configService.Load();
+        cfg.AppearanceListDensity = normalized;
+        _configService.Save(cfg);
+        _themeService?.ApplyAppearance(cfg);
+
+        Announce(normalized == "compact" ? "Compact density." : "Comfortable density.");
     }
 
     // ── Search command ────────────────────────────────────────────────────────
