@@ -711,21 +711,29 @@ public partial class ComposeWindow : Window
     private void FocusAttachmentList()
     {
         if (AttachmentList.Visibility == Visibility.Visible && AttachmentList.Items.Count > 0)
-        {
-            if (AttachmentList.SelectedIndex < 0)
-                AttachmentList.SelectedIndex = 0;
-
             AttachmentList.Focus();
-            var container = AttachmentList.ItemContainerGenerator
-                .ContainerFromIndex(AttachmentList.SelectedIndex);
-            if (container is ListBoxItem item)
-                item.Focus();
-        }
         else
-        {
             AccessibilityHelper.Announce(this, "No attachments.",
                 interrupt: true, category: AnnouncementCategory.Result);
-        }
+    }
+
+    // Selecting the first item lives here rather than in FocusAttachmentList so Tab (TabIndex 6)
+    // and Alt+A land in the same place — on an attachment, not on the empty list shell. Same
+    // pattern as the reading pane and MessageWindow.
+    private void AttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        // GotKeyboardFocus bubbles; only act when focus landed on the ListBox itself, not on a
+        // child ListBoxItem that already has it.
+        if (!ReferenceEquals(e.OriginalSource, AttachmentList)) return;
+        if (AttachmentList.Items.Count == 0) return;
+
+        if (AttachmentList.SelectedIndex < 0)
+            AttachmentList.SelectedIndex = 0;
+
+        var container = AttachmentList.ItemContainerGenerator
+            .ContainerFromIndex(AttachmentList.SelectedIndex);
+        if (container is ListBoxItem item)
+            item.Focus();
     }
 
     // Delete key removes selected attachment from the compose list.

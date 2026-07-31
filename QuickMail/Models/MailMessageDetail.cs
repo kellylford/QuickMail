@@ -23,6 +23,12 @@ public partial class MailMessageDetail : MailMessageSummary
     /// list stayed collapsed in Window mode: Alt+A announced "No attachments." for a message that
     /// had them, and Shift+Tab from the body could never reach them (issue #439).
     /// </para>
+    /// <para>
+    /// The sync happens on assignment only. Building a detail whose attachments arrive by
+    /// <c>Attachments.Add(…)</c>, or setting <c>HasAttachments</c> after this property in an object
+    /// initializer, leaves the flag stale — assign the finished list instead. No current producer
+    /// does either.
+    /// </para>
     /// </summary>
     public List<AttachmentModel> Attachments
     {

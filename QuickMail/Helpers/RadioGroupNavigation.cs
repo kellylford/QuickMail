@@ -26,8 +26,11 @@ namespace QuickMail.Helpers;
 /// </para>
 ///
 /// <para>
-/// Do <b>not</b> apply this to a group whose buttons execute a command on check (e.g. the
-/// FlagManager colour swatches) — every arrow key would fire the command.
+/// Do <b>not</b> apply this to a group whose buttons carry a <c>Command</c> (e.g. the FlagManager
+/// colour swatches). <c>ButtonBase</c> invokes the command from <c>OnClick()</c>, which Space,
+/// Enter and the mouse raise but a programmatic <c>IsChecked = true</c> does not — so arrowing
+/// there would show the swatch as chosen while the command that applies the colour never ran.
+/// Quietly doing nothing is worse than not selecting.
 /// </para>
 /// </summary>
 public static class RadioGroupNavigation
@@ -64,7 +67,9 @@ public static class RadioGroupNavigation
 
     private static void OnContainerPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Handled || Keyboard.Modifiers != ModifierKeys.None) return;
+        // The event's own device state, not the global Keyboard.Modifiers: the latter reports
+        // whatever is physically held right now, which is not necessarily what produced this key.
+        if (e.Handled || e.KeyboardDevice.Modifiers != ModifierKeys.None) return;
 
         var forward = e.Key is Key.Down or Key.Right;
         if (!forward && e.Key is not (Key.Up or Key.Left)) return;
@@ -85,16 +90,20 @@ public static class RadioGroupNavigation
 
         var next = group[(index + (forward ? 1 : -1) + group.Count) % group.Count];
 
-        IsMovingSelection = true;
+        // Check first, then focus, so the focus event that follows describes a button that is
+        // already selected rather than one that is about to be. Suppression of the Checked
+        // announcement is conditional on the button being able to take focus at all: if no focus
+        // event is coming, nothing else would speak the change.
+        IsMovingSelection = next.Focusable;
         try
         {
-            next.Focus();
             next.IsChecked = true;
         }
         finally
         {
             IsMovingSelection = false;
         }
+        next.Focus();
 
         e.Handled = true;
     }
