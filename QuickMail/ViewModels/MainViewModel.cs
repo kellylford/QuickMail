@@ -2668,7 +2668,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// a raw id. Only called for virtual views; single-folder views leave
     /// <see cref="MailMessageSummary.FolderDisplayName"/> empty (folder implied).
     /// </summary>
-    private void ApplyFolderDisplayNames(IReadOnlyList<MailMessageSummary> list)
+    private void ApplyFolderDisplayNames(List<MailMessageSummary> list)
     {
         if (list.Count == 0) return;
 
@@ -2725,7 +2725,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <param name="folderNames">(account, folder full-name) → folder display name; case-sensitive
     /// (Ordinal): FolderName is captured from the same folder.FullName (a Graph id / IMAP path).</param>
     internal static void StampFolderDisplayNames(
-        IReadOnlyList<MailMessageSummary> list,
+        List<MailMessageSummary> list,
         bool qualifyAccount,
         IReadOnlyDictionary<Guid, string> accountLabels,
         IReadOnlyDictionary<(Guid, string), string> folderNames)
