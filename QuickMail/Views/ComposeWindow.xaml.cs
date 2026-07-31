@@ -703,6 +703,39 @@ public partial class ComposeWindow : Window
         Close();
     }
 
+    // Alt+A (compose.focusAttachments, issue #439): move focus to this draft's attachment list,
+    // the same gesture that reaches the attachment list of an open message. Selects the first
+    // item so the screen reader lands on an attachment rather than the empty list shell. The
+    // list is collapsed when the draft has no attachments, so announce that instead of moving
+    // focus to a hidden control. Ctrl+Shift+A remains "Add Attachments…".
+    private void FocusAttachmentList()
+    {
+        if (AttachmentList.Visibility == Visibility.Visible && AttachmentList.Items.Count > 0)
+            AttachmentList.Focus();
+        else
+            AccessibilityHelper.Announce(this, "No attachments.",
+                interrupt: true, category: AnnouncementCategory.Result);
+    }
+
+    // Selecting the first item lives here rather than in FocusAttachmentList so Tab (TabIndex 6)
+    // and Alt+A land in the same place — on an attachment, not on the empty list shell. Same
+    // pattern as the reading pane and MessageWindow.
+    private void AttachmentList_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        // GotKeyboardFocus bubbles; only act when focus landed on the ListBox itself, not on a
+        // child ListBoxItem that already has it.
+        if (!ReferenceEquals(e.OriginalSource, AttachmentList)) return;
+        if (AttachmentList.Items.Count == 0) return;
+
+        if (AttachmentList.SelectedIndex < 0)
+            AttachmentList.SelectedIndex = 0;
+
+        var container = AttachmentList.ItemContainerGenerator
+            .ContainerFromIndex(AttachmentList.SelectedIndex);
+        if (container is ListBoxItem item)
+            item.Focus();
+    }
+
     // Delete key removes selected attachment from the compose list.
     private void AttachmentList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -1264,6 +1297,11 @@ public partial class ComposeWindow : Window
             id: "compose.addAttachments", category: "Compose", title: "Add Attachments…",
             execute: () => _vm.AddAttachmentsCommand.Execute(null),
             defaultKey: Key.A, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
+
+        _registry.Register(new CommandDefinition(
+            id: "compose.focusAttachments", category: "Compose", title: "Focus Attachment List",
+            execute: FocusAttachmentList,
+            defaultKey: Key.A, defaultModifiers: ModifierKeys.Alt));
 
         _registry.Register(new CommandDefinition(
             id: "compose.insertTemplate", category: "Compose", title: "Insert Template…",

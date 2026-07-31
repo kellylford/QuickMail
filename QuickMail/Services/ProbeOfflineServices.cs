@@ -52,7 +52,7 @@ public sealed class ProbeOfflineMailService : IMailService
 
 public sealed class ProbeOfflineSendMailService : ISendMailService
 {
-    private static Exception Refused() =>
+    private static InvalidOperationException Refused() =>
         new InvalidOperationException("Network is disabled in --ui-probe mode; sending is forbidden.");
 
     public Task SendAsync(ComposeModel compose, AccountModel account, string? password, CancellationToken ct = default) => Task.FromException(Refused());
@@ -62,7 +62,7 @@ public sealed class ProbeOfflineSendMailService : ISendMailService
 
 public sealed class ProbeOfflineOAuthService : IOAuthService
 {
-    private static Exception Refused() =>
+    private static InvalidOperationException Refused() =>
         new InvalidOperationException("Network is disabled in --ui-probe mode; sign-in is forbidden.");
 
     public Task<string> GetAccessTokenAsync(AccountModel account, CancellationToken ct = default) => Task.FromException<string>(Refused());

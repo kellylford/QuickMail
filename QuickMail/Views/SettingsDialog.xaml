@@ -1,8 +1,9 @@
-<Window x:Class="QuickMail.Views.SettingsDialog"
+﻿<Window x:Class="QuickMail.Views.SettingsDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:helpers="clr-namespace:QuickMail.Helpers"
         mc:Ignorable="d"
         Title="Settings"
         Height="560" Width="520"
@@ -297,17 +298,16 @@
                                            Margin="32,6,0,2"/>
                                 <StackPanel KeyboardNavigation.TabNavigation="Once"
                                             KeyboardNavigation.DirectionalNavigation="Cycle"
+                                            helpers:RadioGroupNavigation.SelectionFollowsFocus="True"
                                             Margin="32,0,0,4">
                                     <RadioButton Content="_Numbers with suggestions"
                                                  IsChecked="{Binding IsVerbosityNumbersWithSuggestions, Mode=TwoWay}"
                                                  GroupName="SpellingSuggestionsVerbosity"
-                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Numbers with suggestions"
                                                  AutomationProperties.HelpText="Each suggestion is preceded by its number, for example: 1: the, 2: then, 3: them"/>
                                     <RadioButton Content="_Just suggestions"
                                                  IsChecked="{Binding IsVerbosityJustSuggestions, Mode=TwoWay}"
                                                  GroupName="SpellingSuggestionsVerbosity"
-                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Just suggestions"
                                                  AutomationProperties.HelpText="Suggestions are read without numbers, for example: the, then, them"/>
                                 </StackPanel>
@@ -400,7 +400,7 @@
                                         Margin="0,10,0,0"
                                         Click="DeleteLogButton_Click"
                                         AutomationProperties.Name="Delete QuickMail logs"/>
-                                <TextBlock Text="Deletes both the application log and the connection diagnostics log."
+                                <TextBlock Text="Deletes the application log, the connection diagnostics log, and any saved debug screenshots."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>
@@ -421,11 +421,11 @@
                         <GroupBox Header="_Log Format" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Log format settings">
                             <StackPanel KeyboardNavigation.TabNavigation="Once"
-                                        KeyboardNavigation.DirectionalNavigation="Cycle">
+                                        KeyboardNavigation.DirectionalNavigation="Cycle"
+                                        helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
                                 <RadioButton Content="_Action first (recommended)"
                                              IsChecked="{Binding IsLogFormatActionFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
-                                             Checked="RadioButton_Checked"
                                              AutomationProperties.Name="Action first"
                                              AutomationProperties.HelpText="Message then timestamp — easier to scan since the log is already chronological."/>
                                 <TextBlock Text="Example: Sync completed: 42 messages  [2024-11-15 14:23:45.123]"
@@ -434,7 +434,6 @@
                                 <RadioButton Content="_Time first"
                                              IsChecked="{Binding IsLogFormatTimeFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
-                                             Checked="RadioButton_Checked"
                                              AutomationProperties.Name="Time first"
                                              AutomationProperties.HelpText="Timestamp then message — the original log format."/>
                                 <TextBlock Text="Example: 2024-11-15 14:23:45.123  Sync completed: 42 messages"
@@ -537,11 +536,11 @@
                                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
                                            Text="Choose where messages open when you press Enter or select one."/>
                                 <StackPanel KeyboardNavigation.TabNavigation="Once"
-                                            KeyboardNavigation.DirectionalNavigation="Cycle">
+                                            KeyboardNavigation.DirectionalNavigation="Cycle"
+                                            helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
                                     <RadioButton Content="Reading _pane (default)"
                                                  IsChecked="{Binding IsReadingPaneMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
-                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Reading pane"
                                                  AutomationProperties.HelpText="Opens messages in the reading pane below the message list. This is the default behaviour."/>
                                     <TextBlock Text="Enter opens a message in the reading pane below the list."
@@ -549,7 +548,6 @@
                                     <RadioButton Content="_Tab"
                                                  IsChecked="{Binding IsTabMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
-                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Tab"
                                                  AutomationProperties.HelpText="Opens messages in a tab strip above the message list."/>
                                     <TextBlock Text="Enter opens a message as a new tab. Ctrl+Tab cycles tabs. Ctrl+W closes."
@@ -558,7 +556,6 @@
                                     <RadioButton Content="_Window"
                                                  IsChecked="{Binding IsWindowMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
-                                                 Checked="RadioButton_Checked"
                                                  AutomationProperties.Name="Window"
                                                  AutomationProperties.HelpText="Opens each message in its own window."/>
                                     <TextBlock Text="Enter opens a message in a new window. Use Ctrl+Enter in any mode to always open in a new window."
@@ -642,6 +639,28 @@
                                         <ComboBoxItem Tag="200" Content="200%"/>
                                     </ComboBox>
                                 </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Message List Density Group (#421). Padding only: both
+                             modes present the identical accessibility surface. -->
+                        <GroupBox Header="Message _List Density" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Message list density">
+                            <StackPanel KeyboardNavigation.TabNavigation="Once"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle"
+                                        helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
+                                <RadioButton Content="Comfortable (recommended)"
+                                             IsChecked="{Binding IsListDensityComfortable, Mode=TwoWay}"
+                                             GroupName="ListDensity"
+                                             AutomationProperties.Name="Comfortable"/>
+                                <TextBlock Text="More space around each message row — easier visual scanning."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8" TextWrapping="Wrap"/>
+                                <RadioButton Content="Compact"
+                                             IsChecked="{Binding IsListDensityCompact, Mode=TwoWay}"
+                                             GroupName="ListDensity"
+                                             AutomationProperties.Name="Compact"/>
+                                <TextBlock Text="Tighter rows — more messages visible at once."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
                         </GroupBox>
 

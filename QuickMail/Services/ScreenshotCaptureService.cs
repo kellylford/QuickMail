@@ -194,6 +194,26 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         }
     }
 
+    /// <summary>
+    /// Blocks (bounded) until in-flight PNG saves finish. Called before a
+    /// delete-all so no open file handle can fail the recursive delete and no
+    /// late save can resurrect a screenshot after it (#436), and on dispose so
+    /// a capture taken just before exit isn't truncated.
+    /// </summary>
+    public void FlushPendingSaves(TimeSpan timeout)
+    {
+        Task[] pending;
+        lock (_gate) pending = _pendingSaves.ToArray();
+        try
+        {
+            Task.WaitAll(pending, timeout);
+        }
+        catch
+        {
+            // Individual save failures already logged in SavePng.
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -201,17 +221,7 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         _enabled = false;
         foreach (var window in _titleKeepers.Keys.ToList())
             DetachTitleKeeper(window, refreshFromBinding: false);
-        Task[] pending;
-        lock (_gate) pending = _pendingSaves.ToArray();
-        try
-        {
-            // Best-effort flush so a capture taken just before exit isn't truncated.
-            Task.WaitAll(pending, TimeSpan.FromSeconds(3));
-        }
-        catch
-        {
-            // Individual save failures already logged in SavePng.
-        }
+        FlushPendingSaves(TimeSpan.FromSeconds(3));
         GC.SuppressFinalize(this);
     }
 
@@ -224,9 +234,22 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
 
     private void UpdateAllTitleSuffixes(bool enabled)
     {
-        if (Application.Current is null) return;
-        foreach (Window w in Application.Current.Windows)
+        // Windows are thread-affine. Production always toggles Enabled on the UI
+        // thread (the Settings checkbox), but under parallel test runs another
+        // test collection can own a live Application on a different thread —
+        // touching its windows from here throws InvalidOperationException, and a
+        // title keeper attached cross-thread can later crash the whole process
+        // from WPF plumbing with no handler (#433). Never walk windows we don't
+        // own the dispatcher for.
+        var app = Application.Current;
+        if (app is null || !app.Dispatcher.CheckAccess()) return;
+        foreach (Window w in app.Windows)
+        {
+            // Application.Windows can hold windows created on other threads
+            // (leaked by parallel tests); skip any we don't own.
+            if (!w.CheckAccess()) continue;
             ApplyTitleSuffix(w, enabled);
+        }
     }
 
     internal void ApplyTitleSuffix(Window window, bool enabled)
@@ -385,6 +408,10 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
     {
         try
         {
+            // The session folder can vanish mid-session ("Delete QuickMail
+            // logs" now removes all captures, #436) — recreate rather than
+            // silently dropping every capture after a cleanup.
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(frame));
             using var stream = File.Create(path);
@@ -393,6 +420,39 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         catch (Exception ex)
         {
             LogService.Debug($"Screenshot save failed for {Path.GetFileName(path)}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Deletes every capture session under the profile (#436). Static and
+    /// profile-keyed so Settings can clean leftovers from earlier /debug
+    /// sessions even in a normal launch, where only the null service is wired.
+    /// Screenshots are pixels of real mail — the delete-logs privacy story
+    /// must cover them.
+    /// </summary>
+    public static void DeleteAllCaptures(string profileDir)
+    {
+        var root = Path.Combine(profileDir, "debug-screenshots");
+        // A straggler save can hold a handle briefly even after a flush; retry
+        // rather than leaving privacy-sensitive captures behind silently.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+                return;
+            }
+            catch (Exception ex) when (attempt < 3)
+            {
+                LogService.Debug($"Delete debug screenshots attempt {attempt + 1} failed: {ex.Message}");
+                System.Threading.Thread.Sleep(250);
+            }
+            catch (Exception ex)
+            {
+                LogService.Log($"Could not delete debug screenshots: {ex.Message}");
+                return;
+            }
         }
     }
 

@@ -255,6 +255,26 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _appearanceForceMessageTheme;
 
+    /// <summary>
+    /// Message-list density, "comfortable" or "compact" (#421). Padding only —
+    /// both modes present the identical accessibility surface, by design.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsListDensityComfortable))]
+    [NotifyPropertyChangedFor(nameof(IsListDensityCompact))]
+    private string _appearanceListDensity = "comfortable";
+
+    public bool IsListDensityComfortable
+    {
+        get => AppearanceListDensity == "comfortable";
+        set { if (value) AppearanceListDensity = "comfortable"; }
+    }
+    public bool IsListDensityCompact
+    {
+        get => AppearanceListDensity == "compact";
+        set { if (value) AppearanceListDensity = "compact"; }
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLogFormatActionFirst))]
     [NotifyPropertyChangedFor(nameof(IsLogFormatTimeFirst))]
@@ -323,6 +343,7 @@ public partial class SettingsViewModel : ObservableObject
             FontOptions.Add(AppearanceFontOption); // keep an uninstalled configured font selectable
         AppearanceUnderlineLinks    = cfg.AppearanceUnderlineLinks;
         AppearanceThickFocus        = cfg.AppearanceThickFocus;
+        AppearanceListDensity       = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         AppearanceForceMessageTheme = cfg.AppearanceForceMessageTheme;
 
         PreviewLines = cfg.PreviewLines;
@@ -399,6 +420,7 @@ public partial class SettingsViewModel : ObservableObject
             : AppearanceFontOption;
         cfg.AppearanceUnderlineLinks    = AppearanceUnderlineLinks;
         cfg.AppearanceThickFocus        = AppearanceThickFocus;
+        cfg.AppearanceListDensity       = AppearanceListDensity;
         cfg.AppearanceForceMessageTheme = AppearanceForceMessageTheme;
 
         cfg.PreviewLines = PreviewLines;

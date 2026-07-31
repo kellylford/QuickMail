@@ -16,7 +16,13 @@ namespace QuickMail.Tests;
 /// PixelGrabber seam so none of these tests need a real HWND; what is under
 /// test is the session policy — foldering, slugs, debounce, the cap, and the
 /// off-by-default safety story.
+///
+/// In the WpfTests collection because these tests create Window objects and
+/// toggle Enabled (which walks Application.Current.Windows): running them in
+/// parallel with the windowed test classes intermittently crashed the CI test
+/// process with a cross-thread InvalidOperationException (#433).
 /// </summary>
+[Collection("WpfTests")]
 public class ScreenshotCaptureServiceTests : IDisposable
 {
     private readonly string _profileDir =
@@ -325,6 +331,44 @@ public class ScreenshotCaptureServiceTests : IDisposable
         {
             LogService.DebugMode = originalDebugMode;
         }
+    }
+
+    // ── Delete-with-logs (#436) ───────────────────────────────────────────────
+
+    [StaFact]
+    public void DeleteAllCaptures_RemovesEverySession_AndCaptureAfterwardsStillWorks()
+    {
+        var svc = NewService();
+        svc.PixelGrabber = _ => TinyFrame();
+        svc.Enabled = true;
+        var window = new Window();
+
+        svc.Capture(window, "BeforeDelete");
+        // Saves are async, and File.Exists turns true while the writer still
+        // holds the handle — flush so the save is fully finished before the
+        // delete, exactly as the Settings handler does.
+        svc.FlushPendingSaves(TimeSpan.FromSeconds(5));
+        var before = Path.Combine(svc.SessionFolder, "0001-BeforeDelete.png");
+        Assert.True(File.Exists(before), "BeforeDelete capture never landed");
+
+        // Two sessions: simulate an older leftover folder alongside the live one.
+        Directory.CreateDirectory(Path.Combine(_profileDir, "debug-screenshots", "20260101-000000"));
+
+        ScreenshotCaptureService.DeleteAllCaptures(_profileDir);
+        Assert.False(Directory.Exists(Path.Combine(_profileDir, "debug-screenshots")));
+
+        // The live session must recover: the next capture recreates its folder.
+        svc.Capture(window, "AfterDelete");
+        svc.Dispose();
+        var files = Directory.GetFiles(svc.SessionFolder, "*.png");
+        Assert.Contains(files, f => Path.GetFileName(f).EndsWith("-AfterDelete.png", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DeleteAllCaptures_WithNothingToDelete_DoesNotThrow()
+    {
+        ScreenshotCaptureService.DeleteAllCaptures(_profileDir);   // folder never created
+        Assert.False(Directory.Exists(Path.Combine(_profileDir, "debug-screenshots")));
     }
 
     [Fact]

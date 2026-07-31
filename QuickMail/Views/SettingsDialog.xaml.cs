@@ -1,7 +1,5 @@
 using System;
 using System.Windows;
-using System.Windows.Automation;
-using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Helpers;
@@ -51,13 +49,14 @@ public partial class SettingsDialog : Window
 
     private void DeleteLogButton_Click(object sender, RoutedEventArgs e)
     {
-        // Deletes BOTH logs. Someone deleting their logs means all of them — most often because the
-        // logs hold their email addresses and mail server names and they don't want them on disk.
-        // Leaving connection.log behind because it happens to be a second file would quietly defeat
-        // that, and nothing in the UI would hint that a second log still existed.
+        // Deletes BOTH logs and all debug screenshots. Someone deleting their logs means all of
+        // them — most often because the artifacts hold their email addresses, server names, or
+        // (for screenshots, #436) pictures of their actual mail, and they don't want them on
+        // disk. Leaving any diagnostic file behind because it happens to live elsewhere would
+        // quietly defeat that, and nothing in the UI would hint that it still existed.
         var result = MessageBox.Show(
-            "Delete QuickMail's log files? This deletes the application log and the connection " +
-            "diagnostics log, and cannot be undone.",
+            "Delete QuickMail's log files? This deletes the application log, the connection " +
+            "diagnostics log, and any saved debug screenshots, and cannot be undone.",
             "Delete Logs",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question,
@@ -67,6 +66,14 @@ public partial class SettingsDialog : Window
         {
             LogService.DeleteLog();
             ConnectionJournal.DeleteLog();
+            // Static + profile-keyed: works in normal launches too, where only the
+            // null capture service is wired but old /debug screenshots may remain.
+            // Flush first so no in-flight save holds a handle open against the
+            // delete or resurrects a capture after it.
+            var app = Application.Current as App;
+            (app?.ScreenshotCapture as ScreenshotCaptureService)?.FlushPendingSaves(TimeSpan.FromSeconds(3));
+            if (app?.Profile is { } profile)
+                ScreenshotCaptureService.DeleteAllCaptures(profile.ProfileDir);
         }
 
         DeleteLogButton.Focus();
@@ -160,15 +167,12 @@ public partial class SettingsDialog : Window
         }
     }
 
-    private void RadioButton_Checked(object sender, RoutedEventArgs e)
-    {
-        if (sender is not RadioButton { IsLoaded: true } rb) return;
-        var name = AutomationProperties.GetName(rb);
-        if (string.IsNullOrEmpty(name))
-            name = rb.Content?.ToString() ?? string.Empty;
-        if (!string.IsNullOrEmpty(name))
-            AccessibilityHelper.Announce(rb, name, category: AnnouncementCategory.Result);
-    }
+    // There is deliberately no Checked handler for the settings radio buttons. Speaking the
+    // option ourselves duplicates what the platform already reports and overrides the behaviour
+    // the user has configured in their own software — a defect, not a feature. One was added in
+    // f71f86f to compensate for choices that were not being announced, but the real fault was
+    // that arrowing moved focus without selecting anything (issue #441); with selection
+    // following focus, the ordinary focus and state reporting covers it.
 
     private void RestoreDefaultButton_Click(object sender, RoutedEventArgs e)
     {
