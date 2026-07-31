@@ -2659,9 +2659,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>
     /// #423: stamps each row's source location so the accessible name can announce it in aggregate/
     /// virtual views. Account-qualified as "&lt;account&gt; -- &lt;folder&gt;" (e.g. "icanbrew -- Inbox")
-    /// ONLY when the current aggregate actually spans more than one account — a single-account list
-    /// (per-account All Mail, or any view whose rows are all one account) already implies the account,
-    /// so it announces the folder alone ("Inbox") to avoid repeating the account on every row.
+    /// ONLY when the current VIEW spans more than one account — decided by
+    /// <see cref="AggregateSpansMultipleAccounts"/> from the view identity (per-account All Mail vs
+    /// global aggregate vs the saved view's folder set), NOT from the visible rows, so a global All Mail
+    /// dominated by one account's mail still qualifies. A single-account view (per-account All Mail, a
+    /// single-account saved view) announces the folder alone ("Inbox") to avoid repeating the account.
     /// <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph folder id, or an IMAP
     /// path), mapped through the cached folder list to the display name. On a lookup miss the existing
     /// value is left untouched (empty for fresh rows, or a caller-supplied plain-name fallback) — never
@@ -2692,25 +2694,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// saved view stays folder-only; a multi-account one qualifies.
     /// </summary>
     private bool AggregateSpansMultipleAccounts()
+        => AggregateSpansMultipleAccounts(SelectedFolder?.FullName, SavedViews, Accounts.Count);
+
+    /// <summary>
+    /// Pure decision for the account-qualification (#423), extracted so it's directly testable — this
+    /// is the piece that regressed once (a content-based version dropped the prefix when one account
+    /// dominated the list). Decided by the VIEW identity, never by row content: per-account All Mail →
+    /// one account (false); a saved view → the distinct accounts among its folders; global aggregates
+    /// (All Mail / All Inboxes / Sent / Trash / Flagged) and contact-mail → <paramref name="accountCount"/>
+    /// &gt; 1, since they span every account.
+    /// </summary>
+    internal static bool AggregateSpansMultipleAccounts(
+        string? viewFullName, IEnumerable<SavedView> savedViews, int accountCount)
     {
-        var view = SelectedFolder;
-        if (view == null) return false;
+        if (viewFullName == null) return false;
 
         // Per-account All Mail → the single account is already implied by the view itself.
-        if (TryGetAccountIdFromSentinel(view.FullName, out _)) return false;
+        if (TryGetAccountIdFromSentinel(viewFullName, out _)) return false;
 
         // Saved view → count the distinct accounts among its folders.
-        if (TryGetViewIdFromSentinel(view.FullName, out var viewId) ||
-            TryGetViewAllIdFromSentinel(view.FullName, out viewId))
+        if (TryGetViewIdFromSentinel(viewFullName, out var viewId) ||
+            TryGetViewAllIdFromSentinel(viewFullName, out viewId))
         {
-            var sv = SavedViews.FirstOrDefault(v => v.Id == viewId);
+            var sv = savedViews.FirstOrDefault(v => v.Id == viewId);
             if (sv != null)
                 return sv.Folders.Select(f => f.AccountId).Distinct().Count() > 1;
         }
 
-        // Global aggregates (All Mail / All Inboxes / Sent / Trash / Flagged) and contact-mail results
-        // span every account → qualify when more than one account is configured.
-        return Accounts.Count > 1;
+        return accountCount > 1;
     }
 
     /// <summary>
