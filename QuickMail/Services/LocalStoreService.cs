@@ -160,6 +160,9 @@ public class LocalStoreService : ILocalStoreService
     //           duplicate-collapse). The Message-ID can't be reconstructed from cached rows, and
     //           the cache repopulates automatically on the next launch's sync. MessageDetail (bodies)
     //           is left intact — same key, still valid.
+    //   (no 5 → 6 data migration: the Graph immutable-id cache rebuild (#366) is account-scoped, so
+    //    it runs at the app layer against Graph accounts only — see ClearCachedMailAsync — not as a
+    //    blanket DB wipe that would also drop IMAP bodies and break IMAP calendar-invite source links.)
     // Add new migrations as: if (version < 5) { ...; }
     private const int CurrentSchemaVersion = 5;
 
@@ -472,6 +475,32 @@ public class LocalStoreService : ILocalStoreService
             "DELETE FROM CalendarEvent  WHERE account_id = $aid;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         await cmd.ExecuteNonQueryAsync();
+        await tx.CommitAsync();
+    }
+
+    /// <summary>
+    /// Clears cached mail (summaries, bodies, delta cursors) for the given accounts only — used for
+    /// the one-time Graph immutable-id rebuild (#366). Scoped to Graph accounts by the caller so IMAP
+    /// bodies (and the IMAP calendar-invite source links that depend on them) are left intact.
+    /// Calendar events are NOT touched. No-op for an empty set.
+    /// </summary>
+    public async Task ClearCachedMailAsync(IEnumerable<Guid> accountIds)
+    {
+        var ids = accountIds?.ToList() ?? [];
+        if (ids.Count == 0) return;
+
+        await using var conn = await OpenAsync();
+        await using var tx   = await conn.BeginTransactionAsync();
+        foreach (var id in ids)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
+                "DELETE FROM MessageSummary WHERE account_id = $aid;" +
+                "DELETE FROM DeltaToken     WHERE account_id = $aid;";
+            cmd.Parameters.AddWithValue("$aid", id.ToString());
+            await cmd.ExecuteNonQueryAsync();
+        }
         await tx.CommitAsync();
     }
 

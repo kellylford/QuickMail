@@ -40,9 +40,14 @@ public sealed class GraphClient : IDisposable
         _retryDelayWhenNoHeader = defaultRetryDelay ?? TimeSpan.FromSeconds(2);
     }
 
-    public async Task<T?> GetAsync<T>(AccountModel account, string path, CancellationToken ct = default)
+    public Task<T?> GetAsync<T>(AccountModel account, string path, CancellationToken ct = default)
+        => GetAsync<T>(account, path, headers: null, ct);
+
+    /// <summary>GET with extra request headers — e.g. <c>Prefer: IdType="ImmutableId"</c> (#366).</summary>
+    public async Task<T?> GetAsync<T>(AccountModel account, string path,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
-        using var resp = await SendAsync(account, HttpMethod.Get, path, null, ct);
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
         return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
     }
@@ -71,8 +76,9 @@ public sealed class GraphClient : IDisposable
 
     /// <summary>
     /// As the silent-aware overload, plus extra request headers applied to every page request.
-    /// Used by calendar sync to send <c>Prefer: outlook.timezone="UTC"</c> so Graph returns event
-    /// times normalized to UTC regardless of the mailbox's configured time zone.
+    /// Used by calendar sync (<c>Prefer: outlook.timezone="UTC"</c>) and by mail message-id / trash
+    /// enumeration (<c>Prefer: IdType="ImmutableId"</c>, #366). Folder enumeration does NOT send the
+    /// header — the Prefer id-type governs message ids, not <c>mailFolder</c> ids.
     /// </summary>
     public async Task<List<T>> GetAllPagesAsync<T>(AccountModel account, string path, string[]? scopes, bool silentOnly,
         IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
@@ -90,11 +96,16 @@ public sealed class GraphClient : IDisposable
         return all;
     }
 
-    public async Task PatchAsync(AccountModel account, string path, object body, CancellationToken ct = default)
+    public Task PatchAsync(AccountModel account, string path, object body, CancellationToken ct = default)
+        => PatchAsync(account, path, body, headers: null, ct);
+
+    /// <summary>PATCH with extra request headers — e.g. immutable-id Prefer on a message patch (#366).</summary>
+    public async Task PatchAsync(AccountModel account, string path, object body,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(body, JsonOpts);
         using var resp = await SendAsync(account, HttpMethod.Patch, path,
-            () => new StringContent(json, Encoding.UTF8, "application/json"), ct);
+            () => new StringContent(json, Encoding.UTF8, "application/json"), scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
     }
 
@@ -114,11 +125,16 @@ public sealed class GraphClient : IDisposable
     }
 
     /// <summary>POSTs a JSON body and ignores the response payload (move/copy/folder operations).</summary>
-    public async Task PostAsync(AccountModel account, string path, object body, CancellationToken ct = default)
+    public Task PostAsync(AccountModel account, string path, object body, CancellationToken ct = default)
+        => PostAsync(account, path, body, headers: null, ct);
+
+    /// <summary>POST with extra request headers — e.g. immutable-id Prefer on a message move/copy (#366).</summary>
+    public async Task PostAsync(AccountModel account, string path, object body,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
         var json = JsonSerializer.Serialize(body, JsonOpts);
         using var resp = await SendAsync(account, HttpMethod.Post, path,
-            () => new StringContent(json, Encoding.UTF8, "application/json"), ct);
+            () => new StringContent(json, Encoding.UTF8, "application/json"), scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
     }
 
@@ -141,23 +157,34 @@ public sealed class GraphClient : IDisposable
     /// POSTs an already-encoded raw body and deserializes the JSON response. Used to create a draft
     /// from MIME (<c>POST /me/messages</c>), where the created message's id is needed back.
     /// </summary>
-    public async Task<T?> PostRawReadAsync<T>(
+    public Task<T?> PostRawReadAsync<T>(
         AccountModel account, string path, byte[] body, string contentType, CancellationToken ct = default)
+        => PostRawReadAsync<T>(account, path, body, contentType, headers: null, ct);
+
+    /// <summary>As above, with extra request headers (e.g. immutable-id Prefer for the draft read-back, #366).</summary>
+    public async Task<T?> PostRawReadAsync<T>(
+        AccountModel account, string path, byte[] body, string contentType,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
         using var resp = await SendAsync(account, HttpMethod.Post, path, () =>
         {
             var content = new ByteArrayContent(body);
             content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
             return content;
-        }, ct);
+        }, scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
         return await resp.Content.ReadFromJsonAsync<T>(JsonOpts, ct);
     }
 
     /// <summary>DELETEs a resource (permanent message delete, folder delete).</summary>
-    public async Task DeleteAsync(AccountModel account, string path, CancellationToken ct = default)
+    public Task DeleteAsync(AccountModel account, string path, CancellationToken ct = default)
+        => DeleteAsync(account, path, headers: null, ct);
+
+    /// <summary>DELETE with extra request headers — e.g. immutable-id Prefer on a message delete (#366).</summary>
+    public async Task DeleteAsync(AccountModel account, string path,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
-        using var resp = await SendAsync(account, HttpMethod.Delete, path, null, ct);
+        using var resp = await SendAsync(account, HttpMethod.Delete, path, null, scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
     }
 
@@ -185,9 +212,14 @@ public sealed class GraphClient : IDisposable
     }
 
     /// <summary>GETs a raw byte payload (attachment <c>$value</c> download).</summary>
-    public async Task<byte[]> GetBytesAsync(AccountModel account, string path, CancellationToken ct = default)
+    public Task<byte[]> GetBytesAsync(AccountModel account, string path, CancellationToken ct = default)
+        => GetBytesAsync(account, path, headers: null, ct);
+
+    /// <summary>As above, with extra request headers (e.g. immutable-id Prefer, #366).</summary>
+    public async Task<byte[]> GetBytesAsync(AccountModel account, string path,
+        IReadOnlyDictionary<string, string>? headers, CancellationToken ct = default)
     {
-        using var resp = await SendAsync(account, HttpMethod.Get, path, null, ct);
+        using var resp = await SendAsync(account, HttpMethod.Get, path, null, scopes: null, silentOnly: false, headers, ct);
         await EnsureSuccessAsync(resp, ct);
         return await resp.Content.ReadAsByteArrayAsync(ct);
     }

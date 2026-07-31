@@ -19,6 +19,8 @@ public class GraphMailServiceTests
     {
         private readonly Func<string, (HttpStatusCode Status, string Json)> _respond;
         public List<string> Requests { get; } = new();
+        // Per-request Prefer header (null if absent) — lets tests assert immutable-id requests (#366).
+        public List<(string Url, string? Prefer)> HeaderCalls { get; } = new();
 
         public StubHttpHandler(Func<string, (HttpStatusCode, string)> respond) => _respond = respond;
 
@@ -26,6 +28,7 @@ public class GraphMailServiceTests
         {
             var url = request.RequestUri!.ToString();
             Requests.Add(url);
+            HeaderCalls.Add((url, request.Headers.TryGetValues("Prefer", out var p) ? string.Join(",", p) : null));
             var (status, json) = _respond(url);
             return Task.FromResult(new HttpResponseMessage(status)
             {
@@ -175,6 +178,83 @@ public class GraphMailServiceTests
         Assert.Equal("c1", folders.Single(f => f.FullName == "g1").ParentId);
         // f2 had no children, so no descent request was made for it.
         Assert.DoesNotContain(handler.Requests, r => r.Contains("/mailFolders/f2/childFolders"));
+    }
+
+    // ── Immutable-id requests (#366) ───────────────────────────────────────────────────────────
+    [Fact]
+    public async Task GetMessageSummariesAsync_RequestsImmutableIds()
+    {
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, """{"value":[]}"""));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        await svc.GetMessageSummariesAsync(account.Id, "inbox", 50, TestContext.Current.CancellationToken);
+
+        var read = Assert.Single(h.HeaderCalls, c => c.Url.Contains("/mailFolders/inbox/messages"));
+        Assert.Equal("IdType=\"ImmutableId\"", read.Prefer);
+    }
+
+    [Fact]
+    public async Task GetMessageDetailAsync_RequestsImmutableIds()
+    {
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, """{"id":"m1"}"""));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        await svc.GetMessageDetailAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+
+        var read = Assert.Single(h.HeaderCalls, c => c.Url.Contains("/me/messages/m1"));
+        Assert.Equal("IdType=\"ImmutableId\"", read.Prefer);
+        // Scoping check: the /me identity probe is not a message read and carries no Prefer.
+        Assert.All(h.HeaderCalls.Where(c => c.Url.Contains("/me?")), c => Assert.Null(c.Prefer));
+    }
+
+    [Fact]
+    public async Task MessageWrites_SendImmutableIdHeader()
+    {
+        // Cached ids are now immutable; the writes that consume them must declare the same id type,
+        // or Graph rejects them (ErrorInvalidIdMalformed). Distinct ids so PATCH/DELETE URLs differ.
+        var (svc, h) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, "{}"));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        await svc.MarkReadAsync(account.Id, "inbox", "m1", TestContext.Current.CancellationToken);
+        await svc.MoveMessagesAsync(account.Id, "inbox", new[] { "m2" }, "archive", TestContext.Current.CancellationToken);
+        await svc.PermanentlyDeleteBatchAsync(account.Id, "deleteditems", new[] { "m3" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal("IdType=\"ImmutableId\"", Assert.Single(h.HeaderCalls, c => c.Url.EndsWith("/me/messages/m1")).Prefer);       // mark-read PATCH
+        Assert.Equal("IdType=\"ImmutableId\"", Assert.Single(h.HeaderCalls, c => c.Url.Contains("/me/messages/m2/move")).Prefer);   // move POST
+        Assert.Equal("IdType=\"ImmutableId\"", Assert.Single(h.HeaderCalls, c => c.Url.EndsWith("/me/messages/m3")).Prefer);        // delete DELETE
+    }
+
+    [Fact]
+    public async Task FolderIdEnumeration_AndEmptyTrash_SendImmutableIdHeader()
+    {
+        // GetFolderMessageIdsAsync drives reconciliation (#366) and EmptyTrashAsync enumerates then
+        // deletes — both must request/act on immutable ids so they match the immutable ids the cache
+        // holds. Enumerations return two ids; the trash folder id is resolved at connect.
+        // Any request carrying "/messages" (both folder enumerations and the per-message deletes)
+        // returns the id list; connect-time well-known lookups fall through to "{}".
+        var (svc, h) = Make(url =>
+              url.Contains("/me?")        ? (HttpStatusCode.OK, MeJson)
+            : url.Contains("/messages")   ? (HttpStatusCode.OK, """{"value":[{"id":"x1"},{"id":"x2"}]}""")
+            : (HttpStatusCode.OK, "{}"));
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+
+        var ids = await svc.GetFolderMessageIdsAsync(account.Id, "inbox", TestContext.Current.CancellationToken);
+        Assert.Equal(new[] { "x1", "x2" }, ids);
+        await svc.EmptyTrashAsync(account.Id, TestContext.Current.CancellationToken);
+
+        // Folder enumeration (reconcile) requests immutable ids…
+        Assert.Equal("IdType=\"ImmutableId\"",
+            Assert.Single(h.HeaderCalls, c => c.Url.Contains("/mailFolders/inbox/messages")).Prefer);
+        // …the trash enumeration does too…
+        Assert.Equal("IdType=\"ImmutableId\"",
+            Assert.Single(h.HeaderCalls, c => c.Url.Contains("/mailFolders/deleteditems/messages")).Prefer);
+        // …and the per-message trash deletes carry it (else Graph 404s on the immutable id).
+        Assert.All(h.HeaderCalls.Where(c => c.Url.Contains("/me/messages/x")),
+            c => Assert.Equal("IdType=\"ImmutableId\"", c.Prefer));
     }
 
     [Fact]

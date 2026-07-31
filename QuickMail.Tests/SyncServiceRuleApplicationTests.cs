@@ -296,4 +296,54 @@ public class SyncServiceRuleApplicationTests : IDisposable
         Assert.DoesNotContain("500", stored);                          // deleted from store
         Assert.Contains("501", stored);                                // survivor persisted
     }
+
+    [Fact]
+    public async Task RebuildBaseline_IdleSkipsWithoutConsuming_FullSyncConsumes_ThenRulesResume()
+    {
+        // #366/N5 + F2: after the one-time cache wipe the IDLE last-50 path skips rules on a wiped
+        // account's folder but must NOT consume the baseline — only the full sync consumes. Otherwise a
+        // race where IDLE wins would baseline the Inbox on 50 messages and let the full sync's larger
+        // remainder re-fire rules over pre-existing mail. Afterward, rules resume on genuinely-new mail.
+        var rules = new CapturingRuleService();
+        var imap  = new FetchStubMailService([Message("old1"), Message("old2")]);
+        var sync  = Build(imap, rules);
+        sync.SeedRebuildBaseline(new[] { _accountId });
+        var folders = new Dictionary<Guid, List<MailFolderModel>> { [_accountId] = new() { _inbox } };
+
+        // IDLE path: caches, skips rules, does NOT consume the baseline…
+        var first = await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+        Assert.Empty(rules.Calls);
+        Assert.Contains(first, m => m.MessageId == "old1");
+        Assert.Contains("old1", await _store.GetAllMessageIdsAsync(_accountId, "INBOX"));
+
+        // …so a message arriving during the upgrade window still skips rules via IDLE (unbaselined).
+        imap.Batch.Add(Message("during-upgrade"));
+        await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+        Assert.Empty(rules.Calls);
+
+        // The full sync consumes the baseline (skipping its whole batch)…
+        await sync.SyncAllAccountsAsync(new[] { Account() }, folders, CancellationToken.None);
+        Assert.Empty(rules.Calls);
+
+        // …after which rules resume on a genuinely-new message.
+        imap.Batch.Add(Message("genuinely-new"));
+        await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+        var batch = Assert.Single(rules.Calls);
+        Assert.Equal("genuinely-new", Assert.Single(batch).MessageId);
+    }
+
+    [Fact]
+    public async Task RebuildBaseline_OnlyAffectsSeededAccounts()
+    {
+        // An account NOT seeded for rebuild runs rules on its first sync as usual — the baseline is not
+        // a blanket first-sync skip.
+        var rules = new CapturingRuleService();
+        var sync = Build(new FetchStubMailService([Message("100")]), rules);
+        sync.SeedRebuildBaseline(new[] { Guid.NewGuid() }); // a different account
+
+        await sync.SyncOneFolderAsync(Account(), _inbox, CancellationToken.None);
+
+        var batch = Assert.Single(rules.Calls);            // rules ran (this account wasn't baselined)
+        Assert.Equal("100", Assert.Single(batch).MessageId);
+    }
 }

@@ -299,6 +299,52 @@ public partial class App : Application
             // covers accounts added at runtime through RefreshAccountList.
             var accounts = accountService.LoadAccounts();
 
+            // One-time immutable-id cache rebuild (#366): clear cached mail for Graph accounts so the
+            // next sync repopulates with immutable ids (mutable and immutable ids must not be mixed).
+            // Graph-scoped so IMAP bodies — and the IMAP calendar-invite source links that depend on
+            // them — survive; a marker file gates it to run exactly once. The VM announces the
+            // resulting one-time re-sync. Skipped in --online mode (no local store).
+            bool immutableIdRebuilt = false;
+            var rebuiltGraphAccountIds = new List<Guid>(); // seeded to SyncService below so the first
+                                                           // post-wipe sync doesn't re-run rules (#366/N5)
+            if (!onlineMode && !probeMode) // never touch a --ui-probe fixture profile (review nit)
+            {
+                var rebuildMarker = System.IO.Path.Combine(profile.ProfileDir, ".immutable-id-rebuilt");
+                if (!System.IO.File.Exists(rebuildMarker))
+                {
+                    var graphIds = new List<Guid>();
+                    foreach (var a in accounts)
+                        if (a.BackendKind == BackendKind.MicrosoftGraph) graphIds.Add(a.Id);
+
+                    if (graphIds.Count == 0)
+                    {
+                        // No Graph accounts → nothing to rebuild. Mark done so we don't re-scan every
+                        // launch; a Graph account added later starts fresh with immutable ids anyway.
+                        try { System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o")); } catch { }
+                    }
+                    else
+                    {
+                        // Isolate the clear so a failure (locked/corrupt SQLite, disk full) can NEVER
+                        // crash startup: the outer OnStartup catch rethrows, so an unguarded throw here
+                        // would kill the process before the marker is written — a permanent startup
+                        // crash-loop the user could only escape by deleting the profile. On failure we
+                        // log and leave the marker unwritten so the next launch retries; only a
+                        // successful clear marks it done and announces the one-time re-sync.
+                        try
+                        {
+                            localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
+                            immutableIdRebuilt = true;
+                            rebuiltGraphAccountIds = graphIds;
+                            System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o"));
+                        }
+                        catch (Exception rebuildEx)
+                        {
+                            LogService.Log("Immutable-id cache rebuild failed; will retry next launch.", rebuildEx);
+                        }
+                    }
+                }
+            }
+
             // Before anything connects: an account hand-configured before the provider catalog
             // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
             // every send with an error about the socket rather than the setting; and one holding a
@@ -322,6 +368,9 @@ public partial class App : Application
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
             var syncService = new SyncService(effectiveMail, localStore, configService, ruleService);
+            // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
+            // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
+            if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
 
             // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
             // gets its own People API client (owns an HttpClient → disposed in OnExit).
@@ -407,6 +456,7 @@ public partial class App : Application
                 graphCalendarSyncService: probeMode ? null : graphCalendarSync,
                 truthProbe: probeMode ? null : _truthProbe);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
+            mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
