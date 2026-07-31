@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:QuickMail.Controls"
+        xmlns:helpers="clr-namespace:QuickMail.Helpers"
         mc:Ignorable="d"
         Title="{Binding WindowTitle}"
         Height="560" Width="500"
@@ -71,11 +72,12 @@
             </StackPanel>
 
             <!-- Edit scope — shown only when editing one occurrence of a repeating series.
-                 Radio group: one tab stop, arrows cycle. -->
+                 Radio group: one tab stop, arrows cycle and select. -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,10"
                         Visibility="{Binding IsRecurringEdit, Converter={StaticResource BoolToVis}}"
                         KeyboardNavigation.TabNavigation="Once"
-                        KeyboardNavigation.DirectionalNavigation="Cycle">
+                        KeyboardNavigation.DirectionalNavigation="Cycle"
+                        helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
                 <TextBlock Text="Change:" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <RadioButton Content="This event only"
                              GroupName="EditScope"

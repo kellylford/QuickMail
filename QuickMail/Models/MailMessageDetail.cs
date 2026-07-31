@@ -12,7 +12,29 @@ public partial class MailMessageDetail : MailMessageSummary
     /// <summary>HTML body from the message, if the sender included one. Preferred over PlainTextBody for display.</summary>
     public string HtmlBody { get; set; } = string.Empty;
 
-    public List<AttachmentModel> Attachments { get; set; } = [];
+    /// <summary>
+    /// Attachment parts of this message. Assigning this list also updates the inherited
+    /// <see cref="MailMessageSummary.HasAttachments"/> flag, so a detail is never in the
+    /// contradictory state of carrying attachments while reporting it has none.
+    /// <para>
+    /// This matters because no loader sets <c>HasAttachments</c> on a detail — IMAP, Graph and
+    /// the local store all populate <c>Attachments</c> only. <c>MessageWindow</c> binds its
+    /// attachment list's Visibility to <c>MessageDetail.HasAttachments</c>, so without this the
+    /// list stayed collapsed in Window mode: Alt+A announced "No attachments." for a message that
+    /// had them, and Shift+Tab from the body could never reach them (issue #439).
+    /// </para>
+    /// </summary>
+    public List<AttachmentModel> Attachments
+    {
+        get => _attachments;
+        set
+        {
+            _attachments = value ?? [];
+            HasAttachments = _attachments.Count > 0;
+        }
+    }
+
+    private List<AttachmentModel> _attachments = [];
 
     /// <summary>Parsed calendar invite, if this message contains a text/calendar MIME part.</summary>
     public IcsModel? CalendarInvite { get; set; }

@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:helpers="clr-namespace:QuickMail.Helpers"
         mc:Ignorable="d"
         Title="Settings"
         Height="560" Width="520"
@@ -297,6 +298,7 @@
                                            Margin="32,6,0,2"/>
                                 <StackPanel KeyboardNavigation.TabNavigation="Once"
                                             KeyboardNavigation.DirectionalNavigation="Cycle"
+                                            helpers:RadioGroupNavigation.SelectionFollowsFocus="True"
                                             Margin="32,0,0,4">
                                     <RadioButton Content="_Numbers with suggestions"
                                                  IsChecked="{Binding IsVerbosityNumbersWithSuggestions, Mode=TwoWay}"
@@ -421,7 +423,8 @@
                         <GroupBox Header="_Log Format" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Log format settings">
                             <StackPanel KeyboardNavigation.TabNavigation="Once"
-                                        KeyboardNavigation.DirectionalNavigation="Cycle">
+                                        KeyboardNavigation.DirectionalNavigation="Cycle"
+                                        helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
                                 <RadioButton Content="_Action first (recommended)"
                                              IsChecked="{Binding IsLogFormatActionFirst, Mode=TwoWay}"
                                              GroupName="LogFormat"
@@ -537,7 +540,8 @@
                                 <TextBlock TextWrapping="Wrap" Margin="0,0,0,8" Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
                                            Text="Choose where messages open when you press Enter or select one."/>
                                 <StackPanel KeyboardNavigation.TabNavigation="Once"
-                                            KeyboardNavigation.DirectionalNavigation="Cycle">
+                                            KeyboardNavigation.DirectionalNavigation="Cycle"
+                                            helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
                                     <RadioButton Content="Reading _pane (default)"
                                                  IsChecked="{Binding IsReadingPaneMode, Mode=TwoWay}"
                                                  GroupName="MessageOpenMode"
@@ -650,16 +654,19 @@
                         <GroupBox Header="Message _List Density" Padding="10" Margin="0,0,0,15"
                                   AutomationProperties.Name="Message list density">
                             <StackPanel KeyboardNavigation.TabNavigation="Once"
-                                        KeyboardNavigation.DirectionalNavigation="Cycle">
+                                        KeyboardNavigation.DirectionalNavigation="Cycle"
+                                        helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
                                 <RadioButton Content="Comfortable (recommended)"
                                              IsChecked="{Binding IsListDensityComfortable, Mode=TwoWay}"
                                              GroupName="ListDensity"
+                                             Checked="RadioButton_Checked"
                                              AutomationProperties.Name="Comfortable"/>
                                 <TextBlock Text="More space around each message row — easier visual scanning."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8" TextWrapping="Wrap"/>
                                 <RadioButton Content="Compact"
                                              IsChecked="{Binding IsListDensityCompact, Mode=TwoWay}"
                                              GroupName="ListDensity"
+                                             Checked="RadioButton_Checked"
                                              AutomationProperties.Name="Compact"/>
                                 <TextBlock Text="Tighter rows — more messages visible at once."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0" TextWrapping="Wrap"/>
