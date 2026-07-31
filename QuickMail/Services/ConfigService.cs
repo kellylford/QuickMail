@@ -450,8 +450,11 @@ public class ConfigService : IConfigService
         sb.AppendLine();
 
         sb.AppendLine($"AppearanceThickFocus = {(config.AppearanceThickFocus ? "on" : "off")}");
-        sb.AppendLine($"AppearanceListDensity = {config.AppearanceListDensity}");
         sb.AppendLine("# Thicker keyboard focus indicators. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"AppearanceListDensity = {config.AppearanceListDensity}");
+        sb.AppendLine("# Message list row spacing. Values: comfortable, compact.");
         sb.AppendLine();
 
         sb.AppendLine($"AppearanceForceMessageTheme = {(config.AppearanceForceMessageTheme ? "on" : "off")}");

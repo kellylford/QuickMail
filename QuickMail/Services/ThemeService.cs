@@ -510,8 +510,8 @@ public class ThemeService : IThemeService
         dict[ThemeKeys.FocusHaloThickness] = focusThickness + 2.0;
 
         // Density = padding only (#421): the UIA tree and announcements are
-        // identical in both modes, by design. Compact reproduces the original
-        // shipped rendering exactly.
+        // identical in both modes, by design. Compact reproduces the message
+        // list's original shipped rendering (its template hardcoded 2,1).
         dict[ThemeKeys.ListRowPadding] = _compactList ? new Thickness(2, 1, 2, 1) : new Thickness(4, 3, 4, 3);
 
         return dict;
