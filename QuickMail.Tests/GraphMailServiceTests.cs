@@ -206,6 +206,30 @@ public class GraphMailServiceTests
     }
 
     [Fact]
+    public async Task GetMessageSummariesAsync_RequestsAndMapsInternetMessageId()
+    {
+        // #366: the summary $select MUST include internetMessageId — it is the RFC 5322 Message-ID
+        // that aggregate views use to collapse duplicate copies. Omitting it left every Graph summary
+        // with an empty Message-ID, so dedup fell back to a fragile per-folder key and All Mail showed
+        // the same message twice.
+        const string msgs = """
+            {"value":[{
+              "id":"m1","internetMessageId":"<abc123@guidedogs.com>","subject":"Hello",
+              "from":{"emailAddress":{"name":"Amy","address":"amy@x.com"}},
+              "receivedDateTime":"2024-01-02T03:04:05Z","isRead":false
+            }]}
+            """;
+        var (svc, handler) = Make(url => url.Contains("/me?") ? (HttpStatusCode.OK, MeJson) : (HttpStatusCode.OK, msgs));
+
+        var account = GraphAccount();
+        await svc.ConnectAsync(account, ct: TestContext.Current.CancellationToken);
+        var list = await svc.GetMessageSummariesAsync(account.Id, "inbox", 50, TestContext.Current.CancellationToken);
+
+        Assert.Contains(handler.Requests, u => Uri.UnescapeDataString(u).Contains("internetMessageId"));
+        Assert.Equal("<abc123@guidedogs.com>", Assert.Single(list).InternetMessageId);
+    }
+
+    [Fact]
     public async Task GetMessageSummariesAsync_NullIsRead_MapsToUnread_WithoutThrowing()
     {
         // Graph returns isRead:null for some messages (certain drafts/system messages). It must not
