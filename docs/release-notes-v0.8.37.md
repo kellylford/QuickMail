@@ -51,6 +51,14 @@ Both actions are also in the address book's Command Palette (**Ctrl+Shift+P**) a
 
 Two things to know about the results: mail older than your sync range is not stored locally, so it is not searched, and **Find mail to this contact** matches the To line — a message where the person was only in Cc does not appear. (#370)
 
+## New: All Archive
+
+The **All Mail** group in the folder tree gathers each kind of folder across every account — All Inboxes, All Drafts, All Sent, All Trash, All Flagged — and archived mail was the one thing missing. **All Archive** is now there too, listed between All Sent and All Trash, and it is available in the folder picker and as a saved view like the others.
+
+It follows each account's own archive setting rather than guessing. If you pointed an account at a particular folder with **Set as Archive Folder**, that is the folder All Archive reads, so the list is exactly the mail **Move to Archive** put there. Accounts with no Archive folder contribute nothing rather than causing an error.
+
+One thing to know if you use Gmail: the guide now recommends creating a Gmail label named **Archive** and pointing the account at it with **Set as Archive Folder**, rather than at **[Gmail]/All Mail**. Both archive correctly, but an account pointed at All Mail contributes its entire mailbox to All Archive, because for that account All Mail *is* the archive. A label gives you a folder holding only what you archived. (#452)
+
 ## Fixed: typing a letter jumps to a contact in the address book
 
 With focus on the address book's contact list, typing a letter did nothing. Now it jumps to the first contact starting with that letter, the same way lists behave elsewhere in Windows. Type several letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with it. Contacts saved without a name are matched on their address. The **Groups** and **Group members** lists work the same way. (#371)
