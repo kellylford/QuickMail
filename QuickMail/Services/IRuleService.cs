@@ -33,11 +33,22 @@ public interface IRuleService
     List<MailMessageSummary> TestRule(MailRule rule, IEnumerable<MailMessageSummary> messages);
 
     /// <summary>
-    /// Apply all enabled rules to messages already in the local store.
-    /// Used after rules are created/edited so existing mail is processed.
+    /// Apply all enabled rules to messages already in the local store, restricted to
+    /// each account's Inbox (issue #346 follow-up). Invoked by the user-facing
+    /// "Run on Existing Mail" action.
+    /// <para>
+    /// <paramref name="inboxFolderByAccount"/> maps an account id to the
+    /// <see cref="MailFolderModel.FullName"/> of that account's Inbox. The caller supplies
+    /// it because folder-kind knowledge lives in the view layer, not here — for a Graph
+    /// account the Inbox's opaque id is never <c>"INBOX"</c>, so it cannot be recognised by
+    /// name. Messages in any other folder (Sent, Archive, Junk, Trash, custom) are left
+    /// untouched, and any account missing from the map is skipped entirely (fail-closed),
+    /// matching the "client rules only ever act on the Inbox" model.
+    /// </para>
     /// Returns messages that were moved or deleted (should be removed from UI).
     /// </summary>
     Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
         ILocalStoreService store,
+        IReadOnlyDictionary<Guid, string> inboxFolderByAccount,
         CancellationToken ct);
 }

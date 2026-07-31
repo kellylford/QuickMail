@@ -5981,8 +5981,30 @@ public partial class MainWindow : Window
         // client rules over cached mail off the UI thread and returns how many were moved/deleted.
         async Task<int> RunClientRulesOnExisting()
         {
+            // Client rules act on the Inbox only (issue #346 follow-up). Resolve each account's Inbox
+            // here, where folder kinds are known, and hand the map to the rule service so it never
+            // moves or deletes mail out of Sent/Archive/Junk/Trash/custom folders. A Graph inbox's id
+            // is never "INBOX", so Kind == Inbox is the load-bearing check; the name match only covers
+            // IMAP accounts whose folder tree isn't yet kind-tagged.
+            var inboxByAccount = new Dictionary<Guid, string>();
+            foreach (var (accountId, folders) in _vm.CachedFolders)
+            {
+                var inbox = folders.FirstOrDefault(f =>
+                    f.Kind == SpecialFolderKind.Inbox ||
+                    string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
+                if (inbox != null) inboxByAccount[accountId] = inbox.FullName;
+            }
+
+            // Fail-closed: any account whose Inbox we couldn't resolve (not connected/enumerated yet)
+            // is skipped by the rule service rather than guessed at. Log which ones so a "my rules
+            // didn't run on account X" report is diagnosable — the run is otherwise silent about it.
+            var skipped = _vm.Accounts.Where(a => !inboxByAccount.ContainsKey(a.Id)).ToList();
+            if (skipped.Count > 0)
+                LogService.Log($"Run on Existing Mail: skipping {skipped.Count} account(s) with no resolved Inbox: " +
+                    string.Join(", ", skipped.Select(a => a.AccountLabel)));
+
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            var removed = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, cts.Token));
+            var removed = await Task.Run(() => _ruleService.ApplyRulesToExistingAsync(_localStore, inboxByAccount, cts.Token));
             if (removed.Count > 0)
                 _vm.RefreshCommand.Execute(null);
             return removed.Count;
