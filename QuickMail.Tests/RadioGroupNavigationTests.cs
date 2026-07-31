@@ -151,30 +151,17 @@ public class RadioGroupNavigationTests
     }
 
     [StaFact]
-    public void IsMovingSelection_IsFalseOutsideAnArrowPress()
+    public void TheOptionIsCheckedBeforeItIsFocused()
     {
-        // SettingsDialog's Checked handler uses this to stay silent during arrow navigation;
-        // it must never latch on and mute the announcement for a Space press.
+        // Order matters: the focus that follows must land on a button that is already selected,
+        // so the state the platform reports for it is the new one. Nothing else announces.
         var (panel, buttons) = BuildGroup();
+        bool? checkedBeforeFocus = null;
+        buttons[1].Checked      += (_, _) => checkedBeforeFocus ??= true;
+        buttons[1].GotFocus     += (_, _) => checkedBeforeFocus ??= false;
 
         PressKey(panel, buttons[0], Key.Down);
 
-        Assert.False(RadioGroupNavigation.IsMovingSelection);
-    }
-
-    [StaFact]
-    public void ArrowPress_SuppressesTheCheckedAnnouncement()
-    {
-        // The Checked handler in SettingsDialog announces the option name because a StackPanel is
-        // not a UIA selection container. During arrow navigation the screen reader already
-        // announces the newly focused button and its state, so the flag must be set while the
-        // Checked event fires — otherwise every arrow press speaks the option twice.
-        var (panel, buttons) = BuildGroup();
-        bool? flagDuringChecked = null;
-        buttons[1].Checked += (_, _) => flagDuringChecked = RadioGroupNavigation.IsMovingSelection;
-
-        PressKey(panel, buttons[0], Key.Down);
-
-        Assert.True(flagDuringChecked);
+        Assert.True(checkedBeforeFocus, "the button was focused before it was checked");
     }
 }

@@ -35,15 +35,6 @@ namespace QuickMail.Helpers;
 /// </summary>
 public static class RadioGroupNavigation
 {
-    /// <summary>
-    /// True while this helper is moving the selection with an arrow key. The screen reader
-    /// announces the newly focused button and its checked state on its own, so a Checked handler
-    /// that announces the option name (SettingsDialog has one, because a bare StackPanel is not a
-    /// UIA selection container) must stay quiet for this one — otherwise every arrow press speaks
-    /// the option twice.
-    /// </summary>
-    public static bool IsMovingSelection { get; private set; }
-
     public static readonly DependencyProperty SelectionFollowsFocusProperty =
         DependencyProperty.RegisterAttached(
             "SelectionFollowsFocus", typeof(bool), typeof(RadioGroupNavigation),
@@ -91,18 +82,9 @@ public static class RadioGroupNavigation
         var next = group[(index + (forward ? 1 : -1) + group.Count) % group.Count];
 
         // Check first, then focus, so the focus event that follows describes a button that is
-        // already selected rather than one that is about to be. Suppression of the Checked
-        // announcement is conditional on the button being able to take focus at all: if no focus
-        // event is coming, nothing else would speak the change.
-        IsMovingSelection = next.Focusable;
-        try
-        {
-            next.IsChecked = true;
-        }
-        finally
-        {
-            IsMovingSelection = false;
-        }
+        // already selected rather than one about to be. Nothing announces here: selecting and
+        // focusing is the whole job, and what the user hears is theirs to configure.
+        next.IsChecked = true;
         next.Focus();
 
         e.Handled = true;

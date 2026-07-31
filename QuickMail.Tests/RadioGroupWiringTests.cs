@@ -55,21 +55,23 @@ public class RadioGroupWiringTests
     }
 
     [Fact]
-    public void SettingsRadioButtons_AllAnnounceOnCheck()
+    public void SettingsRadioButtons_DoNotAnnounceThemselves()
     {
-        // Space on a settings radio button announces via the Checked handler, because a StackPanel
-        // is not a UIA selection container. The ListDensity pair shipped in #421 without it.
+        // A radio button that speaks its own name on check is QuickMail talking over the platform:
+        // the choice is already reported, and how much of it the user hears is a decision they have
+        // made in their own software. A Checked handler was added in f71f86f to compensate for
+        // choices going unannounced; the real fault was that arrowing moved focus without selecting
+        // anything (#441), and that is fixed. Do not reintroduce one here.
         var xaml = XDocument.Load(Path.Combine(RepoRoot(), "QuickMail", "Views", "SettingsDialog.xaml"));
 
-        var missing = xaml.Descendants()
-            .Where(e => e.Name.LocalName == "RadioButton"
-                     && (string?)e.Attribute("Checked") != "RadioButton_Checked")
-            .Select(e => (string?)e.Attribute("Content") ?? "(unnamed)")
+        var announcing = xaml.Descendants()
+            .Where(e => e.Name.LocalName == "RadioButton" && e.Attribute("Checked") != null)
+            .Select(e => $"{(string?)e.Attribute("Content") ?? "(unnamed)"} → {(string?)e.Attribute("Checked")}")
             .ToList();
 
-        Assert.True(missing.Count == 0,
-            "These SettingsDialog radio buttons have no Checked=\"RadioButton_Checked\" handler, so " +
-            $"choosing them is not announced: {string.Join(", ", missing)}");
+        Assert.True(announcing.Count == 0,
+            "These SettingsDialog radio buttons have a Checked handler, which speaks over the " +
+            $"platform's own reporting of the choice: {string.Join(", ", announcing)}");
     }
 
     private static string RepoRoot()
