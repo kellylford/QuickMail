@@ -244,7 +244,7 @@ public class ConfigService : IConfigService
                     case "appearanceunderlinelinks":   config.AppearanceUnderlineLinks   = ParseBool(value); break;
                     case "appearancethickfocus":       config.AppearanceThickFocus       = ParseBool(value); break;
                     case "appearancelistdensity":
-                        config.AppearanceListDensity = value.ToLowerInvariant() == "compact" ? "compact" : "comfortable";
+                        config.AppearanceListDensity = string.Equals(value, "compact", StringComparison.OrdinalIgnoreCase) ? "compact" : "comfortable";
                         break;
                     case "appearanceforcemessagetheme": config.AppearanceForceMessageTheme = ParseBool(value); break;
                     case "customannouncements":  config.CustomAnnouncements = ParseBool(value); break;

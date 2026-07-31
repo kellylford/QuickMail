@@ -6444,7 +6444,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SetListDensity(string? density)
     {
-        var normalized = density?.ToLowerInvariant() == "compact" ? "compact" : "comfortable";
+        var normalized = string.Equals(density, "compact", StringComparison.OrdinalIgnoreCase) ? "compact" : "comfortable";
         if (normalized == ListDensity) return;
         ListDensity = normalized;
 
