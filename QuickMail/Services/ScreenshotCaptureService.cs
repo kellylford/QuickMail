@@ -398,6 +398,10 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
     {
         try
         {
+            // The session folder can vanish mid-session ("Delete QuickMail
+            // logs" now removes all captures, #436) — recreate rather than
+            // silently dropping every capture after a cleanup.
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             var encoder = new PngBitmapEncoder();
             encoder.Frames.Add(BitmapFrame.Create(frame));
             using var stream = File.Create(path);
@@ -406,6 +410,27 @@ public class ScreenshotCaptureService : IScreenshotCaptureService
         catch (Exception ex)
         {
             LogService.Debug($"Screenshot save failed for {Path.GetFileName(path)}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Deletes every capture session under the profile (#436). Static and
+    /// profile-keyed so Settings can clean leftovers from earlier /debug
+    /// sessions even in a normal launch, where only the null service is wired.
+    /// Screenshots are pixels of real mail — the delete-logs privacy story
+    /// must cover them.
+    /// </summary>
+    public static void DeleteAllCaptures(string profileDir)
+    {
+        var root = Path.Combine(profileDir, "debug-screenshots");
+        try
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+        catch (Exception ex)
+        {
+            LogService.Log($"Could not delete debug screenshots: {ex.Message}");
         }
     }
 

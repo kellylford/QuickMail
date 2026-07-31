@@ -333,6 +333,44 @@ public class ScreenshotCaptureServiceTests : IDisposable
         }
     }
 
+    // ── Delete-with-logs (#436) ───────────────────────────────────────────────
+
+    [StaFact]
+    public void DeleteAllCaptures_RemovesEverySession_AndCaptureAfterwardsStillWorks()
+    {
+        var svc = NewService();
+        svc.PixelGrabber = _ => TinyFrame();
+        svc.Enabled = true;
+        var window = new Window();
+
+        svc.Capture(window, "BeforeDelete");
+        // Saves are async: wait for the file so no in-flight save can recreate
+        // the folder after the delete below (SavePng recreates missing dirs).
+        var before = Path.Combine(svc.SessionFolder, "0001-BeforeDelete.png");
+        for (var i = 0; i < 40 && !File.Exists(before); i++)
+            System.Threading.Thread.Sleep(50);
+        Assert.True(File.Exists(before), "BeforeDelete capture never landed");
+
+        // Two sessions: simulate an older leftover folder alongside the live one.
+        Directory.CreateDirectory(Path.Combine(_profileDir, "debug-screenshots", "20260101-000000"));
+
+        ScreenshotCaptureService.DeleteAllCaptures(_profileDir);
+        Assert.False(Directory.Exists(Path.Combine(_profileDir, "debug-screenshots")));
+
+        // The live session must recover: the next capture recreates its folder.
+        svc.Capture(window, "AfterDelete");
+        svc.Dispose();
+        var files = Directory.GetFiles(svc.SessionFolder, "*.png");
+        Assert.Contains(files, f => Path.GetFileName(f).EndsWith("-AfterDelete.png", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DeleteAllCaptures_WithNothingToDelete_DoesNotThrow()
+    {
+        ScreenshotCaptureService.DeleteAllCaptures(_profileDir);   // folder never created
+        Assert.False(Directory.Exists(Path.Combine(_profileDir, "debug-screenshots")));
+    }
+
     [Fact]
     public void NullService_IsInertEverywhere()
     {

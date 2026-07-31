@@ -22,6 +22,14 @@ public partial class App : Application
     /// <summary>Non-null only in --ui-probe automation mode (#180).</summary>
     public UiProbeOptions? UiProbe { get; private set; }
 
+    /// <summary>
+    /// The active profile. Exposed so Settings can clean profile-scoped
+    /// artifacts (debug screenshots, #436) regardless of which capture service
+    /// is wired — leftovers from an earlier /debug session must be deletable
+    /// from a normal launch too.
+    /// </summary>
+    public ProfileContext? Profile { get; private set; }
+
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
@@ -174,6 +182,7 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        Profile = profile;
 
         LogService.Configure(profile.ProfileDir);
 
