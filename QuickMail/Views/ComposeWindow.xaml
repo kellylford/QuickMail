@@ -246,6 +246,47 @@
                        Foreground="{DynamicResource Theme.Error}"/>
         </DockPanel>
 
+        <!-- Autocomplete popup — positioned below the active address field via
+             code-behind. Declared BEFORE the form grid on purpose: a Popup
+             occupies no layout space, but as the DockPanel's last child it
+             would receive LastChildFill, leaving the form grid to default to
+             Dock=Left at content width — which shipped as a shrunken, left-
+             docked compose form with two thirds of the window empty (#435). -->
+        <Popup x:Name="AutoCompletePopup"
+               StaysOpen="True"
+               AllowsTransparency="True"
+               PopupAnimation="None">
+            <Border BorderBrush="{DynamicResource Theme.Border}"
+                    BorderThickness="1"
+                    Background="{DynamicResource Theme.WindowBackground}">
+                <ListBox x:Name="SuggestionList"
+                         MaxHeight="200"
+                         MinWidth="300"
+                         AutomationProperties.Name="Address suggestions"
+                         IsTabStop="True"
+                         KeyboardNavigation.TabNavigation="Cycle"
+                         PreviewKeyDown="SuggestionList_PreviewKeyDown"
+                         MouseLeftButtonUp="SuggestionList_MouseLeftButtonUp">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                            <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
+                            <Setter Property="Padding" Value="6,3"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel>
+                                <TextBlock Text="{Binding PrimaryText}" FontWeight="SemiBold"/>
+                                <TextBlock Text="{Binding SecondaryText}"
+                                           Opacity="0.75"
+                                           FontSize="{DynamicResource Theme.FontSizeSmall}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+        </Popup>
+
         <!-- Form fields -->
         <Grid>
             <Grid.RowDefinitions>
@@ -438,42 +479,6 @@
                              TextChanged="RichBodyBox_TextChanged"/>
             </Grid>
         </Grid>
-
-        <!-- Autocomplete popup — positioned below the active address field via code-behind -->
-        <Popup x:Name="AutoCompletePopup"
-               StaysOpen="True"
-               AllowsTransparency="True"
-               PopupAnimation="None">
-            <Border BorderBrush="{DynamicResource Theme.Border}"
-                    BorderThickness="1"
-                    Background="{DynamicResource Theme.WindowBackground}">
-                <ListBox x:Name="SuggestionList"
-                         MaxHeight="200"
-                         MinWidth="300"
-                         AutomationProperties.Name="Address suggestions"
-                         IsTabStop="True"
-                         KeyboardNavigation.TabNavigation="Cycle"
-                         PreviewKeyDown="SuggestionList_PreviewKeyDown"
-                         MouseLeftButtonUp="SuggestionList_MouseLeftButtonUp">
-                    <ListBox.ItemContainerStyle>
-                        <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
-                            <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
-                            <Setter Property="Padding" Value="6,3"/>
-                        </Style>
-                    </ListBox.ItemContainerStyle>
-                    <ListBox.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel>
-                                <TextBlock Text="{Binding PrimaryText}" FontWeight="SemiBold"/>
-                                <TextBlock Text="{Binding SecondaryText}"
-                                           Opacity="0.75"
-                                           FontSize="{DynamicResource Theme.FontSizeSmall}"/>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
-            </Border>
-        </Popup>
     </DockPanel>
     </DockPanel>
 </Window>
