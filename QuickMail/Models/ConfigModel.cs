@@ -92,6 +92,13 @@ public class ConfigModel
     /// <summary>Thicker keyboard focus indicators (2px → 4px). Default off.</summary>
     public bool AppearanceThickFocus { get; set; } = false;
 
+    /// <summary>
+    /// Message-list row density: "comfortable" (default) or "compact". Affects
+    /// row padding ONLY — the accessibility surface (UIA tree, announcements)
+    /// is identical in both modes, by design (#421).
+    /// </summary>
+    public string AppearanceListDensity { get; set; } = "comfortable";
+
     /// <summary>Override sender HTML colors/fonts with theme colors in the reading pane. Default off.</summary>
     public bool AppearanceForceMessageTheme { get; set; } = false;
 

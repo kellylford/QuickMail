@@ -1510,8 +1510,11 @@
                                                     BorderThickness="{TemplateBinding BorderThickness}"
                                                     SnapsToDevicePixels="True">
                                                 <!-- 1px bottom border: row divider so adjacent rows
-                                                     stay distinguishable in dense lists. -->
-                                                <Border x:Name="rowBg" Background="Transparent" Padding="2,1"
+                                                     stay distinguishable in dense lists. Padding is
+                                                     the density token (comfortable/compact, #421) —
+                                                     padding only, never the accessibility surface. -->
+                                                <Border x:Name="rowBg" Background="Transparent"
+                                                        Padding="{DynamicResource Theme.ListRowPadding}"
                                                         BorderBrush="{DynamicResource Theme.BorderSubtle}"
                                                         BorderThickness="0,0,0,1">
                                                     <DockPanel>

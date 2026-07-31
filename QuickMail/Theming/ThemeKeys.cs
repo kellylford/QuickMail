@@ -71,6 +71,11 @@ public static class ThemeKeys
     /// visible on any fill (including accent-strength selection).</summary>
     public const string FocusHaloThickness = Prefix + "FocusHaloThickness";
 
+    /// <summary>Message-list row padding (Thickness), from the density setting:
+    /// comfortable 4,3 / compact 2,1. Padding only — never anything a screen
+    /// reader can observe.</summary>
+    public const string ListRowPadding = Prefix + "ListRowPadding";
+
     /// <summary>camelCase JSON name → application resource key, for all 26 color tokens.</summary>
     public static readonly IReadOnlyDictionary<string, string> ColorTokens =
         new Dictionary<string, string>(StringComparer.Ordinal)

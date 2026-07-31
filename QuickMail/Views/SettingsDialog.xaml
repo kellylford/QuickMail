@@ -645,6 +645,27 @@
                             </StackPanel>
                         </GroupBox>
 
+                        <!-- Message List Density Group (#421). Padding only: both
+                             modes present the identical accessibility surface. -->
+                        <GroupBox Header="Message _List Density" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Message list density">
+                            <StackPanel KeyboardNavigation.TabNavigation="Once"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle">
+                                <RadioButton Content="Comfortable (recommended)"
+                                             IsChecked="{Binding IsListDensityComfortable, Mode=TwoWay}"
+                                             GroupName="ListDensity"
+                                             AutomationProperties.Name="Comfortable"/>
+                                <TextBlock Text="More space around each message row — easier visual scanning."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,8" TextWrapping="Wrap"/>
+                                <RadioButton Content="Compact"
+                                             IsChecked="{Binding IsListDensityCompact, Mode=TwoWay}"
+                                             GroupName="ListDensity"
+                                             AutomationProperties.Name="Compact"/>
+                                <TextBlock Text="Tighter rows — more messages visible at once."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="16,2,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </GroupBox>
+
                         <!-- Vision Group -->
                         <GroupBox Header="_Vision" Padding="10"
                                   AutomationProperties.Name="Vision settings">

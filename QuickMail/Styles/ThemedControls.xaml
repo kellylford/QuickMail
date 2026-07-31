@@ -1002,8 +1002,8 @@
          column layout is preserved. -->
     <Style x:Key="{x:Static GridView.GridViewItemContainerStyleKey}" TargetType="ListViewItem">
         <Setter Property="FocusVisualStyle" Value="{DynamicResource FocusVisual}"/>
-        <!-- 4,3 (was 2): visual review found 2px rows too dense to scan (#421). -->
-        <Setter Property="Padding" Value="4,3"/>
+        <!-- Density token: comfortable 4,3 / compact 2,1 (#421). -->
+        <Setter Property="Padding" Value="{DynamicResource Theme.ListRowPadding}"/>
         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
         <Setter Property="Template">
             <Setter.Value>
