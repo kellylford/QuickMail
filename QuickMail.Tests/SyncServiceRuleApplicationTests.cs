@@ -377,6 +377,45 @@ public class SyncServiceRuleApplicationTests : IDisposable
     }
 
     [Fact]
+    public async Task Reconcile_InProbeMode_NeverDeletes_EvenWhenServerListsNothing()
+    {
+        // Probe-mode guard (#366 review): the --ui-probe mail stub lists zero server messages while the
+        // store holds seeded fixtures. Reconcile must NOT read that empty listing as "all deleted" and
+        // purge them — that would blank every visual-QA capture.
+        await _store.UpsertSummariesAsync([Message("A"), Message("B")]);
+        var imap = new FetchStubMailService([]);            // server lists nothing
+        var sync = new SyncService(imap, _store, new StubConfigService(), new CapturingRuleService(), probeMode: true);
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.Contains("A", stored);
+        Assert.Contains("B", stored);
+    }
+
+    [Fact]
+    public async Task SyncFolderFull_OnNonInboxFolder_DoesNotRunClientRules()
+    {
+        // #427 seam: the all-folder sweep pulls new mail into custom folders, but client rules stay
+        // Inbox-only — a rule must not fire on mail the sweep brought into a non-Inbox folder.
+        var rules  = new CapturingRuleService();
+        var custom = new MailFolderModel { FullName = "Archive", DisplayName = "Archive" };
+        var msg    = new MailMessageSummary
+        {
+            MessageId = "x", AccountId = _accountId, FolderName = "Archive",
+            From = "a@b.com", To = "me@b.com", Subject = "hi",
+        };
+        var sync = Build(new FetchStubMailService([msg]), rules);
+
+        await sync.SyncFolderFullAsync(Account(), custom, CancellationToken.None);
+
+        Assert.Empty(rules.Calls);   // rules never ran on the non-Inbox folder
+    }
+
+    [Fact]
     public async Task RebuildBaseline_IdleSkipsWithoutConsuming_FullSyncConsumes_ThenRulesResume()
     {
         // #366/N5 + F2: after the one-time cache wipe the IDLE last-50 path skips rules on a wiped

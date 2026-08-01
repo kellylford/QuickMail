@@ -367,7 +367,7 @@ public partial class App : Application
             // Server-side (Exchange/Graph) Inbox rules — read/manage a Graph account's messageRules.
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
-            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService);
+            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService, probeMode: probeMode);
             // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
             // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
             if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
