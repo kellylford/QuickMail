@@ -13,19 +13,26 @@ using Xunit;
 namespace QuickMail.Tests;
 
 /// <summary>
-/// Each field row must BE a check box, not a list item that happens to contain one: a field's whole
-/// purpose in this window is on/off, so it gets the real control and the platform reports its role,
-/// its checked state, and every change to that state. These read the live automation tree rather
-/// than the template, because the template looked identical when the rows were not check boxes.
+/// Each field row must BE a check box, and must be ONLY a check box.
+///
+/// <para>A field's whole purpose in this window is on/off, so it gets the real control and the
+/// platform reports its role, its checked state, and every change to that state. The first attempt
+/// wrapped each check box in a ListBoxItem, which carries a name of its own — so every row was
+/// named twice ("Date, Date check box, unchecked"). These tests read the live automation tree
+/// rather than the template, because the template looked identical in all three versions.</para>
 /// </summary>
 [Collection("WpfTests")]
 public class RowFieldsWindowCheckBoxTests
 {
-    private static RowFieldsWindow MakeWindow() =>
-        new(new RowFieldsViewModel(new StubRowLayoutService(), new StubConfigService()))
+    private static (RowFieldsWindow window, RowFieldsViewModel vm) MakeWindow()
+    {
+        var vm = new RowFieldsViewModel(new StubRowLayoutService(), new StubConfigService());
+        var window = new RowFieldsWindow(vm)
         {
             WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
         };
+        return (window, vm);
+    }
 
     private static void DrainDispatcher()
     {
@@ -35,48 +42,76 @@ public class RowFieldsWindowCheckBoxTests
         Dispatcher.PushFrame(frame);
     }
 
-    private static CheckBox[] RowCheckBoxes(ListBox list) =>
-        list.Items.Cast<object>()
-            .Select((_, i) => list.ItemContainerGenerator.ContainerFromIndex(i))
+    private static FieldCheckList FieldList(RowFieldsWindow w)
+    {
+        var list = w.FindName("FieldList") as FieldCheckList;
+        Assert.NotNull(list);
+        return list!;
+    }
+
+    private static CheckBox[] RowCheckBoxes(FieldCheckList list) =>
+        Enumerable.Range(0, list.Items.Count)
+            .Select(i => list.ItemContainerGenerator.ContainerFromIndex(i))
             .OfType<DependencyObject>()
-            .Select(FindCheckBox)
+            .Select(FieldCheckList.FindCheckBox)
             .OfType<CheckBox>()
             .ToArray();
 
-    private static CheckBox? FindCheckBox(DependencyObject root)
-    {
-        if (root is CheckBox cb) return cb;
-        for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            if (FindCheckBox(System.Windows.Media.VisualTreeHelper.GetChild(root, i)) is { } f) return f;
-        }
-        return null;
-    }
-
+    /// <summary>
+    /// THE regression this file exists for: a row must contribute exactly one element to the
+    /// control view, so its name is spoken once. If a wrapper container reappears between the list
+    /// and the check boxes, these children stop being check-box peers and this fails.
+    /// </summary>
     [StaFact]
-    public void EveryFieldRowIsARealFocusableCheckBox()
+    public void EachRowIsExactlyOneNamedElement_NotAContainerPlusACheckBox()
     {
-        var window = MakeWindow();
+        var (window, vm) = MakeWindow();
         window.Show();
         try
         {
             window.UpdateLayout();
             DrainDispatcher();
 
-            var list = window.FindName("FieldList") as ListBox;
-            Assert.NotNull(list);
+            var peer = UIElementAutomationPeer.CreatePeerForElement(FieldList(window));
+            Assert.NotNull(peer);
+            var children = peer!.GetChildren();
 
-            var boxes = RowCheckBoxes(list!);
-            Assert.Equal(list!.Items.Count, boxes.Length);
+            Assert.Equal(vm.Fields.Count, children.Count);
+            Assert.All(children, c =>
+                Assert.Equal(AutomationControlType.CheckBox, c.GetAutomationControlType()));
+
+            // …and each is named once, with the field's display text.
+            Assert.Equal(
+                vm.Fields.Select(f => f.DisplayName).ToArray(),
+                children.Select(c => c.GetName()).ToArray());
+
+            // Below each row there is only the check box's own content text — the structure every
+            // WPF ContentControl with string content has. What must never come back is an extra
+            // element ABOVE the check box, which is what the assertions on `children` above pin:
+            // the list's direct children are the check boxes themselves.
+            foreach (var c in children)
+            {
+                var descendants = c.GetChildren() ?? [];
+                Assert.All(descendants, d =>
+                    Assert.Equal(AutomationControlType.Text, d.GetAutomationControlType()));
+            }
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void EveryFieldRowIsARealFocusableCheckBox()
+    {
+        var (window, vm) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+
+            var boxes = RowCheckBoxes(FieldList(window));
+            Assert.Equal(vm.Fields.Count, boxes.Length);
             Assert.All(boxes, b => Assert.True(b.Focusable, "the row's check box must be the arrow stop"));
-
-            // The containers must NOT also be focusable, or every row would be two stops.
-            var containers = Enumerable.Range(0, list.Items.Count)
-                .Select(i => list.ItemContainerGenerator.ContainerFromIndex(i))
-                .OfType<ListBoxItem>()
-                .ToArray();
-            Assert.Equal(list.Items.Count, containers.Length);
-            Assert.All(containers, c => Assert.False(c.Focusable));
         }
         finally { window.Close(); }
     }
@@ -84,21 +119,20 @@ public class RowFieldsWindowCheckBoxTests
     [StaFact]
     public void RowPeer_ReportsCheckBoxRoleAndToggleState()
     {
-        var window = MakeWindow();
+        var (window, _) = MakeWindow();
         window.Show();
         try
         {
             window.UpdateLayout();
             DrainDispatcher();
 
-            var list = window.FindName("FieldList") as ListBox;
-            var flag = RowCheckBoxes(list!).First();
-
+            var flag = RowCheckBoxes(FieldList(window)).First();
             var peer = UIElementAutomationPeer.CreatePeerForElement(flag);
+
             Assert.Equal(AutomationControlType.CheckBox, peer.GetAutomationControlType());
             Assert.Equal("Flag", peer.GetName());
 
-            // Toggle state is the platform's to report — this is what makes a custom
+            // Toggle state is the platform's to report — which is what makes a custom
             // "checked"/"not checked" announcement unnecessary, and therefore wrong.
             var toggle = (IToggleProvider)peer.GetPattern(PatternInterface.Toggle);
             Assert.Equal(ToggleState.On, toggle.ToggleState);
@@ -113,21 +147,18 @@ public class RowFieldsWindowCheckBoxTests
     [StaFact]
     public void FocusingARowSelectsIt_SoMoveUpAndDownActOnIt()
     {
-        var window = MakeWindow();
+        var (window, vm) = MakeWindow();
         window.Show();
         try
         {
             window.UpdateLayout();
             DrainDispatcher();
 
-            var list = window.FindName("FieldList") as ListBox;
-            var boxes = RowCheckBoxes(list!);
-
-            boxes[3].Focus();
+            RowCheckBoxes(FieldList(window))[3].Focus();
             DrainDispatcher();
 
             // Selection follows keyboard focus, because the move commands act on the selection.
-            Assert.Same(list!.Items[3], list.SelectedItem);
+            Assert.Same(vm.Fields[3], vm.SelectedField);
         }
         finally { window.Close(); }
     }
@@ -135,15 +166,14 @@ public class RowFieldsWindowCheckBoxTests
     [StaFact]
     public void SpaceIsLeftToTheCheckBox_NotInterceptedByTheWindow()
     {
-        var window = MakeWindow();
+        var (window, _) = MakeWindow();
         window.Show();
         try
         {
             window.UpdateLayout();
             DrainDispatcher();
 
-            var list = window.FindName("FieldList") as ListBox;
-            var box = RowCheckBoxes(list!).First();
+            var box = RowCheckBoxes(FieldList(window)).First();
             box.Focus();
             DrainDispatcher();
 
@@ -153,8 +183,8 @@ public class RowFieldsWindowCheckBoxTests
             box.RaiseEvent(args);
             DrainDispatcher();
 
-            // Unhandled by us: the check box's own Space handling does the toggling, and the
-            // platform reports it. Handling it here would mean re-announcing what is already said.
+            // Unhandled by us: the check box's own Space handling toggles it and the platform
+            // reports the change. Handling it here would mean re-announcing what is already said.
             Assert.False(args.Handled);
         }
         finally { window.Close(); }

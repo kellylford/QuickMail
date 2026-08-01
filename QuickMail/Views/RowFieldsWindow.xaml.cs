@@ -154,7 +154,7 @@ public partial class RowFieldsWindow : Window
     {
         if (ReferenceEquals(pane, FieldList))
         {
-            FocusFieldRow(FieldList.SelectedIndex >= 0 ? FieldList.SelectedIndex : 0);
+            FocusFieldRow(SelectedFieldIndex());
             return;
         }
         pane.Focus();
@@ -162,10 +162,16 @@ public partial class RowFieldsWindow : Window
         pane.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
     }
 
+    /// <summary>Index of the field the move commands act on, or 0 when nothing is selected yet.</summary>
+    private int SelectedFieldIndex()
+    {
+        var idx = _vm.SelectedField is { } f ? _vm.Fields.IndexOf(f) : -1;
+        return idx >= 0 ? idx : 0;
+    }
+
     /// <summary>
-    /// Focuses a field row's check box. The ListBoxItem containers are Focusable=False so that each
-    /// row's real control is the arrow stop, which means focus has to be placed on the check box
-    /// inside the container rather than on the container itself.
+    /// Focuses a field row's check box. The rows have no ListBoxItem wrapper — the check box is the
+    /// row — so focus goes to the control inside the generated container.
     /// </summary>
     private void FocusFieldRow(int index)
     {
@@ -175,7 +181,7 @@ public partial class RowFieldsWindow : Window
         if (FindCheckBox(c) is { } box) box.Focus();
     }
 
-    private static CheckBox? FindCheckBox(DependencyObject root)
+    internal static CheckBox? FindCheckBox(DependencyObject root)
     {
         if (root is CheckBox cb) return cb;
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
@@ -186,11 +192,11 @@ public partial class RowFieldsWindow : Window
     }
 
     /// <summary>
-    /// After a move the container the user was on has been recycled to a new index; re-focus the
+    /// After a move the container the user was on has been regenerated at a new index; re-focus the
     /// selected row so keyboard focus follows the field rather than staying at the old position.
     /// </summary>
     private void FocusSelectedFieldContainer() =>
-        Dispatcher.InvokeAsync(() => FocusFieldRow(FieldList.SelectedIndex),
+        Dispatcher.InvokeAsync(() => FocusFieldRow(SelectedFieldIndex()),
             System.Windows.Threading.DispatcherPriority.Input);
 
     private void OpenCommandPalette()
