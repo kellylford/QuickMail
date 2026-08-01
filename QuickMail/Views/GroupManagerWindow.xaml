@@ -84,7 +84,7 @@
                           KeyboardNavigation.TabNavigation="Once"
                           PreviewKeyDown="MembersList_PreviewKeyDown">
                     <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
+                        <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                             <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                         </Style>
@@ -113,7 +113,7 @@
                               KeyboardNavigation.TabNavigation="Once"
                               PreviewKeyDown="CandidatesList_PreviewKeyDown">
                         <ListView.ItemContainerStyle>
-                            <Style TargetType="ListViewItem">
+                            <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                 <Setter Property="AutomationProperties.Name" Value="{Binding Display}"/>
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                             </Style>

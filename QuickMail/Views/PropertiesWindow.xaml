@@ -55,7 +55,7 @@
                         </GridView>
                     </ListView.View>
                     <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
+                        <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                             <Setter Property="AutomationProperties.Name"
                                 Value="{Binding Converter={x:Static local:PropertyItemNameConverter.Instance}}"/>
                             <Style.Triggers>

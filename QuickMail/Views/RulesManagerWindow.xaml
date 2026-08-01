@@ -21,11 +21,15 @@
         <Style TargetType="TextBox" x:Key="RuleTextBox" BasedOn="{StaticResource {x:Type TextBox}}">
             <Setter Property="Margin" Value="0,2,0,8"/>
             <Setter Property="Padding" Value="4,3"/>
-            <Setter Property="Height" Value="26"/>
+            <!-- MinHeight, never Height: a fixed height clipped the text at large
+                 text scales (#449). -->
+            <Setter Property="MinHeight" Value="26"/>
         </Style>
         <Style TargetType="ComboBox" x:Key="RuleComboBox" BasedOn="{StaticResource {x:Type ComboBox}}">
             <Setter Property="Margin" Value="0,2,0,8"/>
-            <Setter Property="Height" Value="26"/>
+            <!-- MinHeight, never Height: a fixed height clipped the text at large
+                 text scales (#449). -->
+            <Setter Property="MinHeight" Value="26"/>
         </Style>
         <Style TargetType="CheckBox" x:Key="RuleCheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,4,0,4"/>
@@ -55,13 +59,12 @@
 
                 <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
                     <Button Content="New Rule" Command="{Binding NewRuleCommand}"
-                            Width="80" Height="26" Margin="0,0,6,6"
+                            MinWidth="80" Margin="0,0,6,6"
                             AutomationProperties.Name="Create new rule"/>
                     <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
-                            Width="60" Height="26" Margin="0,0,6,6"
+                            MinWidth="60" Margin="0,0,6,6"
                             AutomationProperties.Name="Delete selected rule"/>
-                    <Button Content="Run on Existing Mail" Command="{Binding RunOnExistingCommand}"
-                            Height="26" Padding="8,0" Margin="0,0,0,6"
+                    <Button Content="Run on Existing Mail" Command="{Binding RunOnExistingCommand}" Padding="8,0" Margin="0,0,0,6"
                             AutomationProperties.Name="Run all rules on existing mail now"/>
                 </WrapPanel>
 
@@ -239,7 +242,7 @@
                          picked. PickFolder raises PropertyChanged(SelectedRule), refreshing both. -->
                     <Button Content="{Binding SelectedRule.TargetFolder, TargetNullValue=Choose Folder…, FallbackValue=Choose Folder…}"
                             Command="{Binding PickFolderCommand}"
-                            Width="140" Height="26" Margin="0,2,0,8"
+                            MinWidth="140" Margin="0,2,0,8"
                             HorizontalAlignment="Left"
                             AutomationProperties.Name="{Binding SelectedRule.TargetFolder, TargetNullValue=Choose target folder, FallbackValue=Choose target folder}"/>
                     <TextBlock Text="{Binding FolderError}" Foreground="{DynamicResource Theme.Error}"
@@ -264,14 +267,14 @@
                     <!-- Buttons -->
                     <StackPanel Orientation="Horizontal" Margin="0,16,0,0">
                         <Button Content="Test Rule" Command="{Binding TestRuleCommand}"
-                                Width="80" Height="26" Margin="0,0,8,0"
+                                MinWidth="80" Margin="0,0,8,0"
                                 AutomationProperties.Name="Test rule against selected messages"/>
                         <Button Content="Save" Command="{Binding SaveRuleCommand}"
-                                Width="60" Height="26" Margin="0,0,8,0"
+                                MinWidth="60" Margin="0,0,8,0"
                                 AutomationProperties.Name="Save rule"
                                 IsDefault="True"/>
                         <Button Content="Close" Command="{Binding CloseCommand}"
-                                Width="60" Height="26"
+                                MinWidth="60"
                                 AutomationProperties.Name="Close rules manager"
                                 IsCancel="True"/>
                     </StackPanel>
@@ -309,19 +312,13 @@
                            AutomationProperties.LiveSetting="Polite"/>
 
                 <WrapPanel Orientation="Horizontal" Margin="0,0,0,6">
-                    <Button Content="New" Command="{Binding CreateRuleCommand}"
-                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New server rule"/>
-                    <Button Content="Edit" Command="{Binding EditRuleCommand}"
-                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected server rule"/>
-                    <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
-                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected server rule"/>
-                    <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"
-                            Height="26" Padding="10,0" Margin="0,0,6,4"
+                    <Button Content="New" Command="{Binding CreateRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New server rule"/>
+                    <Button Content="Edit" Command="{Binding EditRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected server rule"/>
+                    <Button Content="Delete" Command="{Binding DeleteRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected server rule"/>
+                    <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}" Padding="10,0" Margin="0,0,6,4"
                             AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected server rule}"/>
-                    <Button Content="Move Up" Command="{Binding MoveUpCommand}"
-                            Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected server rule up"/>
-                    <Button Content="Move Down" Command="{Binding MoveDownCommand}"
-                            Height="26" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected server rule down"/>
+                    <Button Content="Move Up" Command="{Binding MoveUpCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected server rule up"/>
+                    <Button Content="Move Down" Command="{Binding MoveDownCommand}" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected server rule down"/>
                 </WrapPanel>
                 <Grid>
                     <Grid.ColumnDefinitions>

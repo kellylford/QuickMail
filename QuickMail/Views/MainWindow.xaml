@@ -1336,7 +1336,14 @@
                                   GotKeyboardFocus="CalendarList_GotKeyboardFocus"
                                   PreviewKeyDown="CalendarList_PreviewKeyDown">
                             <ListView.ItemContainerStyle>
-                                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                <!-- BasedOn the GRIDVIEW container style, not the plain ListViewItem
+                                     style: the plain one's template hosts a ContentPresenter, so rows
+                                     rendered item.ToString() ("QuickMail.Models.CalendarEvent") and the
+                                     columns never appeared (#448). Invisible to a screen reader — the
+                                     row name below was always correct — which is why it took the visual
+                                     harness to catch it. -->
+                                <Style TargetType="ListViewItem"
+                                       BasedOn="{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                     <!-- Row name = the stamped accessible name (data-only or field-labeled
                                          per the CalendarListShowFieldLabels setting); the visual columns
                                          aid sighted users. -->
