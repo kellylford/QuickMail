@@ -1,8 +1,8 @@
 # Windows ARM64 Support — Plan
 
 **Issue:** [#18 — Windows ARM64 Support](https://github.com/kellylford/QuickMail/issues/18)
-**Status:** Phases 1–4 implemented on branch `arm64-support`, pending validation on ARM64
-hardware. Phase 5 not started.
+**Status:** Phases 1–4 merged to main (PR #470). Phase 5 implemented on branch
+`arm64-emulation-notice`. All pending validation on ARM64 hardware.
 **Date:** 2026-08-01
 
 ## Summary
@@ -224,7 +224,7 @@ ARM64 — confirm the ARM64 Setup actually installs the ARM64 runtime on a machi
   profile in `%APPDATA%\QuickMail` and Windows Credential Manager entries are preserved).
 - `CLAUDE.md` — the ARM64 build target in the Build & Run section.
 
-## Phase 5 — Emulation notice in the x64 build
+## Phase 5 — Emulation notice in the x64 build *(implemented)*
 
 Because there is no cross-channel migration, an ARM64 user who installed the x64 build will
 never be told the native build exists unless the application says so. Detection is trivial in
@@ -232,16 +232,47 @@ never be told the native build exists unless the application says so. Detection 
 .NET 7) while `RuntimeInformation.ProcessArchitecture` returns `X64`. That mismatch is exactly
 "emulated x64 process on ARM64 hardware".
 
-Design:
+Design as built:
 
-- A `Hint` announcement plus a Help menu entry — **not** a startup dialog. A modal at launch
-  would interrupt the first thing a screen reader user hears, for information that is not
-  urgent.
-- Shown once per version, tracked alongside the existing `LastRunVersion` state, so it never
-  becomes nagging.
-- Wording states the benefit plainly and says the switch is a manual uninstall/reinstall with
-  settings preserved. It must not imply the current build is broken — it is not.
-- The Help entry stays available after the one-time notice, so it can be found again.
+- An announcement plus a Help menu entry — **not** a startup dialog. A modal at launch would
+  interrupt the first thing a screen reader user hears, for information that is not urgent.
+- **Category is `Result`, not `Hint`.** This follows the precedent set by the
+  update-available announcement, which documents its own reasoning: a one-time discovery
+  outcome, which users who silence background chatter must still hear. `Hint` is for
+  instructional tips delivered at the moment a control is focused; this is neither.
+- Announced once per version, recorded in `NativeArmNoticeVersion` in `config.ini` alongside
+  the existing `LastRunVersion`, so it never becomes nagging.
+- Fires last of the three startup notices (desktop shortcut offer, update-installed notice,
+  then this) so it cannot talk over a dialog either of the others opened.
+- The Help entry stays visible afterwards, so the notice never has to repeat to remain
+  findable. It is hidden on non-ARM hardware; the command is registered unconditionally so
+  the palette listing does not vary by machine.
+- Wording states the benefit and the action, and does not imply the running build is broken —
+  it works, it is simply emulated.
+
+### Keyboard walkthrough
+
+On an ARM64 PC running the x64 build, first launch of a new version:
+
+1. QuickMail starts normally. Nothing is interrupted; focus lands where it always does.
+2. After the message list loads, the screen reader announces: "This PC has an ARM processor,
+   and QuickMail has an ARM version that runs faster on it. See Get the ARM Version in the
+   Help menu." Users who have turned off action-outcome announcements hear nothing.
+3. The user presses Alt then H, or arrows to Help. The menu contains **Get the ARM Version**
+   below the update entry.
+4. Pressing Enter on it opens the releases page in the default browser. Focus stays in
+   QuickMail; the menu closes as any menu does.
+5. Every later launch of the same version: no announcement. The Help entry is still there.
+
+On any non-ARM PC, and on the native ARM64 build itself, none of this exists — no
+announcement, no menu entry.
+
+### Not covered by tests
+
+The detection reads the real machine's architecture, so it cannot be exercised on an x64 CI
+runner. `NativeArmNoticeTests` covers the once-per-version bookkeeping and asserts detection
+is false when process and OS architectures agree. That the announcement actually fires, and
+sounds right, needs ARM64 hardware.
 
 This phase is independent of the packaging work and could ship in an x64 release *before* the
 ARM64 build exists, so the notice is already in the field when the native build lands. It is

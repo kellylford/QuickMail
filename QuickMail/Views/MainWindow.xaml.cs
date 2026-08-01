@@ -1412,6 +1412,12 @@ public partial class MainWindow : Window
         // "QuickMail Update Installed" notice, once per applied update. After the shortcut
         // offer so a first-run-after-migration launch never stacks two dialogs.
         _vm.MaybeShowUpdateInstalledNotice();
+
+        // "A native ARM build exists" notice, once per version, and only when this x64 copy is
+        // emulated on an ARM64 device. Last of the startup notices: it is the least urgent of
+        // them, and going last keeps it from talking over a dialog either of the two above may
+        // have opened.
+        _vm.MaybeAnnounceNativeArmAvailable();
     }
 
     // ── ui-probe hooks (#180) — internal, driver-only; never user-reachable ──
