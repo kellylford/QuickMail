@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Windows;
 using System.Windows.Automation.Peers;
@@ -34,15 +35,15 @@ public sealed class FieldCheckList : ItemsControl
     static FieldCheckList()
     {
         // The row check boxes are the tab stop; the list itself is never one. Control defaults
-        // IsTabStop to true, and inheriting that default cost this window extra stops (#464).
-        // Measured before and after: with the container a tab stop, Tab landed first on the list —
-        // which has no name, value or state of its own to report, so it read as an empty list —
-        // and then on every check box in turn, TabNavigation="Once" notwithstanding. With the
-        // container out of the tab order, Once does what it says: one stop, on a row.
+        // IsTabStop to true, and inheriting that default gave this window a second tab stop it
+        // was never meant to have (#464): Tab landed on the list container, which is not something
+        // the user can act on, and only then on a row. TabNavigation="Once" already collapsed the
+        // rows themselves to one stop — measured on both sides of this change — so removing the
+        // container from the tab order is the whole fix.
         //
         // IsTabStop, not Focusable: the list still has to accept Focus() calls, because that is how
         // Label implements an access key on its Target — turning Focusable off would silently make
-        // Alt+F do nothing. Focus handed to the list is forwarded to a row below.
+        // Alt+F do nothing. Focus handed to the list is redirected to a row below.
         IsTabStopProperty.OverrideMetadata(
             typeof(FieldCheckList), new FrameworkPropertyMetadata(false));
     }
@@ -52,8 +53,22 @@ public sealed class FieldCheckList : ItemsControl
     /// <summary>
     /// Focus belongs on a row, never on the list itself. Anything that hands focus to the list —
     /// the label's Alt+F, a caller doing <c>FieldList.Focus()</c> — is asking for the list to be
-    /// usable, and a container the user cannot act on is not that.
+    /// usable, and a container the user cannot act on is not that. This is the only way focus
+    /// reaches the container: Tab does not, because the list is not a tab stop.
     /// </summary>
+    /// <remarks>
+    /// <para>This corrects focus after the fact rather than cancelling it in
+    /// <c>PreviewGotKeyboardFocus</c>, which was tried first and is the tidier shape on paper: it
+    /// would mean the list never becomes the focused element at all. Cancelling requires focusing
+    /// the row re-entrantly, from inside WPF's own focus-change dispatch, and that inner
+    /// <c>Focus()</c> does not reliably succeed — it failed consistently in the full test run and
+    /// passed when the same test ran alone. When it fails the pending change is not cancelled and
+    /// focus simply stays on the list, which is the fault being fixed. Correcting afterwards always
+    /// ends on a row.</para>
+    /// <para>The cost is that the platform briefly reports the list as focused before the row, so
+    /// Alt+F may be spoken as the list and then the field. Tab, the path #464 was reported
+    /// against, does not go through here at all — the list is not a tab stop.</para>
+    /// </remarks>
     protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
     {
         base.OnGotKeyboardFocus(e);
@@ -65,9 +80,22 @@ public sealed class FieldCheckList : ItemsControl
             return;
         }
 
-        // Otherwise this is the event bubbling up from a row's check box: remember which.
+        // Otherwise this is bubbling up from a row's check box: remember which, so focus comes
+        // back to it.
         var idx = FocusedIndex();
         if (idx >= 0) _lastFocusedIndex = idx;
+    }
+
+    /// <summary>
+    /// The remembered row belongs to the layout that was showing. Changing the Row type swaps the
+    /// whole field set, and the view model resets its own selection to the first field — so a
+    /// stale index here would send Alt+F to a different row than F6, in a list where the two must
+    /// agree because Move Up/Down act on the selection.
+    /// </summary>
+    protected override void OnItemsChanged(NotifyCollectionChangedEventArgs e)
+    {
+        base.OnItemsChanged(e);
+        if (e.Action == NotifyCollectionChangedAction.Reset) _lastFocusedIndex = 0;
     }
 
     // ── keyboard ──────────────────────────────────────────────────────────────

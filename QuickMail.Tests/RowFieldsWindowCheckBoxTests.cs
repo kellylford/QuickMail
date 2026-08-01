@@ -66,6 +66,13 @@ public class RowFieldsWindowCheckBoxTests
         return list!;
     }
 
+    private static TextBox PreviewBox(RowFieldsWindow w)
+    {
+        var box = w.FindName("PreviewBox") as TextBox;
+        Assert.NotNull(box);
+        return box!;
+    }
+
     private static CheckBox[] RowCheckBoxes(FieldCheckList list) =>
         Enumerable.Range(0, list.Items.Count)
             .Select(i => list.ItemContainerGenerator.ContainerFromIndex(i))
@@ -180,36 +187,76 @@ public class RowFieldsWindowCheckBoxTests
         finally { CloseAndReleaseFocus(window); }
     }
 
-    // ── The whole list is one tab stop (#464) ─────────────────────────────────
+    // ── The list container is not a tab stop of its own (#464) ────────────────
     //
-    // Tab lands on a row check box, once. It used to land on the list container first — an element
-    // with no name, value or state of its own, so it read as an empty list — and then on every
-    // single check box in turn, because a TabNavigation="Once" group whose own container is a tab
-    // stop inside it collapses nothing. Driven through MoveFocus, the same traversal Tab performs,
-    // so this is deterministic and not gated behind QUICKMAIL_RUN_INPUT_TESTS.
+    // Tab used to stop on the list container before reaching a row. TabNavigation="Once" already
+    // collapsed the rows to a single stop, so the container was the whole of the extra stop — and
+    // a container is not something the user can act on. These walk focus with MoveFocus, the same
+    // traversal Tab performs, so they are deterministic and not gated behind
+    // QUICKMAIL_RUN_INPUT_TESTS.
 
-    /// <summary>Tab stops from the row-type combo all the way round, in order.</summary>
-    private static List<IInputElement> WalkTabOrder(RowFieldsWindow window, ComboBox start)
+    /// <summary>
+    /// Tab stops from the row-type combo all the way round, plus every element the list was ASKED
+    /// to give focus to. The second half matters: the list redirects focus off itself onto a row,
+    /// so by the time <c>Keyboard.FocusedElement</c> is sampled a container stop has already been
+    /// papered over. Watching PreviewGotKeyboardFocus catches the attempt itself.
+    /// </summary>
+    private static (List<IInputElement> Stops, List<object> ListFocusAttempts) WalkTabOrder(
+        FieldCheckList list, ComboBox start)
     {
+        var attempts = new List<object>();
+        void OnPreview(object s, KeyboardFocusChangedEventArgs e)
+        {
+            if (ReferenceEquals(e.NewFocus, list)) attempts.Add(e.NewFocus);
+        }
+        // handledEventsToo, and not `+= OnPreview`: whether anything upstream marks this event
+        // handled is not this test's business, and a plain instance handler silently stops running
+        // if something does — reporting "nothing tried to focus the container" precisely when
+        // something did. That is not hypothetical; an earlier version of the redirect handled the
+        // preview event, and with `+=` this test passed with the fault reintroduced.
+        list.AddHandler(UIElement.PreviewGotKeyboardFocusEvent,
+                        new KeyboardFocusChangedEventHandler(OnPreview), handledEventsToo: true);
+
         start.Focus();
         DrainDispatcher();
 
         var stops = new List<IInputElement>();
-        // Generous bound: the window has well under 40 focusable elements even when every check
-        // box is (wrongly) its own stop, so this terminates on the wrap in either state.
-        for (int i = 0; i < 40; i++)
+        var wrapped = false;
+        try
         {
-            if (Keyboard.FocusedElement is not FrameworkElement current) break;
-            if (stops.Count > 0 && ReferenceEquals(current, start)) break;   // wrapped
-            stops.Add(current);
-            current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
-            DrainDispatcher();
+            // Generous bound: the window has well under 40 focusable elements even if every check
+            // box were (wrongly) its own stop, so this reaches the wrap in either state.
+            for (int i = 0; i < 40; i++)
+            {
+                if (Keyboard.FocusedElement is not FrameworkElement current) break;
+                if (stops.Count > 0 && ReferenceEquals(current, start)) { wrapped = true; break; }
+                stops.Add(current);
+                current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+                DrainDispatcher();
+            }
         }
-        return stops;
+        finally
+        {
+            list.RemoveHandler(UIElement.PreviewGotKeyboardFocusEvent,
+                               new KeyboardFocusChangedEventHandler(OnPreview));
+        }
+
+        // Without this, a walk that stalls on one element surfaces as a baffling count assertion
+        // somewhere below rather than as "focus stopped moving".
+        Assert.True(wrapped, $"tab order never returned to the start; got: {Describe(stops)}");
+        return (stops, attempts);
     }
 
+    private static string Describe(IEnumerable<IInputElement> stops) =>
+        string.Join(" → ", stops.Select(s => s switch
+        {
+            ContentControl { Content: string text } => $"{s.GetType().Name}({text})",
+            FrameworkElement { Name.Length: > 0 } fe => $"{s.GetType().Name}({fe.Name})",
+            _ => s.GetType().Name,
+        }));
+
     [StaFact]
-    public void TheFieldListIsExactlyOneTabStop_AndItLandsOnARowNotTheContainer()
+    public void TabbingThroughTheWindow_NeverStopsOnTheListItself_OnlyOnOneRow()
     {
         var (window, _) = MakeWindow();
         window.Show();
@@ -222,12 +269,15 @@ public class RowFieldsWindowCheckBoxTests
             var combo = window.FindName("RowTypeList") as ComboBox;
             Assert.NotNull(combo);
 
-            var stops = WalkTabOrder(window, combo!);
+            var (stops, listFocusAttempts) = WalkTabOrder(list, combo!);
 
+            // The phantom stop, caught at the point WPF tries to make it — before the redirect
+            // hides it. This is what fails if IsTabStop comes back.
+            Assert.Empty(listFocusAttempts);
             Assert.DoesNotContain(list, stops);
-            var inList = stops.OfType<DependencyObject>()
-                              .Where(e => list.IsAncestorOf(e))
-                              .ToArray();
+
+            // …and the rows contribute exactly one stop between them, on a check box.
+            var inList = stops.OfType<DependencyObject>().Where(list.IsAncestorOf).ToArray();
             Assert.Single(inList);
             Assert.IsType<CheckBox>(inList[0]);
         }
@@ -235,8 +285,8 @@ public class RowFieldsWindowCheckBoxTests
     }
 
     /// <summary>
-    /// The container being a tab stop is what created the phantom stop, so pin that rather than
-    /// only the behaviour it produced — a future edit that re-enables it fails here.
+    /// The container being a tab stop is the cause, so pin that too and not only the behaviour it
+    /// produced — a future edit that re-enables it fails here, whatever else changes.
     /// </summary>
     [StaFact]
     public void TheListContainerIsNotATabStop_OnlyItsRowsAre()
@@ -255,8 +305,8 @@ public class RowFieldsWindowCheckBoxTests
     /// <summary>
     /// Out of the tab order must not mean unreachable. The "_Fields, in spoken order" label
     /// implements its access key as Target.Focus(), so Alt+F hands focus to the list itself — and
-    /// the list forwards it to a row, because a container the user cannot act on is not what
-    /// "focus the field list" means (#464).
+    /// the list passes it to a row, because a container the user cannot act on is not what "focus
+    /// the field list" means (#464).
     /// </summary>
     [StaFact]
     public void FocusHandedToTheList_LandsOnARow_SoTheLabelsAccessKeyStillWorks()
@@ -275,17 +325,59 @@ public class RowFieldsWindowCheckBoxTests
 
             list.FocusRow(3);
             DrainDispatcher();
-            Keyboard.ClearFocus();
+            // Focus goes elsewhere in the window, not nowhere: Alt+F is pressed from another
+            // control, and a cleared focus is a state the window is never actually in.
+            PreviewBox(window).Focus();
             DrainDispatcher();
 
             list.Focus();
             DrainDispatcher();
 
-            // Focus is on a row, not on the list. (Focus() reports false — WPF is answering
-            // "did THIS element take focus", and the point is that it did not.)
+            // What is asserted is where focus ENDS UP. The list does briefly hold focus on the way
+            // — see the remarks on OnGotKeyboardFocus for why cancelling the focus change instead
+            // was measured to be unreliable — so asserting the absence of that transient would be
+            // asserting something the implementation deliberately does not promise.
             Assert.IsType<CheckBox>(Keyboard.FocusedElement);
             // Back to the row the user was last on, the way returning to a list should behave.
             Assert.Equal(3, list.FocusedIndex());
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    /// <summary>
+    /// The remembered row belongs to the layout that was showing. Changing the Row type swaps the
+    /// field set and the view model resets its selection to the first field; if the list kept its
+    /// own index, Alt+F and F6 would land on different rows — and Move Up/Down act on whichever
+    /// one selection followed.
+    /// </summary>
+    [StaFact]
+    public void ChangingTheRowType_ForgetsTheRememberedRow_SoAltFAndF6Agree()
+    {
+        var (window, vm) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+
+            list.FocusRow(5);
+            DrainDispatcher();
+            Assert.Equal(5, list.FocusedIndex());
+
+            vm.SelectedRowKind = vm.RowKinds.First(k => k != vm.SelectedRowKind);
+            DrainDispatcher();
+            window.UpdateLayout();
+
+            PreviewBox(window).Focus();
+            DrainDispatcher();
+            list.Focus();
+            DrainDispatcher();
+
+            // The first field of the new layout — the same row the view model selected, and the
+            // same one F6 into the list goes to.
+            Assert.Equal(0, list.FocusedIndex());
+            Assert.Same(vm.Fields[0], vm.SelectedField);
         }
         finally { CloseAndReleaseFocus(window); }
     }
