@@ -184,6 +184,7 @@ public partial class RowFieldsWindow : Window
         var prev = Keyboard.FocusedElement as IInputElement;
         var palette = new CommandPaletteWindow(_localRegistry) { Owner = this };
         palette.ShowDialog();
+        // FieldList.Focus() lands on a row: the list itself is not focusable (#464).
         (prev ?? FieldList).Focus();
     }
 

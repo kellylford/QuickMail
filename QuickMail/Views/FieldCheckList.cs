@@ -28,7 +28,47 @@ public sealed class FieldCheckList : ItemsControl
     // than WPF TextSearch, which only works on a Selector.
     private readonly TypeAheadPrefixTracker _typeAhead = new();
 
+    /// <summary>Row the list returns to when focus comes back to it.</summary>
+    private int _lastFocusedIndex;
+
+    static FieldCheckList()
+    {
+        // The row check boxes are the tab stop; the list itself is never one. Control defaults
+        // IsTabStop to true, and inheriting that default cost this window extra stops (#464).
+        // Measured before and after: with the container a tab stop, Tab landed first on the list —
+        // which has no name, value or state of its own to report, so it read as an empty list —
+        // and then on every check box in turn, TabNavigation="Once" notwithstanding. With the
+        // container out of the tab order, Once does what it says: one stop, on a row.
+        //
+        // IsTabStop, not Focusable: the list still has to accept Focus() calls, because that is how
+        // Label implements an access key on its Target — turning Focusable off would silently make
+        // Alt+F do nothing. Focus handed to the list is forwarded to a row below.
+        IsTabStopProperty.OverrideMetadata(
+            typeof(FieldCheckList), new FrameworkPropertyMetadata(false));
+    }
+
     protected override AutomationPeer OnCreateAutomationPeer() => new FieldCheckListPeer(this);
+
+    /// <summary>
+    /// Focus belongs on a row, never on the list itself. Anything that hands focus to the list —
+    /// the label's Alt+F, a caller doing <c>FieldList.Focus()</c> — is asking for the list to be
+    /// usable, and a container the user cannot act on is not that.
+    /// </summary>
+    protected override void OnGotKeyboardFocus(KeyboardFocusChangedEventArgs e)
+    {
+        base.OnGotKeyboardFocus(e);
+
+        if (ReferenceEquals(e.NewFocus, this))
+        {
+            // Back to the row the user was last on, the way returning to a list should behave.
+            if (FocusRow(_lastFocusedIndex) || FocusRow(0)) e.Handled = true;
+            return;
+        }
+
+        // Otherwise this is the event bubbling up from a row's check box: remember which.
+        var idx = FocusedIndex();
+        if (idx >= 0) _lastFocusedIndex = idx;
+    }
 
     // ── keyboard ──────────────────────────────────────────────────────────────
 

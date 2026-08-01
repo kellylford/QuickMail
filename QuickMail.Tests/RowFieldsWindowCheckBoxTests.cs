@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
 using System.Windows.Automation;
@@ -175,6 +176,116 @@ public class RowFieldsWindowCheckBoxTests
 
             // Selection follows keyboard focus, because the move commands act on the selection.
             Assert.Same(vm.Fields[3], vm.SelectedField);
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    // ── The whole list is one tab stop (#464) ─────────────────────────────────
+    //
+    // Tab lands on a row check box, once. It used to land on the list container first — an element
+    // with no name, value or state of its own, so it read as an empty list — and then on every
+    // single check box in turn, because a TabNavigation="Once" group whose own container is a tab
+    // stop inside it collapses nothing. Driven through MoveFocus, the same traversal Tab performs,
+    // so this is deterministic and not gated behind QUICKMAIL_RUN_INPUT_TESTS.
+
+    /// <summary>Tab stops from the row-type combo all the way round, in order.</summary>
+    private static List<IInputElement> WalkTabOrder(RowFieldsWindow window, ComboBox start)
+    {
+        start.Focus();
+        DrainDispatcher();
+
+        var stops = new List<IInputElement>();
+        // Generous bound: the window has well under 40 focusable elements even when every check
+        // box is (wrongly) its own stop, so this terminates on the wrap in either state.
+        for (int i = 0; i < 40; i++)
+        {
+            if (Keyboard.FocusedElement is not FrameworkElement current) break;
+            if (stops.Count > 0 && ReferenceEquals(current, start)) break;   // wrapped
+            stops.Add(current);
+            current.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            DrainDispatcher();
+        }
+        return stops;
+    }
+
+    [StaFact]
+    public void TheFieldListIsExactlyOneTabStop_AndItLandsOnARowNotTheContainer()
+    {
+        var (window, _) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+
+            var list = FieldList(window);
+            var combo = window.FindName("RowTypeList") as ComboBox;
+            Assert.NotNull(combo);
+
+            var stops = WalkTabOrder(window, combo!);
+
+            Assert.DoesNotContain(list, stops);
+            var inList = stops.OfType<DependencyObject>()
+                              .Where(e => list.IsAncestorOf(e))
+                              .ToArray();
+            Assert.Single(inList);
+            Assert.IsType<CheckBox>(inList[0]);
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    /// <summary>
+    /// The container being a tab stop is what created the phantom stop, so pin that rather than
+    /// only the behaviour it produced — a future edit that re-enables it fails here.
+    /// </summary>
+    [StaFact]
+    public void TheListContainerIsNotATabStop_OnlyItsRowsAre()
+    {
+        var (window, _) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            Assert.False(FieldList(window).IsTabStop, "the rows are the tab stop, not the list");
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    /// <summary>
+    /// Out of the tab order must not mean unreachable. The "_Fields, in spoken order" label
+    /// implements its access key as Target.Focus(), so Alt+F hands focus to the list itself — and
+    /// the list forwards it to a row, because a container the user cannot act on is not what
+    /// "focus the field list" means (#464).
+    /// </summary>
+    [StaFact]
+    public void FocusHandedToTheList_LandsOnARow_SoTheLabelsAccessKeyStillWorks()
+    {
+        var (window, _) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+
+            var list = FieldList(window);
+            var label = window.FindName("FieldsLabel") as Label;
+            Assert.NotNull(label);
+            Assert.Same(list, label!.Target);      // …which is where Alt+F sends focus.
+
+            list.FocusRow(3);
+            DrainDispatcher();
+            Keyboard.ClearFocus();
+            DrainDispatcher();
+
+            list.Focus();
+            DrainDispatcher();
+
+            // Focus is on a row, not on the list. (Focus() reports false — WPF is answering
+            // "did THIS element take focus", and the point is that it did not.)
+            Assert.IsType<CheckBox>(Keyboard.FocusedElement);
+            // Back to the row the user was last on, the way returning to a list should behave.
+            Assert.Equal(3, list.FocusedIndex());
         }
         finally { CloseAndReleaseFocus(window); }
     }
