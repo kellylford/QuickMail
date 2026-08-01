@@ -1456,7 +1456,9 @@ Lines starting with `#` are comments and are ignored. The file uses a simple `ke
 | `DefaultComposeMode` | `plain` / `markdown` / `html` | `plain` | The editing mode new compose windows start in. Drafts and templates always reopen in plain text. Also available in Settings → General → Composing. |
 | `AutoSaveDrafts` | `on` / `off` | `on` | Automatically save the message as a server draft while composing. Also available in Settings → General → Composing. |
 | `AutoSaveIntervalSeconds` | `30`–`600` | `120` | Seconds between automatic draft saves. Also available in Settings → General → Composing. |
-| `AnnounceFlagStatus` | `true` / `false` | `true` | When on, the flag name is announced before the read status when navigating flagged messages. Also available in Settings → General → Screen Reader Announcements. |
+| `AnnounceFlagStatus` | `true` / `false` | `true` | Legacy. Superseded by View → Message List Fields, where Flag is one field among many with its own checkbox. Read once, when no saved field layout exists yet, to decide whether Flag starts out enabled; ignored afterwards. |
+| `MessageListShowFieldLabels` | `on` / `off` | `off` | When on, message list rows speak field labels ("From: Chris Lee. Subject: Budget review."). Also available in View → Message List Fields. |
+| `RuleListShowFieldLabels` | `on` / `off` | `off` | When on, the rules list speaks field labels in each row's accessible name. Also available in Settings → General → Screen Reader Announcements. |
 
 ### `[account:<guid>]` overrides
 

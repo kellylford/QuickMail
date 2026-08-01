@@ -255,8 +255,10 @@ public class ConfigService : IConfigService
                     case "announcespellingwhiletyping":      config.AnnounceSpellingWhileTyping      = ParseBool(value); break;
                     case "announcespellingwhilenavigating": config.AnnounceSpellingWhileNavigating = ParseBool(value); break;
                     case "announcespellingsuggestions":     config.AnnounceSpellingSuggestions     = ParseBool(value); break;
+                    case "messagelistshowfieldlabels":      config.MessageListShowFieldLabels      = ParseBool(value); break;
                     case "contactlistshowfieldlabels":      config.ContactListShowFieldLabels      = ParseBool(value); break;
                     case "calendarlistshowfieldlabels":     config.CalendarListShowFieldLabels     = ParseBool(value); break;
+                    case "rulelistshowfieldlabels":         config.RuleListShowFieldLabels         = ParseBool(value); break;
                     case "calendarreminders":               config.CalendarReminders               = ParseBool(value); break;
                     case "calendarreminderminutes":
                         if (int.TryParse(value, out var remMin) && remMin >= 1 && remMin <= 1440)
@@ -473,6 +475,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Turn off once you are familiar with the interface. Values: on, off.");
         sb.AppendLine();
 
+        sb.AppendLine($"MessageListShowFieldLabels = {(config.MessageListShowFieldLabels ? "on" : "off")}");
+        sb.AppendLine("# Message list: speak field labels (From/Subject/Preview) in each row's accessible");
+        sb.AppendLine("# name. Off (default) speaks concise field data only. Which fields are spoken and in");
+        sb.AppendLine("# what order is set in the Message List Fields window. Values: on, off.");
+        sb.AppendLine();
+
         sb.AppendLine($"ContactListShowFieldLabels = {(config.ContactListShowFieldLabels ? "on" : "off")}");
         sb.AppendLine("# Address book: speak field labels (Name/email/account) in each contact row's");
         sb.AppendLine("# accessible name. Off (default) speaks concise field data only. Values: on, off.");
@@ -481,6 +489,11 @@ public class ConfigService : IConfigService
         sb.AppendLine($"CalendarListShowFieldLabels = {(config.CalendarListShowFieldLabels ? "on" : "off")}");
         sb.AppendLine("# Calendar: speak field labels (Subject/when/status) in each event row's");
         sb.AppendLine("# accessible name. Off (default) speaks concise data only. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"RuleListShowFieldLabels = {(config.RuleListShowFieldLabels ? "on" : "off")}");
+        sb.AppendLine("# Rules list: speak field labels (Rule/account) in each rule row's accessible");
+        sb.AppendLine("# name. Off (default) speaks concise data only. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"CalendarReminders = {(config.CalendarReminders ? "on" : "off")}");

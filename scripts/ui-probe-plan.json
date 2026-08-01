@@ -52,6 +52,11 @@
       "scale": 100
     },
     {
+      "surface": "row-fields",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "inbox",
       "theme": "dark",
       "scale": 100
@@ -102,6 +107,11 @@
       "scale": 100
     },
     {
+      "surface": "row-fields",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "inbox",
       "theme": "parchment",
       "scale": 150
@@ -148,6 +158,11 @@
     },
     {
       "surface": "command-palette",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "row-fields",
       "theme": "parchment",
       "scale": 150
     }

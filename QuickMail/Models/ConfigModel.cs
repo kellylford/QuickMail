@@ -139,10 +139,23 @@ public class ConfigModel
     public bool AnnounceFormattingWhileNavigating { get; set; } = true;
 
     /// <summary>
-    /// Include the flag name before read status in each message row's accessible name.
-    /// Default on so screen reader users hear flag state immediately.
+    /// Legacy: include the flag name before read status in each message row's accessible name.
+    /// <para>Superseded by the Message List Fields chooser, where Flag is one orderable field with
+    /// its own checkbox. Read exactly once — when <c>rowlayout.json</c> does not yet exist — to seed
+    /// the default layout, so a user who had this off does not suddenly start hearing flags. After
+    /// the first save the layout owns the choice and this key is never consulted again. Retained
+    /// (not deleted) so an existing config.ini still migrates correctly.</para>
     /// </summary>
     public bool AnnounceFlagStatus { get; set; } = true;
+
+    /// <summary>
+    /// When true, message list rows speak field labels in each row's accessible name
+    /// ("From: Chris Lee. Subject: Budget review."); when false (default) they speak concise field
+    /// data only. Applies to all three row kinds (messages, conversation groups, sender groups).
+    /// State and count fields are never labelled — "unread" and "3 messages" already say what they
+    /// are. Mirrors <see cref="ContactListShowFieldLabels"/>.
+    /// </summary>
+    public bool MessageListShowFieldLabels { get; set; } = false;
 
     /// <summary>
     /// When true, the address-book contact list speaks field labels in each row's accessible name

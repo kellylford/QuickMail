@@ -59,6 +59,28 @@ It follows each account's own archive setting rather than guessing. If you point
 
 One thing to know if you use Gmail: the guide now recommends creating a Gmail label named **Archive** and pointing the account at it with **Set as Archive Folder**, rather than at **[Gmail]/All Mail**. Both archive correctly, but an account pointed at All Mail contributes its entire mailbox to All Archive, because for that account All Mail *is* the archive. A label gives you a folder holding only what you archived. (#452)
 
+## New: choose what a message list row says, and in what order
+
+Every row in a message list is read as one line — sender, subject, date, and so on — and until now that line was fixed. **View → Message List Fields…** lets you decide which pieces are spoken and where each one falls.
+
+Every field is a check box. Check one to include it, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** to move it. **Home** and **End** go to the first and last field, and typing a letter jumps to the next field starting with it. Moving a field that is switched off says so, since that changes nothing you can hear.
+
+A **Spoken preview** box shows the message you had selected when you opened the window, read exactly as the list would read it, updating as you go. There is no OK or Cancel — changes take effect as you make them, and the window is modeless, so you can leave it open, arrow through the list behind it, and hear the result.
+
+Each kind of row keeps its own arrangement: individual **messages**, **conversation groups**, and **sender and recipient groups**.
+
+**Status is no longer one lump.** It used to be a single word — "replied", "forwarded", "unread", or "read" — that you could take or leave. **Unread**, **Replied**, and **Forwarded** are now separate fields you can place independently, and each offers **Speak only when true** or **Always speak**. So "tell me about unread but never say read" is: turn **Status (combined)** off, turn **Unread** on, leave it on *Speak only when true*. The same applies to **Attachments**, which can now sit anywhere in the line rather than in the middle of it.
+
+Because **Status (combined)** and **Unread** both produce the word "unread", turning one on while the other is already on says it twice. Selecting either field explains what the other is doing, so the two do not quietly fight.
+
+Other fields you can now add: **To**, **Mailing list**, and **Source folder** — the last one already appears in aggregate views like All Archive, and is now yours to move or remove.
+
+**Speak field labels** prefixes text fields with their names ("From: Chris Lee. Subject: Budget review."). States and counts are never labelled, since "unread" and "3 messages" already say what they are.
+
+**If you never open the window, nothing changes** — the default arrangement is exactly what QuickMail has always said, with one deliberate exception: empty fields are now skipped rather than leaving a gap, so a message with no preview or no subject reads without a pause where it would have been.
+
+Two small consequences. The **Announce flag status** checkbox has left Settings, because Flag is now one field with its own checkbox; if you had it turned off, Flag starts out unchecked for you. And a conversation or sender group used to keep saying "Has unread" after you had read its last unread message — it now updates.
+
 ## Fixed: typing a letter jumps to a contact in the address book
 
 With focus on the address book's contact list, typing a letter did nothing. Now it jumps to the first contact starting with that letter, the same way lists behave elsewhere in Windows. Type several letters quickly to match a longer beginning ("br" goes to Brenda rather than Bob), or press the same letter again to move to the next contact starting with it. Contacts saved without a name are matched on their address. The **Groups** and **Group members** lists work the same way. (#371)
@@ -113,6 +135,7 @@ The record is written to `connection.log` beside QuickMail's other settings, is 
 - **Editing a Gmail address no longer discards a deliberate provider choice.** Picking a Gmail entry and then typing the address swapped your choice for the other Gmail entry on the first keystroke, because a Gmail address matches both. A provider that already covers the address you are typing is now left alone. Correcting the address to a different provider still moves off it as before.
 - **An account signing in with Google always shows that in Manage Accounts**, whether or not the setting above is on. Previously the Authentication box could be left blank for such an account, with nothing to say what it was using.
 - **A feature flag written from Settings updates the entry already in `config.ini`** instead of adding a second one in different capitalization beside it, which could leave a setting looking as though it had not taken.
+- **"Show field labels in the rules list" now survives a restart.** The setting saved and applied for the session, but was never written to `config.ini`, so it reverted to off every time QuickMail started. Found while adding the equivalent setting for the message list.
 
 ---
 

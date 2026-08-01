@@ -117,6 +117,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (_screenshotCapture != null)
             _screenshotCapture.EnabledChanged -= OnScreenshotCaptureEnabledChanged;
+        if (_rowLayoutService != null && _onRowLayoutsChanged != null)
+        {
+            _rowLayoutService.LayoutsChanged -= _onRowLayoutsChanged;
+            _onRowLayoutsChanged = null;
+        }
         DrainCts(ref _connectCts);
         DrainCts(ref _folderCts);
         DrainCts(ref _messageLoadCts);
@@ -169,6 +174,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int _messageLoadVersion;
 
     private bool _announceFlagStatus;
+
+    // Spoken field layouts for list rows. Optional so the stub-service test constructors and
+    // --probe runs are unaffected; a null service means "shipped defaults".
+    private readonly IRowLayoutService? _rowLayoutService;
+    private EventHandler? _onRowLayoutsChanged;
+
     private string? _activeFlagFilterId;
     private EventHandler? _onFlagDefinitionsChanged;
     private Action<Guid, bool>? _onReachabilityChanged;
@@ -616,6 +627,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsFilterAllFlagged      => ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId == null;
     public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
     public bool AnnounceFlagStatus      => _announceFlagStatus;
+
+    /// <summary>
+    /// The spoken field layout every list row binds to (see <c>Views.RowSpeech</c>). Assigning a
+    /// new instance and raising PropertyChanged is what pushes a layout change out to rows that
+    /// are already on screen — no reload, no re-fetch, virtualized containers included.
+    /// </summary>
+    public RowSpeechSettings RowSpeech { get; private set; } = RowSpeechSettings.Default;
+
+    /// <summary>Re-reads the layouts and the labels preference and re-speaks every realized row.</summary>
+    public void ReloadRowSpeech()
+    {
+        if (_rowLayoutService is null) return;
+        var showLabels = false;
+        try { showLabels = _configService.Load().MessageListShowFieldLabels; }
+        catch { /* config unreadable — fall back to unlabelled */ }
+        RowSpeech = new RowSpeechSettings(_rowLayoutService.Load(), showLabels);
+        OnPropertyChanged(nameof(RowSpeech));
+    }
     /// <summary>Named-flag sub-filter id, set by saved views. Null = show all flagged messages.</summary>
     public string? ActiveFlagFilterId   => _activeFlagFilterId;
     public string FilterLabel => ActiveFilter switch
@@ -1084,8 +1113,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IContactSyncService? contactSyncService = null,
         IGraphCalendarSyncService? graphCalendarSyncService = null,
         ConnectionTruthProbe? truthProbe = null,
-        IScreenshotCaptureService? screenshotCapture = null)
+        IScreenshotCaptureService? screenshotCapture = null,
+        IRowLayoutService? rowLayoutService = null)
     {
+        _rowLayoutService = rowLayoutService;
         _truthProbe = truthProbe;
         _screenshotCapture = screenshotCapture;
         if (_screenshotCapture != null)
@@ -1156,6 +1187,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _onFlagDefinitionsChanged = (_, _) => _ = OnFlagDefinitionsChangedAsync();
             _flagService.FlagDefinitionsChanged += _onFlagDefinitionsChanged;
+        }
+        if (_rowLayoutService != null)
+        {
+            // Saved on every mutation in the Message List Fields window, so rows re-speak while
+            // it is still open — the user hears the new order without closing anything.
+            _onRowLayoutsChanged = (_, _) => ReloadRowSpeech();
+            _rowLayoutService.LayoutsChanged += _onRowLayoutsChanged;
+            ReloadRowSpeech();
         }
 
         // Load saved views and register their commands before the UI is shown.

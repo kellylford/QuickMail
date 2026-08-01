@@ -62,6 +62,35 @@
 | *(unassigned)* | `theme.apply.{id}` | Theme: [name] — one per available theme |
 | *(unassigned)* | `view.density.comfortable` | Density: Comfortable |
 | *(unassigned)* | `view.density.compact` | Density: Compact |
+| *(unassigned)* | `view.rowFields` | Message List Fields… |
+
+## Message List Fields Window
+
+Opened from **View → Message List Fields…** or the command palette (`view.rowFields`). Left
+unassigned deliberately: like the Flag and Theme managers it is a settings surface, and the
+remaining `Ctrl+Shift` chords are worth more to per-message actions.
+
+The window is **modeless**, so you can leave it open and arrow the message list behind it to hear
+each change immediately. It has no OK/Cancel — every change saves as you make it.
+
+| Key | Action |
+|-----|--------|
+| `F6` / `Shift+F6` | Cycle panes: Row type → Fields → Field options → Spoken preview → Buttons |
+| `Up` / `Down` | Move between fields |
+| `Home` / `End` | First / last field |
+| *letter* | Jump to the next field starting with that letter; repeat to cycle matches |
+| `Space` | Turn the focused field on or off |
+| `Alt+Up` / `Alt+Down` | Move the focused field earlier or later in the spoken order |
+| `Ctrl+Shift+P` | Window-local command palette (move, toggle, reset, labels, close) |
+| `Escape` | Close |
+
+Each row **is** a check box — the real control, so its role and checked state are reported by the
+platform and `Space` toggles natively. That rules out a `ListBox`, whose `ListBoxItem` wrapper
+carries a second copy of the row's name (see `Views/FieldCheckList.cs`); the cost is that
+`Home`/`End` and first-letter navigation, which a `ListBox` provides for free, are implemented on
+that control. First-letter uses QuickMail's own accumulator (`TypeAheadPrefixTracker`), not WPF
+`TextSearch`, which only works on a `Selector` — so this list is **not** a `TypeAheadWiringTests`
+site.
 
 ## Compose Window
 

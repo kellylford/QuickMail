@@ -121,39 +121,6 @@ public class StringToBrushConverter : IValueConverter
         throw new NotSupportedException();
 }
 
-/// <summary>
-/// Builds the accessible name string for a message row, optionally prepending the flag label.
-/// Values: [FlagLabel, ReadStatusLabel, From, Subject, Preview, DateDisplay, AnnounceFlagStatus,
-/// HasAttachments, FolderDisplayName]. The 9th (FolderDisplayName) is appended only in aggregate
-/// views (#423); older 8-value bindings still work (the value is treated as absent).
-/// </summary>
-public class MessageAccessibleNameConverter : IMultiValueConverter
-{
-    public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
-    {
-        if (values.Length < 8) return string.Empty;
-        var flagLabel       = values[0] as string ?? string.Empty;
-        var readStatusLabel = values[1] as string ?? string.Empty;
-        var from            = values[2] as string ?? string.Empty;
-        var subject         = values[3] as string ?? string.Empty;
-        var preview         = values[4] as string ?? string.Empty;
-        var dateDisplay     = values[5] as string ?? string.Empty;
-        var announceFlag    = values[6] is bool b && b;
-        var hasAttachments  = values.Length >= 8 && values[7] is bool ba && ba;
-        // Source folder — set only in aggregate views (#423); empty elsewhere, so it's omitted.
-        var folder          = values.Length >= 9 ? values[8] as string ?? string.Empty : string.Empty;
-        var flagPrefix      = announceFlag && !string.IsNullOrEmpty(flagLabel)
-                                ? flagLabel + ". "
-                                : string.Empty;
-        var attachmentPart = hasAttachments ? "attachments. " : string.Empty;
-        var folderPart     = string.IsNullOrEmpty(folder) ? string.Empty : $" {folder}.";
-        return $"{flagPrefix}{readStatusLabel}. {attachmentPart}{from}. {subject}. {preview}. {dateDisplay}.{folderPart}";
-    }
-
-    public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
-}
-
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
@@ -166,6 +133,8 @@ public partial class MainWindow : Window
     private readonly IProviderCatalog _providerCatalog;
     private readonly IAutoDiscoverService? _autoDiscover;
     private readonly ICommandRegistry _registry;
+    private readonly IRowLayoutService? _rowLayoutService;
+    private RowFieldsWindow? _rowFieldsWindow;
     private bool _webViewReady;
     private CoreWebView2Environment? _webViewEnvironment;
     private readonly TypeAheadPrefixTracker _typeAhead = new();
@@ -267,9 +236,11 @@ public partial class MainWindow : Window
         IServerRuleService? serverRuleService = null,
         IProviderCatalog? providerCatalog = null,
         IAutoDiscoverService? autoDiscover = null,
-        ConnectionTruthProbe? truthProbe = null)
+        ConnectionTruthProbe? truthProbe = null,
+        IRowLayoutService? rowLayoutService = null)
     {
         _vm = vm;
+        _rowLayoutService = rowLayoutService;
         // Optional so existing test constructions keep compiling; a null catalog falls back to the
         // built-in table, which is a pure lookup with no dependencies of its own.
         _providerCatalog = providerCatalog ?? new ProviderCatalog();
@@ -309,6 +280,8 @@ public partial class MainWindow : Window
             _themeService.ThemeChanged += OnThemeChanged;
             vm.ThemeManagerRequested += (_, _) => OpenThemeManager();
         }
+
+        RowFieldsMenuItem.Click += (_, _) => OpenRowFieldsWindow();
 
         vm.ExitRequested += RequestExit;
         vm.StartupConnectCompleted += () => Dispatcher.BeginInvoke(TryProcessPendingActivation);
@@ -1081,6 +1054,13 @@ public partial class MainWindow : Window
         _registry.Register(new CommandDefinition(
             id: "mail.openFlagManager", category: "Mail", title: "Manage Flags…",
             execute: OpenFlagManager));
+
+        // No default gesture: like the Flag and Theme managers, this is reached from its menu item
+        // or the palette. Every free Ctrl+Shift chord is worth more to a per-message action.
+        _registry.Register(new CommandDefinition(
+            id: "view.rowFields", category: "View", title: "Message List Fields…",
+            execute: OpenRowFieldsWindow,
+            description: "Choose which fields message list rows speak, and in what order."));
 
         // Override the VM's mail.delete with one that deletes ALL selected messages.
         // The VM registration uses DeleteMessageCommand, which deletes only SelectedMessage
@@ -2832,6 +2812,51 @@ public partial class MainWindow : Window
             await _vm.SetMessageFlagAsync(msg, picker.ResultFlagId);
     }
 
+    /// <summary>
+    /// Opens the Message List Fields chooser. Modeless (CLAUDE.md's modal-dialog rules: this sits
+    /// over the reading pane's live WebView2), and deliberately so — the user can leave it open,
+    /// reorder, and arrow the list behind it to hear the result immediately.
+    /// </summary>
+    private void OpenRowFieldsWindow()
+    {
+        if (_rowLayoutService == null) return;
+
+        // Modeless, so a second invocation must resurface the existing window rather than
+        // opening a second one that would fight it over the same file.
+        if (_rowFieldsWindow is { IsLoaded: true })
+        {
+            _rowFieldsWindow.Activate();
+            return;
+        }
+
+        var prev = Keyboard.FocusedElement as IInputElement;
+        // Preview the row the user is actually standing on, so the window shows what THIS message
+        // says rather than a synthetic sample that is always flagged and always has an attachment.
+        var sampleRow = CurrentTreeSelection() ?? (object?)_vm.SelectedMessage;
+        var vmRf = new RowFieldsViewModel(_rowLayoutService, _configService, sampleRow);
+        _rowFieldsWindow = new RowFieldsWindow(vmRf) { Owner = this };
+        _rowFieldsWindow.Closed += (_, _) =>
+        {
+            _rowFieldsWindow = null;
+            // Modeless windows do not restore focus for us, and WPF's return-to-owner is not
+            // reliable for virtualized list items.
+            (prev ?? MessageList).Focus();
+        };
+        _rowFieldsWindow.Show();
+    }
+
+    /// <summary>
+    /// Whichever tree row is selected in the current view, or null in the flat list. Used to seed
+    /// the Message List Fields preview with a real row of the kind the user is looking at.
+    /// </summary>
+    private object? CurrentTreeSelection()
+    {
+        if (_vm.IsConversationsView) return ConversationTree.SelectedItem;
+        if (_vm.IsFromView)          return SenderGroupTree.SelectedItem;
+        if (_vm.IsToView)            return ToGroupTree.SelectedItem;
+        return null;
+    }
+
     private void OpenFlagManager()
     {
         if (_flagService == null) return;
@@ -4023,15 +4048,6 @@ public partial class MainWindow : Window
             await _vm.ToggleGroupFlagAsync(cg.Messages);
         else if (fe.Tag is SenderGroup sg)
             await _vm.ToggleGroupFlagAsync(sg.Messages);
-    }
-
-    // Builds the screen-reader announcement string for a single message row.
-    private string MessageSummaryAnnouncement(MailMessageSummary msg)
-    {
-        var flag = _vm.AnnounceFlagStatus && !string.IsNullOrEmpty(msg.FlagLabel)
-            ? msg.FlagLabel + ". "
-            : string.Empty;
-        return $"{flag}{msg.ReadStatusLabel}. {msg.From}. {msg.Subject}. {msg.Preview}. {msg.DateDisplay}.";
     }
 
     // After an async conversation rebuild, selects and focuses the conversation
