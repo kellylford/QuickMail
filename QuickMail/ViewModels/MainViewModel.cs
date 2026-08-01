@@ -2677,6 +2677,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
     }
 
+    // CA1859: the parameter type is fixed by the MessagesRemoved event delegate
+    // (Action<IReadOnlyList<MailMessageSummary>>) this handler is bound to in the ctor — narrowing it
+    // to List<> would break that method-group subscription. The analyzer only flags it because
+    // OnInboxMessagesRemoved (#366 delta path) also calls it directly with a List; that call site can't
+    // dictate the delegate-bound signature.
+#pragma warning disable CA1859
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
         // Build a key→item map once so each removed key is an O(1) lookup
@@ -2728,6 +2734,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         RebuildActiveGroupView();
     }
+#pragma warning restore CA1859
 
     private int _lastRulesMatchCount;
     private DateTime _lastRulesRunTime;
