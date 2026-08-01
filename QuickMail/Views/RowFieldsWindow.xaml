@@ -87,25 +87,29 @@
                    Target="{Binding ElementName=FieldList}"
                    Padding="0" FontWeight="SemiBold" Margin="0,0,0,2"/>
 
-            <!-- The list item is the single focus stop: the check box inside it is not focusable,
-                 so arrowing moves one row at a time and Space toggles the focused row (handled in
-                 code-behind). Each row's accessible name comes from RowFieldRow.ToString(). -->
+            <!-- Each row IS a check box, not a list item that merely contains one. A field's whole
+                 purpose here is on/off, so it gets the real control: the platform reports its role,
+                 its checked state, and every change to that state, and Space toggles natively. The
+                 ListBoxItem containers are Focusable=False so the check boxes are the arrow stops —
+                 one stop per row, and it is the control the user actually needs. -->
             <ListBox x:Name="FieldList"
                      Grid.Row="1" Grid.Column="0"
                      ItemsSource="{Binding Fields}"
                      SelectedItem="{Binding SelectedField, Mode=TwoWay}"
                      KeyboardNavigation.TabNavigation="Once"
+                     KeyboardNavigation.DirectionalNavigation="Contained"
                      AutomationProperties.Name="Fields">
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
                         <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Focusable" Value="False"/>
                     </Style>
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <CheckBox IsChecked="{Binding Enabled, Mode=TwoWay}"
                                   Content="{Binding DisplayName}"
-                                  Focusable="False"
+                                  GotKeyboardFocus="FieldCheckBox_GotKeyboardFocus"
                                   VerticalAlignment="Center"/>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -163,6 +167,30 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
+
+                    <!-- Overlap guidance, e.g. Status (combined) vs the separate Unread field.
+                         Focusable so it is reachable in the options pane rather than being
+                         visual-only text a keyboard user never lands on. -->
+                    <TextBox x:Name="FieldNoteBox"
+                             Text="{Binding SelectedFieldNote, Mode=OneWay}"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             Margin="0,8,0,0"
+                             FontSize="{DynamicResource Theme.FontSizeSmall}"
+                             AutomationProperties.Name="About this field">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Setter Property="Visibility" Value="Visible"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding SelectedFieldNote}" Value="">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
 
                     <Separator Margin="0,12,0,8"/>
 

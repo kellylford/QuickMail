@@ -2830,7 +2830,10 @@ public partial class MainWindow : Window
         }
 
         var prev = Keyboard.FocusedElement as IInputElement;
-        var vmRf = new RowFieldsViewModel(_rowLayoutService, _configService);
+        // Preview the row the user is actually standing on, so the window shows what THIS message
+        // says rather than a synthetic sample that is always flagged and always has an attachment.
+        var sampleRow = CurrentTreeSelection() ?? (object?)_vm.SelectedMessage;
+        var vmRf = new RowFieldsViewModel(_rowLayoutService, _configService, sampleRow);
         _rowFieldsWindow = new RowFieldsWindow(vmRf) { Owner = this };
         _rowFieldsWindow.Closed += (_, _) =>
         {
@@ -2840,6 +2843,18 @@ public partial class MainWindow : Window
             (prev ?? MessageList).Focus();
         };
         _rowFieldsWindow.Show();
+    }
+
+    /// <summary>
+    /// Whichever tree row is selected in the current view, or null in the flat list. Used to seed
+    /// the Message List Fields preview with a real row of the kind the user is looking at.
+    /// </summary>
+    private object? CurrentTreeSelection()
+    {
+        if (_vm.IsConversationsView) return ConversationTree.SelectedItem;
+        if (_vm.IsFromView)          return SenderGroupTree.SelectedItem;
+        if (_vm.IsToView)            return ToGroupTree.SelectedItem;
+        return null;
     }
 
     private void OpenFlagManager()

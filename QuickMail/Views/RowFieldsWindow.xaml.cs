@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using QuickMail.Models;
 using QuickMail.Services;
 using QuickMail.ViewModels;
@@ -40,8 +41,10 @@ public partial class RowFieldsWindow : Window
         Loaded += (_, _) =>
         {
             FocusPane(FieldList);
+            // Only the non-obvious gesture. Space on a check box is standard and the platform
+            // reports the result, so saying so here would be telling the user what they know.
             AccessibilityHelper.Announce(this,
-                "Use Alt+Up and Alt+Down to reorder. Space turns a field on or off.",
+                "Use Alt+Up and Alt+Down to reorder.",
                 interrupt: false, category: AnnouncementCategory.Hint);
         };
     }
@@ -79,16 +82,20 @@ public partial class RowFieldsWindow : Window
         if (_vm.SelectedField is { } field) field.Enabled = !field.Enabled;
     }
 
+    /// <summary>
+    /// The rows are real check boxes, so keyboard focus lands on the check box rather than on the
+    /// ListBoxItem. Selection has to follow it, because Move Up/Down act on the selected field.
+    /// </summary>
+    private void FieldCheckBox_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: RowFieldRow row })
+            _vm.SelectedField = row;
+    }
+
     private void FieldList_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // The check box inside each row is deliberately not focusable, so the row itself is the
-        // single arrow stop; Space has to do the toggling that the check box would.
-        if (e.Key == Key.Space && Keyboard.Modifiers == ModifierKeys.None)
-        {
-            ToggleSelectedField();
-            e.Handled = true;
-            return;
-        }
+        // Space is deliberately NOT handled here: the check box toggles itself, and the platform
+        // reports that state change. Intercepting it would mean re-announcing what is already said.
 
         // Reorder without leaving the list.
         if (Keyboard.Modifiers == ModifierKeys.Alt && e.SystemKey is Key.Up or Key.Down)
@@ -143,18 +150,39 @@ public partial class RowFieldsWindow : Window
         FocusPane(panes[next]);
     }
 
-    private static void FocusPane(UIElement pane)
+    private void FocusPane(UIElement pane)
     {
-        pane.Focus();
-        if (pane is ListBox list && list.Items.Count > 0 &&
-            list.ItemContainerGenerator.ContainerFromIndex(
-                list.SelectedIndex >= 0 ? list.SelectedIndex : 0) is IInputElement item)
+        if (ReferenceEquals(pane, FieldList))
         {
-            item.Focus();
+            FocusFieldRow(FieldList.SelectedIndex >= 0 ? FieldList.SelectedIndex : 0);
             return;
         }
+        pane.Focus();
         if (pane is ComboBox or TextBox) return;   // focusable in their own right
         pane.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+    }
+
+    /// <summary>
+    /// Focuses a field row's check box. The ListBoxItem containers are Focusable=False so that each
+    /// row's real control is the arrow stop, which means focus has to be placed on the check box
+    /// inside the container rather than on the container itself.
+    /// </summary>
+    private void FocusFieldRow(int index)
+    {
+        if (index < 0 || index >= FieldList.Items.Count) return;
+        FieldList.UpdateLayout();
+        if (FieldList.ItemContainerGenerator.ContainerFromIndex(index) is not DependencyObject c) return;
+        if (FindCheckBox(c) is { } box) box.Focus();
+    }
+
+    private static CheckBox? FindCheckBox(DependencyObject root)
+    {
+        if (root is CheckBox cb) return cb;
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            if (FindCheckBox(VisualTreeHelper.GetChild(root, i)) is { } found) return found;
+        }
+        return null;
     }
 
     /// <summary>
@@ -162,13 +190,8 @@ public partial class RowFieldsWindow : Window
     /// selected row so keyboard focus follows the field rather than staying at the old position.
     /// </summary>
     private void FocusSelectedFieldContainer() =>
-        Dispatcher.InvokeAsync(() =>
-        {
-            if (FieldList.SelectedIndex < 0) return;
-            if (FieldList.ItemContainerGenerator.ContainerFromIndex(FieldList.SelectedIndex)
-                is IInputElement container)
-                container.Focus();
-        }, System.Windows.Threading.DispatcherPriority.Input);
+        Dispatcher.InvokeAsync(() => FocusFieldRow(FieldList.SelectedIndex),
+            System.Windows.Threading.DispatcherPriority.Input);
 
     private void OpenCommandPalette()
     {

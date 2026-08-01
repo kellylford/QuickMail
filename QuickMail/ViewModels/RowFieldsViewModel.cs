@@ -77,16 +77,29 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     private readonly IRowLayoutService _rowLayoutService;
     private readonly IConfigService _configService;
 
+    /// <summary>
+    /// The row the user had selected when the window opened, so the preview shows what THAT message
+    /// would say. A synthetic sample is flagged, has an attachment and a source folder — none of
+    /// which most real rows have — so previewing one made the window look inconsistent with what
+    /// the list actually said.
+    /// </summary>
+    private readonly object? _sampleRow;
+
     private RowLayouts _layouts;
     private bool _suppressSave;
 
     /// <summary>Raised when the view should speak something. The View owns the announcement call.</summary>
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
 
-    public RowFieldsViewModel(IRowLayoutService rowLayoutService, IConfigService configService)
+    /// <param name="sampleRow">
+    /// The currently selected message (or group) to preview. Null falls back to a synthetic sample.
+    /// </param>
+    public RowFieldsViewModel(IRowLayoutService rowLayoutService, IConfigService configService,
+        object? sampleRow = null)
     {
         _rowLayoutService = rowLayoutService;
         _configService    = configService;
+        _sampleRow        = sampleRow;
 
         _layouts = _rowLayoutService.Load();
 
@@ -126,6 +139,8 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
     private RowFieldRow? _selectedField;
+
+    partial void OnSelectedFieldChanged(RowFieldRow? value) => UpdateSelectedFieldNote();
 
     public bool HasSelection    => SelectedField is not null;
     public bool SelectedIsState => SelectedField?.IsState == true;
@@ -180,6 +195,43 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     [ObservableProperty]
     private string _preview = string.Empty;
 
+    /// <summary>
+    /// Guidance about the selected field, shown in the options pane. Its main job is the overlap
+    /// between "Status (combined)" and the separate Unread/Replied/Forwarded fields: both produce
+    /// the word "unread", so turning one on while the other is already on says it twice, and
+    /// turning one on without turning the other off looks like the setting did nothing.
+    /// </summary>
+    [ObservableProperty]
+    private string _selectedFieldNote = string.Empty;
+
+    // Fields that say the same thing as "status", and therefore double up with it.
+    private static readonly string[] StatusParts = ["unread", "replied", "forwarded"];
+
+    private void UpdateSelectedFieldNote()
+    {
+        if (SelectedField is not { } field) { SelectedFieldNote = string.Empty; return; }
+
+        bool StatusOn() => Fields.Any(f => f.Id == "status" && f.Enabled);
+        bool AnyPartOn() => Fields.Any(f => StatusParts.Contains(f.Id) && f.Enabled);
+
+        SelectedFieldNote = field.Id switch
+        {
+            "status" when AnyPartOn() =>
+                "Says one word: replied, forwarded, unread, or read. Unread, Replied or Forwarded "
+                + "is also on, so that word is said twice — turn this off to use those instead.",
+
+            "status" =>
+                "Says one word: replied, forwarded, unread, or read. Turn it off if you would "
+                + "rather place Unread, Replied and Forwarded separately.",
+
+            _ when StatusParts.Contains(field.Id) && StatusOn() =>
+                "Status (combined) is also on and already says this, so it is said twice. "
+                + "Turn Status (combined) off to use this field on its own.",
+
+            _ => string.Empty,
+        };
+    }
+
     // ── commands ──────────────────────────────────────────────────────────────
 
     [RelayCommand(CanExecute = nameof(CanMoveUp))]
@@ -202,7 +254,10 @@ public sealed partial class RowFieldsViewModel : ObservableObject
         SaveLayouts();
         UpdatePreview();
 
-        Announce($"Moved {(delta < 0 ? "up" : "down")}. Position {to + 1} of {Fields.Count}.",
+        // Say when the field being moved is off. Moving a field that is not spoken changes nothing
+        // you can hear, and without this the move reads as though it did something.
+        var offNote = field.Enabled ? string.Empty : " Not spoken.";
+        Announce($"Moved {(delta < 0 ? "up" : "down")}. Position {to + 1} of {Fields.Count}.{offNote}",
                  AnnouncementCategory.Result);
     }
 
@@ -267,12 +322,34 @@ public sealed partial class RowFieldsViewModel : ObservableObject
     {
         var kind   = SelectedRowKind.Kind;
         var layout = Fields.Select(f => f.ToSetting()).ToList();
-        var text   = RowSpeechBuilder.Build(kind, SampleValues(kind), layout, ShowFieldLabels);
+        var text   = RowSpeechBuilder.Build(kind, ValuesForPreview(kind), layout, ShowFieldLabels);
 
         Preview = string.IsNullOrEmpty(text)
-            ? "Nothing selected — this row would be silent."
+            ? "No fields turned on — this row would be silent."
             : text;
+
+        UpdateSelectedFieldNote();
     }
+
+    /// <summary>
+    /// The real selected row when it matches the row type being edited, otherwise the synthetic
+    /// sample. Editing conversation-group fields while a message is selected still needs something
+    /// to show, and vice versa.
+    /// </summary>
+    private object?[] ValuesForPreview(RowKind kind)
+    {
+        if (_sampleRow is not null && MatchesKind(_sampleRow, kind))
+            return RowFieldCatalog.ValuesFor(kind, _sampleRow);
+        return SampleValues(kind);
+    }
+
+    private static bool MatchesKind(object row, RowKind kind) => kind switch
+    {
+        RowKind.Message      => row is MailMessageSummary,
+        RowKind.Conversation => row is ConversationGroup,
+        RowKind.SenderGroup  => row is SenderGroup,
+        _ => false,
+    };
 
     /// <summary>
     /// A synthetic row that exercises every field, so turning any of them on shows something.

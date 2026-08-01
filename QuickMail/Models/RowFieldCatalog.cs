@@ -160,6 +160,20 @@ public static class RowFieldCatalog
         For(kind).FirstOrDefault(f => f.Id == id);
 
     /// <summary>
+    /// Reads a real row object's values positionally, in the same order <c>Views.RowSpeech</c> binds
+    /// them — so the Message List Fields preview can show what an actual message would say rather
+    /// than a synthetic sample. Reflection is fine here: this runs once per preview refresh, never
+    /// per rendered row (those go through real bindings).
+    /// </summary>
+    public static object?[] ValuesFor(RowKind kind, object item)
+    {
+        var type = item.GetType();
+        return For(kind)
+            .Select(f => type.GetProperty(f.BindingPath)?.GetValue(item))
+            .ToArray();
+    }
+
+    /// <summary>
     /// The property paths <c>Views.RowSpeech</c> binds, in canonical order. The converter
     /// receives the values positionally in exactly this order.
     /// </summary>
