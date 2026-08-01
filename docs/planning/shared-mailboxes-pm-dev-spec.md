@@ -220,11 +220,17 @@ shipping a feature that breaks in ~2 months. Manual add-by-address is the v1 pat
   (principle 4). Add-flow errors reuse the existing Result path; send reuses the existing
   *"Message sent"* Result. The Graph poll-interval caveat is **static dialog text**, not an
   announce.
-- **F6 ring.** **No new main-window pane** — the shared mailbox lives in the existing Folders
-  (2) and Accounts (1) panes. The **add dialog is a new `Window`** and carries its own ring:
-  F6/Shift+F6 pane stops (Address → Parent → buttons), a `Ctrl+Shift+P` local palette,
-  a `CancellationTokenSource` for the (optional) parent-capability check, and explicit focus
-  restoration on close.
+- **F6 ring & command palette — deliberately none on the add dialog.** **No new main-window
+  pane** — the shared mailbox lives in the existing Folders (2) and Accounts (1) panes. The
+  **add dialog is a new `Window` but a leaf single-form dialog** (Address → Parent →
+  Add/Cancel — one linear Tab group, no distinct panes to cycle between), so it gets **no F6
+  ring and no `Ctrl+Shift+P` command palette**. This is a deliberate New-Window-Checklist
+  exception, identical to the `ServerRuleEditorWindow` decision (#333): F6 has nothing to jump
+  between on a single form, and a palette would only duplicate the two visible buttons. What
+  the dialog *does* take from the checklist: `Show()` not `ShowDialog()` (the modal rule
+  below), explicit Escape/Cancel wiring, focus restoration on close, and a
+  `CancellationTokenSource` **only if** it performs async work (e.g. a parent-capability
+  check) — purely synchronous validation needs none.
 - **Modal rule.** The add dialog has an editable TextBox and can open over a live WebView2 →
   **`Show()` (modeless)**, Escape/Cancel wired explicitly (the GrabAddresses lesson).
 - **Selector test.** The Parent-account combo binds `AccountModel` (`ToString()` overridden,
