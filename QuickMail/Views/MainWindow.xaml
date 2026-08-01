@@ -613,6 +613,13 @@
             <MenuItem Header="_Help">
                 <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"
                           Command="{Binding OpenUpdatePageCommand}"/>
+                <!-- Only on an ARM64 PC running the x64 build: nothing migrates an install
+                     across architectures, so this entry is how those users find the native
+                     build. Hidden everywhere else. -->
+                <MenuItem Header="Get the _ARM Version"
+                          AutomationProperties.Name="Get the ARM Version"
+                          Visibility="{Binding IsNativeArmAvailable, Converter={StaticResource BoolToVisibilityConverter}}"
+                          Command="{Binding OpenArmDownloadPageCommand}"/>
                 <Separator/>
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"

@@ -276,6 +276,12 @@ public class ConfigModel
     /// means an update was applied since; used to trigger the update-installed dialog.</summary>
     public string LastRunVersion { get; set; } = string.Empty;
 
+    /// <summary>The app version for which the "a native ARM build is available" notice was last
+    /// announced, so an x64 copy running on an ARM64 device mentions it once per version rather
+    /// than at every launch (issue #18). Empty until the notice has been announced. The Help
+    /// menu entry stays available regardless, so the notice never needs repeating to be found.</summary>
+    public string NativeArmNoticeVersion { get; set; } = string.Empty;
+
     // ── Windowing (Phase 6) ───────────────────────────────────────────────────────
 
     /// <summary>Tab and window management preferences.</summary>

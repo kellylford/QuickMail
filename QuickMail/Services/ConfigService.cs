@@ -280,6 +280,7 @@ public class ConfigService : IConfigService
                     case "autoupdate":              config.AutoUpdate              = ParseBool(value); break;
                     case "showupdateinstalledalerts": config.ShowUpdateInstalledAlerts = ParseBool(value); break;
                     case "lastrunversion":          config.LastRunVersion          = value; break;
+                    case "nativearmnoticeversion":  config.NativeArmNoticeVersion  = value; break;
                     case "defaultcomposemode":
                         config.DefaultComposeMode = value.ToLowerInvariant() switch
                         {
@@ -606,6 +607,12 @@ public class ConfigService : IConfigService
         sb.AppendLine($"LastRunVersion = {config.LastRunVersion}");
         sb.AppendLine("# The app version recorded on the previous run. Maintained automatically;");
         sb.AppendLine("# used to detect that an update was applied.");
+        sb.AppendLine();
+
+        sb.AppendLine($"NativeArmNoticeVersion = {config.NativeArmNoticeVersion}");
+        sb.AppendLine("# The version for which the \"a native ARM build is available\" notice was");
+        sb.AppendLine("# announced. Maintained automatically; only used on ARM devices running the");
+        sb.AppendLine("# regular build. Clear it to hear the notice again.");
         sb.AppendLine();
 
         sb.AppendLine($"DefaultComposeMode = {config.DefaultComposeMode switch

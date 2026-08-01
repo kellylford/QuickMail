@@ -71,7 +71,9 @@ Versions before 0.8.0 used a different installer, so moving onto the self-updati
 
 ### Moving to the ARM version on a Snapdragon PC
 
-If you have been running the regular QuickMail on a Snapdragon PC, you can switch to the ARM version to get better speed and battery life. QuickMail will not make this switch for you — automatic updates stay on the version you installed — so it is a one-time manual change:
+If you have been running the regular QuickMail on a Snapdragon PC, you can switch to the ARM version to get better speed and battery life. QuickMail will not make this switch for you — automatic updates stay on the version you installed — so it is a one-time manual change.
+
+QuickMail mentions this once when it notices it is running on an ARM PC, and the **Help** menu then keeps a **Get the ARM Version** entry that takes you to the download page. That entry appears only on ARM PCs running the regular build; you can also reach it from the command palette. To switch:
 
 1. Uninstall QuickMail from **Settings → Apps**. When the uninstaller offers to delete your data, choose **No**.
 2. Download and run **QuickMail-win-arm64.msi** from the [releases page](https://github.com/kellylford/QuickMail/releases).
