@@ -63,11 +63,15 @@ One thing to know if you use Gmail: the guide now recommends creating a Gmail la
 
 Every row in a message list is read as one line — sender, subject, date, and so on — and until now that line was fixed. **View → Message List Fields…** lets you decide which pieces are spoken and where each one falls.
 
-Check a field to include it, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** to move it. A **Spoken preview** box shows a sample row exactly as it would be read, updating as you go. There is no OK or Cancel — changes take effect as you make them, and the window is modeless, so you can leave it open, arrow through the list behind it, and hear the result.
+Every field is a check box. Check one to include it, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** to move it. **Home** and **End** go to the first and last field, and typing a letter jumps to the next field starting with it. Moving a field that is switched off says so, since that changes nothing you can hear.
+
+A **Spoken preview** box shows the message you had selected when you opened the window, read exactly as the list would read it, updating as you go. There is no OK or Cancel — changes take effect as you make them, and the window is modeless, so you can leave it open, arrow through the list behind it, and hear the result.
 
 Each kind of row keeps its own arrangement: individual **messages**, **conversation groups**, and **sender and recipient groups**.
 
 **Status is no longer one lump.** It used to be a single word — "replied", "forwarded", "unread", or "read" — that you could take or leave. **Unread**, **Replied**, and **Forwarded** are now separate fields you can place independently, and each offers **Speak only when true** or **Always speak**. So "tell me about unread but never say read" is: turn **Status (combined)** off, turn **Unread** on, leave it on *Speak only when true*. The same applies to **Attachments**, which can now sit anywhere in the line rather than in the middle of it.
+
+Because **Status (combined)** and **Unread** both produce the word "unread", turning one on while the other is already on says it twice. Selecting either field explains what the other is doing, so the two do not quietly fight.
 
 Other fields you can now add: **To**, **Mailing list**, and **Source folder** — the last one already appears in aggregate views like All Archive, and is now yours to move or remove.
 
@@ -131,6 +135,7 @@ The record is written to `connection.log` beside QuickMail's other settings, is 
 - **Editing a Gmail address no longer discards a deliberate provider choice.** Picking a Gmail entry and then typing the address swapped your choice for the other Gmail entry on the first keystroke, because a Gmail address matches both. A provider that already covers the address you are typing is now left alone. Correcting the address to a different provider still moves off it as before.
 - **An account signing in with Google always shows that in Manage Accounts**, whether or not the setting above is on. Previously the Authentication box could be left blank for such an account, with nothing to say what it was using.
 - **A feature flag written from Settings updates the entry already in `config.ini`** instead of adding a second one in different capitalization beside it, which could leave a setting looking as though it had not taken.
+- **"Show field labels in the rules list" now survives a restart.** The setting saved and applied for the session, but was never written to `config.ini`, so it reverted to off every time QuickMail started. Found while adding the equivalent setting for the message list.
 
 ---
 
