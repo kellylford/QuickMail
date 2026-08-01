@@ -31,6 +31,30 @@ namespace QuickMail.Tests;
 [Collection("WpfTests")]
 public class SelectorItemAccessibilityTests
 {
+    /// <summary>
+    /// MainWindow's item container styles use <c>BasedOn="{StaticResource {x:Type ListViewItem}}"</c>,
+    /// which resolves against the implicit styles in ThemedControls — merged at runtime by
+    /// ThemeService before the first window is created. Without them the XAML fails to parse with
+    /// "Cannot find resource named 'System.Windows.Controls.ListViewItem'".
+    /// </summary>
+    private static void EnsureThemedApplication()
+    {
+        lock (typeof(Application))
+        {
+            if (Application.Current == null)
+                new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        }
+
+        var app = Application.Current!;
+        foreach (var style in new[] { "AccessibleStyles", "ThemedControls" })
+        {
+            var uri = new Uri($"pack://application:,,,/QuickMail;component/Styles/{style}.xaml",
+                UriKind.Absolute);
+            if (app.Resources.MergedDictionaries.All(d => d.Source != uri))
+                app.Resources.MergedDictionaries.Add(new ResourceDictionary { Source = uri });
+        }
+    }
+
     // End-to-end: the actual reported control. Reads the real UIA item peer names a
     // screen reader would speak — this is what the reviews never checked.
     [StaFact]
@@ -172,6 +196,134 @@ public class SelectorItemAccessibilityTests
             Assert.Contains("Newsletters, IdeaPlace", names);
         }
         finally { window.Close(); }
+    }
+
+    // The composed spoken string must land on the row CONTAINER — the element a screen reader lands
+    // on when arrowing the list. RowSpeech.Kind installs that binding from a Style setter; if it
+    // were ever moved to a DataTemplate the name would attach to the wrong element and every row
+    // would go silent, which looks completely fine on screen. Reads the live item peer name.
+    //
+    // Deliberately a bare ListView carrying the same setter rather than the real MainWindow:
+    // showing MainWindow brings up WebView2, the tray icon and timers on the test's STA thread,
+    // which is the HwndSubclass teardown crash this class's header warns about (#211). What
+    // MainWindow contributes — that the setter is present on all six row styles — is covered
+    // without a window by MessageRowStyles_AllCarryTheRowSpeechSetter below.
+    [StaFact]
+    public void RowSpeech_PutsTheComposedStringOnTheRowContainer()
+    {
+        var msg = new MailMessageSummary
+        {
+            From = "Chris Lee", Subject = "Budget review", To = "Sales Team",
+            Date = DateTimeOffset.Now, IsRead = false, Preview = "Lunch tomorrow?",
+            HasAttachments = true, FolderDisplayName = "Work — Archive",
+        };
+
+        var style = new Style(typeof(ListViewItem));
+        style.Setters.Add(new Setter(RowSpeech.KindProperty, RowKind.Message));
+
+        var list = new ListView { ItemsSource = new[] { msg }, ItemContainerStyle = style };
+
+        // RowSpeech binds the layout via RelativeSource=Window, so the list needs a Window ancestor
+        // whose DataContext exposes RowSpeech — exactly as MainWindow's does.
+        var window = new Window
+        {
+            WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+            Width = 600, Height = 200, Content = list,
+            DataContext = new RowSpeechHost(),
+        };
+        window.Show();
+        try
+        {
+            list.UpdateLayout();
+            DrainDispatcher();
+
+            // ListView's item peer type varies with GridView, so read every child peer's name
+            // rather than filtering on a concrete peer type.
+            var name = (UIElementAutomationPeer.CreatePeerForElement(list).GetChildren() ?? [])
+                .Select(p => p.GetName())
+                .FirstOrDefault(n => !string.IsNullOrWhiteSpace(n));
+
+            Assert.False(string.IsNullOrWhiteSpace(name),
+                "The message row has no accessible name — RowSpeech did not bind the container.");
+
+            // The shipped default order, including #423's source folder last. The date comes from
+            // the message itself — recomputing "now" here races the clock across a minute boundary.
+            Assert.Equal(
+                "unread. attachments. Chris Lee. Budget review. Lunch tomorrow?. " +
+                $"{msg.DateDisplay}. Work — Archive.",
+                name);
+
+            // The row must NOT be announced as its type name — the failure mode this class exists for.
+            Assert.DoesNotContain("QuickMail.", name!, StringComparison.Ordinal);
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>Stands in for MainViewModel as the window DataContext RowSpeech binds through.</summary>
+    private sealed class RowSpeechHost
+    {
+        public RowSpeechSettings RowSpeech { get; } = RowSpeechSettings.Default;
+    }
+
+    // Every message-list row style in MainWindow must carry the RowSpeech.Kind setter, with the
+    // right kind. Constructing MainWindow (never showing it) is the same safe pattern XamlParseTests
+    // uses; this is what catches a row style that was added, or edited, without its spoken name.
+    [StaFact]
+    public void MessageRowStyles_AllCarryTheRowSpeechSetter()
+    {
+        EnsureThemedApplication();
+
+        var imap     = new StubImapMailService();
+        var accounts = new StubAccountService();
+        var creds    = new StubCredentialService();
+        var store    = new StubLocalStoreService();
+        var config   = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(),
+            new StubSyncService(), config, registry, new StubViewService(), new StubRuleService(),
+            new StubSmtpService(), rowLayoutService: new StubRowLayoutService());
+
+        var window = new MainWindow(vm, new StubSmtpService(), accounts, creds, imap,
+            new StubOAuthService(), registry, new StubContactService(), config, store,
+            new StubViewService(), new StubRuleService(), new StubTemplateService(),
+            new StubFeatureGate());
+        try
+        {
+            // Flat message list.
+            var flat = (window.FindName("MessageList") as ListView)?.ItemContainerStyle;
+            Assert.NotNull(flat);
+            Assert.Equal(RowKind.Message, KindOf(flat!));
+
+            // Each tree contributes two styles: its own ItemContainerStyle names the group header
+            // rows, and a keyed style in its Resources names the level-2 message rows. The To tree
+            // reuses the SenderGroup layout, since its rows are SenderGroup objects.
+            foreach (var (treeName, styleKey, groupKind) in new[]
+            {
+                ("ConversationTree",  "MessageTreeItemStyle",       RowKind.Conversation),
+                ("SenderGroupTree",   "SenderMessageTreeItemStyle", RowKind.SenderGroup),
+                ("ToGroupTree",       "ToMessageTreeItemStyle",     RowKind.SenderGroup),
+            })
+            {
+                var tree = window.FindName(treeName) as TreeView;
+                Assert.NotNull(tree);
+
+                Assert.NotNull(tree!.ItemContainerStyle);
+                Assert.Equal(groupKind, KindOf(tree.ItemContainerStyle));
+
+                // Declared inside <TreeView.Resources>, so it is not reachable from the window.
+                var messageStyle = tree.Resources[styleKey] as Style;
+                Assert.NotNull(messageStyle);
+                Assert.Equal(RowKind.Message, KindOf(messageStyle!));
+            }
+        }
+        finally { window.Close(); }
+
+        static RowKind? KindOf(Style style) => style.Setters
+            .OfType<Setter>()
+            .Where(s => s.Property == RowSpeech.KindProperty)
+            .Select(s => s.Value as RowKind?)
+            .FirstOrDefault();
     }
 
     [Fact]

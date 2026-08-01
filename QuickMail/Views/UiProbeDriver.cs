@@ -141,8 +141,12 @@ internal sealed class UiProbeDriver
                 return await CaptureChildWindowAsync(() => ExecuteCommand("view.folderPicker"),
                     w => w is FolderPickerWindow, path);
 
+            case "row-fields":
+                return await CaptureChildWindowAsync(() => ExecuteCommand("view.rowFields"),
+                    w => w is RowFieldsWindow, path);
+
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, command-palette, folder-picker.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }
