@@ -91,6 +91,26 @@ jobs:
         # (PublishSingleFile, SelfContained, ReadyToRun) still comes from the csproj.
         run: dotnet publish QuickMail/QuickMail.csproj -c Release -r win-${{ matrix.arch }} -o publish/ -warnaserror
 
+      # Assert the exe really is the architecture this leg asked for, by reading the PE
+      # header's machine field. A mismatch here would ship an x64 binary inside an
+      # -arm64 installer: it installs, and it runs under emulation, so nothing else in
+      # the pipeline — or in ordinary use of the app — would reveal it.
+      - name: Verify published architecture
+        shell: pwsh
+        run: |
+          $fs = [System.IO.File]::OpenRead('publish/QuickMail.exe')
+          try {
+            $br = New-Object System.IO.BinaryReader($fs)
+            $fs.Position = 0x3c
+            $fs.Position = $br.ReadInt32() + 4   # PE signature offset, then skip "PE\0\0"
+            $machine = $br.ReadUInt16()
+          } finally { $fs.Dispose() }
+          $want = if ('${{ matrix.arch }}' -eq 'arm64') { 0xAA64 } else { 0x8664 }
+          if ($machine -ne $want) {
+            throw "publish/QuickMail.exe has PE machine 0x$('{0:X4}' -f $machine); expected 0x$('{0:X4}' -f $want) for ${{ matrix.arch }}."
+          }
+          Write-Host "publish/QuickMail.exe -> 0x$('{0:X4}' -f $machine) OK for ${{ matrix.arch }}"
+
       - name: Install vpk
         run: dotnet tool install -g vpk
 

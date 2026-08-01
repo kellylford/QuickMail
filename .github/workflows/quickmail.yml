@@ -300,6 +300,38 @@ jobs:
       - name: Publish (ARM64)
         run: dotnet publish QuickMail/QuickMail.csproj -c Release -r win-arm64 -o publish-arm64/ -warnaserror
 
+      # Assert each executable really is the architecture its filename claims, by reading
+      # the PE header's machine field. This exists because the two publishes share bin/
+      # and obj/ (AppendRuntimeIdentifierToOutputPath is off) and run back to back in one
+      # workspace: if that ever produced a stale or cross-contaminated binary, an x64 exe
+      # would ship inside QuickMail-<v>-win-arm64.msi. It would install, and it would run
+      # under emulation, so every downstream check — tests, smoke, even using the app —
+      # would pass while the entire feature silently did nothing. Nothing else in the
+      # pipeline can catch that.
+      - name: Verify published architectures
+        shell: pwsh
+        run: |
+          function Get-PEMachine($path) {
+            $fs = [System.IO.File]::OpenRead($path)
+            try {
+              $br = New-Object System.IO.BinaryReader($fs)
+              $fs.Position = 0x3c
+              $fs.Position = $br.ReadInt32() + 4   # PE signature offset, then skip "PE\0\0"
+              return $br.ReadUInt16()
+            } finally { $fs.Dispose() }
+          }
+          $expected = @{ 'publish/QuickMail.exe' = 0x8664; 'publish-arm64/QuickMail.exe' = 0xAA64 }
+          $names    = @{ 0x8664 = 'x64'; 0xAA64 = 'ARM64'; 0x14C = 'x86' }
+          foreach ($path in $expected.Keys) {
+            $actual = Get-PEMachine $path
+            $want   = $expected[$path]
+            $shown  = if ($names.ContainsKey([int]$actual)) { $names[[int]$actual] } else { 'unknown' }
+            if ($actual -ne $want) {
+              throw "$path is $shown (0x$('{0:X4}' -f $actual)); expected $($names[$want]) (0x$('{0:X4}' -f $want))."
+            }
+            Write-Host "$path -> $shown  OK"
+          }
+
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
@@ -407,6 +439,7 @@ jobs:
             --instWelcome installer/velopack/welcome.txt `
             --instLicense installer/velopack/license.txt `
             --instConclusion installer/velopack/conclusion.txt
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE." }
           # vpk always emits the MSI as QuickMail-win.msi with no version in the name, so a
           # downloaded installer is indistinguishable from any other version on disk. Rename
           # it to carry the release version (e.g. QuickMail-0.8.2-win.msi) so users can tell
