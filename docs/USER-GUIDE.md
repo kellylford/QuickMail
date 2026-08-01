@@ -1420,7 +1420,7 @@ Open it and you get a list of every available field, each one a real check box. 
 
 | Key | Action |
 |-----|--------|
-| `Up` / `Down` | Move between fields |
+| `Up` / `Down` | Move between fields; stops at the first and last one |
 | `Space` | Turn the focused field on or off |
 | `Alt+Up` / `Alt+Down` | Move the focused field earlier or later in the spoken order |
 | `Home` / `End` | First / last field |

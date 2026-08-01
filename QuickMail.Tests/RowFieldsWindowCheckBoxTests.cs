@@ -179,6 +179,92 @@ public class RowFieldsWindowCheckBoxTests
         finally { CloseAndReleaseFocus(window); }
     }
 
+    // ── Arrow keys stop at the ends (#459) ────────────────────────────────────
+    //
+    // Arrow navigation between the rows is WPF's directional navigation, so the tests drive
+    // MoveFocus with the same TraversalRequest the arrow keys produce — deterministic, and not
+    // gated behind QUICKMAIL_RUN_INPUT_TESTS. The list is Contained, not Cycle: this is a list,
+    // and arrowing past its first or last item must stop rather than wrap.
+
+    private static bool Arrow(CheckBox from, FocusNavigationDirection direction) =>
+        from.MoveFocus(new TraversalRequest(direction));
+
+    [StaFact]
+    public void DownArrow_OnTheLastField_StaysOnIt()
+    {
+        var (window, _) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+            var boxes = RowCheckBoxes(list);
+            var last = boxes.Length - 1;
+
+            boxes[last].Focus();
+            DrainDispatcher();
+            Arrow(boxes[last], FocusNavigationDirection.Down);
+            DrainDispatcher();
+
+            Assert.Equal(last, list.FocusedIndex());
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    [StaFact]
+    public void UpArrow_OnTheFirstField_StaysOnIt()
+    {
+        var (window, _) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+            var boxes = RowCheckBoxes(list);
+
+            boxes[0].Focus();
+            DrainDispatcher();
+            Arrow(boxes[0], FocusNavigationDirection.Up);
+            DrainDispatcher();
+
+            Assert.Equal(0, list.FocusedIndex());
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    /// <summary>
+    /// The other half of the fix: stopping at the ends must not have stopped arrows working in
+    /// between, and it must not have stranded focus outside the list either.
+    /// </summary>
+    [StaFact]
+    public void ArrowsStillMoveBetweenAdjacentFields()
+    {
+        var (window, vm) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+            var boxes = RowCheckBoxes(list);
+
+            boxes[0].Focus();
+            DrainDispatcher();
+            Arrow(boxes[0], FocusNavigationDirection.Down);
+            DrainDispatcher();
+            Assert.Equal(1, list.FocusedIndex());
+            Assert.Same(vm.Fields[1], vm.SelectedField);
+
+            Arrow(boxes[1], FocusNavigationDirection.Up);
+            DrainDispatcher();
+            Assert.Equal(0, list.FocusedIndex());
+            Assert.Same(vm.Fields[0], vm.SelectedField);
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
     // ── Home / End / first-letter ─────────────────────────────────────────────
     //
     // These come free inside a ListBox and had to be written by hand here. Driven through the
