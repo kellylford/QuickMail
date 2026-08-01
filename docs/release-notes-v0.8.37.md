@@ -97,7 +97,7 @@ Adding an account now always shows the permission screen, so the full set is app
 
 Every row in a message list is read as one line — sender, subject, date, and so on — and until now that line was fixed. **View → Message List Fields…** lets you decide which pieces are spoken and where each one falls.
 
-Every field is a check box. Check one to include it, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** to move it. Up and Down arrow move through the fields and stop at the first and last one, the way they do in any list. **Home** and **End** go straight to those ends, and typing a letter jumps to the next field starting with it. Moving a field that is switched off says so, since that changes nothing you can hear.
+Every field is a check box. Check one to include it, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** to move it. The Up and Down arrows move through the fields and stop at the first and last one, the way they do in any list. **Home** and **End** go straight to those ends, and typing a letter jumps to the next field starting with it. Moving a field that is switched off says so, since that changes nothing you can hear.
 
 A **Spoken preview** box shows the message you had selected when you opened the window, read exactly as the list would read it, updating as you go. There is no OK or Cancel — changes take effect as you make them, and the window is modeless, so you can leave it open, arrow through the list behind it, and hear the result.
 
