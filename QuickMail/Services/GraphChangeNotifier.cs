@@ -25,6 +25,7 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
     private CancellationTokenSource? _cts;
 
     public event Action<Guid>? InboxNewMailDetected;
+    public event Action<Guid, IReadOnlyList<string>>? InboxMessagesRemoved;
 #pragma warning disable CS0067 // Graph polling has no reachability signal; declared to satisfy IChangeNotifier.
     public event Action<Guid, bool>? AccountReachabilityChanged;
 #pragma warning restore CS0067
@@ -80,7 +81,8 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
                     ? "/me/mailFolders/Inbox/messages/delta?$select=id"
                     : deltaLink; // request the stored deltaLink URL verbatim
 
-                var sawMessages = false;
+                var sawNewMail = false;
+                var removedIds = new List<string>();
                 string? nextDeltaLink = null;
 
                 // Drain this tick's pages: follow @odata.nextLink to exhaustion, then keep the final
@@ -88,22 +90,38 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
                 while (!string.IsNullOrEmpty(url))
                 {
                     // Immutable ids on every delta request (initial + nextLink + deltaLink), so
-                    // delta-delivered ids match the immutable ids the folder sync stores (#366).
+                    // delta-delivered ids match the immutable ids the folder sync stores (#366 part B).
                     var resp = await _client.GetAsync<GraphDeltaResponse>(account, url, GraphHeaders.ImmutableId, ct);
-                    if (resp?.Value?.Length > 0)
-                        sawMessages = true;
+                    // A delta page mixes two kinds of entry: added/changed messages (new mail) and
+                    // @removed tombstones (deleted or moved out of the Inbox by another client, #366).
+                    // An @removed entry carries only @removed + id, so route it to reconciliation, not
+                    // to the new-mail signal. Ids match the store because the folder sync now stores the
+                    // same immutable ids this request asks for (header above).
+                    foreach (var m in resp?.Value ?? System.Array.Empty<GraphMessage>())
+                    {
+                        if (m.Removed != null)
+                        {
+                            if (!string.IsNullOrEmpty(m.Id)) removedIds.Add(m.Id);
+                        }
+                        else
+                        {
+                            sawNewMail = true;
+                        }
+                    }
 
                     nextDeltaLink = resp?.DeltaLink ?? nextDeltaLink; // set only on the final page
                     url = resp?.NextLink;                             // null on the final page
                 }
 
-                // At-least-once semantics, by design: the event fires BEFORE the cursor is persisted.
+                // At-least-once semantics, by design: the events fire BEFORE the cursor is persisted.
                 // If the app exits in this window, the next startup re-polls from the old/absent cursor
-                // and may re-notify for the same messages — but the resulting sync is idempotent (same
-                // message ids are not re-inserted), so nothing is lost or duplicated. Persisting first
-                // would risk the opposite (a missed notification), which is worse.
-                if (sawMessages)
+                // and may re-notify for the same messages — but the resulting sync/removal is idempotent
+                // (same ids aren't re-inserted; removing an already-gone id is a no-op), so nothing is
+                // lost or duplicated. Persisting first would risk the opposite (a missed event), worse.
+                if (sawNewMail)
                     InboxNewMailDetected?.Invoke(account.Id);
+                if (removedIds.Count > 0)
+                    InboxMessagesRemoved?.Invoke(account.Id, removedIds);
 
                 if (!string.IsNullOrEmpty(nextDeltaLink))
                     await _store.SetDeltaTokenAsync(account.Id, "Inbox", nextDeltaLink);

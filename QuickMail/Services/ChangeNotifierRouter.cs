@@ -30,14 +30,17 @@ public sealed class ChangeNotifierRouter : IChangeNotifier, IDisposable
         foreach (var n in _notifiers)
         {
             n.InboxNewMailDetected += OnInboxNewMail;
+            n.InboxMessagesRemoved += OnInboxMessagesRemoved;
             n.AccountReachabilityChanged += OnReachabilityChanged;
         }
     }
 
     public event Action<Guid>? InboxNewMailDetected;
+    public event Action<Guid, IReadOnlyList<string>>? InboxMessagesRemoved;
     public event Action<Guid, bool>? AccountReachabilityChanged;
 
     private void OnInboxNewMail(Guid accountId) => InboxNewMailDetected?.Invoke(accountId);
+    private void OnInboxMessagesRemoved(Guid accountId, IReadOnlyList<string> ids) => InboxMessagesRemoved?.Invoke(accountId, ids);
     private void OnReachabilityChanged(Guid accountId, bool isReachable) => AccountReachabilityChanged?.Invoke(accountId, isReachable);
 
     public void StartWatchers(IReadOnlyList<AccountModel> accounts, CancellationToken ct = default)
@@ -59,6 +62,7 @@ public sealed class ChangeNotifierRouter : IChangeNotifier, IDisposable
         {
             n.StopWatchers(); // tear down watcher tasks before severing the event chain
             n.InboxNewMailDetected -= OnInboxNewMail;
+            n.InboxMessagesRemoved -= OnInboxMessagesRemoved;
             n.AccountReachabilityChanged -= OnReachabilityChanged;
         }
     }

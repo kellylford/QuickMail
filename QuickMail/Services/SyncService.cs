@@ -17,13 +17,20 @@ public class SyncService : ISyncService
     private readonly IRuleService _rules;
     private readonly IUiDispatcher _ui;
 
+    // In --ui-probe mode the mail backend is a no-op stub that lists zero server messages, while the
+    // store is seeded with fixture mail. Reconcile would read that empty listing as "everything was
+    // deleted remotely" and purge the fixtures, emptying every visual-QA capture. Suppress reconcile
+    // in probe mode — mirrors the !probeMode guard the one-time cache rebuild uses (#366).
+    private readonly bool _probeMode;
+
     public SyncService(IMailService imap, ILocalStoreService store, IConfigService config, IRuleService rules,
-        IUiDispatcher? ui = null)
+        IUiDispatcher? ui = null, bool probeMode = false)
     {
         _imap   = imap;
         _store  = store;
         _config = config;
         _rules  = rules;
+        _probeMode = probeMode;
         // WpfUiDispatcher marshals only when the real QuickMail App is present, and runs inline
         // otherwise — a plain Application.Current null-check is NOT enough (tests create a pumpless
         // Application, so InvokeAsync would park forever).
@@ -378,6 +385,18 @@ public class SyncService : ISyncService
         return incoming;
     }
 
+    /// <summary>
+    /// Full sync of a single folder: fetches messages newer than the local high-water mark (raising
+    /// <see cref="FolderSynced"/> so the current view merges them in) and then reconciles remote
+    /// deletions (raising <see cref="MessagesRemoved"/>). This is the same work the startup full sync
+    /// does per folder, exposed for the periodic all-folder sweep — non-Inbox folders have no live
+    /// watcher (Graph delta and IMAP IDLE cover only the Inbox), so mail a server-side rule files into
+    /// a custom folder is otherwise invisible until the folder is opened or the app restarts (#366).
+    /// Returns the genuinely-new arrivals (empty when none).
+    /// </summary>
+    public async Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+        => await SyncFolderAsync(account, folder, ct);
+
     private async Task<List<MailMessageSummary>> SyncFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
     {
         // ── New messages ─────────────────────────────────────────────────────────
@@ -408,17 +427,40 @@ public class SyncService : ISyncService
         }
 
         // ── Remote deletions ─────────────────────────────────────────────────────
+        await ReconcileFolderAsync(account, folder, ct);
+
+        return incoming;
+    }
+
+    /// <summary>
+    /// Reconciles a single folder's local cache against the server: any message id we hold locally
+    /// but the server no longer lists (deleted or moved away by another client — Outlook web/desktop/
+    /// mobile, a server-side rule, or Exchange Online rebalancing) is removed from the store and
+    /// raised via <see cref="MessagesRemoved"/> so the UI drops the ghost row.
+    ///
+    /// Backend-agnostic — <see cref="IMailService.GetFolderMessageIdsAsync"/> routes to IMAP or Graph
+    /// (Graph reads with immutable ids, #366). Add-only sync paths (live IDLE, Graph delta poll, the
+    /// periodic fallback) do NOT reconcile, so this is the piece that catches deletions made elsewhere
+    /// while the app is running. Cheap: one id-only listing plus a set difference. No-ops (returns 0)
+    /// when the folder has no local data yet. Returns the number of ghosts removed.
+    /// </summary>
+    public async Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+    {
+        // Never reconcile against the probe stub: its empty server listing would delete the seeded
+        // fixture mail and blank the visual-QA captures (see _probeMode).
+        if (_probeMode) return 0;
+
         // Only meaningful when we already have local data for this folder.
         var localIds = await _store.GetAllMessageIdsAsync(account.Id, folder.FullName);
-        if (localIds.Count == 0) return incoming;
+        if (localIds.Count == 0) return 0;
 
         var serverIds  = await _imap.GetFolderMessageIdsAsync(account.Id, folder.FullName, ct);
         var serverSet  = new HashSet<string>(serverIds);
         var deletedIds = localIds.Where(id => !serverSet.Contains(id)).ToList();
 
-        if (deletedIds.Count == 0) return incoming;
+        if (deletedIds.Count == 0) return 0;
 
-        LogService.Log($"Sync {account.AccountLabel}/{folder.FullName}: {deletedIds.Count} remote deletion(s)");
+        LogService.Log($"Reconcile {account.AccountLabel}/{folder.FullName}: {deletedIds.Count} remote deletion(s)");
         await _store.DeleteSummariesAsync(account.Id, folder.FullName, deletedIds);
 
         var removed = deletedIds
@@ -432,7 +474,7 @@ public class SyncService : ISyncService
 
         _ui.Post(() => MessagesRemoved?.Invoke(removed));
 
-        return incoming;
+        return deletedIds.Count;
     }
 
     private async Task FetchAndApplyPreviewsAsync(

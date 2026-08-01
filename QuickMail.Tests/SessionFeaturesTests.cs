@@ -208,6 +208,7 @@ public class IdleNewMailTests
 
         public event Action<Guid>? InboxNewMailDetected;
 #pragma warning disable CS0067 // not raised by this fake
+        public event Action<Guid, IReadOnlyList<string>>? InboxMessagesRemoved;
         public event Action<Guid, bool>? AccountReachabilityChanged;
 #pragma warning restore CS0067
         public void FireNewMail() => InboxNewMailDetected?.Invoke(_accountId);
@@ -282,6 +283,12 @@ public class IdleNewMailTests
             SyncOneFolderOnlineCalled.TrySetResult((account, folder));
             return Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
         }
+
+        public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+            => Task.FromResult(0);
+
+        public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
 
         public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;

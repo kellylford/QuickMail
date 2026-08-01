@@ -1182,7 +1182,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncService.MessagesRemoved += OnMessagesRemoved;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
+        {
             _changeNotifier.InboxNewMailDetected += OnInboxNewMailDetected;
+            _changeNotifier.InboxMessagesRemoved += OnInboxMessagesRemoved;
+        }
         if (_flagService != null)
         {
             _onFlagDefinitionsChanged = (_, _) => _ = OnFlagDefinitionsChangedAsync();
@@ -2323,52 +2326,101 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 var delay = minutes <= 0 ? TimeSpan.FromMinutes(5) : TimeSpan.FromMinutes(minutes);
                 await Task.Delay(delay, ct).ConfigureAwait(false);
                 if (ct.IsCancellationRequested) break;
+
                 if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
 
-                // Snapshot the IMAP inboxes to sync on the UI thread (Accounts/_cachedFolders are
-                // UI-thread-owned). Graph accounts are skipped — they have their own delta poll.
-                var jobs = new List<(AccountModel Account, MailFolderModel Inbox)>();
+                // Reconcile the folder the user is currently viewing (#366). It's the one folder with
+                // no other live removal signal — a custom folder (any backend) the user is staring at
+                // while a message is deleted/moved elsewhere. Reconcile-on-open catches it on
+                // navigation; this catches it while they sit on it. Skips virtual/aggregate folders
+                // (no single server folder to list) and online mode (no store). One id-only listing.
+                //
+                // This MUST stay below the poll-disabled check: the setting reads "Off (server push
+                // only)" in Settings, so a user who picks it has been told QuickMail will not contact
+                // the server on a timer. Reconciling here regardless would make that label untrue for
+                // anyone who chose it to avoid exactly that (metered or locked-down networks).
+                await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
+
+                // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox
+                // folders have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the
+                // Inbox — so mail a server-side rule files into a custom folder at delivery is invisible
+                // until the folder is opened or the app restarts (#366). This periodic sweep syncs each
+                // folder fully (fetch new + reconcile deletions). Accounts/_cachedFolders are
+                // UI-thread-owned, so snapshot on the UI thread. (The Inbox is included but cheap —
+                // already kept current by the live watcher, so it usually has nothing new to fetch.)
+                var jobs = new List<(AccountModel Account, MailFolderModel Folder, bool IsInbox)>();
                 _ui.Invoke(() =>
                 {
                     foreach (var account in Accounts)
                     {
-                        if (account.BackendKind != BackendKind.ImapSmtp) continue;
                         if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
-
-                        var inbox = folders.FirstOrDefault(f =>
-                            f.Kind == Models.SpecialFolderKind.Inbox ||
-                            string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
-                        if (inbox != null) jobs.Add((account, inbox));
+                        foreach (var folder in folders)
+                        {
+                            if (folder.ExcludeFromAllMail) continue;
+                            var isInbox = folder.Kind == Models.SpecialFolderKind.Inbox ||
+                                          string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase);
+                            jobs.Add((account, folder, isInbox));
+                        }
                     }
                 });
 
-                foreach (var (account, inbox) in jobs)
+                foreach (var (account, folder, isInbox) in jobs)
                 {
                     if (ct.IsCancellationRequested) break;
                     try
                     {
-                        // Fetch + SQLite upsert run off the UI thread; SyncOneFolderAsync marshals its
-                        // FolderSynced event to the UI thread internally.
-                        var incoming = await _syncService.SyncOneFolderAsync(account, inbox, ct)
+                        // Fetch new (FolderSynced merges them into the current view) + reconcile
+                        // deletions (MessagesRemoved). Runs off the UI thread; the events marshal back.
+                        var incoming = await _syncService.SyncFolderFullAsync(account, folder, ct)
                             .ConfigureAwait(false);
-                        LogService.Debug($"Fallback sync [{account.AccountLabel}] inbox: {incoming.Count} fetched.");
+                        if (incoming.Count > 0)
+                            LogService.Debug($"Sweep sync [{account.AccountLabel}]/{folder.FullName}: {incoming.Count} new.");
 
-                        // Marshal the UI-owned follow-ups back to the UI thread: notify for genuinely-new
-                        // arrivals (the single-thread-owned de-dupe set prevents re-notifying mail IDLE
-                        // already flagged) and refresh unread counts (debounced, STATUS-authoritative).
-                        _ui.Post(() =>
-                        {
-                            if (incoming.Count > 0)
-                                MaybeNotifyNewMail(account, incoming);
-                            ScheduleFolderCountRefresh(account.Id);
-                        });
+                        if (incoming.Count > 0)
+                            _ui.Post(() =>
+                            {
+                                // Toast only for the Inbox (as before) — filtered mail in custom folders
+                                // shouldn't pop notifications — but refresh counts for any folder change.
+                                if (isInbox)
+                                    MaybeNotifyNewMail(account, incoming);
+                                ScheduleFolderCountRefresh(account.Id);
+                            });
                     }
                     catch (OperationCanceledException) { throw; }
-                    catch (Exception ex) { LogService.Log($"Fallback sync {account.AccountLabel}", ex); }
+                    catch (Exception ex) { LogService.Log($"Sweep sync {account.AccountLabel}/{folder.FullName}", ex); }
+
+                    // Pace between folders so a full sweep of a large mailbox doesn't burst Graph into a
+                    // 503 "application request queue is full". Sequential + a short gap keeps it gentle.
+                    try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { break; }
                 }
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    // Reconciles the single real folder currently displayed against the server, purging any message
+    // removed elsewhere from the store and the view (#366). Snapshots the UI-thread-owned SelectedFolder
+    // /Accounts, then does the id-listing off the UI thread. No-op for virtual/aggregate folders (no one
+    // server folder to list) and online mode (no store to reconcile).
+    private async Task ReconcileCurrentFolderAsync(CancellationToken ct)
+    {
+        if (OnlineMode) return;
+
+        AccountModel? account = null;
+        MailFolderModel? folder = null;
+        _ui.Invoke(() =>
+        {
+            var f = SelectedFolder;
+            if (f == null || f.AccountId == Guid.Empty || IsVirtualFolder(f)) return;
+            account = Accounts.FirstOrDefault(a => a.Id == f.AccountId);
+            folder  = f;
+        });
+        if (account == null || folder == null) return;
+
+        try { await _syncService.ReconcileFolderAsync(account, folder, ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { LogService.Log("Periodic reconcile of current folder", ex); }
     }
 
     // ── FolderSynced merge ───────────────────────────────────────────────────────
@@ -2585,6 +2637,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
         });
     });
 
+    // Called on a ThreadPool thread by the change notifier when the Graph delta poll observes inbox
+    // messages removed elsewhere (deleted or moved out by another client — Outlook web/desktop/mobile
+    // or a server-side rule). The live add-only sync paths never see removals, so without this the
+    // rows linger until the next startup reconcile (#366). Deletes them from the store and drops the
+    // rows from any view currently showing them, reusing the same UI-removal handler as full-sync
+    // reconciliation. Ids match the store because the poll and folder sync read the same backend id
+    // type. Resolve UI-thread-owned state (Accounts, _cachedFolders) on the UI thread first.
+    private void OnInboxMessagesRemoved(Guid accountId, IReadOnlyList<string> ids) => _ui.Post(() =>
+    {
+        if (ids.Count == 0) return;
+        if (!_cachedFolders.TryGetValue(accountId, out var folders)) return;
+        var inbox = folders.FirstOrDefault(f =>
+            f.Kind == Models.SpecialFolderKind.Inbox ||
+            string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
+        if (inbox is null) return;
+
+        LogService.Log($"Delta: {ids.Count} inbox message(s) removed elsewhere for {accountId} — dropping from cache/view.");
+
+        // Purge the cache so a later cache-served folder open doesn't resurrect the ghost.
+        if (!OnlineMode)
+            _localStore.DeleteSummariesAsync(accountId, inbox.FullName, ids)
+                .LogFaults("local store: delete delta-removed summaries");
+
+        var removed = ids
+            .Select(id => new MailMessageSummary { MessageId = id, AccountId = accountId, FolderName = inbox.FullName })
+            .ToList();
+        OnMessagesRemoved(removed);
+
+        // Removals change server unread counts; refresh them (debounced, STATUS-authoritative).
+        ScheduleFolderCountRefresh(accountId);
+    });
+
     // Shows a Windows toast for genuinely-new inbox mail. Runs on the UI thread (the caller posts
     // it there) so _notifiedMessageKeys is single-thread-owned. Setting is re-read live so a
     // Settings change takes effect without a restart.
@@ -2636,6 +2720,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
     }
 
+    // CA1859: the parameter type is fixed by the MessagesRemoved event delegate
+    // (Action<IReadOnlyList<MailMessageSummary>>) this handler is bound to in the ctor — narrowing it
+    // to List<> would break that method-group subscription. The analyzer only flags it because
+    // OnInboxMessagesRemoved (#366 delta path) also calls it directly with a List; that call site can't
+    // dictate the delegate-bound signature.
+#pragma warning disable CA1859
     private void OnMessagesRemoved(IReadOnlyList<MailMessageSummary> removed)
     {
         // Build a key→item map once so each removed key is an O(1) lookup
@@ -2687,6 +2777,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         RebuildActiveGroupView();
     }
+#pragma warning restore CA1859
 
     private int _lastRulesMatchCount;
     private DateTime _lastRulesRunTime;
@@ -3847,6 +3938,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
 
             _ = RefreshFolderFromServerAsync(accountId, folder, loadVersion, ct);
+
+            // Reconcile-on-open (#366): RefreshFolderFromServerAsync replaces the *displayed* list with
+            // server truth, but only upserts the store — it never deletes rows for messages removed
+            // elsewhere, so those ghosts persist in the cache and resurface in aggregate views (All
+            // Mail) and on the next cache-load. Purge them with a full-id reconcile against the server.
+            // Cached mode only (online keeps no store, and its UI is already server-truth). Fire-and-
+            // forget on the same load token so navigating away cancels it; idempotent and cheap.
+            if (!OnlineMode)
+            {
+                var account = Accounts.FirstOrDefault(a => a.Id == accountId);
+                if (account != null)
+                    _syncService.ReconcileFolderAsync(account, folder, ct)
+                        .LogFaults("reconcile on folder open");
+            }
         }
         catch (OperationCanceledException)
         {

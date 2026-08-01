@@ -21,6 +21,15 @@ public interface IChangeNotifier
     event Action<Guid>? InboxNewMailDetected;
 
     /// <summary>
+    /// Raised on the ThreadPool when the watcher observes that messages were removed from the given
+    /// account's INBOX (deleted or moved away by another client). The list holds the backend message
+    /// ids no longer present. Currently only the Graph delta poll can see this cheaply (via
+    /// <c>@removed</c> entries, #366); IMAP IDLE gives no removal signal, so its removals are caught by
+    /// reconcile-on-open / the periodic reconcile instead. Handlers marshal to the UI thread.
+    /// </summary>
+    event Action<Guid, IReadOnlyList<string>>? InboxMessagesRemoved;
+
+    /// <summary>
     /// Raised when an account's watcher loses (false) or regains (true) connectivity. Fired on the
     /// ThreadPool; handlers should marshal to the UI thread if needed.
     /// </summary>

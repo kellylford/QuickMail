@@ -318,8 +318,10 @@ public class ChangeNotifierRouterTests
         public void StopWatchers() => StopWatchersCalled = true;
 
         public event Action<Guid>? InboxNewMailDetected;
+        public event Action<Guid, IReadOnlyList<string>>? InboxMessagesRemoved;
         public event Action<Guid, bool>? AccountReachabilityChanged;
         public void RaiseNewMail(Guid accountId) => InboxNewMailDetected?.Invoke(accountId);
+        public void RaiseRemoved(Guid accountId, IReadOnlyList<string> ids) => InboxMessagesRemoved?.Invoke(accountId, ids);
         public void RaiseReachability(Guid accountId, bool reachable) => AccountReachabilityChanged?.Invoke(accountId, reachable);
     }
 

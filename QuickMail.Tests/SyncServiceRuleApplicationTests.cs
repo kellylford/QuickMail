@@ -297,6 +297,124 @@ public class SyncServiceRuleApplicationTests : IDisposable
         Assert.Contains("501", stored);                                // survivor persisted
     }
 
+    // ── ReconcileFolderAsync (#366): live removal of mail deleted/moved by another client ─────────
+
+    [Fact]
+    public async Task Reconcile_RemovesGhost_WhenLocalIdMissingFromServer()
+    {
+        // Store holds A, B, C; the server now lists only A, C (B deleted/moved elsewhere). Reconcile
+        // must delete B from the store and raise MessagesRemoved([B]).
+        await _store.UpsertSummariesAsync([Message("A"), Message("B"), Message("C")]);
+        var imap = new FetchStubMailService([]) ;
+        imap.Batch.AddRange([Message("A"), Message("C")]); // server view = A, C
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        var count = await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.Equal(1, count);
+        Assert.Equal("B", Assert.Single(removed).MessageId);
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.DoesNotContain("B", stored);
+        Assert.Contains("A", stored);
+        Assert.Contains("C", stored);
+    }
+
+    [Fact]
+    public async Task Reconcile_NoOp_WhenServerMatchesStore()
+    {
+        await _store.UpsertSummariesAsync([Message("A"), Message("B")]);
+        var imap = new FetchStubMailService([]);
+        imap.Batch.AddRange([Message("A"), Message("B")]); // server view identical
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public async Task SyncFolderFull_FetchesNewArrivals_AndReconcilesDeletions()
+    {
+        // The periodic all-folder sweep (#366) relies on this doing both halves in one call: pull new
+        // mail (a server rule filed into a custom folder) AND drop a message deleted elsewhere.
+        await _store.UpsertSummariesAsync([Message("ghost")]);          // present locally, gone on server
+        var imap = new FetchStubMailService([Message("fresh")]);        // server view = [fresh]
+        var sync = Build(imap, new CapturingRuleService());
+
+        var synced = new List<MailMessageSummary>();
+        sync.FolderSynced    += list => synced.AddRange(list);
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        var incoming = await sync.SyncFolderFullAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.Contains(incoming, m => m.MessageId == "fresh");         // new arrival returned
+        Assert.Contains(synced,   m => m.MessageId == "fresh");         // and surfaced via FolderSynced
+        Assert.Equal("ghost", Assert.Single(removed).MessageId);       // deletion reconciled
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.Contains("fresh", stored);
+        Assert.DoesNotContain("ghost", stored);
+    }
+
+    [Fact]
+    public async Task Reconcile_NoOp_WhenNoLocalData()
+    {
+        // Nothing cached yet → nothing to reconcile, and (importantly) no false deletions even if the
+        // server id listing is empty.
+        var imap = new FetchStubMailService([]);
+        var sync = Build(imap, new CapturingRuleService());
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+    }
+
+    [Fact]
+    public async Task Reconcile_InProbeMode_NeverDeletes_EvenWhenServerListsNothing()
+    {
+        // Probe-mode guard (#366 review): the --ui-probe mail stub lists zero server messages while the
+        // store holds seeded fixtures. Reconcile must NOT read that empty listing as "all deleted" and
+        // purge them — that would blank every visual-QA capture.
+        await _store.UpsertSummariesAsync([Message("A"), Message("B")]);
+        var imap = new FetchStubMailService([]);            // server lists nothing
+        var sync = new SyncService(imap, _store, new StubConfigService(), new CapturingRuleService(), probeMode: true);
+
+        var removed = new List<MailMessageSummary>();
+        sync.MessagesRemoved += list => removed.AddRange(list);
+
+        Assert.Equal(0, await sync.ReconcileFolderAsync(Account(), _inbox, CancellationToken.None));
+        Assert.Empty(removed);
+        var stored = await _store.GetAllMessageIdsAsync(_accountId, "INBOX");
+        Assert.Contains("A", stored);
+        Assert.Contains("B", stored);
+    }
+
+    [Fact]
+    public async Task SyncFolderFull_OnNonInboxFolder_DoesNotRunClientRules()
+    {
+        // #427 seam: the all-folder sweep pulls new mail into custom folders, but client rules stay
+        // Inbox-only — a rule must not fire on mail the sweep brought into a non-Inbox folder.
+        var rules  = new CapturingRuleService();
+        var custom = new MailFolderModel { FullName = "Archive", DisplayName = "Archive" };
+        var msg    = new MailMessageSummary
+        {
+            MessageId = "x", AccountId = _accountId, FolderName = "Archive",
+            From = "a@b.com", To = "me@b.com", Subject = "hi",
+        };
+        var sync = Build(new FetchStubMailService([msg]), rules);
+
+        await sync.SyncFolderFullAsync(Account(), custom, CancellationToken.None);
+
+        Assert.Empty(rules.Calls);   // rules never ran on the non-Inbox folder
+    }
+
     [Fact]
     public async Task RebuildBaseline_IdleSkipsWithoutConsuming_FullSyncConsumes_ThenRulesResume()
     {
