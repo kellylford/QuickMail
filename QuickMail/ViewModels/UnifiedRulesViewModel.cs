@@ -44,8 +44,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
             .Select(a => new AccountOption { Id = a.Id, DisplayName = a.AccountLabel })
             .ToList();
 
-        // Land on the account the user is currently in (see ServerRulesViewModel); fall back to the
-        // first account when there's no current-account context (an aggregate view at the tree top).
+        // Land on the account the user is currently in; fall back to the first account when there's
+        // no current-account context (an aggregate view at the tree top).
         _selectedAccount = AccountOptions.FirstOrDefault(o => o.Id == preferredAccountId)
                            ?? AccountOptions.FirstOrDefault();
     }
