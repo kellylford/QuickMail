@@ -2288,15 +2288,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 await Task.Delay(delay, ct).ConfigureAwait(false);
                 if (ct.IsCancellationRequested) break;
 
-                // Reconcile the folder the user is currently viewing, every tick, regardless of the
-                // inbox-poll setting below (#366). This is the one folder with no other live removal
-                // signal — a custom folder (any backend) the user is staring at while a message is
-                // deleted/moved elsewhere. Reconcile-on-open catches it on navigation; this catches it
-                // while they sit on it. Skips virtual/aggregate folders (no single server folder to
-                // list) and online mode (no store). One id-only listing per tick.
-                await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
-
                 if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
+
+                // Reconcile the folder the user is currently viewing (#366). It's the one folder with
+                // no other live removal signal — a custom folder (any backend) the user is staring at
+                // while a message is deleted/moved elsewhere. Reconcile-on-open catches it on
+                // navigation; this catches it while they sit on it. Skips virtual/aggregate folders
+                // (no single server folder to list) and online mode (no store). One id-only listing.
+                //
+                // This MUST stay below the poll-disabled check: the setting reads "Off (server push
+                // only)" in Settings, so a user who picks it has been told QuickMail will not contact
+                // the server on a timer. Reconciling here regardless would make that label untrue for
+                // anyone who chose it to avoid exactly that (metered or locked-down networks).
+                await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
 
                 // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox
                 // folders have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the
