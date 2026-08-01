@@ -361,6 +361,7 @@ public class RuleService : IRuleService
 
     public async Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
         ILocalStoreService store,
+        IReadOnlyDictionary<Guid, string> inboxFolderByAccount,
         CancellationToken ct)
     {
         var rules = LoadRules();
@@ -369,15 +370,22 @@ public class RuleService : IRuleService
 
         var removedMessages = new List<MailMessageSummary>();
 
-        // Load all cached messages once
+        // Load all cached messages once, then keep only Inbox mail (issue #346 follow-up).
+        // Client rules act on the Inbox only, so drop everything in Sent/Archive/Junk/Trash/custom
+        // folders — and any account we weren't given an Inbox for (fail-closed). FolderName holds the
+        // folder's FullName (set at sync time), matched Ordinal against the caller-supplied Inbox
+        // FullName from the same folder enumeration.
         var allMessages = await store.LoadAllSummariesAsync();
-        LogService.Debug($"ApplyRulesToExisting: {allMessages.Count} cached messages, {enabledRules.Count} enabled rules");
+        var inboxMessages = allMessages.Where(m =>
+            inboxFolderByAccount.TryGetValue(m.AccountId, out var inbox) &&
+            string.Equals(m.FolderName, inbox, StringComparison.Ordinal)).ToList();
+        LogService.Debug($"ApplyRulesToExisting: {allMessages.Count} cached, {inboxMessages.Count} in Inbox, {enabledRules.Count} enabled rules");
 
         foreach (var rule in enabledRules)
         {
             ct.ThrowIfCancellationRequested();
 
-            var matched = allMessages.Where(m =>
+            var matched = inboxMessages.Where(m =>
             {
                 if (rule.AccountId.HasValue && rule.AccountId.Value != m.AccountId)
                     return false;

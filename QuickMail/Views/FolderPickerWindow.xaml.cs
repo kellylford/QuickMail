@@ -23,6 +23,7 @@ public partial class FolderPickerWindow : Window
     private static readonly Dictionary<string, MailFolderModel> EmptyFolderById = new();
 
     private readonly ObservableCollection<FolderPickerItem> _items = [];
+    private readonly TypeAheadPrefixTracker _typeAhead = new();
     private readonly ICollectionView? _view;
     private readonly MailFolderModel? _initialFolder;
     private readonly bool _useTreeView;
@@ -307,19 +308,47 @@ public partial class FolderPickerWindow : Window
         }
     }
 
-    // Alt+N opens New Folder. Wired explicitly (rather than a button mnemonic) so a bare "n" in the
-    // folder tree stays available for type-ahead instead of triggering the button (see the XAML note
-    // on NewFolderButton). Handled window-wide so it works whatever picker control has focus.
+    // Type-ahead over the visible tree, same behavior as the main window's folder tree
+    // (accumulating prefix, wrap-around). See the XAML note on FolderTreeView for why this is
+    // hand-rolled rather than WPF TextSearch.
+    private void FolderTreeView_PreviewTextInput(object sender, TextCompositionEventArgs e)
+    {
+        if (!TreeViewFocusHelper.ModifiersAllowTypeAhead)
+            return;
+
+        if (FolderTreeView.ItemsSource is IEnumerable<FolderTreeNode> roots &&
+            _typeAhead.TryAppend(e.Text, FolderTreeView, out var prefix) &&
+            TreeViewFocusHelper.TrySelectNextMatch(FolderTreeView, roots, prefix))
+            e.Handled = true;
+    }
+
+    // Alt+N (New Folder), Alt+O (Open), Alt+C (Cancel) are wired explicitly rather than as
+    // button mnemonics, because a bare mnemonic letter fires without Alt when focus isn't in a
+    // text field and steals type-ahead (see the XAML notes on the buttons). Handled window-wide
+    // so they work whatever picker control has focus.
     private void FolderPicker_PreviewKeyDown(object sender, KeyEventArgs e)
     {
         // With Alt held, the character arrives as a System key; the real key is in SystemKey.
+        // Exactly Alt, not "Alt among others": AltGr reports as Ctrl+Alt, and on layouts where
+        // AltGr+O/C/N produce letters those keystrokes must reach type-ahead, not the buttons.
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (key == Key.N
-            && (Keyboard.Modifiers & ModifierKeys.Alt) == ModifierKeys.Alt
-            && NewFolderButton.Visibility == Visibility.Visible)
+        if (Keyboard.Modifiers != ModifierKeys.Alt)
+            return;
+
+        switch (key)
         {
-            e.Handled = true;
-            NewFolderButton_Click(NewFolderButton, new RoutedEventArgs());
+            case Key.N when NewFolderButton.Visibility == Visibility.Visible:
+                e.Handled = true;
+                NewFolderButton_Click(NewFolderButton, new RoutedEventArgs());
+                break;
+            case Key.O:
+                e.Handled = true;
+                Commit();
+                break;
+            case Key.C:
+                e.Handled = true;
+                DialogResult = false;
+                break;
         }
     }
 
@@ -523,7 +552,9 @@ public partial class FolderPickerWindow : Window
         DialogResult = true;
     }
 
-    private sealed class FolderPickerItem
+    // Internal (not private) so TypeAheadWiringTests can assert the flat list's
+    // TextSearch.TextPath resolves to a real property on this type.
+    internal sealed class FolderPickerItem
     {
         public FolderPickerItem(
             MailFolderModel folder,

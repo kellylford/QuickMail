@@ -278,4 +278,37 @@ public class CommandRegistryTests
         Assert.Equal("mail.archive", registry.FindByGesture(Key.M, ModifierKeys.Control | ModifierKeys.Shift)!.Id);
         Assert.Equal("mail.delete",  registry.FindByGesture(Key.Delete, ModifierKeys.None)!.Id);
     }
+
+    /// <summary>
+    /// Density on the View menu (#421): both commands are registered (palette +
+    /// hotkey-assignable), and executing one persists the same config value the
+    /// Settings dialog writes.
+    /// </summary>
+    [Fact]
+    public void DensityCommands_AreRegistered_AndPersistTheSetting()
+    {
+        var registry = new CommandRegistry();
+        var configService = new StubConfigService();
+        var vm = new MainViewModel(
+            new StubImapMailService(), new StubAccountService(), new StubCredentialService(),
+            new StubLocalStoreService(), new StubOAuthService(), new StubSyncService(),
+            configService, registry, new StubViewService(), new StubRuleService(),
+            new StubSmtpService());
+        Assert.NotNull(vm);
+
+        var comfortable = registry.FindById("view.density.comfortable");
+        var compact = registry.FindById("view.density.compact");
+        Assert.NotNull(comfortable);
+        Assert.NotNull(compact);
+        Assert.Equal("View", comfortable!.Category);
+        Assert.Equal("View", compact!.Category);
+
+        compact.Execute();
+        Assert.Equal("compact", configService.Load().AppearanceListDensity);
+        Assert.True(vm.IsListDensityCompact);
+
+        comfortable.Execute();
+        Assert.Equal("comfortable", configService.Load().AppearanceListDensity);
+        Assert.True(vm.IsListDensityComfortable);
+    }
 }

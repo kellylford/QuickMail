@@ -16,6 +16,10 @@ public interface ILocalStoreService
     Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
     Task DeleteAccountDataAsync(Guid accountId);
 
+    /// <summary>Clears cached mail (summaries, bodies, delta cursors) for the given accounts only —
+    /// the one-time Graph immutable-id rebuild (#366). Calendar events are not touched.</summary>
+    Task ClearCachedMailAsync(IEnumerable<Guid> accountIds);
+
     /// <summary>
     /// Deletes calendar events for accounts not in <paramref name="knownAccountIds"/> (orphans from a
     /// removed-and-re-added account or a cache rebuild). Local events (<see cref="Guid.Empty"/>) are kept.

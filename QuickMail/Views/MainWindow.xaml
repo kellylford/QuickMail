@@ -426,6 +426,21 @@
                               IsChecked="{Binding CalendarVm.IsMonthView, Mode=OneWay}"
                               Command="{Binding CalendarVm.ShowMonthCommand}"/>
                 </MenuItem>
+                <!-- Density (#421): the same setting as Settings → Appearance,
+                     adjustable in place. Padding only — never the accessibility
+                     surface. Registered as view.density.* for palette/hotkeys. -->
+                <MenuItem Header="_Density">
+                    <MenuItem Header="_Comfortable"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsListDensityComfortable, Mode=OneWay}"
+                              Command="{Binding SetListDensityCommand}"
+                              CommandParameter="comfortable"/>
+                    <MenuItem Header="Co_mpact"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsListDensityCompact, Mode=OneWay}"
+                              Command="{Binding SetListDensityCommand}"
+                              CommandParameter="compact"/>
+                </MenuItem>
                 <MenuItem Header="F_ilter">
                     <MenuItem Header="S_how All"
                               IsCheckable="True"
@@ -561,6 +576,13 @@
                               CommandParameter="0"/>
                 </MenuItem>
                 <Separator/>
+                <!-- Moved from Tools: choosing how the app looks belongs on View.
+                     Next/Previous Theme remain palette commands (theme.next/previous)
+                     without menu items, per design. -->
+                <MenuItem Header="Manage _Themes…"
+                          Click="MenuManageThemes_Click"
+                          AutomationProperties.Name="Manage Themes"/>
+                <Separator/>
                 <MenuItem Header="Go to _Folder…"
                           Click="MenuFolderPicker_Click"/>
                 <MenuItem Header="_Search Folders…"
@@ -571,14 +593,6 @@
             <!-- Tools — always available (mirrors the Compose window's Tools menu).
                  Each command lives here only; not duplicated in File/Message/View. -->
             <MenuItem Header="_Tools">
-                <MenuItem Header="Manage _Themes…"
-                          Click="MenuManageThemes_Click"
-                          AutomationProperties.Name="Manage Themes"/>
-                <MenuItem Header="_Next Theme"
-                          Click="MenuNextTheme_Click"/>
-                <MenuItem Header="Pre_vious Theme"
-                          Click="MenuPreviousTheme_Click"/>
-                <Separator/>
                 <MenuItem Header="Address _Book…"
                           Click="MenuAddressBook_Click"
                           InputGestureText="Ctrl+Shift+B"/>
@@ -1432,7 +1446,8 @@
                                         <DataTemplate>
                                             <TextBlock Text="{Binding Subject}"
                                                        FontWeight="{Binding IsRead, Converter={StaticResource BoolToWeightConverter}}"
-                                                       TextTrimming="CharacterEllipsis"/>
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip="{Binding Subject}"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
@@ -1492,6 +1507,7 @@
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             <Binding Path="HasAttachments"/>
+                                            <Binding Path="FolderDisplayName"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1509,8 +1525,11 @@
                                                     BorderThickness="{TemplateBinding BorderThickness}"
                                                     SnapsToDevicePixels="True">
                                                 <!-- 1px bottom border: row divider so adjacent rows
-                                                     stay distinguishable in dense lists. -->
-                                                <Border x:Name="rowBg" Background="Transparent" Padding="2,1"
+                                                     stay distinguishable in dense lists. Padding is
+                                                     the density token (comfortable/compact, #421) —
+                                                     padding only, never the accessibility surface. -->
+                                                <Border x:Name="rowBg" Background="Transparent"
+                                                        Padding="{DynamicResource Theme.ListRowPadding}"
                                                         BorderBrush="{DynamicResource Theme.BorderSubtle}"
                                                         BorderThickness="0,0,0,1">
                                                     <DockPanel>
@@ -1602,6 +1621,7 @@
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             <Binding Path="HasAttachments"/>
+                                            <Binding Path="FolderDisplayName"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1741,6 +1761,7 @@
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             <Binding Path="HasAttachments"/>
+                                            <Binding Path="FolderDisplayName"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>
@@ -1880,6 +1901,7 @@
                                             <Binding Path="DataContext.AnnounceFlagStatus"
                                                      RelativeSource="{RelativeSource AncestorType=Window}"/>
                                             <Binding Path="HasAttachments"/>
+                                            <Binding Path="FolderDisplayName"/>
                                         </MultiBinding>
                                     </Setter.Value>
                                 </Setter>

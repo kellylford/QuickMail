@@ -44,6 +44,29 @@ public class SettingsViewModelTests
     }
 
     [Fact]
+    public void ListDensity_RoundTripsThroughConfig_AndRadiosStayExclusive()
+    {
+        var configService = new StubConfigService();
+        var registry = new StubCommandRegistry();
+
+        configService.Save(new ConfigModel { AppearanceListDensity = "compact" });
+        var vm = new SettingsViewModel(configService, registry);
+        Assert.True(vm.IsListDensityCompact);
+        Assert.False(vm.IsListDensityComfortable);
+
+        vm.IsListDensityComfortable = true;
+        Assert.False(vm.IsListDensityCompact);
+        vm.SaveCommand.Execute(null);
+        Assert.Equal("comfortable", configService.Load().AppearanceListDensity);
+
+        // Unknown persisted values normalize to the default rather than
+        // leaving both radios unchecked.
+        configService.Save(new ConfigModel { AppearanceListDensity = "garbage" });
+        var vm2 = new SettingsViewModel(configService, registry);
+        Assert.True(vm2.IsListDensityComfortable);
+    }
+
+    [Fact]
     public void Save_PersistsChanges()
     {
         var configService = new StubConfigService();

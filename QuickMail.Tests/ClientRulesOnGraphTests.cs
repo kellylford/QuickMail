@@ -240,4 +240,56 @@ public class ClientRulesOnGraphTests : IDisposable
         Assert.Empty(h.Graph.Actions);
         Assert.Empty(h.Imap.Actions);
     }
+
+    // ── "Run on Existing Mail" is Inbox-scoped (issue #346 follow-up) ─────────────
+
+    private MailMessageSummary Cached(string id, string folder, string subject = "invoice ready") => new()
+    {
+        MessageId = id,
+        AccountId = _graphAccountId,
+        FolderName = folder,
+        From = "sender@example.com",
+        To = "me@example.com",
+        Subject = subject,
+        Preview = "body text",
+    };
+
+    [Fact]
+    public async Task RunOnExisting_OnlyAppliesToInbox_LeavesOtherFoldersUntouched()
+    {
+        // A rule that matches mail sitting in BOTH the Inbox and a non-Inbox folder must act only on
+        // the Inbox copy — never reach into Sent/Archive/Junk/Trash/custom folders — so "Run on
+        // Existing Mail" can't move or delete mail the user deliberately filed elsewhere.
+        var h = Build(MoveRule(_graphAccountId));
+        await _store.UpsertSummariesAsync([Cached("in-1", "INBOX"), Cached("ar-1", "Archive")]);
+
+        var inboxByAccount = new Dictionary<Guid, string> { [_graphAccountId] = "INBOX" };
+        var removed = await h.Rules.ApplyRulesToExistingAsync(_store, inboxByAccount, CancellationToken.None);
+
+        // Only the Inbox copy was moved.
+        var move = Assert.Single(h.Graph.Actions);
+        Assert.Equal("Move", move.Method);
+        Assert.Equal(["in-1"], move.Ids);
+        Assert.Equal(["in-1"], removed.Select(m => m.MessageId).ToList());
+
+        // The Archive copy is still cached — rules never touched it.
+        var stillCached = await _store.LoadAllSummariesAsync();
+        Assert.Contains(stillCached, m => m.MessageId == "ar-1");
+        Assert.DoesNotContain(stillCached, m => m.MessageId == "in-1");
+    }
+
+    [Fact]
+    public async Task RunOnExisting_AccountMissingFromInboxMap_IsSkipped()
+    {
+        // Fail-closed: if the caller couldn't resolve an account's Inbox, none of that account's mail
+        // is touched — doing nothing beats guessing a folder and moving mail out of it.
+        var h = Build(MoveRule(_graphAccountId));
+        await _store.UpsertSummariesAsync([Cached("in-1", "INBOX")]);
+
+        var removed = await h.Rules.ApplyRulesToExistingAsync(
+            _store, new Dictionary<Guid, string>(), CancellationToken.None);
+
+        Assert.Empty(h.Graph.Actions);
+        Assert.Empty(removed);
+    }
 }

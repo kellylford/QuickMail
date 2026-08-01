@@ -69,6 +69,15 @@ public interface ISyncService
     Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct);
 
     /// <summary>
+    /// Marks the given accounts as freshly cache-wiped by the one-time immutable-id rebuild (#366), so
+    /// the first persisted sync of each of their folders caches its messages but does NOT run client
+    /// rules on them (pre-existing mail already processed on first arrival, not new arrivals). Rules
+    /// resume on genuinely-new mail from the next sync. Call once at startup, after the rebuild clears
+    /// the cache and before any sync runs.
+    /// </summary>
+    void SeedRebuildBaseline(IEnumerable<Guid> accountIds);
+
+    /// <summary>
     /// Returns the UTC time of the last completed sync for the given account,
     /// or null if the account has never been synced in this session.
     /// </summary>

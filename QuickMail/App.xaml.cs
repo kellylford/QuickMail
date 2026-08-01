@@ -11,6 +11,25 @@ namespace QuickMail;
 [SuppressMessage("Design", "CA1001", Justification = "Disposable fields are disposed in OnExit; WPF Application does not support IDisposable.")]
 public partial class App : Application
 {
+    /// <summary>
+    /// Debug screenshot capture (#175). Exposed so view code-behind (Settings
+    /// composition, reading-pane render-complete) can reach the session service
+    /// without threading it through every constructor; NullScreenshotCaptureService
+    /// outside /debug.
+    /// </summary>
+    public IScreenshotCaptureService? ScreenshotCapture { get; private set; }
+
+    /// <summary>Non-null only in --ui-probe automation mode (#180).</summary>
+    public UiProbeOptions? UiProbe { get; private set; }
+
+    /// <summary>
+    /// The active profile. Exposed so Settings can clean profile-scoped
+    /// artifacts (debug screenshots, #436) regardless of which capture service
+    /// is wired — leftovers from an earlier /debug session must be deletable
+    /// from a normal launch too.
+    /// </summary>
+    public ProfileContext? Profile { get; private set; }
+
     // Held so OnExit can dispose them.
     private GraphSendMailService? _graphSendMail;
     private ContactService? _contactService;
@@ -163,6 +182,7 @@ public partial class App : Application
             Shutdown();
             return;
         }
+        Profile = profile;
 
         LogService.Configure(profile.ProfileDir);
 
@@ -177,9 +197,41 @@ public partial class App : Application
             LogService.Log("Debug mode enabled.");
         }
 
+        // --ui-probe (#180): automation launch mode — implies /debug, forces the
+        // app offline, drives to a surface, captures, exits. Never user-reachable.
+        UiProbe = UiProbeOptions.Parse(e.Args, out var probeError);
+        if (probeError != null)
+        {
+            LogService.Log($"ui-probe: {probeError}");
+            Shutdown(64); // EX_USAGE — the orchestrator must see a hard failure
+            return;
+        }
+        if (UiProbe != null)
+        {
+            LogService.DebugMode = true;
+            LogService.Log($"ui-probe mode: surfaces=[{string.Join(";", UiProbe.Surfaces)}] theme={UiProbe.ThemeId ?? "(configured)"} scale={UiProbe.TextScale?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(configured)"}");
+        }
+
         var onlineMode = e.Args.Contains("--online", StringComparer.OrdinalIgnoreCase);
+        if (onlineMode && UiProbe != null)
+        {
+            LogService.Debug("ui-probe forces offline; --online ignored.");
+            onlineMode = false;
+        }
         if (onlineMode)
             LogService.Log("Online mode enabled — SQLite cache bypassed.");
+
+        // Debug screenshot capture (#175): the real engine exists only under /debug;
+        // otherwise a null object keeps the feature structurally unreachable. One
+        // class handler covers all Window subclasses — no per-window edits.
+        ScreenshotCapture = LogService.DebugMode
+            ? new ScreenshotCaptureService(profile)
+            : new NullScreenshotCaptureService();
+        EventManager.RegisterClassHandler(typeof(Window), FrameworkElement.LoadedEvent,
+            new RoutedEventHandler((s, _) =>
+            {
+                if (s is Window w) ScreenshotCapture?.OnWindowLoaded(w);
+            }));
 
         // Install global exception handlers BEFORE anything else so an exception
         // in startup wiring or any background task is captured in the log instead
@@ -221,6 +273,16 @@ public partial class App : Application
             // BackendKind rather than defaulting to IMAP.
             var mailRouter = new MailServiceRouter(new IMailService[] { imapBackend, graphBackend }, BackendFor);
 
+            // ui-probe (#180 Decision D): network hard-off at the DI root. EVERY
+            // consumer of the mail/send/oauth services gets the offline no-op —
+            // including RuleService (whose rules-apply path runs when the rules
+            // window closes) and SyncService — so the probe is structurally
+            // incapable of connecting, syncing, or sending, not merely unlikely to.
+            var probeMode = UiProbe != null;
+            IMailService effectiveMail = probeMode ? new ProbeOfflineMailService() : mailRouter;
+            ISendMailService effectiveSmtp = probeMode ? new ProbeOfflineSendMailService() : smtpService;
+            IOAuthService effectiveOAuth = probeMode ? new ProbeOfflineOAuthService() : oauthService;
+
             var localStore = new LocalStoreService(profile);
             if (!onlineMode)
                 localStore.Initialize();
@@ -236,6 +298,52 @@ public partial class App : Application
             // Router registration runs via mainVm.RegisterAccountBackend (set below), which also
             // covers accounts added at runtime through RefreshAccountList.
             var accounts = accountService.LoadAccounts();
+
+            // One-time immutable-id cache rebuild (#366): clear cached mail for Graph accounts so the
+            // next sync repopulates with immutable ids (mutable and immutable ids must not be mixed).
+            // Graph-scoped so IMAP bodies — and the IMAP calendar-invite source links that depend on
+            // them — survive; a marker file gates it to run exactly once. The VM announces the
+            // resulting one-time re-sync. Skipped in --online mode (no local store).
+            bool immutableIdRebuilt = false;
+            var rebuiltGraphAccountIds = new List<Guid>(); // seeded to SyncService below so the first
+                                                           // post-wipe sync doesn't re-run rules (#366/N5)
+            if (!onlineMode && !probeMode) // never touch a --ui-probe fixture profile (review nit)
+            {
+                var rebuildMarker = System.IO.Path.Combine(profile.ProfileDir, ".immutable-id-rebuilt");
+                if (!System.IO.File.Exists(rebuildMarker))
+                {
+                    var graphIds = new List<Guid>();
+                    foreach (var a in accounts)
+                        if (a.BackendKind == BackendKind.MicrosoftGraph) graphIds.Add(a.Id);
+
+                    if (graphIds.Count == 0)
+                    {
+                        // No Graph accounts → nothing to rebuild. Mark done so we don't re-scan every
+                        // launch; a Graph account added later starts fresh with immutable ids anyway.
+                        try { System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o")); } catch { }
+                    }
+                    else
+                    {
+                        // Isolate the clear so a failure (locked/corrupt SQLite, disk full) can NEVER
+                        // crash startup: the outer OnStartup catch rethrows, so an unguarded throw here
+                        // would kill the process before the marker is written — a permanent startup
+                        // crash-loop the user could only escape by deleting the profile. On failure we
+                        // log and leave the marker unwritten so the next launch retries; only a
+                        // successful clear marks it done and announces the one-time re-sync.
+                        try
+                        {
+                            localStore.ClearCachedMailAsync(graphIds).GetAwaiter().GetResult();
+                            immutableIdRebuilt = true;
+                            rebuiltGraphAccountIds = graphIds;
+                            System.IO.File.WriteAllText(rebuildMarker, DateTime.UtcNow.ToString("o"));
+                        }
+                        catch (Exception rebuildEx)
+                        {
+                            LogService.Log("Immutable-id cache rebuild failed; will retry next launch.", rebuildEx);
+                        }
+                    }
+                }
+            }
 
             // Before anything connects: an account hand-configured before the provider catalog
             // existed can be pointed at one of our hosts with the wrong encryption mode, which fails
@@ -255,11 +363,14 @@ public partial class App : Application
             _templateService = new TemplateService(profile);
             var templateService = _templateService;
             // accountService drives the one-time "All accounts" → per-account rule migration (#333 D1).
-            var ruleService = new RuleService(mailRouter, localStore, profile.ProfileDir, accountService);
+            var ruleService = new RuleService(effectiveMail, localStore, profile.ProfileDir, accountService);
             // Server-side (Exchange/Graph) Inbox rules — read/manage a Graph account's messageRules.
             // Reuses the shared GraphClient (no own disposables), so no disposal wiring needed.
             var serverRuleService = new GraphServerRuleService(accountService, graphBackend.Client);
-            var syncService = new SyncService(mailRouter, localStore, configService, ruleService);
+            var syncService = new SyncService(effectiveMail, localStore, configService, ruleService);
+            // The one-time immutable-id wipe emptied these accounts' store, so their first re-sync would
+            // read old mail as new and re-run rules over it on upgrade day. Baseline it (#366/N5).
+            if (immutableIdRebuilt) syncService.SeedRebuildBaseline(rebuiltGraphAccountIds);
 
             // Contact sync (issue #256): Graph source reuses the Graph backend's client; Google source
             // gets its own People API client (owns an HttpClient → disposed in OnExit).
@@ -274,6 +385,14 @@ public partial class App : Application
             var contactSyncService  = new ContactSyncService(accountService, contactService, graphContactSource, googleContactSource, iCloudContactSource);
 
             var startupCfg = configService.Load();
+            // ui-probe (#180): theme/scale land in the loaded config BEFORE
+            // ThemeService.Initialize so the first render is already correct;
+            // ThemeService never persists, so config.ini is untouched.
+            if (UiProbe is { } probeOpts)
+            {
+                if (probeOpts.ThemeId != null) startupCfg.AppearanceThemeId = probeOpts.ThemeId;
+                if (probeOpts.TextScale != null) startupCfg.AppearanceTextScale = probeOpts.TextScale.Value;
+            }
             Views.AccessibilityHelper.Configure(startupCfg);
             LogService.Format  = startupCfg.LogFormat;
             LogService.Enabled = startupCfg.EnableLogging;
@@ -292,7 +411,7 @@ public partial class App : Application
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
 
             var viewService = new ViewService(profile);
-            var flagService = new FlagService(profile, configService, localStore, mailRouter);
+            var flagService = new FlagService(profile, configService, localStore, effectiveMail);
             var customDictionary = new CustomDictionaryService(profile);
 
             // Calendar service: harvests events from the local message cache.
@@ -322,22 +441,28 @@ public partial class App : Application
             // Through the ROUTER, not the IMAP backend: each account must be probed by the backend
             // that actually owns it. Probing a Graph account with the IMAP backend is what produced
             // the first live false alarm.
-            _truthProbe = new ConnectionTruthProbe(
+            _truthProbe = probeMode ? null : new ConnectionTruthProbe(
                 mailRouter,
                 id => accounts.FirstOrDefault(a => a.Id == id)?.AccountLabel ?? id.ToString());
 
             var mainVm = new MainViewModel(
-                mailRouter, accountService, credentialService, localStore, oauthService, syncService, configService, commandRegistry, viewService, ruleService, smtpService,
-                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService, changeNotifier: _changeNotifier, updateCheckService: _updateCheckService,
-                themeService: themeService, notificationService: _notificationService, contactSyncService: contactSyncService,
-                graphCalendarSyncService: graphCalendarSync, truthProbe: _truthProbe);
-            mainVm.RegisterAccountBackend = a => mailRouter.RegisterAccount(a.Id, BackendFor(a));
+                effectiveMail, accountService, credentialService, localStore, effectiveOAuth, syncService, configService, commandRegistry, viewService, ruleService, effectiveSmtp,
+                onlineMode: onlineMode, flagService: flagService, calendarService: calendarService,
+                changeNotifier: probeMode ? null : _changeNotifier,
+                updateCheckService: probeMode ? null : _updateCheckService,
+                screenshotCapture: ScreenshotCapture,
+                themeService: themeService, notificationService: _notificationService,
+                contactSyncService: probeMode ? null : contactSyncService,
+                graphCalendarSyncService: probeMode ? null : graphCalendarSync,
+                truthProbe: probeMode ? null : _truthProbe);
+            mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
+            mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
             // Registers/unregisters the Help command and shows or hides the menu item, and sets
             // ConnectionJournal.Enabled — so nothing records until the user opts in.
             mainVm.ApplyConnectionDiagnosticsSetting(startupCfg.ConnectionDiagnostics);
             mainVm.LoadAccountList(accounts);
 
-            var mainWindow = new MainWindow(mainVm, smtpService, accountService, credentialService, mailRouter, oauthService, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe);
+            var mainWindow = new MainWindow(mainVm, effectiveSmtp, accountService, credentialService, effectiveMail, effectiveOAuth, commandRegistry, contactService, configService, localStore, viewService, ruleService, templateService, featureGate, flagService, customDictionary, themeService, _bugReportService, _notificationService, contactSyncService, graphCalendarSync, serverRuleService, providerCatalog, _autoDiscoverService, _truthProbe);
 
             // Clicking a new-mail toast brings QuickMail to the foreground and opens the referenced
             // message. OnActivated may fire on a background thread, so marshal to the UI thread first.
@@ -381,6 +506,7 @@ public partial class App : Application
         _notificationService?.Dispose(); // unhooks the toast-activation static event
         _autoDiscoverService?.Dispose(); // releases the autoconfig HttpClient
         _truthProbe?.Dispose();     // cancels in-flight probes before releasing their token source
+        ScreenshotCapture?.Dispose(); // flushes any in-flight PNG save (best effort, bounded)
         base.OnExit(e);
     }
 
@@ -459,6 +585,16 @@ public partial class App : Application
     {
         for (var cur = e.Exception; cur != null; cur = cur.InnerException)
             LogService.Log("Dispatcher", cur);
+
+        // ui-probe (#180): unattended — a modal error box would park the run on an
+        // invisible dialog until the orchestrator's kill timeout and destroy the
+        // diagnostic exit code. Log (done above) and exit distinctly instead.
+        if ((Current as App)?.UiProbe != null)
+        {
+            e.Handled = true;
+            Current!.Shutdown(3);
+            return;
+        }
 
         // Keep the process alive so the user isn't left staring at a vanished window.
         // The log captures the cause; the next user action will either succeed or

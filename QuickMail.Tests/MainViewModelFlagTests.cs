@@ -101,6 +101,7 @@ public class MainViewModelFlagTests
         public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
         public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
         public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
+        public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
         public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
     }
 
@@ -220,6 +221,7 @@ sealed class FilterableStoreForFlags : ILocalStoreService
     public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>(_messages));
     public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
     public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
+    public Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
     public Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds) => Task.CompletedTask;
     public Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead) => Task.CompletedTask;
     public Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead) => Task.CompletedTask;

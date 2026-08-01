@@ -47,6 +47,26 @@ public class SyncService : ISyncService
     // (account, folder) pairs whose store-less baseline has been established (first online fetch seen).
     private readonly ConcurrentDictionary<(Guid Account, string Folder), byte> _onlineBaselined = new();
 
+    // Accounts whose cache was wiped by the one-time immutable-id rebuild (#366): the first persisted
+    // sync of each of their folders is a baseline (mark-seen, no rules) so pre-existing mail — already
+    // processed when it first arrived — isn't re-run through rules on upgrade day. Seeded via
+    // SeedRebuildBaseline; _rebuildBaselined tracks which (account, folder) pairs have been baselined.
+    private readonly ConcurrentDictionary<Guid, byte> _rebuildAccounts = new();
+    private readonly ConcurrentDictionary<(Guid Account, string Folder), byte> _rebuildBaselined = new();
+
+    /// <summary>
+    /// Marks the given accounts as freshly cache-wiped by the one-time immutable-id rebuild (#366).
+    /// The first persisted sync of each of their folders then caches the fetched messages but does NOT
+    /// run client rules on them — they are pre-existing mail (rules already ran when it first arrived),
+    /// not new arrivals, and the wipe erased the store's "already seen" memory. Rules resume on
+    /// genuinely-new mail from the next sync. No-op for accounts not passed here. Call once at startup,
+    /// right after the rebuild clears the cache and before any sync runs.
+    /// </summary>
+    public void SeedRebuildBaseline(IEnumerable<Guid> accountIds)
+    {
+        foreach (var id in accountIds) _rebuildAccounts.TryAdd(id, 0);
+    }
+
     public async Task SyncAllAccountsAsync(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
@@ -169,9 +189,17 @@ public class SyncService : ISyncService
     /// </summary>
     private async Task<List<MailMessageSummary>> ApplyRulesToArrivalsAsync(
         AccountModel account, MailFolderModel folder,
-        List<MailMessageSummary> fetched, bool persisted, CancellationToken ct)
+        List<MailMessageSummary> fetched, bool persisted, bool consumeRebuildBaseline, CancellationToken ct)
     {
-        if (fetched.Count == 0) return fetched;
+        if (fetched.Count == 0)
+        {
+            // F4: an empty folder at upgrade has no pre-existing mail to baseline, but still consume the
+            // baseline on the full sync so a later genuinely-new message runs rules normally rather than
+            // being swallowed by a baseline deferred to it.
+            if (consumeRebuildBaseline && _rebuildAccounts.ContainsKey(account.Id))
+                _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0);
+            return fetched;
+        }
 
         // No enabled rules → no id scan, no guard bookkeeping; a rule-less profile pays nothing.
         // (LoadRules() is cached after first load.) Still persist so the cache/UI reflect the fetch.
@@ -191,6 +219,23 @@ public class SyncService : ISyncService
 
         if (!hasEnabledRules) return fetched;
 
+        // #336: client rules fire ONLY on the Inbox. Non-Inbox folders are still fetched and cached
+        // above — we just don't run rules against them. This is the classic mail-rules model (rules
+        // process mail as it arrives in the Inbox) and it prevents double-processing: a server-side
+        // rule (or a manual move) that files a message into another folder must not then be re-acted
+        // on by a matching client rule when QuickMail syncs that folder, and a rule must never yank
+        // back mail the user manually filed elsewhere. Matches the Inbox test used across the VM.
+        //
+        // IMPORTANT (review L5): for Graph accounts, folder.FullName is an opaque id that never equals
+        // "INBOX", so folder.Kind == Inbox is the ONLY thing keeping client rules alive on a Graph
+        // inbox. Every current caller resolves the inbox model from _cachedFolders (where Kind is set),
+        // so this holds — but any new sync entry point that hands this method a Graph inbox with
+        // Kind == None would silently stop running rules on it. Keep Kind set on the inbox model, or
+        // route inbox resolution through the shared predicate. Pinned by GraphInbox_ByKind_RunsRules.
+        if (folder.Kind != SpecialFolderKind.Inbox &&
+            !string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase))
+            return fetched;
+
         // Store-less (online) baseline: the first fetch per folder is the last-50 reconciliation
         // batch, not new mail. Mark it seen WITHOUT running rules, so a move/delete/mark-read rule
         // never rewrites up-to-50 pre-existing messages on a delete or archive reconciliation.
@@ -199,6 +244,25 @@ public class SyncService : ISyncService
         {
             foreach (var m in fetched)
                 _rulesApplied.TryAdd((account.Id, folder.FullName, m.MessageId), 0);
+            return fetched;
+        }
+
+        // Persisted rebuild baseline (#366/N5): after the one-time immutable-id cache wipe, the store is
+        // empty, so a re-fetch reads every pre-existing message as "new" and would re-run rules over old
+        // mail on upgrade day (move/delete/mark-read). While a wiped account's folder is not yet
+        // baselined, skip rules on its re-fetched mail.
+        //
+        // F2 (race): the delta poll's IDLE last-50 fetch runs concurrently with the full sync's larger
+        // window on upgrade launches, and nothing serializes them. Only the FULL sync consumes (marks
+        // the folder baselined); the IDLE path skips rules WITHOUT consuming. So if IDLE wins the race it
+        // can't burn the baseline on 50 messages and leave the full sync's larger remainder — read as new
+        // against the just-upserted 50 — to re-fire. The full sync always finds the folder un-baselined
+        // and skips its whole batch. Once the full sync consumes, rules resume normally on both paths.
+        if (persisted && _rebuildAccounts.ContainsKey(account.Id)
+            && !_rebuildBaselined.ContainsKey((account.Id, folder.FullName)))
+        {
+            if (consumeRebuildBaseline)
+                _rebuildBaselined.TryAdd((account.Id, folder.FullName), 0);
             return fetched;
         }
 
@@ -292,7 +356,7 @@ public class SyncService : ISyncService
         {
             // Upsert + client rules happen inside the shared chokepoint so live-arriving mail is
             // subject to rules exactly like the full sync.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: false, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
@@ -308,7 +372,7 @@ public class SyncService : ISyncService
         if (incoming.Count > 0)
         {
             // Online mode keeps no local store, so rules dedupe via the in-session guard only.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: false, ct);
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: false, consumeRebuildBaseline: false, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
         return incoming;
@@ -351,7 +415,7 @@ public class SyncService : ISyncService
             // syncs use). It strips rule-moved/deleted messages from the batch and raises
             // RulesApplied / MessagesRemoved; here we just surface the survivors to the UI —
             // immediately, without waiting for body preview fetches.
-            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, ct);
+            incoming = await ApplyRulesToArrivalsAsync(account, folder, incoming, persisted: true, consumeRebuildBaseline: true, ct);
             _ui.Post(() => FolderSynced?.Invoke(incoming));
         }
 

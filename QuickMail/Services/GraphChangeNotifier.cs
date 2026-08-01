@@ -89,13 +89,14 @@ public sealed class GraphChangeNotifier : IChangeNotifier, IDisposable
                 // page's @odata.deltaLink as the cursor for the next tick.
                 while (!string.IsNullOrEmpty(url))
                 {
-                    var resp = await _client.GetAsync<GraphDeltaResponse>(account, url, ct);
+                    // Immutable ids on every delta request (initial + nextLink + deltaLink), so
+                    // delta-delivered ids match the immutable ids the folder sync stores (#366 part B).
+                    var resp = await _client.GetAsync<GraphDeltaResponse>(account, url, GraphHeaders.ImmutableId, ct);
                     // A delta page mixes two kinds of entry: added/changed messages (new mail) and
                     // @removed tombstones (deleted or moved out of the Inbox by another client, #366).
                     // An @removed entry carries only @removed + id, so route it to reconciliation, not
-                    // to the new-mail signal. Ids match the store because both the folder sync and this
-                    // poll read the same backend id type (mutable, or immutable once #366 part B lands —
-                    // they flip together, so this stays consistent without a header change here).
+                    // to the new-mail signal. Ids match the store because the folder sync now stores the
+                    // same immutable ids this request asks for (header above).
                     foreach (var m in resp?.Value ?? System.Array.Empty<GraphMessage>())
                     {
                         if (m.Removed != null)

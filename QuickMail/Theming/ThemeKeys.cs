@@ -66,6 +66,15 @@ public static class ThemeKeys
 
     // ── Vision assist (resource-only) ─────────────────────────────────────────
     public const string FocusThickness = Prefix + "FocusThickness";
+    /// <summary>Always FocusThickness + 2: the contrasting halo drawn under the
+    /// focus ring extends 1px beyond it on each side, guaranteeing the ring is
+    /// visible on any fill (including accent-strength selection).</summary>
+    public const string FocusHaloThickness = Prefix + "FocusHaloThickness";
+
+    /// <summary>Message-list row padding (Thickness), from the density setting:
+    /// comfortable 4,3 / compact 2,1. Padding only — never anything a screen
+    /// reader can observe.</summary>
+    public const string ListRowPadding = Prefix + "ListRowPadding";
 
     /// <summary>camelCase JSON name → application resource key, for all 26 color tokens.</summary>
     public static readonly IReadOnlyDictionary<string, string> ColorTokens =

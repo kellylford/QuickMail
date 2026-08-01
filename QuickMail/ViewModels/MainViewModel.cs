@@ -25,6 +25,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Verifies, independently of the app's own connection state, whether an account shown as
     // disconnected really is. Optional so tests and the stub-service constructors are unaffected.
     private readonly ConnectionTruthProbe? _truthProbe;
+    private readonly IScreenshotCaptureService? _screenshotCapture;
     private readonly IAccountService _accountService;
     private readonly ICredentialService _credentials;
     private readonly ILocalStoreService _localStore;
@@ -109,8 +110,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// background work (sync, prefetch, message loads) unwinds via OperationCanceledException
     /// instead of being killed with the process, then releases the CTS handles and timer.
     /// </summary>
+    private void OnScreenshotCaptureEnabledChanged(object? sender, EventArgs e) =>
+        OnPropertyChanged(nameof(WindowTitle));
+
     public void Dispose()
     {
+        if (_screenshotCapture != null)
+            _screenshotCapture.EnabledChanged -= OnScreenshotCaptureEnabledChanged;
         DrainCts(ref _connectCts);
         DrainCts(ref _folderCts);
         DrainCts(ref _messageLoadCts);
@@ -214,6 +220,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         FullName    = "\u0000AllTrash",
         DisplayName = "All Trash"
+    };
+
+    /// <summary>
+    /// Every account's Archive destination merged into one list (issue #452). Unlike the other
+    /// kind-scoped aggregates this resolves through <see cref="ResolveArchiveFolder"/>, so it lists
+    /// exactly the folders <c>Move to Archive</c> writes to — including a per-account override that
+    /// points at a folder the server does not flag as Archive.
+    /// </summary>
+    public static readonly MailFolderModel AllArchiveFolder = new()
+    {
+        FullName    = "\u0000AllArchive",
+        DisplayName = "All Archive"
     };
     public static readonly MailFolderModel AllFlaggedFolder = new()
     {
@@ -454,6 +472,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                string.Equals(folder.FullName, AllDraftsFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllSentFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllArchiveFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
                IsCalendarFolderName(folder.FullName);
     }
@@ -769,6 +788,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         get
         {
+            // The suffix lives in the getter (not applied externally) so any
+            // WindowTitle recompute keeps the capture warning while enabled.
+            var title = ComputeWindowTitle();
+            return _screenshotCapture?.Enabled == true
+                ? title + IScreenshotCaptureService.TitleSuffix
+                : title;
+        }
+    }
+
+    private string ComputeWindowTitle()
+    {
             if (IsMessageOpen && !string.IsNullOrWhiteSpace(MessageDetail?.Subject))
                 return $"{MessageDetail.Subject} - QuickMail";
             if (ActiveView != null)
@@ -796,7 +826,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 return $"{folderPart}{suffix} - QuickMail";
             }
             return "QuickMail";
-        }
     }
 
     // ── Tab & Window Management (Phase 6) ────────────────────────────────────────
@@ -1054,9 +1083,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         INotificationService? notificationService = null,
         IContactSyncService? contactSyncService = null,
         IGraphCalendarSyncService? graphCalendarSyncService = null,
-        ConnectionTruthProbe? truthProbe = null)
+        ConnectionTruthProbe? truthProbe = null,
+        IScreenshotCaptureService? screenshotCapture = null)
     {
         _truthProbe = truthProbe;
+        _screenshotCapture = screenshotCapture;
+        if (_screenshotCapture != null)
+            _screenshotCapture.EnabledChanged += OnScreenshotCaptureEnabledChanged;
         _imap            = imap;
         _ui              = uiDispatcher ?? new WpfUiDispatcher();
         _changeNotifier  = changeNotifier;
@@ -1086,6 +1119,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _showPreview = _previewLines > 0;
         _syncDays = cfg.SyncDays;
         _viewMode = ConfigModel.ParseViewMode(cfg.ViewMode);
+        _listDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         MessageOpenMode = cfg.Windowing.MessageOpenMode;
         EnsureMessageListTab();
         _activeSort = ConfigModel.ParseSort(cfg.Sort);
@@ -1573,6 +1607,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 vf.AccountId, vf.FolderFullName, maxKey, initialCount, ct);
                         }
                     }
+                    // Aggregate view — stamp each message with the stored view's plain folder name as a
+                    // fallback; ApplyFolderDisplayNames below overwrites it with the account-qualified
+                    // form for folders known to the cache (#423). Single-folder loads don't come here.
+                    foreach (var m in msgs) m.FolderDisplayName = vf.FolderDisplayName;
                     newMessages.AddRange(msgs);
                 }
                 catch (OperationCanceledException) { throw; }
@@ -1582,6 +1620,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            // #423 (Kelly round 2): Phase 2 inserts via InsertMessageSorted (not SetMessages), so these
+            // freshly-fetched rows must be account-qualified here too — otherwise a multi-account saved
+            // view shows qualified cached rows next to unqualified fresh ones. Keeps the plain stamp
+            // above as the miss fallback for folders not in the cache.
+            ApplyFolderDisplayNames(newMessages);
 
             // A saved view can span folders (and Gmail copies), so key by global message identity
             // to collapse duplicate copies against what is already shown (issue #220).
@@ -1646,6 +1690,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _themeService?.ApplyAppearance(cfg);
 
         ApplyConnectionDiagnosticsSetting(cfg.ConnectionDiagnostics);
+
+        // Keep the View menu's density check marks in sync with a Settings save.
+        ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
 
         ShowMessageStatus = cfg.ShowMessageStatus;
         ReadAsPlainText   = cfg.ReadAsPlainText;
@@ -1763,6 +1810,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
             execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 4)));
+
+        // Density (#421): the same setting the Settings dialog persists, adjustable
+        // from the View menu, the palette, and (via these registrations) a hotkey.
+        registry.Register(new CommandDefinition(
+            id: "view.density.comfortable", category: "View", title: "Density: Comfortable",
+            execute: () => SetListDensity("comfortable")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.density.compact", category: "View", title: "Density: Compact",
+            execute: () => SetListDensity("compact")));
 
         registry.Register(new CommandDefinition(
             id: "account.manage", category: "Account", title: "Manage Accounts",
@@ -1893,6 +1950,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ── Startup ──────────────────────────────────────────────────────────────────
 
+    /// <summary>Set by App startup when the one-time Graph immutable-id cache rebuild (#366) cleared
+    /// cached mail; InitialLoadAsync announces the resulting re-sync so the empty inbox isn't a mystery.</summary>
+    public bool ImmutableIdRebuildAnnouncePending { get; set; }
+
+    // The one-time re-sync notice, shared between the immediate announce and the visible status.
+    private const string ImmutableIdRebuildNotice =
+        "Microsoft 365 mail is doing a one-time re-sync — this may take a few minutes.";
+
     /// <summary>
     /// Shows All Mail from the local store immediately (no network).
     /// Called first in OnLoaded so the UI is populated before any IMAP work begins.
@@ -1908,6 +1973,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
             foreach (var d in defs.OrderBy(d => d.SortOrder))
                 FlagDefinitions.Add(d);
         }
+        var rebuildNotice = ImmutableIdRebuildAnnouncePending;
+        if (rebuildNotice)
+        {
+            // One-time: cached Microsoft 365 mail was cleared to switch to immutable ids; the sync
+            // below repopulates it. Say so rather than showing a silent empty inbox. Announce it via
+            // the IMMEDIATE (interrupt) path, not SetStatus — the debounced status announce would be
+            // overwritten within 500 ms by the "Connecting and syncing…" write below and never spoken
+            // (review N1). This announce channel is the one that reliably reaches the user. (The
+            // visible status bar shows the notice briefly too — set below when the cache is empty — but
+            // StartBackgroundSyncAsync overwrites it with a connect/sync status moments later, so don't
+            // rely on the status bar for the explanation; review F1.)
+            ImmutableIdRebuildAnnouncePending = false;
+            Announce(ImmutableIdRebuildNotice, AnnouncementCategory.Status);
+        }
         if (OnlineMode)
         {
             StatusText = "Online mode — connecting…";
@@ -1919,7 +1998,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SetMessages(cached);
         StatusText = cached.Count > 0
             ? $"{cached.Count} messages (cached — syncing…)"
-            : "Connecting and syncing…";
+            : rebuildNotice ? ImmutableIdRebuildNotice : "Connecting and syncing…";
         ConnectionStatusText = "Connecting…";
         StartPrefetchTopOfFolder();
         // Drop calendar events left behind by accounts that no longer exist — e.g. an account removed
@@ -2334,22 +2413,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // All Flagged Mail — only accept flagged incoming messages.
             relevant = incoming.Where(m => m.IsFlagged);
         }
-        else if (selected.FullName == AllInboxesFolder.FullName ||
-                 selected.FullName == AllDraftsFolder.FullName  ||
-                 selected.FullName == AllSentFolder.FullName    ||
-                 selected.FullName == AllTrashFolder.FullName)
+        else if (IsFolderScopedAggregate(selected.FullName))
         {
-            // Kind-specific virtual folders (All Inboxes / Drafts / Sent / Trash) —
-            // accept messages whose source folder has the matching SpecialFolderKind.
-            // Build a lookup set once so the per-message check is O(1).
-            var targetKind = selected.FullName == AllInboxesFolder.FullName ? SpecialFolderKind.Inbox
-                           : selected.FullName == AllDraftsFolder.FullName  ? SpecialFolderKind.Drafts
-                           : selected.FullName == AllSentFolder.FullName    ? SpecialFolderKind.Sent
-                           : SpecialFolderKind.Trash;
+            // Folder-scoped virtual folders (All Inboxes / Drafts / Sent / Trash / Archive) —
+            // accept messages that came from one of the real folders the aggregate spans.
+            // Build a lookup set once so the per-message check is O(1). Sourcing it from the
+            // same helper the fetch uses keeps live arrivals and the loaded list in agreement.
             var matchingFolderKeys = new HashSet<(Guid, string)>(
-                _cachedFolders.SelectMany(kvp => kvp.Value
-                    .Where(f => f.Kind == targetKind)
-                    .Select(f => (kvp.Key, f.FullName.ToUpperInvariant()))));
+                FolderScopedAggregateSources(selected.FullName)
+                    .Select(s => (s.Account.Id, s.Folder.FullName.ToUpperInvariant())));
             relevant = incoming.Where(m =>
                 matchingFolderKeys.Contains((m.AccountId, m.FolderName.ToUpperInvariant())));
         }
@@ -2428,6 +2500,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!string.IsNullOrWhiteSpace(SearchText) && !MatchesSearch(msg)) continue;
             toInsert.Add(msg);
         }
+
+        // #423: live arrivals into an aggregate view must announce their source folder too.
+        if (IsVirtualFolder(selected))
+            ApplyFolderDisplayNames(toInsert);
 
         // Batch all inserts into a single CollectionChanged(Reset) notification.
         // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
@@ -2695,7 +2771,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
         // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
         if (IsVirtualFolder(SelectedFolder))
+        {
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
+            ApplyFolderDisplayNames(list);
+        }
         _rawMessages = list;
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
@@ -2717,6 +2796,108 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (string.Equals(f.FullName, msg.FolderName, StringComparison.OrdinalIgnoreCase))
                     return f.Kind;
         return SpecialFolderKind.None;
+    }
+
+    /// <summary>
+    /// #423: stamps each row's source location so the accessible name can announce it in aggregate/
+    /// virtual views. Account-qualified as "&lt;account&gt; -- &lt;folder&gt;" (e.g. "icanbrew -- Inbox")
+    /// ONLY when the current VIEW spans more than one account — decided by
+    /// <see cref="AggregateSpansMultipleAccounts"/> from the view identity (per-account All Mail vs
+    /// global aggregate vs the saved view's folder set), NOT from the visible rows, so a global All Mail
+    /// dominated by one account's mail still qualifies. A single-account view (per-account All Mail, a
+    /// single-account saved view) announces the folder alone ("Inbox") to avoid repeating the account.
+    /// <see cref="MailMessageSummary.FolderName"/> is a raw backend id (a Graph folder id, or an IMAP
+    /// path), mapped through the cached folder list to the display name. On a lookup miss the existing
+    /// value is left untouched (empty for fresh rows, or a caller-supplied plain-name fallback) — never
+    /// a raw id. Only called for virtual views; single-folder views leave
+    /// <see cref="MailMessageSummary.FolderDisplayName"/> empty (folder implied).
+    /// </summary>
+    private void ApplyFolderDisplayNames(List<MailMessageSummary> list)
+    {
+        if (list.Count == 0) return;
+
+        // Precompute lookups once so this is O(messages), not O(messages × folders) (Kelly's review):
+        // account id → label, and (account, folder full-name) → folder display name.
+        var accountLabels = new Dictionary<Guid, string>();
+        foreach (var a in Accounts) accountLabels[a.Id] = a.AccountLabel;
+        var folderNames = new Dictionary<(Guid, string), string>();
+        foreach (var kvp in _cachedFolders)
+            foreach (var f in kvp.Value)
+                folderNames[(kvp.Key, f.FullName)] = f.DisplayName;
+
+        StampFolderDisplayNames(list, AggregateSpansMultipleAccounts(), accountLabels, folderNames);
+    }
+
+    /// <summary>
+    /// Whether the current aggregate/virtual view spans more than one account — the account prefix is
+    /// added only then (#423). Decided by the VIEW, not by which accounts happen to be visible: global
+    /// All Mail spans every account even if one dominates the list and the others are barely present,
+    /// while per-account All Mail is a single account whose name is already implied. A single-account
+    /// saved view stays folder-only; a multi-account one qualifies.
+    /// </summary>
+    private bool AggregateSpansMultipleAccounts()
+        => AggregateSpansMultipleAccounts(SelectedFolder?.FullName, SavedViews, Accounts.Count);
+
+    /// <summary>
+    /// Pure decision for the account-qualification (#423), extracted so it's directly testable — this
+    /// is the piece that regressed once (a content-based version dropped the prefix when one account
+    /// dominated the list). Decided by the VIEW identity, never by row content: per-account All Mail →
+    /// one account (false); a saved view → the distinct accounts among its folders; global aggregates
+    /// (All Mail / All Inboxes / Sent / Trash / Flagged) and contact-mail → <paramref name="accountCount"/>
+    /// &gt; 1, since they span every account.
+    /// </summary>
+    internal static bool AggregateSpansMultipleAccounts(
+        string? viewFullName, IEnumerable<SavedView> savedViews, int accountCount)
+    {
+        if (viewFullName == null) return false;
+
+        // Per-account All Mail → the single account is already implied by the view itself.
+        if (TryGetAccountIdFromSentinel(viewFullName, out _)) return false;
+
+        // Saved view → count the distinct accounts among its folders.
+        if (TryGetViewIdFromSentinel(viewFullName, out var viewId) ||
+            TryGetViewAllIdFromSentinel(viewFullName, out viewId))
+        {
+            var sv = savedViews.FirstOrDefault(v => v.Id == viewId);
+            if (sv != null)
+                return sv.Folders.Select(f => f.AccountId).Distinct().Count() > 1;
+        }
+
+        return accountCount > 1;
+    }
+
+    /// <summary>
+    /// Pure stamping logic for <see cref="ApplyFolderDisplayNames"/>, extracted so the format and its
+    /// fallbacks are directly testable (#423). Sets each row's
+    /// <see cref="MailMessageSummary.FolderDisplayName"/> to the folder alone ("Inbox"), or account-
+    /// qualified "&lt;account&gt; -- &lt;folder&gt;" when <paramref name="qualifyAccount"/> is set.
+    /// </summary>
+    /// <param name="list">The batch to stamp.</param>
+    /// <param name="qualifyAccount">True to prefix "&lt;account&gt; -- " (view spans &gt;1 account).</param>
+    /// <param name="accountLabels">account id → display label.</param>
+    /// <param name="folderNames">(account, folder full-name) → folder display name; case-sensitive
+    /// (Ordinal): FolderName is captured from the same folder.FullName (a Graph id / IMAP path).</param>
+    internal static void StampFolderDisplayNames(
+        List<MailMessageSummary> list,
+        bool qualifyAccount,
+        IReadOnlyDictionary<Guid, string> accountLabels,
+        IReadOnlyDictionary<(Guid, string), string> folderNames)
+    {
+        if (list.Count == 0) return;
+
+        foreach (var m in list)
+        {
+            // Folder must be known — never announce a raw backend id. On a miss leave whatever's there
+            // (empty for fresh rows, or a caller's plain-name fallback), don't clobber it to empty.
+            if (!folderNames.TryGetValue((m.AccountId, m.FolderName), out var folder)
+                || string.IsNullOrEmpty(folder))
+                continue;
+
+            m.FolderDisplayName = qualifyAccount
+                && accountLabels.TryGetValue(m.AccountId, out var label) && !string.IsNullOrEmpty(label)
+                ? $"{label} -- {folder}"
+                : folder;
+        }
     }
 
     // Re-applies the status filter and search text to _rawMessages.
@@ -3112,7 +3293,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var saved = SelectedFolder;
         var items = new List<MailFolderModel>
         {
-            AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder, AllTrashFolder
+            AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder,
+            AllArchiveFolder, AllTrashFolder
         };
 
         foreach (var account in Accounts)
@@ -3251,7 +3433,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             roots.Add(viewsGroup);
         }
 
-        // "All Mail" is a top-level group header with 5 virtual sub-folder children.
+        // "All Mail" is a top-level group header with 7 virtual sub-folder children.
         var allMailGroup = new FolderTreeNode
         {
             IsHeader   = true,
@@ -3262,6 +3444,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllInboxesFolder, Label = AllInboxesFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllDraftsFolder,  Label = AllDraftsFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllSentFolder,    Label = AllSentFolder.DisplayName });
+        allMailGroup.Children.Add(new FolderTreeNode { Folder = AllArchiveFolder, Label = AllArchiveFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllTrashFolder,   Label = AllTrashFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllFlaggedFolder, Label = AllFlaggedFolder.DisplayName });
         roots.Add(allMailGroup);
@@ -4092,6 +4275,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                 return;
 
+            // #423: All Mail's incremental adds go through InsertMessageSorted (not SetMessages), so
+            // stamp the source folder here too — otherwise newly-fetched rows announce no folder.
+            ApplyFolderDisplayNames(newMessages);
+
             if (needsRecipientRepair)
             {
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
@@ -4260,10 +4447,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private Task FetchVirtualAsync(MailFolderModel folder)
     {
         if (folder.FullName == AllMailFolder.FullName)    return FetchAllMailAsync();
-        if (folder.FullName == AllInboxesFolder.FullName) return FetchVirtualFolderAsync(SpecialFolderKind.Inbox,  "All Inboxes");
-        if (folder.FullName == AllDraftsFolder.FullName)  return FetchVirtualFolderAsync(SpecialFolderKind.Drafts, "All Drafts");
-        if (folder.FullName == AllSentFolder.FullName)    return FetchVirtualFolderAsync(SpecialFolderKind.Sent,   "All Sent");
-        if (folder.FullName == AllTrashFolder.FullName)   return FetchVirtualFolderAsync(SpecialFolderKind.Trash,  "All Trash");
+        if (IsFolderScopedAggregate(folder.FullName))     return FetchVirtualFolderAsync(folder.FullName);
         if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
         if (TryGetContactMailFromSentinel(folder.FullName, out var contactAddress, out var contactDirection))
@@ -4641,6 +4825,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 : await FetchAccountNewMessagesAsync(account, ct);
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
+            // #423: per-account All Mail's incremental adds go through InsertMessageSorted (not
+            // SetMessages), so stamp the source folder here too — otherwise the newest rows (at the
+            // top) announce no folder while the cached rows below them do. Mirrors FetchAllMailAsync.
+            // The OnlineMode branch below is already covered — it flows through SetMessages.
+            ApplyFolderDisplayNames(newMessages);
+
             if (OnlineMode)
             {
                 var sorted = newMessages.OrderByDescending(m => m.Date).ToList();
@@ -4708,8 +4898,74 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private async Task FetchVirtualFolderAsync(SpecialFolderKind kind, string displayName)
+    /// <summary>
+    /// The folder-scoped aggregates: virtual folders whose contents are the union of a specific set
+    /// of real folders on every account. All Mail (union of everything non-excluded), All Flagged
+    /// (a message-level predicate) and the saved-view / contact-mail sentinels are deliberately not
+    /// in this family — they resolve their sources differently.
+    /// </summary>
+    private static bool IsFolderScopedAggregate(string? fullName) =>
+        fullName != null &&
+        (string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ||
+         string.Equals(fullName, AllDraftsFolder.FullName,  StringComparison.Ordinal) ||
+         string.Equals(fullName, AllSentFolder.FullName,    StringComparison.Ordinal) ||
+         string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ||
+         string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal));
+
+    /// <summary>
+    /// The real (account, folder) pairs a folder-scoped aggregate spans. All Inboxes / Drafts / Sent
+    /// / Trash match on <see cref="SpecialFolderKind"/>; All Archive resolves each account's archive
+    /// destination through <see cref="ResolveArchiveFolder"/> so a per-account override is honored
+    /// and the aggregate always shows exactly where Move to Archive puts mail. Accounts whose folder
+    /// list has not been cached yet, and accounts with no archive destination, contribute nothing.
+    /// Both the fetch and the live-arrival filter read this, so they can never disagree.
+    /// </summary>
+    private IEnumerable<(AccountModel Account, MailFolderModel Folder)> FolderScopedAggregateSources(
+        string fullName)
     {
+        var isArchive = string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal);
+        var kind = string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ? SpecialFolderKind.Inbox
+                 : string.Equals(fullName, AllDraftsFolder.FullName,  StringComparison.Ordinal) ? SpecialFolderKind.Drafts
+                 : string.Equals(fullName, AllSentFolder.FullName,    StringComparison.Ordinal) ? SpecialFolderKind.Sent
+                 : string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ? SpecialFolderKind.Trash
+                 : SpecialFolderKind.None;
+        if (!isArchive && kind == SpecialFolderKind.None) yield break;
+
+        foreach (var account in Accounts)
+        {
+            if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+
+            if (isArchive)
+            {
+                var dest = ResolveArchiveFolder(account.Id);
+                if (dest != null) yield return (account, dest);
+                continue;
+            }
+
+            foreach (var folder in folders)
+                if (folder.Kind == kind)
+                    yield return (account, folder);
+        }
+    }
+
+    /// <summary>
+    /// Canonical display name for a folder-scoped aggregate sentinel. Throws rather than falling
+    /// back to a default so that a sixth aggregate added to <see cref="IsFolderScopedAggregate"/>
+    /// and forgotten here fails loudly instead of silently inheriting another folder's name in its
+    /// status text, its loading text, and its log tag.
+    /// </summary>
+    private static string FolderScopedAggregateDisplayName(string fullName) =>
+        string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ? AllInboxesFolder.DisplayName
+        : string.Equals(fullName, AllDraftsFolder.FullName,  StringComparison.Ordinal) ? AllDraftsFolder.DisplayName
+        : string.Equals(fullName, AllSentFolder.FullName,    StringComparison.Ordinal) ? AllSentFolder.DisplayName
+        : string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ? AllTrashFolder.DisplayName
+        : string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal) ? AllArchiveFolder.DisplayName
+        : throw new ArgumentOutOfRangeException(
+            nameof(fullName), "Not a folder-scoped aggregate sentinel.");
+
+    private async Task FetchVirtualFolderAsync(string fullName)
+    {
+        var displayName = FolderScopedAggregateDisplayName(fullName);
         var expectedFolder = SelectedFolder;
         var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
         Messages.Clear();
@@ -4723,9 +4979,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var perAccountTasks = Accounts
-                .Where(a => _cachedFolders.ContainsKey(a.Id))
-                .Select(account => FetchAccountByKindAsync(account, kind, ct));
+            var perAccountTasks = FolderScopedAggregateSources(fullName)
+                .GroupBy(s => s.Account)
+                .Select(g => FetchAccountFoldersAsync(g.Key, g.Select(s => s.Folder).ToList(), ct));
 
             var accountResults = await Task.WhenAll(perAccountTasks);
             foreach (var batch in accountResults)
@@ -4739,7 +4995,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             SetMessages(sorted);
             StatusText = sorted.Count == 0
                 ? $"No messages in {displayName}."
-                : $"{sorted.Count} messages in {displayName}.";
+                : $"{sorted.Count} {(sorted.Count == 1 ? "message" : "messages")} in {displayName}.";
             if (!OnlineMode)
                 _localStore.UpsertSummariesAsync(sorted).LogFaults("local store: upsert summaries");
         }
@@ -4771,15 +5027,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         left.AccountId == right.AccountId &&
         string.Equals(left.FullName, right.FullName, StringComparison.OrdinalIgnoreCase);
 
-    private async Task<List<MailMessageSummary>> FetchAccountByKindAsync(
-        AccountModel account, SpecialFolderKind kind, CancellationToken ct)
+    private async Task<List<MailMessageSummary>> FetchAccountFoldersAsync(
+        AccountModel account, List<MailFolderModel> folders, CancellationToken ct)
     {
         var result = new List<MailMessageSummary>();
-        if (!_cachedFolders.TryGetValue(account.Id, out var folders)) return result;
 
         foreach (var folder in folders)
         {
-            if (folder.Kind != kind) continue;
             ct.ThrowIfCancellationRequested();
             try
             {
@@ -5022,12 +5276,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// and persists it to accounts.json. Invoked from the folder tree's Set / Use-automatic Archive
     /// commands. There is deliberately no global archive folder — this is per account.
     /// </summary>
-    public void SetArchiveFolder(Guid accountId, string? fullName)
+    /// <returns>
+    /// The reload of the All Archive list when that aggregate is on screen, so a caller (or a test)
+    /// can await it; an already-completed task otherwise.
+    /// </returns>
+    public Task SetArchiveFolderAsync(Guid accountId, string? fullName)
     {
         var account = Accounts.FirstOrDefault(a => a.Id == accountId);
-        if (account == null) return;
+        if (account == null) return Task.CompletedTask;
         account.ArchiveFolderFullName = string.IsNullOrEmpty(fullName) ? null : fullName;
         _accountService.SaveAccounts([.. Accounts]);
+
+        // All Archive is the one aggregate whose membership a user action can change. Its list was
+        // resolved against the old destination, while OnFolderSynced starts filtering on the new
+        // one immediately — so without this reload a later sync would append the new archive's
+        // messages alongside the old archive's, showing both at once. Reachable via the folder
+        // tree's context menu, which acts on the right-clicked node rather than on the selection
+        // and so leaves All Archive selected.
+        return string.Equals(SelectedFolder?.FullName, AllArchiveFolder.FullName, StringComparison.Ordinal)
+            ? FetchVirtualAsync(SelectedFolder!)
+            : Task.CompletedTask;
     }
 
     /// <summary>
@@ -6482,6 +6750,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void SetViewMode(string? mode)
     {
         ViewMode = ConfigModel.ParseViewMode(mode);
+    }
+
+    // ── List density command (#421, View menu) ────────────────────────────────
+
+    /// <summary>Current message-list density ("comfortable"/"compact"); drives
+    /// the View menu check marks. The token publish itself lives in ThemeService.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsListDensityComfortable))]
+    [NotifyPropertyChangedFor(nameof(IsListDensityCompact))]
+    private string _listDensity = "comfortable";
+
+    public bool IsListDensityComfortable => ListDensity == "comfortable";
+    public bool IsListDensityCompact => ListDensity == "compact";
+
+    /// <summary>
+    /// Same setting the Settings dialog persists — the View menu adjusts it in
+    /// place. Density is padding-only, so ThemeService re-publishes without
+    /// raising ThemeChanged; the result announcement here is the only speech.
+    /// </summary>
+    [RelayCommand]
+    private void SetListDensity(string? density)
+    {
+        var normalized = string.Equals(density, "compact", StringComparison.OrdinalIgnoreCase) ? "compact" : "comfortable";
+        if (normalized == ListDensity) return;
+        ListDensity = normalized;
+
+        var cfg = _configService.Load();
+        cfg.AppearanceListDensity = normalized;
+        _configService.Save(cfg);
+        _themeService?.ApplyAppearance(cfg);
+
+        Announce(normalized == "compact" ? "Compact density." : "Comfortable density.");
     }
 
     // ── Search command ────────────────────────────────────────────────────────

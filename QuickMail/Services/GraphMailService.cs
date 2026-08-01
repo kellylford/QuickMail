@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -224,13 +225,18 @@ public class GraphMailService : IMailService, IConnectionProbe
         AccountModel account, string folderName, int limit, DateTime? since, CancellationToken ct)
     {
         var top = limit > 0 ? Math.Min(limit, 999) : 500;
+        // internetMessageId is REQUIRED: it is the RFC 5322 Message-ID, the stable cross-copy identity
+        // aggregate views (All Mail etc.) use to collapse duplicates (MessageDeduplicator). Without it
+        // every Graph summary has an empty Message-ID, so dedup falls back to (folder, per-fetch id) —
+        // and any path that yields a slightly different folder/id representation shows the SAME message
+        // twice. Omitting it here is what caused duplicate rows in All Mail (#366).
         var path = $"/me/mailFolders/{folderName}/messages?$top={top}&$orderby=receivedDateTime desc" +
-                   "&$select=id,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag";
+                   "&$select=id,internetMessageId,subject,from,toRecipients,receivedDateTime,isRead,bodyPreview,hasAttachments,flag";
         if (since.HasValue)
             path += $"&$filter=receivedDateTime ge {since.Value.ToUniversalTime():yyyy-MM-ddTHH:mm:ssZ}";
 
         // Single page only — $top bounds the result like IMAP's initialCount (no nextLink following).
-        var page = await _client.GetAsync<GraphCollection<GraphMessage>>(account, path, ct);
+        var page = await _client.GetAsync<GraphCollection<GraphMessage>>(account, path, GraphHeaders.ImmutableId, ct);
         return (page?.Value ?? new List<GraphMessage>())
             .Select(m => MapToSummary(m, account.Id, folderName)).ToList();
     }
@@ -242,7 +248,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         var path = $"/me/messages/{messageId}" +
                    "?$select=id,subject,body,from,toRecipients,ccRecipients,replyTo,internetMessageId,receivedDateTime,isRead,hasAttachments" +
                    "&$expand=attachments($select=id,name,contentType,size,isInline)";
-        var m = await _client.GetAsync<GraphMessage>(Account(accountId), path, ct)
+        var m = await _client.GetAsync<GraphMessage>(Account(accountId), path, GraphHeaders.ImmutableId, ct)
             ?? throw new InvalidOperationException($"Graph message {messageId} not found.");
         var detail = MapToDetail(m, accountId, folderName);
         await TryAttachCalendarInviteAsync(accountId, messageId, m, detail, ct);
@@ -260,7 +266,7 @@ public class GraphMailService : IMailService, IConnectionProbe
         if (!IsMeetingMessage(m.ODataType)) return;
         try
         {
-            var mime = await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", ct);
+            var mime = await _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/$value", GraphHeaders.ImmutableId, ct);
             using var stream = new MemoryStream(mime);
             var message = await MimeMessage.LoadAsync(stream, ct);
             var calendar = message.BodyParts.OfType<TextPart>()
@@ -290,13 +296,13 @@ public class GraphMailService : IMailService, IConnectionProbe
         => GetMessageDetailAsync(accountId, folderName, messageId, ct);
 
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
-        => _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}", new { isRead = true }, ct);
+        => _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}", new { isRead = true }, GraphHeaders.ImmutableId, ct);
 
     public Task SetMessageFlaggedAsync(Guid accountId, string folderName, string messageId, bool flagged, CancellationToken ct = default)
     {
         var status = flagged ? "flagged" : "notFlagged";
         return _client.PatchAsync(Account(accountId), $"/me/messages/{messageId}",
-            new { flag = new { flagStatus = status } }, ct);
+            new { flag = new { flagStatus = status } }, GraphHeaders.ImmutableId, ct);
     }
 
     // ── Status / reconciliation ──────────────────────────────────────────────────
@@ -310,7 +316,8 @@ public class GraphMailService : IMailService, IConnectionProbe
     public async Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default)
     {
         var msgs = await _client.GetAllPagesAsync<GraphMessage>(
-            Account(accountId), $"/me/mailFolders/{folderName}/messages?$select=id&$top=999", ct);
+            Account(accountId), $"/me/mailFolders/{folderName}/messages?$select=id&$top=999",
+            scopes: null, silentOnly: false, GraphHeaders.ImmutableId, ct);
         return msgs.Select(m => m.Id).ToList();
     }
 
@@ -339,7 +346,7 @@ public class GraphMailService : IMailService, IConnectionProbe
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.PatchAsync(account, $"/me/messages/{id}", new { isRead = true }, ct);
+            await _client.PatchAsync(account, $"/me/messages/{id}", new { isRead = true }, GraphHeaders.ImmutableId, ct);
     }
 
     public Task MoveToTrashAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default)
@@ -348,20 +355,38 @@ public class GraphMailService : IMailService, IConnectionProbe
     public Task MoveToTrashBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
         => MoveMessagesAsync(accountId, folderName, messageIds, DeletedItemsFolderId, ct);
 
+    // Graph message ids are mutable — they change when a message moves between folders (server rules,
+    // Outlook, any move), so a cached id can go stale and a delete/move against it returns 404
+    // ErrorItemNotFound (#366). A 404 means the message is already gone from that id, so the caller's
+    // intent (remove it from here) is satisfied: treat it as done instead of throwing, which would
+    // otherwise drive the "delete may not have completed — refreshing" path that re-syncs the folder
+    // and makes the message reappear. Immutable ids (Part B / #366) remove the staleness; this keeps
+    // a stray stale id from resurrecting a message in the meantime.
+    private static bool IsAlreadyGone(HttpRequestException ex) => ex.StatusCode == HttpStatusCode.NotFound;
+
     public async Task PermanentlyDeleteBatchAsync(Guid accountId, string folderName, IList<string> messageIds, CancellationToken ct = default)
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.DeleteAsync(account, $"/me/messages/{id}", ct);
+        {
+            try { await _client.DeleteAsync(account, $"/me/messages/{id}", GraphHeaders.ImmutableId, ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: delete {id} → 404, already gone; treating as deleted (#366)."); }
+        }
     }
 
     public async Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default)
     {
         var account = Account(accountId);
         var msgs = await _client.GetAllPagesAsync<GraphMessage>(
-            account, $"/me/mailFolders/{DeletedItemsFolderId}/messages?$select=id&$top=999", ct);
+            account, $"/me/mailFolders/{DeletedItemsFolderId}/messages?$select=id&$top=999",
+            scopes: null, silentOnly: false, GraphHeaders.ImmutableId, ct);
         foreach (var m in msgs)
-            await _client.DeleteAsync(account, $"/me/messages/{m.Id}", ct);
+        {
+            try { await _client.DeleteAsync(account, $"/me/messages/{m.Id}", GraphHeaders.ImmutableId, ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: empty-trash delete {m.Id} → 404, already gone (#366)."); }
+        }
         return msgs.Count;
     }
 
@@ -375,11 +400,17 @@ public class GraphMailService : IMailService, IConnectionProbe
         // the two must leave the content recoverable (at worst a duplicate draft) rather than gone.
         var mime = MimeMessageBuilder.Build(draft, account, MimeMessageBuilder.AppUserAgent);
         var body = await MimeMessageBuilder.ToBase64BytesAsync(mime, ct);
-        var created = await _client.PostRawReadAsync<GraphMessage>(account, "/me/messages", body, "text/plain", ct);
+        var created = await _client.PostRawReadAsync<GraphMessage>(account, "/me/messages", body, "text/plain", GraphHeaders.ImmutableId, ct);
         var newId = created?.Id ?? string.Empty;
 
         if (!string.IsNullOrEmpty(replaceMessageId) && !string.IsNullOrEmpty(newId))
-            await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", ct);
+        {
+            // The prior draft's id may be stale (a 404) — the new copy is already saved, so a
+            // failure to remove the old one is at worst a duplicate draft, never lost content (#366).
+            try { await _client.DeleteAsync(account, $"/me/messages/{replaceMessageId}", GraphHeaders.ImmutableId, ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: replace-draft delete {replaceMessageId} → 404, already gone (#366)."); }
+        }
 
         return newId;
     }
@@ -390,20 +421,27 @@ public class GraphMailService : IMailService, IConnectionProbe
 
     public Task<byte[]> DownloadAttachmentAsync(Guid accountId, string folderName, string messageId, string partSpecifier, CancellationToken ct = default)
         // partSpecifier carries the Graph attachment id (set by MapToDetail).
-        => _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/attachments/{partSpecifier}/$value", ct);
+        => _client.GetBytesAsync(Account(accountId), $"/me/messages/{messageId}/attachments/{partSpecifier}/$value", GraphHeaders.ImmutableId, ct);
 
     public async Task CopyMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.PostAsync(account, $"/me/messages/{id}/copy", new { destinationId = destinationFolder }, ct);
+            await _client.PostAsync(account, $"/me/messages/{id}/copy", new { destinationId = destinationFolder }, GraphHeaders.ImmutableId, ct);
     }
 
     public async Task MoveMessagesAsync(Guid accountId, string folderName, IList<string> messageIds, string destinationFolder, CancellationToken ct = default)
     {
         var account = Account(accountId);
         foreach (var id in messageIds)
-            await _client.PostAsync(account, $"/me/messages/{id}/move", new { destinationId = destinationFolder }, ct);
+        {
+            // Includes move-to-trash (delete). A 404 means this id already moved/was reassigned, so
+            // the message isn't here to move — treat as done rather than surfacing a hard failure that
+            // would re-sync and resurrect it (#366).
+            try { await _client.PostAsync(account, $"/me/messages/{id}/move", new { destinationId = destinationFolder }, GraphHeaders.ImmutableId, ct); }
+            catch (HttpRequestException ex) when (IsAlreadyGone(ex))
+            { LogService.Debug($"GraphMailService: move {id} → 404, already gone/moved; treating as done (#366)."); }
+        }
     }
 
     public async Task CreateFolderAsync(Guid accountId, string? parentFolderName, string name, CancellationToken ct = default)

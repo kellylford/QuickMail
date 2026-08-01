@@ -194,6 +194,7 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>());
     public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
     public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
+    public Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
     public Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds) => Task.CompletedTask;
     public Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead) => Task.CompletedTask;
     public Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead) => Task.CompletedTask;
@@ -282,7 +283,7 @@ sealed class StubRuleService : IRuleService
         => messages.ToList(); // Stub matches everything
 
     public Task<List<MailMessageSummary>> ApplyRulesToExistingAsync(
-        ILocalStoreService store, CancellationToken ct)
+        ILocalStoreService store, IReadOnlyDictionary<Guid, string> inboxFolderByAccount, CancellationToken ct)
         => Task.FromResult(new List<MailMessageSummary>());
 }
 
@@ -299,6 +300,7 @@ sealed class StubSyncService : ISyncService
     public Task<IReadOnlyList<MailMessageSummary>> SyncOneFolderOnlineAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
     public Task<int> ReconcileFolderAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult(0);
     public Task<IReadOnlyList<MailMessageSummary>> SyncFolderFullAsync(AccountModel account, MailFolderModel folder, CancellationToken ct) => Task.FromResult<IReadOnlyList<MailMessageSummary>>(Array.Empty<MailMessageSummary>());
+    public void SeedRebuildBaseline(IEnumerable<Guid> accountIds) { }
     public DateTimeOffset? LastSyncedUtc(Guid accountId) => null;
 }
 

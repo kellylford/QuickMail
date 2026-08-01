@@ -158,6 +158,14 @@ jobs:
 
       - name: Test
         shell: pwsh
+        env:
+          # Synthesized-input tests ([InputStaFact]) are opt-in and skipped by default: they drive
+          # real keystrokes at a shown window and depend on focus and elapsed time, so any tool on
+          # the machine that reacts to windows appearing perturbs them (issue #380). A CI runner is
+          # the one environment that can honestly assert "nothing else is running", so they run
+          # here. If this variable is ever dropped, the guard below fails the job rather than
+          # letting them silently run nowhere.
+          QUICKMAIL_RUN_INPUT_TESTS: "1"
         # PropertiesViewModelTests and ReportBugViewModelTests exercise real clipboard access
         # (Clipboard.SetText), which is unreliable on GitHub-hosted Windows runners — no
         # interactive desktop session backs the clipboard, so these intermittently throw
@@ -198,6 +206,63 @@ jobs:
             Write-Error "Real test failures detected: failed=$failed error=$errors."
             exit 1
           }
+
+          # The opt-in synthesized-input tests must actually have executed here. Their whole
+          # justification for being skipped on developer machines is that CI runs them, so if the
+          # env var above is dropped or the gate breaks, that claim becomes false and the tests
+          # silently protect nothing.
+          #
+          # Assert "nothing in the class was skipped" rather than "at least N passed": the class also
+          # holds a non-gated [Fact], so a count-based floor is satisfied by the wrong tests and one
+          # of the gated three can stop executing with no signal. This form states the intent
+          # directly and survives renames and additions within the class.
+          $inputResults = @($doc.TestRun.Results.UnitTestResult |
+            Where-Object { $_.testName -like '*AddressBookTypeAheadTests*' })
+          $notPassed = @($inputResults | Where-Object { $_.outcome -ne 'Passed' })
+          if ($inputResults.Count -eq 0 -or $notPassed.Count -gt 0) {
+            $detail = if ($inputResults.Count -eq 0) { "none were recorded at all" }
+                      else { "not passed: " + (($notPassed | ForEach-Object { "$($_.testName) [$($_.outcome)]" }) -join ', ') }
+            Write-Error ("Synthesized-input tests did not all run here ($detail). They are skipped by " +
+                         "default and rely on QUICKMAIL_RUN_INPUT_TESTS=1 being set for this step; without " +
+                         "it they run nowhere. See issue #380.")
+            exit 1
+          }
+          Write-Host "Synthesized-input tests executed: $($inputResults.Count) passed, 0 skipped."
+
+          # Coverage report. `total -le 0` above cannot tell a run that finished from one whose host
+          # died partway: the tests that never ran are simply absent from the trx, `failed` stays 0,
+          # and the job goes green. That is happening now — measured 1435 cases on one main run and
+          # 1622 on another, against ~2200 locally.
+          #
+          # Report the missing test CLASSES rather than compare a count to a fixed number. The
+          # shortfall is not a stable offset, so a single threshold can only ever repeat "still
+          # broken"; the class names are what someone debugging the crash actually needs. Expected
+          # classes come from the test binary itself, so this cannot rot the way a hardcoded floor
+          # does. Informational — the shortfall is a pre-existing crash (issue #211, closed but
+          # evidently not fixed) and failing on it would block releases on an unrelated bug.
+          # Strip [Theory] arguments before splitting: a theory's testName is
+          # "Class.Method(arg: \"Some.File.xaml\")", and those argument values contain dots, so
+          # splitting the raw name and dropping the last segment yields garbage class names.
+          $ranClasses = @($doc.TestRun.Results.UnitTestResult | ForEach-Object {
+              $bare  = ($_.testName -split '\(')[0]
+              $parts = $bare -split '\.'
+              if ($parts.Count -ge 2) { $parts[0..($parts.Count - 2)] -join '.' }
+            } | Sort-Object -Unique)
+          $listed = dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release --no-build --list-tests 2>$null
+          $allClasses = @($listed |
+            Select-String -Pattern '^\s+(QuickMail\.Tests\.[A-Za-z0-9_]+)\.' |
+            ForEach-Object { $_.Matches[0].Groups[1].Value } |
+            Sort-Object -Unique)
+          if ($allClasses.Count -gt 0) {
+            $missing = @($allClasses | Where-Object { $ranClasses -notcontains $_ })
+            Write-Host "Test classes: $($ranClasses.Count) ran of $($allClasses.Count) discovered."
+            if ($missing.Count -gt 0) {
+              Write-Warning ("$($missing.Count) test class(es) never executed, so 'failed=0' does NOT mean the " +
+                             "suite passed. Investigate the host crash before trusting this run (issue #380):`n  " +
+                             (($missing) -join "`n  "))
+            }
+          }
+
           if ($testExit -ne 0) {
             Write-Warning "dotnet test exited $testExit but all $passed tests passed (failed=0, error=0). Treating as the benign WPF STA test-host teardown crash (HwndSubclass.SubclassWndProc / Thread.get_CurrentThread NRE, issue #211)."
           }
@@ -215,7 +280,15 @@ jobs:
         # -warnaserror: CI fails on ANY compiler/analyzer warning so a warning can never
         # land on main or ship in a release. Local build.bat stays permissive for WIP;
         # this is the enforcement point. Keep the tree warning-free or the build breaks.
-        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
+        #
+        # The clean is load-bearing: the Test step above already built Release, so
+        # without it this publish is an incremental no-op — the compiler (and thus
+        # every analyzer) never re-runs and -warnaserror has nothing to catch. That
+        # is how analyzer errors reached main twice and broke only the on-demand
+        # installer build, which compiles cold (runs 30597553629, 30635331364).
+        run: |
+          dotnet clean QuickMail/QuickMail.csproj -c Release -v quiet
+          dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
         # PublishSingleFile, SelfContained, RuntimeIdentifier, ReadyToRun are set in .csproj
 
       - name: Upload artifact

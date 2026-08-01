@@ -126,6 +126,45 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _googleSignIn;
 
+    // ── Diagnostics (debug-only, #175) ─────────────────────────────────────────────
+    // Deliberately NOT [ObservableProperty] over a field: the value lives on the
+    // session service, never in ConfigModel/config.ini — non-persistence is the
+    // safety story. The row is collapsed entirely outside /debug.
+
+    private readonly IScreenshotCaptureService? _screenshotCapture;
+
+    public bool IsDebugDiagnosticsVisible => LogService.DebugMode && _screenshotCapture != null;
+
+    /// <summary>
+    /// Meta-announcement about the diagnostic mode. The View forwards it to
+    /// AccessibilityHelper.Announce with force:true (like the custom-announcements
+    /// toggle, it must be heard regardless of announcement preferences).
+    /// </summary>
+    public event System.Action<string>? DiagnosticsAnnouncementRequested;
+
+    public bool ScreenshotCaptureEnabled
+    {
+        get => _screenshotCapture?.Enabled == true;
+        set
+        {
+            if (_screenshotCapture is null || _screenshotCapture.Enabled == value) return;
+            _screenshotCapture.Enabled = value;
+            // Announce what actually happened, not what was requested — the
+            // service refuses to enable if its folder cannot be created.
+            var actual = _screenshotCapture.Enabled;
+            OnPropertyChanged(nameof(ScreenshotCaptureEnabled));
+            DiagnosticsAnnouncementRequested?.Invoke(
+                actual != value
+                    ? "Screenshot capture could not be turned on. Check the log for details."
+                    : actual
+                        ? "Screenshot capture on. QuickMail is saving screen images to disk this session."
+                        : "Screenshot capture off.");
+        }
+    }
+
+    [RelayCommand]
+    private void OpenScreenshotsFolder() => _screenshotCapture?.OpenFolder();
+
     /// <summary>Reads a [features] flag, treating anything unparseable or absent as the default.</summary>
     private static bool ReadFeature(ConfigModel cfg, FeatureFlag flag, bool fallback) =>
         cfg.Features.TryGetValue(flag.ToString(), out var raw) && bool.TryParse(raw, out var parsed)
@@ -216,6 +255,26 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private bool _appearanceForceMessageTheme;
 
+    /// <summary>
+    /// Message-list density, "comfortable" or "compact" (#421). Padding only —
+    /// both modes present the identical accessibility surface, by design.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsListDensityComfortable))]
+    [NotifyPropertyChangedFor(nameof(IsListDensityCompact))]
+    private string _appearanceListDensity = "comfortable";
+
+    public bool IsListDensityComfortable
+    {
+        get => AppearanceListDensity == "comfortable";
+        set { if (value) AppearanceListDensity = "comfortable"; }
+    }
+    public bool IsListDensityCompact
+    {
+        get => AppearanceListDensity == "compact";
+        set { if (value) AppearanceListDensity = "compact"; }
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsLogFormatActionFirst))]
     [NotifyPropertyChangedFor(nameof(IsLogFormatTimeFirst))]
@@ -253,9 +312,11 @@ public partial class SettingsViewModel : ObservableObject
         IConfigService configService,
         ICommandRegistry registry,
         IThemeService? themeService = null,
-        System.Collections.Generic.IEnumerable<string>? fontFamilies = null)
+        System.Collections.Generic.IEnumerable<string>? fontFamilies = null,
+        IScreenshotCaptureService? screenshotCapture = null)
     {
         _configService = configService;
+        _screenshotCapture = screenshotCapture;
         var cfg = configService.Load();
 
         // Appearance: themes from the service; installed fonts from the View
@@ -282,6 +343,7 @@ public partial class SettingsViewModel : ObservableObject
             FontOptions.Add(AppearanceFontOption); // keep an uninstalled configured font selectable
         AppearanceUnderlineLinks    = cfg.AppearanceUnderlineLinks;
         AppearanceThickFocus        = cfg.AppearanceThickFocus;
+        AppearanceListDensity       = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
         AppearanceForceMessageTheme = cfg.AppearanceForceMessageTheme;
 
         PreviewLines = cfg.PreviewLines;
@@ -358,6 +420,7 @@ public partial class SettingsViewModel : ObservableObject
             : AppearanceFontOption;
         cfg.AppearanceUnderlineLinks    = AppearanceUnderlineLinks;
         cfg.AppearanceThickFocus        = AppearanceThickFocus;
+        cfg.AppearanceListDensity       = AppearanceListDensity;
         cfg.AppearanceForceMessageTheme = AppearanceForceMessageTheme;
 
         cfg.PreviewLines = PreviewLines;
