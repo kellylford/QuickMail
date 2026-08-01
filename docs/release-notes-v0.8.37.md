@@ -1,5 +1,59 @@
 # QuickMail v0.8.37 Release Notes
 
+This is a large release — the most change in a single version since the calendar arrived in v0.8.33. Adding an account has been rebuilt around three questions instead of a page of server settings. You can now decide what each row of a message list says out loud, and in what order. Microsoft 365 accounts get a run of fixes, mail rules change in when they run and which folders they act on, and there are new tools for working out what is happening when a connection misbehaves.
+
+The last public release was **v0.8.36**, so if that is what you have been running, everything below is new to you.
+
+## Contents
+
+- [Download](#download)
+- [Accounts and signing in](#accounts-and-signing-in)
+  - [New: adding an account now asks three questions, not ten](#new-adding-an-account-now-asks-three-questions-not-ten)
+  - [Changed: Google sign-in for Gmail is now something you turn on](#changed-google-sign-in-for-gmail-is-now-something-you-turn-on)
+- [Microsoft 365 accounts](#microsoft-365-accounts)
+  - [Fixed: deleted and moved mail no longer comes back](#fixed-deleted-and-moved-mail-no-longer-comes-back)
+  - [Fixed: the same message no longer appears twice in combined views](#fixed-the-same-message-no-longer-appears-twice-in-combined-views)
+  - [Fixed: a folder no longer stops loading because of one message](#fixed-a-folder-no-longer-stops-loading-because-of-one-message)
+  - [Fixed: adding a work or school account now always asks your permission](#fixed-adding-a-work-or-school-account-now-always-asks-your-permission)
+- [Reading and organizing mail](#reading-and-organizing-mail)
+  - [New: choose what a message list row says, and in what order](#new-choose-what-a-message-list-row-says-and-in-what-order)
+  - [New: combined views say which folder a message is in](#new-combined-views-say-which-folder-a-message-is-in)
+  - [New: All Archive](#new-all-archive)
+  - [Fixed: attachments were unreachable when a message opens in its own window](#fixed-attachments-were-unreachable-when-a-message-opens-in-its-own-window)
+- [Mail rules](#mail-rules)
+  - [Changed: rules are now per-account](#changed-rules-are-now-per-account)
+  - [Changed: rules run on mail that arrives while QuickMail is open](#changed-rules-run-on-mail-that-arrives-while-quickmail-is-open)
+  - [Changed: rules act on the Inbox, and only on new arrivals](#changed-rules-act-on-the-inbox-and-only-on-new-arrivals)
+  - [Fixed: the rules editor no longer offers actions with nothing to act on](#fixed-the-rules-editor-no-longer-offers-actions-with-nothing-to-act-on)
+- [Writing and sending mail](#writing-and-sending-mail)
+  - [Fixed: choosing a sending account could send the message](#fixed-choosing-a-sending-account-could-send-the-message)
+  - [Fixed: sending mail gave no feedback](#fixed-sending-mail-gave-no-feedback)
+  - [Fixed: the compose window used only part of its width](#fixed-the-compose-window-used-only-part-of-its-width)
+- [Address book](#address-book)
+  - [New: find a contact's mail from the address book](#new-find-a-contacts-mail-from-the-address-book)
+  - [New: filter the contact list by account](#new-filter-the-contact-list-by-account)
+  - [Fixed: typing a letter jumps to a contact](#fixed-typing-a-letter-jumps-to-a-contact)
+- [Calendar](#calendar)
+  - [New: typing and stepping dates and times in the appointment editor](#new-typing-and-stepping-dates-and-times-in-the-appointment-editor)
+  - [Fixed: creating an appointment late in the evening](#fixed-creating-an-appointment-late-in-the-evening)
+- [Keyboard and navigation](#keyboard-and-navigation)
+  - [Fixed: typing a folder name in the folder picker now works](#fixed-typing-a-folder-name-in-the-folder-picker-now-works)
+  - [Fixed: arrowing through settings options now chooses them](#fixed-arrowing-through-settings-options-now-chooses-them)
+- [Appearance](#appearance)
+  - [New: message list density](#new-message-list-density)
+  - [Changed: themes](#changed-themes)
+  - [Changed: Manage Themes moved to the View menu](#changed-manage-themes-moved-to-the-view-menu)
+  - [Fixed: the Theme Manager's Import button at large text sizes](#fixed-the-theme-managers-import-button-at-large-text-sizes)
+- [Diagnostics and troubleshooting](#diagnostics-and-troubleshooting)
+  - [Fixed: adding an account no longer shows every other account as disconnected](#fixed-adding-an-account-no-longer-shows-every-other-account-as-disconnected)
+  - [New: Connection Diagnostics, for when something looks wrong](#new-connection-diagnostics-for-when-something-looks-wrong)
+  - [Changed: Delete QuickMail logs removes every diagnostic file](#changed-delete-quickmail-logs-removes-every-diagnostic-file)
+- [Thank You to Contributors](#thank-you-to-contributors)
+- [Internal](#internal) — developer detail, not needed to use QuickMail
+- [Reporting Issues](#reporting-issues)
+
+---
+
 ## Download
 
 Two options are available for v0.8.37:
@@ -15,29 +69,39 @@ Both downloads include the .NET 8 runtime — you do not need to install .NET se
 
 ## Accounts and signing in
 
-### New: setting up an account asks for three things
+Setting up a mail account was the hardest thing QuickMail asked anyone to do. That is what changed most in this release.
 
-Adding an account used to ask for an IMAP host, port, SSL setting, and certificate rule, and then the same four again for SMTP — even when QuickMail already knew every one of those values. It now asks for a **provider**, your **email address**, and your **password**, and works the rest out.
+### New: adding an account now asks three questions, not ten
 
-The dialog opens on a new **Provider** list: **Other (enter settings manually)**, **Gmail**, **Outlook.com / Microsoft 365**, **Yahoo Mail**, and **iCloud Mail**. Other is first rather than last, so Down arrow reaches the rest from where the dialog puts you. Choosing a provider fills in every server setting and says what it did; typing an address at one of them selects it for you, so most people never touch the list. Server names, ports, and SSL settings moved behind an **Advanced settings** expander that stays closed unless you need it — Tab reaches its header before its contents, so one keystroke moves past the whole thing.
+Adding an account used to mean supplying an IMAP host, a port, an SSL setting, and a certificate rule — and then the same four things over again for SMTP. Ten or so fields, every one of them a chance to get something subtly wrong, for values QuickMail already knew perfectly well.
 
-**Account name is now optional.** Leave it blank and the account is labelled with its email address.
+Adding an account now asks three questions:
 
-**An address QuickMail does not recognize gets looked up** when you leave the Email field. Four things are tried in turn: the built-in provider list (offline — nothing leaves your computer), Mozilla's public autoconfig database, your domain's own Autodiscover service, and finally your domain's public DNS records, which say where its mail is actually delivered. Only the **domain** is sent for the second and fourth; the third sends your address to your own provider's server, exactly as Outlook does. That last step is what makes ordinary business mail work: most Microsoft 365 and Google Workspace customers use their own domain and publish nothing the earlier steps can read, and a work mailbox has no IMAP host to type — the way in is a sign-in. When nothing is found at all, Advanced settings opens and focus moves to the **IMAP host** field, with a message naming the sign-in route for a work or school account. Set `AutoDiscoverOnline = off` in `config.ini` to skip everything but the built-in list.
+1. **Which provider?** — Gmail, Outlook.com / Microsoft 365, Yahoo Mail, iCloud Mail, or **Other (enter settings manually)**.
+2. **What is your email address?**
+3. **What is your password?**
 
-**Gmail now defaults to an app password.** Google sign-in is currently blocked for new QuickMail accounts, so the app password is the path that works today, and the dialog links straight to the page where you create one. Yahoo Mail and iCloud Mail need app passwords too, and say so above the password box. (#369)
+QuickMail works out the rest. Choosing a provider fills in every server setting and tells you what it filled in, and typing an address at a provider it recognizes chooses that provider for you — so most people never touch the list at all. The hosts, ports, and SSL settings have not gone anywhere: they moved behind an **Advanced settings** expander that stays closed unless you need it, and Tab reaches that expander's heading before its contents, so a single keystroke moves past the whole thing.
 
-**Work or school Microsoft 365 accounts connect through Microsoft 365 directly.** An address on your organization's own domain now moves onto that connection method as you type it, instead of being left on IMAP — where sign-in ended at "your administrator needs to make a change" for a mailbox that signs in perfectly well the other way. Personal Outlook.com, Hotmail, and Live.com accounts are unaffected and stay on IMAP.
+The Provider list opens on **Other (enter settings manually)** rather than ending with it, so Down arrow reaches the rest of the list from wherever the dialog puts you.
 
-**Test Connection checks both halves of your mail.** Incoming and outgoing are probed separately and reported separately — "IMAP: OK. SMTP: OK." A working inbox with a misconfigured send server used to pass this test and then fail on your first message. Microsoft 365 accounts can be tested now as well. The button is on the Manage Accounts window too, so it is as useful on an account that has stopped working as on one you are setting up.
+**The account name is now optional.** Leave it blank and the account is labelled with its email address.
 
-Manage Accounts gained the same **Advanced settings** expander, so an account that is working needs no scrolling past hosts and ports to reach the settings people actually change, and it shows which provider the account belongs to.
+**An address QuickMail does not recognize is looked up for you** when you leave the Email field, so a work address, or one at a domain of your own, usually takes no more typing than a Gmail one. QuickMail checks its own built-in list of providers first — that step is entirely offline, and nothing leaves your computer — and then tries three public sources of mail settings, ending with the records that say where your domain's mail is actually delivered. Only your **domain** is sent to two of those; the third sends your address to your own provider's server, exactly as Outlook does. That step is what makes ordinary business mail work, because a work mailbox often has no IMAP host to type in the first place — the way in is a sign-in. If nothing is found anywhere, Advanced settings opens with focus in the **IMAP host** box, and a message names the sign-in route to try for a work or school account. To use the offline built-in list only, set `AutoDiscoverOnline = off` in `config.ini`.
+
+**Gmail, Yahoo Mail, and iCloud Mail need an app password** — a password you generate on the provider's own website for use in a mail program, rather than the one you sign in with. Each of those providers now says so above the password box, and Gmail links straight to the page where you create one. Gmail defaults to this route because Google is not currently granting QuickMail new sign-in authorizations, so an app password is the path that works today. (If your Gmail account already signs in with Google, see the next entry — it keeps working.) (#369)
+
+**Work or school Microsoft 365 accounts now connect through Microsoft 365 directly.** An address on your organization's own domain moves onto that connection method as you type it, instead of being left on IMAP — where sign-in ended at "your administrator needs to make a change" for a mailbox that signs in perfectly well the other way. Personal Outlook.com, Hotmail, and Live.com accounts are unaffected and stay on IMAP.
+
+**Test Connection checks both halves of your mail.** Incoming and outgoing are probed separately and reported separately — "IMAP: OK. SMTP: OK." A working inbox with a misconfigured send server used to pass this test and then fail on your first message. Microsoft 365 accounts can be tested now as well.
+
+**Manage Accounts was simplified in the same way.** It has the same **Advanced settings** expander, so reaching the settings people actually change no longer means moving past hosts and ports on an account that is working perfectly. Each account now shows which provider it belongs to, and **Test Connection** is on this window too — which is where you want it when an account has stopped working, rather than only when you are setting one up.
 
 The [Accounts section of the User Guide](https://kellylford.github.io/QuickMail/accounts.html) covers the whole lifecycle — choosing a provider, adding an account, entering settings by hand, testing, editing, and removing.
 
 ### Changed: Google sign-in for Gmail is now something you turn on
 
-Google stopped granting QuickMail new authorizations, so Gmail accounts sign in with an app password. But a small number of accounts were authorized before that happened and still work perfectly well over Google sign-in, and this release makes sure they keep their route in.
+Google stopped granting QuickMail new authorizations, so a new Gmail account signs in with an app password. But a small number of accounts were authorized before that happened and still work perfectly well over Google sign-in, and this release makes sure they keep their route in.
 
 **If your Gmail account already uses Google sign-in, nothing changes and you need do nothing.** It keeps signing in, keeps syncing mail, contacts, and calendar, and Manage Accounts still shows it as a Google account. Only the *offer* of Google sign-in to a new account is affected.
 
@@ -46,17 +110,17 @@ Google stopped granting QuickMail new authorizations, so Gmail accounts sign in 
 1. **Tools → Settings → Advanced**, check **Sign in with Google for Gmail accounts**, and select **Save**.
 2. Restart QuickMail — the setting is read at startup.
 
-The **Provider** list then has a **Gmail (sign in with Google)** entry directly below plain **Gmail**. Choose it and there is no password box at all: Gmail's servers fill in as usual and a **Sign in with Google** button stands where the password would be. Contact and calendar sync are offered too, granted as part of the same sign-in. The Google choice also returns to **Advanced settings → Authentication**.
+The **Provider** list then has a **Gmail (sign in with Google)** entry directly below plain **Gmail**. Choose it and there is no password box at all: Gmail's servers fill in as usual and a **Sign in with Google** button stands where the password would be. Contact and calendar sync are offered too, granted as part of the same sign-in. The Google choice also returns to **Advanced settings → Authentication**. (The same switch is available as `GoogleAuth = true` under `[features]` in `config.ini`, or `--feature GoogleAuth` at launch.)
 
-The same switch is available as `GoogleAuth = true` under `[features]` in `config.ini`, or `--feature GoogleAuth` at launch, for anyone who would rather not use the Settings dialog.
+**Why it is off by default.** It used to be on for everyone, which meant the one path Google refuses was the one on offer — and a sign-in that ends in "This app has been blocked" tells you nothing about what to do instead. Off by default, a new Gmail account gets the app-password route that works, and the people the sign-in still works for have a supported way to ask for it.
 
-**Why it is off by default.** It was previously on for everyone, which meant the one path Google refuses was the one on offer — a sign-in that ends in "This app has been blocked" tells you nothing about what to do instead. Off by default, the app-password route is what a new Gmail account gets, and the users the sign-in still works for have a supported way to ask for it.
-
-If you turn the setting on and sign-in still ends in **"This app has been blocked,"** your account is not one of the ones authorized earlier and no QuickMail setting can change that. Use a Gmail app password — the User Guide's [Accounts section](https://kellylford.github.io/QuickMail/accounts.html) has the steps.
+If you turn the setting on and sign-in still ends in **"This app has been blocked,"** your account is not one of the ones authorized earlier, and no QuickMail setting can change that. Use a Gmail app password — the User Guide's [Accounts section](https://kellylford.github.io/QuickMail/accounts.html) has the steps.
 
 ---
 
 ## Microsoft 365 accounts
+
+Four fixes for accounts that connect through Microsoft 365 — work and school accounts, and Outlook.com accounts added with a Microsoft sign-in. Accounts that connect over IMAP are untouched by everything in this section.
 
 ### Fixed: deleted and moved mail no longer comes back
 
@@ -93,6 +157,8 @@ Adding an account now always shows the permission screen, so the full set is app
 
 ## Reading and organizing mail
 
+The headline here is that the line a message list reads out is no longer fixed: you choose which pieces it says, and in what order.
+
 ### New: choose what a message list row says, and in what order
 
 Every row in a message list is read as one line — sender, subject, date, and so on — and until now that line was fixed. **View → Message List Fields…** lets you decide which pieces are spoken and where each one falls.
@@ -119,7 +185,7 @@ Two small consequences. The **Announce flag status** checkbox has left Settings,
 
 In a view that gathers mail from more than one place, a row never told you where the message actually lives, so an inbox message and one a rule had filed into a custom folder read identically. Each row now ends with its folder — "… 12:24 PM. Inbox." — and when the view spans more than one account the folder is named with its account, "Work -- Inbox".
 
-This applies to All Mail, All Inboxes, All Drafts, All Sent, All Archive, All Trash, All Flagged, an account's own All Mail, every saved view, and the address book's contact-mail results. An ordinary single-folder view says nothing extra, because there the folder is already obvious. **Source folder** is one of the fields in **Message List Fields…**, so you can move it or switch it off. (#423)
+This applies to All Mail, All Inboxes, All Drafts, All Sent, All Archive, All Trash, All Flagged, an account's own All Mail, every saved view, and the contact-mail results that are also new in this release (see [find a contact's mail from the address book](#new-find-a-contacts-mail-from-the-address-book)). An ordinary single-folder view says nothing extra, because there the folder is already obvious. **Source folder** is one of the fields in **Message List Fields…**, so you can move it or switch it off. (#423)
 
 ### New: All Archive
 
@@ -131,13 +197,15 @@ One thing to know if you use Gmail: the guide now recommends creating a Gmail la
 
 ### Fixed: attachments were unreachable when a message opens in its own window
 
-With **Message open mode** set to **Window**, a message with attachments had no attachment list at all: **Alt+A** answered "No attachments" and Shift+Tab from the message body skipped straight past it. Reading pane and Tab modes were unaffected, which is what made it look like an Alt+A problem — the list existed, it was just never shown. Both now work in every mode. ([#439](https://github.com/kellylford/QuickMail/issues/439))
+v0.8.36 added **Alt+A** for jumping to the attachment list, and fixed the Shift+Tab path (#350). One part was still missing: with **Message open mode** set to **Window**, a message with attachments had no attachment list at all. Alt+A answered "No attachments" and Shift+Tab from the message body skipped straight past it. Reading pane and Tab modes were unaffected, which is what made it look like an Alt+A problem — the list existed, it was just never shown. Both now work in every mode. ([#439](https://github.com/kellylford/QuickMail/issues/439))
 
 **Alt+A now also works while composing.** It moves focus to the attachment list of the message you are writing, matching what it does in an open message, and lands on the first file rather than the empty list. **Ctrl+Shift+A** is still the way to add files. The new command is in the compose window's Command Palette (**Ctrl+Shift+P**) as **Focus Attachment List**; compose shortcuts are fixed and are not among the ones Settings → Keyboard can rebind.
 
 ---
 
 ## Mail rules
+
+Mail rules — the ones you set up in **Tools → Rules…** to file, flag, or delete mail automatically — changed in three ways this release: which account a rule belongs to, when rules run, and which folders they act on. If you use rules, all three are worth reading, because together they change behaviour you may be relying on.
 
 ### Changed: rules are now per-account
 
@@ -157,7 +225,7 @@ Two things used to happen that they should not have. Rules ran against **every f
 
 Rules now behave the classic way: they run on the **Inbox**, on **new arrivals**, and never retroactively unless you ask. Other folders are still fetched and cached as before — they are just not rule-processed. Closing the Rules Manager no longer runs anything. ([#336](https://github.com/kellylford/QuickMail/issues/336))
 
-**Run on Existing Mail** is how you ask. It is unchanged in place — the button beside New and Delete in the Rules Manager — but its reach is now the Inbox of each account rather than every cached folder, so it can no longer move or delete mail you deliberately filed somewhere else. It reports how many messages were moved or deleted. An account whose Inbox cannot be identified is skipped rather than guessed at, and that is recorded in the log. (#346)
+**Run on Existing Mail** is how you ask. It is the button beside New and Delete in the Rules Manager, and it has not moved — but its reach is now the Inbox of each account rather than every cached folder, so it can no longer move or delete mail you deliberately filed somewhere else. It reports how many messages were moved or deleted. An account whose Inbox cannot be identified is skipped rather than guessed at, and that is recorded in the log. (#346)
 
 ### Fixed: the rules editor no longer offers actions with nothing to act on
 
@@ -330,13 +398,17 @@ While it is on, a **Connection Diagnostics** item appears in the **Help** menu. 
 
 **What it records:** your account names, your mail server names and addresses, connection attempts and their results, and error messages. **What it never records:** passwords, authentication tokens, and the contents of your mail. Your account names may be email addresses, and mail server names identify your provider, so it is worth knowing what is in a report before you share one.
 
-The record is written to `connection.log` beside QuickMail's other settings, is capped in size, and stops the moment you turn the setting off.
+The record goes into a file named `connection.log`, kept beside QuickMail's other settings. It is capped in size, and it stops the moment you turn the setting off.
 
 ### Changed: Delete QuickMail logs removes every diagnostic file
 
-**Settings → Advanced → Delete QuickMail logs** used to delete the application log only. It now removes the application log, the connection diagnostics log described above, and any debug screenshots — and says so before it does it. Deleting your logs means all of them, most often because they carry your email addresses and mail server names, and screenshots hold pictures of your actual mail. Leaving one file behind because it happens to live elsewhere would quietly defeat that. (#436)
+QuickMail can leave three kinds of diagnostic file on your computer, and **Settings → Advanced → Delete QuickMail logs** used to remove only the first of them:
 
-Debug screenshots only exist if you started QuickMail with `/debug` and deliberately switched capture on; the delete clears any left behind from an earlier session even when you are running normally.
+- **The application log** (`quickmail.log`) — a running record of what QuickMail did. It is always written, and in more detail if you start QuickMail with the `/debug` switch.
+- **The connection log** (`connection.log`) — the connection record described just above, written only while **Record connection diagnostics** is switched on.
+- **Debug screenshots** — pictures of QuickMail's own windows, saved to a folder. This is a development tool for checking how the app looks, and it is not something you will meet in ordinary use: it exists only when QuickMail is started with the `/debug` switch, has to be switched on deliberately in Settings once you are there, lasts only until you close the app, and puts " - SCREENSHOTS ON" in every window title while it is running — so it can never be capturing without your knowing.
+
+Delete QuickMail logs now removes all three, and says so before it does it. The usual reason to delete these files is that they carry your email addresses and mail server names — and screenshots hold pictures of your actual mail — so leaving one behind because it happens to live in a different folder would quietly defeat the point. Screenshots are cleared even when you are running normally, in case an earlier `/debug` session left some behind. (#436)
 
 ---
 
@@ -347,6 +419,8 @@ Thanks to everyone who reported problems and tested fixes for this release. The 
 ---
 
 ## Internal
+
+Everything below is developer detail — implementation notes, test coverage, and build changes. Nothing here is needed to use QuickMail.
 
 ### Microsoft 365 / Graph
 
