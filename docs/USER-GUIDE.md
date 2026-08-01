@@ -329,7 +329,7 @@ Any of these roles can grant approval — **Global Administrator is not required
 
 **Option A — Entra admin center.** Sign in at [entra.microsoft.com](https://entra.microsoft.com) → **Entra ID → Enterprise applications → QuickMail → Security → Permissions → "Grant admin consent for &lt;your organization&gt;"**, review the list, and approve. (If QuickMail is not yet listed under Enterprise applications, use Option B — the first admin consent creates it.)
 
-**Option B — one-click consent URL.** Sign in as one of the admin roles above and open:
+**Option B — single-step consent URL.** Sign in as one of the admin roles above and open:
 
 ```
 https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312
@@ -378,6 +378,16 @@ You can also jump directly to any pane:
 
 Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, and **All Trash**, each merging that kind of folder across every account; **All Archive**, which follows each account's own archive setting; and **All Flagged**, which collects flagged messages from every folder rather than from one kind of folder.
 
+In any of these merged views, each row also says which folder the message came from — qualified with the account name when the view spans more than one account, so "Work, Archive" and "Home, Archive" are told apart. In an ordinary single-folder view the folder is already known, so nothing extra is said. You can move where this falls in the row, or turn it off, in [Message List Fields](#message-list-fields).
+
+### Jumping to an Item by Typing
+
+In the folder tree, the message list, and the Conversations, From, and To trees, type the first letter of what you want to reach and the selection jumps to the next item starting with that letter. Keep typing to narrow it — letters typed within about a second of each other build up a longer prefix, so "arc" reaches Archive rather than stopping at Address book. Pause, and the next letter starts a fresh prefix. Pressing the same letter repeatedly steps through every item beginning with it, and the search wraps around to the top when it runs off the end.
+
+What each list matches is the text you would expect to hear first: the folder name in the folder tree (only folders currently expanded into view), the sender in the message list — or the subject when a message has no sender — the conversation subject in Conversations, and the person's name in the From and To trees.
+
+The same typing works in the **Go to Folder** picker, in the address book's contact, group, and member lists, and in the [Message List Fields](#message-list-fields) window.
+
 ### Creating Folders
 
 Create a new folder in any of these ways:
@@ -392,6 +402,8 @@ The new folder is created under the folder currently selected in the folder tree
 
 Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy. If you need a destination that does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and move into it without leaving the dialog.
 
+Typing jumps to a folder here too, exactly as it does in the main folder tree: type the beginning of a folder name and the selection moves to it. Because a bare letter belongs to that typing, the picker's buttons take **Alt+O** for Open, **Alt+C** for Cancel, and **Alt+N** for New Folder rather than plain letter shortcuts. Enter and Escape still work as usual.
+
 ### Message List Views
 
 Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are grouped:
@@ -400,6 +412,12 @@ Press `Ctrl+Shift+V` (or use the **View** menu) to switch how messages are group
 - **Conversations** — messages grouped by thread
 - **From** — messages grouped by sender
 - **To** — messages grouped by recipient
+
+### Message List Density
+
+**View → Density** sets how much space each message row takes: **Comfortable** (the default) leaves room around each row, **Compact** tightens them so more messages fit on screen. The change applies at once and is remembered. The same choice is in **Settings → Appearance** under **Message List Density**, and **Density: Comfortable** and **Density: Compact** are in the command palette.
+
+Density changes spacing only. What a row says, and what a screen reader reports about it, is identical either way — that is set in [Message List Fields](#message-list-fields).
 
 ### Searching
 
@@ -804,21 +822,45 @@ The **All Flagged Mail** virtual folder in the folder tree aggregates flagged me
 
 ### Flag Accessibility
 
-The flag name is announced before the read status when you navigate to a flagged message — for example, "Urgent. Unread. Kelly Ford. Budget deadline." This makes it immediately clear a message needs attention. You can turn this off in **Settings → General → Accessibility → Announce flag status**.
+By default the flag name comes first when you navigate to a flagged message — for example, "Urgent. Unread. Kelly Ford. Budget deadline." This makes it immediately clear a message needs attention.
+
+The flag is one of the pieces a row speaks, so where it falls — and whether it is spoken at all — is yours to set in **View → Message List Fields…**. Turn the **Flag** field off to leave it out, or move it later in the line to hear the sender first. See [Message List Fields](#message-list-fields). (There was previously an **Announce flag status** checkbox in Settings; it has been replaced by the Flag field in that window. If you had it turned off, the Flag field starts out turned off to match.)
 
 ---
 
 ## Mail Rules
 
-Mail rules run automatically when mail arrives and can move, flag, mark as read, or delete messages based on sender, recipient, subject, or other criteria.
+A mail rule watches your Inbox and acts on messages that match what you describe — filing newsletters into a folder, marking a mailing list as read, deleting something you never want to see.
 
-Open the **Rules Manager** from the **Tools** menu (`Ctrl+Shift+L`) or the command palette. Each rule has:
+Open the **Rules Manager** from the **Tools** menu (`Ctrl+Shift+L`) or the command palette. It opens with the list of rules on the left and the selected rule's settings on the right.
 
-- **Conditions** — criteria the message must match (any or all)
-- **Actions** — what to do when conditions are met (move to folder, flag, mark read, delete)
-- **Active** toggle — turn a rule on or off without deleting it
+### What a rule is made of
 
-Rules run in order. Drag to reorder, or use the Move Up / Move Down commands.
+- **Rule name** — how you recognize it in the list.
+- **Enabled** — turn a rule off without deleting it.
+- **Account** — which mailbox the rule watches. Every rule belongs to exactly one account; see [Rules belong to one account](#rules-belong-to-one-account).
+- **Conditions** — **From**, **To**, **Subject**, **Body**, and **Has attachments**. Check the ones you want and type the text to look for; the match is not case sensitive and looks for your text anywhere in the field. A message must satisfy **every** condition you checked, so leaving a condition unchecked is how you say "don't care".
+- **Action** — one of **Mark as read**, **Mark as unread**, **Move to folder**, or **Delete**. Choosing Move to folder adds a **Choose Folder…** button; the button then shows the folder you picked.
+
+**Test Rule** runs the rule against the messages currently in your list and tells you how many it would match, so you can check a rule before letting it loose. **Save** stores the rule; **New Rule** and **Delete** manage the list.
+
+Every enabled rule for the account is tried, in list order, and each one that matches acts. A rule that moves or deletes a message takes it out of the running for the rest of the list.
+
+### When rules run
+
+Rules run **on your Inbox, on mail as it arrives** — including mail that arrives while QuickMail is sitting open, not only at a full sync. This is deliberate: a rule never reaches back into Sent, Archive, Junk, Trash, or a folder you filed something into by hand, so nothing you deliberately put somewhere is moved or deleted behind your back. Mail already in the mailbox before a rule existed is left alone too.
+
+To apply your rules to mail that is already there, use **Run on Existing Mail**. It runs every enabled rule over the Inbox of each account — again, the Inbox only — across the mail QuickMail has stored locally, and tells you how many messages were moved or deleted. (Mark as read and mark as unread still happen; they are not counted.) An account whose Inbox QuickMail has not read yet in this session is skipped rather than guessed at, and the skip is noted in the log.
+
+### Rules belong to one account
+
+Each rule watches one account. Choose it in the **Account** list in the rule's settings; a new rule starts on your default account. The account each rule belongs to is shown beside its name in the rules list.
+
+If you had rules from an earlier version that applied to **all accounts**, QuickMail converts each one into a separate rule per account the first time it starts, so they keep doing what they did. The one exception is a profile whose only accounts connect through Microsoft 365 directly: those mailboxes have no client-side rule to convert to, so an old all-accounts rule is dropped and the reason is written to the log.
+
+### Reading the rules list
+
+Each row in the rules list says the rule's name and the account it belongs to. Turn on **Show field labels in the rules list** in **Settings → General → Screen Reader Announcements** to hear those pieces named ("Name … account …") rather than run together.
 
 ### Creating a Rule from a Message
 
@@ -944,7 +986,9 @@ In a **time** field:
 | --- | --- |
 | Up / Down arrow | 15 minutes, landing on the quarter hour |
 | Ctrl+Up / Ctrl+Down | One minute |
+| Shift+Up / Shift+Down | One hour |
 | Page Up / Page Down | One hour |
+| Ctrl+Page Up / Ctrl+Page Down | One day |
 
 Stepping a time past midnight moves the date with it, so 11:50 PM stepped up becomes 12:00 AM the next day.
 
@@ -1095,11 +1139,11 @@ The first time you hide the window to the tray, a notification explains that Qui
 
 The **Tools** menu is always available from the main window menu bar and groups together the commands used less often than day-to-day mail actions:
 
-- **Manage Themes…** — opens the [Theme Manager](#themes).
-- **Next Theme** / **Previous Theme** — cycle through your available themes.
 - **Address Book…** (`Ctrl+Shift+B`)
 - **Rules…** (`Ctrl+Shift+L`) — opens the [Rules Manager](#mail-rules).
 - **Command Palette…** (`Ctrl+Shift+P`)
+
+**Choosing how QuickMail looks and reads is on the View menu**, not here — **Manage Themes…** opens the [Theme Manager](#themes), **Density** sets [message list density](#message-list-density), and **Message List Fields…** opens the [field chooser](#message-list-fields). **Next Theme** and **Previous Theme** have no menu items; run them from the Command Palette, or give them a key of your own in **Settings → Keyboard**.
 
 ---
 
@@ -1233,7 +1277,7 @@ Accounts are not part of Settings — they have a window of their own. Open **Fi
 **QuickMail Logging**
 
 - **Enable logging** — when checked, QuickMail writes activity to `quickmail.log` in your profile directory (usually `%APPDATA%\QuickMail`). Uncheck to stop writing the log file. Changes take effect when you select **Save**.
-- **Delete QuickMail logs** — deletes QuickMail's log files immediately after confirmation: the application log (`quickmail.log`) and the connection diagnostics log (`connection.log`), if either exists. If logging or connection diagnostics are still on, new files are created the next time something is recorded.
+- **Delete QuickMail logs** — deletes QuickMail's diagnostic files immediately after confirmation: the application log (`quickmail.log`), the connection diagnostics log (`connection.log`), and any screenshots saved by the debug capture option below. If logging or connection diagnostics are still on, new files are created the next time something is recorded.
 
 > **Note:** If QuickMail was launched with the `/debug` flag, logging always runs regardless of the Enable logging setting. The `/debug` flag is intended for diagnosing problems and overrides this preference so that nothing is missed.
 
@@ -1244,6 +1288,10 @@ Controls the order of timestamp and message text in each log line. **Action firs
 **Connection Diagnostics**
 
 - **Record connection diagnostics** — off by default. Records how QuickMail connects to your mail servers and adds **Connection Diagnostics** to the **Help** menu. Takes effect as soon as you select **Save**, with no restart. See [Connection Diagnostics](#connection-diagnostics).
+
+**Diagnostics (debug)**
+
+- **Capture screenshots of new windows** — off by default, and a developer aid rather than an everyday setting. It saves a picture of each window as you open it, so someone reviewing how QuickMail looks has something to look at. It lasts for the current session only — QuickMail turns it back off when it closes — and every window's title bar says so while it is on. The images stay on your computer and are removed by **Delete QuickMail logs**.
 
 ### Keyboard
 
@@ -1267,6 +1315,8 @@ Theme changes apply immediately — no restart. Open messages re-render in the n
 
 **Text size** — a dropdown with fixed stops at 100%, 110%, 125%, 150%, 175%, and 200%, independent of Windows display scaling.
 
+**Message List Density** — **Comfortable** (the default) or **Compact**, changing how much space each message row takes. The same choice is on the **View** menu under **Density**; see [Message List Density](#message-list-density). It changes spacing only, never what a row says.
+
 **Vision settings:**
 
 - **Always underline links** — underlines every link in message content, even when the sender removed the underline.
@@ -1289,12 +1339,17 @@ Control which categories of announcements QuickMail makes:
 | Announce results | Action outcomes (messages moved, addresses saved, flag changes) |
 | Announce delete and archive actions | Delete and archive outcomes ("1 message archived"). Turn off to stop these from interrupting the screen reader as it reads the next message; failures are still announced |
 | Announce formatting while navigating | Block type announced when caret enters a new paragraph type in HTML compose |
-| Announce flag status | Flag name prepended to message row when navigating the list |
+| Announce spelling errors when typing | Misspellings called out as you type them |
+| Announce spelling errors while navigating | Misspellings called out as you move the cursor through the message |
 | Announce spelling suggestions | Suggestions included when a misspelling is announced |
 | Spelling Suggestions Verbosity | Numbers with suggestions (default) or just suggestions |
 | Show field labels in the contact list | When on, address-book rows speak field names ("Name … email … account …"); when off, they speak concise field data only |
+| Show field labels in the calendar event list | When on, calendar rows speak field names ("Subject … when … location …") |
+| Show field labels in the rules list | When on, rules-list rows speak field names ("Name … account …") |
 
-All settings default to on except **Announce flag status**, **Show field labels in the contact list**, and **Announce spelling while typing** (off by default). **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
+All settings default to on except the three **Show field labels** switches and **Announce spelling errors when typing**, which are off. **Spelling Suggestions Verbosity** defaults to **Numbers with suggestions**. Turn off **Custom Announcements** to silence everything at once; turn it back on to restore your individual preferences.
+
+**Message list rows are set elsewhere.** What each row in a message list says, in what order, and whether those pieces are labelled, is set in **View → Message List Fields…** rather than here. See [Message List Fields](#message-list-fields).
 
 ---
 
@@ -1304,7 +1359,7 @@ QuickMail's color scheme is controlled through **Settings → Appearance** (see 
 
 ### Theme Manager
 
-Open the Command Palette (**Ctrl+Shift+P**) and choose **Manage Themes**, or choose **Manage Themes…** from the **Tools** menu. The Theme Manager is a separate, non-blocking window, so you can leave it open while you try a theme against real messages. From the theme list, press Tab to reach the actions:
+Choose **Manage Themes…** from the **View** menu, or open the Command Palette (**Ctrl+Shift+P**) and choose **Manage Themes**. The Theme Manager is a separate, non-blocking window, so you can leave it open while you try a theme against real messages. From the theme list, press Tab to reach the actions:
 
 - **Apply** — switch to the selected theme immediately.
 - **Duplicate** — copy a theme as a starting point for your own. A name field appears with a suggested name.
@@ -1359,9 +1414,22 @@ The four light themes are close cousins. Ember, Fjord, and Heather each change o
 
 ## Message List Fields
 
-Each row in a message list is spoken as a single line — sender, subject, date, and so on. **View → Message List Fields…** lets you decide which of those pieces are spoken and in what order.
+Each row in a message list is spoken as a single line — sender, subject, date, and so on. **View → Message List Fields…** lets you decide which of those pieces are spoken and in what order. It is also in the command palette as **Message List Fields…**. It has no keyboard shortcut of its own; assign one in **Settings → Keyboard** if you want one.
 
-Open it and you get a list of every available field, each one a check box. Check a field to have it spoken, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** (or the Move Up and Move Down buttons) to change where it falls in the line. **Home** and **End** jump to the first and last field, and typing a letter jumps to the next field starting with it.
+Open it and you get a list of every available field, each one a real check box. Check a field to have it spoken, uncheck it to leave it out, and move it to change where it falls in the line.
+
+| Key | Action |
+|-----|--------|
+| `Up` / `Down` | Move between fields |
+| `Space` | Turn the focused field on or off |
+| `Alt+Up` / `Alt+Down` | Move the focused field earlier or later in the spoken order |
+| `Home` / `End` | First / last field |
+| *a letter* | Jump to the next field starting with that letter; press again to reach the next match |
+| `F6` / `Shift+F6` | Cycle: Row type, Fields, Field options, Spoken preview, buttons |
+| `Ctrl+Shift+P` | This window's own command palette |
+| `Escape` | Close |
+
+**Move Up**, **Move Down**, **Reset to Defaults**, and **Close** are buttons as well. Moving a field says where it landed — "Moved down. Position 4 of 13." — and adds "Not spoken" when the field you moved is switched off, so a move that changes nothing you can hear says so.
 
 The **Spoken preview** box at the bottom shows the message you had selected when you opened the window, read exactly as the list would read it, updating as you go.
 
@@ -1387,7 +1455,9 @@ The **Row type** list at the top chooses which kind of row you are editing. Each
 | Unread, Replied, Forwarded | Each state on its own, so you can arrange them separately |
 | Mailing list | "mailing list" |
 
-Conversation and sender group rows offer their own set, including the message count and whether the group has unread mail.
+### Fields for group rows
+
+**Conversation groups** offer Subject, Message count, Sender, Flag, Has unread, Preview, and Date. **Sender and recipient groups** offer Sender, Message count, Flag, Has unread, Preview, Date, and Newest subject. A message count is spoken as "1 message" or "3 messages".
 
 ### Speaking a state only when it applies
 
@@ -1398,6 +1468,8 @@ Fields such as **Unread**, **Replied**, and **Attachments** are states rather th
 
 This is how you get "tell me about unread but never say read": turn **Status (combined)** off, turn **Unread** on, and leave it on *Speak only when true*. Fields with no meaningful opposite — Attachments, for example — stay silent when false in either mode.
 
+**Status (combined) and the separate states overlap.** Both say the word "unread", so turning on Unread while Status (combined) is still on says it twice. Whenever that would happen, the **About this field** note in the options pane says so and tells you which one to turn off. The note is a focusable box, so it is reachable from the keyboard rather than being text only a sighted user would notice.
+
 ### Field labels
 
 **Speak field labels** prefixes each text field with its name, so a row reads "From: Chris Lee. Subject: Budget review." rather than "Chris Lee. Budget review." It applies to all three row types. States and counts are never labelled, since "unread" and "3 messages" already say what they are.
@@ -1406,7 +1478,9 @@ This is how you get "tell me about unread but never say read": turn **Status (co
 
 **Reset to Defaults** restores the shipped arrangement for the row type you are currently editing, leaving the other two alone.
 
-Empty fields are skipped rather than leaving a gap, so a message with no preview or no subject reads without a pause where it would have been.
+Until you change anything, rows read the way they always have. Empty fields are skipped rather than leaving a gap, so a message with no preview or no subject reads without a pause where it would have been.
+
+This window replaces the old **Announce flag status** checkbox in Settings — the flag is now the **Flag** field here, which you can turn off, or move anywhere in the line. If you had that checkbox turned off, the Flag field starts out turned off to match; from then on this window owns the choice.
 
 ---
 
@@ -1456,7 +1530,9 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Shift+.` | Last message in group |
 | `Escape` | Close contact mail results (message list focus) |
 
-**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, and **Report a Bug** are likewise command-palette-only unless you assign a shortcut yourself in Settings → Keyboard.
+**Move to Folder…** and **Copy to Folder…** are available from the context menu (Shift+F10) or the command palette; they have no default keyboard shortcut. **Manage Themes**, **Next Theme**, **Previous Theme**, **Message List Fields…**, **Density: Comfortable**, **Density: Compact**, **Manage Flags…**, and **Report a Bug** likewise have no default key — reach them from the menus or the command palette, or assign a shortcut yourself in Settings → Keyboard.
+
+`Ctrl+1`, `Ctrl+2`, and `Ctrl+3` jump to a pane when no message tabs are open; with tabs open they select tab 1, 2, and 3 instead. **`Ctrl+Alt+1`, `Ctrl+Alt+2`, and `Ctrl+Alt+3` always** go to the account list, folder tree, and message list, whatever else is open. `Ctrl+0` moves to the toolbar.
 
 **Calendar** (`Ctrl+Shift+C` to open): `A`/`D`/`W`/`M` switch views, `T` goes to today, `Ctrl+Left`/`Ctrl+Right` move between periods, `Ctrl+G` goes to a date, `N`/`E`/`Delete` create/edit/delete appointments, and `Ctrl+Shift+S` searches. See the [Calendar](#calendar) section for the full list.
 
