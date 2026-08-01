@@ -288,14 +288,31 @@ jobs:
         # installer build, which compiles cold (runs 30597553629, 30635331364).
         run: |
           dotnet clean QuickMail/QuickMail.csproj -c Release -v quiet
-          dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
-        # PublishSingleFile, SelfContained, RuntimeIdentifier, ReadyToRun are set in .csproj
+          dotnet publish QuickMail/QuickMail.csproj -c Release -r win-x64 -o publish/ -warnaserror
+        # PublishSingleFile, SelfContained, ReadyToRun are set in .csproj; -r is explicit
+        # here only so this step and the ARM64 one below read as a matched pair.
+
+      # Native ARM64 build (issue #18). Cross-compiled on this x64 runner — crossgen2
+      # emits the ReadyToRun image for the ARM64 target — so no ARM64 runner is needed.
+      # Separate output directory: both architectures share bin/ and obj/ (see the
+      # AppendRuntimeIdentifierToOutputPath comment in the csproj), so only the publish
+      # directories keep them apart.
+      - name: Publish (ARM64)
+        run: dotnet publish QuickMail/QuickMail.csproj -c Release -r win-arm64 -o publish-arm64/ -warnaserror
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
           name: QuickMail-win-x64
           path: publish/QuickMail.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload artifact (ARM64)
+        uses: actions/upload-artifact@v7
+        with:
+          name: QuickMail-win-arm64
+          path: publish-arm64/QuickMail.exe
           if-no-files-found: error
           retention-days: 7
 
@@ -332,6 +349,14 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: vpk download github --repoUrl https://github.com/kellylford/QuickMail --token ${{ secrets.GITHUB_TOKEN }} --outputDir installer/Output/Releases
+
+      # Same, for the ARM64 channel. Its first release has no predecessor, which is
+      # exactly what continue-on-error covers.
+      - name: Download previous ARM64 release for delta generation
+        if: startsWith(github.ref, 'refs/tags/v')
+        continue-on-error: true
+        shell: pwsh
+        run: vpk download github --repoUrl https://github.com/kellylford/QuickMail --token ${{ secrets.GITHUB_TOKEN }} --channel win-arm64 --outputDir installer/Output/Releases
 
       # --- Code signing (Azure Artifact Signing via GitHub OIDC) --------------
       # azure/login exchanges the workflow OIDC token for Azure creds; Velopack's
@@ -393,6 +418,40 @@ jobs:
           # package it saw into RELEASES/releases.win.json, so deleting the file would
           # publish feed metadata referencing an asset the release does not carry.
 
+      # Native ARM64 pack, into the SAME output folder as x64. That is safe because
+      # Velopack suffixes every file it writes with the channel name — verified against
+      # real vpk 1.2.0 output in run 30710511730, where the two channels produced:
+      #   x64   : RELEASES, releases.win.json, assets.win.json,
+      #           QuickMail-<v>-full.nupkg, QuickMail-win.msi
+      #   arm64 : RELEASES-win-arm64, releases.win-arm64.json, assets.win-arm64.json,
+      #           QuickMail-<v>-win-arm64-full.nupkg, QuickMail-win-arm64.msi
+      # No filename appears in both sets, so the two update feeds cannot overwrite each
+      # other. Re-check this listing if vpk is ever upgraded: a collision here would
+      # corrupt the x64 feed and strand every existing install.
+      #
+      # x64 deliberately stays on Velopack's default `win` channel. Every installed copy
+      # of QuickMail already polls releases.win.json; renaming that channel would strand
+      # them all on their current version permanently.
+      - name: Pack Velopack release (ARM64)
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          vpk pack --packId QuickMail --packVersion $version --packDir publish-arm64 `
+            --runtime win-arm64 --channel win-arm64 `
+            --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
+            --shortcuts StartMenuRoot --outputDir installer/Output/Releases `
+            --framework webview2 `
+            --azureTrustedSignFile "$env:GITHUB_WORKSPACE\signing-metadata.json" `
+            --msi --instLocation PerUser `
+            --instWelcome installer/velopack/welcome.txt `
+            --instLicense installer/velopack/license.txt `
+            --instConclusion installer/velopack/conclusion.txt
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack (arm64) failed with exit code $LASTEXITCODE." }
+          Rename-Item installer/Output/Releases/QuickMail-win-arm64.msi "QuickMail-$version-win-arm64.msi"
+          Write-Host "--- Velopack output (both channels) ---"
+          Get-ChildItem installer/Output/Releases | Select-Object -ExpandProperty Name
+
       # Sign the standalone portable exe that ships as its own release asset.
       # Velopack signed the copies inside the package/MSI during pack, but not
       # this pre-pack file, so it is signed after pack to avoid double-signing.
@@ -409,19 +468,48 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
+      - name: Sign portable QuickMail.exe (ARM64)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: azure/artifact-signing-action@v2.0.0
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: kellylford
+          certificate-profile-name: kellyford-public
+          files-folder: ${{ github.workspace }}\publish-arm64
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      # Both publish directories produce a file literally named QuickMail.exe — the one
+      # genuine filename collision between the two architectures, since this asset is
+      # uploaded straight from the publish folder rather than through vpk (which suffixes
+      # everything by channel). Rename the ARM64 copy so both can live in one release.
+      # The x64 asset keeps the bare QuickMail.exe name that existing links and habits
+      # depend on. Signing already happened above; a rename does not disturb it.
+      - name: Name the ARM64 portable exe
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: Rename-Item publish-arm64/QuickMail.exe QuickMail-arm64.exe
+
       # Create a GitHub Release when a version tag is pushed (e.g. v1.2.0)
       # Release notes are read from docs/release-notes-<tag>.md if present,
       # otherwise GitHub auto-generates notes from commits.
       #
       # Uploaded assets serve two consumers:
       #  - people: QuickMail-<version>-win.msi (wizard installer with license acceptance)
-      #    and QuickMail.exe (portable)
-      #  - the in-app updater: RELEASES, releases.win.json, assets.win.json, and the
-      #    .nupkg packages (full + delta), which Velopack's GithubSource reads from the
-      #    latest release.
+      #    and QuickMail.exe (portable) for x64; the -win-arm64 / -arm64 pair for ARM64
+      #  - the in-app updater: RELEASES, releases.win.json, assets.win.json and the
+      #    matching -win-arm64 trio, plus the .nupkg packages (full + delta), which
+      #    Velopack's GithubSource reads from the latest release.
       # Intentionally not shipped: QuickMail-win-Setup.exe (one-click, no wizard/license)
       # and QuickMail-win-Portable.zip (the raw single-file QuickMail.exe remains the
-      # portable download).
+      # portable download), and their ARM64 equivalents.
+      #
+      # The *.nupkg glob covers both channels' packages; every other Velopack path is
+      # listed per channel so a missing file fails the release rather than silently
+      # publishing a feed that clients cannot read. Note QuickMail-*-win.msi does NOT
+      # match QuickMail-<v>-win-arm64.msi — the ARM64 installer needs its own entry.
       - name: Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
@@ -429,11 +517,16 @@ jobs:
           name: QuickMail ${{ github.ref_name }}
           files: |
             publish/QuickMail.exe
+            publish-arm64/QuickMail-arm64.exe
             installer/Output/Releases/QuickMail-*-win.msi
+            installer/Output/Releases/QuickMail-*-win-arm64.msi
             installer/Output/Releases/*.nupkg
             installer/Output/Releases/RELEASES
             installer/Output/Releases/releases.win.json
             installer/Output/Releases/assets.win.json
+            installer/Output/Releases/RELEASES-win-arm64
+            installer/Output/Releases/releases.win-arm64.json
+            installer/Output/Releases/assets.win-arm64.json
           # The paths above encode vpk's output naming (the MSI is renamed to add the
           # version, hence the glob); if a vpk upgrade renames an output, fail the release
           # instead of silently publishing without the installer or the update feed

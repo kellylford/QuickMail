@@ -1,7 +1,8 @@
 # Windows ARM64 Support — Plan
 
 **Issue:** [#18 — Windows ARM64 Support](https://github.com/kellylford/QuickMail/issues/18)
-**Status:** Phases 1 and 2 implemented on branch `arm64-support`. Phases 3–5 not started.
+**Status:** Phases 1–4 implemented on branch `arm64-support`, pending validation on ARM64
+hardware. Phase 5 not started.
 **Date:** 2026-08-01
 
 ## Summary
@@ -79,8 +80,8 @@ Application code requiring **no** change:
 - `UpdateCheckService` / `VelopackRuntime` — `UpdateManager` is constructed without an
   explicit channel, so Velopack resolves the channel from the installed application's own
   metadata. An ARM64 install packed on the `win-arm64` channel will look for
-  `releases.win-arm64.json` on its own. *(To be confirmed during the local `--updateFeed`
-  cycle in Phase 3 — this is the single behavioural assumption in the plan.)*
+  `releases.win-arm64.json` on its own. *(Still unproven — this is the single behavioural
+  assumption left in the plan, and validation step 8 is what settles it.)*
 - The portable-exe update path (`CheckViaGitHubApiAsync`) compares release tags and links to
   the release page; it does not select an asset, so it is architecture-agnostic.
 
@@ -134,7 +135,7 @@ own definition and avoids the question:
 gh workflow run build-installer.yml --ref arm64-support -f architecture=arm64
 ```
 
-## Phase 3 — Release workflow and Velopack channels
+## Phase 3 — Release workflow and Velopack channels *(implemented)*
 
 ### Channel strategy
 
@@ -182,12 +183,30 @@ Requirements for the release assets:
 
 The Phase 5 in-app notice is the real fix for people who never read a release page.
 
-**Verification step before the first release:** confirm the ARM64 pack's emitted asset
-filenames do not collide with the x64 set in the same GitHub release. Velopack suffixes
-package and feed files by channel (`releases.win-arm64.json`, `assets.win-arm64.json`), but
-the legacy `RELEASES` file and the `.nupkg` naming must be inspected in a real `vpk pack`
-output, not assumed. A collision here would corrupt the x64 feed, which is the highest-risk
-item in this plan.
+**Verification step — done.** Run
+[30710511730](https://github.com/kellylford/QuickMail/actions/runs/30710511730) packed both
+channels with vpk 1.2.0 and printed each one's output:
+
+| x64 (`win`) | ARM64 (`win-arm64`) |
+| --- | --- |
+| `RELEASES` | `RELEASES-win-arm64` |
+| `releases.win.json` | `releases.win-arm64.json` |
+| `assets.win.json` | `assets.win-arm64.json` |
+| `QuickMail-0.8.37-full.nupkg` | `QuickMail-0.8.37-win-arm64-full.nupkg` |
+| `QuickMail-win.msi` | `QuickMail-win-arm64.msi` |
+| `QuickMail-win-Setup.exe` | `QuickMail-win-arm64-Setup.exe` |
+| `QuickMail-win-Portable.zip` | `QuickMail-win-arm64-Portable.zip` |
+
+**No filename appears in both sets** — including the legacy `RELEASES` file, which Velopack
+suffixes too. The highest-risk item in this plan is therefore cleared: the two feeds cannot
+overwrite each other, and both packs can share one output folder and one GitHub release.
+
+One collision does exist, outside Velopack's naming: the portable executable is uploaded
+straight from the publish folder and is called `QuickMail.exe` in both. The ARM64 copy is
+renamed to `QuickMail-arm64.exe` before upload; x64 keeps the bare name that existing links
+depend on.
+
+Re-run this check after any vpk upgrade.
 
 ### WebView2 bootstrapper
 
@@ -195,7 +214,7 @@ item in this plan.
 the device architecture and installs the matching runtime, so the same flag is correct for
 ARM64 — confirm the ARM64 Setup actually installs the ARM64 runtime on a machine without it.
 
-## Phase 4 — Documentation
+## Phase 4 — Documentation *(implemented)*
 
 - `docs/INSTALLER.md` — the two-channel layout, the "`win` means x64" note, and the ARM64
   entry in the local `--updateFeed` test procedure.
