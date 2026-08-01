@@ -18,7 +18,6 @@ public class SettingsViewModelTests
         var vm = new SettingsViewModel(configService, registry);
 
         Assert.Equal(3, vm.PreviewLines);
-        Assert.True(vm.ShowMessageStatus);
         Assert.False(vm.ReadAsPlainText);
         Assert.Equal("messages", vm.ViewMode);
         Assert.Equal(30, vm.SyncDays);
@@ -74,7 +73,6 @@ public class SettingsViewModelTests
         var vm = new SettingsViewModel(configService, registry);
 
         vm.PreviewLines = 5;
-        vm.ShowMessageStatus = false;
         vm.ViewMode = "conversations";
         vm.SyncDays = 7;
         vm.InitialSyncCount = 100;
@@ -83,7 +81,6 @@ public class SettingsViewModelTests
 
         var loadedConfig = configService.Load();
         Assert.Equal(5, loadedConfig.PreviewLines);
-        Assert.False(loadedConfig.ShowMessageStatus);
         Assert.Equal("conversations", loadedConfig.ViewMode);
         Assert.Equal(7, loadedConfig.SyncDays);
         Assert.Equal(100, loadedConfig.InitialSyncCount);

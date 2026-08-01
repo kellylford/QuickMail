@@ -15,7 +15,7 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 
 **OAuthService** wraps MSAL (`Microsoft.Identity.Client`) for Microsoft 365 / Outlook OAuth2. Token refresh is handled automatically; passwords for OAuth accounts are not stored in Credential Manager.
 
-**ConfigService** reads/writes `config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ShowMessageStatus`, `ViewMode`, `SyncDays`, `InitialSyncCount`, `AutoDiscoverOnline`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
+**ConfigService** reads/writes `config.ini` (INI format, human-editable) and `hotkeys.json` (JSON). Settings include `PreviewLines`, `ViewMode`, `SyncDays`, `InitialSyncCount`, `AutoDiscoverOnline`, with optional per-account `[account:{guid}]` overrides. Results are cached after first load.
 
 **ProviderCatalog** (`IProviderCatalog`) is the built-in table of well-known mail providers — Gmail, Outlook.com / Microsoft 365, Yahoo, iCloud, and an "Other" catch-all. Each `MailProvider` carries IMAP/SMTP hosts, ports, SSL modes, a default `AuthType` and `BackendKind`, and an optional app-password hint plus the URL where the user creates one. `MatchByEmail` maps an address's domain to a provider; `Resolve(AccountModel)` prefers the persisted `AccountModel.ProviderId` and falls back to matching the IMAP host, so accounts created before the catalog existed still resolve without a migration. A static `ProviderCatalog.IsICloud(account)` replaces what used to be an `ImapHost == "imap.mail.me.com"` comparison duplicated across six files.
 

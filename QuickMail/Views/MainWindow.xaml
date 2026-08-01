@@ -19,7 +19,6 @@
         <local:BoolToFontWeightConverter x:Key="BoolToWeightConverter"/>
         <BooleanToVisibilityConverter    x:Key="BoolToVisibilityConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
-        <local:BoolToColumnWidthConverter       x:Key="BoolToColumnWidthConverter"/>
         <local:BoolToGridLengthConverter        x:Key="BoolToGridLengthConverter"/>
         <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
         <local:StringToBrushConverter           x:Key="StringToBrushConverter"/>
@@ -1414,23 +1413,17 @@
                              is not shadowed by a local style here. -->
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Width="{Binding ShowMessageStatus, Converter={StaticResource BoolToColumnWidthConverter}}">
+                                <GridViewColumn Width="65">
                                     <GridViewColumn.Header>
                                         <TextBlock Text="Status"
-                                                   AutomationProperties.IsColumnHeader="True"
-                                                   Visibility="{Binding DataContext.ShowMessageStatus,
-                                                       RelativeSource={RelativeSource AncestorType=Window},
-                                                       Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                   AutomationProperties.IsColumnHeader="True"/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding StatusDisplay}"
                                                        FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                        TextAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Visibility="{Binding DataContext.ShowMessageStatus,
-                                                           RelativeSource={RelativeSource AncestorType=Window},
-                                                           Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                       TextTrimming="CharacterEllipsis"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
