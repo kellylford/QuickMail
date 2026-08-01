@@ -79,9 +79,11 @@ QuickMail mentions this once when it notices it is running on an ARM PC, and the
 2. Download and run **QuickMail-win-arm64.msi** from the [releases page](https://github.com/kellylford/QuickMail/releases).
 3. Start QuickMail. Everything is as you left it, for the same reason as above — your accounts, settings, and mail are stored separately from the program itself.
 
-From then on, automatic updates keep you on the ARM version. There is nothing further to do, and no need to repeat this for future releases.
+**Do not skip step 1.** Running the ARM installer on top of a regular QuickMail of the same version does not replace it — Windows treats the two as separate programs, leaves the regular one in place, and reports success. QuickMail keeps starting exactly as before, so nothing tells you the switch did not happen. Uninstalling first is what makes it work.
 
-This is a one-time step. From then on, updates arrive on their own.
+To confirm the switch worked, open the **Help** menu after restarting. **Get the ARM Version** appears only on an ARM PC that is running the regular build, so once you are on the ARM version it is gone. If it is still there, you are still on the regular build — uninstall and try again.
+
+From then on, automatic updates keep you on the ARM version. This is a one-time step — there is nothing further to do, and no need to repeat it for future releases.
 
 ### How updating works
 

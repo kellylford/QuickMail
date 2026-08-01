@@ -44,6 +44,8 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
   - [Changed: themes](#changed-themes)
   - [Changed: Manage Themes moved to the View menu](#changed-manage-themes-moved-to-the-view-menu)
   - [Fixed: the Theme Manager's Import button at large text sizes](#fixed-the-theme-managers-import-button-at-large-text-sizes)
+- [Windows on ARM](#windows-on-arm)
+  - [New: a version built for ARM PCs](#new-a-version-built-for-arm-pcs)
 - [Diagnostics and troubleshooting](#diagnostics-and-troubleshooting)
   - [Fixed: adding an account no longer shows every other account as disconnected](#fixed-adding-an-account-no-longer-shows-every-other-account-as-disconnected)
   - [New: Connection Diagnostics, for when something looks wrong](#new-connection-diagnostics-for-when-something-looks-wrong)
@@ -56,14 +58,18 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
 
 ## Download
 
-Two options are available for v0.8.37:
+v0.8.37 is the first release built for ARM PCs as well as regular ones, so there are four downloads. Take a regular one unless you know your PC has an ARM processor — to check, open **Settings → System → About** and read **System type**.
 
 | Download | When to use |
 |----------|-------------|
 | **`QuickMail-win.msi`** — Windows installer | Recommended for most users. A standard setup wizard with license agreement; installs per-user with no elevation required, adds the WebView2 Runtime if missing, and enables automatic updates. |
+| **`QuickMail-win-arm64.msi`** — Windows installer, ARM | The same installer for PCs with an ARM processor, such as the Snapdragon X models of Surface Laptop and Surface Pro. |
 | **`QuickMail.exe`** — standalone portable executable | No installation required. Copy it anywhere and run. |
+| **`QuickMail-arm64.exe`** — standalone portable executable, ARM | The portable version for PCs with an ARM processor. |
 
-Both downloads include the .NET 8 runtime — you do not need to install .NET separately.
+The regular downloads run on every supported PC, ARM ones included — just not as quickly there. The ARM downloads will not start at all on a non-ARM PC, so if you are unsure, the regular one is the safe guess.
+
+All downloads include the .NET 8 runtime — you do not need to install .NET separately.
 
 ---
 
@@ -375,6 +381,26 @@ Both options are also available as commands, **Density: Comfortable** and **Dens
 ### Fixed: the Theme Manager's Import button at large text sizes
 
 At a Windows text size of 150% the buttons beside the theme list ran past the bottom of the window and **Import** could not be reached at all. That column scrolls now, and moving to a button with the keyboard brings it into view.
+
+---
+
+## Windows on ARM
+
+### New: a version built for ARM PCs
+
+QuickMail now has a build for PCs with an ARM processor — the Snapdragon X models of Surface Laptop and Surface Pro, and similar machines from other manufacturers. Until now those PCs ran the regular build through Windows' built-in emulation, which works but costs speed and battery life. The ARM build runs on the processor directly.
+
+Nothing changes for anyone on a regular PC, and nothing changes for you automatically: automatic updates stay on whichever version you installed, and QuickMail will never move you across on its own.
+
+If you are on an ARM PC running the regular build, QuickMail says so once, and the **Help** menu keeps a **Get the ARM Version** entry that opens the download page. That entry appears only on an ARM PC running the regular build — which makes it the way to check where you stand. Once you are on the ARM version, it is gone.
+
+**Switching is a manual uninstall and reinstall, and the uninstall is not optional:**
+
+1. Uninstall QuickMail from **Settings → Apps**. When the uninstaller offers to delete your data, choose **No**.
+2. Download and run **`QuickMail-win-arm64.msi`**.
+3. Start QuickMail. Your accounts, settings, contacts, rules, templates, saved views, and cached mail are all as you left them — your data lives separately from the program itself.
+
+Running the ARM installer on top of a regular QuickMail of the same version does **not** replace it. Windows treats the two as separate programs, installs the second beside the first, reports success, and leaves the regular build running. Nothing in QuickMail would look wrong afterwards, which is exactly why it is worth saying plainly: uninstall first, and check the Help menu once you have restarted. (#18)
 
 ---
 
