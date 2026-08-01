@@ -162,6 +162,13 @@ public class ThemedControlCoverageTests
     /// is stamped separately and stays correct, so only a visual check catches
     /// it. Basing on no style at all is equally wrong: the row then falls back
     /// to WPF's unthemed default chrome.
+    ///
+    /// Known limits (no GridView list uses these shapes today; extend the scan
+    /// if one starts to): only the inline &lt;ListView.ItemContainerStyle&gt;
+    /// element is inspected, so an attribute-form ItemContainerStyle="{...}" or
+    /// an ItemContainerStyleSelector is skipped, and the GridView probe walks
+    /// all descendants, so an outer list wrapping a nested GridView list would
+    /// be treated as GridView-bearing.
     /// </summary>
     [Fact]
     public void GridViewListViews_BaseTheirContainerStyleOnTheGridViewStyle()
