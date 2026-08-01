@@ -181,6 +181,8 @@ Other fields you can now add: **To**, **Mailing list**, and **Source folder**.
 
 Two small consequences. The **Announce flag status** checkbox has left Settings, because Flag is now one field with its own checkbox; if you had it turned off, Flag starts out unchecked for you. And a conversation or sender group used to keep saying "Has unread" after you had read its last unread message — it now updates. (#457)
 
+**Show message status column** has also left Settings. It only ever governed the visible Status column — the one showing New, Replied, Fwd, or a flag name — and never what a row said out loud, which is what people reasonably expected of a setting with that name; turning it off changed nothing you could hear. Speech is now chosen field by field in the window above. The column itself is always shown, so if you are among the few who turned it off to reclaim the space on screen, it comes back and there is currently no way to hide it — say so and it can be made resizable. The `ShowMessageStatus` line in `config.ini` is no longer read and can be deleted; it will disappear on its own the next time QuickMail rewrites the file. ([#19](https://github.com/kellylford/QuickMail/issues/19))
+
 ### New: combined views say which folder a message is in
 
 In a view that gathers mail from more than one place, a row never told you where the message actually lives, so an inbox message and one a rule had filed into a custom folder read identically. Each row now ends with its folder — "… 12:24 PM. Inbox." — and when the view spans more than one account the folder is named with its account, "Work -- Inbox".

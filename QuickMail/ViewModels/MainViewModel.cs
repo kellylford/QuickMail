@@ -776,9 +776,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isBusy;
 
-    [ObservableProperty]
-    private bool _showMessageStatus;
-
     /// <summary>
     /// Sticky "read as plain text" preference (issue #34). Bound one-way to the View-menu
     /// check state; the View reads it when rendering a message body. Kept in sync with
@@ -1144,7 +1141,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
-        _showMessageStatus = cfg.ShowMessageStatus;
         _readAsPlainText = cfg.ReadAsPlainText;
         _previewLines = cfg.PreviewLines;
         _showPreview = _previewLines > 0;
@@ -1733,7 +1729,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Keep the View menu's density check marks in sync with a Settings save.
         ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
 
-        ShowMessageStatus = cfg.ShowMessageStatus;
         ReadAsPlainText   = cfg.ReadAsPlainText;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
         OnPropertyChanged(nameof(AnnounceFlagStatus));
