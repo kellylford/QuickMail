@@ -1,5 +1,6 @@
 # .NET 8 End of Support — Plan
 
+**Issue:** [#472 — Migrate to .NET 10 before .NET 8 end of support](https://github.com/kellylford/QuickMail/issues/472)
 **Status:** planning. No code changed yet.
 **Date:** 2026-08-01
 **Deadline:** 2026-11-10 (about 14 weeks from this date)
