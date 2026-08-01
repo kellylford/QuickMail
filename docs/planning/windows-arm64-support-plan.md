@@ -1,7 +1,8 @@
 # Windows ARM64 Support — Plan
 
 **Issue:** [#18 — Windows ARM64 Support](https://github.com/kellylford/QuickMail/issues/18)
-**Status:** planning. Feasibility proven; not yet implemented.
+**Status:** Phases 1–4 implemented on branch `arm64-support`, pending validation on ARM64
+hardware. Phase 5 not started.
 **Date:** 2026-08-01
 
 ## Summary
@@ -79,12 +80,12 @@ Application code requiring **no** change:
 - `UpdateCheckService` / `VelopackRuntime` — `UpdateManager` is constructed without an
   explicit channel, so Velopack resolves the channel from the installed application's own
   metadata. An ARM64 install packed on the `win-arm64` channel will look for
-  `releases.win-arm64.json` on its own. *(To be confirmed during the local `--updateFeed`
-  cycle in Phase 3 — this is the single behavioural assumption in the plan.)*
+  `releases.win-arm64.json` on its own. *(Still unproven — this is the single behavioural
+  assumption left in the plan, and validation step 8 is what settles it.)*
 - The portable-exe update path (`CheckViaGitHubApiAsync`) compares release tags and links to
   the release page; it does not select an asset, so it is architecture-agnostic.
 
-## Phase 1 — Build parameterization
+## Phase 1 — Build parameterization *(implemented)*
 
 `QuickMail/QuickMail.csproj` currently hardcodes `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`.
 
@@ -105,12 +106,13 @@ starts from a clean checkout, but locally an ARM64 publish leaves ARM64 output i
 `bin/Release` until the next normal build. Document it in `build.bat`; do not "fix" it by
 re-enabling the RID path suffix.
 
-## Phase 2 — On-demand installer workflow
+## Phase 2 — On-demand installer workflow *(implemented)*
 
-Extend `.github/workflows/build-installer.yml` with an `architecture` input
-(`x64` / `arm64` / `both`) so a signed, testable ARM64 MSI can be produced from any branch
-without cutting a release. This workflow already injects the real Google OAuth and
-bug-report credentials from repository secrets, which a local build cannot do.
+`.github/workflows/build-installer.yml` takes an `architecture` input
+(`x64` / `arm64` / `both`) driving a matrix, so a signed, testable ARM64 MSI can be produced
+from any branch without cutting a release. This workflow already injects the real Google
+OAuth and bug-report credentials from repository secrets, which a local build cannot do —
+it is the only way to get an ARM64 build with working Google sign-in.
 
 This is the artifact used for validation, and it lands before any change to the release
 workflow.
@@ -119,7 +121,21 @@ Runner: `windows-latest` (x64) is sufficient — cross-compilation is proven. Ru
 on a `windows-11-arm` runner is unnecessary for building, though it is an option later if
 native test execution is wanted.
 
-## Phase 3 — Release workflow and Velopack channels
+The ARM64 leg packs with `--runtime win-arm64 --channel win-arm64`; the x64 leg is
+unchanged, still on the default `win` channel. The pack step prints the full list of files
+`vpk` emitted for each channel — that listing is the evidence needed for the collision check
+in Phase 3, gathered before any release workflow change is written.
+
+**Dispatching from the branch:** a `workflow_dispatch` form may render its inputs from the
+default branch's copy of the workflow, so the `architecture` dropdown might not appear in the
+Actions UI until this merges to `main`. Triggering by CLI passes the input to the branch's
+own definition and avoids the question:
+
+```
+gh workflow run build-installer.yml --ref arm64-support -f architecture=arm64
+```
+
+## Phase 3 — Release workflow and Velopack channels *(implemented)*
 
 ### Channel strategy
 
@@ -147,12 +163,50 @@ benefit is that the update path for every existing user is untouched.
    `QuickMail-win-arm64.msi`, mirroring the existing x64 rename.
 5. Sign and upload the ARM64 portable exe with a distinguishing asset name.
 
-**Verification step before the first release:** confirm the ARM64 pack's emitted asset
-filenames do not collide with the x64 set in the same GitHub release. Velopack suffixes
-package and feed files by channel (`releases.win-arm64.json`, `assets.win-arm64.json`), but
-the legacy `RELEASES` file and the `.nupkg` naming must be inspected in a real `vpk pack`
-output, not assumed. A collision here would corrupt the x64 feed, which is the highest-risk
-item in this plan.
+### Release page clarity — four downloads instead of two
+
+Today a release offers two things a person actually chooses between: the MSI and the portable
+exe. After this, it is four. That doubling is the main user-visible cost of the whole feature,
+and it lands on people who do not know or care what architecture their laptop is.
+
+Requirements for the release assets:
+
+- Architecture appears in every filename: `QuickMail-<version>-win.msi` (x64, name unchanged
+  so existing links and habits survive) and `QuickMail-<version>-win-arm64.msi`.
+- The release notes lead with a short "which download do I want?" line naming the common
+  hardware — Snapdragon X and similar for ARM64, everything else for x64 — rather than
+  assuming the reader knows their CPU architecture.
+- The User Guide download page gets the same guidance plus how to check: Settings → System →
+  About → System type in Windows.
+- x64 stays the first-listed and default recommendation. Someone who guesses wrong in that
+  direction gets a working, emulated app; the reverse gets an app that will not start.
+
+The Phase 5 in-app notice is the real fix for people who never read a release page.
+
+**Verification step — done.** Run
+[30710511730](https://github.com/kellylford/QuickMail/actions/runs/30710511730) packed both
+channels with vpk 1.2.0 and printed each one's output:
+
+| x64 (`win`) | ARM64 (`win-arm64`) |
+| --- | --- |
+| `RELEASES` | `RELEASES-win-arm64` |
+| `releases.win.json` | `releases.win-arm64.json` |
+| `assets.win.json` | `assets.win-arm64.json` |
+| `QuickMail-0.8.37-full.nupkg` | `QuickMail-0.8.37-win-arm64-full.nupkg` |
+| `QuickMail-win.msi` | `QuickMail-win-arm64.msi` |
+| `QuickMail-win-Setup.exe` | `QuickMail-win-arm64-Setup.exe` |
+| `QuickMail-win-Portable.zip` | `QuickMail-win-arm64-Portable.zip` |
+
+**No filename appears in both sets** — including the legacy `RELEASES` file, which Velopack
+suffixes too. The highest-risk item in this plan is therefore cleared: the two feeds cannot
+overwrite each other, and both packs can share one output folder and one GitHub release.
+
+One collision does exist, outside Velopack's naming: the portable executable is uploaded
+straight from the publish folder and is called `QuickMail.exe` in both. The ARM64 copy is
+renamed to `QuickMail-arm64.exe` before upload; x64 keeps the bare name that existing links
+depend on.
+
+Re-run this check after any vpk upgrade.
 
 ### WebView2 bootstrapper
 
@@ -160,7 +214,7 @@ item in this plan.
 the device architecture and installs the matching runtime, so the same flag is correct for
 ARM64 — confirm the ARM64 Setup actually installs the ARM64 runtime on a machine without it.
 
-## Phase 4 — Documentation
+## Phase 4 — Documentation *(implemented)*
 
 - `docs/INSTALLER.md` — the two-channel layout, the "`win` means x64" note, and the ARM64
   entry in the local `--updateFeed` test procedure.
@@ -170,20 +224,54 @@ ARM64 — confirm the ARM64 Setup actually installs the ARM64 runtime on a machi
   profile in `%APPDATA%\QuickMail` and Windows Credential Manager entries are preserved).
 - `CLAUDE.md` — the ARM64 build target in the Build & Run section.
 
+## Phase 5 — Emulation notice in the x64 build
+
+Because there is no cross-channel migration, an ARM64 user who installed the x64 build will
+never be told the native build exists unless the application says so. Detection is trivial in
+.NET 8: `RuntimeInformation.OSArchitecture` returns `Arm64` under emulation (corrected in
+.NET 7) while `RuntimeInformation.ProcessArchitecture` returns `X64`. That mismatch is exactly
+"emulated x64 process on ARM64 hardware".
+
+Design:
+
+- A `Hint` announcement plus a Help menu entry — **not** a startup dialog. A modal at launch
+  would interrupt the first thing a screen reader user hears, for information that is not
+  urgent.
+- Shown once per version, tracked alongside the existing `LastRunVersion` state, so it never
+  becomes nagging.
+- Wording states the benefit plainly and says the switch is a manual uninstall/reinstall with
+  settings preserved. It must not imply the current build is broken — it is not.
+- The Help entry stays available after the one-time notice, so it can be found again.
+
+This phase is independent of the packaging work and could ship in an x64 release *before* the
+ARM64 build exists, so the notice is already in the field when the native build lands. It is
+also the only part of this feature that touches application code, and therefore the only part
+carrying the usual UI, accessibility, and command-registration obligations.
+
 ## Infrastructure changes
+
+Phases 1–4 (build, packaging, docs):
 
 - **CommandRegistry:** none.
 - **AutomationProperties.Name values:** none added or changed.
 - **AccessibilityHelper.Announce calls:** none added.
 - **F6 ring:** unchanged.
 - **VM state properties:** none.
-- **Files touched:** `QuickMail.csproj` (comment only, RID stays), `build.bat`,
+- **Files touched:** `build.bat`, `.gitignore`,
   `.github/workflows/build-installer.yml`, `.github/workflows/quickmail.yml`,
-  `docs/INSTALLER.md`, `docs/USER-GUIDE.md`, `CLAUDE.md`.
+  `docs/INSTALLER.md`, `docs/USER-GUIDE.md`, `CLAUDE.md`. The csproj is unchanged — the RID
+  stays `win-x64` and is overridden per invocation with `-r`.
 
-No keyboard walkthrough section appears in this plan because the change introduces no UI, no
-new control, and no new interaction — it produces a second binary of an unchanged
-application. The validation checklist below covers behaviour instead.
+Phase 5 (emulation notice) does touch the application:
+
+- **CommandRegistry:** one new command in category `Help`, no default key.
+- **AccessibilityHelper.Announce:** one `Hint` call, gated by `AnnounceHints` as usual.
+- **AutomationProperties.Name:** one new menu item label.
+- **VM state:** one persisted "notice shown for version" value alongside `LastRunVersion`.
+
+No keyboard walkthrough appears for phases 1–4 because they introduce no UI, no new control,
+and no new interaction — they produce a second binary of an unchanged application. Phase 5
+requires one before it is implemented.
 
 ## Validation
 
@@ -223,7 +311,8 @@ Performed by Kelly on ARM64 hardware. The plan is not considered delivered until
 ## Out of scope
 
 - Automatic architecture migration for existing x64 installs on ARM64 devices. Users switch
-  manually; the release notes explain how.
+  manually; the release notes explain how, and the Phase 5 notice tells affected users the
+  native build exists. Nothing switches architecture on a user's behalf.
 - ARM64 test execution in CI. Tests continue to run on x64 runners. A `windows-11-arm` test
   leg can be added later if an architecture-specific failure is ever observed.
 - Performance instrumentation or benchmarking harness. The comparison in validation step 7 is

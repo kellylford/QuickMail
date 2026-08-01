@@ -4,6 +4,7 @@ setlocal
 set CONFIG=Debug
 if /i "%1"=="release" set CONFIG=Release
 if /i "%1"=="publish"   goto publish
+if /i "%1"=="publish-arm64" goto publish-arm64
 if /i "%1"=="installer" goto installer
 if /i "%1"=="run"     goto run
 if /i "%1"=="clean"   goto clean
@@ -25,6 +26,30 @@ if exist publish\ rmdir /s /q publish\
 dotnet publish QuickMail\QuickMail.csproj -c Release -o publish\
 echo.
 echo Output: publish\QuickMail.exe
+goto end
+
+:publish-arm64
+:: Native ARM64 build for Snapdragon X and similar devices (issue #18). Cross-compiles
+:: from an x64 machine — crossgen2 produces the ReadyToRun image for the ARM64 target,
+:: so no ARM64 hardware is needed to build.
+::
+:: -r overrides the <RuntimeIdentifier>win-x64</RuntimeIdentifier> default in the csproj;
+:: every other publish property (single-file, self-contained, ReadyToRun) still applies.
+::
+:: NOTE: AppendRuntimeIdentifierToOutputPath is deliberately false (see the csproj comment
+:: on Dependabot's design-time build), so both architectures share bin\ and obj\. After
+:: this target runs, bin\Release holds ARM64 output until the next ordinary build
+:: overwrites it. That is expected — do not "fix" it by re-enabling the RID path suffix.
+echo Publishing QuickMail — single-file self-contained win-arm64...
+if exist publish-arm64\ rmdir /s /q publish-arm64\
+dotnet publish QuickMail\QuickMail.csproj -c Release -r win-arm64 -o publish-arm64\
+if errorlevel 1 (
+    echo PUBLISH FAILED: build errors.
+    exit /b 1
+)
+echo.
+echo Output: publish-arm64\QuickMail.exe
+echo Note: bin\Release now contains ARM64 output; rebuild to restore x64.
 goto end
 
 :installer
@@ -85,6 +110,7 @@ goto end
 echo Cleaning...
 dotnet clean QuickMail\QuickMail.csproj
 if exist publish\ rmdir /s /q publish\
+if exist publish-arm64\ rmdir /s /q publish-arm64\
 goto end
 
 :smoke

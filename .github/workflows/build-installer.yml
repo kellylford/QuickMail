@@ -12,9 +12,22 @@ name: Build Installer (on demand)
 #
 # Publishing a release is still the job of .github/workflows/quickmail.yml, which runs
 # only on a pushed v* tag. This workflow never creates a release.
+#
+# The architecture input builds x64, native ARM64 (issue #18), or both. ARM64 is
+# cross-compiled on the x64 runner — crossgen2 emits the ReadyToRun image for the ARM64
+# target — so no ARM64 runner is involved.
 
 on:
   workflow_dispatch:
+    inputs:
+      architecture:
+        description: 'Target architecture'
+        type: choice
+        options:
+          - x64
+          - arm64
+          - both
+        default: x64
 
 permissions:
   contents: read    # checkout
@@ -26,6 +39,13 @@ jobs:
     # Same azure-signing environment the release workflow uses, so the OIDC token
     # subject matches the Azure federated credential. Unprotected; not a gate.
     environment: azure-signing
+
+    strategy:
+      # Keep both legs going if one fails, so a broken ARM64 pack still yields a
+      # testable x64 installer (and vice versa).
+      fail-fast: false
+      matrix:
+        arch: ${{ fromJSON(inputs.architecture == 'both' && '["x64","arm64"]' || format('["{0}"]', inputs.architecture)) }}
 
     steps:
       - uses: actions/checkout@v7
@@ -67,8 +87,29 @@ jobs:
       - name: Publish
         # -warnaserror: fail the build on any warning, matching quickmail.yml. An
         # installer should never be cut from a tree that has regressed on warnings.
-        run: dotnet publish QuickMail/QuickMail.csproj -c Release -o publish/ -warnaserror
-        # PublishSingleFile, SelfContained, RuntimeIdentifier, ReadyToRun are set in .csproj
+        # -r overrides the csproj's win-x64 default; every other publish property
+        # (PublishSingleFile, SelfContained, ReadyToRun) still comes from the csproj.
+        run: dotnet publish QuickMail/QuickMail.csproj -c Release -r win-${{ matrix.arch }} -o publish/ -warnaserror
+
+      # Assert the exe really is the architecture this leg asked for, by reading the PE
+      # header's machine field. A mismatch here would ship an x64 binary inside an
+      # -arm64 installer: it installs, and it runs under emulation, so nothing else in
+      # the pipeline — or in ordinary use of the app — would reveal it.
+      - name: Verify published architecture
+        shell: pwsh
+        run: |
+          $fs = [System.IO.File]::OpenRead('publish/QuickMail.exe')
+          try {
+            $br = New-Object System.IO.BinaryReader($fs)
+            $fs.Position = 0x3c
+            $fs.Position = $br.ReadInt32() + 4   # PE signature offset, then skip "PE\0\0"
+            $machine = $br.ReadUInt16()
+          } finally { $fs.Dispose() }
+          $want = if ('${{ matrix.arch }}' -eq 'arm64') { 0xAA64 } else { 0x8664 }
+          if ($machine -ne $want) {
+            throw "publish/QuickMail.exe has PE machine 0x$('{0:X4}' -f $machine); expected 0x$('{0:X4}' -f $want) for ${{ matrix.arch }}."
+          }
+          Write-Host "publish/QuickMail.exe -> 0x$('{0:X4}' -f $machine) OK for ${{ matrix.arch }}"
 
       - name: Install vpk
         run: dotnet tool install -g vpk
@@ -112,7 +153,14 @@ jobs:
         shell: pwsh
         run: |
           $version = '${{ steps.version.outputs.version }}'
+          $arch    = '${{ matrix.arch }}'
           Copy-Item LICENSE installer/velopack/license.txt
+          # x64 stays on Velopack's default `win` channel — the one every existing install
+          # already polls, so it must never be renamed. ARM64 gets its own `win-arm64`
+          # channel so the two feeds can never offer each other's packages to the wrong
+          # machine. See docs/planning/windows-arm64-support-plan.md.
+          $archArgs = @()
+          if ($arch -eq 'arm64') { $archArgs = @('--runtime', 'win-arm64', '--channel', 'win-arm64') }
           # --azureTrustedSignFile signs the app binaries, Velopack Update/Setup, and the MSI.
           vpk pack --packId QuickMail --packVersion $version --packDir publish `
             --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
@@ -122,10 +170,21 @@ jobs:
             --msi --instLocation PerUser `
             --instWelcome installer/velopack/welcome.txt `
             --instLicense installer/velopack/license.txt `
-            --instConclusion installer/velopack/conclusion.txt
-          # vpk always emits QuickMail-win.msi with no version in the name; rename it so
-          # the downloaded installer is identifiable in your Downloads folder.
-          Rename-Item installer/Output/Releases/QuickMail-win.msi "QuickMail-$version-win.msi"
+            --instConclusion installer/velopack/conclusion.txt @archArgs
+          if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE." }
+          # vpk emits the MSI with no version in the name, and the exact name varies with
+          # the channel — rename whichever single .msi landed rather than assuming it, so
+          # a naming change in vpk fails loudly here instead of silently shipping nothing.
+          $msi = @(Get-ChildItem installer/Output/Releases/*.msi)
+          if ($msi.Count -ne 1) { throw "Expected exactly one .msi, found $($msi.Count): $($msi.Name -join ', ')" }
+          $suffix = if ($arch -eq 'arm64') { 'win-arm64' } else { 'win' }
+          Write-Host "vpk emitted $($msi[0].Name); renaming to QuickMail-$version-$suffix.msi"
+          Rename-Item $msi[0].FullName "QuickMail-$version-$suffix.msi"
+          # Record the full asset set for this channel. The release workflow will publish
+          # both channels into one GitHub release, so these names must not collide across
+          # architectures — this listing is how that gets verified before Phase 3 lands.
+          Write-Host "--- Velopack output ($arch) ---"
+          Get-ChildItem installer/Output/Releases | Select-Object -ExpandProperty Name
 
       # Sign the standalone portable exe (vpk signed the copies inside the package).
       - name: Sign portable QuickMail.exe
@@ -143,10 +202,10 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7
         with:
-          name: QuickMail-${{ steps.version.outputs.version }}-installer
+          name: QuickMail-${{ steps.version.outputs.version }}-${{ matrix.arch }}-installer
           # The MSI is the full installer; the portable exe is bundled for convenience.
           path: |
-            installer/Output/Releases/QuickMail-*-win.msi
+            installer/Output/Releases/QuickMail-*.msi
             publish/QuickMail.exe
           if-no-files-found: error
           retention-days: 14

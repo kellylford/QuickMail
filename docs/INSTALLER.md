@@ -19,6 +19,47 @@ containing:
 
 The `vpk` CLI is a .NET global tool: `dotnet tool install -g vpk`.
 
+## Two architectures, two channels
+
+Releases ship both an x64 and a native ARM64 build (issue #18). They are packed into the
+same output folder but on **separate Velopack channels**, because a single channel serving
+two architectures would offer each build's update to the wrong machine.
+
+| | x64 | ARM64 |
+| --- | --- | --- |
+| Channel | `win` (Velopack's default) | `win-arm64` |
+| Pack arguments | none extra | `--runtime win-arm64 --channel win-arm64` |
+| Installer | `QuickMail-<version>-win.msi` | `QuickMail-<version>-win-arm64.msi` |
+| Portable | `QuickMail.exe` | `QuickMail-arm64.exe` |
+| Feed metadata | `RELEASES`, `releases.win.json`, `assets.win.json` | `RELEASES-win-arm64`, `releases.win-arm64.json`, `assets.win-arm64.json` |
+| Package | `QuickMail-<version>-full.nupkg` | `QuickMail-<version>-win-arm64-full.nupkg` |
+
+**`win` means x64 and must never be renamed.** Velopack's own guidance is to migrate the
+default channel to `win-x64` when adding a second architecture, but every installed copy of
+QuickMail already polls `releases.win.json` — renaming it would strand all of them on their
+current version permanently. The naming is inconsistent on purpose.
+
+Velopack suffixes every file it writes with the channel name, so both channels can safely
+share one output folder and one GitHub release. That was verified against real vpk 1.2.0
+output (run 30710511730) and the listing is reproduced in the workflow comment above the
+ARM64 pack step. **Re-verify it after any vpk upgrade** — a filename collision would
+overwrite the x64 feed and strand every existing install.
+
+The only genuine collision is the portable executable, which is uploaded straight from the
+publish folder rather than through vpk: both architectures produce a file named
+`QuickMail.exe`, so the ARM64 copy is renamed to `QuickMail-arm64.exe` before upload.
+
+**No cross-architecture migration exists.** An installed x64 copy running on an ARM64 device
+is never offered the ARM64 build, and vice versa — the installed copy records its channel and
+checks only that one. Switching is a manual uninstall and reinstall. Settings survive: the
+profile lives in `%APPDATA%\QuickMail` while Velopack installs to `%LocalAppData%\QuickMail`,
+and credentials live in Windows Credential Manager. Neither is touched by uninstalling the
+other architecture's build.
+
+Local ARM64 publish: `build.bat publish-arm64` (cross-compiles on x64, output in
+`publish-arm64/`). Note that both architectures share `bin/` and `obj/`, so an ARM64 publish
+leaves ARM64 output in `bin/Release` until the next ordinary build.
+
 ## Key facts
 
 - **Per-user install only (deliberate).** The MSI is packed with `--instLocation PerUser`:
@@ -101,6 +142,23 @@ download, apply on relaunch, delta packaging — can be verified offline:
 Add `--profileDir <scratch>` to any of these launches to keep test runs away from real
 data. Uninstalling via Settings → Apps removes `%LocalAppData%\QuickMail` and shortcuts;
 revert the csproj version bump afterwards.
+
+### The same cycle on ARM64
+
+Run steps 1–6 on an ARM64 machine using the ARM64 packs. `build.bat installer` is x64-only,
+so produce the ARM64 packs the way CI does — `build.bat publish-arm64` followed by a
+`vpk pack` carrying `--runtime win-arm64 --channel win-arm64 --packDir publish-arm64` — or
+take a run of the **Build Installer (on demand)** workflow with `architecture: arm64`, which
+also gets you real OAuth credentials.
+
+Two things this cycle proves that the x64 one does not:
+
+- An ARM64 install finds and applies an ARM64 update, i.e. Velopack resolves the
+  `win-arm64` channel from the installed copy's own metadata without the app passing a
+  channel explicitly (`UpdateCheckService` constructs `UpdateManager` with no channel).
+- With both channels' output in one folder, an ARM64 install is **not** offered the x64
+  package and an x64 install is **not** offered the ARM64 one. This is the check that
+  matters: getting it wrong installs an executable that will not start.
 
 The flag only overrides *where packages come from*; everything else (Velopack's installed
 detection, staging, `Update.exe` apply) runs exactly the production code path. What it
