@@ -169,27 +169,7 @@ public partial class RowFieldsWindow : Window
         return idx >= 0 ? idx : 0;
     }
 
-    /// <summary>
-    /// Focuses a field row's check box. The rows have no ListBoxItem wrapper — the check box is the
-    /// row — so focus goes to the control inside the generated container.
-    /// </summary>
-    private void FocusFieldRow(int index)
-    {
-        if (index < 0 || index >= FieldList.Items.Count) return;
-        FieldList.UpdateLayout();
-        if (FieldList.ItemContainerGenerator.ContainerFromIndex(index) is not DependencyObject c) return;
-        if (FindCheckBox(c) is { } box) box.Focus();
-    }
-
-    internal static CheckBox? FindCheckBox(DependencyObject root)
-    {
-        if (root is CheckBox cb) return cb;
-        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
-        {
-            if (FindCheckBox(VisualTreeHelper.GetChild(root, i)) is { } found) return found;
-        }
-        return null;
-    }
+    private void FocusFieldRow(int index) => FieldList.FocusRow(index);
 
     /// <summary>
     /// After a move the container the user was on has been regenerated at a new index; re-focus the

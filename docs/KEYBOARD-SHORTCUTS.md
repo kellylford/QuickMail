@@ -77,10 +77,20 @@ each change immediately. It has no OK/Cancel — every change saves as you make 
 |-----|--------|
 | `F6` / `Shift+F6` | Cycle panes: Row type → Fields → Field options → Spoken preview → Buttons |
 | `Up` / `Down` | Move between fields |
-| `Space` | Turn the selected field on or off |
-| `Alt+Up` / `Alt+Down` | Move the selected field earlier or later in the spoken order |
+| `Home` / `End` | First / last field |
+| *letter* | Jump to the next field starting with that letter; repeat to cycle matches |
+| `Space` | Turn the focused field on or off |
+| `Alt+Up` / `Alt+Down` | Move the focused field earlier or later in the spoken order |
 | `Ctrl+Shift+P` | Window-local command palette (move, toggle, reset, labels, close) |
 | `Escape` | Close |
+
+Each row **is** a check box — the real control, so its role and checked state are reported by the
+platform and `Space` toggles natively. That rules out a `ListBox`, whose `ListBoxItem` wrapper
+carries a second copy of the row's name (see `Views/FieldCheckList.cs`); the cost is that
+`Home`/`End` and first-letter navigation, which a `ListBox` provides for free, are implemented on
+that control. First-letter uses QuickMail's own accumulator (`TypeAheadPrefixTracker`), not WPF
+`TextSearch`, which only works on a `Selector` — so this list is **not** a `TypeAheadWiringTests`
+site.
 
 ## Compose Window
 

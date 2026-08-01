@@ -1361,7 +1361,9 @@ The four light themes are close cousins. Ember, Fjord, and Heather each change o
 
 Each row in a message list is spoken as a single line — sender, subject, date, and so on. **View → Message List Fields…** lets you decide which of those pieces are spoken and in what order.
 
-Open it and you get a list of every available field. Check a field to have it spoken, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** (or the Move Up and Move Down buttons) to change where it falls in the line. The **Spoken preview** box at the bottom shows a sample row exactly as it would be read, updating as you go.
+Open it and you get a list of every available field, each one a check box. Check a field to have it spoken, uncheck it to leave it out, and use **Alt+Up** and **Alt+Down** (or the Move Up and Move Down buttons) to change where it falls in the line. **Home** and **End** jump to the first and last field, and typing a letter jumps to the next field starting with it.
+
+The **Spoken preview** box at the bottom shows the message you had selected when you opened the window, read exactly as the list would read it, updating as you go.
 
 There is no OK or Cancel — changes save as you make them, and take effect immediately. The window is modeless, so you can leave it open, arrow through the message list behind it, and hear the result.
 

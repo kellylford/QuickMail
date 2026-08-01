@@ -30,8 +30,24 @@ public class RowFieldsWindowCheckBoxTests
         var window = new RowFieldsWindow(vm)
         {
             WindowStyle = WindowStyle.None, ShowInTaskbar = false, ShowActivated = false,
+            // Off-screen: these tests move real keyboard focus, and a window appearing over the
+            // desktop is exactly what perturbs the other focus-dependent suites (#380).
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -10000, Top = -10000,
         };
         return (window, vm);
+    }
+
+    /// <summary>
+    /// Closes the window AND drops keyboard focus. Without the second half, focus stays pointed at
+    /// a check box in a window that no longer exists, and the next focus-dependent test in the
+    /// WpfTests collection (RadioGroupNavigationTests) fails — it passed alone and failed in the
+    /// full run until this was added.
+    /// </summary>
+    private static void CloseAndReleaseFocus(Window window)
+    {
+        window.Close();
+        Keyboard.ClearFocus();
+        DrainDispatcher();
     }
 
     private static void DrainDispatcher()
@@ -96,7 +112,7 @@ public class RowFieldsWindowCheckBoxTests
                     Assert.Equal(AutomationControlType.Text, d.GetAutomationControlType()));
             }
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 
     [StaFact]
@@ -113,7 +129,7 @@ public class RowFieldsWindowCheckBoxTests
             Assert.Equal(vm.Fields.Count, boxes.Length);
             Assert.All(boxes, b => Assert.True(b.Focusable, "the row's check box must be the arrow stop"));
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 
     [StaFact]
@@ -141,7 +157,7 @@ public class RowFieldsWindowCheckBoxTests
             DrainDispatcher();
             Assert.Equal(ToggleState.Off, toggle.ToggleState);
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 
     [StaFact]
@@ -160,7 +176,128 @@ public class RowFieldsWindowCheckBoxTests
             // Selection follows keyboard focus, because the move commands act on the selection.
             Assert.Same(vm.Fields[3], vm.SelectedField);
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    // ── Home / End / first-letter ─────────────────────────────────────────────
+    //
+    // These come free inside a ListBox and had to be written by hand here. Driven through the
+    // control's own methods rather than synthesized keystrokes, so they are deterministic and
+    // are not gated behind QUICKMAIL_RUN_INPUT_TESTS (#415).
+
+    [StaFact]
+    public void HomeAndEnd_MoveToTheFirstAndLastField()
+    {
+        var (window, vm) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+
+            Assert.True(list.FocusRow(list.Items.Count - 1));   // End
+            DrainDispatcher();
+            Assert.Equal(list.Items.Count - 1, list.FocusedIndex());
+            Assert.Same(vm.Fields[^1], vm.SelectedField);
+
+            Assert.True(list.FocusRow(0));                       // Home
+            DrainDispatcher();
+            Assert.Equal(0, list.FocusedIndex());
+            Assert.Same(vm.Fields[0], vm.SelectedField);
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    [StaFact]
+    public void FirstLetter_JumpsToTheNextFieldStartingWithIt()
+    {
+        var (window, vm) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+            list.FocusRow(0);
+            DrainDispatcher();
+
+            Assert.True(list.TryTypeAhead("d"));
+            DrainDispatcher();
+
+            Assert.Equal("Date", vm.Fields[list.FocusedIndex()].DisplayName);
+            // Selection follows, so Move Up/Down act on what the user just landed on.
+            Assert.Equal("Date", vm.SelectedField!.DisplayName);
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    [StaFact]
+    public void RepeatingTheSameLetter_CyclesThroughMatchesAndWraps()
+    {
+        var (window, vm) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+            list.FocusRow(0);
+            DrainDispatcher();
+
+            // Message fields starting with F: "From", "Forwarded", "Flag" — in layout order
+            // Flag is first, so from row 0 the first match is From.
+            var seen = new System.Collections.Generic.List<string>();
+            for (int i = 0; i < 4; i++)
+            {
+                Assert.True(list.TryTypeAhead("f"));
+                DrainDispatcher();
+                seen.Add(vm.Fields[list.FocusedIndex()].DisplayName);
+            }
+
+            Assert.All(seen, s => Assert.StartsWith("F", s, System.StringComparison.Ordinal));
+            // Four presses over three matches must have wrapped rather than stalled.
+            Assert.Equal(seen[0], seen[3]);
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    [StaFact]
+    public void TypeAheadIgnoresSpace_SoSpaceStillTogglesTheCheckBox()
+    {
+        var (window, _) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+            list.FocusRow(2);
+            DrainDispatcher();
+
+            Assert.False(list.TryTypeAhead(" "));
+            Assert.Equal(2, list.FocusedIndex());   // focus did not move
+        }
+        finally { CloseAndReleaseFocus(window); }
+    }
+
+    [StaFact]
+    public void TypeAheadWithNoMatch_LeavesFocusWhereItWas()
+    {
+        var (window, _) = MakeWindow();
+        window.Show();
+        try
+        {
+            window.UpdateLayout();
+            DrainDispatcher();
+            var list = FieldList(window);
+            list.FocusRow(1);
+            DrainDispatcher();
+
+            Assert.False(list.TryTypeAhead("zz"));
+            Assert.Equal(1, list.FocusedIndex());
+        }
+        finally { CloseAndReleaseFocus(window); }
     }
 
     [StaFact]
@@ -187,6 +324,6 @@ public class RowFieldsWindowCheckBoxTests
             // reports the change. Handling it here would mean re-announcing what is already said.
             Assert.False(args.Handled);
         }
-        finally { window.Close(); }
+        finally { CloseAndReleaseFocus(window); }
     }
 }
