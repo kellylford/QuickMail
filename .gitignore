@@ -5,6 +5,7 @@ logs/
 bin/
 obj/
 publish/
+publish-arm64/
 *.exe
 installer/Output/
 
@@ -12,6 +13,8 @@ installer/Output/
 /RELEASES
 /assets.win.json
 /releases.win.json
+/assets.win-arm64.json
+/releases.win-arm64.json
 
 # User-specific files
 *.user

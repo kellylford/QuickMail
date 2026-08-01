@@ -50,19 +50,6 @@ public class InverseBoolToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
-/// Converts a bool (ShowMessageStatus) to a GridViewColumn width.
-/// true → fixed column width; false → 0 (hidden).
-/// </summary>
-public class BoolToColumnWidthConverter : IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, CultureInfo culture) =>
-        value is true ? 65.0 : 0.0;
-
-    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) =>
-        throw new NotSupportedException();
-}
-
-/// <summary>
 /// Converts a bool to a GridLength using a "trueValue|falseValue" parameter, e.g. "*|0" or
 /// "Auto|*". Each token is parsed as a GridLength ("*", "Auto", "0", "2*", "200"). Used to swap
 /// the message-list and reading-pane row sizes so a message opened in a tab fills the content
@@ -1425,6 +1412,12 @@ public partial class MainWindow : Window
         // "QuickMail Update Installed" notice, once per applied update. After the shortcut
         // offer so a first-run-after-migration launch never stacks two dialogs.
         _vm.MaybeShowUpdateInstalledNotice();
+
+        // "A native ARM build exists" notice, once per version, and only when this x64 copy is
+        // emulated on an ARM64 device. Last of the startup notices: it is the least urgent of
+        // them, and going last keeps it from talking over a dialog either of the two above may
+        // have opened.
+        _vm.MaybeAnnounceNativeArmAvailable();
     }
 
     // ── ui-probe hooks (#180) — internal, driver-only; never user-reachable ──

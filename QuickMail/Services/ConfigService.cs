@@ -196,9 +196,6 @@ public class ConfigService : IConfigService
                     case "previewlines":
                         if (int.TryParse(value, out var pl)) config.PreviewLines = Math.Max(0, pl);
                         break;
-                    case "showmessagestatus":
-                        config.ShowMessageStatus = ParseBool(value);
-                        break;
                     case "readasplaintext":
                         config.ReadAsPlainText = ParseBool(value);
                         break;
@@ -283,6 +280,7 @@ public class ConfigService : IConfigService
                     case "autoupdate":              config.AutoUpdate              = ParseBool(value); break;
                     case "showupdateinstalledalerts": config.ShowUpdateInstalledAlerts = ParseBool(value); break;
                     case "lastrunversion":          config.LastRunVersion          = value; break;
+                    case "nativearmnoticeversion":  config.NativeArmNoticeVersion  = value; break;
                     case "defaultcomposemode":
                         config.DefaultComposeMode = value.ToLowerInvariant() switch
                         {
@@ -373,12 +371,6 @@ public class ConfigService : IConfigService
         sb.AppendLine($"PreviewLines = {config.PreviewLines}");
         sb.AppendLine("# Number of body-preview lines shown in the message list.");
         sb.AppendLine("# Set to 0 to disable previews.");
-        sb.AppendLine();
-
-        sb.AppendLine($"ShowMessageStatus = {(config.ShowMessageStatus ? "on" : "off")}");
-        sb.AppendLine("# Show a status column in the message list.");
-        sb.AppendLine("# When on, the first column shows the message status: New, Replied, Fwd, or blank (read).");
-        sb.AppendLine("# Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"ReadAsPlainText = {(config.ReadAsPlainText ? "on" : "off")}");
@@ -615,6 +607,12 @@ public class ConfigService : IConfigService
         sb.AppendLine($"LastRunVersion = {config.LastRunVersion}");
         sb.AppendLine("# The app version recorded on the previous run. Maintained automatically;");
         sb.AppendLine("# used to detect that an update was applied.");
+        sb.AppendLine();
+
+        sb.AppendLine($"NativeArmNoticeVersion = {config.NativeArmNoticeVersion}");
+        sb.AppendLine("# The version for which the \"a native ARM build is available\" notice was");
+        sb.AppendLine("# announced. Maintained automatically; only used on ARM devices running the");
+        sb.AppendLine("# regular build. Clear it to hear the notice again.");
         sb.AppendLine();
 
         sb.AppendLine($"DefaultComposeMode = {config.DefaultComposeMode switch

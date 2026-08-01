@@ -170,7 +170,6 @@ Open **File → Settings** (or press `Ctrl+,`) to change application-wide prefer
 | **View Mode** | Default message grouping when the app starts (Messages, Conversations, By Sender, By Recipient) |
 | **Sync Days** | How many days back to fetch messages on sync. `0` means all mail. |
 | **Preview Lines** | Number of body-preview lines shown under each subject in the message list (0–5). |
-| **Show Message Status** | Whether the read/unread/replied/forwarded status indicator appears in the message list. |
 | **Initial Sync Count** | Maximum messages fetched per folder on the first sync of a newly connected account. |
 
 The **Composing** group on the General tab controls the compose window:
@@ -1448,7 +1447,6 @@ Lines starting with `#` are comments and are ignored. The file uses a simple `ke
 | Setting | Values | Default | What it does |
 |---------|--------|---------|--------------|
 | `PreviewLines` | `0`–`5` | `3` | Number of body-preview lines shown under each subject in the message list. Set to `0` to hide previews entirely. |
-| `ShowMessageStatus` | `true` / `false` | `true` | Show or hide the read/unread status indicator column in the message list. |
 | `ConversationView` | `true` / `false` | `false` | Start with conversation threading on. |
 | `SyncDays` | integer >= `0` | `30` | How many days back to look for messages when syncing. Set to `0` to fetch all messages (may be slow on large mailboxes). |
 | `InitialSyncCount` | integer >= `0` | `500` | Maximum number of messages fetched per folder on the very first sync of a newly connected account. |

@@ -776,9 +776,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isBusy;
 
-    [ObservableProperty]
-    private bool _showMessageStatus;
-
     /// <summary>
     /// Sticky "read as plain text" preference (issue #34). Bound one-way to the View-menu
     /// check state; the View reads it when rendering a message body. Kept in sync with
@@ -805,6 +802,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _updateReleaseUrl = string.Empty;
+
+    /// <summary>
+    /// True when this x64 copy is running under emulation on an ARM64 device, so a native
+    /// ARM build would be faster (issue #18). Drives the Help menu entry's visibility.
+    /// Evaluated once — the hardware does not change underneath us — and kept an instance
+    /// property because the menu binds to it through the DataContext.
+    /// </summary>
+    public bool IsNativeArmAvailable { get; } = Helpers.ProcessArchitectureInfo.IsEmulatedOnArm64;
 
     private bool _showPreview;
     private int  _previewLines;
@@ -1144,7 +1149,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnlineMode            = onlineMode;
 
         var cfg = _configService.Load();
-        _showMessageStatus = cfg.ShowMessageStatus;
         _readAsPlainText = cfg.ReadAsPlainText;
         _previewLines = cfg.PreviewLines;
         _showPreview = _previewLines > 0;
@@ -1733,7 +1737,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Keep the View menu's density check marks in sync with a Settings save.
         ListDensity = cfg.AppearanceListDensity == "compact" ? "compact" : "comfortable";
 
-        ShowMessageStatus = cfg.ShowMessageStatus;
         ReadAsPlainText   = cfg.ReadAsPlainText;
         _announceFlagStatus = cfg.AnnounceFlagStatus;
         OnPropertyChanged(nameof(AnnounceFlagStatus));
@@ -1868,6 +1871,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             id: "help.userGuide", category: "Help", title: "Open User Guide",
             execute: () => ViewUserGuideCommand.Execute(null),
             defaultKey: Key.F1, defaultModifiers: ModifierKeys.None));
+
+        // Registered unconditionally so the palette listing does not vary by machine, matching
+        // how every other Help command is registered. The menu entry is what hides on
+        // non-ARM hardware; running this on an x64 PC simply opens the releases page.
+        registry.Register(new CommandDefinition(
+            id: "help.armVersion", category: "Help", title: "Get the ARM Version",
+            execute: () => OpenArmDownloadPageCommand.Execute(null)));
 
         registry.Register(new CommandDefinition(
             id: "view.search", category: "View", title: "Search Messages…",
@@ -7690,6 +7700,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
         UpdateInstalledDialogRequested?.Invoke(this,
             (CurrentVersion, UpdateCheckService.ReleaseTagUrl(CurrentVersion)));
     }
+
+    /// <summary>
+    /// On an ARM64 device running the x64 build, mentions once per version that a native ARM
+    /// build exists. Called at the same startup moment as the update-installed notice.
+    ///
+    /// Deliberately an announcement and a Help menu entry rather than a dialog: nothing here
+    /// is urgent, and a modal at launch would interrupt the first thing a screen reader user
+    /// hears. Category is Result, not Status, for the same reason the update-available notice
+    /// is — a one-time discovery outcome, which users who silence background progress chatter
+    /// must still hear. The Help entry stays visible afterwards, so this never repeats to
+    /// remain findable.
+    /// </summary>
+    public void MaybeAnnounceNativeArmAvailable()
+    {
+        if (!IsNativeArmAvailable) return;
+
+        var cfg = _configService.Load();
+        if (cfg.NativeArmNoticeVersion == CurrentVersion) return;
+
+        cfg.NativeArmNoticeVersion = CurrentVersion;
+        _configService.Save(cfg);
+
+        // States the benefit and the action, and does not imply the running build is broken —
+        // it works, it is simply emulated.
+        Announce("This PC has an ARM processor, and QuickMail has an ARM version that runs faster on it. " +
+                 "See Get the ARM Version in the Help menu.", AnnouncementCategory.Result);
+    }
+
+    /// <summary>Opens the releases page so the user can download the native ARM build. Switching
+    /// is a manual uninstall and reinstall — no update path crosses architectures.</summary>
+#pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
+    [RelayCommand]
+    private void OpenArmDownloadPage() =>
+        Helpers.ExternalUriPolicy.TryOpenExternal(ReleasesPageUrl);
+#pragma warning restore CA1822
 
     [RelayCommand]
     private void OpenUpdatePage()

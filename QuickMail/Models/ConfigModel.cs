@@ -11,9 +11,6 @@ public class ConfigModel
     /// <summary>Number of body-preview lines shown in the message list. 0 = disabled.</summary>
     public int PreviewLines { get; set; } = 3;
 
-    /// <summary>Whether to display the message-status column in the message list.</summary>
-    public bool ShowMessageStatus { get; set; } = true;
-
     /// <summary>
     /// Read messages as plain text: render each message from its original text/plain part
     /// (falling back to text extracted from the HTML when the sender sent no plain-text part)
@@ -278,6 +275,12 @@ public class ConfigModel
     /// <summary>The app version recorded on the previous run. A mismatch on an installed copy
     /// means an update was applied since; used to trigger the update-installed dialog.</summary>
     public string LastRunVersion { get; set; } = string.Empty;
+
+    /// <summary>The app version for which the "a native ARM build is available" notice was last
+    /// announced, so an x64 copy running on an ARM64 device mentions it once per version rather
+    /// than at every launch (issue #18). Empty until the notice has been announced. The Help
+    /// menu entry stays available regardless, so the notice never needs repeating to be found.</summary>
+    public string NativeArmNoticeVersion { get; set; } = string.Empty;
 
     // ── Windowing (Phase 6) ───────────────────────────────────────────────────────
 

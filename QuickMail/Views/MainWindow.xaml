@@ -19,7 +19,6 @@
         <local:BoolToFontWeightConverter x:Key="BoolToWeightConverter"/>
         <BooleanToVisibilityConverter    x:Key="BoolToVisibilityConverter"/>
         <local:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
-        <local:BoolToColumnWidthConverter       x:Key="BoolToColumnWidthConverter"/>
         <local:BoolToGridLengthConverter        x:Key="BoolToGridLengthConverter"/>
         <local:StringToVisibilityConverter      x:Key="StringToVisibilityConverter"/>
         <local:StringToBrushConverter           x:Key="StringToBrushConverter"/>
@@ -614,6 +613,13 @@
             <MenuItem Header="_Help">
                 <MenuItem Header="{Binding UpdateAvailableText, Mode=OneWay}"
                           Command="{Binding OpenUpdatePageCommand}"/>
+                <!-- Only on an ARM64 PC running the x64 build: nothing migrates an install
+                     across architectures, so this entry is how those users find the native
+                     build. Hidden everywhere else. -->
+                <MenuItem Header="Get the _ARM Version"
+                          AutomationProperties.Name="Get the ARM Version"
+                          Visibility="{Binding IsNativeArmAvailable, Converter={StaticResource BoolToVisibilityConverter}}"
+                          Command="{Binding OpenArmDownloadPageCommand}"/>
                 <Separator/>
                 <MenuItem Header="User _Guide"
                           Command="{Binding ViewUserGuideCommand}"
@@ -1336,7 +1342,14 @@
                                   GotKeyboardFocus="CalendarList_GotKeyboardFocus"
                                   PreviewKeyDown="CalendarList_PreviewKeyDown">
                             <ListView.ItemContainerStyle>
-                                <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+                                <!-- BasedOn the GRIDVIEW container style, not the plain ListViewItem
+                                     style: the plain one's template hosts a ContentPresenter, so rows
+                                     rendered item.ToString() ("QuickMail.Models.CalendarEvent") and the
+                                     columns never appeared (#448). Invisible to a screen reader — the
+                                     row name below was always correct — which is why it took the visual
+                                     harness to catch it. -->
+                                <Style TargetType="ListViewItem"
+                                       BasedOn="{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}">
                                     <!-- Row name = the stamped accessible name (data-only or field-labeled
                                          per the CalendarListShowFieldLabels setting); the visual columns
                                          aid sighted users. -->
@@ -1407,23 +1420,17 @@
                              is not shadowed by a local style here. -->
                         <ListView.View>
                             <GridView>
-                                <GridViewColumn Width="{Binding ShowMessageStatus, Converter={StaticResource BoolToColumnWidthConverter}}">
+                                <GridViewColumn Width="65">
                                     <GridViewColumn.Header>
                                         <TextBlock Text="Status"
-                                                   AutomationProperties.IsColumnHeader="True"
-                                                   Visibility="{Binding DataContext.ShowMessageStatus,
-                                                       RelativeSource={RelativeSource AncestorType=Window},
-                                                       Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                   AutomationProperties.IsColumnHeader="True"/>
                                     </GridViewColumn.Header>
                                     <GridViewColumn.CellTemplate>
                                         <DataTemplate>
                                             <TextBlock Text="{Binding StatusDisplay}"
                                                        FontSize="{DynamicResource Theme.FontSizeSmall}"
                                                        TextAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis"
-                                                       Visibility="{Binding DataContext.ShowMessageStatus,
-                                                           RelativeSource={RelativeSource AncestorType=Window},
-                                                           Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                                       TextTrimming="CharacterEllipsis"/>
                                         </DataTemplate>
                                     </GridViewColumn.CellTemplate>
                                 </GridViewColumn>
