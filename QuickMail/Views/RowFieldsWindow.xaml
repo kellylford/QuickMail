@@ -91,7 +91,13 @@
             <!-- Each row IS a check box, and is ONLY a check box — see FieldCheckList for why a
                  stock ListBox/ItemsControl cannot be used here (both add a wrapper element that
                  repeats the row's name). Arrow keys move between the check boxes via directional
-                 navigation, and the whole group is a single tab stop. -->
+                 navigation, and the whole group is a single tab stop.
+
+                 DirectionalNavigation is Contained, not Cycle: this is a list, and a list's first
+                 and last items are its ends — arrowing past them must stop, the way it does in any
+                 list box (#459). Cycle belongs to radio groups, where wrapping is the platform
+                 behaviour. Contained also keeps arrows inside the group, so focus is not thrown
+                 out of the list at either end. -->
             <ScrollViewer Grid.Row="1" Grid.Column="0"
                           VerticalScrollBarVisibility="Auto"
                           HorizontalScrollBarVisibility="Disabled"
@@ -102,7 +108,7 @@
                                       ItemsSource="{Binding Fields}"
                                       Margin="4"
                                       KeyboardNavigation.TabNavigation="Once"
-                                      KeyboardNavigation.DirectionalNavigation="Cycle"
+                                      KeyboardNavigation.DirectionalNavigation="Contained"
                                       AutomationProperties.Name="Fields">
                     <views:FieldCheckList.ItemTemplate>
                         <DataTemplate>
