@@ -1,320 +1,330 @@
 # Shared Mailboxes — PM/Dev Spec
 
-**Status:** Draft for review (2026-08-01). Supersedes the closed PR #59 spec. Tracks
-issue #461 (settled design decisions) and #31 (the feature request). The access,
-detection, and account-model decisions below are settled; this document exists to
-ground them in the current codebase and to make the UX/accessibility decisions that
-were open.
+**Status:** Draft (rev 2, 2026-08-01). Supersedes closed PR #59. Tracks #461 (design)
+and #31 (feature request). Rev 2 restructures onto `SPEC-TEMPLATE.md` and resolves
+the review on PR #468.
 
 ---
 
-## 1. Problem statement (unchanged from #59)
+## 1. Executive Summary
 
-Exchange/Microsoft 365 automatically surfaces mailboxes a user has been granted
-access to (shared mailboxes, delegated mailboxes) via *automapping*. Outlook shows
-them in the folder tree with no setup. No accessible mail client does this well, and
-for a blind or low-vision worker a shared support/team mailbox is often a core part of
-the job. That is the reason to build this.
+QuickMail cannot open a shared/delegated Exchange mailbox — the automapped "Support",
+"Sales", "info@" mailboxes a worker is granted access to. Outlook surfaces them
+automatically; no accessible client does. This spec adds shared mailboxes as
+**first-class linked accounts** (Approach B): you add one by address, it appears as its
+own top-level node in the tree, and you read and send from it. Access rides **whatever
+backend the parent account uses** — Microsoft Graph delegated `.Shared` permissions for a
+Graph parent, XOAUTH2 `user=` for an IMAP parent. Existing users see zero change until
+they add one.
 
-## 2. Why this needed re-grounding
+## 2. User Problem & Opportunity
 
-The #59 spec (written 2026-06-09) assumed shared-mailbox **access** rides the existing
-IMAP/OAuth stack and is independent of the Graph backend. That was true when written and
-is **false now**: since #393, a work/school M365 account on a custom domain routes onto
-the **Graph** backend by default, and `OAuthService.DefaultScopesFor`
-(`Services/OAuthService.cs:104-113`) returns the IMAP scopes **only** when
-`BackendKind != MicrosoftGraph`. So a Graph-backend parent account never receives
-`IMAP.AccessAsUser.All`, and there is no IMAP token to hang a linked shared mailbox off.
-For the target persona there is no IMAP connection at all. The access mechanism therefore
-depends on the **parent account's backend**, which the old spec's §3/§6/§7/§8 did not
-account for.
+### 2.1 Current state (verified)
 
----
-
-## 3. Settled design decisions
-
-### 3.1 Approach B — the linked-account model
-
-Each shared mailbox is a **first-class account** with its own `Guid Id`, linked to the
-parent account it is accessed through. Chosen because it is the only model that absorbs
-**two backends** (Graph and IMAP) without a second migration: the shared mailbox routes
-through `MailServiceRouter` (`Services/MailServiceRouter.cs`) exactly like any other
-account, keyed by its own `Id`. The alternative (a `mailbox` cache-key dimension threaded
-through every store call) would have to be plumbed through both backends.
-
-### 3.2 Access = whatever backend the parent account uses
-
-- **Graph parent** → `GET /users/{sharedAddress}/messages` (and the sibling folder/message
-  endpoints) using the **delegated** scopes `Mail.ReadWrite.Shared` and `Mail.Send.Shared`.
-  These need **no admin consent** — the deciding factor that makes Graph *lower* friction
-  than IMAP (which is what #393 moved away from because tenants had not consented to the
-  IMAP scopes). The signed-in delegate needs Full Access on the shared mailbox and a
-  mailbox of their own — the same precondition the IMAP path has.
-- **IMAP parent** → the existing XOAUTH2 `user=` impersonation mechanism, unchanged from
-  the #59 spec. The shared mailbox authenticates through the parent's IMAP token with the
-  shared address as the `user=` value.
-- **Generic (non-Microsoft) IMAP** → RFC 2342 `NAMESPACE` enumeration for discovery; access
-  is ordinary IMAP.
-
-Because access is per-parent-backend, shared mailboxes are **not backend-uniform** — this
-is the load-bearing reason Approach B (own account id + router routing) was chosen.
-
-### 3.3 Detection = Autodiscover SOAP `GetUserSettings` → `AlternativeMailbox`
-
-Graph **cannot** enumerate the mailboxes a user has access to (Microsoft's guidance is
-explicit that enumerating Exchange permissions is not a Graph scenario; the alternatives
-need admin rights). So detection stays on Exchange **Autodiscover SOAP**
-(`GetUserSettings`), whose response carries `AlternativeMailbox` entries — the automapped
-list. This requires the `EWS.AccessAsUser.All` scope (detection only).
-
-**Sizing warning (the estimate the #59 spec got wrong):** the existing
-`AutoDiscoverService` (`Services/AutoDiscoverService.cs`) is **much less reusable** than
-§7 assumed. It shares only HTTPS hardening. Concretely, verified in code:
-- It speaks **POX v1** (`POST /autodiscover/autodiscover.xml`, 2006 request schema,
-  `BuildAutodiscoverRequest` `:533-542`). Shared-mailbox discovery needs the **SOAP**
-  `GetUserSettings` service at `autodiscover.svc` — a different endpoint, envelope, and
-  response schema.
-- It is **anonymous** — no `Authorization` header anywhere (`CreateDefaultClient`
-  `:66-81`), and its constructor takes `IProviderCatalog` + `IConfigService`, not
-  `IOAuthService`. Automapping data is only returned to an **authenticated** caller.
-- It **never parses `AlternativeMailbox`** — `ParseAutodiscover` (`:552-617`) only reads
-  `Protocol` blocks. `DiscoveredSettings` (`Models/DiscoveredSettings.cs:46-56`) is a flat
-  imap/smtp/provider record that cannot carry a mailbox list.
-- **A 401 is swallowed as "found nothing"** (`SendFollowingHttpsRedirectsAsync` `:192`
-  returns `null` on any non-success) so the next tier runs. Fine for settings discovery;
-  for shared mailboxes it makes a missing scope or a tenant block **silent and
-  undiagnosable**. Discovery must distinguish "no mailboxes" from "not allowed to ask."
-- **Different lifecycle:** settings discovery runs *before* sign-in, from the add-account
-  dialog, with no token. Shared-mailbox discovery runs *after* sign-in, per account, with
-  a token, and wants periodic refresh.
-
-Therefore detection needs its **own** method and result type on `IAutoDiscoverService`
-(e.g. `DiscoverSharedMailboxesAsync(account, ct) → IReadOnlyList<SharedMailboxHint>`),
-authenticated, SOAP-speaking — not an extension of `DiscoverAsync`. Any PR breakdown
-resting on "reuse the existing Autodiscover client" is undersized.
-
-### 3.4 No live watcher — the sweep is the freshness mechanism
-
-`Mail.Read.Shared` / `Mail.ReadWrite.Shared` **do not support change-notification
-subscriptions** on shared/delegated folders (subscribing would need the *application*
-permission `Mail.Read` — a different, admin-consented, app-only trust model, out of scope).
-Practical consequence: **a shared mailbox has no delta subscription and no IMAP IDLE.** New
-mail is discovered only by **polling**.
-
-The periodic all-folder sweep that landed in #456 (`MainViewModel.StartFallbackSyncAsync`
-`:2317-2400`) is therefore the **primary** freshness mechanism for shared mailboxes, not a
-fallback. Verified: the sweep iterates **every account in `Accounts`** × every non-excluded
-folder with a 250 ms pace, gated only by `MailSyncPollMinutes` (default 5, range 1–120) —
-there is **no per-account opt-out**. So a shared mailbox added to `Accounts` is swept
-automatically at the same interval, for free.
-
-**User-visible consequence (must be stated — Kelly's requirement):** a shared mailbox
-updates on the poll interval, **not instantly**. Someone who adds a busy support mailbox and
-sees mail arrive minutes late will read it as a bug unless we say otherwise. Where we say it
-(see §7 for the exact wording decision).
-
-### 3.5 Send is in v1
-
-`Mail.Send.Shared` makes Graph-native send from the shared address cheap enough that
-splitting read-first/send-later is not worth the extra release. v1 includes sending *from*
-a shared mailbox. (Kelly deferred this to scheduling; stated here as the position, subject
-to his veto.)
-
----
-
-## 4. Data model changes
-
-`AccountModel` (`Models/AccountModel.cs`) has **no** parent/child/shared concept today and
-**no** schema-version field — but `AccountService` (`Services/AccountService.cs:23-46`)
-round-trips plain JSON, and missing properties deserialize to defaults, so **new optional
-fields need no migration** (the pattern `ProviderId` and `RequireStartTls` already rely on).
-
-Add three optional, persisted fields:
-
-| Field | Type | Meaning |
-|---|---|---|
-| `IsShared` | `bool` (default false) | This account is a shared/delegated mailbox, not a directly-signed-in one. |
-| `ParentAccountId` | `Guid?` (default null) | The account whose token/connection this mailbox is accessed through. Null for normal accounts. |
-| `SharedAddress` | `string?` (default null) | The shared mailbox's SMTP address — the `{sharedAddress}` in the Graph URL and the IMAP `user=` value. For a shared account, equals `Username`. |
-
-`BackendKind` on the shared account is set to **match the parent's backend** at creation
-(the field is already "fixed at account creation"). No credentials are stored for a shared
-account — it authenticates through the parent (`ParentAccountId`), so `CredentialService` is
-never called for it. This must be explicit in the add flow so a shared account never prompts
-for a password.
-
-**Removal (lifecycle — resolved):** a shared account cannot function without its parent's
-token, so orphaning one produces a dead, broken account. Removing a **parent** therefore
-**cascade-removes its linked shared mailboxes**, behind a confirmation that **names them**
-(e.g. *"Removing this account will also remove 2 shared mailboxes: Support, Sales."*).
-Removing a **shared mailbox on its own** is an ordinary account removal — drop it from
-`Accounts`, re-save, unregister its backend; there are no credentials to clean up. Implemented
-in `AccountManagerViewModel` removal (`:257-276` region for the add counterpart) by expanding
-the delete path to find `Accounts.Where(a => a.ParentAccountId == removed.Id)` and removing
-them together.
-
----
-
-## 5. Access implementation notes
-
-- **Graph** (`Services/GraphMailService.cs`): every mailbox-scoped call for a shared account
-  must target `/users/{SharedAddress}/…` instead of `/me/…`. The immutable-id header (#419)
-  and the 404-tolerance (#416) apply unchanged. New scope constants in `OAuthService`
-  (`Mail.ReadWrite.Shared`, `Mail.Send.Shared`) — and because the work/school path uses
-  `.default` (`OAuthService.cs:33-38`), these must **also be declared on the app
-  registration** or they are never granted. `.default` is per-resource, so the EWS detection
-  scope (§6) is requested separately.
-- **IMAP**: XOAUTH2 with `user={SharedAddress}` over the parent's token — unchanged from #59.
-- **Routing**: the shared account registers its backend through the existing
-  `RegisterAccountBackend` hook (`MainViewModel.cs:1215,1259-1260`,
-  `App.xaml.cs:460`) — `BackendFor(sharedAccount)` picks by its `BackendKind`, same as any
-  account. No router changes needed beyond ensuring the shared account is in `Accounts`.
-
-## 6. Entra app registration — one declaration pass
-
-Held until now deliberately (so existing users aren't re-consented weeks before anything
-uses the scopes). When implementation reaches **detection** (PR 4), Kelly declares, in one
-pass:
-
-| Scope | Resource | Purpose | Admin consent |
+| Surface | Today | Pain | Who feels it |
 |---|---|---|---|
-| `EWS.AccessAsUser.All` | Office 365 Exchange Online | detection only | **needs checking** — the riskier one |
-| `Mail.ReadWrite.Shared` | Microsoft Graph | read + mutate shared mail | no |
-| `Mail.Send.Shared` | Microsoft Graph | send from the shared address | no |
+| Add account | Only directly-signed-in mailboxes; `AccountModel` has no parent/shared concept (`Models/AccountModel.cs`, no such field) | Can't add a mailbox you access *through* your account | Anyone with a team/shared mailbox |
+| Graph read | `/me/…` only (`GraphMailService`) | No path to another user's mailbox | M365 worker on a shared support box |
+| Send identity | Compose picks from `SenderAccounts` (`ComposeViewModel.cs:220-224`) — only real accounts | Can't send *as* a shared address | Support/role-mailbox users |
 
-`Mail.Read.Shared` is subsumed by `Mail.ReadWrite.Shared` — declare ReadWrite only. The two
-Graph scopes ride the existing `.default` grant once declared (a re-consent to widen the
-set, no new consent *mechanism*). The EWS scope is a separate resource and requested on its
-own. **The registration edit is Kelly's** (tenant action); ping #461 when PR 4 is ready.
+### 2.2 Target personas
 
----
+- **Blind support-desk agent (primary).** Works a shared `support@` box on a corporate
+  M365 tenant. Needs to read and reply from it with a screen reader. Today: no accessible
+  option; Outlook is the only thing that automaps it, and imperfectly.
+- **Team-mailbox member.** Shares `info@` / `sales@` with colleagues on Exchange. Wants it
+  alongside personal mail but clearly separate.
+- **Small-business IMAP user.** A generic-IMAP host with a shared role mailbox exposed via
+  RFC 2342 NAMESPACE. Wants the same experience without Microsoft.
 
-## 7. Freshness UX & the "not instant" wording (DECISION)
+### 2.3 Why now
 
-Kelly requires the UI and User Guide to state plainly that shared mailboxes update on the
-poll interval. Decided, with the screen-reader user:
+The Graph backend, per-account model (#364), the immutable-id work (#419), and — crucially
+— the periodic all-folder sweep (#456) have all shipped. The sweep is what makes a
+poll-only Graph shared mailbox viable at all (§5.1). This is the prerequisite that was
+missing when #59 was written.
 
-- **The recurring node label stays clean** — the shared mailbox's accessible name is
-  **"{name}, shared mailbox"** (e.g. *"Support, shared mailbox"*), with **no timing
-  number**. Reason: it is read on every focus, and the interval is the configurable
-  `MailSyncPollMinutes` (1–120) — pinning a number in the label is both noisy and brittle.
-- **The "not instant" expectation is set once, at add time and in the guide:**
-  - The **Add-shared-mailbox dialog** carries a short note: *"Shared mailboxes update every
-    few minutes, not instantly."*
-  - The **User Guide** shared-mailbox page states the same and explains it is governed by
-    the mail poll interval.
-- No live-region / auto-announce for the interval (consistent with the #333 status-line
-  cleanup: announcements respect user config; recurring context lives in the accessible
-  name, one-time caveats live at the decision point).
+## 3. Design Principles
 
-Related: #462 (measure the sweep's real cost and scope it) — a busy shared mailbox adds
-sweep load with no per-account throttle today; if #462 concludes a throttle is needed, a
-shared mailbox is the first candidate for a longer interval.
+1. **Zero-change until opted in.** No shared mailbox exists until the user adds one; nothing
+   about existing accounts changes.
+2. **A shared mailbox is "not my primary mail."** It is separate from the unified views, the
+   global unread total, contact scraping, and default-account semantics — reachable under
+   its own node, never blended into "my" mail.
+3. **Access follows the parent's backend.** There is no backend-uniform shared-mailbox path;
+   Approach B routes each one by its own account id.
+4. **The screen-reader user is the authority on the a11y behavior.** Recurring context lives
+   in the accessible name; one-time caveats live at the decision point; announcements respect
+   the user's config (no ungated live regions — the #333 lesson).
+5. **Don't build on a retiring foundation.** EWS is being blocked for third-party apps
+   (§13); auto-detection is deferred, and the durable path (manual add) stands alone.
 
----
+## 4. Feature Scope & Acceptance Criteria
 
-## 8. Keyboard walkthrough (REQUIRED)
+### 4.1 In scope (v1)
 
-### 8a. Adding a shared mailbox by address (the manual path — always available)
+| Feature | Setting / Shortcut | Default | Notes |
+|---|---|---|---|
+| Add shared mailbox by address | Command `account.addShared` (Account category, no default key) + button in Manage Accounts | — | The durable entry point; no EWS. |
+| Read shared mail | — | — | Graph `/users/{shared}/…` or IMAP `user=`, by parent backend. |
+| Send *from* shared mailbox | Shared address appears in compose `SenderAccounts` | — | Graph `sendMail` on `/users/{shared}` (`Mail.Send.Shared`) or IMAP-parent SMTP XOAUTH2 `user=`. |
+| Own top-level tree node | — | — | Sibling of real accounts; label "{name} (shared)". |
+| New-mail toast for shared mailbox | new per-account `NotifyOnNewMail` opt-in | **off** for shared | Global `NotifyOnNewMail` (`MainViewModel.cs:2678`) still governs real accounts; shared adds a per-account gate defaulting off. |
+| Generic-IMAP discovery | RFC 2342 `NAMESPACE` | — | For non-Microsoft IMAP only. |
 
-1. User opens **Manage Accounts** (`account.manage`, existing). Focus is on the account
-   list. Screen reader announces the dialog and the list.
-2. User activates a new **"Add shared mailbox…"** button (Tab-reachable, beside the existing
-   **New** button). Screen reader: *"Add shared mailbox, button."*
-3. A dialog opens with focus on an **Address** field. Screen reader: *"Shared mailbox
-   address, edit."* Below it, static text (not a tab stop, but readable): *"Shared mailboxes
-   update every few minutes, not instantly."*
-4. User types the shared address and Tab moves to a **Parent account** combo (defaulted to
-   the account they were on; only accounts that can host a shared mailbox are listed).
-   Screen reader reads the selected parent.
-5. User presses **Add** (or Enter). The dialog validates the address, creates the shared
-   `AccountModel` (`IsShared=true`, `ParentAccountId`, `SharedAddress`, `BackendKind` =
-   parent's), persists it, and registers its backend. No password prompt.
-6. Dialog closes; focus returns to the account list, now including the shared mailbox.
-   Screen reader announces the reselected item: *"Support, shared mailbox."*
+### 4.2 Explicitly out of scope (v1)
 
-### 8b. Navigating into a shared mailbox
+- **EWS auto-detection of automapped mailboxes** — deferred (EWS retirement, §13). Manual
+  add-by-address is the v1 path. Revisit only if Microsoft ships a Graph enumeration API.
+- **No setting to include shared mail in the unified All Inboxes / All Mail views** — the
+  exclusion is fixed in v1 (no toggle).
+- **Calendar and contacts of a shared mailbox** — mail only.
+- **Contact scraping/sync from shared mail** — a shared mailbox never contributes to the
+  contact store.
+- **Client mail rules (`RuleService`) on shared-mailbox mail** — rules act on your own
+  Inbox only (the #336/#427 model); shared mail is not rule-processed in v1.
+- **Shared mailbox as the default account** — a credential-less account cannot be default.
+- **Shared unread in the global status-line total** — excluded, consistent with principle 2.
+- **Per-account sweep throttle** — tracked in #462; v1 shared mailboxes use the standard
+  interval.
+- **Nested/hierarchical display under the parent** — flat top-level node in v1.
 
-1. In the main window, user cycles to the **Folders** pane (F6 to index 2) or the
-   **Accounts** pane (index 1). The shared mailbox appears as its **own top-level node**
-   (§3.1 decision), accessible name **"Support, shared mailbox"**.
-2. User arrows to it and expands. Screen reader reads its folders (Inbox, Sent, etc.) the
-   same way as any account's.
-3. User selects the shared Inbox and presses Enter / arrows into the message list. Messages
-   load; the existing post-fetch count status announces *"N messages loaded"* (Status
-   category — unchanged behavior, `MainViewModel.cs:2166`).
-4. The shared mailbox's inbox is **not** part of **All Inboxes / All Mail** (§ aggregates
-   decision) — it is reachable only under its own node, keeping the unified views "my mail."
-5. New mail arrives in the shared mailbox: it appears on the next **poll** (§3.4), silently,
-   the same way the #456 sweep surfaces any non-inbox folder — no toast (toasts are
-   inbox-of-a-signed-in-account only, `MainViewModel.cs:2382-2385`).
+**Cross-account surfaces — explicit in/out (review item 11):**
 
-## 9. Infrastructure changes (REQUIRED)
+| Surface | v1 | Rationale |
+|---|---|---|
+| Full-text / message search | **in** — shared folders are searchable | It's an account; searching it is expected. |
+| Saved views | **in** — a view may include shared folders | Natural; no extra work. |
+| All Inboxes / All Mail aggregates | **out** | Principle 2; via `IsShared` predicate (§5.4), never `ExcludeFromAllMail`. |
+| Status-line global unread total | **out** | Principle 2. |
+| Client mail rules | **out** | Rules are Inbox-only for your own accounts. |
+| Contact scraping / sync | **out** | Not "your" mail. |
+| Default-account semantics | **out** | Credential-less. |
 
-- **F6 ring:** **no new pane.** A shared mailbox lives inside the existing **Folders** pane
-  (index 2) and **Accounts** pane (index 1) as another top-level node — it does not get its
-  own F6 stop. `GetFocusedPaneIndex` / `CycleFocusAsync` (`MainWindow.xaml.cs:3780-3839`)
-  are unchanged. (Stated explicitly so it reads as decided, not missed.)
-- **CommandRegistry:** one new command — `id: "account.addShared"`, category **"Account"**,
-  title **"Add shared mailbox"**, `execute` → open the add-shared dialog, **no default key**
-  (discoverable via the palette and the Manage Accounts button). Registered in
-  `MainViewModel.RegisterCommands` beside `account.manage` (`MainViewModel.cs:1863`).
-- **`AutomationProperties.Name` values introduced/changed:**
-  - Shared account node / account-list item accessible name → **"{name}, shared mailbox"**
-    (new; via `AccountModel.AccessibleName` `:181` gaining a shared-mailbox branch, and the
-    folder-tree header node `Label`/`AutomationName`). Visible label carries a **"(shared)"**
-    tag for on-screen parity.
-  - **Disambiguation (resolved):** the "shared mailbox" accessible suffix already separates a
-    shared "Support" (*"Support, shared mailbox"*) from a real account "Support" audibly, and
-    "(shared)" separates them visually. Only when two mailboxes are still indistinguishable
-    (e.g. two shared mailboxes with the same name) is the **address appended** to the
-    accessible name. The node-key-by-id fix below handles expansion state in all cases.
-  - "Add shared mailbox" button → **"Add shared mailbox"** (short label only).
-  - Address field → **"Shared mailbox address"**; parent combo → **"Parent account"**.
-- **`AccessibilityHelper.Announce` calls added:** **none required** for the recurring path
-  (context is carried by the accessible name per §7). One optional **Hint** on first entry
-  is explicitly *not* added, to respect announcements-off users. The add-flow's success uses
-  the existing account-reselect path; no new announce.
-- **VM state:** `AccountModel` gains `IsShared` / `ParentAccountId` / `SharedAddress` (§4).
-  `BuildFolderTree` (`MainViewModel.cs:3377-3541`) and the aggregate-group builder
-  (`allMailGroup` `:3489-3500`) gain a filter so a shared mailbox is a top-level node but its
-  inbox is excluded from All Inboxes / All Mail. The node-key scheme (`NodeKey` `:3543`) must
-  key the shared account header by its **account id**, not just its label, to avoid
-  expansion-state collisions with a same-named account (current header keying `"H:{Label}"`
-  is a latent bug for duplicate labels — fix it for shared nodes).
+## 5. Architecture & Technical Decisions
 
-## 10. PR breakdown (Kelly's access-first sequence)
+### 5.1 Key architectural decisions
 
-1. **Linked-account model.** `AccountModel` additions, persistence, `MailServiceRouter`
-   registration, the manual **"Add shared mailbox by address"** entry point (dialog +
-   command + button), the folder-tree top-level node, and the aggregate-view exclusion. **No
-   detection, no new scopes.** Proves Approach B carries its weight. Lands first.
-2. **Graph access.** `/users/{sharedAddress}/…` routing in `GraphMailService`; the new
-   `Mail.ReadWrite.Shared` / `Mail.Send.Shared` scope constants. Code lands behind the
-   manual-add path; needs the scope declared to run end-to-end against a real mailbox.
-3. **IMAP access.** XOAUTH2 `user=` for an IMAP-backend parent. Independent of 1–2.
-4. **Detection.** Authenticated Autodiscover **SOAP** `GetUserSettings` → `AlternativeMailbox`
-   → auto-offer discovered mailboxes. **Gated on the Entra registration edit** (§6). Size it
-   from §3.3, not "reuse the existing client."
-5. **RFC 2342 `NAMESPACE`** for generic IMAP accounts. Low marginal cost; slot anywhere.
+**Decision: Approach B — each shared mailbox is a first-class `AccountModel` with its own
+`Guid Id`, linked to its parent.**
+Alternatives: (A) a `mailbox` cache-key dimension threaded through every store/backend call —
+rejected, it must be plumbed through *both* backends and every LocalStore call.
+Rationale: B is the only model that absorbs two backends without a second migration; the
+shared account routes through `MailServiceRouter` by its own id (`Services/MailServiceRouter.cs`
+`RegisterAccount`), and the existing `RegisterAccountBackend` hook (`App.xaml.cs:460`,
+`MainViewModel.cs:1259`) already fires per account.
 
-## 11. Out of scope (v1)
+**Decision: access follows the parent's backend.**
+- **Graph parent** → `/users/{SharedAddress}/…` with delegated `Mail.ReadWrite.Shared` and
+  `Mail.Send.Shared` (no admin consent). New scope constants in `OAuthService`; because
+  work/school uses `.default` (`OAuthService.cs:33-38`) these must **also** be declared on
+  the app registration or they're never granted. **Work/school only** — personal MS accounts
+  use `GraphMailScopesPersonal` and don't have Exchange shared mailboxes.
+- **IMAP parent** → XOAUTH2 `user={SharedAddress}` over the parent's token (read *and* SMTP send).
+- **Generic IMAP** → ordinary IMAP; RFC 2342 NAMESPACE for discovery.
 
-- **Discovering shared mailboxes on non-Exchange servers** beyond RFC 2342 NAMESPACE.
-- **Change-notification / instant delivery** for shared mailboxes — impossible with the
-  delegated scopes (§3.4); freshness is the poll interval, by design.
-- **Calendar / contacts of a shared mailbox** — mail only in v1.
-- **Per-account sweep throttle** — tracked separately in #462; v1 shared mailboxes inherit
-  the standard sweep interval.
-- **Application-permission (app-only) access** to shared mail — different trust model,
-  requires admin consent, not an end-user desktop scenario.
-- **Nested/hierarchical display** under the parent account — v1 uses a flat top-level node
-  (§3.1).
+**Decision: freshness is backend-conditional (corrects rev-1's blanket "no live watcher").**
+- **Graph parent:** `.Shared` scopes **do not support change-notification subscriptions**
+  (that needs the app-only `Mail.Read`, admin-consented — out of scope). So a Graph shared
+  mailbox has **no delta, no live watcher**; its only freshness is the #456 sweep
+  (`StartFallbackSyncAsync`), which already iterates every account. Poll-interval, not instant.
+- **IMAP parent / generic IMAP:** an ordinary IMAP account with its own connection — it gets
+  **IMAP IDLE** like any account (`ImapMailService.cs:932`). Live, not poll-only.
+- Consequence: the "updates every few minutes, not instantly" caveat (§7) applies **only to
+  Graph-backed** shared mailboxes; the add dialog shows it conditionally on the resolved
+  backend.
 
-## 12. Open questions
+**Decision: token resolution for a credential-less shared account.** A shared account stores
+no credentials and has no MSAL entry. `IOAuthService.GetAccessTokenAsync` (and the IMAP/SMTP
+auth path) must, for `IsShared` accounts, **resolve `ParentAccountId` → the parent account →
+the parent's token**, requesting the `.Shared` scopes. If the parent is signed out or its
+token fails, the shared account shows **disconnected** and surfaces the parent's auth error
+(no silent empty state — CLAUDE.md).
 
-- **Exact "needs checking" status of `EWS.AccessAsUser.All`** against a tenant that disables
-  user consent — confirm in the Azure portal before PR 4 (does it hit an admin-consent-only
-  policy?). This is the **only** open item and it is Kelly's tenant action, resolved at PR 4;
-  duplicate-label handling and the removal flow (formerly open here) are now settled in §4
-  and §9.
+**Decision: aggregate exclusion via a new `IsShared` predicate, NEVER `ExcludeFromAllMail`.**
+`ExcludeFromAllMail` is *both* the aggregate filter (`MainViewModel.cs:4437,4468,4540,4651`;
+`SyncService.cs:108`) **and** the sweep's own filter (`MainViewModel.cs:2359`). Using it to
+hide shared mail from All Inboxes would also remove it from the one freshness mechanism a
+Graph shared mailbox has. The exclusion happens at the tree/aggregate-query layer via an
+`IsShared` check; the sweep continues to include shared accounts.
+
+**Decision: defer EWS auto-detection.** See §13 — EWS is blocked for third-party apps on
+2026-10-01, and Graph cannot enumerate delegated mailboxes. Building detection now means
+shipping a feature that breaks in ~2 months. Manual add-by-address is the v1 path.
+
+### 5.2 Runtime mode compatibility
+
+| Mode | Shared-mailbox behavior | Fallback |
+|---|---|---|
+| Normal | Reads via backend; **Graph** shared boxes refresh on the #456 sweep, **IMAP** on IDLE + sweep. Store-backed. | — |
+| `--online` | No local store; reads go straight to the backend. **`StartFallbackSyncAsync` does not run in online mode** (`MainViewModel.cs:2308`), so a **Graph** shared mailbox refreshes **only on manual navigation** (no background poll). IMAP IDLE still delivers for IMAP parents. | Manual navigation refetches. Documented; acceptable (online mode is opt-in, no background sync for any folder). |
+| `--profileDir <path>` | Identical to Normal, alternate data dir. | — |
+
+### 5.3 Code reuse and duplication risks
+
+- The **add dialog** should reuse the existing `AddAccountDialog` shell pattern (modeless,
+  focus, validation) rather than clone it. Plan: a small dedicated `AddSharedMailboxDialog`
+  or a mode on `AddAccountViewModel`; decide in PR 1.
+- **Backend send routing** for a shared account extends `GraphMailService`/`SmtpService`;
+  no duplication if the `IsShared` → parent-token resolution lives in one place (the auth
+  resolver, §5.1), not in each backend.
+
+### 5.4 Shared component audit (mandatory)
+
+| Component | File | Other consumers | Change | Risk / verify |
+|---|---|---|---|---|
+| `AccountModel` | `Models/AccountModel.cs` | Everything | +`IsShared`, `ParentAccountId`, `SharedAddress`, per-account `NotifyOnNewMail` (opt-in) | Optional fields default cleanly (no migration); verify existing account round-trip unchanged. |
+| `AccountModel.AccessibleName` | `:181` | Account list, tree header | Insert "shared mailbox" qualifier for shared | Exact composition in §7; verify non-shared string unchanged. |
+| `MailServiceRouter` | `Services/MailServiceRouter.cs` | All mail ops | Register shared account's backend (existing hook) | No API change; shared account must be in `Accounts` before first use. |
+| `BuildFolderTree` / `NodeKey` | `MainViewModel.cs:3377-3541,:3543` | Folder pane | Add shared top-level node; **fix header node-key to include account id** | `H:{Label}` collides for any two same-named headers (latent bug beyond shared); fix for all header nodes. |
+| `StartFallbackSyncAsync` | `MainViewModel.cs:2317-2400` | The sweep | **No change** — shared accounts must stay swept | Verify the `IsShared` aggregate exclusion does NOT touch this path. |
+| `MaybeNotifyNewMail` | `MainViewModel.cs:2675-2678` | Toasts | Gate on new per-account `NotifyOnNewMail` for shared (default off) | Global `NotifyOnNewMail` still governs real accounts unchanged. |
+| Aggregate query filters | `MainViewModel.cs:4437,4468,4540,4651`; `SyncService.cs:108` | All Inboxes / All Mail | Add `!IsShared` predicate | Verify real accounts unaffected; verify shared still swept (row above). |
+| `AccountManagerViewModel.DeleteAccountAsync` | `:387` | Manage Accounts | Cascade-remove shared children of a removed parent (naming confirmation); shared-only removal is ordinary | Verify removing a normal account with no children is unchanged. |
+| `ComposeViewModel` | `:220-224` (`SenderAccounts`/`SenderAccount`) | Compose | Shared address appears as a send identity; route its send by backend | Verify a normal compose's sender list/order is unchanged. |
+| `OAuthService` | `Services/OAuthService.cs:27-113` | Auth | +`.Shared` scope consts; `IsShared` → parent-token resolution | Verify normal scope selection unchanged. |
+| Add dialog (new `Window`) | new | — | New Window Checklist (§7) | Editable TextBox over live WebView2 → `Show()` not `ShowDialog()`. |
+
+## 6. Keyboard Walkthrough (mandatory)
+
+### Path A: Add a shared mailbox by address
+1. User opens **Manage Accounts** (existing). **Expected:** dialog opens, focus on account list.
+2. User Tabs to and activates **"Add shared mailbox"**. **Expected:** SR: *"Add shared mailbox, button."*
+3. A modeless dialog (`Show()`) opens, focus on **Address**. **Expected:** SR: *"Shared mailbox address, edit."*
+4. User Tabs to **Parent account** combo (defaulted to current account; only shared-capable accounts listed). **Expected:** SR reads the selected parent. If the resolved parent is **Graph**, a static (non-tab-stop) note reads: *"Shared mailboxes update every few minutes, not instantly."* For an **IMAP** parent, the note is absent.
+5. User presses **Add** (or Enter). **Expected:** address validated; shared `AccountModel` created (`IsShared`, `ParentAccountId`, `SharedAddress`, `BackendKind`=parent's); persisted; backend registered; **no password prompt**.
+6. **Error:** invalid address / parent can't host it. **Expected:** dialog stays open, SR reads the inline error (Result category), focus stays on Address.
+7. Dialog **Escape/Cancel**. **Expected:** closes without creating; focus returns to the account list (explicit restoration — modeless has no auto-return).
+8. On success the dialog closes; focus returns to the account list on the new item. **Expected:** SR: *"Support, shared mailbox, …"* (§7 composition).
+
+### Path B: Navigate into a shared mailbox
+1. F6 to **Folders** (index 2) or **Accounts** (index 1). **Expected:** shared mailbox is its own top-level node; SR reads its accessible name (§7). **No new F6 pane.**
+2. Expand, arrow to the shared Inbox, Enter. **Expected:** messages load; existing *"N messages loaded"* (Status) fires. Not present in All Inboxes / All Mail.
+3. New mail arrives. **Graph parent:** appears on the next sweep (poll), no toast unless the per-account opt-in is on. **IMAP parent:** appears via IDLE.
+
+### Path C: Send from a shared mailbox
+1. From the shared Inbox, user Reply/New. **Expected:** compose opens; the **From / Sender** picker (`SenderAccounts`) includes the shared address, preselected when replying from the shared box.
+2. User confirms sender = the shared address, composes, Send. **Expected:** send routes by the shared account's backend — Graph `sendMail` on `/users/{shared}` (`Mail.Send.Shared`) or IMAP-parent SMTP XOAUTH2 `user=`; SR: *"Message sent"* (existing Result).
+3. **Error:** parent token invalid. **Expected:** send fails with a surfaced error (not silent); draft preserved.
+
+## 7. Accessibility Checklist (mandatory)
+
+- **AutomationProperties.Name — exact composition.** `AccountModel.AccessibleName` today returns
+  `"{label}, connected, N unread"` / `"{label}, disconnected"` (`:181`). For a shared account,
+  insert the qualifier right after the label: **`"{label}, shared mailbox, {connected|disconnected}[, N unread]"`**
+  → e.g. *"Support, shared mailbox, connected, 12 unread."* The **folder-tree header node** is a
+  **separate** string (`FolderTreeNode.AutomationName`) → **`"{label}, shared mailbox[, N unread]"`**.
+  Add-dialog controls: **"Add shared mailbox"**, **"Shared mailbox address"**, **"Parent account"**
+  (short labels only).
+- **AnnouncementCategory.** No new recurring announces — context is in the accessible name
+  (principle 4). Add-flow errors reuse the existing Result path; send reuses the existing
+  *"Message sent"* Result. The Graph poll-interval caveat is **static dialog text**, not an
+  announce.
+- **F6 ring.** **No new main-window pane** — the shared mailbox lives in the existing Folders
+  (2) and Accounts (1) panes. The **add dialog is a new `Window`** and carries its own ring:
+  F6/Shift+F6 pane stops (Address → Parent → buttons), a `Ctrl+Shift+P` local palette,
+  a `CancellationTokenSource` for the (optional) parent-capability check, and explicit focus
+  restoration on close.
+- **Modal rule.** The add dialog has an editable TextBox and can open over a live WebView2 →
+  **`Show()` (modeless)**, Escape/Cancel wired explicitly (the GrabAddresses lesson).
+- **Selector test.** The Parent-account combo binds `AccountModel` (`ToString()` overridden,
+  `:192`) → add it to `SelectorItemAccessibilityTests`.
+- **Color-only info.** The "(shared)" state is textual (label + accessible name), never
+  color-only.
+
+## 8. Acceptance Walkthrough (mandatory)
+
+### Scenario: Add + read a Graph shared mailbox
+**Setup:** app on qm-graph-test (Graph parent signed in).
+1. Manage Accounts → Add shared mailbox → type a shared address, parent = the Graph account, Add. **Verify:** no password prompt; item appears as *"…, shared mailbox"* in the account list and as a top-level tree node.
+2. Open its Inbox. **Verify:** messages load; it is **absent** from All Inboxes / All Mail.
+3. Wait one sweep interval with new mail in it (or force a sweep). **Verify:** new mail appears; **no toast** (opt-in off).
+4. **Edge:** sign the parent out. **Verify:** shared mailbox shows disconnected + a surfaced error, not a blank list.
+
+### Scenario: Send from the shared mailbox
+1. Reply from a shared-Inbox message. **Verify:** sender picker preselects the shared address.
+2. Send. **Verify:** *"Message sent"*; the message shows as sent from the shared address (confirm in Outlook/web).
+
+### Scenario: Remove (cascade)
+1. Remove the **parent** account. **Verify:** confirmation names the shared child; both are removed; no orphan remains.
+2. Re-add parent + shared; remove **only** the shared mailbox. **Verify:** parent untouched.
+
+### Scenario: No-regression (shared component callers)
+- All Inboxes / All Mail with only real accounts. **Verify:** unchanged.
+- A normal compose. **Verify:** sender list unchanged (plus the shared identity if present).
+- `--online`: open a Graph shared mailbox. **Verify:** loads on navigation; no crash from the absent store.
+
+### Scenario: Screen reader
+- Tab the add dialog. **Verify:** each control's name reads correctly; Graph-parent note present, IMAP-parent note absent.
+
+## 9. Success Metrics
+
+- Add a shared mailbox by address and read it, keyboard-only, with a screen reader.
+- Send from the shared address; recipient sees it from the shared mailbox.
+- Graph shared mail refreshes on the sweep; IMAP shared mail via IDLE.
+- Zero regression: existing account/aggregate/compose tests pass unchanged; the shared box is
+  absent from unified views and the global unread total.
+- `--online`: a Graph shared mailbox loads on navigation without error.
+
+## 10. Implementation Phases
+
+1. **Linked-account model + manual add.** `AccountModel` fields, persistence, router
+   registration, the add-by-address dialog (New Window Checklist) + `account.addShared`
+   command + Manage-Accounts button, the top-level tree node + node-key fix, the aggregate
+   `IsShared` exclusion, cascade removal. **No backend access yet** (the account exists and
+   is navigable; folders empty until PR 2/3). Proves Approach B.
+2. **Graph read access.** `/users/{SharedAddress}/…` in `GraphMailService`; `.Shared` scope
+   consts; the `IsShared` → parent-token resolver. Behind the manual-add path; needs the scope
+   declared to run end-to-end.
+3. **IMAP read access + RFC 2342 NAMESPACE.** XOAUTH2 `user=` for an IMAP parent; NAMESPACE
+   for generic IMAP.
+4. **Send.** Graph `sendMail` on `/users/{shared}` (`Mail.Send.Shared`) + IMAP-parent SMTP
+   XOAUTH2 `user=`; compose sender-identity wiring; send keyboard walkthrough (§6 Path C).
+5. **Toast opt-in + polish.** Per-account `NotifyOnNewMail` gate, docs (User Guide page + the
+   poll-interval note), accessibility pass.
+
+*(EWS auto-detection — formerly PR 4 — is dropped; see §13.)*
+
+## 11. Files to Create / Modify
+
+**Create:** `Views/AddSharedMailboxDialog.xaml(.cs)` (or an `AddAccountViewModel` mode),
+`ViewModels/AddSharedMailboxViewModel.cs`; User Guide shared-mailbox page.
+**Modify:** `Models/AccountModel.cs` (+fields, AccessibleName); `ViewModels/MainViewModel.cs`
+(tree node, node-key, aggregate predicate, `account.addShared` registration, toast gate);
+`Services/OAuthService.cs` (+scopes, parent-token resolver); `Services/GraphMailService.cs`
+(`/users/{shared}` routing + sendMail); `Services/ImapMailService.cs` / `SmtpService.cs`
+(`user=` for shared); `ViewModels/AccountManagerViewModel.cs` (`DeleteAccountAsync` cascade);
+`ViewModels/ComposeViewModel.cs` (sender identity); `docs/ARCHITECTURE.md`.
+
+## 12. Tests to Add
+
+| Test class | Methods | Coverage |
+|---|---|---|
+| `SharedMailboxModelTests` | round-trip persistence of the new fields; AccessibleName composition (shared vs normal) | model + a11y string |
+| `SharedMailboxRoutingTests` | Graph shared → `/users/{addr}`; IMAP shared → `user=`; token resolves via parent | access by backend |
+| `SharedMailboxAggregateTests` | shared inbox excluded from All Inboxes/All Mail **and** from global unread; **still included in the sweep** | the item-2 trap, pinned |
+| `SharedMailboxRemovalTests` | remove parent → cascade children (named); remove shared-only → parent intact | lifecycle |
+| `SharedMailboxSendTests` | send routes by backend; sender identity = shared address | send path |
+| `NodeKeyTests` | two same-named header nodes get distinct keys | the node-key fix |
+| `SelectorItemAccessibilityTests` (existing) | add the Parent-account combo item type | rule compliance |
+
+## 13. Known Risks & Open Questions
+
+### 13.1 Risks
+
+| Risk | Prob | Impact | Mitigation |
+|---|---|---|---|
+| **EWS retirement blocks third-party apps 2026-10-01** (full shutdown 2027-04-01); Graph can't enumerate delegated mailboxes → **no durable auto-detection path** | High | Major (for detection only) | **Auto-detection dropped from v1.** Manual add-by-address uses no EWS and stands alone. Revisit only if a Graph enumeration API appears. Verified via Microsoft 365 Dev Blog / Learn (Aug 2026). |
+| A dev implements the aggregate exclusion with `ExcludeFromAllMail`, silently killing the sweep (the only Graph freshness) | Med | Major | §5.1/§5.4 mandate the `IsShared` predicate; `SharedMailboxAggregateTests` pins "still swept". |
+| Graph shared mailbox read as "instant" by users, felt as a bug on delay | Med | Minor | Add-dialog note (Graph only) + User Guide; principle 2 framing. |
+| Credential-less token resolution fails silently when parent signed out | Med | Major | §5.1 rule: show disconnected + surface parent error; acceptance scenario covers it. |
+| Modal add dialog over live WebView2 hangs (GrabAddresses) | Low | Blocker | `Show()` not `ShowDialog()`; §7. |
+
+### 13.2 Open questions
+
+- **Node-key fix scope:** fix `NodeKey` header collision for **all** header nodes (chosen), or
+  only shared? → Chosen: all (it's a latent bug for duplicate-named ordinary accounts too).
+- **Personal MS accounts:** confirmed **out** — they use `GraphMailScopesPersonal` and have no
+  Exchange shared mailboxes; work/school only.
+- **EWS consent check** (former §12 item): **moot** now that detection is dropped; revive only
+  if detection is ever reconsidered.
