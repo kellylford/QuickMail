@@ -35,11 +35,12 @@
                       Margin="0,2,0,0" AutomationProperties.Name="Account"/>
         </StackPanel>
 
-        <!-- Status line: focusable (F6 ring) so counts can be re-read; not in the Tab order. -->
+        <!-- Status line: focusable (F6 ring) so counts can be re-read on demand; not in the Tab order.
+             No LiveSetting live region — it double-spoke with the gated custom announces and ignored
+             the user's announcement config; the status is read on demand via F6 instead (#333). -->
         <TextBlock Grid.Row="1" x:Name="StatusText" Text="{Binding StatusText}" Margin="0,0,0,6"
                    Focusable="True" KeyboardNavigation.IsTabStop="False"
-                   AutomationProperties.Name="{Binding StatusText}"
-                   AutomationProperties.LiveSetting="Polite"/>
+                   AutomationProperties.Name="{Binding StatusText}"/>
 
         <!-- Content (row 2) comes BEFORE the buttons in Tab order: picker → list → detail → buttons. -->
         <Grid Grid.Row="2">

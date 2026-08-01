@@ -12,6 +12,13 @@ namespace QuickMail.Views;
 /// live WebView2 reading pane must not run under a nested modal loop), so Escape/Cancel close it
 /// explicitly. The owning <see cref="ServerRuleEditorViewModel"/> raises the save/close/folder-pick
 /// requests as events; persistence is wired by the list VM that created the editor.
+/// <para>
+/// No F6 ring or Ctrl+Shift+P command palette here, and that is deliberate (#333, confirmed with the
+/// screen-reader user): this is a single compact form — Name → conditions → action → Save/Cancel is
+/// one linear Tab group with no distinct panes to cycle between, so F6 has nothing to jump to and a
+/// palette would only duplicate the two visible buttons. The New Window Checklist's F6/palette items
+/// apply to multi-pane windows; a leaf editor form is the documented exception.
+/// </para>
 /// </summary>
 public partial class ServerRuleEditorWindow : Window
 {
