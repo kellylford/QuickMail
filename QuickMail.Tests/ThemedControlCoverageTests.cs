@@ -150,6 +150,65 @@ public class ThemedControlCoverageTests
             + "(these render default white in dark themes):\n" + string.Join("\n", missing));
     }
 
+    /// <summary>
+    /// A ListView whose View is a GridView renders its columns through a
+    /// GridViewRowPresenter, which lives only in the container style keyed by
+    /// GridView.GridViewItemContainerStyleKey. An explicit ItemContainerStyle
+    /// that is based on the plain ListViewItem style (whose themed template
+    /// hosts a ContentPresenter) silently drops every column and renders
+    /// item.ToString() instead — the calendar agenda listed
+    /// "QuickMail.Models.CalendarEvent" for months that way (#448). It is
+    /// invisible to a screen reader, because the row's AutomationProperties.Name
+    /// is stamped separately and stays correct, so only a visual check catches
+    /// it. Basing on no style at all is equally wrong: the row then falls back
+    /// to WPF's unthemed default chrome.
+    /// </summary>
+    [Fact]
+    public void GridViewListViews_BaseTheirContainerStyleOnTheGridViewStyle()
+    {
+        var root = FindRepoRoot();
+        Assert.False(root is null, "Repo source tree not found from test base directory.");
+
+        var xamlFiles = new[] { "Views", "Controls" }
+            .Select(sub => Path.Combine(root!, "QuickMail", sub))
+            .Where(Directory.Exists)
+            .SelectMany(dir => Directory.EnumerateFiles(dir, "*.xaml"));
+
+        var violations = new List<string>();
+        foreach (var file in xamlFiles)
+        {
+            var doc = XDocument.Load(file);
+            foreach (var listView in doc.Descendants().Where(e => e.Name.LocalName == "ListView"))
+            {
+                var hasGridView = listView.Descendants().Any(e => e.Name.LocalName == "GridView");
+                if (!hasGridView) continue;
+
+                var containerStyle = listView.Elements()
+                    .FirstOrDefault(e => e.Name.LocalName == "ListView.ItemContainerStyle")
+                    ?.Elements().FirstOrDefault(e => e.Name.LocalName == "Style");
+                if (containerStyle is null) continue;   // no explicit style: WPF picks the right one
+
+                // A style that supplies its own Template with a GridViewRowPresenter
+                // is fine too — that is how the message list paints its unread bar.
+                var suppliesRowPresenter = containerStyle.Descendants()
+                    .Any(e => e.Name.LocalName == "GridViewRowPresenter");
+                var basedOn = containerStyle.Attribute("BasedOn")?.Value ?? string.Empty;
+                if (suppliesRowPresenter ||
+                    basedOn.Contains("GridViewItemContainerStyleKey", StringComparison.Ordinal))
+                    continue;
+
+                violations.Add($"{Path.GetFileName(file)}: ListView '{listView.Attribute(XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml"))?.Value ?? "(unnamed)"}' "
+                    + $"container style BasedOn=\"{(basedOn.Length == 0 ? "(none)" : basedOn)}\"");
+            }
+        }
+
+        Assert.True(violations.Count == 0,
+            "GridView ListViews whose ItemContainerStyle neither derives from the GridView container "
+            + "style nor supplies its own GridViewRowPresenter — their columns will not render:\n"
+            + string.Join("\n", violations)
+            + "\nUse BasedOn=\"{StaticResource {x:Static GridView.GridViewItemContainerStyleKey}}\".");
+    }
+
     [Fact]
     public void ExemptionTable_HasNoStaleEntries()
     {

@@ -184,50 +184,18 @@
 
         <!-- Status / progress bar -->
         <DockPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
-            <Button DockPanel.Dock="Right"
-                    Content="_Cancel"
-                    Command="{Binding CancelCommand}"
-                    AutomationProperties.Name="Cancel and close compose window"
-                    IsCancel="True"
-                    MinWidth="80" Margin="6,0,0,0"
-                    TabIndex="11"/>
-            <Button DockPanel.Dock="Right"
-                    Content="Save Draft"
-                    Command="{Binding SaveDraftCommand}"
-                    AutomationProperties.Name="Save as draft"
-                    AutomationProperties.AcceleratorKey="Ctrl+S"
-                    MinWidth="100" Margin="6,0,0,0"
-                    TabIndex="10"/>
-            <Button DockPanel.Dock="Right"
-                    Content="Save as Template"
-                    Command="{Binding SaveAsTemplateCommand}"
-                    AutomationProperties.Name="Save current message as template"
-                    MinWidth="120" Margin="6,0,0,0"
-                    TabIndex="9"/>
-            <Button DockPanel.Dock="Right"
-                    Content="Insert Template…"
-                    Command="{Binding InsertTemplateCommand}"
-                    AutomationProperties.Name="Insert a saved template"
-                    MinWidth="120" Margin="6,0,0,0"
-                    TabIndex="8"/>
-            <Button DockPanel.Dock="Right"
-                    x:Name="SendButton"
-                    Content="Send"
-                    Command="{Binding SendCommand}"
-                    AutomationProperties.Name="Send message"
-                    AutomationProperties.AcceleratorKey="Alt+S"
-                    MinWidth="80"
-                    TabIndex="7"/>
-            <!-- Deliberately NOT IsDefault. A default button makes Enter send the
-                 message from any control that does not handle Enter itself — the
-                 From combo, the compose-mode combo, the Subject box, the attachment
-                 list. Choosing a sending account with arrow-then-Enter would send
-                 the half-written message and disclose its contents (issue #201).
-                 Send is reachable by Alt+S, Ctrl+Enter, or Enter/Space with the
-                 Send button focused. Do not re-add IsDefault. -->
+            <!-- Order matters: DockPanel hands out space in DECLARATION order, so
+                 the mode selector is declared first and takes its MinWidth before
+                 the buttons see any. Previously the buttons docked Right first and
+                 consumed the whole row, crushing the selector to a sliver at 150%
+                 text (#450). The buttons then sit in a WrapPanel — measured against
+                 what is left — so they break onto a second line instead of clipping.
+                 Declaration order here is visual order (it was reversed when each
+                 button docked Right individually) and matches TabIndex. -->
             <ComboBox DockPanel.Dock="Left"
                       x:Name="ModeSelector"
-                      MinWidth="110" Margin="0,0,6,0"
+                      MinWidth="110" Margin="0,2,6,0"
+                      VerticalAlignment="Center"
                       AutomationProperties.Name="Compose mode"
                       TabIndex="12"
                       SelectionChanged="ModeSelector_SelectionChanged">
@@ -235,6 +203,44 @@
                 <ComboBoxItem Content="Markdown"/>
                 <ComboBoxItem Content="HTML"/>
             </ComboBox>
+            <WrapPanel DockPanel.Dock="Right" HorizontalAlignment="Right">
+                <Button x:Name="SendButton"
+                        Content="Send"
+                        Command="{Binding SendCommand}"
+                        AutomationProperties.Name="Send message"
+                        AutomationProperties.AcceleratorKey="Alt+S"
+                        MinWidth="80" Margin="6,2,0,0"
+                        TabIndex="7"/>
+                <Button Content="Insert Template…"
+                        Command="{Binding InsertTemplateCommand}"
+                        AutomationProperties.Name="Insert a saved template"
+                        MinWidth="120" Margin="6,2,0,0"
+                        TabIndex="8"/>
+                <Button Content="Save as Template"
+                        Command="{Binding SaveAsTemplateCommand}"
+                        AutomationProperties.Name="Save current message as template"
+                        MinWidth="120" Margin="6,2,0,0"
+                        TabIndex="9"/>
+                <Button Content="Save Draft"
+                        Command="{Binding SaveDraftCommand}"
+                        AutomationProperties.Name="Save as draft"
+                        AutomationProperties.AcceleratorKey="Ctrl+S"
+                        MinWidth="100" Margin="6,2,0,0"
+                        TabIndex="10"/>
+                <Button Content="_Cancel"
+                        Command="{Binding CancelCommand}"
+                        AutomationProperties.Name="Cancel and close compose window"
+                        IsCancel="True"
+                        MinWidth="80" Margin="6,2,0,0"
+                        TabIndex="11"/>
+            </WrapPanel>
+            <!-- Deliberately NOT IsDefault. A default button makes Enter send the
+                 message from any control that does not handle Enter itself — the
+                 From combo, the compose-mode combo, the Subject box, the attachment
+                 list. Choosing a sending account with arrow-then-Enter would send
+                 the half-written message and disclose its contents (issue #201).
+                 Send is reachable by Alt+S, Ctrl+Enter, or Enter/Space with the
+                 Send button focused. Do not re-add IsDefault. -->
             <TextBlock DockPanel.Dock="Left"
                        VerticalAlignment="Center"
                        Text="{Binding AutoSaveText}"

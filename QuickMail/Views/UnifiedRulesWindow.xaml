@@ -93,22 +93,15 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <WrapPanel Grid.Column="0" Orientation="Horizontal">
-                <Button Content="New" Command="{Binding NewRuleCommand}"
-                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New rule"/>
-                <Button Content="Edit" Command="{Binding EditRuleCommand}"
-                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected rule"/>
-                <Button Content="Delete" Command="{Binding DeleteRuleCommand}"
-                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected rule"/>
-                <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"
-                        Height="26" Padding="10,0" Margin="0,0,6,4"
+                <Button Content="New" Command="{Binding NewRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New rule"/>
+                <Button Content="Edit" Command="{Binding EditRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Edit selected rule"/>
+                <Button Content="Delete" Command="{Binding DeleteRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Delete selected rule"/>
+                <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}" Padding="10,0" Margin="0,0,6,4"
                         AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected rule}"/>
-                <Button Content="Move Up" Command="{Binding MoveUpCommand}"
-                        Height="26" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule up"/>
-                <Button Content="Move Down" Command="{Binding MoveDownCommand}"
-                        Height="26" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected rule down"/>
+                <Button Content="Move Up" Command="{Binding MoveUpCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule up"/>
+                <Button Content="Move Down" Command="{Binding MoveDownCommand}" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected rule down"/>
             </WrapPanel>
-            <Button Grid.Column="1" Content="Close" Click="CloseButton_Click"
-                    Height="26" Padding="12,0" VerticalAlignment="Top" AutomationProperties.Name="Close rules manager"/>
+            <Button Grid.Column="1" Content="Close" Click="CloseButton_Click" Padding="12,0" VerticalAlignment="Top" AutomationProperties.Name="Close rules manager"/>
         </Grid>
     </Grid>
 </Window>
