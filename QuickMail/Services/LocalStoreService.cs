@@ -870,6 +870,17 @@ public class LocalStoreService : ILocalStoreService
         return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
     }
 
+    public async Task<int> CountFolderSummariesAsync(Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT COUNT(*) FROM MessageSummary WHERE account_id = @id AND folder_name = @folder";
+        cmd.Parameters.AddWithValue("@id", accountId.ToString());
+        cmd.Parameters.AddWithValue("@folder", folderName);
+        var result = await cmd.ExecuteScalarAsync();
+        return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+    }
+
     public async Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId)
     {
         await using var conn = await OpenAsync();

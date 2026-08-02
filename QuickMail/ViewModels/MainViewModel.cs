@@ -2328,7 +2328,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
-            long sweepCycle = 0;   // #462: non-Inbox folders are swept only every Nth cycle
+            long sweepCycle = 0;   // #462: numbers the "Sweep cycle" log lines
             while (!ct.IsCancellationRequested)
             {
                 var minutes = _configService.Load().MailSyncPollMinutes;
@@ -2339,6 +2339,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (ct.IsCancellationRequested) break;
 
                 if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
+
+                // Time the whole cycle body — reconcile + snapshot + every folder — because the question
+                // #462 asks is "does one full cycle run longer than the interval?", and that's the whole
+                // loop, not just the folder fetches. Start above ReconcileCurrentFolderAsync.
+                var sweepTimer = System.Diagnostics.Stopwatch.StartNew();
 
                 // Reconcile the folder the user is currently viewing (#366). It's the one folder with
                 // no other live removal signal — a custom folder (any backend) the user is staring at
@@ -2352,18 +2357,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // anyone who chose it to avoid exactly that (metered or locked-down networks).
                 await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
 
-                // Snapshot the folders to sweep this cycle. Non-Inbox folders have no live watcher —
-                // Graph's delta poll and IMAP's IDLE both cover only the Inbox — so mail a server-side
-                // rule files into a custom folder at delivery is invisible until the folder is opened or
-                // the app restarts (#366). This periodic sweep syncs each folder fully (fetch new +
-                // reconcile deletions). The Inbox is swept EVERY cycle (cheap — already kept current by
-                // the live watcher, and for a shared mailbox with no watcher it's the folder that most
-                // needs freshness); NON-Inbox folders — which drive the cost and tolerate a little
-                // latency — are swept only every Nth cycle (#462, MailSweepNonInboxEveryNCycles; the
-                // first sweep after launch includes them). Accounts/_cachedFolders are UI-thread-owned,
-                // so snapshot on the UI thread.
-                var everyN = Math.Max(1, _configService.Load().MailSweepNonInboxEveryNCycles);
-                var includeNonInbox = (sweepCycle % everyN) == 0;
+                // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox folders
+                // have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the Inbox —
+                // so mail a server-side rule files into a custom folder at delivery is invisible until the
+                // folder is opened or the app restarts (#366). This periodic sweep syncs each folder fully
+                // (fetch new + reconcile deletions). The Inbox is included but cheap (kept current by the
+                // live watcher). Accounts/_cachedFolders are UI-thread-owned, so snapshot on the UI thread.
                 var jobs = new List<(AccountModel Account, MailFolderModel Folder, bool IsInbox)>();
                 _ui.Invoke(() =>
                 {
@@ -2375,16 +2374,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             if (folder.ExcludeFromAllMail) continue;
                             var isInbox = folder.Kind == Models.SpecialFolderKind.Inbox ||
                                           string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase);
-                            if (!isInbox && !includeNonInbox) continue;   // throttled this cycle (#462)
                             jobs.Add((account, folder, isInbox));
                         }
                     }
                 });
 
-                // Instrument the sweep so its real cost is visible on a large mailbox (#462): if one
-                // full cycle runs longer than the interval, the sweep is effectively continuous and the
-                // poll setting stops meaning much. Logged at Info (one line per cycle).
-                var sweepTimer = System.Diagnostics.Stopwatch.StartNew();
                 var sweepAccounts = jobs.Select(j => j.Account.Id).Distinct().Count();
                 var sweepNew = 0;
 
@@ -2393,13 +2387,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     if (ct.IsCancellationRequested) break;
                     try
                     {
+                        // Per-folder cost instrumentation (#462) — /debug only, so normal runs pay nothing.
+                        // Times this one folder, counts the Graph requests it makes (scoped to this async
+                        // flow so concurrent Graph activity — delta poll, user navigation — isn't
+                        // misattributed here), and reads its cached item count. This is what tells apart
+                        // "cost spread evenly across folders" from "two huge folders eat the whole cycle."
+                        var debug = LogService.DebugMode;
+                        var folderTimer = debug ? System.Diagnostics.Stopwatch.StartNew() : null;
+                        var reqBox = debug ? Services.Graph.GraphClient.BeginRequestCount() : null;
+
                         // Fetch new (FolderSynced merges them into the current view) + reconcile
                         // deletions (MessagesRemoved). Runs off the UI thread; the events marshal back.
                         var incoming = await _syncService.SyncFolderFullAsync(account, folder, ct)
                             .ConfigureAwait(false);
                         sweepNew += incoming.Count;
-                        if (incoming.Count > 0)
-                            LogService.Debug($"Sweep sync [{account.AccountLabel}]/{folder.FullName}: {incoming.Count} new.");
+
+                        if (debug)
+                        {
+                            Services.Graph.GraphClient.EndRequestCount();
+                            folderTimer!.Stop();
+                            var items = await _localStore.CountFolderSummariesAsync(account.Id, folder.FullName)
+                                .ConfigureAwait(false);
+                            LogService.Debug(
+                                $"Sweep folder [{account.AccountLabel}]/{folder.FullName}: " +
+                                $"{folderTimer.Elapsed.TotalSeconds:F1}s, {reqBox!.Value} req, {items} items, {incoming.Count} new");
+                        }
 
                         if (incoming.Count > 0)
                             _ui.Post(() =>
@@ -2421,10 +2433,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 }
 
                 sweepTimer.Stop();
-                LogService.Log(
-                    $"Sweep cycle {sweepCycle}: {jobs.Count} folder(s) / {sweepAccounts} account(s) in " +
-                    $"{sweepTimer.Elapsed.TotalSeconds:F1}s, {sweepNew} new" +
-                    (includeNonInbox ? "." : " (Inbox-only this cycle)."));
+                // Per-cycle summary at Debug (a measurement aid, not always-on telemetry; #462). The
+                // 250 ms inter-folder pace is deliberate sleep, not work, so it's named separately —
+                // otherwise the total reads as more cost than it is.
+                LogService.Debug(
+                    $"Sweep cycle {sweepCycle}: {jobs.Count} folder(s) / {sweepAccounts} account(s), " +
+                    $"{sweepTimer.Elapsed.TotalSeconds:F1}s total ({jobs.Count * 0.250:F1}s paced), {sweepNew} new.");
                 sweepCycle++;
             }
         }

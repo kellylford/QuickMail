@@ -68,17 +68,6 @@ public class ConfigModel
     /// </summary>
     public int MailSyncPollMinutes { get; set; } = 5;
 
-    /// <summary>
-    /// How often the periodic sweep visits NON-Inbox folders, as a multiple of the sync cycle
-    /// (#462). The Inbox is always swept every cycle; non-Inbox folders every Nth. <b>Default 1 =
-    /// every cycle, i.e. no throttle — the current behavior is unchanged.</b> This knob exists so
-    /// that, after the per-cycle cost is measured on a real mailbox (see the "Sweep cycle …" log
-    /// line), it can be raised to reduce cost on a deep folder tree without touching the Inbox's
-    /// freshness (e.g. 3 → non-Inbox folders refresh every ~15 min at the 5-minute default).
-    /// Clamped to 1–60. The first sweep after launch always includes non-Inbox folders.
-    /// </summary>
-    public int MailSweepNonInboxEveryNCycles { get; set; } = 1;
-
     // ── Appearance ────────────────────────────────────────────────────────────────
 
     /// <summary>

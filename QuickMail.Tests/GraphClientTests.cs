@@ -66,6 +66,36 @@ public class GraphClientTests
     }
 
     [Fact]
+    public async Task RequestCount_CountsScopedRequests_IncludingRetries()
+    {
+        // #462: a 429 then OK is two physical requests; the scoped counter sees both.
+        var handler = new SequenceHandler(Resp((HttpStatusCode)429), Resp(HttpStatusCode.OK));
+        var client = Client(handler);
+
+        var box = GraphClient.BeginRequestCount();
+        await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken);
+        GraphClient.EndRequestCount();
+
+        Assert.Equal(2, box.Value);
+    }
+
+    [Fact]
+    public async Task RequestCount_FreshScope_ExcludesRequestsMadeOutsideIt()
+    {
+        // A request made with no active scope must not be attributed to a later scope (#462).
+        var handler = new SequenceHandler(Resp(HttpStatusCode.OK), Resp(HttpStatusCode.OK));
+        var client = Client(handler);
+
+        await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken); // unscoped
+
+        var box = GraphClient.BeginRequestCount();
+        await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken); // scoped
+        GraphClient.EndRequestCount();
+
+        Assert.Equal(1, box.Value);
+    }
+
+    [Fact]
     public async Task HonorsRetryAfterHeader_AndStillSucceeds()
     {
         var handler = new SequenceHandler(Resp((HttpStatusCode)429, retryAfter: TimeSpan.Zero), Resp(HttpStatusCode.OK));

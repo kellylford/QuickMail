@@ -58,6 +58,9 @@ public interface ILocalStoreService
     /// </summary>
     Task<int> CountSummariesAsync(Guid accountId);
 
+    /// <summary>Number of cached message summaries in one folder (#462 sweep instrumentation).</summary>
+    Task<int> CountFolderSummariesAsync(Guid accountId, string folderName);
+
     /// <summary>
     /// Returns the oldest message date stored for the given account, or null if no messages exist.
     /// Used to display the cache window in Account Properties.

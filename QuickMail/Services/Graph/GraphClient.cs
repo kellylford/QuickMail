@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -29,6 +30,27 @@ public sealed class GraphClient : IDisposable
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
     private readonly TimeSpan _retryDelayWhenNoHeader;
+
+    // Per-async-flow HTTP request counter for the #462 sweep instrumentation. A caller opens a scope
+    // (BeginRequestCount) and every Graph request made on that same async flow increments its box —
+    // so the sweep can count exactly the requests one folder cost, unaffected by concurrent Graph
+    // activity (delta poll, user navigation) running on other flows. Null when nobody is counting, so
+    // the hot path costs a single null check. AsyncLocal flows across await/ConfigureAwait boundaries.
+    private static readonly AsyncLocal<StrongBox<long>?> RequestCountScope = new();
+
+    /// <summary>
+    /// Begin counting Graph HTTP requests on the current async flow (#462). Read the returned box's
+    /// <c>Value</c> after the awaited work, then call <see cref="EndRequestCount"/>. Diagnostic only.
+    /// </summary>
+    public static StrongBox<long> BeginRequestCount()
+    {
+        var box = new StrongBox<long>(0);
+        RequestCountScope.Value = box;
+        return box;
+    }
+
+    /// <summary>Stop counting on the current async flow (#462).</summary>
+    public static void EndRequestCount() => RequestCountScope.Value = null;
 
     public GraphClient(IOAuthService oauth, HttpClient? http = null, TimeSpan? defaultRetryDelay = null, string? baseUrl = null)
     {
@@ -253,6 +275,9 @@ public sealed class GraphClient : IDisposable
                     req.Headers.TryAddWithoutValidation(name, value);
             if (contentFactory != null)
                 req.Content = contentFactory(); // fresh per attempt — content can't be resent after a 429
+
+            // #462 diagnostic: count each physical request (retries included) on a scoped async flow.
+            if (RequestCountScope.Value is { } counter) Interlocked.Increment(ref counter.Value);
 
             var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if (resp.StatusCode != (HttpStatusCode)429 || attempt >= 2)

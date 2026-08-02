@@ -157,39 +157,6 @@ public class ConfigServiceSaveTests
         Assert.Equal(expected, reloaded.MailSyncPollMinutes);
     }
 
-    [Fact]
-    public void MailSweepNonInboxEveryNCycles_DefaultsTo1_AndRoundTrips()
-    {
-        var profile = MakeTempProfile();
-        var service = new ConfigService(profile);
-
-        // #462: default is 1 (every cycle, no throttle — unchanged sweep behavior).
-        Assert.Equal(1, service.Load().MailSweepNonInboxEveryNCycles);
-
-        var config = service.Load();
-        config.MailSweepNonInboxEveryNCycles = 6;
-        service.Save(config);
-
-        var reloaded = new ConfigService(profile).Load();
-        Assert.Equal(6, reloaded.MailSweepNonInboxEveryNCycles);
-    }
-
-    [Theory]
-    [InlineData(0, 1)]    // below the floor normalizes to 1 (every cycle)
-    [InlineData(1, 1)]    // 1 = every cycle (pre-#462 behavior)
-    [InlineData(100, 60)] // clamped to the 60-cycle ceiling
-    public void MailSweepNonInboxEveryNCycles_IsClampedOnLoad(int written, int expected)
-    {
-        var profile = MakeTempProfile();
-        var service = new ConfigService(profile);
-
-        var config = service.Load();
-        config.MailSweepNonInboxEveryNCycles = written;
-        service.Save(config);
-
-        var reloaded = new ConfigService(profile).Load();
-        Assert.Equal(expected, reloaded.MailSweepNonInboxEveryNCycles);
-    }
 
     [Fact]
     public void SaveThenLoad_RoundTripsReadAsPlainText()
