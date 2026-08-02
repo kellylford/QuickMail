@@ -7644,6 +7644,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // "No updates available" Help entry still takes users somewhere useful.
     private const string ReleasesPageUrl = UpdateCheckService.ReleasesPageUrl;
 
+    // The published user guide splits on top-level headings, one page per "## " section, with a
+    // pandoc-generated id on every heading beneath it. "Moving to the ARM version on a Snapdragon
+    // PC" is a "### " under "Installing and Updating QuickMail", hence page + fragment rather than
+    // a page of its own. Both halves are asserted against docs/USER-GUIDE.md by NativeArmNoticeTests.
+    internal const string ArmSwitchGuideAnchor = "moving-to-the-arm-version-on-a-snapdragon-pc";
+    internal const string ArmSwitchGuideUrl =
+        $"https://kellylford.github.io/QuickMail/installing-and-updating-quickmail.html#{ArmSwitchGuideAnchor}";
+
     // Version string of a found update (e.g. "0.8.1"); empty when up to date. Feeds the
     // update dialog for self-updating (installed) copies.
     private string _updateVersion = string.Empty;
@@ -7739,12 +7747,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
                  "See Get the ARM Version in the Help menu.", AnnouncementCategory.Result);
     }
 
-    /// <summary>Opens the releases page so the user can download the native ARM build. Switching
-    /// is a manual uninstall and reinstall — no update path crosses architectures.</summary>
+    /// <summary>
+    /// Opens the user guide's ARM section rather than the releases page. Switching is a manual
+    /// uninstall and reinstall — no update path crosses architectures — and doing it in the wrong
+    /// order fails silently, so the instruction has to travel with the download link.
+    ///
+    /// The releases page carried that warning only while v0.8.37 was newest; every release after
+    /// it puts notes with no ARM section on top, and this entry would then hand an ARM user the
+    /// installer with nothing telling them to uninstall first (#477). The guide section is
+    /// versionless, holds the numbered steps and the recovery, and links on to the releases page
+    /// for the download itself. <see cref="ArmSwitchGuideAnchor"/> is pinned to the real heading
+    /// by <c>NativeArmNoticeTests</c>, since a reworded heading would break the anchor silently.
+    /// </summary>
 #pragma warning disable CA1822 // [RelayCommand] target must be an instance method for the MVVM Toolkit source generator
     [RelayCommand]
     private void OpenArmDownloadPage() =>
-        Helpers.ExternalUriPolicy.TryOpenExternal(ReleasesPageUrl);
+        Helpers.ExternalUriPolicy.TryOpenExternal(ArmSwitchGuideUrl);
 #pragma warning restore CA1822
 
     [RelayCommand]
