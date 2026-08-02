@@ -400,7 +400,7 @@ If you are on an ARM PC running the regular build, QuickMail says so once, and t
 2. Download and run **`QuickMail-win-arm64.msi`**.
 3. Start QuickMail. Your accounts, settings, contacts, rules, templates, saved views, and cached mail are all as you left them — your data lives separately from the program itself.
 
-Running the ARM installer on top of a regular QuickMail of the same version does **not** replace it. Windows treats the two as separate programs, installs the second beside the first, reports success, and leaves the regular build running. Nothing in QuickMail would look wrong afterwards, which is exactly why it is worth saying plainly: uninstall first, and check the Help menu once you have restarted. (#18)
+Running the ARM installer on top of a regular QuickMail of the same version does **not** replace it. Windows treats the two as separate programs, installs the second beside the first, reports success, and leaves the regular build running. Nothing in QuickMail would look wrong afterwards, which is exactly why it is worth saying plainly: uninstall first, and check the Help menu once you have restarted. If it has already happened, uninstalling and running the ARM installer again puts it right — and note that **Settings → Apps** cannot tell you which build you have, since both report the same name and version there. (#18)
 
 ---
 
