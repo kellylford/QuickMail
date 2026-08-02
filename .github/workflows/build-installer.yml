@@ -1,8 +1,19 @@
 name: Build Installer (on demand)
 
-# Manual-only: build the full MSI installer for whatever branch you pick in the
-# "Run workflow" dropdown, WITHOUT publishing a GitHub release. The installer is
-# uploaded as a run artifact you can download and test.
+# Manual-only: build a full installer for whatever branch you pick in the "Run workflow"
+# dropdown, WITHOUT publishing a GitHub release. The installer is uploaded as a run artifact
+# you can download and test.
+#
+# Test builds ship Velopack's Setup.exe, not the MSI, and carry a per-run version
+# (0.8.37-test.<run_number>.<run_attempt>). Both are deliberate and load-bearing — see the
+# "Determine package version" and "Pack Velopack installer" steps for why. In short: two MSIs
+# packed at the same version register as separate products instead of replacing each other,
+# which leaves a stale binary installed while every reinstall reports success.
+#
+# Know what this costs: Setup.exe is the one-click bootstrapper that releases deliberately do
+# NOT ship (see quickmail.yml), so a test build does not exercise the MSI wizard — welcome,
+# license acceptance, conclusion — nor MSI packing and signing. Those first run on a pushed
+# v* tag. Test the wizard against a release candidate, not against this artifact.
 #
 # Why this exists: the real Google OAuth client id/secret and the bug-report token
 # live only in GitHub Actions secrets. A locally built installer compiles against the
@@ -114,23 +125,42 @@ jobs:
       - name: Install vpk
         run: dotnet tool install -g vpk
 
-      # No tag to read from on a manual run, so the package version comes from the
-      # csproj <Version>. This produces a full package only (no delta) — a delta needs
-      # the previous release's assets, which only matters for the published update feed,
-      # not for a standalone test installer.
+      # No tag to read from on a manual run, so the base version comes from the csproj
+      # <Version> — but a test build must never carry that version bare.
+      #
+      # Two builds packed at the same version cannot replace each other. `vpk` mints a fresh
+      # random MSI ProductCode on every pack while the UpgradeCode stays fixed, and the
+      # generated Upgrade row's VersionMax is exclusive, so installing 0.8.37 over an existing
+      # 0.8.37 matches neither the upgrade nor the downgrade row: Windows Installer registers
+      # a second, unrelated product beside the first and reports success, and Velopack — seeing
+      # that version already staged — leaves the old binary in current\. Two indistinguishable
+      # "QuickMail 0.8.37.0" rows then appear in Add/Remove, uninstalling removes only one, and
+      # the survivor keeps owning the install directory. Every later test installer silently
+      # no-ops against it. This cost a day of testing against a stale build.
+      #
+      # So each run gets its own SemVer prerelease: 0.8.37-test.<run_number>.<run_attempt>.
+      # That sorts above the released 0.8.37 and below a future 0.8.38, and strictly increases
+      # run over run, so a new test build always supersedes the last one and never fights a
+      # real release. run_attempt is in there because re-running a failed run reuses its
+      # run_number and bumps only run_attempt — without it, a retry would pack the same
+      # version as the run it replaces, which is the whole failure this step exists to avoid.
+      # Dotted numeric prerelease identifiers compare field by field, so test.482.2 sorts
+      # above test.482 and below test.483.
+      #
+      # Appending `test` to the version is necessary but NOT sufficient on its own: vpk strips
+      # the prerelease tag when deriving the MSI ProductVersion (0.8.37-test.482 -> 0.8.37.0),
+      # and MSI ignores the fourth field when comparing, so no MSI-based scheme can encode this
+      # without colliding with the release version line. That is why the MSI is dropped below.
       - name: Determine package version
         id: version
         shell: pwsh
         run: |
-          $version = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath '/Project/PropertyGroup/Version').Node.InnerText
-          if (-not $version) { throw "Could not read <Version> from QuickMail/QuickMail.csproj." }
+          $base = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath '/Project/PropertyGroup/Version').Node.InnerText
+          if (-not $base) { throw "Could not read <Version> from QuickMail/QuickMail.csproj." }
+          $version = "$base-test.${{ github.run_number }}.${{ github.run_attempt }}"
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Package version: $version"
+          Write-Host "Package version: $version   (base $base, run ${{ github.run_number }} attempt ${{ github.run_attempt }}, commit ${{ github.sha }})"
 
-      # Identical vpk pack invocation to the release workflow so the test installer
-      # behaves exactly like a shipped one (wizard pages, per-user install, WebView2
-      # on demand). Only difference: no `vpk download github` beforehand, so this is a
-      # full package with no delta.
       # --- Code signing (Azure Artifact Signing via GitHub OIDC) --------------
       - name: Azure login (code signing)
         uses: azure/login@v3
@@ -149,6 +179,23 @@ jobs:
           } | ConvertTo-Json
           [System.IO.File]::WriteAllText("$env:GITHUB_WORKSPACE\signing-metadata.json", $json)
 
+      # Near-identical vpk pack invocation to the release workflow, so the test installer runs
+      # the same per-user install and WebView2-on-demand path a shipped one does. Differences:
+      # no `vpk download github` beforehand, so this is a full package with no delta — and no
+      # --msi, so this ships Velopack's own Setup.exe instead.
+      #
+      # Dropping the MSI is the other half of the versioning fix above. Setup.exe creates no
+      # Windows Installer product registration at all, so it cannot leave an Add/Remove entry
+      # behind, cannot register beside an earlier test build, and cannot shadow a real install.
+      # It honours the SemVer ordering that makes -test.<run_number>.<run_attempt> take effect,
+      # which the MSI cannot: vpk strips the prerelease tag when deriving ProductVersion. The
+      # release workflow keeps --msi: releases always bump the version, so the Upgrade row
+      # works there as designed, and the MSI is what managed deployment needs.
+      #
+      # What that costs: Setup.exe is one-click, so the --inst* wizard pages below (welcome,
+      # license acceptance, conclusion) are not shown by this artifact — quickmail.yml ships
+      # the MSI for exactly that reason. They stay on the command line so the two invocations
+      # do not drift, and so restoring --msi needs no other edit.
       - name: Pack Velopack installer
         shell: pwsh
         run: |
@@ -161,28 +208,29 @@ jobs:
           # machine. See docs/planning/windows-arm64-support-plan.md.
           $archArgs = @()
           if ($arch -eq 'arm64') { $archArgs = @('--runtime', 'win-arm64', '--channel', 'win-arm64') }
-          # --azureTrustedSignFile signs the app binaries, Velopack Update/Setup, and the MSI.
+          # --azureTrustedSignFile signs the app binaries and Velopack Update/Setup.
           vpk pack --packId QuickMail --packVersion $version --packDir publish `
             --mainExe QuickMail.exe --packTitle QuickMail --packAuthors "Kelly Ford" `
             --shortcuts StartMenuRoot --outputDir installer/Output/Releases `
             --framework webview2 `
             --azureTrustedSignFile "$env:GITHUB_WORKSPACE\signing-metadata.json" `
-            --msi --instLocation PerUser `
+            --instLocation PerUser `
             --instWelcome installer/velopack/welcome.txt `
             --instLicense installer/velopack/license.txt `
             --instConclusion installer/velopack/conclusion.txt @archArgs
           if ($LASTEXITCODE -ne 0) { throw "vpk pack failed with exit code $LASTEXITCODE." }
-          # vpk emits the MSI with no version in the name, and the exact name varies with
-          # the channel — rename whichever single .msi landed rather than assuming it, so
-          # a naming change in vpk fails loudly here instead of silently shipping nothing.
-          $msi = @(Get-ChildItem installer/Output/Releases/*.msi)
-          if ($msi.Count -ne 1) { throw "Expected exactly one .msi, found $($msi.Count): $($msi.Name -join ', ')" }
+          # vpk emits Setup.exe with no version in the name, and the exact name varies with
+          # the channel — rename whichever single Setup landed rather than assuming it, so a
+          # naming change in vpk fails loudly here instead of silently shipping nothing.
+          $setup = @(Get-ChildItem installer/Output/Releases/*Setup.exe)
+          if ($setup.Count -ne 1) { throw "Expected exactly one *Setup.exe, found $($setup.Count): $($setup.Name -join ', ')" }
           $suffix = if ($arch -eq 'arm64') { 'win-arm64' } else { 'win' }
-          Write-Host "vpk emitted $($msi[0].Name); renaming to QuickMail-$version-$suffix.msi"
-          Rename-Item $msi[0].FullName "QuickMail-$version-$suffix.msi"
-          # Record the full asset set for this channel. The release workflow will publish
-          # both channels into one GitHub release, so these names must not collide across
-          # architectures — this listing is how that gets verified before Phase 3 lands.
+          Write-Host "vpk emitted $($setup[0].Name); renaming to QuickMail-$version-$suffix-Setup.exe"
+          Rename-Item $setup[0].FullName "QuickMail-$version-$suffix-Setup.exe"
+          # Guard the version fix itself: an .msi here means --msi came back, and with it the
+          # duplicate-product failure this workflow exists to avoid.
+          $msi = @(Get-ChildItem installer/Output/Releases/*.msi -ErrorAction SilentlyContinue)
+          if ($msi.Count -ne 0) { throw "Unexpected .msi in test-build output: $($msi.Name -join ', '). Test builds ship Setup.exe only — see the versioning note above." }
           Write-Host "--- Velopack output ($arch) ---"
           Get-ChildItem installer/Output/Releases | Select-Object -ExpandProperty Name
 
@@ -203,9 +251,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: QuickMail-${{ steps.version.outputs.version }}-${{ matrix.arch }}-installer
-          # The MSI is the full installer; the portable exe is bundled for convenience.
+          # Setup.exe is the full installer; the portable exe is bundled for convenience.
           path: |
-            installer/Output/Releases/QuickMail-*.msi
+            installer/Output/Releases/QuickMail-*-Setup.exe
             publish/QuickMail.exe
           if-no-files-found: error
           retention-days: 14
