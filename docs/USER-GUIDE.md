@@ -19,6 +19,7 @@ QuickMail is a keyboard and screen reader friendly email program for Windows. Gm
 - [Mail Rules](#mail-rules)
 - [Saved Views](#saved-views)
 - [Calendar](#calendar)
+- [What Syncs and What Doesn't](#what-syncs-and-what-doesnt)
 - [Notifications](#notifications)
 - [Tools Menu](#tools-menu)
 - [Connection Diagnostics](#connection-diagnostics)
@@ -791,6 +792,22 @@ QuickMail can fill the address book from the contacts already stored in your Mic
 
 Contact sync is one-directional and read-only in this release: no changes are written back. For Microsoft and Google it also pulls the people you've recently emailed; iCloud brings in your saved contacts (its CardDAV service has no separate "recent recipients" list).
 
+### Changing or Deleting a Synced Contact
+
+Because sync only runs one way, **the address book is not the place to change or remove a contact that came from an account.** With a synced contact selected, the **Edit** and **Delete** buttons are unavailable, and the matching Command Palette entries do nothing. This is deliberate: a deletion made here could not be sent to your account, so the contact would simply reappear the next time QuickMail refreshed — the change would look like it worked and then quietly undo itself.
+
+To change or remove a synced contact for good, edit it where it actually lives, then bring the change back:
+
+1. Open the account's own contacts — **Google Contacts** (contacts.google.com), **Outlook / Microsoft 365 People**, or **iCloud Contacts** — and make the change there.
+2. Return to QuickMail's address book and press the **Sync Now** button (or run **Sync Contacts Now** from the Command Palette).
+3. The list is rebuilt from the account, so an edited contact shows its new details and a deleted one is gone.
+
+Without step 2 the address book keeps the old copy until the next background refresh, which happens about twice a day.
+
+**"Other contacts" from Google.** Google keeps two separate lists: the contacts you saved, and **Other contacts** — addresses Google collected automatically from people you have emailed. QuickMail pulls both, which is why the address book can hold far more people than you ever saved. Removing one of these is the same two-step job as above, but do it in the **Other contacts** section of Google Contacts specifically; deleting from your saved contacts does not touch it. Google also re-collects an address if you email that person again.
+
+**If you only want them out of QuickMail**, and not out of the account, clear **Sync contacts from this account** for that account in **File → Manage Accounts…**. That drops every contact synced from it, leaving the ones you added yourself alone. Nothing on the account is changed.
+
 ### Groups
 
 Groups let you write to multiple people with a single address. Select a group in the address book and press Enter to expand it and see its members. To compose to a group, type the group name in the To or Cc field and select it from autocomplete.
@@ -824,7 +841,9 @@ Tab moves through the address list (one Tab stop for the whole list — arrow ke
 
 ## Flags
 
-Flags mark messages for follow-up and sync across all mail clients.
+Flags mark messages for follow-up.
+
+The **built-in flag** is the standard one your mail server already understands, so setting or clearing it in QuickMail shows up in every other mail program you use, and a message flagged elsewhere arrives in QuickMail already flagged. **Named flags you create yourself are stored on this computer only** — the name and color mean nothing to the server, so another program will not see them, and neither will QuickMail on a second computer. See [What Syncs and What Doesn't](#what-syncs-and-what-doesnt).
 
 ### Basic Flagging
 
@@ -1051,6 +1070,28 @@ What you can change depends on where the appointment lives:
 
 If saving a change to an online account ever fails, QuickMail saves your appointment to the Local Calendar instead so your work is never lost, and tells you it did.
 
+### Events your account will not let QuickMail change
+
+Some events on a connected calendar are managed by the provider itself, not by you, and the provider refuses to let **any** outside mail or calendar program edit or delete them. Google is the one you are most likely to meet. Its protected events are:
+
+- **Birthdays** — generated from your Google Contacts, usually titled "Happy birthday!"
+- **Out of office**
+- **Working location**
+- **Focus time**
+- **Events Gmail created for you** from a message, such as a flight, hotel, or delivery.
+
+Pressing **Delete** or saving an edit on one of these fails, and QuickMail currently reports it only as **"Could not update your online calendar."** The event is not damaged and nothing is lost — Google simply declined the change. A clearer message naming the reason is planned.
+
+What to do instead, depending on the event:
+
+- **Birthday** — it follows the contact, so change or clear the birthday on that person in **Google Contacts**. To stop seeing birthdays altogether, hide the **Birthdays** calendar in Google Calendar's settings; QuickMail will stop showing them at the next sync.
+- **Out of office, Working location, Focus time** — create, change, or remove these in **Google Calendar** on the web or in its mobile app, where the special editors for them live.
+- **An event Gmail created** — open the original message in Gmail and remove it there, or turn the feature off in Google Calendar's settings under events from Gmail.
+
+After making the change on the provider's side, press **F5** in the calendar (or run **Sync Calendars Now**) to pull the corrected events down.
+
+Repeating events from a connected calendar, and meeting invitations, are read-only in QuickMail for a different reason — QuickMail does not write those back yet. In those cases QuickMail tells you so before anything is attempted.
+
 ### Reminders
 
 Reminders are **off by default**. To turn them on, open **Settings → General**, check **Remind me before appointments**, and set the **Minutes before** value (10 by default). When a reminder is due, QuickMail shows a Windows notification and announces it, telling you how long until the appointment and where it is. Each reminder fires once per session.
@@ -1102,6 +1143,7 @@ To set expectations clearly:
 - Work in online mode — it needs the local cache.
 - Send **repeating** appointments to an online account (repeating appointments are saved to the Local Calendar).
 - Edit or delete **repeating** events that came from an online calendar (repeating server events are read-only).
+- Edit or delete the events your provider manages for you — Google birthdays, out-of-office, working location, focus time, and events Gmail created from a message. Google blocks this for every outside program, not just QuickMail; see [Events your account will not let QuickMail change](#events-your-account-will-not-let-quickmail-change).
 - Connect calendars from generic CalDAV servers other than iCloud (Fastmail, Nextcloud, and the like).
 - Subscribe to public `.ics` calendar feeds (holidays, sports schedules, and the like).
 - Offer multiple named calendars, calendar colors, per-appointment reminder times, or reminder snoozing.
@@ -1131,6 +1173,33 @@ These work while the calendar list (or, where noted, the Month grid) has focus:
 | `F6` | Move to the next pane |
 
 Export as `.ics`, and the invitation responses (Accept, Tentative, Decline), are available from the command palette (**Ctrl+Shift+P**) and have no default key until you assign one.
+
+---
+
+## What Syncs and What Doesn't
+
+QuickMail talks to your accounts for three kinds of information — mail, contacts, and calendar — and it treats each one differently. Everything else QuickMail knows about is stored on this computer and never leaves it.
+
+The direction matters, so it is worth being blunt about it: a **two-way** item is safe to change in QuickMail, and the change reaches your account and every other program you read mail with. A **download only** item is a copy — changing it in QuickMail either is not offered, or would be undone the next time QuickMail refreshed. **This computer only** means exactly that: reinstall Windows or move to a second machine and you start over.
+
+| What | Direction | What that means for you |
+|------|-----------|--------------------------|
+| **Messages** | Two-way | Read and unread, moving between folders, deleting, and sending all go to the server. Another program sees the same state. |
+| **The built-in flag** | Two-way | Set or cleared in QuickMail, it shows up everywhere else, and a message flagged elsewhere arrives here already flagged. |
+| **Named flags you create** | This computer only | The name and color exist in QuickMail alone. Other programs, and QuickMail on another computer, will not see them. |
+| **Contacts** | Download only | QuickMail reads your Microsoft, Google, and iCloud contacts and never writes back. Synced contacts cannot be edited or deleted in the address book — [make the change at the account and re-sync](#changing-or-deleting-a-synced-contact). |
+| **Calendar events** | Mostly two-way | Single (non-repeating) events on a connected calendar can be created, edited, and deleted from QuickMail. Repeating events, meeting invitations, and the events your provider manages for you are [download only](#events-your-account-will-not-let-quickmail-change). |
+| **Meeting responses** | Two-way | Accept, Tentative, and Decline are emailed to the organizer and update your calendar. |
+| **Mail rules** | This computer only | Rules run inside QuickMail as mail arrives. They are not server rules — your provider does not know about them, and they do nothing while QuickMail is closed. |
+| **Everything else in QuickMail** | This computer only | Settings, themes, keyboard customizations, signatures, message templates, saved views, message-list field choices, contact groups, and the contacts you typed in yourself. |
+
+### If something you changed came back
+
+That is nearly always a download-only item. QuickMail refreshed from the account, the account still had the old version, and the old version won. The fix is the same in every case: make the change where the item actually lives — your account's own contacts or calendar on the web — and then refresh QuickMail (**Sync Now** in the address book, **F5** in the calendar).
+
+### Moving to a new computer
+
+Your mail, your contacts, and your connected calendars come back on their own once you add your accounts again, because they live on the server. The **This computer only** row above does not: rules, flags you named, templates, signatures, saved views, and your settings are stored in QuickMail's data folder (`%APPDATA%\QuickMail`) and need to be copied across if you want them.
 
 ---
 
