@@ -6048,7 +6048,7 @@ public partial class MainWindow : Window
                 selectedMessagesForTest: selectedMessages,
                 configService: _configService);
             rulesVm.RunOnExistingRequested += RunClientRulesOnExisting;
-            dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders, serverRulesVm: null);
+            dialog = new RulesManagerWindow(rulesVm, accounts, _vm.CachedFolders);
         }
 
         _rulesWindow = dialog;
