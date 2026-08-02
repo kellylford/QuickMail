@@ -96,6 +96,30 @@ public class GraphClientTests
     }
 
     [Fact]
+    public async Task RequestCount_ConcurrentScopes_DoNotBleedIntoEachOther()
+    {
+        // Justifies AsyncLocal over a shared static: two independent flows counting at the same time
+        // must each see only their own requests. A global counter would report the sum (8) in both.
+        var client = Client(new SequenceHandler());   // empty queue → every response defaults to 200 OK
+        var ct = TestContext.Current.CancellationToken;
+
+        async Task<long> ScopedRequests(int n)
+        {
+            var box = GraphClient.BeginRequestCount();
+            for (var i = 0; i < n; i++)
+                await client.GetAsync<JsonElement>(Account(), "/me", ct);
+            GraphClient.EndRequestCount();
+            return box.Value;
+        }
+
+        var counts = await Task.WhenAll(Task.Run(() => ScopedRequests(3)), Task.Run(() => ScopedRequests(5)));
+
+        Assert.Contains(3L, counts);
+        Assert.Contains(5L, counts);
+        Assert.DoesNotContain(8L, counts);
+    }
+
+    [Fact]
     public async Task HonorsRetryAfterHeader_AndStillSucceeds()
     {
         var handler = new SequenceHandler(Resp((HttpStatusCode)429, retryAfter: TimeSpan.Zero), Resp(HttpStatusCode.OK));

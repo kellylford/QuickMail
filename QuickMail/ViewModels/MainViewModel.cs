@@ -2342,8 +2342,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                 // Time the whole cycle body — reconcile + snapshot + every folder — because the question
                 // #462 asks is "does one full cycle run longer than the interval?", and that's the whole
-                // loop, not just the folder fetches. Start above ReconcileCurrentFolderAsync.
-                var sweepTimer = System.Diagnostics.Stopwatch.StartNew();
+                // loop, not just the folder fetches. Start above ReconcileCurrentFolderAsync. Debug-only,
+                // so a normal run pays nothing at the cycle level either.
+                var sweepTimer = LogService.DebugMode ? System.Diagnostics.Stopwatch.StartNew() : null;
 
                 // Reconcile the folder the user is currently viewing (#366). It's the one folder with
                 // no other live removal signal — a custom folder (any backend) the user is staring at
@@ -2379,7 +2380,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     }
                 });
 
-                var sweepAccounts = jobs.Select(j => j.Account.Id).Distinct().Count();
                 var sweepNew = 0;
 
                 foreach (var (account, folder, isInbox) in jobs)
@@ -2432,13 +2432,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     catch (OperationCanceledException) { break; }
                 }
 
-                sweepTimer.Stop();
                 // Per-cycle summary at Debug (a measurement aid, not always-on telemetry; #462). The
                 // 250 ms inter-folder pace is deliberate sleep, not work, so it's named separately —
                 // otherwise the total reads as more cost than it is.
-                LogService.Debug(
-                    $"Sweep cycle {sweepCycle}: {jobs.Count} folder(s) / {sweepAccounts} account(s), " +
-                    $"{sweepTimer.Elapsed.TotalSeconds:F1}s total ({jobs.Count * 0.250:F1}s paced), {sweepNew} new.");
+                if (sweepTimer != null)
+                {
+                    sweepTimer.Stop();
+                    var sweepAccounts = jobs.Select(j => j.Account.Id).Distinct().Count();
+                    LogService.Debug(
+                        $"Sweep cycle {sweepCycle}: {jobs.Count} folder(s) / {sweepAccounts} account(s), " +
+                        $"{sweepTimer.Elapsed.TotalSeconds:F1}s total ({jobs.Count * 0.250:F1}s paced), {sweepNew} new.");
+                }
                 sweepCycle++;
             }
         }
