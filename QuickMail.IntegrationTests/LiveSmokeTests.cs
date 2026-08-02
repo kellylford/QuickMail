@@ -49,27 +49,35 @@ public sealed class LiveSmokeTests
         var runId = Environment.GetEnvironmentVariable("QUICKMAIL_LIVE_RUN_ID") ?? "local";
         var subject = $"[quickmail-live-smoke {runId} {Guid.NewGuid():N}]";
 
-        var smtp = new SmtpService(new NoOpOAuthService(), new NoOpGraphSendService());
-        await smtp.SendAsync(new ComposeModel
-        {
-            AccountId = account.Id,
-            To = account.Username,
-            Subject = subject,
-            Body = "Automated live smoke round-trip. Deleted by the test that sent it.",
-        }, account, password, ct);
-
         using var imap = new ImapMailService(new NoOpOAuthService());
         await imap.ConnectAsync(account, password, ct);
         try
         {
-            // Best-effort sweep of leftovers from earlier runs (a message that arrived after a
-            // previous run's poll window lingers otherwise — inert, but no reason to keep it).
+            // Sweep leftovers from earlier runs BEFORE sending. The ordering is load-bearing.
+            //
+            // This matches on the shared "[quickmail-live-smoke" prefix, which THIS run's subject
+            // also carries. Sweeping after the send therefore races local delivery: on a server
+            // delivering to its own mailbox, the message can land before the IMAP connect
+            // completes, so the sweep permanently deletes the very message the test is about to
+            // wait for. The test then polls the full 90 s for mail it destroyed itself and fails
+            // with a bare "Value is null" — and because the delete is permanent, the evidence is
+            // gone from every folder, which makes it read like the mail was never delivered.
+            // Sweeping first means our own message does not exist yet: no exclusion filter, no race.
             var stale = (await imap.GetMessageSummariesAsync(account.Id, "INBOX", 50, ct))
                 .Where(s => s.Subject.StartsWith("[quickmail-live-smoke", StringComparison.Ordinal))
                 .Select(s => s.MessageId)
                 .ToList();
             if (stale.Count > 0)
                 await imap.PermanentlyDeleteBatchAsync(account.Id, "INBOX", stale, ct);
+
+            var smtp = new SmtpService(new NoOpOAuthService(), new NoOpGraphSendService());
+            await smtp.SendAsync(new ComposeModel
+            {
+                AccountId = account.Id,
+                To = account.Username,
+                Subject = subject,
+                Body = "Automated live smoke round-trip. Deleted by the test that sent it.",
+            }, account, password, ct);
 
             // Real servers deliver in seconds-to-a-minute; poll generously but boundedly.
             var messageId = await PollForSubjectAsync(imap, account.Id, subject, ct);
