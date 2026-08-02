@@ -392,7 +392,7 @@ QuickMail now has a build for PCs with an ARM processor — the Snapdragon X mod
 
 Nothing changes for anyone on a regular PC, and nothing changes for you automatically: automatic updates stay on whichever version you installed, and QuickMail will never move you across on its own.
 
-If you are on an ARM PC running the regular build, QuickMail says so once, and the **Help** menu keeps a **Get the ARM Version** entry that opens the download page. That entry appears only on an ARM PC running the regular build — which makes it the way to check where you stand. Once you are on the ARM version, it is gone.
+If you are on an ARM PC running the regular build, QuickMail says so once, and the **Help** menu keeps a **Get the ARM Version** entry that opens the switching instructions in the user guide, where the download is linked. That entry appears only on an ARM PC running the regular build — which makes it the way to check where you stand. Once you are on the ARM version, it is gone.
 
 **Switching is a manual uninstall and reinstall, and the uninstall is not optional:**
 
