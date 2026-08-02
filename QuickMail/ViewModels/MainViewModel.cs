@@ -7724,7 +7724,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // States the benefit and the action, and does not imply the running build is broken —
         // it works, it is simply emulated.
+        //
+        // The uninstall-first instruction is load-bearing, not politeness. Both architectures
+        // pack from one packId, so their installers share an MSI UpgradeCode but get a fresh
+        // random ProductCode per pack, and the Upgrade row's VersionMax is exclusive. Installing
+        // the ARM build over an x64 build *of the same version* therefore matches neither the
+        // upgrade nor the downgrade row: Windows Installer registers it as a second, unrelated
+        // product beside the first, and Velopack — seeing that version already staged — leaves
+        // the existing x64 binary in current\. The user is still emulated, and because
+        // NativeArmNoticeVersion was stamped above, this notice never says so again. Uninstalling
+        // first is what keeps the switch from failing silently.
         Announce("This PC has an ARM processor, and QuickMail has an ARM version that runs faster on it. " +
+                 "Switching means uninstalling QuickMail first, then installing the ARM version. " +
                  "See Get the ARM Version in the Help menu.", AnnouncementCategory.Result);
     }
 
