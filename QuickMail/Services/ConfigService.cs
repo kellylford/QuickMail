@@ -227,6 +227,11 @@ public class ConfigService : IConfigService
                         if (int.TryParse(value, out var msp))
                             config.MailSyncPollMinutes = msp <= 0 ? 0 : Math.Clamp(msp, 1, 120);
                         break;
+                    case "mailsweepnoninboxeveryncycles":
+                        // Non-Inbox folders are swept every Nth cycle (#462). Clamped to 1–60.
+                        if (int.TryParse(value, out var msni))
+                            config.MailSweepNonInboxEveryNCycles = Math.Clamp(msni, 1, 60);
+                        break;
                     case "appearancethemeid":
                         if (!string.IsNullOrWhiteSpace(value)) config.AppearanceThemeId = value;
                         break;
@@ -419,6 +424,12 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Periodically re-syncs inboxes so new mail still arrives if the server never");
         sb.AppendLine("# pushes or the IDLE connection dies, and read/flag changes from other clients");
         sb.AppendLine("# reconcile. Default 5. Set to 0 to disable and rely on IDLE alone. Values: 0 or 1-120.");
+        sb.AppendLine();
+
+        sb.AppendLine($"MailSweepNonInboxEveryNCycles = {Math.Clamp(config.MailSweepNonInboxEveryNCycles, 1, 60)}");
+        sb.AppendLine("# How often the periodic sweep visits NON-Inbox folders, as a multiple of the");
+        sb.AppendLine("# sync cycle. The Inbox is swept every cycle; non-Inbox folders every Nth to keep a");
+        sb.AppendLine("# deep folder tree from making each cycle expensive. Default 3. 1 = every cycle. Values: 1-60.");
         sb.AppendLine();
 
         sb.AppendLine($"AppearanceThemeId = {config.AppearanceThemeId}");

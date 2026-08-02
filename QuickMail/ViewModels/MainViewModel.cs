@@ -2328,6 +2328,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
+            long sweepCycle = 0;   // #462: non-Inbox folders are swept only every Nth cycle
             while (!ct.IsCancellationRequested)
             {
                 var minutes = _configService.Load().MailSyncPollMinutes;
@@ -2351,13 +2352,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // anyone who chose it to avoid exactly that (metered or locked-down networks).
                 await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
 
-                // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox
-                // folders have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the
-                // Inbox — so mail a server-side rule files into a custom folder at delivery is invisible
-                // until the folder is opened or the app restarts (#366). This periodic sweep syncs each
-                // folder fully (fetch new + reconcile deletions). Accounts/_cachedFolders are
-                // UI-thread-owned, so snapshot on the UI thread. (The Inbox is included but cheap —
-                // already kept current by the live watcher, so it usually has nothing new to fetch.)
+                // Snapshot the folders to sweep this cycle. Non-Inbox folders have no live watcher —
+                // Graph's delta poll and IMAP's IDLE both cover only the Inbox — so mail a server-side
+                // rule files into a custom folder at delivery is invisible until the folder is opened or
+                // the app restarts (#366). This periodic sweep syncs each folder fully (fetch new +
+                // reconcile deletions). The Inbox is swept EVERY cycle (cheap — already kept current by
+                // the live watcher, and for a shared mailbox with no watcher it's the folder that most
+                // needs freshness); NON-Inbox folders — which drive the cost and tolerate a little
+                // latency — are swept only every Nth cycle (#462, MailSweepNonInboxEveryNCycles; the
+                // first sweep after launch includes them). Accounts/_cachedFolders are UI-thread-owned,
+                // so snapshot on the UI thread.
+                var everyN = Math.Max(1, _configService.Load().MailSweepNonInboxEveryNCycles);
+                var includeNonInbox = (sweepCycle % everyN) == 0;
                 var jobs = new List<(AccountModel Account, MailFolderModel Folder, bool IsInbox)>();
                 _ui.Invoke(() =>
                 {
@@ -2369,10 +2375,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             if (folder.ExcludeFromAllMail) continue;
                             var isInbox = folder.Kind == Models.SpecialFolderKind.Inbox ||
                                           string.Equals(folder.FullName, "INBOX", StringComparison.OrdinalIgnoreCase);
+                            if (!isInbox && !includeNonInbox) continue;   // throttled this cycle (#462)
                             jobs.Add((account, folder, isInbox));
                         }
                     }
                 });
+
+                // Instrument the sweep so its real cost is visible on a large mailbox (#462): if one
+                // full cycle runs longer than the interval, the sweep is effectively continuous and the
+                // poll setting stops meaning much. Logged at Info (one line per cycle).
+                var sweepTimer = System.Diagnostics.Stopwatch.StartNew();
+                var sweepAccounts = jobs.Select(j => j.Account.Id).Distinct().Count();
+                var sweepNew = 0;
 
                 foreach (var (account, folder, isInbox) in jobs)
                 {
@@ -2383,6 +2397,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         // deletions (MessagesRemoved). Runs off the UI thread; the events marshal back.
                         var incoming = await _syncService.SyncFolderFullAsync(account, folder, ct)
                             .ConfigureAwait(false);
+                        sweepNew += incoming.Count;
                         if (incoming.Count > 0)
                             LogService.Debug($"Sweep sync [{account.AccountLabel}]/{folder.FullName}: {incoming.Count} new.");
 
@@ -2404,6 +2419,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); }
                     catch (OperationCanceledException) { break; }
                 }
+
+                sweepTimer.Stop();
+                LogService.Log(
+                    $"Sweep cycle {sweepCycle}: {jobs.Count} folder(s) / {sweepAccounts} account(s) in " +
+                    $"{sweepTimer.Elapsed.TotalSeconds:F1}s, {sweepNew} new" +
+                    (includeNonInbox ? "." : " (Inbox-only this cycle)."));
+                sweepCycle++;
             }
         }
         catch (OperationCanceledException) { }
