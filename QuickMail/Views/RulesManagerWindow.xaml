@@ -308,8 +308,7 @@
                      on demand; IsTabStop=False keeps it out of the Tab order. -->
                 <TextBlock x:Name="ServerRulesStatusText" Text="{Binding StatusText}" Margin="0,0,0,6"
                            Focusable="True" KeyboardNavigation.IsTabStop="False"
-                           AutomationProperties.Name="{Binding StatusText}"
-                           AutomationProperties.LiveSetting="Polite"/>
+                           AutomationProperties.Name="{Binding StatusText}"/>
 
                 <WrapPanel Orientation="Horizontal" Margin="0,0,0,6">
                     <Button Content="New" Command="{Binding CreateRuleCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="New server rule"/>
@@ -376,8 +375,7 @@
             <StatusBarItem>
                 <TextBlock x:Name="MainStatusText" Text="{Binding StatusText}"
                            Focusable="True" KeyboardNavigation.IsTabStop="False"
-                           AutomationProperties.Name="{Binding StatusText}"
-                           AutomationProperties.LiveSetting="Polite"/>
+                           AutomationProperties.Name="{Binding StatusText}"/>
             </StatusBarItem>
         </StatusBar>
     </Grid>
