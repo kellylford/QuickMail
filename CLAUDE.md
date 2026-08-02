@@ -27,7 +27,9 @@ Startup flags: `/debug` enables verbose file logging. `--profileDir <path>` over
 
 ## Tests
 
-xUnit 2.9.3 with `Xunit.StaFact` for WPF STA-thread tests.
+xUnit v3 (`xunit.v3` 3.2.2) with `Xunit.StaFact` 3.0.13 for WPF STA-thread tests. Note the v3 API
+differences from v2: async tests take `TestContext.Current.CancellationToken` (xUnit1051), and
+`Assert.Skip`/`SkipWhen` replace the v2 skip patterns.
 
 ```bat
 dotnet test QuickMail.Tests/QuickMail.Tests.csproj -c Release
@@ -39,6 +41,8 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 - **ViewModelConstructionTests** — VM instantiation with stub services (catches init crashes)
 - **XamlParseTests** — XAML loads without `XamlParseException` (requires STA thread via `[StaFact]`)
 - **LocalStoreServiceTests** — SQLite round-trip tests
+  - ⚠ Those three classes live in **`UnitTest1.cs`** (the never-renamed default file), not in files
+    matching their class names. Search by class name, not filename.
 - **SettingsViewModelTests** — settings persistence and hotkey binding logic
 - **CommandRegistryTests** / **ViewManagerHotkeyIntegrationTests** — command registration and hotkey override
 - **RuleServiceTests** / **RulesManagerViewModelTests** — mail rule matching and actions
@@ -46,6 +50,12 @@ All tests use `StubServices.cs` stub implementations to avoid real network and c
 - **ConversationBuilderTests** / **SenderGroupBuilderTests** — grouping utilities
 - **SavedViewsTests** / **ViewManagerViewModelTests** — saved-view persistence and management
 - **TemplateServiceTests** / **TemplatePickerViewModelTests** — message template CRUD
+- **TabSessionModelTests** / **MainViewModelTabTests** — tab titles and tab management. The tab tests
+  cover Tab mode and reading-pane mode separately: they genuinely diverge (in Tab mode a permanent
+  `MessageListTabViewModel` pins index 0, the strip never hides, and it is the fallback when the last
+  message tab closes), and conflating them is the likely regression.
+- **ComposeWindowTitleTests** / **WindowingPreferencesTests** — compose window title derivation, and
+  `MessageOpenMode` / `ConfirmCloseTabWithUnsaved` round-tripping through `config.ini`
 - **ProfileContextTests** — profile directory validation
 - **IcsModelTests**, **MessageFilterTests**, **TutorialViewModelTests**, **SessionFeaturesTests**, **BatchObservableCollectionTests**
 - **TypeAheadWiringTests** — deterministic guards that every WPF `TextSearch` list declares a `TextSearch.TextPath` and that the path resolves to a real property on its item type. Register any new type-ahead list in its `Sites` table; the suite fails if you don't.
@@ -110,6 +120,13 @@ Every service has a matching interface in `Services/I*.cs`. See `docs/ARCHITECTU
 - **Logging**: `LogService` appends to `quickmail.log`; `LogService.Debug()` writes only when `/debug` is present. Avoid logging credentials or unnecessary PII.
 - **Inclusive language in documentation and UI text**: Use verbs like "activate", "select", "choose", or "press" instead of "click".
 - **Screen reader references**: Do not name a specific screen reader product (NVDA, JAWS, VoiceOver, Narrator, etc.) in documentation, release notes, commit messages, or UI text unless the content is specific to that product. Use the generic term "screen readers" instead.
+- **Commit subjects starting `#NNN:` are silently destroyed by rebase.** The house convention
+  (`#333: remove the dead ViewModel`) collides with git's default commit-message cleanup, which
+  strips lines beginning with `#` as comments. A `git rebase --continue` therefore drops the whole
+  subject line and promotes the body's first line to subject — losing both the summary and the issue
+  reference, with no warning. Seen for real on PR #467. Either amend with `--cleanup=verbatim`
+  afterwards, or write the subject as `Fix #333: …` / `#333 —` so it does not start with `#`. Always
+  check `git log --oneline -1` after rebasing a commit that uses this form.
 
 ### Screen Reader Announcement Infrastructure
 

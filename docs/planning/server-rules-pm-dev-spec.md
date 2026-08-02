@@ -273,7 +273,16 @@ public interface IServerRuleService
 The window is **per-account**, so the VMs compose around a selected account rather than around two categories.
 
 - **`RulesWindowViewModel`** (new) — owns the **account selector** (all accounts, no "All accounts" entry) and, for the selected account, the combined rule list plus command routing. It applies **D3** — deciding whether a new or edited rule is a server rule or a client rule — and delegates persistence to the matching service. It holds no rule-matching logic of its own.
-- **`ServerRulesViewModel`** (new — *already implemented*) — the Graph side: `ObservableCollection<ServerRuleModel>`, selection, and `Refresh` / `CreateRule` / `EditRule` / `ToggleEnabled` / `MoveUp` / `MoveDown` / `DeleteRule`. It is **already per-account with no "All accounts" entry**, so this revision requires no change to it. No `MessageBox`/`Window` references (MVVM rule): delete confirmation and the admin-directed `403` are raised as events the View handles (`ConfirmDeleteRequested`, `WriteBlockedByPermission`).
+- **`ServerRulesViewModel`** — ⚠ **superseded and deleted (#467, 2026-08-02).** This described the
+  two-section transitional design, where a read-only server-rules "peek" sat inside the client Rules
+  Manager. The unified single-list manager (`UnifiedRulesWindow` / `UnifiedRulesViewModel`) replaced
+  it, and the VM was dead from that point on — `MainWindow` always constructed `RulesManagerWindow`
+  with `serverRulesVm: null`, so the whole branch was unreachable. Both it and its tests are gone.
+  Read the paragraph below as history, not as a description of the code.
+  <br>*(Original text: the Graph side — `ObservableCollection<ServerRuleModel>`, selection, and
+  `Refresh` / `CreateRule` / `EditRule` / `ToggleEnabled` / `MoveUp` / `MoveDown` / `DeleteRule`,
+  per-account with no "All accounts" entry, raising `ConfirmDeleteRequested` /
+  `WriteBlockedByPermission` as events for the View to handle.)*
 - **`ServerRuleEditorViewModel`** (new — *already implemented*) — create/edit form over the editable subset, with validation (name required; at least one action; folder required when Move to folder is chosen).
 - **`RulesManagerViewModel`** (existing) — the client side. **Changes required by this revision:** drop the "All accounts" entry from `AccountOptions`, and scope its list to the selected account (D1).
 
