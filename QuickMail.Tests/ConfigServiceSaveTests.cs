@@ -158,13 +158,13 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
-    public void MailSweepNonInboxEveryNCycles_DefaultsTo3_AndRoundTrips()
+    public void MailSweepNonInboxEveryNCycles_DefaultsTo1_AndRoundTrips()
     {
         var profile = MakeTempProfile();
         var service = new ConfigService(profile);
 
-        // #462: default is every 3rd cycle for non-Inbox folders.
-        Assert.Equal(3, service.Load().MailSweepNonInboxEveryNCycles);
+        // #462: default is 1 (every cycle, no throttle — unchanged sweep behavior).
+        Assert.Equal(1, service.Load().MailSweepNonInboxEveryNCycles);
 
         var config = service.Load();
         config.MailSweepNonInboxEveryNCycles = 6;

@@ -428,8 +428,9 @@ public class ConfigService : IConfigService
 
         sb.AppendLine($"MailSweepNonInboxEveryNCycles = {Math.Clamp(config.MailSweepNonInboxEveryNCycles, 1, 60)}");
         sb.AppendLine("# How often the periodic sweep visits NON-Inbox folders, as a multiple of the");
-        sb.AppendLine("# sync cycle. The Inbox is swept every cycle; non-Inbox folders every Nth to keep a");
-        sb.AppendLine("# deep folder tree from making each cycle expensive. Default 3. 1 = every cycle. Values: 1-60.");
+        sb.AppendLine("# sync cycle. The Inbox is swept every cycle; non-Inbox folders every Nth. Default 1");
+        sb.AppendLine("# (every cycle, no throttle). Raise it (e.g. 3) to reduce cost on a deep folder tree");
+        sb.AppendLine("# after checking the 'Sweep cycle' log lines. Values: 1-60.");
         sb.AppendLine();
 
         sb.AppendLine($"AppearanceThemeId = {config.AppearanceThemeId}");
