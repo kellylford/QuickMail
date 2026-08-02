@@ -110,13 +110,30 @@ public sealed class LiveSmokeTests
             ImapHost    = host!,
             ImapPort    = ParseOr("LIVE_IMAP_PORT", 993),
             ImapUseSsl  = ParseOr("LIVE_IMAP_SSL", 1) == 1,
-            SmtpHost    = Environment.GetEnvironmentVariable("LIVE_SMTP_HOST") ?? host!,
+            // EnvOrNull, not a bare ??: the workflow maps every optional LIVE_* secret into env
+            // unconditionally, so an unset secret arrives as an EMPTY STRING rather than absent.
+            // `?? host` never fired, and SmtpHost went to "" — MailKit then threw
+            // "The host name cannot be empty" before opening a socket.
+            SmtpHost    = EnvOrNull("LIVE_SMTP_HOST") ?? host!,
             SmtpPort    = ParseOr("LIVE_SMTP_PORT", 587),
             SmtpUseSsl  = ParseOr("LIVE_SMTP_SSL", 0) == 1, // 0 = STARTTLS on 587 (the default posture)
         };
         return (account, password!);
     }
 
+    /// <summary>
+    /// Reads an environment variable, treating empty/whitespace as absent. Required because the
+    /// workflow defines every optional LIVE_* variable whether or not its secret exists, so
+    /// "unset" reaches us as "" and a plain null-coalesce would silently accept the empty value.
+    /// </summary>
+    private static string? EnvOrNull(string name)
+    {
+        var value = Environment.GetEnvironmentVariable(name);
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    // Numeric fallbacks were never exposed to this bug: int.TryParse("") fails, so an empty
+    // value already falls through to the default.
     private static int ParseOr(string name, int fallback) =>
         int.TryParse(Environment.GetEnvironmentVariable(name), out var value) ? value : fallback;
 
