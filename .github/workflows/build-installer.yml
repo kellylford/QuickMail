@@ -5,10 +5,15 @@ name: Build Installer (on demand)
 # you can download and test.
 #
 # Test builds ship Velopack's Setup.exe, not the MSI, and carry a per-run version
-# (0.8.37-test.<run_number>). Both are deliberate and load-bearing — see the "Determine
-# package version" and "Pack Velopack installer" steps for why. In short: two MSIs packed at
-# the same version register as separate products instead of replacing each other, which
-# leaves a stale binary installed while every reinstall reports success.
+# (0.8.37-test.<run_number>.<run_attempt>). Both are deliberate and load-bearing — see the
+# "Determine package version" and "Pack Velopack installer" steps for why. In short: two MSIs
+# packed at the same version register as separate products instead of replacing each other,
+# which leaves a stale binary installed while every reinstall reports success.
+#
+# Know what this costs: Setup.exe is the one-click bootstrapper that releases deliberately do
+# NOT ship (see quickmail.yml), so a test build does not exercise the MSI wizard — welcome,
+# license acceptance, conclusion — nor MSI packing and signing. Those first run on a pushed
+# v* tag. Test the wizard against a release candidate, not against this artifact.
 #
 # Why this exists: the real Google OAuth client id/secret and the bug-report token
 # live only in GitHub Actions secrets. A locally built installer compiles against the
@@ -133,9 +138,14 @@ jobs:
       # the survivor keeps owning the install directory. Every later test installer silently
       # no-ops against it. This cost a day of testing against a stale build.
       #
-      # So each run gets its own SemVer prerelease: 0.8.37-test.<run_number>. That sorts above
-      # the released 0.8.37 and below a future 0.8.38, and strictly increases run over run, so
-      # a new test build always supersedes the last one and never fights a real release.
+      # So each run gets its own SemVer prerelease: 0.8.37-test.<run_number>.<run_attempt>.
+      # That sorts above the released 0.8.37 and below a future 0.8.38, and strictly increases
+      # run over run, so a new test build always supersedes the last one and never fights a
+      # real release. run_attempt is in there because re-running a failed run reuses its
+      # run_number and bumps only run_attempt — without it, a retry would pack the same
+      # version as the run it replaces, which is the whole failure this step exists to avoid.
+      # Dotted numeric prerelease identifiers compare field by field, so test.482.2 sorts
+      # above test.482 and below test.483.
       #
       # Appending `test` to the version is necessary but NOT sufficient on its own: vpk strips
       # the prerelease tag when deriving the MSI ProductVersion (0.8.37-test.482 -> 0.8.37.0),
@@ -147,22 +157,10 @@ jobs:
         run: |
           $base = (Select-Xml -Path QuickMail/QuickMail.csproj -XPath '/Project/PropertyGroup/Version').Node.InnerText
           if (-not $base) { throw "Could not read <Version> from QuickMail/QuickMail.csproj." }
-          $version = "$base-test.${{ github.run_number }}"
+          $version = "$base-test.${{ github.run_number }}.${{ github.run_attempt }}"
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "Package version: $version   (base $base, run ${{ github.run_number }}, commit ${{ github.sha }})"
+          Write-Host "Package version: $version   (base $base, run ${{ github.run_number }} attempt ${{ github.run_attempt }}, commit ${{ github.sha }})"
 
-      # Near-identical vpk pack invocation to the release workflow so the test installer
-      # behaves like a shipped one (wizard pages, per-user install, WebView2 on demand).
-      # Differences: no `vpk download github` beforehand, so this is a full package with no
-      # delta — and no --msi, so this ships Velopack's own Setup.exe instead.
-      #
-      # Dropping the MSI is the other half of the versioning fix above. Setup.exe creates no
-      # Windows Installer product registration at all, so it cannot leave an Add/Remove entry
-      # behind, cannot register beside an earlier test build, and cannot shadow a real install.
-      # It installs to the same per-user location and honours the same SemVer ordering, which
-      # is what makes -test.<run_number> actually take effect. The release workflow keeps
-      # --msi: releases always bump the version, so the Upgrade row works there as designed,
-      # and the MSI is what managed deployment needs.
       # --- Code signing (Azure Artifact Signing via GitHub OIDC) --------------
       - name: Azure login (code signing)
         uses: azure/login@v3
@@ -181,6 +179,23 @@ jobs:
           } | ConvertTo-Json
           [System.IO.File]::WriteAllText("$env:GITHUB_WORKSPACE\signing-metadata.json", $json)
 
+      # Near-identical vpk pack invocation to the release workflow, so the test installer runs
+      # the same per-user install and WebView2-on-demand path a shipped one does. Differences:
+      # no `vpk download github` beforehand, so this is a full package with no delta — and no
+      # --msi, so this ships Velopack's own Setup.exe instead.
+      #
+      # Dropping the MSI is the other half of the versioning fix above. Setup.exe creates no
+      # Windows Installer product registration at all, so it cannot leave an Add/Remove entry
+      # behind, cannot register beside an earlier test build, and cannot shadow a real install.
+      # It honours the SemVer ordering that makes -test.<run_number>.<run_attempt> take effect,
+      # which the MSI cannot: vpk strips the prerelease tag when deriving ProductVersion. The
+      # release workflow keeps --msi: releases always bump the version, so the Upgrade row
+      # works there as designed, and the MSI is what managed deployment needs.
+      #
+      # What that costs: Setup.exe is one-click, so the --inst* wizard pages below (welcome,
+      # license acceptance, conclusion) are not shown by this artifact — quickmail.yml ships
+      # the MSI for exactly that reason. They stay on the command line so the two invocations
+      # do not drift, and so restoring --msi needs no other edit.
       - name: Pack Velopack installer
         shell: pwsh
         run: |
