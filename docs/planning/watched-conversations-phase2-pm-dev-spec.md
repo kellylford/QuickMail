@@ -292,6 +292,63 @@ v1's `ToggleWatchConversation()` resolves its target through the View. Phase 2 h
 
 ---
 
+## 13A. Fixes from adversarial review (2026-08-03)
+
+Seven confirmed defects, several found by live probe rather than by reading. Recorded because each is re-introducible.
+
+### 13A.1 `Ctrl+Shift+W` was still inert in a message window — the gap this phase existed to close
+
+`MessageWindow` has **its own** WebView2 keydown relay, separate from `MainWindow`'s. Phase 2 added the gesture to the WPF key ladder and to that window's registry, but focus lands *inside the document* the moment a message window opens, so neither is reachable. The relay's `e.key === 'w'` test also cannot match with Shift held — the browser reports `'W'`.
+
+**Fix:** relay `ctrl-shift-w` (accepting both cases), ordered **before** the lower-case-only `ctrl-w` branch so closing the window and watching a thread stay distinct. `ctrl-shift-p` was relayed at the same time — the command palette had the identical, pre-existing gap.
+
+**Rule this establishes: a gesture added to a window that hosts a WebView2 is not done until it is in that window's relay.** There are now two relays; a third window would need a third.
+
+### 13A.2 Escape closed the manager out from under an in-progress rename
+
+`PreviewKeyDown` **tunnels root-to-leaf**, so the `Window.OnPreviewKeyDown` override runs *before* the text box's own handler — the opposite of what the code's comment claimed. Escape in the rename box discarded the edit *and* closed the window.
+
+**Fix:** the window handler checks `IsRenaming` first and cancels the rename instead of closing. The inner handler stays as a second line of defence.
+
+### 13A.3 Rename applied to whatever was selected at save time
+
+`BeginRename` captured the label but not the identity; `SaveRename` re-read `SelectedWatch`. Selection is reachable while renaming (F6 → arrows → F6), so a plain keyboard sequence renamed the **wrong watch**, silently.
+
+**Fix:** `_renamingId` captures the identity at `BeginRename`; `SaveRename` resolves by id, restores selection to that row, and reports gracefully if the watch vanished meanwhile. `Alt+G/R/S/C` are also suppressed while renaming — `Alt+S` could otherwise stop watching a row the open edit was no longer about.
+
+### 13A.4 Stopping a watch from the manager never reached `MainViewModel`
+
+The manager wrote straight to `IWatchService`, bypassing `RefreshWatchState`. Because the window is **modeless**, the Watched Conversations folder is very likely visible behind it — so pruning left those messages on screen, still stamped as watched.
+
+**Fix:** a `WatchesChanged` event, routed by `MainWindow` to the new `MainViewModel.RefreshWatchStateFor`. Same discipline as the message window's toggle: **one writer, one place that reacts.**
+
+### 13A.5 The manager list was a constructor-time snapshot
+
+`Ctrl+Shift+W` stays live behind the modeless window, so a row could refer to a watch that no longer exists. `Unwatch` returned false and the method returned — no announcement, no status change, nothing. A dead key.
+
+**Fix:** both stale paths announce "That conversation is no longer watched." and reload.
+
+### 13A.6 The Watched filter did not re-filter on unwatch
+
+`RefreshWatchState` pruned only when the *folder* was open. With **View → Filter → Watched** active in an ordinary folder, unwatching left messages in a list that claimed to show only watched mail.
+
+**Fix:** re-apply filters when `ActiveFilter == Watched`.
+
+### 13A.7 The message-window announcement was raised on the main window
+
+`MainViewModel.AnnouncementRequested` is handled by `MainWindow`, which raised the UIA notification on **its own** peer — while the user was in the message window.
+
+**Fix:** `_announceTarget` redirects for the duration of a synchronous call made on another window's behalf.
+
+### 13A.8 Smaller
+
+- `CA1001` on the new window: `[SuppressMessage]` stating the real reason (WPF never calls `Dispose` on a `Window`; `OnClosing` cancels and disposes), per CLAUDE.md — rather than leaving the branch building with a warning `main` does not have.
+- `LoadCountsAsync` now runs the read and the `GroupBy` inside `Task.Run`. Microsoft.Data.Sqlite's `*Async` methods complete synchronously, so both were running on the dispatcher — §4.3 said background and the code was not.
+- A `XamlParseTests` entry for the new window; every other window has one.
+- `_hintAnnounced` was dead (the window is constructed fresh per open). Removed, and the comment now says the hint fires per open — which is correct for a `Hint`-category announcement the user can turn off.
+
+---
+
 ## 14. Out of Scope (Mandatory)
 
 - **Creating a watch by typing a subject.** Considered and dropped: a hand-typed subject has to match the normalized form exactly to collect anything, so a near-miss produces a watch that silently never fires — the worst failure this feature can have. Watches are created from a real message, where the subject is known correct.

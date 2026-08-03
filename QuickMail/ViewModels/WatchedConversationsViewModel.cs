@@ -75,6 +75,16 @@ public partial class WatchedConversationsViewModel : ObservableObject
     /// <summary>Raised when the user asks to open a conversation; carries its normalized subject.</summary>
     public event Action<string>? GoToRequested;
 
+    /// <summary>
+    /// Raised after this window changes the watch list, carrying the affected conversation's key.
+    /// The main window re-stamps rows and prunes the watched folder in response — this window is
+    /// modeless, so that folder may be visible behind it while the user prunes.
+    /// </summary>
+    public event Action<string>? WatchesChanged;
+
+    // Which watch the open rename is about. Not SelectedWatch — see BeginRename.
+    private Guid _renamingId;
+
     /// <summary>Raised for screen reader announcements; the View routes these to AccessibilityHelper.</summary>
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
 
@@ -142,22 +152,30 @@ public partial class WatchedConversationsViewModel : ObservableObject
         // shows "count unavailable" rather than a confident and wrong zero.
         if (_onlineMode) return;
 
-        List<MailMessageSummary> all;
+        Dictionary<string, int> counts;
         try
         {
-            all = await _localStore.LoadAllSummariesAsync().ConfigureAwait(true);
+            // Off the UI thread deliberately. Microsoft.Data.Sqlite's *Async methods complete
+            // synchronously, so both the whole-table read and the GroupBy over every cached
+            // message would otherwise run on the dispatcher and freeze the window while it opens.
+            counts = await Task.Run(async () =>
+            {
+                var all = await _localStore.LoadAllSummariesAsync().ConfigureAwait(false);
+                return all
+                    .GroupBy(m => ConversationBuilder.NormalizeSubject(m.Subject),
+                             StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+            }, ct).ConfigureAwait(true);
         }
+        catch (OperationCanceledException) { return; }
         catch (Exception ex)
         {
             LogService.Log("Watched manager: counting cached messages failed", ex);
             return;
         }
 
+        // Back on the UI thread (ConfigureAwait(true)) before touching observable rows.
         if (ct.IsCancellationRequested) return;
-
-        var counts = all
-            .GroupBy(m => ConversationBuilder.NormalizeSubject(m.Subject), StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         foreach (var row in Watches)
             row.MessageCount = counts.TryGetValue(row.NormalizedSubject, out var n) ? n : 0;
@@ -170,7 +188,15 @@ public partial class WatchedConversationsViewModel : ObservableObject
         if (row == null) return;
 
         var index = Watches.IndexOf(row);
-        if (!_watchService.Unwatch(row.Id)) return;
+        if (!_watchService.Unwatch(row.Id))
+        {
+            // The list is a snapshot and this window is modeless, so Ctrl+Shift+W behind it can
+            // unwatch a row that is still on screen. Say so and re-sync rather than doing nothing
+            // visible, which reads as a dead key.
+            Announce("That conversation is no longer watched.", AnnouncementCategory.Result);
+            Reload();
+            return;
+        }
 
         Watches.Remove(row);
         // Land on the row that took its place, or the new last row if it was at the end — never
@@ -181,12 +207,20 @@ public partial class WatchedConversationsViewModel : ObservableObject
 
         UpdateStatus();
         Announce($"Stopped watching: {row.Label}", AnnouncementCategory.Result);
+        // The main window owns the watch-derived UI state (row stamps, and the watched folder's
+        // membership if it is open behind this modeless window). Tell it, exactly as the message
+        // window's toggle does, so there is still one place that reacts to a watch changing.
+        WatchesChanged?.Invoke(row.NormalizedSubject);
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
     private void BeginRename()
     {
         if (SelectedWatch == null) return;
+        // Capture WHICH watch is being renamed, not just its text. Selection stays reachable while
+        // the rename panel is open (F6, then arrows), so re-reading SelectedWatch on save renamed
+        // whichever row happened to be selected by then — silently, and to the wrong watch.
+        _renamingId = SelectedWatch.Id;
         EditLabel   = SelectedWatch.Label;
         RenameError = string.Empty;
         IsRenaming  = true;
@@ -195,8 +229,16 @@ public partial class WatchedConversationsViewModel : ObservableObject
     [RelayCommand]
     private void SaveRename()
     {
-        var row = SelectedWatch;
-        if (row == null) return;
+        var row = Watches.FirstOrDefault(w => w.Id == _renamingId);
+        if (row == null)
+        {
+            // The watch went away while the edit was open.
+            IsRenaming  = false;
+            RenameError = string.Empty;
+            Announce("That conversation is no longer watched.", AnnouncementCategory.Result);
+            Reload();
+            return;
+        }
 
         var trimmed = (EditLabel ?? string.Empty).Trim();
         if (trimmed.Length == 0)
@@ -208,6 +250,7 @@ public partial class WatchedConversationsViewModel : ObservableObject
 
         if (!_watchService.Rename(row.Id, trimmed)) return;
 
+        SelectedWatch = row;   // saving is about the renamed row, wherever selection wandered to
         row.Label   = trimmed;
         IsRenaming  = false;
         RenameError = string.Empty;

@@ -21,12 +21,16 @@ namespace QuickMail.Views;
 /// bare mnemonic fires without Alt when focus is not in a text field — how "c" closed the folder
 /// picker (#418). Alt+G/R/S/C are handled here instead.</para>
 /// </summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Design", "CA1001",
+    Justification = "_loadCts is cancelled and disposed in OnClosing, which WPF always raises. " +
+                    "WPF never calls Dispose on a Window, so implementing IDisposable here would " +
+                    "be dead code that nothing invokes.")]
 public partial class WatchedConversationsWindow : Window
 {
     private readonly WatchedConversationsViewModel _vm;
     private readonly CommandRegistry _localRegistry = new();
-    private CancellationTokenSource _loadCts = new();
-    private bool _hintAnnounced;
+    private readonly CancellationTokenSource _loadCts = new();
 
     public WatchedConversationsWindow(WatchedConversationsViewModel vm)
     {
@@ -50,14 +54,12 @@ public partial class WatchedConversationsWindow : Window
         FocusPane(WatchList);
 
         // The one thing about this window that is not self-evident, and the one thing a user could
-        // get wrong in a way that matters.
-        if (!_hintAnnounced)
-        {
-            _hintAnnounced = true;
-            AccessibilityHelper.Announce(this,
-                "Renaming changes the label only, not which messages are collected.",
-                interrupt: false, category: AnnouncementCategory.Hint);
-        }
+        // get wrong in a way that matters. Fires on each open rather than once ever: the window is
+        // constructed fresh every time, and Hint is the category the user can turn off if they
+        // have taken the point.
+        AccessibilityHelper.Announce(this,
+            "Renaming changes the label only, not which messages are collected.",
+            interrupt: false, category: AnnouncementCategory.Hint);
 
         try
         {
@@ -150,7 +152,9 @@ public partial class WatchedConversationsWindow : Window
         // among others": AltGr reports as Ctrl+Alt, and on layouts where AltGr+G/R/S/C produce
         // letters those keystrokes must reach type-ahead rather than pressing a button.
         var key = e.Key == Key.System ? e.SystemKey : e.Key;
-        if (Keyboard.Modifiers == ModifierKeys.Alt)
+        // Not while a rename is in progress: Alt+S would stop watching a row the edit is no longer
+        // about, and Alt+G would navigate away mid-edit. Save/Cancel are the only exits from here.
+        if (Keyboard.Modifiers == ModifierKeys.Alt && !_vm.IsRenaming)
         {
             switch (key)
             {
@@ -175,10 +179,20 @@ public partial class WatchedConversationsWindow : Window
             return;
         }
 
-        // Modeless windows get no IsCancel handling, so Escape is wired by hand. A rename in
-        // progress claims it first (see EditLabelBox_PreviewKeyDown), so this only ever closes.
+        // Modeless windows get no IsCancel handling, so Escape is wired by hand.
+        //
+        // PreviewKeyDown TUNNELS root-to-leaf, so this override runs BEFORE the text box's own
+        // handler — an earlier version assumed the opposite and closed the whole window out from
+        // under an edit in progress. A rename therefore has to be checked for here, not left to
+        // the inner handler.
         if (e.Key == Key.Escape)
         {
+            if (_vm.IsRenaming)
+            {
+                _vm.CancelRenameCommand.Execute(null);
+                e.Handled = true;
+                return;
+            }
             Close();
             e.Handled = true;
         }

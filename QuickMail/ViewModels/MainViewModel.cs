@@ -5047,6 +5047,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Re-syncs everything derived from the watch list for one conversation, after something other
+    /// than this VM changed it (today: the Watched Conversations manager, which is modeless and so
+    /// can prune while the watched folder is visible behind it).
+    /// </summary>
+    public void RefreshWatchStateFor(string subject) => RefreshWatchState(subject);
+
+    /// <summary>
     /// Re-stamps <see cref="MailMessageSummary.IsWatched"/> after a watch toggle, and — when the
     /// Watched Conversations folder is open — drops the rows that just stopped qualifying, since
     /// this folder's membership is exactly the watch predicate.
@@ -5065,7 +5072,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
         StampWatchedFlags(_rawMessages.Where(SameConversation));
         StampWatchedFlags(Messages.Where(SameConversation));
 
-        if (SelectedFolder?.FullName != AllWatchedFolder.FullName) return;
+        if (SelectedFolder?.FullName != AllWatchedFolder.FullName)
+        {
+            // The Watched filter is the same predicate applied to an ordinary folder, so a toggle
+            // changes what qualifies there too. Without this the list keeps showing messages it
+            // claims to have filtered out, until something else happens to re-apply.
+            if (ActiveFilter == MessageFilter.Watched)
+                ApplyFiltersAndSearch();
+            return;
+        }
         if (_watchService?.IsWatched(subject) == true) return;
 
         // Unwatched while viewing the watched folder: the whole conversation leaves, not just the

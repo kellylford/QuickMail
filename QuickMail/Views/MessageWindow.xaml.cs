@@ -188,7 +188,13 @@ public partial class MessageWindow : Window
 
             ApplyWebViewColorScheme();
 
-            // Relay Escape, Shift+Tab, F6 / Shift+F6, and Ctrl+W from inside the WebView.
+            // Relay Escape, Shift+Tab, F6 / Shift+F6, Ctrl+W and Ctrl+Shift+W from inside the WebView.
+            //
+            // Focus lands INSIDE this document as soon as the window opens, so a gesture that is
+            // only handled by the WPF key ladder is unreachable in practice — which is why watching
+            // a thread had to be relayed here as well as registered there. Note the Ctrl+Shift+W
+            // test must accept 'W': the browser reports the upper-case key when Shift is held, so
+            // the lower-case-only Ctrl+W branch below cannot match it (and must not).
             await MessageBody.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +
                 "if(e.key==='Escape'){window.chrome.webview.postMessage('escape');e.preventDefault();}" +
@@ -196,7 +202,9 @@ public partial class MessageWindow : Window
                 "else if(e.key==='F6'&&!e.shiftKey){window.chrome.webview.postMessage('f6');e.preventDefault();}" +
                 "else if(e.key==='F6'&&e.shiftKey){window.chrome.webview.postMessage('shift-f6');e.preventDefault();}" +
                 "else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}" +
+                "else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
+                "else if(e.ctrlKey&&e.shiftKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-shift-p');e.preventDefault();}" +
                 "});");
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
@@ -206,6 +214,8 @@ public partial class MessageWindow : Window
                 {
                     case "escape":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
+                    case "ctrl-shift-w": Dispatcher.InvokeAsync(RequestWatchToggle, DispatcherPriority.Input); break;
+                    case "ctrl-shift-p": Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input); break;
                     case "shift-tab":  Dispatcher.InvokeAsync(FocusLastHeaderField,  DispatcherPriority.Input); break;
                     case "focus-attachments": Dispatcher.InvokeAsync(FocusAttachmentList, DispatcherPriority.Input); break;
                     case "f6":         Dispatcher.InvokeAsync(() => CycleFocus(true),  DispatcherPriority.Input); break;

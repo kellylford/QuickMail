@@ -257,6 +257,16 @@ public class XamlParseTests
     }
 
     [StaFact]
+    public void WatchedConversationsWindow_XamlParsesWithoutException()
+    {
+        EnsureApplication();
+        var vm = new WatchedConversationsViewModel(new StubWatchService(), new StubLocalStoreService());
+        var window = new WatchedConversationsWindow(vm);
+        Assert.NotNull(window);
+        window.Close();
+    }
+
+    [StaFact]
     public void ComposeWindow_XamlParsesWithoutException()
     {
         EnsureApplication();

@@ -333,6 +333,91 @@ public class WatchedConversationsPhase2Tests
         Assert.DoesNotContain("{", row.ToString(), StringComparison.Ordinal);
     }
 
+    // ── Regressions found by adversarial review ──────────────────────────────
+
+    [Fact]
+    public void Manager_Rename_AppliesToTheRowTheRenameBeganOn_NotWhateverIsSelectedNow()
+    {
+        // Selection stays reachable while the rename panel is open (F6, then arrows), so re-reading
+        // SelectedWatch on save renamed whichever row happened to be selected by then — silently,
+        // and to the wrong watch.
+        var watch = new StubWatchService();
+        watch.Watch("Alpha");
+        watch.Watch("Beta");
+        var mgr = MakeManager(watch);
+
+        var renaming = mgr.Watches.Single(w => w.NormalizedSubject == "Alpha");
+        var other    = mgr.Watches.Single(w => w.NormalizedSubject == "Beta");
+
+        mgr.SelectedWatch = renaming;
+        mgr.BeginRenameCommand.Execute(null);
+        mgr.SelectedWatch = other;            // selection wanders while the edit is open
+        mgr.EditLabel = "RENAMED";
+        mgr.SaveRenameCommand.Execute(null);
+
+        Assert.Equal("RENAMED", renaming.Label);
+        Assert.Equal("Beta", other.Label);
+    }
+
+    [Fact]
+    public void Manager_StopWatching_OnARowUnwatchedBehindItsBack_SaysSoInsteadOfDoingNothing()
+    {
+        // The window is modeless and Ctrl+Shift+W stays live behind it, so the list can go stale.
+        // Silently doing nothing reads as a dead key.
+        var watch = new StubWatchService();
+        watch.Watch("Budget Review");
+        var mgr = MakeManager(watch);
+        var announcements = new List<string>();
+        mgr.AnnouncementRequested += (text, _) => announcements.Add(text);
+
+        watch.Unwatch("Budget Review");       // unwatched from the main window, behind the manager
+
+        mgr.SelectedWatch = mgr.Watches[0];
+        mgr.StopWatchingCommand.Execute(null);
+
+        Assert.Contains(announcements, a => a.Contains("no longer watched", StringComparison.OrdinalIgnoreCase));
+        Assert.Empty(mgr.Watches);            // re-synced rather than left showing a phantom
+    }
+
+    [Fact]
+    public void Manager_StopWatching_TellsTheMainWindowSoItCanRefresh()
+    {
+        // Without this the main window keeps the conversation's rows stamped as watched, and keeps
+        // them in the watched folder — which is very likely visible behind this modeless window.
+        var watch = new StubWatchService();
+        watch.Watch("Budget Review");
+        var mgr = MakeManager(watch);
+
+        string? changed = null;
+        mgr.WatchesChanged += s => changed = s;
+        mgr.SelectedWatch = mgr.Watches[0];
+        mgr.StopWatchingCommand.Execute(null);
+
+        Assert.Equal("Budget Review", changed);
+    }
+
+    [Fact]
+    public async Task UnwatchingWhileTheWatchedFilterIsActive_RemovesTheMessagesFromTheList()
+    {
+        // The Watched filter is the same predicate applied to an ordinary folder, so a toggle
+        // changes what qualifies there too — the list must not keep showing messages it claims to
+        // have filtered out.
+        var (vm, watch) = MakeVm(
+        [
+            Msg("1", "Budget Review",  daysAgo: 1),
+            Msg("2", "Trip to Dublin", daysAgo: 0),
+        ]);
+        watch.Watch("Budget Review");
+        watch.Watch("Trip to Dublin");
+        await vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllMailFolder);
+        await vm.SetFilterCommand.ExecuteAsync("watched");
+        Assert.Equal(2, vm.Messages.Count);
+
+        vm.ToggleWatchConversationFor("Budget Review");   // unwatch
+
+        Assert.Equal(["2"], vm.Messages.Select(m => m.MessageId).ToArray());
+    }
+
     // ── Notifications: the ordering contract ─────────────────────────────────
     //
     // MaybeNotifyWatchedMail and MaybeNotifyNewMail share _notifiedMessageKeys, and

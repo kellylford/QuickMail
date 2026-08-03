@@ -125,6 +125,10 @@ public partial class MainWindow : Window
     private WatchedConversationsWindow? _watchedConversationsWindow;
     // Null in tests that construct MainWindow without it; the manager command no-ops when absent.
     private readonly IWatchService? _watchService;
+
+    // Window that VM announcements should be raised on instead of this one, set only for the
+    // duration of a synchronous call made on another window's behalf. See AnnouncementRequested.
+    private UIElement? _announceTarget;
     private bool _webViewReady;
     private CoreWebView2Environment? _webViewEnvironment;
     private readonly TypeAheadPrefixTracker _typeAhead = new();
@@ -291,8 +295,12 @@ public partial class MainWindow : Window
         vm.ManageAccountsRequested += OpenAccountManager;
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
+        // Normally the main window is where a VM announcement belongs. _announceTarget redirects it
+        // for the duration of a call made on behalf of another window — a UIA notification raised on
+        // a background window's peer is not what the user is looking at.
         vm.AnnouncementRequested += (_, args) =>
-            AccessibilityHelper.Announce(this, args.Text, interrupt: true, category: args.Category);
+            AccessibilityHelper.Announce(_announceTarget ?? this, args.Text,
+                                         interrupt: true, category: args.Category);
         vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
@@ -2848,6 +2856,10 @@ public partial class MainWindow : Window
             _watchedConversationsWindow?.Close();
             _ = _vm.ShowWatchedConversationAsync(subject);
         };
+        // Stopping a watch from the manager must reach the VM, or the main window keeps showing
+        // that conversation's rows as watched — and keeps them in the watched folder, which is
+        // very likely visible behind this modeless window.
+        vmWc.WatchesChanged += subject => _vm.RefreshWatchStateFor(subject);
 
         _watchedConversationsWindow = new WatchedConversationsWindow(vmWc) { Owner = this };
         _watchedConversationsWindow.Closed += (_, _) =>
@@ -5162,7 +5174,14 @@ public partial class MainWindow : Window
         var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService, _configService);
         // Ctrl+Shift+W in the message window routes here so the watch list keeps one writer and the
         // main window's rows (and the watched folder, if it is open) update with it.
-        win.WatchToggleRequested += subject => _vm.ToggleWatchConversationFor(subject);
+        win.WatchToggleRequested += subject =>
+        {
+            // ToggleWatchConversationFor announces synchronously, so redirecting for the duration
+            // of the call puts the announcement on the window the user is actually in.
+            _announceTarget = win;
+            try { _vm.ToggleWatchConversationFor(subject); }
+            finally { _announceTarget = null; }
+        };
         _openMessageWindows.Add(win);
 
         // Wire mail action delegates so the window has full message operations.
