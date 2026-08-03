@@ -35,6 +35,14 @@ public interface INotificationService
     /// Show a one-off informational toast (e.g. the "still running in the notification area"
     /// hint). Best-effort: never throws.
     /// </summary>
+    /// <summary>
+    /// Shows a toast for messages that arrived in a watched conversation. Same contract as
+    /// <see cref="ShowNewMail"/> — already de-duplicated and gated by the caller, never throws —
+    /// but titled so the user can tell at a glance that this is a thread they subscribed to
+    /// rather than ordinary new mail.
+    /// </summary>
+    void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages);
+
     void ShowInfo(string title, string message);
 
     /// <summary>

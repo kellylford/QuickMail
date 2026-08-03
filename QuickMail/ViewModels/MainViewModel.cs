@@ -38,6 +38,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IRuleService _ruleService;
     private readonly ISendMailService _smtp;
     private readonly IFlagService? _flagService;
+    // Null in tests that construct the VM without it; every use site treats a null service as
+    // "nothing is watched", mirroring how _flagService degrades in ResolveFlagNamesAsync.
+    private readonly IWatchService? _watchService;
     private readonly ICalendarService? _calendarService;
     private readonly IGraphCalendarSyncService? _graphCalendarSync;
 
@@ -248,6 +251,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         FullName    = "\u0000AllFlagged",
         DisplayName = "All Flagged"
+    };
+
+    /// <summary>
+    /// Every message belonging to a conversation the user chose to watch (Ctrl+Shift+W), across all
+    /// accounts and folders. Membership is a predicate over <see cref="IWatchService"/> rather than
+    /// per-message state, so a reply that has not arrived yet is already a member — that is what
+    /// makes a watch a subscription rather than a second kind of flag.
+    /// </summary>
+    public static readonly MailFolderModel AllWatchedFolder = new()
+    {
+        FullName    = "\u0000AllWatched",
+        DisplayName = "Watched Conversations"
     };
 
     /// <summary>Virtual folder sentinel that opens the calendar event list.</summary>
@@ -485,6 +500,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllArchiveFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllWatchedFolder.FullName, StringComparison.Ordinal) ||
                IsCalendarFolderName(folder.FullName);
     }
 
@@ -624,6 +640,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsFilterForwarded       => ActiveFilter == MessageFilter.Forwarded;
     public bool IsFilterToMe            => ActiveFilter == MessageFilter.ToMe;
     public bool IsFilterFlagged         => ActiveFilter == MessageFilter.Flagged;
+    public bool IsFilterWatched         => ActiveFilter == MessageFilter.Watched;
     public bool IsFilterAllFlagged      => ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId == null;
     public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
     public bool AnnounceFlagStatus      => _announceFlagStatus;
@@ -656,6 +673,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MessageFilter.Forwarded       => "Forwarded",
         MessageFilter.ToMe            => "To Me",
         MessageFilter.Flagged         => "Flagged",
+        MessageFilter.Watched         => "Watched",
         _                             => string.Empty,
     };
 
@@ -1119,8 +1137,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IGraphCalendarSyncService? graphCalendarSyncService = null,
         ConnectionTruthProbe? truthProbe = null,
         IScreenshotCaptureService? screenshotCapture = null,
-        IRowLayoutService? rowLayoutService = null)
+        IRowLayoutService? rowLayoutService = null,
+        IWatchService? watchService = null)
     {
+        _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         _truthProbe = truthProbe;
         _screenshotCapture = screenshotCapture;
@@ -1513,6 +1533,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
             "flagged"     => MessageFilter.Flagged,
+            "watched"     => MessageFilter.Watched,
             _             => MessageFilter.All,
         };
         ActiveSort = ConfigModel.ParseSort(view.Sort);
@@ -1670,6 +1691,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // view shows qualified cached rows next to unqualified fresh ones. Keeps the plain stamp
             // above as the miss fallback for folders not in the cache.
             ApplyFolderDisplayNames(newMessages);
+            // Same reason, same rows: these bypass SetMessages, so the derived watch flag has to be
+            // stamped here too or the newest rows speak no watch state while the cached ones do.
+            StampWatchedFlags(newMessages);
 
             // A saved view can span folders (and Gmail copies), so key by global message identity
             // to collapse duplicate copies against what is already shown (issue #220).
@@ -1850,6 +1874,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
             execute: () => EmptyTrashCommand.Execute(null),
             defaultKey: Key.E, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
+        // Ctrl+Shift+W, not Ctrl+W: Ctrl+W already closes a tab / the reading pane / a child window.
+        registry.Register(new CommandDefinition(
+            id: "mail.toggleWatch", category: "Mail", title: "Watch Conversation",
+            description: "Watch or unwatch the selected message's conversation",
+            execute: ToggleWatchConversation,
+            defaultKey: Key.W, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            // Not HasSelectedMessage: on a From/To group header the resolver returns null even
+            // though a stale message is still selected, and the command must be unavailable there.
+            // Deliberately reads the target without storing it — an availability query is polled
+            // (command palette, every keystroke) and must not mutate VM state or raise change
+            // notifications while it runs.
+            isAvailable: () => _watchService != null && HasWatchableSubject(ResolveWatchTarget())));
+
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
             execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 4)));
@@ -1918,6 +1955,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "view.filterToMe", category: "View", title: "Show Messages Addressed to Me",
             execute: () => SetFilterCommand.Execute("tome")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterWatched", category: "View", title: "Show Watched Conversations Only",
+            execute: () => SetFilterCommand.Execute("watched")));
 
         registry.Register(new CommandDefinition(
             id: "view.sortDateDesc", category: "View", title: "Sort: Newest First",
@@ -2390,6 +2431,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         if (incoming.Count > 0)
                             _ui.Post(() =>
                             {
+                                // Watched conversations first, and in EVERY folder — a watched thread's
+                                // next message can land anywhere, which is the point of the folder.
+                                // Ordering is load-bearing: both paths share _notifiedMessageKeys, so
+                                // running this first means a watched inbox message gets the watched
+                                // toast (which says more) rather than the generic one, and gets it once.
+                                MaybeNotifyWatchedMail(account, incoming);
                                 // Toast only for the Inbox (as before) — filtered mail in custom folders
                                 // shouldn't pop notifications — but refresh counts for any folder change.
                                 if (isInbox)
@@ -2466,6 +2513,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             // All Flagged Mail — only accept flagged incoming messages.
             relevant = incoming.Where(m => m.IsFlagged);
+        }
+        else if (selected.FullName == AllWatchedFolder.FullName)
+        {
+            // Watched Conversations — accept arrivals belonging to a watched conversation. This
+            // branch IS the feature: a reply to a watched thread joins the open folder during sync
+            // with no user action. It must stay above the real-folder branch below, which would
+            // otherwise never let an aggregate see these messages.
+            relevant = incoming.Where(IsWatchedMessage);
         }
         else if (IsFolderScopedAggregate(selected.FullName))
         {
@@ -2558,6 +2613,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // #423: live arrivals into an aggregate view must announce their source folder too.
         if (IsVirtualFolder(selected))
             ApplyFolderDisplayNames(toInsert);
+
+        // Watch state is derived and these rows have never been through SetMessages, so stamp them
+        // here — in every folder, for the same reason SetMessages does.
+        StampWatchedFlags(toInsert);
 
         // Batch all inserts into a single CollectionChanged(Reset) notification.
         // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
@@ -2700,8 +2759,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     : await _syncService.SyncOneFolderAsync(account, inbox, CancellationToken.None);
 
                 // Notify on the UI thread so the de-dupe set stays single-thread-owned.
+                // Watched first — see MaybeNotifyWatchedMail; the two share a dedup set, so order
+                // decides which toast a watched inbox message gets, and guarantees it gets one.
                 if (incoming.Count > 0)
-                    _ui.Post(() => MaybeNotifyNewMail(account, incoming));
+                    _ui.Post(() =>
+                    {
+                        MaybeNotifyWatchedMail(account, incoming);
+                        MaybeNotifyNewMail(account, incoming);
+                    });
             }
             catch (Exception ex)
             {
@@ -2745,7 +2810,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Shows a Windows toast for genuinely-new inbox mail. Runs on the UI thread (the caller posts
     // it there) so _notifiedMessageKeys is single-thread-owned. Setting is re-read live so a
     // Settings change takes effect without a restart.
-    private void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
+    internal void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
         if (_notifications is not { IsSupported: true }) return;
         if (!_configService.Load().NotifyOnNewMail) return;
@@ -2791,6 +2856,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         LogService.Log(diag);
         _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
+    }
+
+    /// <summary>
+    /// Toasts messages that arrived in a watched conversation, in any folder — unlike
+    /// <see cref="MaybeNotifyNewMail"/>, which is deliberately inbox-only.
+    /// <para><b>Must be called before</b> <see cref="MaybeNotifyNewMail"/>, and is deliberately
+    /// passed only the watched subset. Both share <c>_notifiedMessageKeys</c>, and
+    /// <c>NewMailFilter.SelectNew</c> <i>consumes</i> everything it is shown — handing it the full
+    /// incoming list here would mark ordinary inbox mail as already-notified and silently suppress
+    /// the new-mail toast entirely.</para>
+    /// </summary>
+    // Internal so the ordering contract above can be tested directly — it is the whole correctness
+    // argument for this pair of methods and is not observable from any public surface.
+    internal void MaybeNotifyWatchedMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
+    {
+        if (_notifications is not { IsSupported: true }) return;
+        if (_watchService == null) return;
+        if (!_configService.Load().NotifyOnWatchedConversation) return;
+
+        if (_notifiedMessageKeys.Count > 10_000) _notifiedMessageKeys.Clear();
+
+        var watched = incoming.Where(IsWatchedMessage).ToList();
+        if (watched.Count == 0) return;
+
+        var fresh = Helpers.NewMailFilter.SelectNew(watched, _notifyThresholdUtc, _notifiedMessageKeys);
+        if (fresh.Count == 0) return;
+
+        // Same wake/reconnect-backlog guard as the new-mail path: SelectNew has already claimed
+        // these, so they will not re-fire; only the toast is skipped.
+        if (fresh.Count > MaxNotifyBatchSize)
+        {
+            LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh " +
+                           $"— toast suppressed (batch > {MaxNotifyBatchSize}).");
+            return;
+        }
+
+        LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh in watched conversations.");
+        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh);
     }
 
     // CA1859: the parameter type is fixed by the MessagesRemoved event delegate
@@ -2899,6 +3002,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ApplyFolderDisplayNames(list);
         }
         _rawMessages = list;
+        // Watch state is derived, not persisted, so it has to be stamped onto every freshly
+        // materialized row — in every folder, not just the watched one. The row's spoken "watched"
+        // field is meant to be readable wherever the message appears.
+        StampWatchedFlags(_rawMessages);
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
         else
@@ -3080,6 +3187,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MessageFilter.Forwarded       => msg.IsForwarded,
         MessageFilter.ToMe            => !msg.IsMailingList && Accounts.Any(a => msg.To.Contains(a.Username, StringComparison.OrdinalIgnoreCase)),
         MessageFilter.Flagged         => msg.IsFlagged,
+        MessageFilter.Watched         => IsWatchedMessage(msg),
         _                             => true,
     };
 
@@ -3417,7 +3525,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var items = new List<MailFolderModel>
         {
             AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder,
-            AllArchiveFolder, AllTrashFolder
+            // All Flagged was missing here (and from the folder picker) while every other
+            // aggregate was present. ApplyViewAsync resolves a saved view's VirtualFolderKey
+            // against this list, so a view saved over All Flagged fell through to a fabricated
+            // folder instead of the live singleton.
+            AllArchiveFolder, AllTrashFolder, AllFlaggedFolder, AllWatchedFolder
         };
 
         foreach (var account in Accounts)
@@ -3570,6 +3682,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllArchiveFolder, Label = AllArchiveFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllTrashFolder,   Label = AllTrashFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllFlaggedFolder, Label = AllFlaggedFolder.DisplayName });
+        allMailGroup.Children.Add(new FolderTreeNode { Folder = AllWatchedFolder, Label = AllWatchedFolder.DisplayName });
         roots.Add(allMailGroup);
 
         foreach (var account in Accounts)
@@ -3639,6 +3752,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsFilterToMe));
         OnPropertyChanged(nameof(IsFilterActive));
         OnPropertyChanged(nameof(IsFilterFlagged));
+        OnPropertyChanged(nameof(IsFilterWatched));
         OnPropertyChanged(nameof(IsFilterAllFlagged));
         OnPropertyChanged(nameof(FilterLabel));
         OnPropertyChanged(nameof(WindowTitle));
@@ -4401,6 +4515,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // #423: All Mail's incremental adds go through InsertMessageSorted (not SetMessages), so
             // stamp the source folder here too — otherwise newly-fetched rows announce no folder.
             ApplyFolderDisplayNames(newMessages);
+            // Same reason, same rows: these bypass SetMessages, so the derived watch flag has to be
+            // stamped here too or the newest rows speak no watch state while the cached ones do.
+            StampWatchedFlags(newMessages);
 
             if (needsRecipientRepair)
             {
@@ -4572,6 +4689,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (folder.FullName == AllMailFolder.FullName)    return FetchAllMailAsync();
         if (IsFolderScopedAggregate(folder.FullName))     return FetchVirtualFolderAsync(folder.FullName);
         if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
+        if (folder.FullName == AllWatchedFolder.FullName) return FetchWatchedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
         if (TryGetContactMailFromSentinel(folder.FullName, out var contactAddress, out var contactDirection))
             return FetchContactMailAsync(contactAddress, contactDirection);
@@ -4584,6 +4702,106 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (view != null) return FetchViewFoldersAsync(view);
         }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// True when this message belongs to a conversation the user is watching. The watch set is the
+    /// single source of truth — there is deliberately no persisted per-message watch state to
+    /// disagree with it. A null service means the feature is not wired up (tests), so nothing is
+    /// watched.
+    /// </summary>
+    private bool IsWatchedMessage(MailMessageSummary msg) =>
+        _watchService?.IsWatched(msg.Subject) == true;
+
+    /// <summary>
+    /// Stamps <see cref="MailMessageSummary.IsWatched"/> from the watch set. Called after every load
+    /// into the watched folder and after every toggle. IsWatched is observable, so re-stamping
+    /// refreshes the affected rows in place without rebuilding the list and losing focus.
+    /// </summary>
+    private void StampWatchedFlags(IEnumerable<MailMessageSummary> messages)
+    {
+        if (_watchService == null) return;
+        foreach (var m in messages)
+            m.IsWatched = _watchService.IsWatched(m.Subject);
+    }
+
+    /// <summary>
+    /// Loads the Watched Conversations virtual folder: every cached message across all accounts and
+    /// folders whose conversation is watched. Structurally the same predicate-aggregate shape as
+    /// <see cref="FetchAllFlaggedAsync"/> and <see cref="FetchContactMailAsync"/> — see the spec's
+    /// §5.3 for why the three are deliberately not yet unified.
+    /// </summary>
+    private async Task FetchWatchedAsync()
+    {
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
+        var expectedFolder = SelectedFolder;
+        Messages.Clear();
+        StatusText = "Loading watched conversations…";
+        IsBusy = true;
+
+        _folderCts?.Cancel();
+        ReplaceCts(ref _folderCts, out var ct);
+
+        try
+        {
+            List<MailMessageSummary> all;
+            if (OnlineMode)
+            {
+                // In --online mode there is no cache to search, so sweep every non-excluded folder
+                // across all accounts and match client-side — same shape as All Flagged.
+                all = new List<MailMessageSummary>();
+                foreach (var account in Accounts)
+                {
+                    if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+                    foreach (var folder in folders)
+                    {
+                        if (folder.ExcludeFromAllMail) continue;
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var msgs = _syncDays > 0
+                                ? await _imap.GetMessagesSinceDateAsync(
+                                    account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                                : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
+                            all.AddRange(msgs.Where(IsWatchedMessage));
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            LogService.Log($"FetchWatched online {account.DisplayName}/{folder.DisplayName}", ex);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                all = await _localStore.LoadAllSummariesAsync();
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            var watched = all.Where(IsWatchedMessage).ToList();
+            await ResolveFlagNamesAsync(watched);
+            SetMessages(watched.OrderByDescending(m => m.Date).ToList());
+            var n = Messages.Count;
+            StatusText = n == 0
+                ? "No watched conversations. Press Ctrl+Shift+W on a message to watch its conversation."
+                : $"{n} watched {(n == 1 ? "message" : "messages")}.";
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "Watched conversations load cancelled.";
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("FetchWatched failed", ex);
+            StatusText = "Could not load watched conversations.";
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
+        }
     }
 
     private async Task FetchAllFlaggedAsync()
@@ -4770,6 +4988,222 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Supplied by the View: resolves which conversation the watch toggle should act on.
+    /// <para>It cannot simply be <see cref="SelectedMessage"/>.<c>Subject</c>, because selecting a
+    /// group header in the Conversations / From / To trees does not update
+    /// <see cref="SelectedMessage"/> (see <c>GroupedMessageTreeController.OnSelectedItemChanged</c>);
+    /// reading the selected message while a header is selected would watch whatever thread happened
+    /// to be selected before — a silent wrong-target bug. Only the View knows which tree is showing
+    /// and what is selected in it. Null falls back to the selected message, which is correct for any
+    /// host without group trees.</para>
+    /// </summary>
+    public Func<string?>? WatchTargetResolver { get; set; }
+
+    /// <summary>The subject whose conversation the watch toggle acts on.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWatchTargetWatched))]
+    [NotifyPropertyChangedFor(nameof(HasWatchTarget))]
+    private string? _watchTargetSubject;
+
+    // Pure read of the current target. Kept separate from RefreshWatchTarget so availability can be
+    // polled without mutating state.
+    private string? ResolveWatchTarget() =>
+        WatchTargetResolver != null ? WatchTargetResolver() : SelectedMessage?.Subject;
+
+    private static bool HasWatchableSubject(string? subject) =>
+        ConversationBuilder.NormalizeSubject(subject ?? string.Empty).Length > 0;
+
+    /// <summary>Recomputes <see cref="WatchTargetSubject"/> from the View's resolver.</summary>
+    public void RefreshWatchTarget() => WatchTargetSubject = ResolveWatchTarget();
+
+    /// <summary>True when there is something for the watch toggle to act on.</summary>
+    public bool HasWatchTarget => _watchService != null && HasWatchableSubject(WatchTargetSubject);
+
+    /// <summary>
+    /// Opens the Watched Conversations folder and selects the newest message of one conversation.
+    /// Called by the manager's "go to conversation". Selecting the folder rather than filtering
+    /// keeps every other view control (mode, sort, fields) behaving exactly as it does when the
+    /// user navigates there themselves.
+    /// </summary>
+    public async Task ShowWatchedConversationAsync(string normalizedSubject)
+    {
+        await SelectFolderCommand.ExecuteAsync(AllWatchedFolder);
+
+        var key = ConversationBuilder.NormalizeSubject(normalizedSubject ?? string.Empty);
+        if (key.Length == 0) return;
+
+        // Messages is already date-descending, so the first match is the newest.
+        var target = Messages.FirstOrDefault(m =>
+            string.Equals(ConversationBuilder.NormalizeSubject(m.Subject), key,
+                          StringComparison.OrdinalIgnoreCase));
+        if (target == null) return;
+
+        SelectedMessage = target;
+        MessageListFocusRequested?.Invoke();
+    }
+
+    /// <summary>True when the current watch target's conversation is watched — drives the menu check.</summary>
+    public bool IsWatchTargetWatched =>
+        WatchTargetSubject != null && _watchService?.IsWatched(WatchTargetSubject) == true;
+
+    /// <summary>
+    /// Watches or unwatches <see cref="WatchTargetSubject"/>'s whole conversation (Ctrl+Shift+W).
+    /// One command does both directions so there is no separate unwatch action to discover.
+    /// </summary>
+    public void ToggleWatchConversation()
+    {
+        RefreshWatchTarget();
+        ToggleWatchConversationFor(WatchTargetSubject);
+    }
+
+    /// <summary>
+    /// Watches or unwatches a named conversation. The entry point for callers that already know
+    /// the subject and must not go through the View's resolver — a separate message window, and
+    /// the Watched Conversations manager.
+    /// </summary>
+    public void ToggleWatchConversationFor(string? subject)
+    {
+        // Keep the menu's check state pointed at what was just acted on, so a toggle from a
+        // message window does not leave the main window's menu describing a different thread.
+        WatchTargetSubject = subject;
+        // Every path below ends by re-raising IsWatchTargetWatched, including the early returns:
+        // the menu item is IsCheckable, so WPF has already flipped its own check state by the time
+        // this runs, and a path that returns without notifying would leave it reporting a lie.
+        try
+        {
+            if (_watchService == null || subject == null) return;
+
+            if (_watchService.IsWatched(subject))
+            {
+                var label = DescribeConversation(subject);
+                _watchService.Unwatch(subject);
+                RefreshWatchState(subject);
+                Announce($"Stopped watching: {label}", AnnouncementCategory.Result);
+                return;
+            }
+
+            if (!_watchService.Watch(subject))
+            {
+                // The only way Watch fails for a conversation that is not already watched: the
+                // subject normalizes to empty. An empty key would match every blank-subject message
+                // in every account, so it is refused rather than silently stored. Said in the status
+                // bar as well as announced, so the refusal is not invisible to a user who has turned
+                // result announcements off.
+                StatusText = "Cannot watch a conversation with no subject.";
+                Announce("Cannot watch a conversation with no subject.", AnnouncementCategory.Result);
+                return;
+            }
+
+            RefreshWatchState(subject);
+            Announce($"Watching conversation: {DescribeConversation(subject)}",
+                     AnnouncementCategory.Result);
+        }
+        finally
+        {
+            OnPropertyChanged(nameof(IsWatchTargetWatched));
+        }
+    }
+
+    // The spoken name of a conversation: its normalized subject, which is what the watch actually
+    // covers (so "Re: Budget" and "Budget" announce identically, as one conversation).
+    private static string DescribeConversation(string subject)
+    {
+        var normalized = ConversationBuilder.NormalizeSubject(subject);
+        return normalized.Length > 0 ? normalized : "(no subject)";
+    }
+
+    /// <summary>
+    /// Re-syncs everything derived from the watch list for one conversation, after something other
+    /// than this VM changed it (today: the Watched Conversations manager, which is modeless and so
+    /// can prune while the watched folder is visible behind it).
+    /// </summary>
+    public void RefreshWatchStateFor(string subject) => RefreshWatchState(subject);
+
+    /// <summary>
+    /// Re-stamps <see cref="MailMessageSummary.IsWatched"/> after a watch toggle, and — when the
+    /// Watched Conversations folder is open — drops the rows that just stopped qualifying, since
+    /// this folder's membership is exactly the watch predicate.
+    /// </summary>
+    private void RefreshWatchState(string subject)
+    {
+        OnPropertyChanged(nameof(IsWatchTargetWatched));
+
+        var key = ConversationBuilder.NormalizeSubject(subject);
+        if (key.Length == 0) return;
+
+        bool SameConversation(MailMessageSummary m) =>
+            string.Equals(ConversationBuilder.NormalizeSubject(m.Subject), key,
+                          StringComparison.OrdinalIgnoreCase);
+
+        StampWatchedFlags(_rawMessages.Where(SameConversation));
+        StampWatchedFlags(Messages.Where(SameConversation));
+
+        if (SelectedFolder?.FullName != AllWatchedFolder.FullName)
+        {
+            // The Watched filter is the same predicate applied to an ordinary folder, so a toggle
+            // changes what qualifies there too. Without this the list keeps showing messages it
+            // claims to have filtered out, until something else happens to re-apply.
+            if (ActiveFilter == MessageFilter.Watched)
+                ApplyFiltersAndSearch();
+            return;
+        }
+        if (_watchService?.IsWatched(subject) == true) return;
+
+        // Unwatched while viewing the watched folder: the whole conversation leaves, not just the
+        // focused row. Focus moves to the row that follows the removed block so the user is not
+        // stranded at the top of the list.
+        var leaving = Messages.Where(SameConversation).ToList();
+        if (leaving.Count == 0) return;
+
+        var firstIndex = Messages.IndexOf(leaving[0]);
+
+        // The open message may be one of the rows leaving. Clear the reading pane before removing
+        // them, exactly as delete, archive, RemoveVanishedMessages and OnMessagesRemoved all do —
+        // otherwise the pane keeps rendering a message that is no longer in the list, and every
+        // command gated on IsMessageOpen stays live against it.
+        if (leaving.Any(m => ReferenceEquals(m, SelectedMessage)) || SelectedMessage == null)
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
+        _rawMessages.RemoveAll(SameConversation);
+        foreach (var m in leaving)
+            Messages.Remove(m);
+
+        // Note: deliberately no UpdateAccountCountsAfterRemoval here. Unlike the delete/archive/
+        // vanish paths, these messages still exist and are still unread wherever they live — only
+        // this view's membership changed.
+        RebuildActiveGroupView();
+
+        if (Messages.Count == 0)
+        {
+            SelectedMessage = null;
+            StatusText = "No watched conversations. Press Ctrl+Shift+W on a message to watch its conversation.";
+            return;
+        }
+
+        var n = Messages.Count;
+        StatusText = $"{n} watched {(n == 1 ? "message" : "messages")}.";
+
+        if (ViewMode == ViewMode.Messages)
+        {
+            // The row that had keyboard focus was just removed from the ListView, so focus has to be
+            // asked back explicitly — same as archive.
+            SelectedMessage = Messages[Math.Min(firstIndex, Messages.Count - 1)];
+            MessageListFocusRequested?.Invoke();
+        }
+        else
+        {
+            // In the group trees, focus is the tree's business after RebuildActiveGroupView replaces
+            // its items. Clearing SelectedMessage keeps HasSelectedMessage false so the global
+            // per-message hotkeys don't act on a row the user never selected. (Same rationale as
+            // archive and delete.)
+            SelectedMessage = null;
+        }
+    }
+
     public async Task ToggleSingleFlagAsync(MailMessageSummary message)
     {
         if (_flagService == null) return;
@@ -4953,6 +5387,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // top) announce no folder while the cached rows below them do. Mirrors FetchAllMailAsync.
             // The OnlineMode branch below is already covered — it flows through SetMessages.
             ApplyFolderDisplayNames(newMessages);
+            // Same reason, same rows: these bypass SetMessages, so the derived watch flag has to be
+            // stamped here too or the newest rows speak no watch state while the cached ones do.
+            StampWatchedFlags(newMessages);
 
             if (OnlineMode)
             {
@@ -6937,6 +7374,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
             "flagged"     => MessageFilter.Flagged,
+            "watched"     => MessageFilter.Watched,
             _             => MessageFilter.All,
         };
         // Clear any named-flag sub-filter from a previously applied saved view

@@ -99,6 +99,22 @@ public partial class MailMessageSummary : ObservableObject
     /// </summary>
     public bool IsServerFlagged { get; set; }
 
+    // ── Watch state ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// True when this message belongs to a conversation the user is watching (Ctrl+Shift+W).
+    /// <para>Transient and derived: the watch list (<c>watches.json</c>) is the single source of
+    /// truth, and this is stamped from it after a load and after a toggle. It has no database
+    /// column and is never serialized — a persisted copy could disagree with the watch list, and a
+    /// disagreement would have no correct resolution.</para>
+    /// <para>Observable so that toggling refreshes the row's spoken text in place, without
+    /// rebuilding the list and losing focus. Deliberately absent from
+    /// <c>MainViewModel.ReconcileMessageState</c>: a freshly fetched summary has never been stamped,
+    /// so copying it over an existing row would clear the flag on every aggregate merge.</para>
+    /// </summary>
+    [ObservableProperty]
+    private bool _isWatched;
+
     // ── Computed display ──────────────────────────────────────────────────────
 
     /// <summary>

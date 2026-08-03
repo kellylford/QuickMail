@@ -405,9 +405,31 @@ You can also jump directly to any pane:
 
 ### Unified Inbox
 
-Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, and **All Trash**, each merging that kind of folder across every account; **All Archive**, which follows each account's own archive setting; and **All Flagged**, which collects flagged messages from every folder rather than from one kind of folder.
+Select **All Inboxes** at the top of the folder tree to see messages from all accounts merged into one list, sorted by date. The same **All Mail** group also holds **All Drafts**, **All Sent**, and **All Trash**, each merging that kind of folder across every account; **All Archive**, which follows each account's own archive setting; **All Flagged**, which collects flagged messages from every folder rather than from one kind of folder; and **Watched Conversations**, described below.
 
 In any of these merged views, each row also says which folder the message came from — qualified with the account name when the view spans more than one account, so "Work, Archive" and "Home, Archive" are told apart. In an ordinary single-folder view the folder is already known, so nothing extra is said. You can move where this falls in the row, or turn it off, in [Message List Fields](#message-list-fields).
+
+### Watched Conversations
+
+When a conversation matters — a release announcement, a bug thread, a trip itinerary — you can watch it, and every message in it collects in one place, including the replies that have not arrived yet.
+
+Press `Ctrl+Shift+W` on any message in the conversation, or choose **Message → Watch Conversation**. You will hear "Watching conversation" and the subject. From then on, **Watched Conversations** — the last item in the **All Mail** group of the folder tree — lists every message in that conversation, from every folder and every account, newest first. New replies join on their own as they arrive; you do not have to mark them.
+
+This is what makes watching different from flagging. A flag marks a message you already have, so you have to notice each new one first. A watch is a standing subscription to the conversation, so the ones you have not seen yet are already collected for you.
+
+To stop watching, press `Ctrl+Shift+W` again on any message in the conversation — the same key does both. If you are in the Watched Conversations folder at the time, that conversation's messages leave the list straight away and the selection moves to the next message. Watching changes nothing on the mail server and nothing in other mail programs; it is remembered on this computer only.
+
+Everything else in the message list works here as usual: view modes, filters, sorting, and the message list fields. **Conversations** view mode is a natural fit — each watched conversation becomes a single group you can expand. You can also save Watched Conversations as one of your own views, the same way you would save any other folder.
+
+Two things worth knowing. QuickMail groups a conversation by its subject, ignoring any `Re:` and `Fwd:` prefixes, so a reply is recognised automatically — but two unrelated messages that happen to share a subject count as one conversation. And a message with no subject at all cannot be watched; if you try, you will hear "Cannot watch a conversation with no subject" and nothing changes.
+
+If you would like each row to say whether its conversation is watched, turn on the **Watched** field in [Message List Fields](#message-list-fields). It is off to begin with.
+
+**To see what you are watching**, choose **Message → Watched Conversations…**. The window lists every watch with how many cached messages it has collected and when you started it. Press **Enter** on one to jump to that conversation, **Delete** to stop watching it, or **Rename** to give it a clearer label. Renaming changes the label only — which messages the watch collects is decided by the subject and does not change. Type a letter to jump down the list. The window stays open while you work, so you can leave it up and keep going; **Escape** closes it.
+
+**To be told when a reply arrives**, turn on **Settings → Notifications → Show a notification when a watched conversation gets a reply**. Unlike the ordinary new-mail notification, this one applies to every folder rather than just the inbox, because a watched thread's next message can land anywhere. The two settings are independent; if a message is both new inbox mail and part of a watched conversation you get one notification, the watched one.
+
+**To narrow any folder to watched mail**, choose **View → Filter → Watched**. That works in any folder, and can be saved as part of one of your own views.
 
 ### Jumping to an Item by Typing
 
@@ -530,6 +552,7 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
+| `Ctrl+Shift+W` | Watch or unwatch this message's conversation |
 | `Alt+A` | Focus the attachment list |
 
 Deleting a message from its window closes the window and returns focus to the originating position in the message list.
@@ -1612,6 +1635,7 @@ Every announcement is optional and controlled by the settings above. No custom s
 | `Alt+Enter` | Message properties |
 | `F5` | Refresh |
 | `Ctrl+Shift+E` | Empty Trash |
+| `Ctrl+Shift+W` | Watch / unwatch the selected message's conversation |
 | `K` | Toggle flag |
 | `Ctrl+Shift+K` | Pick flag |
 | `Ctrl+Shift+S` | Search messages |

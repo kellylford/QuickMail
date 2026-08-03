@@ -123,6 +123,7 @@ public partial class ViewManagerViewModel : ObservableObject
         "AllArchive" => "All Archive",
         "AllTrash"   => "All Trash",
         "AllFlagged" => "All Flagged",
+        "AllWatched" => "Watched Conversations",
         var k when k.StartsWith("AccountMail:", StringComparison.Ordinal) => "Account Mail",
         _            => "Virtual folder",
     };
@@ -198,7 +199,11 @@ public partial class ViewManagerViewModel : ObservableObject
             if (CurrentViewMode != ViewMode.Messages)
                 extras.Add(ModeLabel(CurrentViewMode.ToString().ToLowerInvariant()));
             if (CurrentFilter != MessageFilter.All)
-                extras.Add(FilterLabel(CurrentFilter.ToString().ToLowerInvariant()));
+                // Through FilterKey, not ToString().ToLowerInvariant(): the enum name and the
+                // stored key are not the same string for every value. WithAttachments lowercases
+                // to "withattachments", which FilterLabel has no arm for, so a view using the With
+                // Attachments filter described itself as "All".
+                extras.Add(FilterLabel(FilterKey(CurrentFilter)));
             if (CurrentSort != MessageSort.DateDescending)
                 extras.Add(SortLabel(CurrentSort.ToString()));
             if (CurrentDayLimit.HasValue)
@@ -567,7 +572,8 @@ public partial class ViewManagerViewModel : ObservableObject
         if (CurrentViewMode != ViewMode.Messages)
             extras.Add(ModeLabel(CurrentViewMode.ToString().ToLowerInvariant()));
         if (CurrentFilter != MessageFilter.All)
-            extras.Add(FilterLabel(CurrentFilter.ToString().ToLowerInvariant()));
+            // Through FilterKey — see the matching call in SelectedStateSummary.
+            extras.Add(FilterLabel(FilterKey(CurrentFilter)));
         if (CurrentSort != MessageSort.DateDescending)
             extras.Add(SortLabel(CurrentSort.ToString()));
         extras.Add(dayLimit.HasValue ? $"last {dayLimit} days" : "all days");
@@ -682,7 +688,13 @@ public partial class ViewManagerViewModel : ObservableObject
         "attachments" => "With Attachments",
         "replied"     => "Replied",
         "forwarded"   => "Forwarded",
+        // "tome" was missing until the enum-coverage test in WatchedConversationsPhase2Tests went
+        // looking: FilterKey has always written it, so a saved view using the To Me filter
+        // described itself as "All" in the View Manager. Every key FilterKey can produce needs an
+        // arm here — that test now enforces it.
+        "tome"        => "To Me",
         "flagged"     => "Flagged",
+        "watched"     => "Watched",
         _             => "All",
     };
 
@@ -705,6 +717,7 @@ public partial class ViewManagerViewModel : ObservableObject
         MessageFilter.Forwarded       => "forwarded",
         MessageFilter.ToMe            => "tome",
         MessageFilter.Flagged         => "flagged",
+        MessageFilter.Watched         => "watched",
         _                             => "all",
     };
 

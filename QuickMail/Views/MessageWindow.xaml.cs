@@ -138,10 +138,36 @@ public partial class MessageWindow : Window
             id: "window.moveToMainWindow", category: "View", title: "Move to Main Window",
             execute: () => _vm.MoveToMainWindowCommand.Execute(null)));
 
+        // Ctrl+Shift+W here too, so watching a thread works at the moment you are actually reading
+        // it. This window owns a separate registry, which is why the main window's registration
+        // does not reach it. The work itself is routed back to MainViewModel (see
+        // WatchToggleRequested) rather than done here: the watch list is one thing, and the main
+        // window has rows and a possibly-open watched folder to keep in step with it.
+        _localRegistry.Register(new CommandDefinition(
+            id: "window.toggleWatch", category: "Mail", title: "Watch Conversation",
+            description: "Watch or unwatch this message's conversation",
+            execute: RequestWatchToggle,
+            defaultKey: Key.W, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => !string.IsNullOrWhiteSpace(_vm.SelectedMessage?.Subject)));
+
         _localRegistry.Register(new CommandDefinition(
             id: "window.close", category: "View", title: "Close Window",
             execute: Close,
             defaultKey: Key.W, defaultModifiers: ModifierKeys.Control));
+    }
+
+    /// <summary>
+    /// Raised when the user asks to watch or unwatch the open message's conversation. The main
+    /// window handles it, so the watch list has exactly one writer and the main window's rows and
+    /// watched folder stay in step. Carries the subject because that is the whole input.
+    /// </summary>
+    public event Action<string>? WatchToggleRequested;
+
+    private void RequestWatchToggle()
+    {
+        var subject = _vm.SelectedMessage?.Subject;
+        if (!string.IsNullOrWhiteSpace(subject))
+            WatchToggleRequested?.Invoke(subject);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -162,7 +188,13 @@ public partial class MessageWindow : Window
 
             ApplyWebViewColorScheme();
 
-            // Relay Escape, Shift+Tab, F6 / Shift+F6, and Ctrl+W from inside the WebView.
+            // Relay Escape, Shift+Tab, F6 / Shift+F6, Ctrl+W and Ctrl+Shift+W from inside the WebView.
+            //
+            // Focus lands INSIDE this document as soon as the window opens, so a gesture that is
+            // only handled by the WPF key ladder is unreachable in practice — which is why watching
+            // a thread had to be relayed here as well as registered there. Note the Ctrl+Shift+W
+            // test must accept 'W': the browser reports the upper-case key when Shift is held, so
+            // the lower-case-only Ctrl+W branch below cannot match it (and must not).
             await MessageBody.CoreWebView2.AddScriptToExecuteOnDocumentCreatedAsync(
                 "window.addEventListener('keydown',function(e){" +
                 "if(e.key==='Escape'){window.chrome.webview.postMessage('escape');e.preventDefault();}" +
@@ -170,7 +202,9 @@ public partial class MessageWindow : Window
                 "else if(e.key==='F6'&&!e.shiftKey){window.chrome.webview.postMessage('f6');e.preventDefault();}" +
                 "else if(e.key==='F6'&&e.shiftKey){window.chrome.webview.postMessage('shift-f6');e.preventDefault();}" +
                 "else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}" +
+                "else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}" +
                 "else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}" +
+                "else if(e.ctrlKey&&e.shiftKey&&(e.key==='p'||e.key==='P')){window.chrome.webview.postMessage('ctrl-shift-p');e.preventDefault();}" +
                 "});");
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
@@ -180,6 +214,8 @@ public partial class MessageWindow : Window
                 {
                     case "escape":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
                     case "ctrl-w":     Dispatcher.InvokeAsync(Close,                DispatcherPriority.Input); break;
+                    case "ctrl-shift-w": Dispatcher.InvokeAsync(RequestWatchToggle, DispatcherPriority.Input); break;
+                    case "ctrl-shift-p": Dispatcher.InvokeAsync(OpenCommandPalette, DispatcherPriority.Input); break;
                     case "shift-tab":  Dispatcher.InvokeAsync(FocusLastHeaderField,  DispatcherPriority.Input); break;
                     case "focus-attachments": Dispatcher.InvokeAsync(FocusAttachmentList, DispatcherPriority.Input); break;
                     case "f6":         Dispatcher.InvokeAsync(() => CycleFocus(true),  DispatcherPriority.Input); break;
@@ -556,6 +592,14 @@ public partial class MessageWindow : Window
             FocusAttachmentList();
             e.Handled = true;
         }
+        // Before the Ctrl+W branch would ever be reached: this window dispatches gestures with a
+        // hand-written ladder rather than through the registry, and the branches test `mod` for
+        // equality, so Ctrl+Shift+W cannot fall through to Ctrl+W. Kept adjacent so that stays true.
+        else if (key == Key.W && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            RequestWatchToggle();
+            e.Handled = true;
+        }
         else if (key == Key.P && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             OpenCommandPalette();
@@ -565,8 +609,10 @@ public partial class MessageWindow : Window
 
     private void OpenCommandPalette()
     {
+        var prev = Keyboard.FocusedElement as IInputElement;
         var palette = new CommandPaletteWindow(_localRegistry) { Owner = this };
         palette.ShowDialog();
+        prev?.Focus();
     }
 
     private void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)

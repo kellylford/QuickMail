@@ -26,6 +26,9 @@
 | Ctrl+Q | `mail.markRead` | Mark as Read |
 | F5 | `mail.refresh` | Refresh |
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
+| Ctrl+Shift+W | `mail.toggleWatch` | Watch Conversation — watches the selected message's conversation, or unwatches it if already watched. On a Conversations group header it acts on that group; on a From/To group header it is unavailable (a sender group spans many conversations) |
+| *(unassigned)* | `mail.watchManager` | Watched Conversations… (review, rename, stop watching) |
+| *(unassigned)* | `view.filterWatched` | Show Watched Conversations Only |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
 | Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
 | Ctrl+Shift+S | `view.search` | Search Messages… |
@@ -91,6 +94,34 @@ carries a second copy of the row's name (see `Views/FieldCheckList.cs`); the cos
 that control. First-letter uses QuickMail's own accumulator (`TypeAheadPrefixTracker`), not WPF
 `TextSearch`, which only works on a `Selector` — so this list is **not** a `TypeAheadWiringTests`
 site.
+
+## Watched Conversations Window
+
+Opened from **Message → Watched Conversations…** or the command palette (`mail.watchManager`).
+Unassigned by default, for the same reason as the Message List Fields window.
+
+**Modeless**, so it can stay open while you work behind it, and because it holds an editable field
+over the reading pane's live WebView2 — the combination the modal-dialog rules in `CLAUDE.md`
+forbid.
+
+| Key | Action |
+|-----|--------|
+| `Enter` | Go to the selected conversation (opens Watched Conversations and selects its newest message) |
+| `Delete` | Stop watching the selected conversation |
+| *letter* | Jump to the next watch whose label starts with that letter |
+| `Alt+G` / `Alt+R` / `Alt+S` / `Alt+C` | Go to / Rename / Stop watching / Close |
+| `F6` / `Shift+F6` | Cycle panes: list → rename panel (while renaming) → buttons |
+| `Ctrl+Shift+P` | Window-local command palette |
+| `Escape` | Abandon a rename in progress, otherwise close the window |
+
+**No button carries an access-key underscore.** The list has first-letter type-ahead, and WPF fires
+a bare mnemonic without `Alt` when focus is not in a text field — that is how `c` closed the folder
+picker (issue #418). The `Alt+` combinations above are wired explicitly in code-behind instead, and
+guarded on `Keyboard.Modifiers == ModifierKeys.Alt` exactly, so AltGr (which reports as Ctrl+Alt)
+still reaches type-ahead.
+
+Renaming changes a watch's **label only**. Matching is on the normalized subject and is not
+editable, because changing it would silently change which messages the watch collects.
 
 ## Compose Window
 

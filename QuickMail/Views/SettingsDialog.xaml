@@ -172,6 +172,12 @@
                                 <TextBlock Text="Windows shows a notification when new mail arrives in an inbox while QuickMail is running."
                                            Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
 
+                                <CheckBox Content="Show a notification when a _watched conversation gets a reply"
+                                          IsChecked="{Binding NotifyOnWatchedConversation, Mode=TwoWay}"
+                                          AutomationProperties.Name="Show a notification when a watched conversation gets a reply"/>
+                                <TextBlock Text="Applies to conversations you watch with Ctrl+Shift+W, in every folder rather than only the inbox. Independent of the setting above."
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}" Margin="0,3,0,8" TextWrapping="Wrap"/>
+
                                 <CheckBox Content="_Keep running in the notification area when I close the window"
                                           IsChecked="{Binding CloseToTray, Mode=TwoWay}"
                                           AutomationProperties.Name="Keep running in the notification area when I close the window"/>

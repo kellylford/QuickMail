@@ -122,6 +122,13 @@ public partial class MainWindow : Window
     private readonly ICommandRegistry _registry;
     private readonly IRowLayoutService? _rowLayoutService;
     private RowFieldsWindow? _rowFieldsWindow;
+    private WatchedConversationsWindow? _watchedConversationsWindow;
+    // Null in tests that construct MainWindow without it; the manager command no-ops when absent.
+    private readonly IWatchService? _watchService;
+
+    // Window that VM announcements should be raised on instead of this one, set only for the
+    // duration of a synchronous call made on another window's behalf. See AnnouncementRequested.
+    private UIElement? _announceTarget;
     private bool _webViewReady;
     private CoreWebView2Environment? _webViewEnvironment;
     private readonly TypeAheadPrefixTracker _typeAhead = new();
@@ -224,9 +231,11 @@ public partial class MainWindow : Window
         IProviderCatalog? providerCatalog = null,
         IAutoDiscoverService? autoDiscover = null,
         ConnectionTruthProbe? truthProbe = null,
-        IRowLayoutService? rowLayoutService = null)
+        IRowLayoutService? rowLayoutService = null,
+        IWatchService? watchService = null)
     {
         _vm = vm;
+        _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         // Optional so existing test constructions keep compiling; a null catalog falls back to the
         // built-in table, which is a pure lookup with no dependencies of its own.
@@ -286,8 +295,12 @@ public partial class MainWindow : Window
         vm.ManageAccountsRequested += OpenAccountManager;
         vm.OpenAccountSettingsRequested += OpenAccountManagerForAccount;
         vm.MessageListFocusRequested += ReturnFocusToMessageList;
+        // Normally the main window is where a VM announcement belongs. _announceTarget redirects it
+        // for the duration of a call made on behalf of another window — a UIA notification raised on
+        // a background window's peer is not what the user is looking at.
         vm.AnnouncementRequested += (_, args) =>
-            AccessibilityHelper.Announce(this, args.Text, interrupt: true, category: args.Category);
+            AccessibilityHelper.Announce(_announceTarget ?? this, args.Text,
+                                         interrupt: true, category: args.Category);
         vm.OpenInviteCardStatus += OnOpenInviteCardStatus;
         vm.SearchRequested += (_, _) => OpenSearch();
         vm.SaveViewRequested    += (_, _) => OpenViewManager(createMode: true);
@@ -1025,6 +1038,18 @@ public partial class MainWindow : Window
         // the command unavailable keeps e.Handled false, so the focused control's own type-ahead
         // (jump to a folder starting with "k") takes the key. Mirrors the calendar plain-key
         // gestures above, which scope to CalendarList focus for the same reason.
+        // Which conversation Ctrl+Shift+W acts on depends on which group tree is showing and what is
+        // selected in it — view state the VM cannot see. The command itself stays registered in the
+        // VM; this hands it the resolver. (Same shape as MainViewModel.RegisterAccountBackend.)
+        _vm.WatchTargetResolver = WatchTargetSubject;
+
+        // No default gesture: like the Flag, Theme and Row Fields managers, this is reached from its
+        // menu item or the palette. A free Ctrl+Shift chord is worth more to a per-message action.
+        _registry.Register(new CommandDefinition(
+            id: "mail.watchManager", category: "Mail", title: "Watched Conversations…",
+            execute: OpenWatchedConversationsWindow,
+            description: "Review, rename, and stop watching conversations."));
+
         _registry.Register(new CommandDefinition(
             id: "mail.toggleFlag", category: "Mail", title: "Toggle Flag",
             execute: async () => await ToggleFlagCommandAsync(),
@@ -1830,7 +1855,8 @@ public partial class MainWindow : Window
             {
                 MainViewModel.AllInboxesFolder, MainViewModel.AllMailFolder,
                 MainViewModel.AllDraftsFolder,  MainViewModel.AllSentFolder,
-                MainViewModel.AllArchiveFolder, MainViewModel.AllTrashFolder
+                MainViewModel.AllArchiveFolder, MainViewModel.AllTrashFolder,
+                MainViewModel.AllFlaggedFolder, MainViewModel.AllWatchedFolder
             },
             initialFolder: _vm.SelectedFolder,
             accountMailFolders: acctMailFolders) { Owner = this };
@@ -2778,6 +2804,74 @@ public partial class MainWindow : Window
         return false;
     }
 
+    /// <summary>
+    /// The subject whose conversation Ctrl+Shift+W acts on, or null when there is no valid target.
+    /// <para>The group tree's own selection is authoritative, for the reason
+    /// <see cref="ToggleFlagCommandAsync"/> checks it first: selecting a group header does not update
+    /// <c>_vm.SelectedMessage</c>, so reading the selected message while a header is selected would
+    /// act on whatever thread was selected before it.</para>
+    /// </summary>
+    private string? WatchTargetSubject()
+    {
+        if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg)
+            return cg.NormalizedSubject;
+
+        // A From/To group spans many conversations, so its header is not a single watch target.
+        // Falling through to SelectedMessage here would watch a thread the user is not looking at.
+        if (IsGroupRowSelected()) return null;
+
+        return _vm.SelectedMessage?.Subject;
+    }
+
+    // Keeps the Message menu's Watch Conversation check state honest: the target can change without
+    // SelectedMessage changing (a group header selection), so it is recomputed as the menu opens.
+    private void MessageMenu_SubmenuOpened(object sender, RoutedEventArgs e) => _vm.RefreshWatchTarget();
+
+    private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
+        _vm.ToggleWatchConversation();
+
+    private void MenuWatchedConversations_Click(object sender, RoutedEventArgs e) =>
+        OpenWatchedConversationsWindow();
+
+    /// <summary>
+    /// Opens the Watched Conversations manager. Modeless (CLAUDE.md's modal-dialog rules — it has
+    /// an editable field and opens over the reading pane's live WebView2), so a second invocation
+    /// must resurface the existing window rather than opening a rival that would fight it over
+    /// watches.json.
+    /// </summary>
+    private void OpenWatchedConversationsWindow()
+    {
+        if (_watchService == null) return;
+
+        if (_watchedConversationsWindow is { IsLoaded: true })
+        {
+            _watchedConversationsWindow.Activate();
+            return;
+        }
+
+        var prev = Keyboard.FocusedElement as IInputElement;
+        var vmWc = new WatchedConversationsViewModel(_watchService, _localStore, _vm.OnlineMode);
+        vmWc.GoToRequested += subject =>
+        {
+            _watchedConversationsWindow?.Close();
+            _ = _vm.ShowWatchedConversationAsync(subject);
+        };
+        // Stopping a watch from the manager must reach the VM, or the main window keeps showing
+        // that conversation's rows as watched — and keeps them in the watched folder, which is
+        // very likely visible behind this modeless window.
+        vmWc.WatchesChanged += subject => _vm.RefreshWatchStateFor(subject);
+
+        _watchedConversationsWindow = new WatchedConversationsWindow(vmWc) { Owner = this };
+        _watchedConversationsWindow.Closed += (_, _) =>
+        {
+            _watchedConversationsWindow = null;
+            // Modeless windows do not restore focus for us, and WPF's return-to-owner is not
+            // reliable for virtualized list items.
+            (prev ?? MessageList).Focus();
+        };
+        _watchedConversationsWindow.Show();
+    }
+
     private async Task ToggleFlagCommandAsync()
     {
         if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg)
@@ -2983,6 +3077,9 @@ public partial class MainWindow : Window
                 +"else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}"
                 +"else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}"
                 +"else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
+                // Watching a thread while reading it is the most natural moment to do so, and focus
+                // is inside this WebView2 then. Note the key is 'W' (upper case) with Shift held.
+                +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}"
                 +"});");
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
@@ -3003,6 +3100,11 @@ public partial class MainWindow : Window
                 else if (msg == "ctrl-w")
                     Dispatcher.InvokeAsync(
                         () => _registry.FindByGesture(Key.W, ModifierKeys.Control)?.Execute(),
+                        DispatcherPriority.Input);
+                else if (msg == "ctrl-shift-w")
+                    Dispatcher.InvokeAsync(
+                        () => _registry.FindByGesture(Key.W, ModifierKeys.Control | ModifierKeys.Shift)
+                                       ?.Execute(),
                         DispatcherPriority.Input);
             };
 
@@ -5070,6 +5172,16 @@ public partial class MainWindow : Window
         // WebView2 even after the user alt-tabs back to the main window. As an independent
         // window, the AT cleanly exits browse mode when focus leaves the message window.
         var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService, _configService);
+        // Ctrl+Shift+W in the message window routes here so the watch list keeps one writer and the
+        // main window's rows (and the watched folder, if it is open) update with it.
+        win.WatchToggleRequested += subject =>
+        {
+            // ToggleWatchConversationFor announces synchronously, so redirecting for the duration
+            // of the call puts the announcement on the window the user is actually in.
+            _announceTarget = win;
+            try { _vm.ToggleWatchConversationFor(subject); }
+            finally { _announceTarget = null; }
+        };
         _openMessageWindows.Add(win);
 
         // Wire mail action delegates so the window has full message operations.

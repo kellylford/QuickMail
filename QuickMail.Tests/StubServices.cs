@@ -269,6 +269,56 @@ sealed class StubViewService : IViewService
     public void Save(List<SavedView> views) { }
 }
 
+/// <summary>In-memory watched conversations — no watches.json, no disk. Matching mirrors the real
+/// service (normalized subject, case-insensitive) so VM tests exercise the real predicate.</summary>
+sealed class StubWatchService : IWatchService
+{
+    private readonly List<WatchedConversation> _watches = [];
+
+    public IReadOnlyList<WatchedConversation> GetAll() => _watches;
+
+    public bool IsWatched(string subject)
+    {
+        var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
+        return key.Length > 0 && _watches.Any(
+            w => string.Equals(w.NormalizedSubject, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public bool Watch(string subject)
+    {
+        var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
+        if (key.Length == 0 || IsWatched(key)) return false;
+        _watches.Add(new WatchedConversation { NormalizedSubject = key, Label = (subject ?? string.Empty).Trim() });
+        return true;
+    }
+
+    public bool Unwatch(Guid id)
+    {
+        var removed = _watches.RemoveAll(w => w.Id == id);
+        return removed > 0;
+    }
+
+    public bool Rename(Guid id, string label)
+    {
+        var trimmed = (label ?? string.Empty).Trim();
+        if (trimmed.Length == 0) return false;
+        var watch = _watches.FirstOrDefault(w => w.Id == id);
+        if (watch == null) return false;
+        watch.Label = trimmed;   // label only — NormalizedSubject is the matching key
+        return true;
+    }
+
+    public bool Unwatch(string subject)
+    {
+        var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
+        if (key.Length == 0) return false;
+        var removed = _watches.RemoveAll(
+            w => string.Equals(w.NormalizedSubject, key, StringComparison.OrdinalIgnoreCase));
+        if (removed == 0) return false;
+        return true;
+    }
+}
+
 /// <summary>In-memory spoken field layouts — no rowlayout.json, no disk.</summary>
 sealed class StubRowLayoutService : IRowLayoutService
 {

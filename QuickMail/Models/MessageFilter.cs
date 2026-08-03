@@ -26,4 +26,11 @@ public enum MessageFilter
 
     /// <summary>Only messages that have any named flag applied.</summary>
     Flagged,
+
+    /// <summary>
+    /// Only messages belonging to a watched conversation (Ctrl+Shift+W). Unlike the others this
+    /// is not a property of the message — it is a lookup against the watch list, so it can change
+    /// without the message changing.
+    /// </summary>
+    Watched,
 }
