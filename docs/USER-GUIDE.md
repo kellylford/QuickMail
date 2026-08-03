@@ -425,6 +425,12 @@ Two things worth knowing. QuickMail groups a conversation by its subject, ignori
 
 If you would like each row to say whether its conversation is watched, turn on the **Watched** field in [Message List Fields](#message-list-fields). It is off to begin with.
 
+**To see what you are watching**, choose **Message → Watched Conversations…**. The window lists every watch with how many cached messages it has collected and when you started it. Press **Enter** on one to jump to that conversation, **Delete** to stop watching it, or **Rename** to give it a clearer label. Renaming changes the label only — which messages the watch collects is decided by the subject and does not change. Type a letter to jump down the list. The window stays open while you work, so you can leave it up and keep going; **Escape** closes it.
+
+**To be told when a reply arrives**, turn on **Settings → Notifications → Show a notification when a watched conversation gets a reply**. Unlike the ordinary new-mail notification, this one applies to every folder rather than just the inbox, because a watched thread's next message can land anywhere. The two settings are independent; if a message is both new inbox mail and part of a watched conversation you get one notification, the watched one.
+
+**To narrow any folder to watched mail**, choose **View → Filter → Watched**. That works in any folder, and can be saved as part of one of your own views.
+
 ### Jumping to an Item by Typing
 
 In the folder tree, the message list, and the Conversations, From, and To trees, type the first letter of what you want to reach and the selection jumps to the next item starting with that letter. Keep typing to narrow it — letters typed within about a second of each other build up a longer prefix, so "arc" reaches Archive rather than stopping at Address book. Pause, and the next letter starts a fresh prefix. Pressing the same letter repeatedly steps through every item beginning with it, and the search wraps around to the top when it runs off the end.
@@ -546,6 +552,7 @@ When Reading Mode is set to **Window**, messages open in a separate window. Each
 | `Ctrl+Shift+M` | Move to Archive |
 | `Ctrl+Q` | Mark as Read |
 | `Ctrl+Shift+G` | Grab Addresses |
+| `Ctrl+Shift+W` | Watch or unwatch this message's conversation |
 | `Alt+A` | Focus the attachment list |
 
 Deleting a message from its window closes the window and returns focus to the originating position in the message list.

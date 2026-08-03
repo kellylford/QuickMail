@@ -289,6 +289,22 @@ sealed class StubWatchService : IWatchService
         return true;
     }
 
+    public bool Unwatch(Guid id)
+    {
+        var removed = _watches.RemoveAll(w => w.Id == id);
+        return removed > 0;
+    }
+
+    public bool Rename(Guid id, string label)
+    {
+        var trimmed = (label ?? string.Empty).Trim();
+        if (trimmed.Length == 0) return false;
+        var watch = _watches.FirstOrDefault(w => w.Id == id);
+        if (watch == null) return false;
+        watch.Label = trimmed;   // label only — NormalizedSubject is the matching key
+        return true;
+    }
+
     public bool Unwatch(string subject)
     {
         var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);

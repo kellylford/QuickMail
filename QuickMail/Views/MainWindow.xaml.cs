@@ -122,6 +122,9 @@ public partial class MainWindow : Window
     private readonly ICommandRegistry _registry;
     private readonly IRowLayoutService? _rowLayoutService;
     private RowFieldsWindow? _rowFieldsWindow;
+    private WatchedConversationsWindow? _watchedConversationsWindow;
+    // Null in tests that construct MainWindow without it; the manager command no-ops when absent.
+    private readonly IWatchService? _watchService;
     private bool _webViewReady;
     private CoreWebView2Environment? _webViewEnvironment;
     private readonly TypeAheadPrefixTracker _typeAhead = new();
@@ -224,9 +227,11 @@ public partial class MainWindow : Window
         IProviderCatalog? providerCatalog = null,
         IAutoDiscoverService? autoDiscover = null,
         ConnectionTruthProbe? truthProbe = null,
-        IRowLayoutService? rowLayoutService = null)
+        IRowLayoutService? rowLayoutService = null,
+        IWatchService? watchService = null)
     {
         _vm = vm;
+        _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         // Optional so existing test constructions keep compiling; a null catalog falls back to the
         // built-in table, which is a pure lookup with no dependencies of its own.
@@ -1029,6 +1034,13 @@ public partial class MainWindow : Window
         // selected in it — view state the VM cannot see. The command itself stays registered in the
         // VM; this hands it the resolver. (Same shape as MainViewModel.RegisterAccountBackend.)
         _vm.WatchTargetResolver = WatchTargetSubject;
+
+        // No default gesture: like the Flag, Theme and Row Fields managers, this is reached from its
+        // menu item or the palette. A free Ctrl+Shift chord is worth more to a per-message action.
+        _registry.Register(new CommandDefinition(
+            id: "mail.watchManager", category: "Mail", title: "Watched Conversations…",
+            execute: OpenWatchedConversationsWindow,
+            description: "Review, rename, and stop watching conversations."));
 
         _registry.Register(new CommandDefinition(
             id: "mail.toggleFlag", category: "Mail", title: "Toggle Flag",
@@ -2809,6 +2821,44 @@ public partial class MainWindow : Window
 
     private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
         _vm.ToggleWatchConversation();
+
+    private void MenuWatchedConversations_Click(object sender, RoutedEventArgs e) =>
+        OpenWatchedConversationsWindow();
+
+    /// <summary>
+    /// Opens the Watched Conversations manager. Modeless (CLAUDE.md's modal-dialog rules — it has
+    /// an editable field and opens over the reading pane's live WebView2), so a second invocation
+    /// must resurface the existing window rather than opening a rival that would fight it over
+    /// watches.json.
+    /// </summary>
+    private void OpenWatchedConversationsWindow()
+    {
+        if (_watchService == null) return;
+
+        if (_watchedConversationsWindow is { IsLoaded: true })
+        {
+            _watchedConversationsWindow.Activate();
+            return;
+        }
+
+        var prev = Keyboard.FocusedElement as IInputElement;
+        var vmWc = new WatchedConversationsViewModel(_watchService, _localStore, _vm.OnlineMode);
+        vmWc.GoToRequested += subject =>
+        {
+            _watchedConversationsWindow?.Close();
+            _ = _vm.ShowWatchedConversationAsync(subject);
+        };
+
+        _watchedConversationsWindow = new WatchedConversationsWindow(vmWc) { Owner = this };
+        _watchedConversationsWindow.Closed += (_, _) =>
+        {
+            _watchedConversationsWindow = null;
+            // Modeless windows do not restore focus for us, and WPF's return-to-owner is not
+            // reliable for virtualized list items.
+            (prev ?? MessageList).Focus();
+        };
+        _watchedConversationsWindow.Show();
+    }
 
     private async Task ToggleFlagCommandAsync()
     {
@@ -5110,6 +5160,9 @@ public partial class MainWindow : Window
         // WebView2 even after the user alt-tabs back to the main window. As an independent
         // window, the AT cleanly exits browse mode when focus leaves the message window.
         var win = new MessageWindow(winVm, _imap, _localStore, _webViewEnvironment, _themeService, _configService);
+        // Ctrl+Shift+W in the message window routes here so the watch list keeps one writer and the
+        // main window's rows (and the watched folder, if it is open) update with it.
+        win.WatchToggleRequested += subject => _vm.ToggleWatchConversationFor(subject);
         _openMessageWindows.Add(win);
 
         // Wire mail action delegates so the window has full message operations.

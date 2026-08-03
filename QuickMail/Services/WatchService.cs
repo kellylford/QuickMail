@@ -90,6 +90,31 @@ public class WatchService : IWatchService
         return true;
     }
 
+    public bool Unwatch(Guid id)
+    {
+        var removed = _watches.RemoveAll(w => w.Id == id);
+        if (removed == 0) return false;
+
+        RebuildIndex();
+        Save();
+        return true;
+    }
+
+    public bool Rename(Guid id, string label)
+    {
+        var trimmed = (label ?? string.Empty).Trim();
+        if (trimmed.Length == 0) return false;
+
+        var watch = _watches.FirstOrDefault(w => w.Id == id);
+        if (watch == null) return false;
+
+        // Label only. NormalizedSubject is untouched, so the same messages keep matching — the
+        // index does not even need rebuilding.
+        watch.Label = trimmed;
+        Save();
+        return true;
+    }
+
     private void RebuildIndex() =>
         _index = new HashSet<string>(
             _watches.Select(w => w.NormalizedSubject).Where(s => !string.IsNullOrEmpty(s)),

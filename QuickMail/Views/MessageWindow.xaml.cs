@@ -138,10 +138,36 @@ public partial class MessageWindow : Window
             id: "window.moveToMainWindow", category: "View", title: "Move to Main Window",
             execute: () => _vm.MoveToMainWindowCommand.Execute(null)));
 
+        // Ctrl+Shift+W here too, so watching a thread works at the moment you are actually reading
+        // it. This window owns a separate registry, which is why the main window's registration
+        // does not reach it. The work itself is routed back to MainViewModel (see
+        // WatchToggleRequested) rather than done here: the watch list is one thing, and the main
+        // window has rows and a possibly-open watched folder to keep in step with it.
+        _localRegistry.Register(new CommandDefinition(
+            id: "window.toggleWatch", category: "Mail", title: "Watch Conversation",
+            description: "Watch or unwatch this message's conversation",
+            execute: RequestWatchToggle,
+            defaultKey: Key.W, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => !string.IsNullOrWhiteSpace(_vm.SelectedMessage?.Subject)));
+
         _localRegistry.Register(new CommandDefinition(
             id: "window.close", category: "View", title: "Close Window",
             execute: Close,
             defaultKey: Key.W, defaultModifiers: ModifierKeys.Control));
+    }
+
+    /// <summary>
+    /// Raised when the user asks to watch or unwatch the open message's conversation. The main
+    /// window handles it, so the watch list has exactly one writer and the main window's rows and
+    /// watched folder stay in step. Carries the subject because that is the whole input.
+    /// </summary>
+    public event Action<string>? WatchToggleRequested;
+
+    private void RequestWatchToggle()
+    {
+        var subject = _vm.SelectedMessage?.Subject;
+        if (!string.IsNullOrWhiteSpace(subject))
+            WatchToggleRequested?.Invoke(subject);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -556,6 +582,14 @@ public partial class MessageWindow : Window
             FocusAttachmentList();
             e.Handled = true;
         }
+        // Before the Ctrl+W branch would ever be reached: this window dispatches gestures with a
+        // hand-written ladder rather than through the registry, and the branches test `mod` for
+        // equality, so Ctrl+Shift+W cannot fall through to Ctrl+W. Kept adjacent so that stays true.
+        else if (key == Key.W && mod == (ModifierKeys.Control | ModifierKeys.Shift))
+        {
+            RequestWatchToggle();
+            e.Handled = true;
+        }
         else if (key == Key.P && mod == (ModifierKeys.Control | ModifierKeys.Shift))
         {
             OpenCommandPalette();
@@ -565,8 +599,10 @@ public partial class MessageWindow : Window
 
     private void OpenCommandPalette()
     {
+        var prev = Keyboard.FocusedElement as IInputElement;
         var palette = new CommandPaletteWindow(_localRegistry) { Owner = this };
         palette.ShowDialog();
+        prev?.Focus();
     }
 
     private void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)

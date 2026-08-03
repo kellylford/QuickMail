@@ -31,4 +31,18 @@ public interface IWatchService
     /// subject came from. Returns false when it was not watched.
     /// </summary>
     bool Unwatch(string subject);
+
+    /// <summary>
+    /// Removes one watch by identity. Used by the manager, where the row is the watch itself
+    /// rather than a message that happens to belong to it.
+    /// </summary>
+    bool Unwatch(Guid id);
+
+    /// <summary>
+    /// Changes a watch's display label. Cosmetic only — <see cref="WatchedConversation.NormalizedSubject"/>
+    /// is the matching key and is deliberately not editable, because changing it would silently
+    /// change which messages the watch collects while looking like a rename.
+    /// Returns false when the id is unknown or the label is blank.
+    /// </summary>
+    bool Rename(Guid id, string label);
 }

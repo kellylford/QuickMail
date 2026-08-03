@@ -683,7 +683,13 @@ public partial class ViewManagerViewModel : ObservableObject
         "attachments" => "With Attachments",
         "replied"     => "Replied",
         "forwarded"   => "Forwarded",
+        // "tome" was missing until the enum-coverage test in WatchedConversationsPhase2Tests went
+        // looking: FilterKey has always written it, so a saved view using the To Me filter
+        // described itself as "All" in the View Manager. Every key FilterKey can produce needs an
+        // arm here — that test now enforces it.
+        "tome"        => "To Me",
         "flagged"     => "Flagged",
+        "watched"     => "Watched",
         _             => "All",
     };
 
@@ -706,6 +712,7 @@ public partial class ViewManagerViewModel : ObservableObject
         MessageFilter.Forwarded       => "forwarded",
         MessageFilter.ToMe            => "tome",
         MessageFilter.Flagged         => "flagged",
+        MessageFilter.Watched         => "watched",
         _                             => "all",
     };
 

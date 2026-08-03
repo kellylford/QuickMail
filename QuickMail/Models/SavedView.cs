@@ -21,7 +21,9 @@ public class SavedView
     /// <summary>Values: "messages" | "conversations" | "from" | "to".</summary>
     public string ViewMode { get; set; } = "messages";
 
-    /// <summary>Values: "all" | "unread" | "read" | "attachments" | "replied" | "forwarded".</summary>
+    /// <summary>Values: "all" | "unread" | "read" | "attachments" | "replied" | "forwarded"
+    /// | "tome" | "flagged" | "watched". Keep in sync with <c>ViewManagerViewModel.FilterKey</c>,
+    /// which is the single writer of this field.</summary>
     public string Filter   { get; set; } = "all";
 
     /// <summary>Values: "dateDesc" | "dateAsc" | "alphaAsc" | "alphaDesc" | "countDesc" | "countAsc".</summary>

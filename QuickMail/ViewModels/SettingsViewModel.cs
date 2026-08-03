@@ -100,6 +100,9 @@ public partial class SettingsViewModel : ObservableObject
     private bool _notifyOnNewMail;
 
     [ObservableProperty]
+    private bool _notifyOnWatchedConversation;
+
+    [ObservableProperty]
     private bool _closeToTray;
 
     // Desktop shortcut: the .lnk on the desktop is the source of truth, not config —
@@ -367,6 +370,7 @@ public partial class SettingsViewModel : ObservableObject
         CalendarReminderMinutes          = cfg.CalendarReminderMinutes;
         ConfirmEmptyTrash                = cfg.ConfirmEmptyTrash;
         NotifyOnNewMail                  = cfg.NotifyOnNewMail;
+        NotifyOnWatchedConversation      = cfg.NotifyOnWatchedConversation;
         CloseToTray                      = cfg.CloseToTray;
         DesktopShortcut                  = Helpers.DesktopShortcut.Exists();
         AutoUpdate                       = cfg.AutoUpdate;
@@ -443,6 +447,7 @@ public partial class SettingsViewModel : ObservableObject
         cfg.CalendarReminderMinutes          = Math.Clamp(CalendarReminderMinutes, 1, 1440);
         cfg.ConfirmEmptyTrash                = ConfirmEmptyTrash;
         cfg.NotifyOnNewMail                  = NotifyOnNewMail;
+        cfg.NotifyOnWatchedConversation      = NotifyOnWatchedConversation;
         cfg.CloseToTray                      = CloseToTray;
         cfg.AutoUpdate                       = AutoUpdate;
         cfg.ShowUpdateInstalledAlerts        = ShowUpdateInstalledAlerts;

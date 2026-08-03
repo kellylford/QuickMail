@@ -244,6 +244,13 @@ public class ConfigModel
     public bool NotifyOnNewMail { get; set; } = false;
 
     /// <summary>
+    /// Show a Windows toast when a message arrives in a watched conversation (Ctrl+Shift+W).
+    /// Independent of <see cref="NotifyOnNewMail"/>, and unlike it this fires in <b>any</b> folder,
+    /// not just the inbox — a watched thread's next reply can land anywhere. Default off.
+    /// </summary>
+    public bool NotifyOnWatchedConversation { get; set; } = false;
+
+    /// <summary>
     /// When closing the main window, hide QuickMail to the notification area (system tray) instead
     /// of exiting, so new-mail watchers keep running and notifications keep arriving. Default off
     /// (existing behaviour: closing the window exits the app).

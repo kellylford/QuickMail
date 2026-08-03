@@ -268,6 +268,7 @@ public class ConfigService : IConfigService
                     case "announceformattingwhilenavigating": config.AnnounceFormattingWhileNavigating = ParseBool(value); break;
                     case "confirmemptytrash":    config.ConfirmEmptyTrash    = ParseBool(value); break;
                     case "notifyonnewmail":      config.NotifyOnNewMail      = ParseBool(value); break;
+                case "notifyonwatchedconversation": config.NotifyOnWatchedConversation = ParseBool(value); break;
                     case "closetotray":          config.CloseToTray          = ParseBool(value); break;
                     case "trayhintshown":        config.TrayHintShown        = ParseBool(value); break;
                     case "logformat":
@@ -547,6 +548,12 @@ public class ConfigService : IConfigService
         sb.AppendLine($"NotifyOnNewMail = {(config.NotifyOnNewMail ? "on" : "off")}");
         sb.AppendLine("# Show a Windows notification when new mail arrives in an inbox.");
         sb.AppendLine("# Notifications appear while QuickMail is running. Values: on, off.");
+        sb.AppendLine();
+
+        sb.AppendLine($"NotifyOnWatchedConversation = {(config.NotifyOnWatchedConversation ? "on" : "off")}");
+        sb.AppendLine("# Show a Windows notification when a message arrives in a conversation you are");
+        sb.AppendLine("# watching (Ctrl+Shift+W). Unlike NotifyOnNewMail this applies to every folder,");
+        sb.AppendLine("# not just the inbox. Values: on, off.");
         sb.AppendLine();
 
         sb.AppendLine($"CloseToTray = {(config.CloseToTray ? "on" : "off")}");

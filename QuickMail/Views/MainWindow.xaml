@@ -332,6 +332,8 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
+                <MenuItem Header="Watched Con_versations…"
+                          Click="MenuWatchedConversations_Click"/>
                 <Separator/>
                 <!-- Keep IsEnabled off these three items so they remain keyboard-navigable
                      per Windows convention (dimmed items are still focusable). Visual dimming
@@ -501,6 +503,11 @@
                               IsChecked="{Binding IsFilterToMe, Mode=OneWay}"
                               Command="{Binding SetFilterCommand}"
                               CommandParameter="tome"/>
+                    <MenuItem Header="_Watched"
+                              IsCheckable="True"
+                              IsChecked="{Binding IsFilterWatched, Mode=OneWay}"
+                              Command="{Binding SetFilterCommand}"
+                              CommandParameter="watched"/>
                     <Separator/>
                     <MenuItem x:Name="FilterFlaggedItem"
                               Header="Fla_gged"

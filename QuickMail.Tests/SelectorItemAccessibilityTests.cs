@@ -141,6 +141,16 @@ public class SelectorItemAccessibilityTests
 
         // Message List Fields chooser: the row-type ComboBox and the field ListBox. The field
         // rows render a CheckBox, which drives only the visual — the item's name is ToString().
+        // Watched Conversations manager: the row must speak its label, count, and when it was
+        // started — the template renders those, but a screen reader reads ToString().
+        var watchRow = new WatchRow(new WatchedConversation
+        {
+            NormalizedSubject = "Budget Review",
+            Label             = "Budget Review",
+            CreatedUtc        = new DateTimeOffset(2026, 8, 3, 12, 0, 0, TimeSpan.Zero),
+        }) { MessageCount = 3 };
+        Assert.StartsWith("Budget Review, 3 messages, watched ", watchRow.ToString(), StringComparison.Ordinal);
+
         Assert.Equal("Messages", new RowKindOption(RowKind.Message, "Messages").ToString());
         var fieldRow = new RowFieldRow(
             RowFieldCatalog.Find(RowKind.Message, "subject")!,

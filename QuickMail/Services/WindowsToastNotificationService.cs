@@ -19,6 +19,7 @@ namespace QuickMail.Services;
 public sealed class WindowsToastNotificationService : INotificationService, IDisposable
 {
     private const string NewMailGroup = "newmail";
+    private const string WatchedGroup = "watchedmail";
 
     private readonly bool _osSupported;
     private bool _activationHooked;
@@ -111,6 +112,54 @@ public sealed class WindowsToastNotificationService : INotificationService, IDis
         catch (Exception ex)
         {
             LogService.Log("WindowsToastNotificationService: ShowNewMail failed", ex);
+        }
+    }
+
+    public void ShowWatchedMail(string accountLabel, Guid accountId, IReadOnlyList<MailMessageSummary> newMessages)
+    {
+        if (!_osSupported || newMessages is null || newMessages.Count == 0) return;
+
+        try
+        {
+            var folder = newMessages[0].FolderName ?? string.Empty;
+            var builder = new ToastContentBuilder()
+                .AddArgument("action", "openMail")
+                .AddArgument("accountId", accountId.ToString())
+                .AddArgument("folder", folder);
+
+            // Lead with the conversation, because that is what the user subscribed to — the
+            // sender of any one reply is secondary here, unlike an ordinary new-mail toast.
+            var conversation = ConversationBuilder.NormalizeSubject(newMessages[0].Subject ?? string.Empty);
+            if (conversation.Length == 0) conversation = "(no subject)";
+
+            if (newMessages.Count == 1)
+            {
+                var m = newMessages[0];
+                var display = SenderDisplayName(m.From);
+                var sender  = string.IsNullOrWhiteSpace(display) ? accountLabel : display;
+                builder.AddArgument("messageId", m.MessageId)
+                       .AddText($"Watched: {conversation}")
+                       .AddText(sender);
+                if (!string.IsNullOrWhiteSpace(m.Preview))
+                    builder.AddText(m.Preview);
+            }
+            else
+            {
+                builder.AddText($"{newMessages.Count} new in watched conversations")
+                       .AddText(accountLabel);
+            }
+
+            // Its own group, so watched replies collapse among themselves rather than displacing
+            // ordinary new-mail toasts in the notification centre.
+            builder.Show(toast =>
+            {
+                toast.Tag   = Sanitize(accountId.ToString());
+                toast.Group = WatchedGroup;
+            });
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("WindowsToastNotificationService: ShowWatchedMail failed", ex);
         }
     }
 

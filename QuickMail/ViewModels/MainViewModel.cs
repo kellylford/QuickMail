@@ -640,6 +640,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public bool IsFilterForwarded       => ActiveFilter == MessageFilter.Forwarded;
     public bool IsFilterToMe            => ActiveFilter == MessageFilter.ToMe;
     public bool IsFilterFlagged         => ActiveFilter == MessageFilter.Flagged;
+    public bool IsFilterWatched         => ActiveFilter == MessageFilter.Watched;
     public bool IsFilterAllFlagged      => ActiveFilter == MessageFilter.Flagged && _activeFlagFilterId == null;
     public bool IsFilterActive          => ActiveFilter != MessageFilter.All;
     public bool AnnounceFlagStatus      => _announceFlagStatus;
@@ -672,6 +673,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MessageFilter.Forwarded       => "Forwarded",
         MessageFilter.ToMe            => "To Me",
         MessageFilter.Flagged         => "Flagged",
+        MessageFilter.Watched         => "Watched",
         _                             => string.Empty,
     };
 
@@ -1530,6 +1532,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
             "flagged"     => MessageFilter.Flagged,
+            "watched"     => MessageFilter.Watched,
             _             => MessageFilter.All,
         };
         ActiveSort = ConfigModel.ParseSort(view.Sort);
@@ -1951,6 +1954,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "view.filterToMe", category: "View", title: "Show Messages Addressed to Me",
             execute: () => SetFilterCommand.Execute("tome")));
+
+        registry.Register(new CommandDefinition(
+            id: "view.filterWatched", category: "View", title: "Show Watched Conversations Only",
+            execute: () => SetFilterCommand.Execute("watched")));
 
         registry.Register(new CommandDefinition(
             id: "view.sortDateDesc", category: "View", title: "Sort: Newest First",
@@ -2423,6 +2430,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         if (incoming.Count > 0)
                             _ui.Post(() =>
                             {
+                                // Watched conversations first, and in EVERY folder — a watched thread's
+                                // next message can land anywhere, which is the point of the folder.
+                                // Ordering is load-bearing: both paths share _notifiedMessageKeys, so
+                                // running this first means a watched inbox message gets the watched
+                                // toast (which says more) rather than the generic one, and gets it once.
+                                MaybeNotifyWatchedMail(account, incoming);
                                 // Toast only for the Inbox (as before) — filtered mail in custom folders
                                 // shouldn't pop notifications — but refresh counts for any folder change.
                                 if (isInbox)
@@ -2683,8 +2696,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     : await _syncService.SyncOneFolderAsync(account, inbox, CancellationToken.None);
 
                 // Notify on the UI thread so the de-dupe set stays single-thread-owned.
+                // Watched first — see MaybeNotifyWatchedMail; the two share a dedup set, so order
+                // decides which toast a watched inbox message gets, and guarantees it gets one.
                 if (incoming.Count > 0)
-                    _ui.Post(() => MaybeNotifyNewMail(account, incoming));
+                    _ui.Post(() =>
+                    {
+                        MaybeNotifyWatchedMail(account, incoming);
+                        MaybeNotifyNewMail(account, incoming);
+                    });
             }
             catch (Exception ex)
             {
@@ -2728,7 +2747,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // Shows a Windows toast for genuinely-new inbox mail. Runs on the UI thread (the caller posts
     // it there) so _notifiedMessageKeys is single-thread-owned. Setting is re-read live so a
     // Settings change takes effect without a restart.
-    private void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
+    internal void MaybeNotifyNewMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
     {
         if (_notifications is not { IsSupported: true }) return;
         if (!_configService.Load().NotifyOnNewMail) return;
@@ -2774,6 +2793,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         LogService.Log(diag);
         _notifications.ShowNewMail(account.AccountLabel, account.Id, fresh);
+    }
+
+    /// <summary>
+    /// Toasts messages that arrived in a watched conversation, in any folder — unlike
+    /// <see cref="MaybeNotifyNewMail"/>, which is deliberately inbox-only.
+    /// <para><b>Must be called before</b> <see cref="MaybeNotifyNewMail"/>, and is deliberately
+    /// passed only the watched subset. Both share <c>_notifiedMessageKeys</c>, and
+    /// <c>NewMailFilter.SelectNew</c> <i>consumes</i> everything it is shown — handing it the full
+    /// incoming list here would mark ordinary inbox mail as already-notified and silently suppress
+    /// the new-mail toast entirely.</para>
+    /// </summary>
+    // Internal so the ordering contract above can be tested directly — it is the whole correctness
+    // argument for this pair of methods and is not observable from any public surface.
+    internal void MaybeNotifyWatchedMail(AccountModel account, IReadOnlyList<MailMessageSummary> incoming)
+    {
+        if (_notifications is not { IsSupported: true }) return;
+        if (_watchService == null) return;
+        if (!_configService.Load().NotifyOnWatchedConversation) return;
+
+        if (_notifiedMessageKeys.Count > 10_000) _notifiedMessageKeys.Clear();
+
+        var watched = incoming.Where(IsWatchedMessage).ToList();
+        if (watched.Count == 0) return;
+
+        var fresh = Helpers.NewMailFilter.SelectNew(watched, _notifyThresholdUtc, _notifiedMessageKeys);
+        if (fresh.Count == 0) return;
+
+        // Same wake/reconnect-backlog guard as the new-mail path: SelectNew has already claimed
+        // these, so they will not re-fire; only the toast is skipped.
+        if (fresh.Count > MaxNotifyBatchSize)
+        {
+            LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh " +
+                           $"— toast suppressed (batch > {MaxNotifyBatchSize}).");
+            return;
+        }
+
+        LogService.Log($"Watched notify [{account.AccountLabel}]: {fresh.Count} fresh in watched conversations.");
+        _notifications.ShowWatchedMail(account.AccountLabel, account.Id, fresh);
     }
 
     // CA1859: the parameter type is fixed by the MessagesRemoved event delegate
@@ -3067,6 +3124,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MessageFilter.Forwarded       => msg.IsForwarded,
         MessageFilter.ToMe            => !msg.IsMailingList && Accounts.Any(a => msg.To.Contains(a.Username, StringComparison.OrdinalIgnoreCase)),
         MessageFilter.Flagged         => msg.IsFlagged,
+        MessageFilter.Watched         => IsWatchedMessage(msg),
         _                             => true,
     };
 
@@ -3627,6 +3685,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsFilterToMe));
         OnPropertyChanged(nameof(IsFilterActive));
         OnPropertyChanged(nameof(IsFilterFlagged));
+        OnPropertyChanged(nameof(IsFilterWatched));
         OnPropertyChanged(nameof(IsFilterAllFlagged));
         OnPropertyChanged(nameof(FilterLabel));
         OnPropertyChanged(nameof(WindowTitle));
@@ -4894,6 +4953,29 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// <summary>True when there is something for the watch toggle to act on.</summary>
     public bool HasWatchTarget => _watchService != null && HasWatchableSubject(WatchTargetSubject);
 
+    /// <summary>
+    /// Opens the Watched Conversations folder and selects the newest message of one conversation.
+    /// Called by the manager's "go to conversation". Selecting the folder rather than filtering
+    /// keeps every other view control (mode, sort, fields) behaving exactly as it does when the
+    /// user navigates there themselves.
+    /// </summary>
+    public async Task ShowWatchedConversationAsync(string normalizedSubject)
+    {
+        await SelectFolderCommand.ExecuteAsync(AllWatchedFolder);
+
+        var key = ConversationBuilder.NormalizeSubject(normalizedSubject ?? string.Empty);
+        if (key.Length == 0) return;
+
+        // Messages is already date-descending, so the first match is the newest.
+        var target = Messages.FirstOrDefault(m =>
+            string.Equals(ConversationBuilder.NormalizeSubject(m.Subject), key,
+                          StringComparison.OrdinalIgnoreCase));
+        if (target == null) return;
+
+        SelectedMessage = target;
+        MessageListFocusRequested?.Invoke();
+    }
+
     /// <summary>True when the current watch target's conversation is watched — drives the menu check.</summary>
     public bool IsWatchTargetWatched =>
         WatchTargetSubject != null && _watchService?.IsWatched(WatchTargetSubject) == true;
@@ -4905,7 +4987,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void ToggleWatchConversation()
     {
         RefreshWatchTarget();
-        var subject = WatchTargetSubject;
+        ToggleWatchConversationFor(WatchTargetSubject);
+    }
+
+    /// <summary>
+    /// Watches or unwatches a named conversation. The entry point for callers that already know
+    /// the subject and must not go through the View's resolver — a separate message window, and
+    /// the Watched Conversations manager.
+    /// </summary>
+    public void ToggleWatchConversationFor(string? subject)
+    {
+        // Keep the menu's check state pointed at what was just acted on, so a toggle from a
+        // message window does not leave the main window's menu describing a different thread.
+        WatchTargetSubject = subject;
         // Every path below ends by re-raising IsWatchTargetWatched, including the early returns:
         // the menu item is IsCheckable, so WPF has already flipped its own check state by the time
         // this runs, and a path that returns without notifying would leave it reporting a lie.
@@ -7198,6 +7292,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             "forwarded"   => MessageFilter.Forwarded,
             "tome"        => MessageFilter.ToMe,
             "flagged"     => MessageFilter.Flagged,
+            "watched"     => MessageFilter.Watched,
             _             => MessageFilter.All,
         };
         // Clear any named-flag sub-filter from a previously applied saved view
