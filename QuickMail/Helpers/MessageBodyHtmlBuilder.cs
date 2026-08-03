@@ -224,7 +224,12 @@ public static class MessageBodyHtmlBuilder
         body = Step(body, "<svg\\b.*?</svg>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?</\\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Step(body, "<(img|link|base|input|button|meta)\\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-        body = Step(body, "\\s(on\\w+|style|src|srcset|background)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        // target is stripped so that anchors navigate in-place: a target="_blank" link raises
+        // WebView2's NewWindowRequested rather than NavigationStarting, and any host that
+        // forgets to handle that event silently opens the link in an in-app popup instead of
+        // the user's default browser (issue #483). Hosts handle both events; this keeps the
+        // rendered document from depending on that.
+        body = Step(body, "\\s(on\\w+|style|src|srcset|background|target)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         stripped = body;
         return complete;
     }

@@ -111,6 +111,15 @@ public partial class MarkdownPreviewWindow : Window
                 Helpers.ExternalUriPolicy.TryOpenExternal(uri);
             };
 
+            // target="_blank" and Ctrl/Shift/middle-click raise NewWindowRequested instead of
+            // NavigationStarting. Unhandled, WebView2 opens its own popup window rather than
+            // the default browser. Issue #483.
+            PreviewBody.CoreWebView2.NewWindowRequested += (_, args) =>
+            {
+                args.Handled = true;
+                Helpers.ExternalUriPolicy.TryOpenExternal(args.Uri);
+            };
+
             PreviewBody.CoreWebView2.NavigateToString(_html);
 
             await Task.Delay(200, _cts.Token); // let navigation settle before focusing
