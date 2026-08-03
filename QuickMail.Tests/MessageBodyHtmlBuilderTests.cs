@@ -195,4 +195,39 @@ public class MessageBodyHtmlBuilderTests
         // And the default still renders the HTML body (sanitized), not the plain-text path.
         Assert.Contains("Content-Security-Policy", defaultHtml);
     }
+
+    // ── Issue #483: links must reach the user's default browser ──────────────────
+
+    [Theory]
+    [InlineData("<a href=\"https://example.com\" target=\"_blank\">Link</a>")]
+    [InlineData("<a href=\"https://example.com\" target='_blank'>Link</a>")]
+    [InlineData("<a href=\"https://example.com\" TARGET=_blank>Link</a>")]
+    public void StripHeavyHtml_AnchorTarget_IsRemoved(string anchor)
+    {
+        var result = MessageBodyHtmlBuilder.StripHeavyHtml("<body>" + anchor + "</body>");
+
+        // target="_blank" makes WebView2 raise NewWindowRequested instead of
+        // NavigationStarting; a host that only handles the latter opens the link in an
+        // in-app popup rather than the default browser.
+        Assert.DoesNotContain("_blank", result);
+        Assert.DoesNotContain("target", result, System.StringComparison.OrdinalIgnoreCase);
+        // The link itself must survive — only the target attribute is dropped.
+        Assert.Contains("href=\"https://example.com\"", result);
+        Assert.Contains("Link", result);
+    }
+
+    [Fact]
+    public void BuildMessageHtml_HtmlBodyWithBlankTarget_RendersLinkWithoutTarget()
+    {
+        var detail = new QuickMail.Models.MailMessageDetail
+        {
+            Subject  = "Subj",
+            HtmlBody = "<html><body><a href=\"https://example.com/reset\" target=\"_blank\">Reset</a></body></html>",
+        };
+
+        var html = MessageBodyHtmlBuilder.BuildMessageHtml(detail);
+
+        Assert.DoesNotContain("_blank", html);
+        Assert.Contains("https://example.com/reset", html);
+    }
 }

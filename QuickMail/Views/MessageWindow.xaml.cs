@@ -198,6 +198,17 @@ public partial class MessageWindow : Window
                 OpenExternal(uri);
             };
 
+            // A link with target="_blank" — or one activated with Ctrl/Shift/middle-click —
+            // raises NewWindowRequested INSTEAD of NavigationStarting, so the handler above
+            // never sees it. Left unhandled, WebView2's default is to open the URL in its own
+            // popup window using QuickMail's user-data folder: no default-browser cookies,
+            // passkeys, or extensions. Issue #483.
+            MessageBody.CoreWebView2.NewWindowRequested += (_, args) =>
+            {
+                args.Handled = true;
+                OpenExternal(args.Uri);
+            };
+
             if (_vm.MessageDetail != null)
                 await ShowMessageBodyAsync(_vm.MessageDetail);
             else if (_vm.SelectedMessage != null)
