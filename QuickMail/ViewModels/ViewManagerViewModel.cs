@@ -123,6 +123,7 @@ public partial class ViewManagerViewModel : ObservableObject
         "AllArchive" => "All Archive",
         "AllTrash"   => "All Trash",
         "AllFlagged" => "All Flagged",
+        "AllWatched" => "Watched Conversations",
         var k when k.StartsWith("AccountMail:", StringComparison.Ordinal) => "Account Mail",
         _            => "Virtual folder",
     };

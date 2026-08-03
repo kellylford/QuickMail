@@ -266,6 +266,44 @@ sealed class StubViewService : IViewService
     public void Save(List<SavedView> views) { }
 }
 
+/// <summary>In-memory watched conversations — no watches.json, no disk. Matching mirrors the real
+/// service (normalized subject, case-insensitive) so VM tests exercise the real predicate.</summary>
+sealed class StubWatchService : IWatchService
+{
+    private readonly List<WatchedConversation> _watches = [];
+
+    public event EventHandler? WatchesChanged;
+
+    public IReadOnlyList<WatchedConversation> GetAll() => _watches;
+
+    public bool IsWatched(string subject)
+    {
+        var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
+        return key.Length > 0 && _watches.Any(
+            w => string.Equals(w.NormalizedSubject, key, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public bool Watch(string subject)
+    {
+        var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
+        if (key.Length == 0 || IsWatched(key)) return false;
+        _watches.Add(new WatchedConversation { NormalizedSubject = key, Label = (subject ?? string.Empty).Trim() });
+        WatchesChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    public bool Unwatch(string subject)
+    {
+        var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
+        if (key.Length == 0) return false;
+        var removed = _watches.RemoveAll(
+            w => string.Equals(w.NormalizedSubject, key, StringComparison.OrdinalIgnoreCase));
+        if (removed == 0) return false;
+        WatchesChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+}
+
 /// <summary>In-memory spoken field layouts — no rowlayout.json, no disk.</summary>
 sealed class StubRowLayoutService : IRowLayoutService
 {

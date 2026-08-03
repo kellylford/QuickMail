@@ -314,6 +314,12 @@
                           Command="{Binding EmptyTrashCommand}"
                           InputGestureText="Ctrl+Shift+E"/>
                 <Separator/>
+                <MenuItem Header="_Watch Conversation"
+                          IsCheckable="True"
+                          IsChecked="{Binding IsSelectedConversationWatched, Mode=OneWay}"
+                          Command="{Binding ToggleWatchConversationCommand}"
+                          InputGestureText="Ctrl+Shift+W"/>
+                <Separator/>
                 <!-- Keep IsEnabled off these three items so they remain keyboard-navigable
                      per Windows convention (dimmed items are still focusable). Visual dimming
                      is applied via DataTrigger; the Click handlers guard against invalid state. -->

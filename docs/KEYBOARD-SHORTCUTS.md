@@ -26,6 +26,7 @@
 | Ctrl+Q | `mail.markRead` | Mark as Read |
 | F5 | `mail.refresh` | Refresh |
 | Ctrl+Shift+E | `mail.emptyTrash` | Empty Trash |
+| Ctrl+Shift+W | `mail.toggleWatch` | Watch Conversation — watches the selected message's conversation, or unwatches it if already watched (message selected only) |
 | Ctrl+Shift+V | `view.openViewMenu` | Open View Menu |
 | Ctrl+Shift+F | `view.searchFolders` | Search Folders… |
 | Ctrl+Shift+S | `view.search` | Search Messages… |

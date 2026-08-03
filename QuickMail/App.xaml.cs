@@ -411,6 +411,7 @@ public partial class App : Application
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
 
             var viewService = new ViewService(profile);
+            var watchService = new WatchService(profile);
             var rowLayoutService = new RowLayoutService(profile, configService);
             var flagService = new FlagService(profile, configService, localStore, effectiveMail);
             var customDictionary = new CustomDictionaryService(profile);
@@ -456,7 +457,8 @@ public partial class App : Application
                 contactSyncService: probeMode ? null : contactSyncService,
                 graphCalendarSyncService: probeMode ? null : graphCalendarSync,
                 truthProbe: probeMode ? null : _truthProbe,
-                rowLayoutService: rowLayoutService);
+                rowLayoutService: rowLayoutService,
+                watchService: watchService);
             mainVm.RegisterAccountBackend = a => { if (!probeMode) mailRouter.RegisterAccount(a.Id, BackendFor(a)); };
             mainVm.ImmutableIdRebuildAnnouncePending = immutableIdRebuilt;   // #366 one-time re-sync notice
             // Registers/unregisters the Help command and shows or hides the menu item, and sets

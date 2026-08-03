@@ -103,6 +103,9 @@ public static class RowFieldCatalog
         // spans accounts, and stamped empty in single-folder views — so it self-skips there.
         new("folder",      "Source folder",   "Folder",      "FolderDisplayName", RowFieldFormat.Text),
         new("mailinglist", "Mailing list",    "Mailing list", "IsMailingList",  RowFieldFormat.State, "mailing list"),
+        // Watched-conversation membership. Ships disabled (absent from MessageDefaultOrder), so an
+        // existing user's spoken row text is unchanged until they enable it in the fields chooser.
+        new("watched",     "Watched",         "Watched",     "IsWatched",       RowFieldFormat.State, "watched"),
     ];
 
     // ── Conversation group headers ───────────────────────────────────────────

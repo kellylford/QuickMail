@@ -184,7 +184,8 @@ public class AllArchiveVirtualFolderTests
         var labels = group!.Children.Select(c => c.Label).ToList();
 
         Assert.Equal(
-            new[] { "All Mail", "All Inboxes", "All Drafts", "All Sent", "All Archive", "All Trash", "All Flagged" },
+            new[] { "All Mail", "All Inboxes", "All Drafts", "All Sent", "All Archive", "All Trash",
+                    "All Flagged", "Watched Conversations" },
             labels);
     }
 

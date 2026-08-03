@@ -38,6 +38,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly IRuleService _ruleService;
     private readonly ISendMailService _smtp;
     private readonly IFlagService? _flagService;
+    // Null in tests that construct the VM without it; every use site treats a null service as
+    // "nothing is watched", mirroring how _flagService degrades in ResolveFlagNamesAsync.
+    private readonly IWatchService? _watchService;
     private readonly ICalendarService? _calendarService;
     private readonly IGraphCalendarSyncService? _graphCalendarSync;
 
@@ -248,6 +251,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         FullName    = "\u0000AllFlagged",
         DisplayName = "All Flagged"
+    };
+
+    /// <summary>
+    /// Every message belonging to a conversation the user chose to watch (Ctrl+Shift+W), across all
+    /// accounts and folders. Membership is a predicate over <see cref="IWatchService"/> rather than
+    /// per-message state, so a reply that has not arrived yet is already a member — that is what
+    /// makes a watch a subscription rather than a second kind of flag.
+    /// </summary>
+    public static readonly MailFolderModel AllWatchedFolder = new()
+    {
+        FullName    = "\u0000AllWatched",
+        DisplayName = "Watched Conversations"
     };
 
     /// <summary>Virtual folder sentinel that opens the calendar event list.</summary>
@@ -485,6 +500,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                string.Equals(folder.FullName, AllTrashFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllArchiveFolder.FullName, StringComparison.Ordinal) ||
                string.Equals(folder.FullName, AllFlaggedFolder.FullName, StringComparison.Ordinal) ||
+               string.Equals(folder.FullName, AllWatchedFolder.FullName, StringComparison.Ordinal) ||
                IsCalendarFolderName(folder.FullName);
     }
 
@@ -543,6 +559,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedMessage))]
+    [NotifyPropertyChangedFor(nameof(IsSelectedConversationWatched))]
     private MailMessageSummary? _selectedMessage;
 
     [ObservableProperty]
@@ -1119,8 +1136,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IGraphCalendarSyncService? graphCalendarSyncService = null,
         ConnectionTruthProbe? truthProbe = null,
         IScreenshotCaptureService? screenshotCapture = null,
-        IRowLayoutService? rowLayoutService = null)
+        IRowLayoutService? rowLayoutService = null,
+        IWatchService? watchService = null)
     {
+        _watchService = watchService;
         _rowLayoutService = rowLayoutService;
         _truthProbe = truthProbe;
         _screenshotCapture = screenshotCapture;
@@ -1849,6 +1868,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             execute: () => EmptyTrashCommand.Execute(null),
             defaultKey: Key.E, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift));
 
+        // Ctrl+Shift+W, not Ctrl+W: Ctrl+W already closes a tab / the reading pane / a child window.
+        registry.Register(new CommandDefinition(
+            id: "mail.toggleWatch", category: "Mail", title: "Watch Conversation",
+            description: "Watch or unwatch the selected message's conversation",
+            execute: () => ToggleWatchConversationCommand.Execute(null),
+            defaultKey: Key.W, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
+            isAvailable: () => HasSelectedMessage));
+
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
             execute: () => ViewMode = (ViewMode)(((int)ViewMode + 1) % 4)));
@@ -2466,6 +2493,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // All Flagged Mail — only accept flagged incoming messages.
             relevant = incoming.Where(m => m.IsFlagged);
         }
+        else if (selected.FullName == AllWatchedFolder.FullName)
+        {
+            // Watched Conversations — accept arrivals belonging to a watched conversation. This
+            // branch IS the feature: a reply to a watched thread joins the open folder during sync
+            // with no user action. It must stay above the real-folder branch below, which would
+            // otherwise never let an aggregate see these messages.
+            relevant = incoming.Where(IsWatchedMessage);
+        }
         else if (IsFolderScopedAggregate(selected.FullName))
         {
             // Folder-scoped virtual folders (All Inboxes / Drafts / Sent / Trash / Archive) —
@@ -2557,6 +2592,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // #423: live arrivals into an aggregate view must announce their source folder too.
         if (IsVirtualFolder(selected))
             ApplyFolderDisplayNames(toInsert);
+
+        // Watch state is derived and these rows have never been through SetMessages, so stamp them
+        // here — in every folder, for the same reason SetMessages does.
+        StampWatchedFlags(toInsert);
 
         // Batch all inserts into a single CollectionChanged(Reset) notification.
         // Without batching, each InsertMessageSorted fires CollectionChanged(Add) which
@@ -2836,6 +2875,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ApplyFolderDisplayNames(list);
         }
         _rawMessages = list;
+        // Watch state is derived, not persisted, so it has to be stamped onto every freshly
+        // materialized row — in every folder, not just the watched one. The row's spoken "watched"
+        // field is meant to be readable wherever the message appears.
+        StampWatchedFlags(_rawMessages);
         if (!_showPreview)
             foreach (var m in _rawMessages) m.Preview = string.Empty;
         else
@@ -3354,7 +3397,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var items = new List<MailFolderModel>
         {
             AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder,
-            AllArchiveFolder, AllTrashFolder
+            AllArchiveFolder, AllTrashFolder, AllWatchedFolder
         };
 
         foreach (var account in Accounts)
@@ -3507,6 +3550,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllArchiveFolder, Label = AllArchiveFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllTrashFolder,   Label = AllTrashFolder.DisplayName });
         allMailGroup.Children.Add(new FolderTreeNode { Folder = AllFlaggedFolder, Label = AllFlaggedFolder.DisplayName });
+        allMailGroup.Children.Add(new FolderTreeNode { Folder = AllWatchedFolder, Label = AllWatchedFolder.DisplayName });
         roots.Add(allMailGroup);
 
         foreach (var account in Accounts)
@@ -4509,6 +4553,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (folder.FullName == AllMailFolder.FullName)    return FetchAllMailAsync();
         if (IsFolderScopedAggregate(folder.FullName))     return FetchVirtualFolderAsync(folder.FullName);
         if (folder.FullName == AllFlaggedFolder.FullName) return FetchAllFlaggedAsync();
+        if (folder.FullName == AllWatchedFolder.FullName) return FetchWatchedAsync();
         if (TryGetAccountIdFromSentinel(folder.FullName, out var accountId)) return FetchAccountAllMailAsync(accountId);
         if (TryGetContactMailFromSentinel(folder.FullName, out var contactAddress, out var contactDirection))
             return FetchContactMailAsync(contactAddress, contactDirection);
@@ -4521,6 +4566,106 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (view != null) return FetchViewFoldersAsync(view);
         }
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// True when this message belongs to a conversation the user is watching. The watch set is the
+    /// single source of truth — there is deliberately no persisted per-message watch state to
+    /// disagree with it. A null service means the feature is not wired up (tests), so nothing is
+    /// watched.
+    /// </summary>
+    private bool IsWatchedMessage(MailMessageSummary msg) =>
+        _watchService?.IsWatched(msg.Subject) == true;
+
+    /// <summary>
+    /// Stamps <see cref="MailMessageSummary.IsWatched"/> from the watch set. Called after every load
+    /// into the watched folder and after every toggle. IsWatched is observable, so re-stamping
+    /// refreshes the affected rows in place without rebuilding the list and losing focus.
+    /// </summary>
+    private void StampWatchedFlags(IEnumerable<MailMessageSummary> messages)
+    {
+        if (_watchService == null) return;
+        foreach (var m in messages)
+            m.IsWatched = _watchService.IsWatched(m.Subject);
+    }
+
+    /// <summary>
+    /// Loads the Watched Conversations virtual folder: every cached message across all accounts and
+    /// folders whose conversation is watched. Structurally the same predicate-aggregate shape as
+    /// <see cref="FetchAllFlaggedAsync"/> and <see cref="FetchContactMailAsync"/> — see the spec's
+    /// §5.3 for why the three are deliberately not yet unified.
+    /// </summary>
+    private async Task FetchWatchedAsync()
+    {
+        var loadVersion = Interlocked.Increment(ref _folderLoadVersion);
+        var expectedFolder = SelectedFolder;
+        Messages.Clear();
+        StatusText = "Loading watched conversations…";
+        IsBusy = true;
+
+        _folderCts?.Cancel();
+        ReplaceCts(ref _folderCts, out var ct);
+
+        try
+        {
+            List<MailMessageSummary> all;
+            if (OnlineMode)
+            {
+                // In --online mode there is no cache to search, so sweep every non-excluded folder
+                // across all accounts and match client-side — same shape as All Flagged.
+                all = new List<MailMessageSummary>();
+                foreach (var account in Accounts)
+                {
+                    if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
+                    foreach (var folder in folders)
+                    {
+                        if (folder.ExcludeFromAllMail) continue;
+                        ct.ThrowIfCancellationRequested();
+                        try
+                        {
+                            var msgs = _syncDays > 0
+                                ? await _imap.GetMessagesSinceDateAsync(
+                                    account.Id, folder.FullName, DateTime.UtcNow.AddDays(-_syncDays), ct)
+                                : await _imap.GetMessageSummariesAsync(account.Id, folder.FullName, 50000, ct);
+                            all.AddRange(msgs.Where(IsWatchedMessage));
+                        }
+                        catch (OperationCanceledException) { throw; }
+                        catch (Exception ex)
+                        {
+                            LogService.Log($"FetchWatched online {account.DisplayName}/{folder.DisplayName}", ex);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                all = await _localStore.LoadAllSummariesAsync();
+            }
+            if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
+
+            var watched = all.Where(IsWatchedMessage).ToList();
+            await ResolveFlagNamesAsync(watched);
+            SetMessages(watched.OrderByDescending(m => m.Date).ToList());
+            var n = Messages.Count;
+            StatusText = n == 0
+                ? "No watched conversations. Press Ctrl+Shift+W on a message to watch its conversation."
+                : $"{n} watched {(n == 1 ? "message" : "messages")}.";
+        }
+        catch (OperationCanceledException)
+        {
+            if (loadVersion == _folderLoadVersion)
+                StatusText = "Watched conversations load cancelled.";
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("FetchWatched failed", ex);
+            StatusText = "Could not load watched conversations.";
+        }
+        finally
+        {
+            if (loadVersion == _folderLoadVersion)
+                IsBusy = false;
+        }
     }
 
     private async Task FetchAllFlaggedAsync()
@@ -4705,6 +4850,99 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (loadVersion == _folderLoadVersion)
                 IsBusy = false;
         }
+    }
+
+    /// <summary>True when the selected message's conversation is watched — drives the menu check.</summary>
+    public bool IsSelectedConversationWatched =>
+        SelectedMessage != null && IsWatchedMessage(SelectedMessage);
+
+    /// <summary>
+    /// Watches or unwatches the selected message's whole conversation (Ctrl+Shift+W). One command
+    /// does both directions so there is no separate unwatch action to discover.
+    /// </summary>
+    [RelayCommand]
+    public void ToggleWatchConversation()
+    {
+        var message = SelectedMessage;
+        if (_watchService == null || message == null) return;
+
+        if (_watchService.IsWatched(message.Subject))
+        {
+            var label = DescribeConversation(message.Subject);
+            _watchService.Unwatch(message.Subject);
+            RefreshWatchState(message.Subject);
+            Announce($"Stopped watching: {label}", AnnouncementCategory.Result);
+            return;
+        }
+
+        if (!_watchService.Watch(message.Subject))
+        {
+            // The only way Watch fails for a message that is not already watched: the subject
+            // normalizes to empty. An empty key would match every blank-subject message in every
+            // account, so it is refused rather than silently stored.
+            Announce("Cannot watch a conversation with no subject.", AnnouncementCategory.Result);
+            return;
+        }
+
+        RefreshWatchState(message.Subject);
+        Announce($"Watching conversation: {DescribeConversation(message.Subject)}",
+                 AnnouncementCategory.Result);
+    }
+
+    // The spoken name of a conversation: its normalized subject, which is what the watch actually
+    // covers (so "Re: Budget" and "Budget" announce identically, as one conversation).
+    private static string DescribeConversation(string subject)
+    {
+        var normalized = ConversationBuilder.NormalizeSubject(subject);
+        return normalized.Length > 0 ? normalized : "(no subject)";
+    }
+
+    /// <summary>
+    /// Re-stamps <see cref="MailMessageSummary.IsWatched"/> after a watch toggle, and — when the
+    /// Watched Conversations folder is open — drops the rows that just stopped qualifying, since
+    /// this folder's membership is exactly the watch predicate.
+    /// </summary>
+    private void RefreshWatchState(string subject)
+    {
+        OnPropertyChanged(nameof(IsSelectedConversationWatched));
+
+        var key = ConversationBuilder.NormalizeSubject(subject);
+        if (key.Length == 0) return;
+
+        bool SameConversation(MailMessageSummary m) =>
+            string.Equals(ConversationBuilder.NormalizeSubject(m.Subject), key,
+                          StringComparison.OrdinalIgnoreCase);
+
+        StampWatchedFlags(_rawMessages.Where(SameConversation));
+        StampWatchedFlags(Messages.Where(SameConversation));
+
+        if (SelectedFolder?.FullName != AllWatchedFolder.FullName) return;
+        if (_watchService?.IsWatched(subject) == true) return;
+
+        // Unwatched while viewing the watched folder: the whole conversation leaves, not just the
+        // focused row. Focus moves to the row that follows the removed block so the user is not
+        // stranded at the top of the list.
+        var leaving = Messages.Where(SameConversation).ToList();
+        if (leaving.Count == 0) return;
+
+        var firstIndex = Messages.IndexOf(leaving[0]);
+        _rawMessages.RemoveAll(SameConversation);
+        foreach (var m in leaving)
+            Messages.Remove(m);
+
+        if (Messages.Count == 0)
+        {
+            SelectedMessage = null;
+            StatusText = "No watched conversations. Press Ctrl+Shift+W on a message to watch its conversation.";
+        }
+        else
+        {
+            SelectedMessage = Messages[Math.Min(firstIndex, Messages.Count - 1)];
+            var n = Messages.Count;
+            StatusText = $"{n} watched {(n == 1 ? "message" : "messages")}.";
+        }
+
+        RebuildActiveGroupView();
     }
 
     public async Task ToggleSingleFlagAsync(MailMessageSummary message)
