@@ -49,6 +49,15 @@ public interface ILocalStoreService
     /// <summary>Returns all message ids stored locally for this folder.</summary>
     Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName);
 
+    /// <summary>
+    /// Returns id → is_read for every message stored locally in this folder. The periodic sweep uses it
+    /// to reconcile read/unread state changed by another client (#462): it diffs this against the
+    /// server's read state from the id listing and updates only the rows that differ, no message fetch.
+    /// The key set is also the folder's cached-id set (drives the addition/deletion diff), so this one
+    /// query replaces a separate <see cref="GetAllMessageIdsAsync"/> on the sweep path.
+    /// </summary>
+    Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName);
+
     /// <summary>Which of <paramref name="messageIds"/> already exist in the folder (bounded lookup).</summary>
     Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
 

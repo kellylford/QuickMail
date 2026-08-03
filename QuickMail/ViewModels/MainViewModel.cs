@@ -1184,6 +1184,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
+        _syncService.FolderReadStatesReconciled += OnFolderReadStatesReconciled;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
         {
@@ -2609,6 +2610,68 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         RebuildActiveGroupView();
     }
+
+    // ── Read/unread reconcile (#462) ──────────────────────────────────────────────
+    // Called on the UI thread by SyncService when the periodic sweep finds a cached message whose
+    // read/unread state was changed by another client (e.g. read on the phone). The store is already
+    // updated; here we refresh the matching visible rows and the folder unread counts. This is the live
+    // update the pre-#462 full-window re-fetch used to deliver as a side effect (via OnFolderSynced/#269).
+    // Deliberately separate from OnFolderSynced: no new-mail inserts, no toast, no flag reconcile.
+    private void OnFolderReadStatesReconciled(IReadOnlyList<MailMessageSummary> changed)
+    {
+        if (_suppressFolderSyncUpdates) return;
+        if (changed.Count == 0) return;
+
+        // Refresh the matching visible rows when a folder is selected. Match by per-folder identity
+        // (account, folder, uid) — which the changed summaries carry — so a real-folder view and an
+        // aggregate view (whose rows keep their own folder identity) both find the row. The one case this
+        // misses is a cross-folder Message-ID duplicate whose displayed representative was collapsed onto
+        // a different folder's copy (Gmail labels): the row's indicator then refreshes on next load.
+        if (SelectedFolder != null)
+        {
+            var newReadByKey = new Dictionary<string, bool>(changed.Count);
+            foreach (var m in changed)
+                newReadByKey[MessageDeduplicator.PerFolderKeyFor(m)] = m.IsRead;
+
+            var affected = new List<MailMessageSummary>();
+            foreach (var existing in _rawMessages)
+                if (newReadByKey.TryGetValue(MessageDeduplicator.PerFolderKeyFor(existing), out var isRead)
+                    && existing.IsRead != isRead)
+                {
+                    existing.IsRead = isRead;
+                    affected.Add(existing);
+                }
+
+            if (affected.Count > 0)
+            {
+                // A now-read message must leave the Unread view; a now-unread one must (re)appear if it
+                // matches. Batched so it costs one Reset, not one event per change (screen-reader-friendly).
+                using (Messages.BeginBatchScope())
+                {
+                    foreach (var m in affected)
+                    {
+                        var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
+                            && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
+                        var isShown = Messages.Contains(m);
+                        if (shouldShow && !isShown) InsertMessageSorted(m);
+                        else if (!shouldShow && isShown) Messages.Remove(m);
+                    }
+                }
+                RebuildActiveGroupView();
+            }
+        }
+
+        // Nudge the folder-tree unread badges. NOTE this only acts on IMAP/SMTP accounts — Graph folder
+        // counts are server-sourced (GetFoldersAsync) and refresh on interaction, so a quiet Graph
+        // folder's badge corrects on next folder open rather than live. The message-list row and the
+        // cache are corrected above regardless. (Pre-existing: the sweep's count refresh has always been
+        // IMAP-only; this is not introduced by #462.)
+        var accountIds = new HashSet<Guid>();
+        foreach (var m in changed) accountIds.Add(m.AccountId);
+        foreach (var acctId in accountIds)
+            ScheduleFolderCountRefresh(acctId);
+    }
+
     // Called on a ThreadPool thread by the change notifier when new mail lands in an inbox.
     // Runs a targeted sync for that account's INBOX so the message appears in the list. Accounts and
     // _cachedFolders are UI-thread-owned, so resolve them on the UI thread before the background sync.

@@ -21,6 +21,15 @@ public interface ISyncService
     event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
 
     /// <summary>
+    /// Fired on the UI thread when the periodic sweep finds that a cached message's read/unread state
+    /// was changed by another client (#462). Carries the affected messages with their new
+    /// <see cref="MailMessageSummary.IsRead"/>; the store has already been updated. The view updates the
+    /// matching rows and refreshes folder counts. Distinct from <see cref="FolderSynced"/> so a read
+    /// change never triggers a new-mail toast or touches flag state.
+    /// </summary>
+    event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
+
+    /// <summary>
     /// Fired on the UI thread after rules have been applied to incoming messages.
     /// The int is the number of messages matched by rules.
     /// </summary>

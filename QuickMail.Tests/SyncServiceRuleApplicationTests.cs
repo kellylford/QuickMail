@@ -139,17 +139,17 @@ public class SyncServiceRuleApplicationTests : IDisposable
             => Task.FromResult<IList<string>>(ServerIds ?? ServerIdDates?.Select(x => x.Id).ToList()
                                               ?? Batch.Select(m => m.MessageId).ToList());
 
-        // The server's id+date listing that the #462 sweep diffs against. A test sets ServerIdDates to
-        // control exactly which ids the server reports and at what received date (so it can present a
-        // within-window new id, an out-of-window old id, etc.). Defaults to the batch ids with their
-        // dates.
-        public List<(string Id, DateTimeOffset ReceivedUtc)>? ServerIdDates { get; set; }
+        // The server's id+date+read listing that the #462 sweep diffs against. A test sets ServerIdDates
+        // to control exactly which ids the server reports, at what received date, and with what read state
+        // (so it can present a within-window new id, an out-of-window old id, a read-state change, etc.).
+        // Defaults to the batch ids with their dates and read state.
+        public List<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>? ServerIdDates { get; set; }
         public int IdDatesListings { get; private set; }   // how many times the sweep listed server ids+dates
-        public Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc)>> GetFolderMessageIdDatesAsync(Guid a, string f, CancellationToken ct = default)
+        public Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(Guid a, string f, CancellationToken ct = default)
         {
             IdDatesListings++;
-            return Task.FromResult<IReadOnlyList<(string, DateTimeOffset)>>(
-                ServerIdDates ?? Batch.Select(m => (m.MessageId, m.Date)).ToList());
+            return Task.FromResult<IReadOnlyList<(string, DateTimeOffset, bool)>>(
+                ServerIdDates ?? Batch.Select(m => (m.MessageId, m.Date, m.IsRead)).ToList());
         }
         public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid a, string f, IList<string> ids, int maxLines, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
@@ -459,7 +459,7 @@ public class SyncServiceRuleApplicationTests : IDisposable
         // Server lists exactly what we already hold — nothing new.
         var imap = new FetchStubMailService([])
         {
-            ServerIdDates = [("AAMkGraphNonNumericId==", DateTimeOffset.UtcNow.AddHours(-2))],
+            ServerIdDates = [("AAMkGraphNonNumericId==", DateTimeOffset.UtcNow.AddHours(-2), false)],
         };
         var sync = Build(imap, new CapturingRuleService());
 
@@ -503,8 +503,8 @@ public class SyncServiceRuleApplicationTests : IDisposable
         {
             ServerIdDates =
             [
-                ("AAMkRecentCached==", DateTimeOffset.UtcNow.AddHours(-2)),
-                ("AAMkAncientNeverCached==", DateTimeOffset.UtcNow.AddDays(-60)),
+                ("AAMkRecentCached==", DateTimeOffset.UtcNow.AddHours(-2), false),
+                ("AAMkAncientNeverCached==", DateTimeOffset.UtcNow.AddDays(-60), false),
             ],
         };
         var sync = Build(imap, new CapturingRuleService());
@@ -543,7 +543,7 @@ public class SyncServiceRuleApplicationTests : IDisposable
         };
         var imap = new FetchStubMailService([olderArrival])
         {
-            ServerIdDates = [("AAMkCached==", newest), ("AAMkNewButOlder==", newest.AddDays(-1))],
+            ServerIdDates = [("AAMkCached==", newest, false), ("AAMkNewButOlder==", newest.AddDays(-1), false)],
         };
         var sync = Build(imap, new CapturingRuleService());
 
@@ -559,6 +559,113 @@ public class SyncServiceRuleApplicationTests : IDisposable
         // And the older-dated arrival was actually surfaced + cached — not dropped.
         Assert.Contains(synced, m => m.MessageId == "AAMkNewButOlder==");
         Assert.Contains("AAMkNewButOlder==", await _store.GetAllMessageIdsAsync(_accountId, "INBOX"));
+    }
+
+    [Fact]
+    public async Task SyncFolderFull_ReadStateChangedOnServer_ReconcilesLocally_WithoutFetch_NotAsNewMail()
+    {
+        // #462 review finding A: removing the re-fetch also removed the read-state refresh it did as a
+        // side effect. The cache holds a message marked UNREAD; the server now reports it READ (same id,
+        // within window, nothing new). The sweep must update the cached read state and raise
+        // FolderReadStatesReconciled — WITHOUT a message fetch, and WITHOUT FolderSynced (which would risk
+        // a new-mail toast for a mere read change).
+        await _store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "AAMkReadElsewhere==", AccountId = _accountId, FolderName = "INBOX",
+            From = "a@b.com", To = "me@b.com", Subject = "cached", IsRead = false,
+            Date = DateTimeOffset.UtcNow.AddHours(-2),
+        }]);
+
+        var imap = new FetchStubMailService([])
+        {
+            ServerIdDates = [("AAMkReadElsewhere==", DateTimeOffset.UtcNow.AddHours(-2), true)],  // server: read
+        };
+        var sync = Build(imap, new CapturingRuleService());
+
+        var reconciled = new List<MailMessageSummary>();
+        sync.FolderReadStatesReconciled += list => reconciled.AddRange(list);
+        var synced = new List<MailMessageSummary>();
+        sync.FolderSynced += list => synced.AddRange(list);
+
+        await sync.SyncFolderFullAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.Null(imap.LastSinceDate);                          // no message fetch
+        Assert.Empty(synced);                                     // not surfaced as new mail
+        var m = Assert.Single(reconciled);
+        Assert.Equal("AAMkReadElsewhere==", m.MessageId);
+        Assert.True(m.IsRead);                                    // reconciled to read
+        var states = await _store.LoadFolderReadStatesAsync(_accountId, "INBOX");
+        Assert.True(states["AAMkReadElsewhere=="]);               // cache row updated
+    }
+
+    [Fact]
+    public async Task SyncFolderFull_ReadStateUnchanged_RaisesNoReadReconcile()
+    {
+        // Server read state matches the cache → nothing to do, no event, no fetch.
+        await _store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "AAMkStable==", AccountId = _accountId, FolderName = "INBOX",
+            From = "a@b.com", To = "me@b.com", Subject = "cached", IsRead = true,
+            Date = DateTimeOffset.UtcNow.AddHours(-2),
+        }]);
+        var imap = new FetchStubMailService([])
+        {
+            ServerIdDates = [("AAMkStable==", DateTimeOffset.UtcNow.AddHours(-2), true)],
+        };
+        var sync = Build(imap, new CapturingRuleService());
+
+        var reconciled = new List<MailMessageSummary>();
+        sync.FolderReadStatesReconciled += list => reconciled.AddRange(list);
+
+        await sync.SyncFolderFullAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.Empty(reconciled);
+        Assert.Null(imap.LastSinceDate);
+    }
+
+    [Fact]
+    public async Task SyncFolderFull_ReadChangeOnAMessageAlsoRefetched_IsNotDoubleReconciled()
+    {
+        // When a within-window NEW id forces a fetch, the fetched batch carries current read state and
+        // flows through FolderSynced. A read change on a message that is also in that fetched batch must
+        // NOT additionally raise FolderReadStatesReconciled — the fetch already covers it.
+        await _store.UpsertSummariesAsync([new MailMessageSummary
+        {
+            MessageId = "AAMkRefetched==", AccountId = _accountId, FolderName = "INBOX",
+            From = "a@b.com", To = "me@b.com", Subject = "cached", IsRead = false,
+            Date = DateTimeOffset.UtcNow.AddHours(-2),
+        }]);
+
+        // The window fetch returns the (now-read) cached message plus a genuinely new one.
+        var refetched = new MailMessageSummary
+        {
+            MessageId = "AAMkRefetched==", AccountId = _accountId, FolderName = "INBOX",
+            From = "a@b.com", To = "me@b.com", Subject = "cached", IsRead = true,
+            Date = DateTimeOffset.UtcNow.AddHours(-2),
+        };
+        var brandNew = new MailMessageSummary
+        {
+            MessageId = "AAMkBrandNew==", AccountId = _accountId, FolderName = "INBOX",
+            From = "c@d.com", To = "me@b.com", Subject = "new", IsRead = false,
+            Date = DateTimeOffset.UtcNow.AddMinutes(-5),
+        };
+        var imap = new FetchStubMailService([refetched, brandNew])
+        {
+            ServerIdDates =
+            [
+                ("AAMkRefetched==", DateTimeOffset.UtcNow.AddHours(-2), true),
+                ("AAMkBrandNew==",  DateTimeOffset.UtcNow.AddMinutes(-5), false),
+            ],
+        };
+        var sync = Build(imap, new CapturingRuleService());
+
+        var reconciled = new List<MailMessageSummary>();
+        sync.FolderReadStatesReconciled += list => reconciled.AddRange(list);
+
+        await sync.SyncFolderFullAsync(Account(), _inbox, CancellationToken.None);
+
+        Assert.NotNull(imap.LastSinceDate);                                   // the new id forced a fetch
+        Assert.DoesNotContain(reconciled, m => m.MessageId == "AAMkRefetched=="); // not double-handled
     }
 
     [Fact]

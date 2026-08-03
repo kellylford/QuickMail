@@ -71,14 +71,16 @@ public interface IMailService : IDisposable
     Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>
-    /// Lists every message in a folder as (id, receivedDateUtc) — the id listing plus each message's
-    /// received timestamp, in one server round-trip. The periodic sweep uses it to decide whether to
-    /// fetch (#462): a folder's local cache only holds mail inside the SyncDays window, so it compares
-    /// the <em>within-window</em> server ids against the cache to detect genuinely-new mail (fetching
-    /// only then), while the full id set drives the deletion reconcile — both from this single listing.
-    /// Same id-only cost profile as <see cref="GetFolderMessageIdsAsync"/> plus the date field.
+    /// Lists every message in a folder as (id, receivedDateUtc, isRead) — the id listing plus each
+    /// message's received timestamp and read state, in one server round-trip. The periodic sweep uses it
+    /// to decide whether to fetch (#462): a folder's local cache only holds mail inside the SyncDays
+    /// window, so it compares the <em>within-window</em> server ids against the cache to detect
+    /// genuinely-new mail (fetching only then), while the full id set drives the deletion reconcile. The
+    /// read state lets the sweep also reconcile read/unread changed by another client without a message
+    /// fetch — which the pre-#462 full-window re-fetch did as a side effect. Same id-only cost profile as
+    /// <see cref="GetFolderMessageIdsAsync"/> plus two projected fields.
     /// </summary>
-    Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc)>> GetFolderMessageIdDatesAsync(
+    Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(
         Guid accountId, string folderName, CancellationToken ct = default);
 
     /// <summary>

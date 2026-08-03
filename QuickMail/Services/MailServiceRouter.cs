@@ -190,7 +190,7 @@ public class MailServiceRouter : IMailService, IConnectionProbe
     public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default)
         => For(accountId).GetFolderMessageIdsAsync(accountId, folderName, ct);
 
-    public Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc)>> GetFolderMessageIdDatesAsync(Guid accountId, string folderName, CancellationToken ct = default)
+    public Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(Guid accountId, string folderName, CancellationToken ct = default)
         => For(accountId).GetFolderMessageIdDatesAsync(accountId, folderName, ct);
 
     public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default)
