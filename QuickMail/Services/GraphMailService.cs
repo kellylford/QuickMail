@@ -321,6 +321,17 @@ public class GraphMailService : IMailService, IConnectionProbe
         return msgs.Select(m => m.Id).ToList();
     }
 
+    public async Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc)>> GetFolderMessageIdDatesAsync(
+        Guid accountId, string folderName, CancellationToken ct = default)
+    {
+        // Same paged id-listing as GetFolderMessageIdsAsync, with receivedDateTime added to the projection
+        // so the sweep can window-filter without a message fetch (#462).
+        var msgs = await _client.GetAllPagesAsync<GraphMessage>(
+            Account(accountId), $"/me/mailFolders/{folderName}/messages?$select=id,receivedDateTime&$top=999",
+            scopes: null, silentOnly: false, GraphHeaders.ImmutableId, ct);
+        return msgs.Select(m => (m.Id, m.ReceivedDateTime.ToUniversalTime())).ToList();
+    }
+
     public Task<string?> FindDraftsFolderNameAsync(Guid accountId, CancellationToken ct = default)
         => Task.FromResult<string?>("Drafts"); // Graph well-known folder name; valid as a folder ID
 

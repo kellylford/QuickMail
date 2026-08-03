@@ -745,6 +745,28 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    public async Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc)>> GetFolderMessageIdDatesAsync(
+        Guid accountId, string folderName, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            if (folder.Count == 0) return Array.Empty<(string, DateTimeOffset)>();
+            // UID + INTERNALDATE for every message — the id listing plus each message's server-received
+            // timestamp, so the sweep can window-filter without fetching envelopes (#462).
+            var summaries = await folder.FetchAsync(
+                0, -1, MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate, ct);
+            return summaries
+                .Select(s => (s.UniqueId.Id.ToString(CultureInfo.InvariantCulture),
+                              (s.InternalDate ?? DateTimeOffset.MinValue).ToUniversalTime()))
+                .ToList();
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
     // ── Body-download preview fallback (used when server lacks IMAP PREVIEW) ────
 
     public async Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(
