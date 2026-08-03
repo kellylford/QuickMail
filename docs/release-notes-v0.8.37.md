@@ -1,6 +1,8 @@
 # QuickMail v0.8.37 Release Notes
 
-This is a large release — the most change in a single version since the calendar arrived in v0.8.33. Adding an account has been rebuilt around three questions instead of a page of server settings. You can now decide what each row of a message list says out loud, and in what order. Microsoft 365 accounts get a run of fixes, mail rules change in when they run and which folders they act on, and there are new tools for working out what is happening when a connection misbehaves.
+This is a large release — the most change in a single version since the calendar arrived in v0.8.33.
+
+Adding an account has been rebuilt around three questions instead of a page of server settings. You can now decide what each row of a message list says out loud, and in what order. You can watch a conversation and have every message in it — including the replies that have not arrived yet — collect in one folder. Mail deleted or filed somewhere else now keeps up while QuickMail is open, instead of waiting for a restart. Microsoft 365 accounts get a run of fixes, mail rules change in when they run and which folders they act on, several lists that were unreadable to a screen reader are fixed, and there is a build for ARM PCs.
 
 The last public release was **v0.8.36**, so if that is what you have been running, everything below is new to you.
 
@@ -12,6 +14,7 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
   - [Changed: Google sign-in for Gmail is now something you turn on](#changed-google-sign-in-for-gmail-is-now-something-you-turn-on)
 - [Microsoft 365 accounts](#microsoft-365-accounts)
   - [Fixed: deleted and moved mail no longer comes back](#fixed-deleted-and-moved-mail-no-longer-comes-back)
+  - [New: mail deleted or filed elsewhere now keeps up while QuickMail is open](#new-mail-deleted-or-filed-elsewhere-now-keeps-up-while-quickmail-is-open)
   - [Fixed: the same message no longer appears twice in combined views](#fixed-the-same-message-no-longer-appears-twice-in-combined-views)
   - [Fixed: a folder no longer stops loading because of one message](#fixed-a-folder-no-longer-stops-loading-because-of-one-message)
   - [Fixed: adding a work or school account now always asks your permission](#fixed-adding-a-work-or-school-account-now-always-asks-your-permission)
@@ -21,6 +24,7 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
   - [New: All Archive](#new-all-archive)
   - [New: watched conversations](#new-watched-conversations)
   - [Fixed: a saved view's filter was described as "All"](#fixed-a-saved-views-filter-was-described-as-all)
+  - [Fixed: All Flagged was missing from two places the other combined views appear](#fixed-all-flagged-was-missing-from-two-places-the-other-combined-views-appear)
   - [Fixed: attachments were unreachable when a message opens in its own window](#fixed-attachments-were-unreachable-when-a-message-opens-in-its-own-window)
   - [Fixed: some links opened inside QuickMail instead of your browser](#fixed-some-links-opened-inside-quickmail-instead-of-your-browser)
 - [Mail rules](#mail-rules)
@@ -42,10 +46,16 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
 - [Keyboard and navigation](#keyboard-and-navigation)
   - [Fixed: typing a folder name in the folder picker now works](#fixed-typing-a-folder-name-in-the-folder-picker-now-works)
   - [Fixed: arrowing through settings options now chooses them](#fixed-arrowing-through-settings-options-now-chooses-them)
+- [Screen readers](#screen-readers)
+  - [Fixed: four lists read out an internal name instead of their contents](#fixed-four-lists-read-out-an-internal-name-instead-of-their-contents)
+  - [Fixed: the Rules Manager said its status line twice](#fixed-the-rules-manager-said-its-status-line-twice)
+  - [Fixed: Ctrl+Shift+P did nothing inside a message window](#fixed-ctrlshiftp-did-nothing-inside-a-message-window)
 - [Appearance](#appearance)
   - [New: message list density](#new-message-list-density)
   - [Changed: themes](#changed-themes)
   - [Changed: Manage Themes moved to the View menu](#changed-manage-themes-moved-to-the-view-menu)
+  - [Fixed: the Rules Manager was cut off at large text sizes](#fixed-the-rules-manager-was-cut-off-at-large-text-sizes)
+  - [Fixed: the compose window's mode selector was crushed to "Pl"](#fixed-the-compose-windows-mode-selector-was-crushed-to-pl)
   - [Fixed: the Theme Manager's Import button at large text sizes](#fixed-the-theme-managers-import-button-at-large-text-sizes)
 - [Windows on ARM](#windows-on-arm)
   - [New: a version built for ARM PCs](#new-a-version-built-for-arm-pcs)
@@ -148,6 +158,14 @@ QuickMail now asks Microsoft 365 for identifiers that do not change, so a stored
 
 It runs once. Later launches start normally.
 
+### New: mail deleted or filed elsewhere now keeps up while QuickMail is open
+
+Two things used to wait for a restart. Mail you deleted or moved from Outlook on the web, from your phone, or by a server-side rule stayed in QuickMail's list until you restarted — so the list showed messages that were no longer there. And mail a server rule filed straight into a folder of your own did not appear until you opened that folder.
+
+Both are now handled while QuickMail is running. Deletions and moves made elsewhere are reconciled as they happen, and again when you open a folder, so combined views like All Mail stop showing messages that have gone. And every folder of every account is checked periodically — not just the inbox — so filed mail turns up on its own.
+
+This applies to Microsoft 365 accounts and to IMAP accounts alike. (#366)
+
 ### Fixed: the same message no longer appears twice in combined views
 
 A Microsoft 365 message was fetched without the identifier that the rest of QuickMail uses to recognize two copies of one message, so nothing could merge them. In **All Mail** and the other combined views, one message could show up twice. Microsoft 365 mail now carries that identifier and collapses the way IMAP and Gmail mail always has. (#429)
@@ -228,6 +246,10 @@ Two things worth knowing. QuickMail groups a conversation by its subject, ignori
 
 A saved view that used the **With Attachments** or **To Me** filter reported its filter as "All" in the View Manager. The view itself always applied the right filter — only the description was wrong.
 
+### Fixed: All Flagged was missing from two places the other combined views appear
+
+**All Flagged** was in the folder tree, but not in the flat folder list or in the **Go to Folder** picker, and a saved view built on it did not resolve back to the real folder. Every other combined view — All Mail, All Inboxes, All Drafts, All Sent, All Archive, All Trash — was in all three places. It now is too.
+
 ### Fixed: attachments were unreachable when a message opens in its own window
 
 v0.8.36 added **Alt+A** for jumping to the attachment list, and fixed the Shift+Tab path (#350). One part was still missing: with **Message open mode** set to **Window**, a message with attachments had no attachment list at all. Alt+A answered "No attachments" and Shift+Tab from the message body skipped straight past it. Reading pane and Tab modes were unaffected, which is what made it look like an Alt+A problem — the list existed, it was just never shown. Both now work in every mode. ([#439](https://github.com/kellylford/QuickMail/issues/439))
@@ -270,9 +292,8 @@ Rules now behave the classic way: they run on the **Inbox**, on **new arrivals**
 
 ### Fixed: the rules editor no longer offers actions with nothing to act on
 
-Three things in the Rules Manager:
+Two things in the Rules Manager:
 
-- A new rule now starts on a **real account** — your default account, or your only account — instead of leaving the Account list blank.
 - With **no rule selected**, the rule's fields are disabled and drop out of the Tab order, so you cannot land on a live but meaningless Account list. The buttons stay reachable, so **Close** always works.
 - **Delete**, **Save**, and **Test** are disabled until you select a rule, and **Run on Existing Mail** is disabled while you have no rules — including the moment you delete the last one.
 
@@ -389,6 +410,26 @@ QuickMail also stopped speaking the option name itself when you choose one. That
 
 ---
 
+## Screen readers
+
+### Fixed: four lists read out an internal name instead of their contents
+
+The calendar agenda read "QuickMail.Models.CalendarEvent" for every row rather than the appointment. The same fault affected three other lists: **Group Manager**, **Message Properties**, and the shortcut list in **Settings → Keyboard**.
+
+All four are multi-column lists, and each row's spoken name was coming from the row object rather than from the columns on screen — so the columns were visible but unreadable, and what was spoken was the internal type name. This looked completely correct to anyone reading the screen, which is why it survived. ([#448](https://github.com/kellylford/QuickMail/issues/448))
+
+### Fixed: the Rules Manager said its status line twice
+
+The Rules Manager's status text was wired to speak through two independent mechanisms at once, so it was announced twice — and one of those routes ignored your announcement settings entirely, so turning announcements off did not silence it. It also spoke on opening the window, over the thing you had just moved to.
+
+There is now one route, it respects your settings, and the status is silent on open — press **F6** to read it when you want it.
+
+### Fixed: Ctrl+Shift+P did nothing inside a message window
+
+With **Message open mode** set to **Window**, the command palette shortcut did nothing. Focus lands inside the message body as soon as the window opens, and the keystroke was not being passed out of it. Found while adding Ctrl+Shift+W to the same window; both work there now.
+
+---
+
 ## Appearance
 
 ### New: message list density
@@ -410,6 +451,14 @@ Both options are also available as commands, **Density: Comfortable** and **Dens
 ### Changed: Manage Themes moved to the View menu
 
 **Manage Themes…** is on the **View** menu now rather than Tools — choosing how the app looks belongs with the rest of what View controls. The **Next Theme** and **Previous Theme** menu items were removed; both are still commands, so they remain in the Command Palette and keep any shortcut you assigned them.
+
+### Fixed: the Rules Manager was cut off at large text sizes
+
+At a Windows text size of 150% the Rules Manager's boxes and buttons clipped their contents — text ran out of the bottom of fields, and button labels were cut off. The rows had fixed heights that did not grow with the text. They size to their content now. ([#449](https://github.com/kellylford/QuickMail/issues/449))
+
+### Fixed: the compose window's mode selector was crushed to "Pl"
+
+At 150% text the **Plain text / HTML / Markdown** selector at the top of the compose window was squeezed down to about two characters, because the buttons beside it claimed the width first. The selector now gets its width before they do. ([#450](https://github.com/kellylford/QuickMail/issues/450))
 
 ### Fixed: the Theme Manager's Import button at large text sizes
 
@@ -463,13 +512,13 @@ The record goes into a file named `connection.log`, kept beside QuickMail's othe
 
 ### Changed: Delete QuickMail logs removes every diagnostic file
 
-QuickMail can leave three kinds of diagnostic file on your computer, and **Settings → Advanced → Delete QuickMail logs** used to remove only the first of them:
+QuickMail can leave three kinds of diagnostic file on your computer, and **Settings → Advanced → Delete QuickMail logs** removes all of them. Two of the three are new in this release, so this is what the command covers rather than a change to what it used to do:
 
 - **The application log** (`quickmail.log`) — a running record of what QuickMail did. It is always written, and in more detail if you start QuickMail with the `/debug` switch.
 - **The connection log** (`connection.log`) — the connection record described just above, written only while **Record connection diagnostics** is switched on.
 - **Debug screenshots** — pictures of QuickMail's own windows, saved to a folder. This is a development tool for checking how the app looks, and it is not something you will meet in ordinary use: it exists only when QuickMail is started with the `/debug` switch, has to be switched on deliberately in Settings once you are there, lasts only until you close the app, and puts " - SCREENSHOTS ON" in every window title while it is running — so it can never be capturing without your knowing.
 
-Delete QuickMail logs now removes all three, and says so before it does it. The usual reason to delete these files is that they carry your email addresses and mail server names — and screenshots hold pictures of your actual mail — so leaving one behind because it happens to live in a different folder would quietly defeat the point. Screenshots are cleared even when you are running normally, in case an earlier `/debug` session left some behind. (#436)
+Delete QuickMail logs removes all three, and says so before it does it. The usual reason to delete these files is that they carry your email addresses and mail server names — and screenshots hold pictures of your actual mail — so leaving one behind because it happens to live in a different folder would quietly defeat the point. Screenshots are cleared even when you are running normally, in case an earlier `/debug` session left some behind. (#436)
 
 ---
 
@@ -487,7 +536,8 @@ Everything below is developer detail — implementation notes, test coverage, an
 
 - **Immutable ids everywhere (#419).** `GraphHeaders` adds the immutable-id preference header; every read (`GraphMailService` summary/detail/delta paths) and every write (delete, move, mark-read, flag) now round-trips an id that survives a folder move, as does `GraphChangeNotifier`'s delta poll. Graph's default ids change on move, so a cached id went stale the moment a server rule or another client filed the message — the delete then 404'd and the next sync resurrected it.
 - **One-time cache rebuild.** `App.OnStartup` clears `MessageDetail`, `MessageSummary`, and `DeltaToken` rows for `BackendKind.MicrosoftGraph` accounts only, guarded by a `.immutable-id-rebuilt` marker file in the profile directory. `CalendarEvent` rows are deliberately untouched, and IMAP caches are untouched so IMAP invite-source links survive. A failed clear is caught, logged, and leaves the marker unwritten so the next launch retries; the rebuild is skipped in `--online` and `--ui-probe`. `SyncService.SeedRebuildBaseline` makes the first full sync per folder cache without running rules, so the refetched backlog does not re-fire rules — a crash between the wipe and that first Inbox sync can still lose the in-memory baseline, tracked as **#454**. Note the downgrade hazard: an older build run against a rebuilt cache treats the stored immutable ids as mutable.
-- **`IsAlreadyGone` (#416)** is retained as belt-and-braces on delete/move even though #419 removed the cause; it still covers a message genuinely deleted from another device. The remaining #366 work — reconciling a 404 by re-syncing the affected folder — is not in this release, and **#366 is still open**.
+- **`IsAlreadyGone` (#416)** is retained as belt-and-braces on delete/move even though #419 removed the cause; it still covers a message genuinely deleted from another device.
+- **#366 live reconciliation landed after all.** An earlier draft of these notes said the remaining #366 work was not in this release; that was written before it merged. `SyncService.ReconcileFolderAsync` compares the server's id set against the store and raises `MessagesRemoved` for the difference; it runs on folder open, on the Graph delta poll (which now consumes `@removed` tombstones), and on the periodic sweep. The sweep covers **every** non-excluded folder of every account on `MailSyncPollMinutes` (default 5), not just inboxes, which is what makes server-rule-filed mail appear without opening the folder. Probe mode never deletes.
 - **`internetMessageId` is selected on Graph summaries (#429).** Without it `MessageDeduplicator.CollapseKeyFor` fell back to the per-folder key (account + folder + id), which cannot merge copies, so Graph messages doubled in every aggregate view.
 - **`GraphMessage.IsRead` becomes `bool?`**, mapped `?? false` at both sites. As a non-nullable `bool` it threw `JsonException: Cannot get the value of a token type 'Null' as a boolean` mid-batch, and because the throw escaped the whole deserialization, one message took down the entire folder fetch.
 - **`OAuthService.PromptForSignIn(firstConnect, username)`** centralizes the MSAL prompt choice: the add-account path forces `Prompt.Consent`, re-auth keeps `ForceLogin`/`SelectAccount`. Scopes stay `.default` for work/school, so requested-equals-declared still holds by construction (#208) and Azure resolves the set per account type — an explicit org-only scope list would have broken personal accounts on a custom domain. `SignInInteractiveAsync(account, ct)` is the add path and is reached from both `AddAccountViewModel` and `AccountManagerViewModel`'s **Sign in** button, since both derive from `AccountEditorViewModel`. The #202 identity-mismatch guard still refuses to adopt a different identity that completes sign-in, so the protection moves from prevention to detection rather than disappearing. `.default` never surfaces a *newly declared* permission to a user who already holds an older grant — any permission added in future must be requested explicitly at the point it is needed, as contacts and calendar already do.
@@ -499,6 +549,7 @@ Everything below is developer detail — implementation notes, test coverage, an
 - **Online mode baselines the first fetch per folder** (the last-50 reconciliation batch) as seen without running rules, so a move/delete rule never rewrites up to fifty pre-existing messages on the first reconciliation.
 - **`RuleService.MigrateAllAccountRules`** runs from `LoadRules()` and is not feature-gated. It defers entirely when the account list is empty — an empty read can be transient (startup ordering, a locked `accounts.json`) and migrating against it would drop every unscoped rule. A genuine Graph-only profile still drops, and logs each dropped rule by name. `AccountOptions` lists every account including Graph ones, so a user can rescope a dropped rule and it will run.
 - **`ApplyRulesToExistingAsync` takes an account→Inbox-`FullName` map** and filters cached mail to those pairs Ordinal, skipping accounts absent from the map **fail-closed** rather than guessing an Inbox. The caller builds the map from `CachedFolders`, logs unresolved accounts, and runs under a 60-second timeout. The Rules Manager's `Closed` handler no longer calls it — it only refreshes the status text.
+- **Never reached a user: the blank Account combo.** Retiring the "All accounts" option left a new rule's `AccountId` null with nothing in `AccountOptions` matching it, so the combo rendered blank. Introduced 77 minutes after the v0.8.36 tag and fixed 35 minutes later, so no shipped build ever had it — which is why it is not in the user-facing notes.
 - **Server rules remain gated.** `FeatureFlag.ServerRules` defaults to `false` in `ConfigFeatureGate.Defaults`, and `MainWindow` builds `UnifiedRulesWindow` only when the flag is on, a `ServerRuleService` exists, and a Graph account is present; otherwise the existing client-only `RulesManagerWindow` is used with `serverRulesVm: null`, which leaves `ServerRulesSection` collapsed. The classifier, the server-rule editor VM, and the unified list are all in the tree and all unreachable in a shipped build — they are deliberately absent from the user-facing notes above. There is no Settings UI for the flag; only `--feature ServerRules` or `config.ini`.
 
 ### Message-list row speech
