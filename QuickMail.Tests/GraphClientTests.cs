@@ -19,17 +19,21 @@ public class GraphClientTests
     private sealed class SequenceHandler : HttpMessageHandler
     {
         private readonly Queue<HttpResponseMessage> _responses;
+        private readonly object _gate = new();   // RequestCount_ConcurrentScopes drives this from two flows
         public int Calls { get; private set; }
 
         public SequenceHandler(params HttpResponseMessage[] responses) => _responses = new Queue<HttpResponseMessage>(responses);
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            Calls++;
-            var resp = _responses.Count > 0
-                ? _responses.Dequeue()
-                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
-            return Task.FromResult(resp);
+            lock (_gate)
+            {
+                Calls++;
+                var resp = _responses.Count > 0
+                    ? _responses.Dequeue()
+                    : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+                return Task.FromResult(resp);
+            }
         }
     }
 
@@ -72,11 +76,10 @@ public class GraphClientTests
         var handler = new SequenceHandler(Resp((HttpStatusCode)429), Resp(HttpStatusCode.OK));
         var client = Client(handler);
 
-        var box = GraphClient.BeginRequestCount();
+        using var scope = GraphClient.BeginRequestCount();
         await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken);
-        GraphClient.EndRequestCount();
 
-        Assert.Equal(2, box.Value);
+        Assert.Equal(2, scope.Count);
     }
 
     [Fact]
@@ -88,11 +91,14 @@ public class GraphClientTests
 
         await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken); // unscoped
 
-        var box = GraphClient.BeginRequestCount();
-        await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken); // scoped
-        GraphClient.EndRequestCount();
+        long counted;
+        using (var scope = GraphClient.BeginRequestCount())
+        {
+            await client.GetAsync<JsonElement>(Account(), "/me", TestContext.Current.CancellationToken); // scoped
+            counted = scope.Count;
+        }
 
-        Assert.Equal(1, box.Value);
+        Assert.Equal(1, counted);
     }
 
     [Fact]
@@ -105,11 +111,10 @@ public class GraphClientTests
 
         async Task<long> ScopedRequests(int n)
         {
-            var box = GraphClient.BeginRequestCount();
+            using var scope = GraphClient.BeginRequestCount();
             for (var i = 0; i < n; i++)
                 await client.GetAsync<JsonElement>(Account(), "/me", ct);
-            GraphClient.EndRequestCount();
-            return box.Value;
+            return scope.Count;
         }
 
         var counts = await Task.WhenAll(Task.Run(() => ScopedRequests(3)), Task.Run(() => ScopedRequests(5)));

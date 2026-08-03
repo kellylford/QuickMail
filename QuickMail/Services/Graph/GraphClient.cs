@@ -39,18 +39,27 @@ public sealed class GraphClient : IDisposable
     private static readonly AsyncLocal<StrongBox<long>?> RequestCountScope = new();
 
     /// <summary>
-    /// Begin counting Graph HTTP requests on the current async flow (#462). Read the returned box's
-    /// <c>Value</c> after the awaited work, then call <see cref="EndRequestCount"/>. Diagnostic only.
+    /// Counts Graph HTTP requests made on the current async flow until disposed (#462). Restores the
+    /// previous scope on dispose so scopes nest safely, and a <c>using</c> makes the count
+    /// exception-safe (a throwing folder can't leave the scope attached to the flow). Diagnostic only.
     /// </summary>
-    public static StrongBox<long> BeginRequestCount()
+    public sealed class RequestScope : IDisposable
     {
-        var box = new StrongBox<long>(0);
-        RequestCountScope.Value = box;
-        return box;
+        private readonly StrongBox<long>? _previous;
+        private readonly StrongBox<long> _box;
+        internal RequestScope()
+        {
+            _previous = RequestCountScope.Value;
+            _box = new StrongBox<long>(0);
+            RequestCountScope.Value = _box;
+        }
+        /// <summary>Requests counted so far on this flow.</summary>
+        public long Count => Interlocked.Read(ref _box.Value);
+        public void Dispose() => RequestCountScope.Value = _previous;
     }
 
-    /// <summary>Stop counting on the current async flow (#462).</summary>
-    public static void EndRequestCount() => RequestCountScope.Value = null;
+    /// <summary>Begin a request-count scope on the current async flow (#462). Diagnostic only.</summary>
+    public static RequestScope BeginRequestCount() => new();
 
     public GraphClient(IOAuthService oauth, HttpClient? http = null, TimeSpan? defaultRetryDelay = null, string? baseUrl = null)
     {

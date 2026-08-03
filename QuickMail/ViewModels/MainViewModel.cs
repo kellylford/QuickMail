@@ -2380,7 +2380,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     }
                 });
 
+                // Per-folder cached item counts for the instrumentation (#462, /debug only): one grouped
+                // query per account, snapshotted here with the cycle timer PAUSED so the measurement never
+                // measures itself (review A). Per folder is then a dictionary lookup, not a query.
+                Dictionary<Guid, Dictionary<string, int>>? folderCounts = null;
+                if (sweepTimer != null)
+                {
+                    sweepTimer.Stop();
+                    folderCounts = new Dictionary<Guid, Dictionary<string, int>>();
+                    foreach (var acctId in jobs.Select(j => j.Account.Id).Distinct())
+                        folderCounts[acctId] = await _localStore.CountSummariesByFolderAsync(acctId).ConfigureAwait(false);
+                    sweepTimer.Start();
+                }
+
                 var sweepNew = 0;
+                var pacedDelays = 0;
 
                 foreach (var (account, folder, isInbox) in jobs)
                 {
@@ -2388,13 +2402,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     try
                     {
                         // Per-folder cost instrumentation (#462) — /debug only, so normal runs pay nothing.
-                        // Times this one folder, counts the Graph requests it makes (scoped to this async
-                        // flow so concurrent Graph activity — delta poll, user navigation — isn't
-                        // misattributed here), and reads its cached item count. This is what tells apart
-                        // "cost spread evenly across folders" from "two huge folders eat the whole cycle."
+                        // Times this one folder and counts the Graph requests it makes, scoped to this async
+                        // flow via `using` (so a throwing folder can't leak the scope, and the concurrent
+                        // delta poll / navigation isn't misattributed here). The counter is Graph-only, so an
+                        // IMAP folder shows "req n/a" rather than a misleading 0 next to a slow time.
                         var debug = LogService.DebugMode;
-                        var folderTimer = debug ? System.Diagnostics.Stopwatch.StartNew() : null;
-                        var reqBox = debug ? Services.Graph.GraphClient.BeginRequestCount() : null;
+                        var isGraph = account.BackendKind == BackendKind.MicrosoftGraph;
+                        var folderTimer = debug ? Stopwatch.StartNew() : null;
+                        using var reqScope = (debug && isGraph) ? Services.Graph.GraphClient.BeginRequestCount() : null;
 
                         // Fetch new (FolderSynced merges them into the current view) + reconcile
                         // deletions (MessagesRemoved). Runs off the UI thread; the events marshal back.
@@ -2402,15 +2417,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             .ConfigureAwait(false);
                         sweepNew += incoming.Count;
 
-                        if (debug)
+                        if (folderTimer != null)
                         {
-                            Services.Graph.GraphClient.EndRequestCount();
-                            folderTimer!.Stop();
-                            var items = await _localStore.CountFolderSummariesAsync(account.Id, folder.FullName)
-                                .ConfigureAwait(false);
+                            folderTimer.Stop();
+                            var items = folderCounts != null && folderCounts.TryGetValue(account.Id, out var byFolder)
+                                ? byFolder.GetValueOrDefault(folder.FullName) : 0;
+                            var reqStr = reqScope != null ? $"{reqScope.Count} req" : "req n/a";
                             LogService.Debug(
                                 $"Sweep folder [{account.AccountLabel}]/{folder.FullName}: " +
-                                $"{folderTimer.Elapsed.TotalSeconds:F1}s, {reqBox!.Value} req, {items} items, {incoming.Count} new");
+                                $"{folderTimer.Elapsed.TotalSeconds:F1}s, {reqStr}, {items} items, {incoming.Count} new");
                         }
 
                         if (incoming.Count > 0)
@@ -2428,20 +2443,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                     // Pace between folders so a full sweep of a large mailbox doesn't burst Graph into a
                     // 503 "application request queue is full". Sequential + a short gap keeps it gentle.
-                    try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); }
+                    try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); pacedDelays++; }
                     catch (OperationCanceledException) { break; }
                 }
 
-                // Per-cycle summary at Debug (a measurement aid, not always-on telemetry; #462). The
-                // 250 ms inter-folder pace is deliberate sleep, not work, so it's named separately —
-                // otherwise the total reads as more cost than it is.
+                // Per-cycle summary at Debug (a measurement aid, not always-on telemetry; #462). The paced
+                // figure is the count of delays actually executed × 250 ms — measured, not derived from the
+                // folder count, so a cycle cancelled partway doesn't report paced time it never spent (review C).
                 if (sweepTimer != null)
                 {
                     sweepTimer.Stop();
                     var sweepAccounts = jobs.Select(j => j.Account.Id).Distinct().Count();
                     LogService.Debug(
                         $"Sweep cycle {sweepCycle}: {jobs.Count} folder(s) / {sweepAccounts} account(s), " +
-                        $"{sweepTimer.Elapsed.TotalSeconds:F1}s total ({jobs.Count * 0.250:F1}s paced), {sweepNew} new.");
+                        $"{sweepTimer.Elapsed.TotalSeconds:F1}s total ({pacedDelays * 0.250:F1}s paced), {sweepNew} new.");
                 }
                 sweepCycle++;
             }
