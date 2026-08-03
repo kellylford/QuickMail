@@ -293,7 +293,7 @@
             </MenuItem>
 
             <!-- Message -->
-            <MenuItem Header="_Message">
+            <MenuItem Header="_Message" SubmenuOpened="MessageMenu_SubmenuOpened">
                 <MenuItem Header="_Reply"
                           Command="{Binding ReplyCommand}"
                           InputGestureText="Ctrl+R"/>
@@ -314,11 +314,24 @@
                           Command="{Binding EmptyTrashCommand}"
                           InputGestureText="Ctrl+Shift+E"/>
                 <Separator/>
+                <!-- Click, not Command: the target depends on which group tree is selected, which
+                     only the window can resolve (see WatchTargetSubject). Dimmed rather than
+                     disabled, per the convention above, so it stays keyboard-navigable. -->
                 <MenuItem Header="_Watch Conversation"
                           IsCheckable="True"
-                          IsChecked="{Binding IsSelectedConversationWatched, Mode=OneWay}"
-                          Command="{Binding ToggleWatchConversationCommand}"
-                          InputGestureText="Ctrl+Shift+W"/>
+                          IsChecked="{Binding IsWatchTargetWatched, Mode=OneWay}"
+                          Click="MenuWatchConversation_Click"
+                          InputGestureText="Ctrl+Shift+W">
+                    <MenuItem.Style>
+                        <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasWatchTarget}" Value="False">
+                                    <Setter Property="Foreground" Value="{DynamicResource Theme.TextDisabled}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </MenuItem.Style>
+                </MenuItem>
                 <Separator/>
                 <!-- Keep IsEnabled off these three items so they remain keyboard-navigable
                      per Windows convention (dimmed items are still focusable). Visual dimming

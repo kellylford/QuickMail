@@ -272,8 +272,6 @@ sealed class StubWatchService : IWatchService
 {
     private readonly List<WatchedConversation> _watches = [];
 
-    public event EventHandler? WatchesChanged;
-
     public IReadOnlyList<WatchedConversation> GetAll() => _watches;
 
     public bool IsWatched(string subject)
@@ -288,7 +286,6 @@ sealed class StubWatchService : IWatchService
         var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
         if (key.Length == 0 || IsWatched(key)) return false;
         _watches.Add(new WatchedConversation { NormalizedSubject = key, Label = (subject ?? string.Empty).Trim() });
-        WatchesChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
@@ -299,7 +296,6 @@ sealed class StubWatchService : IWatchService
         var removed = _watches.RemoveAll(
             w => string.Equals(w.NormalizedSubject, key, StringComparison.OrdinalIgnoreCase));
         if (removed == 0) return false;
-        WatchesChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 }

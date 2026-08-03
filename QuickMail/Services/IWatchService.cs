@@ -31,7 +31,4 @@ public interface IWatchService
     /// subject came from. Returns false when it was not watched.
     /// </summary>
     bool Unwatch(string subject);
-
-    /// <summary>Raised after a mutation that actually changed the stored set.</summary>
-    event EventHandler? WatchesChanged;
 }

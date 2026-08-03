@@ -1025,6 +1025,11 @@ public partial class MainWindow : Window
         // the command unavailable keeps e.Handled false, so the focused control's own type-ahead
         // (jump to a folder starting with "k") takes the key. Mirrors the calendar plain-key
         // gestures above, which scope to CalendarList focus for the same reason.
+        // Which conversation Ctrl+Shift+W acts on depends on which group tree is showing and what is
+        // selected in it — view state the VM cannot see. The command itself stays registered in the
+        // VM; this hands it the resolver. (Same shape as MainViewModel.RegisterAccountBackend.)
+        _vm.WatchTargetResolver = WatchTargetSubject;
+
         _registry.Register(new CommandDefinition(
             id: "mail.toggleFlag", category: "Mail", title: "Toggle Flag",
             execute: async () => await ToggleFlagCommandAsync(),
@@ -2779,6 +2784,32 @@ public partial class MainWindow : Window
         return false;
     }
 
+    /// <summary>
+    /// The subject whose conversation Ctrl+Shift+W acts on, or null when there is no valid target.
+    /// <para>The group tree's own selection is authoritative, for the reason
+    /// <see cref="ToggleFlagCommandAsync"/> checks it first: selecting a group header does not update
+    /// <c>_vm.SelectedMessage</c>, so reading the selected message while a header is selected would
+    /// act on whatever thread was selected before it.</para>
+    /// </summary>
+    private string? WatchTargetSubject()
+    {
+        if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg)
+            return cg.NormalizedSubject;
+
+        // A From/To group spans many conversations, so its header is not a single watch target.
+        // Falling through to SelectedMessage here would watch a thread the user is not looking at.
+        if (IsGroupRowSelected()) return null;
+
+        return _vm.SelectedMessage?.Subject;
+    }
+
+    // Keeps the Message menu's Watch Conversation check state honest: the target can change without
+    // SelectedMessage changing (a group header selection), so it is recomputed as the menu opens.
+    private void MessageMenu_SubmenuOpened(object sender, RoutedEventArgs e) => _vm.RefreshWatchTarget();
+
+    private void MenuWatchConversation_Click(object sender, RoutedEventArgs e) =>
+        _vm.ToggleWatchConversation();
+
     private async Task ToggleFlagCommandAsync()
     {
         if (_vm.IsConversationsView && ConversationTree.SelectedItem is ConversationGroup cg)
@@ -2984,6 +3015,9 @@ public partial class MainWindow : Window
                 +"else if(e.key==='Tab'&&e.shiftKey){window.chrome.webview.postMessage('shift-tab');e.preventDefault();}"
                 +"else if(e.altKey&&(e.key==='a'||e.key==='A')){window.chrome.webview.postMessage('focus-attachments');e.preventDefault();}"
                 +"else if(e.ctrlKey&&e.key==='w'){window.chrome.webview.postMessage('ctrl-w');e.preventDefault();}"
+                // Watching a thread while reading it is the most natural moment to do so, and focus
+                // is inside this WebView2 then. Note the key is 'W' (upper case) with Shift held.
+                +"else if(e.ctrlKey&&e.shiftKey&&(e.key==='w'||e.key==='W')){window.chrome.webview.postMessage('ctrl-shift-w');e.preventDefault();}"
                 +"});");
 
             MessageBody.CoreWebView2.WebMessageReceived += (_, args) =>
@@ -3004,6 +3038,11 @@ public partial class MainWindow : Window
                 else if (msg == "ctrl-w")
                     Dispatcher.InvokeAsync(
                         () => _registry.FindByGesture(Key.W, ModifierKeys.Control)?.Execute(),
+                        DispatcherPriority.Input);
+                else if (msg == "ctrl-shift-w")
+                    Dispatcher.InvokeAsync(
+                        () => _registry.FindByGesture(Key.W, ModifierKeys.Control | ModifierKeys.Shift)
+                                       ?.Execute(),
                         DispatcherPriority.Input);
             };
 

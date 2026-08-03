@@ -559,7 +559,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSelectedMessage))]
-    [NotifyPropertyChangedFor(nameof(IsSelectedConversationWatched))]
     private MailMessageSummary? _selectedMessage;
 
     [ObservableProperty]
@@ -1688,6 +1687,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // view shows qualified cached rows next to unqualified fresh ones. Keeps the plain stamp
             // above as the miss fallback for folders not in the cache.
             ApplyFolderDisplayNames(newMessages);
+            // Same reason, same rows: these bypass SetMessages, so the derived watch flag has to be
+            // stamped here too or the newest rows speak no watch state while the cached ones do.
+            StampWatchedFlags(newMessages);
 
             // A saved view can span folders (and Gmail copies), so key by global message identity
             // to collapse duplicate copies against what is already shown (issue #220).
@@ -1872,9 +1874,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         registry.Register(new CommandDefinition(
             id: "mail.toggleWatch", category: "Mail", title: "Watch Conversation",
             description: "Watch or unwatch the selected message's conversation",
-            execute: () => ToggleWatchConversationCommand.Execute(null),
+            execute: ToggleWatchConversation,
             defaultKey: Key.W, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
-            isAvailable: () => HasSelectedMessage));
+            // Not HasSelectedMessage: on a From/To group header the resolver returns null even
+            // though a stale message is still selected, and the command must be unavailable there.
+            // Deliberately reads the target without storing it — an availability query is polled
+            // (command palette, every keystroke) and must not mutate VM state or raise change
+            // notifications while it runs.
+            isAvailable: () => _watchService != null && HasWatchableSubject(ResolveWatchTarget())));
 
         registry.Register(new CommandDefinition(
             id: "view.toggleConversation", category: "View", title: "Cycle View Mode",
@@ -4382,6 +4389,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // #423: All Mail's incremental adds go through InsertMessageSorted (not SetMessages), so
             // stamp the source folder here too — otherwise newly-fetched rows announce no folder.
             ApplyFolderDisplayNames(newMessages);
+            // Same reason, same rows: these bypass SetMessages, so the derived watch flag has to be
+            // stamped here too or the newest rows speak no watch state while the cached ones do.
+            StampWatchedFlags(newMessages);
 
             if (needsRecipientRepair)
             {
@@ -4852,41 +4862,86 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>True when the selected message's conversation is watched — drives the menu check.</summary>
-    public bool IsSelectedConversationWatched =>
-        SelectedMessage != null && IsWatchedMessage(SelectedMessage);
+    /// <summary>
+    /// Supplied by the View: resolves which conversation the watch toggle should act on.
+    /// <para>It cannot simply be <see cref="SelectedMessage"/>.<c>Subject</c>, because selecting a
+    /// group header in the Conversations / From / To trees does not update
+    /// <see cref="SelectedMessage"/> (see <c>GroupedMessageTreeController.OnSelectedItemChanged</c>);
+    /// reading the selected message while a header is selected would watch whatever thread happened
+    /// to be selected before — a silent wrong-target bug. Only the View knows which tree is showing
+    /// and what is selected in it. Null falls back to the selected message, which is correct for any
+    /// host without group trees.</para>
+    /// </summary>
+    public Func<string?>? WatchTargetResolver { get; set; }
+
+    /// <summary>The subject whose conversation the watch toggle acts on.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsWatchTargetWatched))]
+    [NotifyPropertyChangedFor(nameof(HasWatchTarget))]
+    private string? _watchTargetSubject;
+
+    // Pure read of the current target. Kept separate from RefreshWatchTarget so availability can be
+    // polled without mutating state.
+    private string? ResolveWatchTarget() =>
+        WatchTargetResolver != null ? WatchTargetResolver() : SelectedMessage?.Subject;
+
+    private static bool HasWatchableSubject(string? subject) =>
+        ConversationBuilder.NormalizeSubject(subject ?? string.Empty).Length > 0;
+
+    /// <summary>Recomputes <see cref="WatchTargetSubject"/> from the View's resolver.</summary>
+    public void RefreshWatchTarget() => WatchTargetSubject = ResolveWatchTarget();
+
+    /// <summary>True when there is something for the watch toggle to act on.</summary>
+    public bool HasWatchTarget => _watchService != null && HasWatchableSubject(WatchTargetSubject);
+
+    /// <summary>True when the current watch target's conversation is watched — drives the menu check.</summary>
+    public bool IsWatchTargetWatched =>
+        WatchTargetSubject != null && _watchService?.IsWatched(WatchTargetSubject) == true;
 
     /// <summary>
-    /// Watches or unwatches the selected message's whole conversation (Ctrl+Shift+W). One command
-    /// does both directions so there is no separate unwatch action to discover.
+    /// Watches or unwatches <see cref="WatchTargetSubject"/>'s whole conversation (Ctrl+Shift+W).
+    /// One command does both directions so there is no separate unwatch action to discover.
     /// </summary>
-    [RelayCommand]
     public void ToggleWatchConversation()
     {
-        var message = SelectedMessage;
-        if (_watchService == null || message == null) return;
-
-        if (_watchService.IsWatched(message.Subject))
+        RefreshWatchTarget();
+        var subject = WatchTargetSubject;
+        // Every path below ends by re-raising IsWatchTargetWatched, including the early returns:
+        // the menu item is IsCheckable, so WPF has already flipped its own check state by the time
+        // this runs, and a path that returns without notifying would leave it reporting a lie.
+        try
         {
-            var label = DescribeConversation(message.Subject);
-            _watchService.Unwatch(message.Subject);
-            RefreshWatchState(message.Subject);
-            Announce($"Stopped watching: {label}", AnnouncementCategory.Result);
-            return;
-        }
+            if (_watchService == null || subject == null) return;
 
-        if (!_watchService.Watch(message.Subject))
+            if (_watchService.IsWatched(subject))
+            {
+                var label = DescribeConversation(subject);
+                _watchService.Unwatch(subject);
+                RefreshWatchState(subject);
+                Announce($"Stopped watching: {label}", AnnouncementCategory.Result);
+                return;
+            }
+
+            if (!_watchService.Watch(subject))
+            {
+                // The only way Watch fails for a conversation that is not already watched: the
+                // subject normalizes to empty. An empty key would match every blank-subject message
+                // in every account, so it is refused rather than silently stored. Said in the status
+                // bar as well as announced, so the refusal is not invisible to a user who has turned
+                // result announcements off.
+                StatusText = "Cannot watch a conversation with no subject.";
+                Announce("Cannot watch a conversation with no subject.", AnnouncementCategory.Result);
+                return;
+            }
+
+            RefreshWatchState(subject);
+            Announce($"Watching conversation: {DescribeConversation(subject)}",
+                     AnnouncementCategory.Result);
+        }
+        finally
         {
-            // The only way Watch fails for a message that is not already watched: the subject
-            // normalizes to empty. An empty key would match every blank-subject message in every
-            // account, so it is refused rather than silently stored.
-            Announce("Cannot watch a conversation with no subject.", AnnouncementCategory.Result);
-            return;
+            OnPropertyChanged(nameof(IsWatchTargetWatched));
         }
-
-        RefreshWatchState(message.Subject);
-        Announce($"Watching conversation: {DescribeConversation(message.Subject)}",
-                 AnnouncementCategory.Result);
     }
 
     // The spoken name of a conversation: its normalized subject, which is what the watch actually
@@ -4904,7 +4959,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void RefreshWatchState(string subject)
     {
-        OnPropertyChanged(nameof(IsSelectedConversationWatched));
+        OnPropertyChanged(nameof(IsWatchTargetWatched));
 
         var key = ConversationBuilder.NormalizeSubject(subject);
         if (key.Length == 0) return;
@@ -4926,23 +4981,51 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (leaving.Count == 0) return;
 
         var firstIndex = Messages.IndexOf(leaving[0]);
+
+        // The open message may be one of the rows leaving. Clear the reading pane before removing
+        // them, exactly as delete, archive, RemoveVanishedMessages and OnMessagesRemoved all do —
+        // otherwise the pane keeps rendering a message that is no longer in the list, and every
+        // command gated on IsMessageOpen stays live against it.
+        if (leaving.Any(m => ReferenceEquals(m, SelectedMessage)) || SelectedMessage == null)
+        {
+            MessageDetail = null;
+            IsMessageOpen = false;
+        }
+
         _rawMessages.RemoveAll(SameConversation);
         foreach (var m in leaving)
             Messages.Remove(m);
+
+        // Note: deliberately no UpdateAccountCountsAfterRemoval here. Unlike the delete/archive/
+        // vanish paths, these messages still exist and are still unread wherever they live — only
+        // this view's membership changed.
+        RebuildActiveGroupView();
 
         if (Messages.Count == 0)
         {
             SelectedMessage = null;
             StatusText = "No watched conversations. Press Ctrl+Shift+W on a message to watch its conversation.";
+            return;
+        }
+
+        var n = Messages.Count;
+        StatusText = $"{n} watched {(n == 1 ? "message" : "messages")}.";
+
+        if (ViewMode == ViewMode.Messages)
+        {
+            // The row that had keyboard focus was just removed from the ListView, so focus has to be
+            // asked back explicitly — same as archive.
+            SelectedMessage = Messages[Math.Min(firstIndex, Messages.Count - 1)];
+            MessageListFocusRequested?.Invoke();
         }
         else
         {
-            SelectedMessage = Messages[Math.Min(firstIndex, Messages.Count - 1)];
-            var n = Messages.Count;
-            StatusText = $"{n} watched {(n == 1 ? "message" : "messages")}.";
+            // In the group trees, focus is the tree's business after RebuildActiveGroupView replaces
+            // its items. Clearing SelectedMessage keeps HasSelectedMessage false so the global
+            // per-message hotkeys don't act on a row the user never selected. (Same rationale as
+            // archive and delete.)
+            SelectedMessage = null;
         }
-
-        RebuildActiveGroupView();
     }
 
     public async Task ToggleSingleFlagAsync(MailMessageSummary message)
@@ -5128,6 +5211,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // top) announce no folder while the cached rows below them do. Mirrors FetchAllMailAsync.
             // The OnlineMode branch below is already covered — it flows through SetMessages.
             ApplyFolderDisplayNames(newMessages);
+            // Same reason, same rows: these bypass SetMessages, so the derived watch flag has to be
+            // stamped here too or the newest rows speak no watch state while the cached ones do.
+            StampWatchedFlags(newMessages);
 
             if (OnlineMode)
             {

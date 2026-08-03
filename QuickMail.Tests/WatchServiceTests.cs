@@ -124,22 +124,21 @@ public class WatchServiceTests
         Assert.Single(svc.GetAll());
     }
 
-    // ── Events ───────────────────────────────────────────────────────────────
+    // ── Return values report whether anything actually changed ───────────────
 
     [Fact]
-    public void WatchesChanged_FiresOnlyWhenTheStoredSetActuallyChanged()
+    public void WatchAndUnwatch_ReportTrueOnlyWhenTheStoredSetActuallyChanged()
     {
+        // The callers use the return value to decide what to announce, so "no change" must be
+        // distinguishable from "done" on every path.
         var svc = new WatchService(MakeTempProfile());
-        var fired = 0;
-        svc.WatchesChanged += (_, _) => fired++;
 
-        svc.Watch("Budget Review");   // changed
-        svc.Watch("Re: Budget Review");   // already watched — no change
-        svc.Watch("");                    // refused — no change
-        svc.Unwatch("Nothing here");      // not watched — no change
-        svc.Unwatch("Budget Review");     // changed
-
-        Assert.Equal(2, fired);
+        Assert.True(svc.Watch("Budget Review"));        // changed
+        Assert.False(svc.Watch("Re: Budget Review"));   // already watched
+        Assert.False(svc.Watch(""));                    // refused
+        Assert.False(svc.Unwatch("Nothing here"));      // not watched
+        Assert.True(svc.Unwatch("Budget Review"));      // changed
+        Assert.Empty(svc.GetAll());
     }
 
     // ── Persistence ──────────────────────────────────────────────────────────

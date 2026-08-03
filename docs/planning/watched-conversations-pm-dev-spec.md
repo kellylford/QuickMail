@@ -481,6 +481,53 @@ Reachable without a hotkey: **Message → Watch Conversation**, and the Command 
 
 ---
 
+## 14A. Implementation notes — changes made after adversarial review (2026-08-03)
+
+Four defects were found by adversarial review of the first implementation. All are fixed; they are recorded here because each one is a trap the next person could re-introduce.
+
+### 14A.1 The toggle target is resolved by the View, not read from `SelectedMessage`
+
+**Defect:** `GroupedMessageTreeController.OnSelectedItemChanged` assigns `_vm.SelectedMessage` **only** when the newly selected tree item is a `MailMessageSummary`. Selecting a *group header* leaves `SelectedMessage` pointing at whatever was selected before. Reading `SelectedMessage` from the toggle therefore watched the wrong conversation — and announced that wrong subject as if it were what the user asked for. Conversations view is exactly where "Watch Conversation" is most likely to be invoked, so this was the feature's worst failure mode.
+
+**Fix:** `MainViewModel.WatchTargetResolver` (a `Func<string?>` supplied by `MainWindow`, same shape as the existing `RegisterAccountBackend` delegate) resolves the target:
+
+- Conversations view with a `ConversationGroup` selected → that group's `NormalizedSubject`.
+- From/To view with a group header selected → **null**; the command is unavailable. A sender group spans many conversations, so it is not one watch target, and falling through to `SelectedMessage` is precisely the bug.
+- Otherwise → `SelectedMessage?.Subject`.
+
+The command stays registered in `MainViewModel` (one registration, testable without showing a window); only the resolver lives in the View. `isAvailable` reads the target **without storing it** — availability is polled by the command palette and on keystrokes, and must not mutate VM state or raise change notifications.
+
+### 14A.2 The reading pane is cleared when the open message leaves the list
+
+**Defect:** unwatching while the open message was showing left the reading pane rendering a message no longer in the list, with `IsMessageOpen` still true, so every command gated on it stayed live against a vanished row. Every sibling removal path (`RemoveVanishedMessages`, `OnMessagesRemoved`, delete, archive) clears `MessageDetail`/`IsMessageOpen`; this one did not.
+
+**Fix:** clear both before removal. Focus handling now also mirrors archive: `MessageListFocusRequested` in Messages mode (the focused row was just destroyed), and `SelectedMessage = null` in the group tree modes so the global per-message hotkeys cannot act on a row the user never selected.
+
+Still deliberately **absent**: `UpdateAccountCountsAfterRemoval`. Unlike delete/archive/vanish, these messages still exist and are still unread where they live — only this view's membership changed. Decrementing would be the bug.
+
+### 14A.3 Watch state is stamped on the phase-2 fetch paths too
+
+**Defect:** `FetchAllMailAsync`, `FetchViewFoldersAsync` and `FetchAccountAllMailAsync` add rows through `InsertMessageSorted`, bypassing `SetMessages`. Their freshly fetched rows — the newest messages, the ones this feature exists for — carried no watch state, so the spoken "Watched" field was silent on exactly them. These are the same three sites that already needed a per-site `ApplyFolderDisplayNames` call for the identical reason.
+
+**Fix:** `StampWatchedFlags` alongside each `ApplyFolderDisplayNames` call. **Any future derived per-row field needs both.**
+
+### 14A.4 Ctrl+Shift+W works while reading a message body
+
+**Defect:** focus moves into the WebView2 as soon as a message opens, and the injected keydown relay forwarded only a fixed list of gestures. In ReadingPane and Tab modes, the most natural moment to watch a thread — while reading it — did nothing.
+
+**Fix:** the relay forwards `ctrl-shift-w` and dispatches it through the registry. (Note the JS key is `'W'` upper case when Shift is held.)
+
+**Known remaining gap:** `MessageWindow` (MessageOpenMode = Window) has its own `CommandRegistry` and does not register the watch command, so Ctrl+Shift+W is inert there. Listed in §15.
+
+### 14A.5 Smaller fixes
+
+- `WatchService.IsWatched` returns early when no watches are stored, before normalizing. It runs once per message per folder load — up to 50,000 times on the UI thread — and `NormalizeSubject` is a regex loop. A user who has never watched anything must not pay for it.
+- Every path through `ToggleWatchConversation`, including the early returns, re-raises `IsWatchTargetWatched`. The menu item is `IsCheckable`, so WPF has already flipped its own check state by the time the handler runs; a path returning without notifying left the item reporting a lie.
+- The blank-subject refusal also sets `StatusText`, so it is not invisible to a user who has turned result announcements off.
+- `IWatchService.WatchesChanged` was removed. It had no subscriber; a notification channel that notifies nothing reads as working infrastructure to the next person.
+
+---
+
 ## 15. Out of Scope (Mandatory)
 
 v1 explicitly does **not** include:
@@ -491,7 +538,8 @@ v1 explicitly does **not** include:
 - **Watch expiry or auto-cleanup.** No idle timeout, no maximum count, no pruning.
 - **Server-side sync of watch state.** Watches are local to this profile on this machine. No IMAP keyword, no Graph category, no roaming between machines.
 - **Notifications for watched conversations.** A new message in a watched conversation raises no toast and no sound. The existing notification settings are untouched.
-- **Watching from the Conversations / From / To group headers.** v1's toggle acts on a selected *message*. Pressing `Ctrl+Shift+W` on a group header row does nothing.
+- **Watching from a From/To group header.** A sender group spans many conversations, so it is not one watch target; the command is unavailable there. (Watching from a *Conversations* group header **is** supported — see §14A.1.)
+- **Ctrl+Shift+W inside a separate message window** (`MessageOpenMode = Window`). `MessageWindow` owns a separate `CommandRegistry` and does not register the watch command. The shortcut works from the message list, the group trees, and — after §14A.4 — from the reading-pane and tab message bodies. Adding it to `MessageWindow` (and its window-scoped command palette, per the New Window Checklist) is a follow-up.
 - **An unread-count badge on the Watched Conversations node.** The node shows no count; `SuppressUnreadCount` behaviour matches the other aggregates.
 - **A `MessageFilter` value for watched.** Watch is a folder, not a filter. You cannot apply "watched" as a filter on top of some other folder in v1.
 - **Fixing `AllFlagged`'s absence from the flat folder list and folder picker.** Pre-existing inconsistency, separate issue.

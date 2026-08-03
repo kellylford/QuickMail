@@ -79,6 +79,17 @@ public class WatchedConversationsTests
         return (vm, watch, sync);
     }
 
+    /// <summary>
+    /// Stands in for what the View does before invoking the toggle: it resolves which conversation
+    /// the user is actually looking at (which is NOT always the selected message — a group header
+    /// selection leaves SelectedMessage stale) and pushes it into the VM.
+    /// </summary>
+    private static void SetWatchTarget(MainViewModel vm, MailMessageSummary message)
+    {
+        vm.SelectedMessage    = message;
+        vm.WatchTargetSubject = message.Subject;
+    }
+
     private static Task SelectWatchedFolder(MainViewModel vm) =>
         vm.SelectFolderCommand.ExecuteAsync(MainViewModel.AllWatchedFolder);
 
@@ -245,18 +256,52 @@ public class WatchedConversationsTests
     public void ToggleWatch_WatchesThenUnwatchesTheWholeConversation()
     {
         var (vm, watch, _) = MakeVm();
-        vm.SelectedMessage = Msg("1", "Re: Budget Review");
+        SetWatchTarget(vm, Msg("1", "Re: Budget Review"));
 
-        vm.ToggleWatchConversationCommand.Execute(null);
+        vm.ToggleWatchConversation();
         Assert.True(watch.IsWatched("Budget Review"));
-        Assert.True(vm.IsSelectedConversationWatched);
+        Assert.True(vm.IsWatchTargetWatched);
 
         // Toggling from a *different* message of the same conversation turns the same watch off.
-        vm.SelectedMessage = Msg("2", "Fwd: budget review");
-        Assert.True(vm.IsSelectedConversationWatched);
-        vm.ToggleWatchConversationCommand.Execute(null);
+        SetWatchTarget(vm, Msg("2", "Fwd: budget review"));
+        Assert.True(vm.IsWatchTargetWatched);
+        vm.ToggleWatchConversation();
 
         Assert.False(watch.IsWatched("Budget Review"));
+        Assert.Empty(watch.GetAll());
+    }
+
+    [Fact]
+    public void ToggleWatch_UsesTheViewsTarget_NotTheSelectedMessage()
+    {
+        // Regression: selecting a conversation group header does NOT update SelectedMessage
+        // (GroupedMessageTreeController.OnSelectedItemChanged only assigns for MailMessageSummary),
+        // so acting on SelectedMessage would watch whatever thread was selected before the header —
+        // and announce that wrong subject as though it were what the user asked for.
+        var (vm, watch, _) = MakeVm();
+        vm.SelectedMessage = Msg("1", "Budget Review");     // stale: what was selected earlier
+        vm.WatchTargetResolver = () => "Trip to Dublin";    // what the group tree actually shows
+
+        vm.ToggleWatchConversation();
+
+        Assert.True(watch.IsWatched("Trip to Dublin"));
+        Assert.False(watch.IsWatched("Budget Review"));
+    }
+
+    [Fact]
+    public void ToggleWatch_WhenTheViewReportsNoTarget_DoesNothing()
+    {
+        // A From/To group header spans many conversations, so it is not a watch target. The command
+        // must be inert there rather than falling back to the stale selected message.
+        var (vm, watch, _) = MakeVm();
+        vm.SelectedMessage = Msg("1", "Budget Review");
+        vm.WatchTargetResolver = () => null;
+
+        vm.RefreshWatchTarget();          // what the View does as the Message menu opens
+        Assert.False(vm.HasWatchTarget);  // so the menu item dims
+
+        vm.ToggleWatchConversation();
+
         Assert.Empty(watch.GetAll());
     }
 
@@ -266,9 +311,9 @@ public class WatchedConversationsTests
         var (vm, watch, _) = MakeVm();
         var announcements = new List<string>();
         vm.AnnouncementRequested += (_, e) => announcements.Add(e.Text);
-        vm.SelectedMessage = Msg("1", "   ");
+        SetWatchTarget(vm, Msg("1", "   "));
 
-        vm.ToggleWatchConversationCommand.Execute(null);
+        vm.ToggleWatchConversation();
 
         Assert.Empty(watch.GetAll());
         Assert.Contains(announcements, a => a.Contains("no subject", StringComparison.OrdinalIgnoreCase));
@@ -280,10 +325,10 @@ public class WatchedConversationsTests
         var (vm, _, _) = MakeVm();
         var announcements = new List<string>();
         vm.AnnouncementRequested += (_, e) => announcements.Add(e.Text);
-        vm.SelectedMessage = Msg("1", "Budget Review");
+        SetWatchTarget(vm, Msg("1", "Budget Review"));
 
-        vm.ToggleWatchConversationCommand.Execute(null);
-        vm.ToggleWatchConversationCommand.Execute(null);
+        vm.ToggleWatchConversation();
+        vm.ToggleWatchConversation();
 
         Assert.Equal(2, announcements.Count);
         Assert.Contains("Watching conversation: Budget Review", announcements[0], StringComparison.Ordinal);
@@ -305,8 +350,8 @@ public class WatchedConversationsTests
         await SelectWatchedFolder(vm);
         Assert.Equal(3, vm.Messages.Count);
 
-        vm.SelectedMessage = vm.Messages.First(m => m.MessageId == "2");
-        vm.ToggleWatchConversationCommand.Execute(null);
+        SetWatchTarget(vm, vm.Messages.First(m => m.MessageId == "2"));
+        vm.ToggleWatchConversation();
 
         // Both members of the conversation leave, not just the selected one.
         Assert.Equal(new[] { "3" }, vm.Messages.Select(m => m.MessageId).ToArray());
@@ -321,8 +366,8 @@ public class WatchedConversationsTests
         watch.Watch("Budget Review");
         await SelectWatchedFolder(vm);
 
-        vm.SelectedMessage = vm.Messages[0];
-        vm.ToggleWatchConversationCommand.Execute(null);
+        SetWatchTarget(vm, vm.Messages[0]);
+        vm.ToggleWatchConversation();
 
         Assert.Empty(vm.Messages);
         Assert.Null(vm.SelectedMessage);
@@ -343,8 +388,8 @@ public class WatchedConversationsTests
         // correctly wherever the message appears.
         Assert.True(message.IsWatched);
 
-        vm.SelectedMessage = message;
-        vm.ToggleWatchConversationCommand.Execute(null);
+        SetWatchTarget(vm, message);
+        vm.ToggleWatchConversation();
 
         Assert.False(watch.IsWatched("Budget Review"));
         Assert.False(message.IsWatched);

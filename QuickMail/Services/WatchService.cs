@@ -27,8 +27,6 @@ public class WatchService : IWatchService
     // every mutation: the list is tiny, and rebuilding removes any chance of index drift.
     private HashSet<string> _index = new(StringComparer.OrdinalIgnoreCase);
 
-    public event EventHandler? WatchesChanged;
-
     public WatchService(ProfileContext profile)
     {
         _dataFolder  = profile.ProfileDir;
@@ -52,6 +50,10 @@ public class WatchService : IWatchService
 
     public bool IsWatched(string subject)
     {
+        // Early-out before normalizing. This runs once per message on every folder load — up to
+        // 50,000 times on a large All Mail load, on the UI thread — and NormalizeSubject is a regex
+        // loop. A user who has never watched anything must not pay for it.
+        if (_index.Count == 0) return false;
         var key = ConversationBuilder.NormalizeSubject(subject ?? string.Empty);
         return key.Length > 0 && _index.Contains(key);
     }
@@ -71,7 +73,6 @@ public class WatchService : IWatchService
         });
         RebuildIndex();
         Save();
-        WatchesChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
@@ -86,7 +87,6 @@ public class WatchService : IWatchService
 
         RebuildIndex();
         Save();
-        WatchesChanged?.Invoke(this, EventArgs.Empty);
         return true;
     }
 
