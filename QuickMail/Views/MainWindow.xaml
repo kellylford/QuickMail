@@ -332,8 +332,6 @@
                         </Style>
                     </MenuItem.Style>
                 </MenuItem>
-                <MenuItem Header="Watched Con_versations…"
-                          Click="MenuWatchedConversations_Click"/>
                 <Separator/>
                 <!-- Keep IsEnabled off these three items so they remain keyboard-navigable
                      per Windows convention (dimmed items are still focusable). Visual dimming
@@ -629,6 +627,13 @@
                           InputGestureText="Ctrl+Shift+L"
                           AutomationProperties.Name="Manage Rules"
                           AutomationProperties.AcceleratorKey="Ctrl+Shift+L"/>
+                <!-- The manager belongs here with the other managers, not beside Watch
+                     Conversation on the Message menu: that one acts on the selected message,
+                     this one is a surface for reviewing what you have accumulated. Same split
+                     as toggling a flag versus managing flags. -->
+                <MenuItem Header="_Watched Conversations…"
+                          Click="MenuWatchedConversations_Click"
+                          AutomationProperties.Name="Watched Conversations"/>
                 <Separator/>
                 <MenuItem Header="Command _Palette…"
                           Click="MenuCommandPalette_Click"

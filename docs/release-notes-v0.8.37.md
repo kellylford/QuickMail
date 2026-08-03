@@ -19,6 +19,8 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
   - [New: choose what a message list row says, and in what order](#new-choose-what-a-message-list-row-says-and-in-what-order)
   - [New: combined views say which folder a message is in](#new-combined-views-say-which-folder-a-message-is-in)
   - [New: All Archive](#new-all-archive)
+  - [New: watched conversations](#new-watched-conversations)
+  - [Fixed: a saved view's filter was described as "All"](#fixed-a-saved-views-filter-was-described-as-all)
   - [Fixed: attachments were unreachable when a message opens in its own window](#fixed-attachments-were-unreachable-when-a-message-opens-in-its-own-window)
   - [Fixed: some links opened inside QuickMail instead of your browser](#fixed-some-links-opened-inside-quickmail-instead-of-your-browser)
 - [Mail rules](#mail-rules)
@@ -203,6 +205,28 @@ The **All Mail** group in the folder tree gathers each kind of folder across eve
 It follows each account's own archive setting rather than guessing. If you pointed an account at a particular folder with **Set as Archive Folder**, that is the folder All Archive reads, so the list is exactly the mail **Move to Archive** put there. Accounts with no Archive folder contribute nothing rather than causing an error.
 
 One thing to know if you use Gmail: the guide now recommends creating a Gmail label named **Archive** and pointing the account at it with **Set as Archive Folder**, rather than at **[Gmail]/All Mail**. Both archive correctly, but an account pointed at All Mail contributes its entire mailbox to All Archive, because for that account All Mail *is* the archive. A label gives you a folder holding only what you archived. (#452)
+
+### New: watched conversations
+
+Some conversations you want to keep an eye on — a release announcement, a bug thread, a trip itinerary. Until now the only way was to flag each message as it landed, which means noticing it first.
+
+Press **Ctrl+Shift+W** on any message and its whole conversation is watched from then on. **Watched Conversations**, the last item in the **All Mail** group of the folder tree, then lists every message in that conversation, from every folder and every account, newest first — **including the replies that have not arrived yet**, which join on their own as they sync. That is the difference from flagging: a flag marks a message you already have, a watch is a standing subscription to the conversation.
+
+The same key stops watching, from any message in the conversation. It works from the message list, from a Conversations group header, from the reading pane, from a message tab, and from a message window. Watching changes nothing on the mail server and nothing in other mail programs; it is remembered on this computer only.
+
+**Everything else in the message list works there as usual** — view modes, filters, sorting, and the message list fields. Conversations view mode is a natural fit, since each watched conversation becomes one group. You can save Watched Conversations as one of your own views.
+
+**Tools → Watched Conversations…** lists everything you are watching, with how many messages each has collected and when you started. Press **Enter** on one to jump to that conversation, **Delete** to stop watching it, or **Rename** to give it a clearer label — renaming changes the label only, not which messages are collected. Type a letter to jump down the list. The window stays open while you work.
+
+**Settings → Notifications → Show a notification when a watched conversation gets a reply** tells you when one arrives. Unlike the ordinary new-mail notification this applies to every folder, not just the inbox, because a watched thread's next message can land anywhere. The two settings are independent, and a message that is both new inbox mail and part of a watched conversation produces one notification, the watched one.
+
+**View → Filter → Watched** narrows any folder to watched conversations, and can be saved as part of a view. If you would like each row to say whether its conversation is watched, turn on the **Watched** field in **View → Message List Fields…**; it is off to begin with.
+
+Two things worth knowing. QuickMail groups a conversation by its subject, ignoring `Re:` and `Fwd:` prefixes, so a reply is recognized automatically — but two unrelated messages that happen to share a subject count as one conversation. And a message with no subject at all cannot be watched; you will hear "Cannot watch a conversation with no subject" and nothing changes.
+
+### Fixed: a saved view's filter was described as "All"
+
+A saved view that used the **With Attachments** or **To Me** filter reported its filter as "All" in the View Manager. The view itself always applied the right filter — only the description was wrong.
 
 ### Fixed: attachments were unreachable when a message opens in its own window
 

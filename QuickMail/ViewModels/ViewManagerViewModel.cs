@@ -199,7 +199,11 @@ public partial class ViewManagerViewModel : ObservableObject
             if (CurrentViewMode != ViewMode.Messages)
                 extras.Add(ModeLabel(CurrentViewMode.ToString().ToLowerInvariant()));
             if (CurrentFilter != MessageFilter.All)
-                extras.Add(FilterLabel(CurrentFilter.ToString().ToLowerInvariant()));
+                // Through FilterKey, not ToString().ToLowerInvariant(): the enum name and the
+                // stored key are not the same string for every value. WithAttachments lowercases
+                // to "withattachments", which FilterLabel has no arm for, so a view using the With
+                // Attachments filter described itself as "All".
+                extras.Add(FilterLabel(FilterKey(CurrentFilter)));
             if (CurrentSort != MessageSort.DateDescending)
                 extras.Add(SortLabel(CurrentSort.ToString()));
             if (CurrentDayLimit.HasValue)
@@ -568,7 +572,8 @@ public partial class ViewManagerViewModel : ObservableObject
         if (CurrentViewMode != ViewMode.Messages)
             extras.Add(ModeLabel(CurrentViewMode.ToString().ToLowerInvariant()));
         if (CurrentFilter != MessageFilter.All)
-            extras.Add(FilterLabel(CurrentFilter.ToString().ToLowerInvariant()));
+            // Through FilterKey — see the matching call in SelectedStateSummary.
+            extras.Add(FilterLabel(FilterKey(CurrentFilter)));
         if (CurrentSort != MessageSort.DateDescending)
             extras.Add(SortLabel(CurrentSort.ToString()));
         extras.Add(dayLimit.HasValue ? $"last {dayLimit} days" : "all days");

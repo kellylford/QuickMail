@@ -3462,7 +3462,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var items = new List<MailFolderModel>
         {
             AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder,
-            AllArchiveFolder, AllTrashFolder, AllWatchedFolder
+            // All Flagged was missing here (and from the folder picker) while every other
+            // aggregate was present. ApplyViewAsync resolves a saved view's VirtualFolderKey
+            // against this list, so a view saved over All Flagged fell through to a fabricated
+            // folder instead of the live singleton.
+            AllArchiveFolder, AllTrashFolder, AllFlaggedFolder, AllWatchedFolder
         };
 
         foreach (var account in Accounts)

@@ -171,6 +171,32 @@ public class WatchedConversationsPhase2Tests
         }
     }
 
+    [Fact]
+    public void EveryFilter_DescribesItselfInTheViewManager_NotAs_All()
+    {
+        // The two summary builders used to label the current filter from
+        // CurrentFilter.ToString().ToLowerInvariant(), but the enum name and the stored key are
+        // not the same string for every value: WithAttachments lowercases to "withattachments",
+        // which FilterLabel has no arm for, so those views described themselves as "All".
+        var vmType    = typeof(ViewManagerViewModel);
+        var filterKey = vmType.GetMethod("FilterKey", BindingFlags.NonPublic | BindingFlags.Static)!;
+        var filterLbl = vmType.GetMethod("FilterLabel", BindingFlags.NonPublic | BindingFlags.Static)!;
+
+        foreach (var filter in Enum.GetValues<MessageFilter>())
+        {
+            if (filter == MessageFilter.All) continue;
+
+            var viaKey  = (string)filterLbl.Invoke(null, [(string)filterKey.Invoke(null, [filter])!])!;
+            Assert.NotEqual("All", viaKey);
+
+            // And the trap itself: the raw enum name must never be what gets looked up.
+            var viaName = (string)filterLbl.Invoke(null, [filter.ToString().ToLowerInvariant()])!;
+            if (viaName == "All")
+                Assert.NotEqual(filter.ToString().ToLowerInvariant(),
+                                (string)filterKey.Invoke(null, [filter])!);
+        }
+    }
+
     // ── Manager view model ───────────────────────────────────────────────────
 
     private static WatchedConversationsViewModel MakeManager(
