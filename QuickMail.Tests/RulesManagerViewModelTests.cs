@@ -566,7 +566,7 @@ public class RulesManagerViewModelTests
     {
         var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
         var invoked = false;
-        vm.RunOnExistingRequested += () => { invoked = true; return Task.FromResult(3); };
+        vm.RunOnExistingRequested += _ => { invoked = true; return Task.FromResult(3); };
 
         await vm.RunOnExistingCommand.ExecuteAsync(null);
 
@@ -578,7 +578,7 @@ public class RulesManagerViewModelTests
     public async Task RunOnExisting_ZeroMoved_StillConfirms()
     {
         var vm = new RulesManagerViewModel(new StubRuleService(), accounts: []);
-        vm.RunOnExistingRequested += () => Task.FromResult(0);
+        vm.RunOnExistingRequested += _ => Task.FromResult(0);
 
         await vm.RunOnExistingCommand.ExecuteAsync(null);
 

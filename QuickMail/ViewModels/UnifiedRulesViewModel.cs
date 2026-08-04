@@ -32,17 +32,23 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // the manager was opened without a message-list selection.
     private readonly IReadOnlyList<MailMessageSummary>? _selectedMessagesForTest;
 
+    // "Show field labels in the rules list" — read once at open (matches RulesManagerViewModel); a
+    // Settings change is picked up next time the manager opens.
+    private readonly bool _showFieldLabels;
+
     public UnifiedRulesViewModel(
         IRuleService clientRules,
         IServerRuleService? serverRules,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null,
         Guid? preferredAccountId = null,
-        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null)
+        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null,
+        IConfigService? configService = null)
     {
         _clientRules = clientRules;
         _serverRules = serverRules;
         _selectedMessagesForTest = selectedMessagesForTest?.ToList();
+        _showFieldLabels = configService?.Load().RuleListShowFieldLabels ?? false;
         _foldersByAccount = foldersByAccount;
         _allAccounts = accounts.ToList();
 
@@ -149,28 +155,43 @@ public partial class UnifiedRulesViewModel : ObservableObject
     }
 
     /// <summary>Ask the owner to run client rules over already-cached mail (it owns the local store),
-    /// returning how many messages were moved/deleted. Server rules run server-side, so this is
-    /// client-only — same as the standalone manager (#346).</summary>
-    public event Func<Task<int>>? RunOnExistingRequested;
+    /// returning how many messages were moved/deleted. The Guid is the account to scope the run to —
+    /// this window is one account at a time, so it runs only the account in the picker, not every
+    /// account (#493). Server rules run server-side, so this is client-only — same as the standalone
+    /// manager (#346).</summary>
+    public event Func<Guid?, Task<int>>? RunOnExistingRequested;
 
-    [RelayCommand]
+    /// <summary>Run on Existing applies the selected account's ENABLED client rules to its Inbox. Disabled
+    /// when that account has none — a Graph account whose rules are all server-side has nothing for this
+    /// to do, and a greyed control is clearer than one that reports "0 moved" (and matches Test/Edit
+    /// gating). Server rules can't be run against existing mail via Graph, so they never count here.</summary>
+    public bool CanRunOnExisting =>
+        SelectedAccount != null && Rules.Any(r => r.RunsWhere == RuleRunsWhere.Client && r.Client!.IsEnabled);
+
+    [RelayCommand(CanExecute = nameof(CanRunOnExisting))]
     private async Task RunOnExistingAsync()
     {
-        if (RunOnExistingRequested is null) return;
-        Announce("Running rules on existing mail…", AnnouncementCategory.Status);
+        if (RunOnExistingRequested is null || SelectedAccount is not { } account) return;
+        // Set StatusText as well as announcing (parity with RulesManagerViewModel): the status line is a
+        // visible, F6-reachable surface, so a user running with announcements off still sees the outcome —
+        // otherwise this newly-surfaced button would be imperceptible to them, error included.
+        StatusText = $"Running {account.DisplayName}'s rules on existing mail…";
+        Announce(StatusText, AnnouncementCategory.Status);
         int affected;
         try
         {
-            affected = await RunOnExistingRequested.Invoke();
+            affected = await RunOnExistingRequested.Invoke(account.Id);
         }
         catch (Exception ex)
         {
-            Announce($"Couldn't run rules on existing mail: {ex.Message}", AnnouncementCategory.Result);
+            StatusText = $"Couldn't run rules on existing mail: {ex.Message}";
+            Announce(StatusText, AnnouncementCategory.Result);
             return;
         }
-        Announce(affected > 0
-            ? $"Applied rules to existing mail: {affected} message{(affected == 1 ? "" : "s")} moved or deleted."
-            : "Applied rules to existing mail.", AnnouncementCategory.Result);
+        StatusText = affected > 0
+            ? $"Applied {account.DisplayName}'s rules to existing mail: {affected} message{(affected == 1 ? "" : "s")} moved or deleted."
+            : $"Applied {account.DisplayName}'s rules to existing mail.";
+        Announce(StatusText, AnnouncementCategory.Result);
     }
 
     [RelayCommand(CanExecute = nameof(CanEditSelected))]
@@ -462,6 +483,8 @@ public partial class UnifiedRulesViewModel : ObservableObject
         {
             Rules.Clear();
             StatusText = string.Empty;
+            OnPropertyChanged(nameof(CanRunOnExisting));
+            RunOnExistingCommand.NotifyCanExecuteChanged();
             return;
         }
 
@@ -487,7 +510,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 try
                 {
                     var server = await _serverRules.ListAsync(accountId, token);
-                    rows.AddRange(server.Select(UnifiedRuleRow.ForServer));
+                    rows.AddRange(server.Select(r => UnifiedRuleRow.ForServer(r, _showFieldLabels)));
                 }
                 catch (OperationCanceledException) { return; }   // superseded — leave state untouched
                 catch (Exception ex)
@@ -501,7 +524,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             try
             {
                 var client = _clientRules.LoadRules().Where(r => r.AccountId == accountId);
-                rows.AddRange(client.Select(UnifiedRuleRow.ForClient));
+                rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels)));
             }
             catch (Exception ex)
             {
@@ -513,6 +536,11 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
             Rules.Clear();
             foreach (var row in rows) Rules.Add(row);
+
+            // Run on Existing enables/disables with the account's enabled client-rule set, which just
+            // changed. (Every write path — toggle, add, delete, account switch — routes through here.)
+            OnPropertyChanged(nameof(CanRunOnExisting));
+            RunOnExistingCommand.NotifyCanExecuteChanged();
 
             // Open on an actionable, readable first rule: select it so the detail pane populates and
             // the list has a selection (re-selection after a write is handled by ReloadAndReselect).

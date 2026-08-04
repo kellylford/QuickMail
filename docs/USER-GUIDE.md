@@ -969,6 +969,8 @@ If you have a Microsoft 365 (Exchange) account, the Rules Manager does a little 
 
 **Testing.** **Test** runs a rule against the messages in your list and reports how many it would match. It works on **QuickMail rules only**; for a **server rule** the Test control is turned off, the same way Edit and Delete are for a read-only rule — a server rule runs in Exchange, so there is nothing local to test it against.
 
+**Run on Existing Mail.** This applies **the selected account's** QuickMail rules to the mail already in its Inbox — matching the one-account-at-a-time layout, so it never acts on rules for an account you are not looking at. It is available only when that account has at least one enabled QuickMail rule; a Microsoft 365 account whose rules are all server-side has nothing for it to do (server rules run in Exchange and cannot be applied to existing mail from here), so the control is turned off in that case.
+
 **What your organization may need to allow.** For most work or school accounts, an administrator has to permit QuickMail to read and change your mailbox rules before this works. If that permission is not in place, you will see a message about it rather than your server rules; ask your administrator to grant QuickMail access.
 
 ---

@@ -42,7 +42,9 @@ public partial class RulesManagerViewModel : ObservableObject
     /// deleted. Rules already run automatically when the window closes; this makes that explicit and
     /// on-demand (issue #346).
     /// </summary>
-    public event Func<Task<int>>? RunOnExistingRequested;
+    // Guid scope is unused here (this window lists every account's rules, so it always runs them all —
+    // passes null). The unified window passes a specific account (#493). Shared handler, one signature.
+    public event Func<Guid?, Task<int>>? RunOnExistingRequested;
 
     // ── Constructor ─────────────────────────────────────────────────────────
 
@@ -329,7 +331,7 @@ public partial class RulesManagerViewModel : ObservableObject
         int affected;
         try
         {
-            affected = await RunOnExistingRequested.Invoke();
+            affected = await RunOnExistingRequested.Invoke(null);   // null = every account (this window lists them all)
         }
         catch (Exception ex)
         {
