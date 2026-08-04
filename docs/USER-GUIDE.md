@@ -936,6 +936,22 @@ Each row in the rules list says the rule's name and the account it belongs to. T
 
 Select a message and choose **Create Rule from Message** from the context menu or the command palette. QuickMail opens a new rule pre-filled with a condition matching the sender and, if present, the subject — a quick starting point you can adjust before saving.
 
+### Microsoft 365: server-side rules
+
+If you have a Microsoft 365 (Exchange) account, the Rules Manager does a little more. Alongside the rules that run inside QuickMail, it shows the **server-side rules** on your Exchange mailbox — the same rules Outlook calls "Inbox rules." A server rule runs on Microsoft's servers, so it acts on your mail **even when QuickMail is closed**, and it applies wherever you read that mailbox.
+
+**One account at a time.** With a Microsoft 365 account present, the Rules Manager opens on a single account chosen in an **Account** list at the top, rather than listing every account's rules together. Choose the account whose rules you want, and the list below shows just that mailbox's rules. If you have only one account there is no picker. This is the first thing to notice if you are used to seeing every account's rules in one list: your rules are not gone, they are behind the account picker.
+
+**One list, marked where each rule runs.** Server rules and QuickMail rules appear together in a single list. Each row says where the rule runs — **on server** or **in QuickMail** — along with its name and whether it is enabled. Creating, editing, enabling or disabling, reordering, and deleting all work the same way whichever kind a rule is.
+
+**QuickMail chooses where a new rule lives.** When you create a rule, QuickMail saves it as a server rule whenever it can, so it keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today that is **Mark as unread** — is saved as a QuickMail rule instead, and QuickMail tells you why.
+
+**Some server rules are read-only.** A rule you built in Outlook may use conditions or actions QuickMail cannot yet represent exactly. Rather than risk turning it into something you did not intend, QuickMail shows that rule as **read-only**: you can read it, but Edit, Delete, and Move are turned off. Change that rule in Outlook.
+
+**Testing.** **Test** runs a QuickMail rule against the messages in your list and reports how many it would match. Server rules run in Exchange, not in QuickMail, so there is nothing local to test them against — Test says so when a server rule is selected.
+
+**What your organization may need to allow.** For most work or school accounts, an administrator has to permit QuickMail to read and change your mailbox rules before this works. If that permission is not in place, you will see a message about it rather than your server rules; ask your administrator to grant QuickMail access.
+
 ---
 
 ## Saved Views

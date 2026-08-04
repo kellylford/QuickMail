@@ -28,15 +28,21 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>>? _foldersByAccount;
     private readonly List<AccountModel> _allAccounts;
 
+    // Messages selected in the main window, for Test Rule (parity with RulesManagerViewModel). Null when
+    // the manager was opened without a message-list selection.
+    private readonly IReadOnlyList<MailMessageSummary>? _selectedMessagesForTest;
+
     public UnifiedRulesViewModel(
         IRuleService clientRules,
         IServerRuleService? serverRules,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null,
-        Guid? preferredAccountId = null)
+        Guid? preferredAccountId = null,
+        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null)
     {
         _clientRules = clientRules;
         _serverRules = serverRules;
+        _selectedMessagesForTest = selectedMessagesForTest?.ToList();
         _foldersByAccount = foldersByAccount;
         _allAccounts = accounts.ToList();
 
@@ -71,6 +77,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ToggleEnabledCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TestRuleCommand))]
     private UnifiedRuleRow? _selectedRule;
 
     /// <summary>Enable/Disable button text: "Enable" for a disabled rule, "Disable" for an enabled one.</summary>
@@ -238,6 +245,39 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(CanMoveDown))]
     private Task MoveDownAsync(CancellationToken ct) => MoveServerAsync(+1, ct);
+
+    /// <summary>True whenever a rule is selected — Test is offered for any row (a server row explains it
+    /// can't be tested locally rather than being a dead, disabled button).</summary>
+    private bool HasSelectedRule => SelectedRule != null;
+
+    // Parity with RulesManagerViewModel.TestRule: run the selected CLIENT rule against the messages
+    // selected in the main window and report the match count. Server rules run in Exchange, not in
+    // QuickMail, so there's nothing local to test them against — say so rather than hide the button.
+    [RelayCommand(CanExecute = nameof(HasSelectedRule))]
+    private void TestRule()
+    {
+        var row = SelectedRule;
+        if (row == null) return;
+
+        if (row.RunsWhere == RuleRunsWhere.Server)
+        {
+            StatusText = "Testing isn't available for server rules — they run in Exchange, not in QuickMail.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return;
+        }
+
+        var messages = _selectedMessagesForTest?.ToList() ?? [];
+        if (messages.Count == 0)
+        {
+            StatusText = "No messages selected in the main window.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return;
+        }
+
+        var matched = _clientRules.TestRule(row.Client!, messages);
+        StatusText = $"Rule would match {matched.Count} of {messages.Count} selected messages.";
+        Announce(StatusText, AnnouncementCategory.Result);
+    }
 
     // ── Save routing ────────────────────────────────────────────────────────
 

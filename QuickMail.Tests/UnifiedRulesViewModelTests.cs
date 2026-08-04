@@ -304,4 +304,78 @@ public class UnifiedRulesViewModelTests
         var single = new UnifiedRulesViewModel(new StubRuleService(), null, [Graph(a)]);
         Assert.False(single.ShowAccountSelector);
     }
+
+    // ── Test Rule (#488 review: parity with RulesManagerWindow's Test button) ─────────
+
+    private static MailMessageSummary Msg(string id, string from = "a@b.com") => new() { MessageId = id, Subject = "hello", From = from };
+
+    [Fact]
+    public async Task TestRule_ClientRule_ReportsRealMatchCount_AsResultAnnouncement()
+    {
+        // Real RuleService so condition matching is exercised end-to-end — the count must reflect an
+        // actual subset (1 of 2), not the "matches everything" stub.
+        var a = Guid.NewGuid();
+        var dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), Guid.NewGuid().ToString());
+        try
+        {
+            var rules = new RuleService(new StubImapMailService(), new StubLocalStoreService(), dir);
+            rules.SaveRules([new MailRule { Name = "From Alice", AccountId = a, FromContains = "alice", Action = RuleAction.MarkAsRead }]);
+
+            var messages = new[] { Msg("1", "alice@example.com"), Msg("2", "bob@example.com") };
+            var vm = new UnifiedRulesViewModel(rules, new FakeServerRules(), [Graph(a)],
+                preferredAccountId: a, selectedMessagesForTest: messages);
+            await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+            vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+
+            (string Text, AnnouncementCategory Cat)? announced = null;
+            vm.AnnouncementRequested += (t, c) => announced = (t, c);
+
+            vm.TestRuleCommand.Execute(null);
+
+            Assert.Equal("Rule would match 1 of 2 selected messages.", vm.StatusText);
+            Assert.NotNull(announced);
+            Assert.Equal(AnnouncementCategory.Result, announced!.Value.Cat);
+        }
+        finally { try { System.IO.Directory.Delete(dir, true); } catch { } }
+    }
+
+    [Fact]
+    public async Task TestRule_ServerRule_SaysTestingNotAvailable()
+    {
+        var a = Guid.NewGuid();
+        var server = new FakeServerRules();
+        server.Stored.Add(Server("S1"));
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)],
+            preferredAccountId: a, selectedMessagesForTest: new[] { Msg("1") });
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Server);
+
+        vm.TestRuleCommand.Execute(null);
+
+        Assert.Contains("isn't available for server rules", vm.StatusText);
+    }
+
+    [Fact]
+    public async Task TestRule_NoMessagesSelected_SaysNoneSelected()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)],
+            preferredAccountId: a);   // opened with no main-window selection
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+        vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+
+        vm.TestRuleCommand.Execute(null);
+
+        Assert.Equal("No messages selected in the main window.", vm.StatusText);
+    }
+
+    [Fact]
+    public void TestRule_NothingSelected_CommandDisabled()
+    {
+        var a = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(a)],
+            preferredAccountId: a, selectedMessagesForTest: new[] { Msg("1") });
+        Assert.False(vm.TestRuleCommand.CanExecute(null));   // no rule selected yet
+    }
 }

@@ -69,6 +69,7 @@
                         <MenuItem Header="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}"/>
                         <MenuItem Header="Move up" Command="{Binding MoveUpCommand}"/>
                         <MenuItem Header="Move down" Command="{Binding MoveDownCommand}"/>
+                        <MenuItem Header="Test" Command="{Binding TestRuleCommand}"/>
                         <Separator/>
                         <MenuItem Header="Delete" Command="{Binding DeleteRuleCommand}"/>
                     </ContextMenu>
@@ -87,7 +88,7 @@
                      AutomationProperties.Name="Rule detail"/>
         </Grid>
 
-        <!-- Buttons last in Tab order (row 3): New … Move Down, then Close on the right. -->
+        <!-- Buttons last in Tab order (row 3): New … Test, then Close on the right. -->
         <Grid Grid.Row="3" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
@@ -100,7 +101,8 @@
                 <Button Content="{Binding ToggleEnabledLabel}" Command="{Binding ToggleEnabledCommand}" Padding="10,0" Margin="0,0,6,4"
                         AutomationProperties.Name="{Binding ToggleEnabledLabel, StringFormat={}{0} selected rule}"/>
                 <Button Content="Move Up" Command="{Binding MoveUpCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule up"/>
-                <Button Content="Move Down" Command="{Binding MoveDownCommand}" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Move selected rule down"/>
+                <Button Content="Move Down" Command="{Binding MoveDownCommand}" Padding="10,0" Margin="0,0,6,4" AutomationProperties.Name="Move selected rule down"/>
+                <Button Content="Test" Command="{Binding TestRuleCommand}" Padding="10,0" Margin="0,0,0,4" AutomationProperties.Name="Test selected rule against selected messages"/>
             </WrapPanel>
             <Button Grid.Column="1" Content="Close" Click="CloseButton_Click" Padding="12,0" VerticalAlignment="Top" AutomationProperties.Name="Close rules manager"/>
         </Grid>
