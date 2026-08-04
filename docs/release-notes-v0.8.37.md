@@ -278,7 +278,9 @@ Mail rules — the ones you set up in **Tools → Rules…** to file, flag, or d
 
 If you have a Microsoft 365 (Exchange) account, the Rules Manager now shows that mailbox's **server-side rules** — the same rules Outlook calls "Inbox rules" — alongside the rules that run inside QuickMail. A server rule runs on Microsoft's servers, so it acts on your mail **even when QuickMail is closed**, and wherever else you read that mailbox. You can create, edit, enable and disable, reorder, and delete them from QuickMail.
 
-**The change you will notice first: the Rules Manager is now one account at a time.** When you have a Microsoft 365 account, the Rules Manager opens on a single account chosen in an **Account** list at the top, instead of listing every account's rules together. Your rules are not gone — they are behind the account picker. Choose the account, and the list below shows that mailbox's rules. With only one account there is no picker.
+**Most people will see none of this yet.** It needs a Microsoft 365 mailbox connected through Microsoft sign-in, and for a work or school mailbox that means your organization's administrator has approved QuickMail for your tenant — which few have so far, since few know the app exists. If that is not you, nothing in this entry applies and nothing about your rules has changed shape; the rest of the Mail rules section is what affects you.
+
+**If you do have one, the change you will notice first: the Rules Manager is now one account at a time.** When you have a Microsoft 365 account, the Rules Manager opens on a single account chosen in an **Account** list at the top, instead of listing every account's rules together. Your rules are not gone — they are behind the account picker. Choose the account, and the list below shows that mailbox's rules. With only one account there is no picker.
 
 The rest of what is worth knowing:
 
@@ -287,7 +289,7 @@ The rest of what is worth knowing:
 - **Some rules built in Outlook are shown read-only.** If a rule uses conditions or actions QuickMail cannot represent exactly, you can read it here but not change it, so it cannot quietly become something you did not mean. Change those in Outlook.
 - **Test works on QuickMail rules.** For a server rule the Test control is turned off, the same way Edit and Delete are for a read-only rule — a server rule runs in Exchange, so there is nothing local to test it against.
 
-**For most work or school accounts this needs your administrator to allow QuickMail to read and change your mailbox rules.** Without that permission you will see a message saying so rather than your server rules. ([#333](https://github.com/kellylford/QuickMail/issues/333))
+**For most work or school accounts this needs your administrator to allow QuickMail to read and change your mailbox rules.** Without that permission you will see a message saying so rather than your server rules. **Your QuickMail rules are unaffected either way** — they are fetched separately, so they still load, still run, and can still be created and edited, whether the permission is missing, the server is unreachable, or the account is not a Microsoft 365 one at all. Rules have not become a Microsoft 365 feature; this adds a second place they can run. ([#333](https://github.com/kellylford/QuickMail/issues/333))
 
 ### Changed: rules are now per-account
 
