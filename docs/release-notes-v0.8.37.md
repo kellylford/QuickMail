@@ -313,12 +313,14 @@ Rules now behave the classic way: they run on the **Inbox**, on **new arrivals**
 
 ### Fixed: the rules editor no longer offers actions with nothing to act on
 
-Two things in the Rules Manager:
+Two things in the Rules Manager, both in the window you get **without** a Microsoft 365 account:
 
 - With **no rule selected**, the rule's fields are disabled and drop out of the Tab order, so you cannot land on a live but meaningless Account list. The buttons stay reachable, so **Close** always works.
 - **Delete**, **Save**, and **Test** are disabled until you select a rule, and **Run on Existing Mail** is disabled while you have no rules — including the moment you delete the last one.
 
-**"Show field labels in the rules list" now survives a restart.** The setting saved and applied for the session, but was never written to `config.ini`, so it reverted to off every time QuickMail started.
+**With a Microsoft 365 account** the account-at-a-time window applies the same principle by its own route: it has no editable fields to disable, because editing opens a separate window, and **Edit**, **Delete**, **Enable/Disable**, **Move Up**, **Move Down**, and **Test** each switch off when they have nothing to act on — including for a rule that is shown read-only, and for Test on a server rule, which runs in Exchange rather than in QuickMail. **Close** always works there too.
+
+**"Show field labels in the rules list" now survives a restart.** The setting saved and applied for the session, but was never written to `config.ini`, so it reverted to off every time QuickMail started. Note that it governs the window without a Microsoft 365 account; the account-at-a-time window does not read it yet, so with a Microsoft 365 account the checkbox currently changes nothing. ([#493](https://github.com/kellylford/QuickMail/issues/493))
 
 ---
 
