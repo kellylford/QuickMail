@@ -149,6 +149,7 @@ sealed class RecordingFlagStore : ILocalStoreService
     public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
     public Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.FromResult(new HashSet<string>());
     public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
+    public Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId) => Task.FromResult(new Dictionary<string, int>());
     public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
     public Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId)
     {

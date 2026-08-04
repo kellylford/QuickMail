@@ -157,6 +157,7 @@ public class ConfigServiceSaveTests
         Assert.Equal(expected, reloaded.MailSyncPollMinutes);
     }
 
+
     [Fact]
     public void SaveThenLoad_RoundTripsReadAsPlainText()
     {

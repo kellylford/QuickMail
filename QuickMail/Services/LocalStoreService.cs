@@ -885,6 +885,19 @@ public class LocalStoreService : ILocalStoreService
         return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
     }
 
+    public async Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT folder_name, COUNT(*) FROM MessageSummary WHERE account_id = @id GROUP BY folder_name";
+        cmd.Parameters.AddWithValue("@id", accountId.ToString());
+        var byFolder = new Dictionary<string, int>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            byFolder[reader.GetString(0)] = reader.GetInt32(1);
+        return byFolder;
+    }
+
     public async Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId)
     {
         await using var conn = await OpenAsync();

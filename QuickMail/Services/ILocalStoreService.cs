@@ -68,6 +68,13 @@ public interface ILocalStoreService
     Task<int> CountSummariesAsync(Guid accountId);
 
     /// <summary>
+    /// Cached message-summary count per folder for one account, keyed by folder_name, in a single
+    /// grouped scan (#462 sweep instrumentation). One query per account beats one per folder — it keeps
+    /// the measurement's own cost off the timed region and off the per-folder hot path.
+    /// </summary>
+    Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId);
+
+    /// <summary>
     /// Returns the oldest message date stored for the given account, or null if no messages exist.
     /// Used to display the cache window in Account Properties.
     /// </summary>

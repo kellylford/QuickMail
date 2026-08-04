@@ -4,6 +4,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -29,6 +30,36 @@ public sealed class GraphClient : IDisposable
     private readonly HttpClient _http;
     private readonly bool _ownsHttp;
     private readonly TimeSpan _retryDelayWhenNoHeader;
+
+    // Per-async-flow HTTP request counter for the #462 sweep instrumentation. A caller opens a scope
+    // (BeginRequestCount) and every Graph request made on that same async flow increments its box —
+    // so the sweep can count exactly the requests one folder cost, unaffected by concurrent Graph
+    // activity (delta poll, user navigation) running on other flows. Null when nobody is counting, so
+    // the hot path costs a single null check. AsyncLocal flows across await/ConfigureAwait boundaries.
+    private static readonly AsyncLocal<StrongBox<long>?> RequestCountScope = new();
+
+    /// <summary>
+    /// Counts Graph HTTP requests made on the current async flow until disposed (#462). Restores the
+    /// previous scope on dispose so scopes nest safely, and a <c>using</c> makes the count
+    /// exception-safe (a throwing folder can't leave the scope attached to the flow). Diagnostic only.
+    /// </summary>
+    public sealed class RequestScope : IDisposable
+    {
+        private readonly StrongBox<long>? _previous;
+        private readonly StrongBox<long> _box;
+        internal RequestScope()
+        {
+            _previous = RequestCountScope.Value;
+            _box = new StrongBox<long>(0);
+            RequestCountScope.Value = _box;
+        }
+        /// <summary>Requests counted so far on this flow.</summary>
+        public long Count => Interlocked.Read(ref _box.Value);
+        public void Dispose() => RequestCountScope.Value = _previous;
+    }
+
+    /// <summary>Begin a request-count scope on the current async flow (#462). Diagnostic only.</summary>
+    public static RequestScope BeginRequestCount() => new();
 
     public GraphClient(IOAuthService oauth, HttpClient? http = null, TimeSpan? defaultRetryDelay = null, string? baseUrl = null)
     {
@@ -253,6 +284,9 @@ public sealed class GraphClient : IDisposable
                     req.Headers.TryAddWithoutValidation(name, value);
             if (contentFactory != null)
                 req.Content = contentFactory(); // fresh per attempt — content can't be resent after a 429
+
+            // #462 diagnostic: count each physical request (retries included) on a scoped async flow.
+            if (RequestCountScope.Value is { } counter) Interlocked.Increment(ref counter.Value);
 
             var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
             if (resp.StatusCode != (HttpStatusCode)429 || attempt >= 2)
