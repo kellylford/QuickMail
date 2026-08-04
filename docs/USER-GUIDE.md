@@ -929,7 +929,7 @@ Open the **Rules Manager** from the **Tools** menu (`Ctrl+Shift+L`) or the comma
 - **Enabled** — turn a rule off without deleting it.
 - **Account** — which mailbox the rule watches. Every rule belongs to exactly one account; see [Rules belong to one account](#rules-belong-to-one-account).
 - **Conditions** — **From**, **To**, **Subject**, **Body**, and **Has attachments**. Check the ones you want and type the text to look for; the match is not case sensitive and looks for your text anywhere in the field. A message must satisfy **every** condition you checked, so leaving a condition unchecked is how you say "don't care".
-- **Action** — one of **Mark as read**, **Mark as unread**, **Move to folder**, or **Delete**. Choosing Move to folder adds a **Choose Folder…** button; the button then shows the folder you picked.
+- **Action** — one of **Mark as read**, **Mark as unread**, **Move to folder**, or **Delete**. Choosing Move to folder adds a **Choose Folder…** button; the button then shows the folder you picked. The picker is the same folder tree used everywhere else you choose a destination, showing the folders of the rule's own account — a rule files mail within one mailbox. It opens on the folder the rule already files into, or on the first folder for a new rule.
 
 **Test Rule** runs the rule against the messages currently in your list and tells you how many it would match, so you can check a rule before letting it loose. **Save** stores the rule; **New Rule** and **Delete** manage the list.
 

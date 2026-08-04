@@ -21,10 +21,10 @@ namespace QuickMail.Views;
 /// choosing a destination folder they already know from that tree: moving or copying messages
 /// (issue #250), and moving or copying a folder (issue #431).</para>
 ///
-/// <para>Or a virtualized flat list with a search box — the default, and what "Go to Folder" needs,
-/// being the only caller that also offers the virtual folders (All Inboxes, All Mail, …), which have
-/// no place in a hierarchy. The rule editors still use it as well; they pick a real folder and are
-/// candidates for the tree.</para>
+/// <para>Or a virtualized flat list with a search box — now only what "Go to Folder" needs, being the
+/// only caller that also offers the virtual folders (All Inboxes, All Mail, …), which have no place
+/// in a hierarchy. The rule editors moved to the tree via <see cref="ForRuleTarget"/>; every picker
+/// that chooses a destination folder is now a tree.</para>
 /// </summary>
 public partial class FolderPickerWindow : Window
 {
@@ -399,6 +399,56 @@ public partial class FolderPickerWindow : Window
 
         picker.Close();
         return null;
+    }
+
+    /// <summary>
+    /// The destination picker for a mail rule's target folder — the Rules Manager's "Choose Target
+    /// Folder" and the server-rule editor's move/copy folder. A tree, for the same reason move/copy
+    /// is one: the user is choosing a folder they already know from the main window's folder tree,
+    /// and a flat alphabetical list of every folder on the account makes them find it again by name.
+    ///
+    /// <para>Scoped to <paramref name="accountId"/> — the rule's own account. A rule files mail
+    /// within one mailbox, so another account's folder is either a name that does not exist there or,
+    /// worse, one that does: "Archive" resolves on both and the rule quietly files into the wrong
+    /// mailbox. The flat list this replaces offered every account's folders, spelling the account
+    /// into each row ("Work - Archive"); a tree carries the account on a header several rows up, so
+    /// scoping is what keeps them apart. Falls back to every account when the rule has no account, or
+    /// when that account has no cached folders — an unscoped picker beats an empty one.</para>
+    ///
+    /// <para><paramref name="currentFolderKey"/> is the rule's existing target — <c>FullName</c> for
+    /// IMAP, the opaque folder id for Graph, which is what <c>FullName</c> holds there too — so the
+    /// picker opens on the folder the rule already files into. A rule that has no target yet passes
+    /// null, and <see cref="SelectOpeningNode"/> stands in the first real folder: this picker, like
+    /// every other, must not open with nothing selected.</para>
+    /// </summary>
+    public static FolderPickerWindow ForRuleTarget(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        Guid? accountId,
+        string? currentFolderKey,
+        string title)
+    {
+        var scopedAccounts = accountId is Guid id ? accounts.Where(a => a.Id == id).ToList() : [];
+        var scopedFolders  = accountId is Guid fid && cachedFolders.TryGetValue(fid, out var owned) && owned.Count > 0
+            ? new Dictionary<Guid, List<MailFolderModel>> { [fid] = owned }
+            : null;
+
+        // Scope only when it leaves something to pick; otherwise show every account rather than an
+        // empty tree the user cannot get a folder out of.
+        var useScoped = scopedAccounts.Count > 0 && scopedFolders != null;
+
+        var folders = useScoped ? scopedFolders! : cachedFolders;
+        var initial = string.IsNullOrEmpty(currentFolderKey)
+            ? null
+            : folders.Values.SelectMany(f => f)
+                     .FirstOrDefault(f => string.Equals(f.FullName, currentFolderKey, StringComparison.Ordinal));
+
+        return new FolderPickerWindow(
+            useScoped ? scopedAccounts : accounts,
+            folders,
+            title: title,
+            initialFolder: initial,
+            useTreeView: true);
     }
 
     private static bool IsInbox(MailFolderModel folder) =>

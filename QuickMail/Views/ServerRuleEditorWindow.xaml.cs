@@ -26,14 +26,24 @@ public partial class ServerRuleEditorWindow : Window
     private readonly IEnumerable<AccountModel> _accounts;
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>> _cachedFolders;
 
+    // The account whose rule this is. The folder picker scopes to it: a rule files mail within one
+    // mailbox, so another account's "Archive" is the wrong folder, not a second option.
+    // Asked for at pick time rather than captured at construction: this window is modeless, and the
+    // list behind it owns the account selection, so the account can move while the editor is open.
+    // The save path reads that selection when it saves, so the picker must read it when it picks —
+    // capturing here would let a rule be saved to one account with a folder chosen from another.
+    private readonly Func<Guid?>? _ruleAccountId;
+
     public ServerRuleEditorWindow(
         ServerRuleEditorViewModel vm,
         IEnumerable<AccountModel> accounts,
-        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        Func<Guid?>? ruleAccountId = null)
     {
         _vm = vm;
         _accounts = accounts;
         _cachedFolders = cachedFolders;
+        _ruleAccountId = ruleAccountId;
         InitializeComponent();
         DataContext = vm;
 
@@ -48,9 +58,11 @@ public partial class ServerRuleEditorWindow : Window
         };
     }
 
-    private (string Id, string Name)? OnPickFolderRequested()
+    private (string Id, string Name)? OnPickFolderRequested(string? currentFolderId)
     {
-        var picker = new FolderPickerWindow(_accounts, _cachedFolders, title: "Choose Folder") { Owner = this };
+        var picker = FolderPickerWindow.ForRuleTarget(
+            _accounts, _cachedFolders, _ruleAccountId?.Invoke(), currentFolderId, title: "Choose Folder");
+        picker.Owner = this;
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
             return (folder.FullName, folder.DisplayName);
         return null;

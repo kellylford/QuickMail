@@ -29,8 +29,12 @@ public partial class ServerRuleEditorViewModel : ObservableObject
 
     // ── Events (View subscribes) ────────────────────────────────────────────
 
-    /// <summary>Ask the View to open the folder picker; returns the chosen folder id (or null).</summary>
-    public event Func<(string Id, string Name)?>? PickFolderRequested;
+    /// <summary>
+    /// Ask the View to open the folder picker; returns the chosen folder id (or null). The argument is
+    /// the folder this action already targets, so the picker opens there — move and copy are separate
+    /// fields, and a single parameterless request could not tell the View which one is asking.
+    /// </summary>
+    public event Func<string?, (string Id, string Name)?>? PickFolderRequested;
 
     /// <summary>
     /// Raised on Save with the assembled rule; the owner persists it and returns an error message on
@@ -212,7 +216,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [RelayCommand]
     private void PickFolder()
     {
-        if (PickFolderRequested?.Invoke() is not { } picked) return;
+        if (PickFolderRequested?.Invoke(MoveToFolderId) is not { } picked) return;
         MoveToFolderId = picked.Id;
         MoveToFolderName = picked.Name;
         MoveToFolder = true;
@@ -222,7 +226,7 @@ public partial class ServerRuleEditorViewModel : ObservableObject
     [RelayCommand]
     private void PickCopyFolder()
     {
-        if (PickFolderRequested?.Invoke() is not { } picked) return;
+        if (PickFolderRequested?.Invoke(CopyToFolderId) is not { } picked) return;
         CopyToFolderId = picked.Id;
         CopyToFolderName = picked.Name;
         CopyToFolder = true;
