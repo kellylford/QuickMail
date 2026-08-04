@@ -127,6 +127,10 @@ work the same as in the main window:</p>
 <td>Grab Addresses</td>
 </tr>
 <tr class="even">
+<td><code>Ctrl+Shift+W</code></td>
+<td>Watch or unwatch this message’s conversation</td>
+</tr>
+<tr class="odd">
 <td><code>Alt+A</code></td>
 <td>Focus the attachment list</td>
 </tr>
@@ -209,12 +213,29 @@ setup. To choose a different folder, select a folder in the folder tree,
 open its context menu (Shift+F10), and choose <strong>Set as Archive
 Folder</strong>; choose <strong>Use Automatic Archive Folder</strong> to
 return to the automatic one.</p>
-<p>Gmail has no dedicated Archive folder — its archive is <strong>All
-Mail</strong>. To archive Gmail messages, set <strong>[Gmail]/All
-Mail</strong> as that account’s Archive folder; archiving then removes
-the message from the inbox, which is exactly what archiving means in
-Gmail. If an account has no Archive folder and you have not set one,
+<p>Gmail has no dedicated Archive folder, so pick one for the account.
+The recommended choice is a label of your own: create a Gmail label
+named <strong>Archive</strong>, then select it in the folder tree and
+choose <strong>Set as Archive Folder</strong>. Archiving a message moves
+it out of the inbox and onto that label — which is what archiving means
+in Gmail — and it gives you a folder that holds only what you
+archived.</p>
+<p>Setting <strong>[Gmail]/All Mail</strong> as the Archive folder also
+works and archives correctly, but that folder holds your entire mailbox,
+not just archived mail. Prefer a label unless you specifically want All
+Mail.</p>
+<p>If an account has no Archive folder and you have not set one,
 QuickMail tells you rather than doing nothing.</p>
+<p><strong>All Archive</strong> in the folder tree gathers every
+account’s archived mail into one list, alongside All Inboxes, All
+Drafts, All Sent, and All Trash. It follows each account’s own archive
+setting — including a folder you chose with <strong>Set as Archive
+Folder</strong> — so it shows exactly the mail <strong>Move to
+Archive</strong> put there. Accounts with no Archive folder simply
+contribute nothing. This is the other reason to prefer a Gmail label
+over <strong>[Gmail]/All Mail</strong>: an account pointed at All Mail
+contributes its entire mailbox to All Archive, because for that account
+All Mail <em>is</em> the archive.</p>
 <h3 id="tabs">Tabs</h3>
 <p>QuickMail can open messages in tabs, keeping multiple messages
 visible at once.</p>

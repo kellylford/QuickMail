@@ -136,6 +136,44 @@ Palette.</li>
 changes are written back. For Microsoft and Google it also pulls the
 people you’ve recently emailed; iCloud brings in your saved contacts
 (its CardDAV service has no separate “recent recipients” list).</p>
+<h3 id="changing-or-deleting-a-synced-contact">Changing or Deleting a
+Synced Contact</h3>
+<p>Because sync only runs one way, <strong>the address book is not the
+place to change or remove a contact that came from an account.</strong>
+With a synced contact selected, the <strong>Edit</strong> and
+<strong>Delete</strong> buttons are unavailable, and the matching
+Command Palette entries do nothing. This is deliberate: a deletion made
+here could not be sent to your account, so the contact would simply
+reappear the next time QuickMail refreshed — the change would look like
+it worked and then quietly undo itself.</p>
+<p>To change or remove a synced contact for good, edit it where it
+actually lives, then bring the change back:</p>
+<ol type="1">
+<li>Open the account’s own contacts — <strong>Google Contacts</strong>
+(contacts.google.com), <strong>Outlook / Microsoft 365 People</strong>,
+or <strong>iCloud Contacts</strong> — and make the change there.</li>
+<li>Return to QuickMail’s address book and press the <strong>Sync
+Now</strong> button (or run <strong>Sync Contacts Now</strong> from the
+Command Palette).</li>
+<li>The list is rebuilt from the account, so an edited contact shows its
+new details and a deleted one is gone.</li>
+</ol>
+<p>Without step 2 the address book keeps the old copy until the next
+background refresh, which happens about twice a day.</p>
+<p><strong>“Other contacts” from Google.</strong> Google keeps two
+separate lists: the contacts you saved, and <strong>Other
+contacts</strong> — addresses Google collected automatically from people
+you have emailed. QuickMail pulls both, which is why the address book
+can hold far more people than you ever saved. Removing one of these is
+the same two-step job as above, but do it in the <strong>Other
+contacts</strong> section of Google Contacts specifically; deleting from
+your saved contacts does not touch it. Google also re-collects an
+address if you email that person again.</p>
+<p><strong>If you only want them out of QuickMail</strong>, and not out
+of the account, clear <strong>Sync contacts from this account</strong>
+for that account in <strong>File → Manage Accounts…</strong>. That drops
+every contact synced from it, leaving the ones you added yourself alone.
+Nothing on the account is changed.</p>
 <h3 id="groups">Groups</h3>
 <p>Groups let you write to multiple people with a single address. Select
 a group in the address book and press Enter to expand it and see its

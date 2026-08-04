@@ -34,10 +34,32 @@ control</strong>: the defaults are designed to keep you current with no
 effort, you are told when a new version has been installed, and every
 part of the automatic behavior can be turned off — QuickMail never stops
 you from updating manually instead.</p>
+<h3 id="which-download-do-you-want">Which download do you want?</h3>
+<p>Most people want <strong>QuickMail-win.msi</strong>. Choose it unless
+you know your PC has an ARM processor.</p>
+<p>If your PC has a Snapdragon processor — the Surface Laptop and
+Surface Pro models sold with Snapdragon X chips, and similar machines
+from other manufacturers — choose
+<strong>QuickMail-win-arm64.msi</strong> instead. It is built
+specifically for those processors and runs noticeably faster on
+them.</p>
+<p>To check which you have: open <strong>Settings → System →
+About</strong> and read <strong>System type</strong>. “ARM-based
+processor” means the ARM64 download; anything else means the regular
+one.</p>
+<p>If you are unsure, take the regular
+<strong>QuickMail-win.msi</strong>. It works on every supported PC,
+including ARM ones — just not as quickly on those. The ARM64 download
+will not start at all on a non-ARM PC, so that is the guess worth
+avoiding.</p>
+<p>The two versions are otherwise identical: same features, same
+settings, same data.</p>
 <h3 id="installing-for-the-first-time">Installing for the first
 time</h3>
 <ol type="1">
-<li>Download <strong>QuickMail-win.msi</strong> from the <a
+<li>Download <strong>QuickMail-win.msi</strong> — or
+<strong>QuickMail-win-arm64.msi</strong> for a Snapdragon PC, as
+described above — from the <a
 href="https://github.com/kellylford/QuickMail/releases">releases
 page</a> and run it.</li>
 <li>The setup wizard walks through a welcome page, the license
@@ -65,8 +87,49 @@ templates, saved views, and cached mail are exactly as you left them —
 your data lives in a separate location the installer never touches, and
 passwords stay safely in Windows Credential Manager.</li>
 </ol>
-<p>This is a one-time step. From then on, updates arrive on their
-own.</p>
+<h3 id="moving-to-the-arm-version-on-a-snapdragon-pc">Moving to the ARM
+version on a Snapdragon PC</h3>
+<p>If you have been running the regular QuickMail on a Snapdragon PC,
+you can switch to the ARM version to get better speed and battery life.
+QuickMail will not make this switch for you — automatic updates stay on
+the version you installed — so it is a one-time manual change.</p>
+<p>QuickMail mentions this once when it notices it is running on an ARM
+PC, and the <strong>Help</strong> menu then keeps a <strong>Get the ARM
+Version</strong> entry that brings you back to this section, where step
+2 links to the download. That entry appears only on ARM PCs running the
+regular build; you can also reach it from the command palette. To
+switch:</p>
+<ol type="1">
+<li>Uninstall QuickMail from <strong>Settings → Apps</strong>. When the
+uninstaller offers to delete your data, choose <strong>No</strong>.</li>
+<li>Download and run <strong>QuickMail-win-arm64.msi</strong> from the
+<a href="https://github.com/kellylford/QuickMail/releases">releases
+page</a>.</li>
+<li>Start QuickMail. Everything is as you left it, for the same reason
+as above — your accounts, settings, and mail are stored separately from
+the program itself.</li>
+</ol>
+<p><strong>Do not skip step 1.</strong> Running the ARM installer on top
+of a regular QuickMail of the same version does not replace it — Windows
+treats the two as separate programs, leaves the regular one in place,
+and reports success. QuickMail keeps starting exactly as before, so
+nothing tells you the switch did not happen. Uninstalling first is what
+makes it work.</p>
+<p>To confirm the switch worked, open the <strong>Help</strong> menu
+after restarting. <strong>Get the ARM Version</strong> is gone once you
+are on the ARM version, so if it is still listed, you are still running
+the regular build.</p>
+<p>If it is still listed, the ARM installer did not replace anything.
+Uninstall QuickMail from <strong>Settings → Apps</strong> — choosing
+<strong>No</strong> again when asked about your data — and then start
+over from step 1. Do not try to judge this from <strong>Settings →
+Apps</strong> itself: both builds report the same name and the same
+version number there, and only one QuickMail entry is ever listed, so it
+looks identical whichever one you have. The <strong>Help</strong> menu
+is the reliable check.</p>
+<p>From then on, automatic updates keep you on the ARM version. This is
+a one-time step — there is nothing further to do, and no need to repeat
+it for future releases.</p>
 <h3 id="how-updating-works">How updating works</h3>
 <p>Each time QuickMail starts, it quietly checks for a newer release in
 the background. The top entry of the <strong>Help</strong> menu always
@@ -111,7 +174,8 @@ on by default. Turn it off to skip the QuickMail Update Installed
 dialog; the Help menu entry still reflects your current version.</li>
 </ul>
 <h3 id="the-portable-version">The portable version</h3>
-<p><code>QuickMail.exe</code> on the same releases page is a single-file
+<p><code>QuickMail.exe</code> on the same releases page — or
+<code>QuickMail-arm64.exe</code> for a Snapdragon PC — is a single-file
 version that runs from anywhere with no installation — nothing is
 written to Program Files or the registry, and it never updates itself.
 The Help menu tells you when a new version is available; updating is a

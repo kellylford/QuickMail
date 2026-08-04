@@ -25,7 +25,7 @@
 
 </head>
 <body>
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="saved-views.html">Previous: Saved Views</a> | <a href="notifications.html">Next: Notifications</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="saved-views.html">Previous: Saved Views</a> | <a href="what-syncs-and-what-doesnt.html">Next: What Syncs and What Doesn't</a></div>
   <h1 id="calendar">Calendar</h1>
 <p>QuickMail has a full, keyboard-first calendar. You can create and
 edit your own appointments, keep repeating events, get reminders,
@@ -240,8 +240,16 @@ the arrow keys without typing anything.</p>
 <td>One minute</td>
 </tr>
 <tr class="odd">
+<td>Shift+Up / Shift+Down</td>
+<td>One hour</td>
+</tr>
+<tr class="even">
 <td>Page Up / Page Down</td>
 <td>One hour</td>
+</tr>
+<tr class="odd">
+<td>Ctrl+Page Up / Ctrl+Page Down</td>
+<td>One day</td>
 </tr>
 </tbody>
 </table>
@@ -303,6 +311,48 @@ why instead of failing silently.</li>
 <p>If saving a change to an online account ever fails, QuickMail saves
 your appointment to the Local Calendar instead so your work is never
 lost, and tells you it did.</p>
+<h3 id="events-your-account-will-not-let-quickmail-change">Events your
+account will not let QuickMail change</h3>
+<p>Some events on a connected calendar are managed by the provider
+itself, not by you, and the provider refuses to let <strong>any</strong>
+outside mail or calendar program edit or delete them. Google is the one
+you are most likely to meet. Its protected events are:</p>
+<ul>
+<li><strong>Birthdays</strong> — generated from your Google Contacts,
+usually titled “Happy birthday!”</li>
+<li><strong>Out of office</strong></li>
+<li><strong>Working location</strong></li>
+<li><strong>Focus time</strong></li>
+<li><strong>Events Gmail created for you</strong> from a message, such
+as a flight, hotel, or delivery.</li>
+</ul>
+<p>Pressing <strong>Delete</strong> or saving an edit on one of these
+fails, and QuickMail currently reports it only as <strong>“Could not
+update your online calendar.”</strong> The event is not damaged and
+nothing is lost — Google simply declined the change. A clearer message
+naming the reason is planned.</p>
+<p>What to do instead, depending on the event:</p>
+<ul>
+<li><strong>Birthday</strong> — it follows the contact, so change or
+clear the birthday on that person in <strong>Google Contacts</strong>.
+To stop seeing birthdays altogether, hide the <strong>Birthdays</strong>
+calendar in Google Calendar’s settings; QuickMail will stop showing them
+at the next sync.</li>
+<li><strong>Out of office, Working location, Focus time</strong> —
+create, change, or remove these in <strong>Google Calendar</strong> on
+the web or in its mobile app, where the special editors for them
+live.</li>
+<li><strong>An event Gmail created</strong> — open the original message
+in Gmail and remove it there, or turn the feature off in Google
+Calendar’s settings under events from Gmail.</li>
+</ul>
+<p>After making the change on the provider’s side, press
+<strong>F5</strong> in the calendar (or run <strong>Sync Calendars
+Now</strong>) to pull the corrected events down.</p>
+<p>Repeating events from a connected calendar, and meeting invitations,
+are read-only in QuickMail for a different reason — QuickMail does not
+write those back yet. In those cases QuickMail tells you so before
+anything is attempted.</p>
 <h3 id="reminders">Reminders</h3>
 <p>Reminders are <strong>off by default</strong>. To turn them on, open
 <strong>Settings → General</strong>, check <strong>Remind me before
@@ -429,6 +479,12 @@ them.</li>
 (repeating appointments are saved to the Local Calendar).</li>
 <li>Edit or delete <strong>repeating</strong> events that came from an
 online calendar (repeating server events are read-only).</li>
+<li>Edit or delete the events your provider manages for you — Google
+birthdays, out-of-office, working location, focus time, and events Gmail
+created from a message. Google blocks this for every outside program,
+not just QuickMail; see <a
+href="#events-your-account-will-not-let-quickmail-change">Events your
+account will not let QuickMail change</a>.</li>
 <li>Connect calendars from generic CalDAV servers other than iCloud
 (Fastmail, Nextcloud, and the like).</li>
 <li>Subscribe to public <code>.ics</code> calendar feeds (holidays,
@@ -522,6 +578,6 @@ Tentative, Decline), are available from the command palette
 one.</p>
 <hr />
 
-  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="saved-views.html">Previous: Saved Views</a> | <a href="notifications.html">Next: Notifications</a></div>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="saved-views.html">Previous: Saved Views</a> | <a href="what-syncs-and-what-doesnt.html">Next: What Syncs and What Doesn't</a></div>
 </body>
 </html>

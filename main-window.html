@@ -66,7 +66,95 @@ all accounts in unified view</li>
 </table>
 <h3 id="unified-inbox">Unified Inbox</h3>
 <p>Select <strong>All Inboxes</strong> at the top of the folder tree to
-see messages from all accounts merged into one list, sorted by date.</p>
+see messages from all accounts merged into one list, sorted by date. The
+same <strong>All Mail</strong> group also holds <strong>All
+Drafts</strong>, <strong>All Sent</strong>, and <strong>All
+Trash</strong>, each merging that kind of folder across every account;
+<strong>All Archive</strong>, which follows each account’s own archive
+setting; <strong>All Flagged</strong>, which collects flagged messages
+from every folder rather than from one kind of folder; and
+<strong>Watched Conversations</strong>, described below.</p>
+<p>In any of these merged views, each row also says which folder the
+message came from — qualified with the account name when the view spans
+more than one account, so “Work, Archive” and “Home, Archive” are told
+apart. In an ordinary single-folder view the folder is already known, so
+nothing extra is said. You can move where this falls in the row, or turn
+it off, in <a href="#message-list-fields">Message List Fields</a>.</p>
+<h3 id="watched-conversations">Watched Conversations</h3>
+<p>When a conversation matters — a release announcement, a bug thread, a
+trip itinerary — you can watch it, and every message in it collects in
+one place, including the replies that have not arrived yet.</p>
+<p>Press <code>Ctrl+Shift+W</code> on any message in the conversation,
+or choose <strong>Message → Watch Conversation</strong>. You will hear
+“Watching conversation” and the subject. From then on, <strong>Watched
+Conversations</strong> — the last item in the <strong>All Mail</strong>
+group of the folder tree — lists every message in that conversation,
+from every folder and every account, newest first. New replies join on
+their own as they arrive; you do not have to mark them.</p>
+<p>This is what makes watching different from flagging. A flag marks a
+message you already have, so you have to notice each new one first. A
+watch is a standing subscription to the conversation, so the ones you
+have not seen yet are already collected for you.</p>
+<p>To stop watching, press <code>Ctrl+Shift+W</code> again on any
+message in the conversation — the same key does both. If you are in the
+Watched Conversations folder at the time, that conversation’s messages
+leave the list straight away and the selection moves to the next
+message. Watching changes nothing on the mail server and nothing in
+other mail programs; it is remembered on this computer only.</p>
+<p>Everything else in the message list works here as usual: view modes,
+filters, sorting, and the message list fields.
+<strong>Conversations</strong> view mode is a natural fit — each watched
+conversation becomes a single group you can expand. You can also save
+Watched Conversations as one of your own views, the same way you would
+save any other folder.</p>
+<p>Two things worth knowing. QuickMail groups a conversation by its
+subject, ignoring any <code>Re:</code> and <code>Fwd:</code> prefixes,
+so a reply is recognised automatically — but two unrelated messages that
+happen to share a subject count as one conversation. And a message with
+no subject at all cannot be watched; if you try, you will hear “Cannot
+watch a conversation with no subject” and nothing changes.</p>
+<p>If you would like each row to say whether its conversation is
+watched, turn on the <strong>Watched</strong> field in <a
+href="#message-list-fields">Message List Fields</a>. It is off to begin
+with.</p>
+<p><strong>To see what you are watching</strong>, choose <strong>Message
+→ Watched Conversations…</strong>. The window lists every watch with how
+many cached messages it has collected and when you started it. Press
+<strong>Enter</strong> on one to jump to that conversation,
+<strong>Delete</strong> to stop watching it, or <strong>Rename</strong>
+to give it a clearer label. Renaming changes the label only — which
+messages the watch collects is decided by the subject and does not
+change. Type a letter to jump down the list. The window stays open while
+you work, so you can leave it up and keep going; <strong>Escape</strong>
+closes it.</p>
+<p><strong>To be told when a reply arrives</strong>, turn on
+<strong>Settings → Notifications → Show a notification when a watched
+conversation gets a reply</strong>. Unlike the ordinary new-mail
+notification, this one applies to every folder rather than just the
+inbox, because a watched thread’s next message can land anywhere. The
+two settings are independent; if a message is both new inbox mail and
+part of a watched conversation you get one notification, the watched
+one.</p>
+<p><strong>To narrow any folder to watched mail</strong>, choose
+<strong>View → Filter → Watched</strong>. That works in any folder, and
+can be saved as part of one of your own views.</p>
+<h3 id="jumping-to-an-item-by-typing">Jumping to an Item by Typing</h3>
+<p>In the folder tree, the message list, and the Conversations, From,
+and To trees, type the first letter of what you want to reach and the
+selection jumps to the next item starting with that letter. Keep typing
+to narrow it — letters typed within about a second of each other build
+up a longer prefix, so “arc” reaches Archive rather than stopping at
+Address book. Pause, and the next letter starts a fresh prefix. Pressing
+the same letter repeatedly steps through every item beginning with it,
+and the search wraps around to the top when it runs off the end.</p>
+<p>What each list matches is the text you would expect to hear first:
+the folder name in the folder tree (only folders currently expanded into
+view), the sender in the message list — or the subject when a message
+has no sender — the conversation subject in Conversations, and the
+person’s name in the From and To trees.</p>
+<p>The same typing works in the <strong>Go to Folder</strong> picker, in
+the address book’s contact, group, and member lists, and in the <a
+href="#message-list-fields">Message List Fields</a> window.</p>
 <h3 id="creating-folders">Creating Folders</h3>
 <p>Create a new folder in any of these ways:</p>
 <ul>
@@ -81,6 +169,43 @@ Customization</a>.</li>
 <p>The new folder is created under the folder currently selected in the
 folder tree, or under the account root when a header or nothing is
 selected.</p>
+<h3 id="moving-and-copying-folders">Moving and Copying Folders</h3>
+<p>Select a folder in the folder tree, press <strong>Shift+F10</strong>,
+and choose <strong>Move Folder…</strong> or <strong>Copy
+Folder…</strong>. Both open a picker showing the same hierarchical tree
+used in the folder panel — folders nested under their parent, everything
+already expanded. Arrow to the folder you want the selected folder to
+live under and press Enter. Copying brings the folder’s messages and any
+subfolders with it.</p>
+<p>Typing jumps to a folder here as it does in the folder tree: type the
+beginning of a folder name and the selection moves to it. Because a bare
+letter belongs to that typing, the picker’s buttons take
+<strong>Alt+O</strong> for Open and <strong>Alt+C</strong> for Cancel.
+Enter and Escape work as usual. There is no <strong>New Folder</strong>
+button in this picker — create the folder first, then move into it.</p>
+<p>Two things the picker leaves out on purpose:</p>
+<ul>
+<li><strong>Folders belonging to your other accounts.</strong> A folder
+can only move or copy within the account it already lives in, so only
+that account’s folders are offered.</li>
+<li><strong>The folder you are moving, and everything inside
+it.</strong> A folder cannot be moved or copied into itself or into one
+of its own subfolders.</li>
+</ul>
+<p>The picker opens on the folder you came from. Since the folder you
+are moving is not one of the destinations, it opens on the folder that
+one currently sits under, so you start where you were rather than at the
+top of the list. For a top-level folder there is no such parent, and it
+opens on the first folder instead.</p>
+<p>Because it opens there, pressing Enter straight away would put the
+folder back where it started. QuickMail says so rather than doing it —
+as it does for messages already in the folder you picked.</p>
+<p>If those two exclusions leave nowhere to go — an account whose only
+folder is the one you are moving — QuickMail says so instead of opening
+an empty picker. The same happens if you choose Move or Copy Folder on a
+view rather than a folder: All Inboxes, All Mail, and the per-account
+All Mail entries look like folders in the tree but are collections of
+messages from several folders, so there is nothing to move.</p>
 <h3 id="moving-and-copying-messages">Moving and Copying Messages</h3>
 <p>Select one or more messages (or a sender/recipient group, or a
 conversation) and choose <strong>Move to Folder…</strong> or
@@ -93,6 +218,17 @@ or copy. If you need a destination that does not exist yet, activate
 <strong>New Folder</strong> (or <strong>Alt+N</strong>) in the picker to
 create one under the selected folder and move into it without leaving
 the dialog.</p>
+<p>The picker opens on the folder the messages are in, so you start
+where you were. In a combined view such as All Inboxes that is the
+message’s own folder, not the view. If the messages you selected come
+from more than one folder there is no single starting point, and it
+opens on the first folder.</p>
+<p>Typing jumps to a folder here too, exactly as it does in the main
+folder tree: type the beginning of a folder name and the selection moves
+to it. Because a bare letter belongs to that typing, the picker’s
+buttons take <strong>Alt+O</strong> for Open, <strong>Alt+C</strong> for
+Cancel, and <strong>Alt+N</strong> for New Folder rather than plain
+letter shortcuts. Enter and Escape still work as usual.</p>
 <h3 id="message-list-views">Message List Views</h3>
 <p>Press <code>Ctrl+Shift+V</code> (or use the <strong>View</strong>
 menu) to switch how messages are grouped:</p>
@@ -102,6 +238,17 @@ menu) to switch how messages are grouped:</p>
 <li><strong>From</strong> — messages grouped by sender</li>
 <li><strong>To</strong> — messages grouped by recipient</li>
 </ul>
+<h3 id="message-list-density">Message List Density</h3>
+<p><strong>View → Density</strong> sets how much space each message row
+takes: <strong>Comfortable</strong> (the default) leaves room around
+each row, <strong>Compact</strong> tightens them so more messages fit on
+screen. The change applies at once and is remembered. The same choice is
+in <strong>Settings → Appearance</strong> under <strong>Message List
+Density</strong>, and <strong>Density: Comfortable</strong> and
+<strong>Density: Compact</strong> are in the command palette.</p>
+<p>Density changes spacing only. What a row says, and what a screen
+reader reports about it, is identical either way — that is set in <a
+href="#message-list-fields">Message List Fields</a>.</p>
 <h3 id="searching">Searching</h3>
 <p>Press <code>Ctrl+Shift+S</code> to open the search box. Type your
 query and press Enter. Results appear in the message list. Press Escape

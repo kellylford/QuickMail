@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>What Syncs and What Doesn't - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="calendar.html">Previous: Calendar</a> | <a href="notifications.html">Next: Notifications</a></div>
+  <h1 id="what-syncs-and-what-doesnt">What Syncs and What Doesn’t</h1>
+<p>QuickMail talks to your accounts for three kinds of information —
+mail, contacts, and calendar — and it treats each one differently.
+Everything else QuickMail knows about is stored on this computer and
+never leaves it.</p>
+<p>The direction matters, so it is worth being blunt about it: a
+<strong>two-way</strong> item is safe to change in QuickMail, and the
+change reaches your account and every other program you read mail with.
+A <strong>download only</strong> item is a copy — changing it in
+QuickMail either is not offered, or would be undone the next time
+QuickMail refreshed. <strong>This computer only</strong> means exactly
+that: reinstall Windows or move to a second machine and you start
+over.</p>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 25%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>What</th>
+<th>Direction</th>
+<th>What that means for you</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Messages</strong></td>
+<td>Two-way</td>
+<td>Read and unread, moving between folders, deleting, and sending all
+go to the server. Another program sees the same state.</td>
+</tr>
+<tr class="even">
+<td><strong>The built-in flag</strong></td>
+<td>Two-way</td>
+<td>Set or cleared in QuickMail, it shows up everywhere else, and a
+message flagged elsewhere arrives here already flagged.</td>
+</tr>
+<tr class="odd">
+<td><strong>Named flags you create</strong></td>
+<td>This computer only</td>
+<td>The name and color exist in QuickMail alone. Other programs, and
+QuickMail on another computer, will not see them.</td>
+</tr>
+<tr class="even">
+<td><strong>Contacts</strong></td>
+<td>Download only</td>
+<td>QuickMail reads your Microsoft, Google, and iCloud contacts and
+never writes back. Synced contacts cannot be edited or deleted in the
+address book — <a href="#changing-or-deleting-a-synced-contact">make the
+change at the account and re-sync</a>.</td>
+</tr>
+<tr class="odd">
+<td><strong>Calendar events</strong></td>
+<td>Mostly two-way</td>
+<td>Single (non-repeating) events on a connected calendar can be
+created, edited, and deleted from QuickMail. Repeating events, meeting
+invitations, and the events your provider manages for you are <a
+href="#events-your-account-will-not-let-quickmail-change">download
+only</a>.</td>
+</tr>
+<tr class="even">
+<td><strong>Meeting responses</strong></td>
+<td>Two-way</td>
+<td>Accept, Tentative, and Decline are emailed to the organizer and
+update your calendar.</td>
+</tr>
+<tr class="odd">
+<td><strong>Mail rules</strong></td>
+<td>This computer only</td>
+<td>Rules run inside QuickMail as mail arrives. They are not server
+rules — your provider does not know about them, and they do nothing
+while QuickMail is closed.</td>
+</tr>
+<tr class="even">
+<td><strong>Everything else in QuickMail</strong></td>
+<td>This computer only</td>
+<td>Settings, themes, keyboard customizations, signatures, message
+templates, saved views, message-list field choices, contact groups, and
+the contacts you typed in yourself.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="if-something-you-changed-came-back">If something you changed
+came back</h3>
+<p>That is nearly always a download-only item. QuickMail refreshed from
+the account, the account still had the old version, and the old version
+won. The fix is the same in every case: make the change where the item
+actually lives — your account’s own contacts or calendar on the web —
+and then refresh QuickMail (<strong>Sync Now</strong> in the address
+book, <strong>F5</strong> in the calendar).</p>
+<h3 id="moving-to-a-new-computer">Moving to a new computer</h3>
+<p>Your mail, your contacts, and your connected calendars come back on
+their own once you add your accounts again, because they live on the
+server. The <strong>This computer only</strong> row above does not:
+rules, flags you named, templates, signatures, saved views, and your
+settings are stored in QuickMail’s data folder
+(<code>%APPDATA%\QuickMail</code>) and need to be copied across if you
+want them.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="calendar.html">Previous: Calendar</a> | <a href="notifications.html">Next: Notifications</a></div>
+</body>
+</html>

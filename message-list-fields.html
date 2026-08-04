@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Message List Fields - QuickMail User Guide</title>
+  <style>
+  body { max-width: 860px; margin: 0 auto; padding: 1rem 2rem; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #222; }
+  h1 { border-bottom: 2px solid #ddd; padding-bottom: 0.3em; }
+  h2 { border-bottom: 1px solid #eee; padding-bottom: 0.2em; margin-top: 2em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
+  th { background: #f5f5f5; font-weight: 600; }
+  code { background: #f0f0f0; padding: 0.15em 0.35em; border-radius: 3px; font-size: 0.88em; font-family: "Cascadia Code", "Consolas", monospace; }
+  pre { background: #f0f0f0; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+  pre code { background: none; padding: 0; }
+  a { color: #0969da; }
+  hr { border: none; border-top: 1px solid #ddd; margin: 2rem 0; }
+  blockquote { border-left: 3px solid #ddd; margin-left: 0; padding-left: 1rem; color: #555; }
+  .nav { margin-bottom: 2em; padding-bottom: 0.75em; border-bottom: 1px solid #ddd; font-size: 0.9em; }
+  .nav a { margin-right: 1em; color: #0969da; text-decoration: none; }
+  .nav a:hover { text-decoration: underline; }
+  .version { color: #666; font-size: 0.85em; margin-top: -1em; margin-bottom: 2em; }
+</style>
+
+</head>
+<body>
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="themes.html">Previous: Themes</a> | <a href="screen-reader-announcements.html">Next: Screen Reader Announcements</a></div>
+  <h1 id="message-list-fields">Message List Fields</h1>
+<p>Each row in a message list is spoken as a single line — sender,
+subject, date, and so on. <strong>View → Message List Fields…</strong>
+lets you decide which of those pieces are spoken and in what order. It
+is also in the command palette as <strong>Message List Fields…</strong>.
+It has no keyboard shortcut of its own; assign one in <strong>Settings →
+Keyboard</strong> if you want one.</p>
+<p>Open it and you get a list of every available field, each one a real
+check box. Check a field to have it spoken, uncheck it to leave it out,
+and move it to change where it falls in the line.</p>
+<table>
+<colgroup>
+<col style="width: 38%" />
+<col style="width: 61%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Up</code> / <code>Down</code></td>
+<td>Move between fields; stops at the first and last one</td>
+</tr>
+<tr class="even">
+<td><code>Space</code></td>
+<td>Turn the focused field on or off</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+Up</code> / <code>Alt+Down</code></td>
+<td>Move the focused field earlier or later in the spoken order</td>
+</tr>
+<tr class="even">
+<td><code>Home</code> / <code>End</code></td>
+<td>First / last field</td>
+</tr>
+<tr class="odd">
+<td><em>a letter</em></td>
+<td>Jump to the next field starting with that letter; press again to
+reach the next match</td>
+</tr>
+<tr class="even">
+<td><code>F6</code> / <code>Shift+F6</code></td>
+<td>Cycle: Row type, Fields, Field options, Spoken preview, buttons</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+Shift+P</code></td>
+<td>This window’s own command palette</td>
+</tr>
+<tr class="even">
+<td><code>Escape</code></td>
+<td>Close</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Move Up</strong>, <strong>Move Down</strong>, <strong>Reset
+to Defaults</strong>, and <strong>Close</strong> are buttons as well.
+Moving a field says where it landed — “Moved down. Position 4 of 13.” —
+and adds “Not spoken” when the field you moved is switched off, so a
+move that changes nothing you can hear says so.</p>
+<p>The <strong>Spoken preview</strong> box at the bottom shows the
+message you had selected when you opened the window, read exactly as the
+list would read it, updating as you go.</p>
+<p>There is no OK or Cancel — changes save as you make them, and take
+effect immediately. The window is modeless, so you can leave it open,
+arrow through the message list behind it, and hear the result.</p>
+<h3 id="row-types">Row types</h3>
+<p>The <strong>Row type</strong> list at the top chooses which kind of
+row you are editing. Each keeps its own arrangement:</p>
+<ul>
+<li><strong>Messages</strong> — individual messages, in the flat list
+and inside all three group trees.</li>
+<li><strong>Conversation groups</strong> — the top-level rows in the
+Conversations view.</li>
+<li><strong>Sender and recipient groups</strong> — the top-level rows in
+the From and To views.</li>
+</ul>
+<h3 id="fields-for-messages">Fields for messages</h3>
+<table>
+<colgroup>
+<col style="width: 46%" />
+<col style="width: 53%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Field</th>
+<th>Speaks</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Flag</td>
+<td>The flag’s name, when the message is flagged</td>
+</tr>
+<tr class="even">
+<td>Status (combined)</td>
+<td>One word: “replied”, “forwarded”, “unread”, or “read”</td>
+</tr>
+<tr class="odd">
+<td>Attachments</td>
+<td>“attachments”</td>
+</tr>
+<tr class="even">
+<td>From, Subject, Preview, Date, To</td>
+<td>The field’s text</td>
+</tr>
+<tr class="odd">
+<td>Source folder</td>
+<td>Where the message lives — only in aggregate views such as All
+Archive, where it is account-qualified when the view spans accounts</td>
+</tr>
+<tr class="even">
+<td>Unread, Replied, Forwarded</td>
+<td>Each state on its own, so you can arrange them separately</td>
+</tr>
+<tr class="odd">
+<td>Mailing list</td>
+<td>“mailing list”</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fields-for-group-rows">Fields for group rows</h3>
+<p><strong>Conversation groups</strong> offer Subject, Message count,
+Sender, Flag, Has unread, Preview, and Date. <strong>Sender and
+recipient groups</strong> offer Sender, Message count, Flag, Has unread,
+Preview, Date, and Newest subject. A message count is spoken as “1
+message” or “3 messages”.</p>
+<h3 id="speaking-a-state-only-when-it-applies">Speaking a state only
+when it applies</h3>
+<p>Fields such as <strong>Unread</strong>, <strong>Replied</strong>, and
+<strong>Attachments</strong> are states rather than text, so selecting
+one offers a choice:</p>
+<ul>
+<li><strong>Speak only when true</strong> — say “unread” on unread
+messages and nothing at all on read ones.</li>
+<li><strong>Always speak</strong> — say “unread” or “read”, whichever
+applies.</li>
+</ul>
+<p>This is how you get “tell me about unread but never say read”: turn
+<strong>Status (combined)</strong> off, turn <strong>Unread</strong> on,
+and leave it on <em>Speak only when true</em>. Fields with no meaningful
+opposite — Attachments, for example — stay silent when false in either
+mode.</p>
+<p><strong>Status (combined) and the separate states overlap.</strong>
+Both say the word “unread”, so turning on Unread while Status (combined)
+is still on says it twice. Whenever that would happen, the <strong>About
+this field</strong> note in the options pane says so and tells you which
+one to turn off. The note is a focusable box, so it is reachable from
+the keyboard rather than being text only a sighted user would
+notice.</p>
+<h3 id="field-labels">Field labels</h3>
+<p><strong>Speak field labels</strong> prefixes each text field with its
+name, so a row reads “From: Chris Lee. Subject: Budget review.” rather
+than “Chris Lee. Budget review.” It applies to all three row types.
+States and counts are never labelled, since “unread” and “3 messages”
+already say what they are.</p>
+<h3 id="starting-over">Starting over</h3>
+<p><strong>Reset to Defaults</strong> restores the shipped arrangement
+for the row type you are currently editing, leaving the other two
+alone.</p>
+<p>Until you change anything, rows read the way they always have. Empty
+fields are skipped rather than leaving a gap, so a message with no
+preview or no subject reads without a pause where it would have
+been.</p>
+<p>This window replaces the old <strong>Announce flag status</strong>
+checkbox in Settings — the flag is now the <strong>Flag</strong> field
+here, which you can turn off, or move anywhere in the line. If you had
+that checkbox turned off, the Flag field starts out turned off to match;
+from then on this window owns the choice.</p>
+<hr />
+
+  <div class="nav"><a href="index.html">Contents</a> | <a href="full.html">Single Page</a> | <a href="themes.html">Previous: Themes</a> | <a href="screen-reader-announcements.html">Next: Screen Reader Announcements</a></div>
+</body>
+</html>

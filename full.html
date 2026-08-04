@@ -273,12 +273,15 @@ Message</a></li>
 <li><a href="#mail-rules">Mail Rules</a></li>
 <li><a href="#saved-views">Saved Views</a></li>
 <li><a href="#calendar">Calendar</a></li>
+<li><a href="#what-syncs-and-what-doesnt">What Syncs and What
+Doesn’t</a></li>
 <li><a href="#notifications">Notifications</a></li>
 <li><a href="#tools-menu">Tools Menu</a></li>
 <li><a href="#connection-diagnostics">Connection Diagnostics</a></li>
 <li><a href="#reporting-issues">Reporting Issues</a></li>
 <li><a href="#settings">Settings</a></li>
 <li><a href="#themes">Themes</a></li>
+<li><a href="#message-list-fields">Message List Fields</a></li>
 <li><a href="#screen-reader-announcements">Screen Reader
 Announcements</a></li>
 <li><a href="#keyboard-shortcuts">Keyboard Shortcuts</a></li>
@@ -306,10 +309,32 @@ control</strong>: the defaults are designed to keep you current with no
 effort, you are told when a new version has been installed, and every
 part of the automatic behavior can be turned off — QuickMail never stops
 you from updating manually instead.</p>
+<h3 id="which-download-do-you-want">Which download do you want?</h3>
+<p>Most people want <strong>QuickMail-win.msi</strong>. Choose it unless
+you know your PC has an ARM processor.</p>
+<p>If your PC has a Snapdragon processor — the Surface Laptop and
+Surface Pro models sold with Snapdragon X chips, and similar machines
+from other manufacturers — choose
+<strong>QuickMail-win-arm64.msi</strong> instead. It is built
+specifically for those processors and runs noticeably faster on
+them.</p>
+<p>To check which you have: open <strong>Settings → System →
+About</strong> and read <strong>System type</strong>. “ARM-based
+processor” means the ARM64 download; anything else means the regular
+one.</p>
+<p>If you are unsure, take the regular
+<strong>QuickMail-win.msi</strong>. It works on every supported PC,
+including ARM ones — just not as quickly on those. The ARM64 download
+will not start at all on a non-ARM PC, so that is the guess worth
+avoiding.</p>
+<p>The two versions are otherwise identical: same features, same
+settings, same data.</p>
 <h3 id="installing-for-the-first-time">Installing for the first
 time</h3>
 <ol type="1">
-<li>Download <strong>QuickMail-win.msi</strong> from the <a
+<li>Download <strong>QuickMail-win.msi</strong> — or
+<strong>QuickMail-win-arm64.msi</strong> for a Snapdragon PC, as
+described above — from the <a
 href="https://github.com/kellylford/QuickMail/releases">releases
 page</a> and run it.</li>
 <li>The setup wizard walks through a welcome page, the license
@@ -337,8 +362,49 @@ templates, saved views, and cached mail are exactly as you left them —
 your data lives in a separate location the installer never touches, and
 passwords stay safely in Windows Credential Manager.</li>
 </ol>
-<p>This is a one-time step. From then on, updates arrive on their
-own.</p>
+<h3 id="moving-to-the-arm-version-on-a-snapdragon-pc">Moving to the ARM
+version on a Snapdragon PC</h3>
+<p>If you have been running the regular QuickMail on a Snapdragon PC,
+you can switch to the ARM version to get better speed and battery life.
+QuickMail will not make this switch for you — automatic updates stay on
+the version you installed — so it is a one-time manual change.</p>
+<p>QuickMail mentions this once when it notices it is running on an ARM
+PC, and the <strong>Help</strong> menu then keeps a <strong>Get the ARM
+Version</strong> entry that brings you back to this section, where step
+2 links to the download. That entry appears only on ARM PCs running the
+regular build; you can also reach it from the command palette. To
+switch:</p>
+<ol type="1">
+<li>Uninstall QuickMail from <strong>Settings → Apps</strong>. When the
+uninstaller offers to delete your data, choose <strong>No</strong>.</li>
+<li>Download and run <strong>QuickMail-win-arm64.msi</strong> from the
+<a href="https://github.com/kellylford/QuickMail/releases">releases
+page</a>.</li>
+<li>Start QuickMail. Everything is as you left it, for the same reason
+as above — your accounts, settings, and mail are stored separately from
+the program itself.</li>
+</ol>
+<p><strong>Do not skip step 1.</strong> Running the ARM installer on top
+of a regular QuickMail of the same version does not replace it — Windows
+treats the two as separate programs, leaves the regular one in place,
+and reports success. QuickMail keeps starting exactly as before, so
+nothing tells you the switch did not happen. Uninstalling first is what
+makes it work.</p>
+<p>To confirm the switch worked, open the <strong>Help</strong> menu
+after restarting. <strong>Get the ARM Version</strong> is gone once you
+are on the ARM version, so if it is still listed, you are still running
+the regular build.</p>
+<p>If it is still listed, the ARM installer did not replace anything.
+Uninstall QuickMail from <strong>Settings → Apps</strong> — choosing
+<strong>No</strong> again when asked about your data — and then start
+over from step 1. Do not try to judge this from <strong>Settings →
+Apps</strong> itself: both builds report the same name and the same
+version number there, and only one QuickMail entry is ever listed, so it
+looks identical whichever one you have. The <strong>Help</strong> menu
+is the reliable check.</p>
+<p>From then on, automatic updates keep you on the ARM version. This is
+a one-time step — there is nothing further to do, and no need to repeat
+it for future releases.</p>
 <h3 id="how-updating-works">How updating works</h3>
 <p>Each time QuickMail starts, it quietly checks for a newer release in
 the background. The top entry of the <strong>Help</strong> menu always
@@ -383,7 +449,8 @@ on by default. Turn it off to skip the QuickMail Update Installed
 dialog; the Help menu entry still reflects your current version.</li>
 </ul>
 <h3 id="the-portable-version">The portable version</h3>
-<p><code>QuickMail.exe</code> on the same releases page is a single-file
+<p><code>QuickMail.exe</code> on the same releases page — or
+<code>QuickMail-arm64.exe</code> for a Snapdragon PC — is a single-file
 version that runs from anywhere with no installation — nothing is
 written to Program Files or the registry, and it never updates itself.
 The Help menu tells you when a new version is available; updating is a
@@ -950,8 +1017,8 @@ Permissions → “Grant admin consent for &lt;your
 organization&gt;”</strong>, review the list, and approve. (If QuickMail
 is not yet listed under Enterprise applications, use Option B — the
 first admin consent creates it.)</p>
-<p><strong>Option B — one-click consent URL.</strong> Sign in as one of
-the admin roles above and open:</p>
+<p><strong>Option B — single-step consent URL.</strong> Sign in as one
+of the admin roles above and open:</p>
 <pre><code>https://login.microsoftonline.com/organizations/adminconsent?client_id=bcdc84f1-d37c-4581-b14a-a01f7b3a1312</code></pre>
 <p><strong>Open this in a private/InPrivate browser window.</strong> A
 cached Microsoft sign-in session will skip the consent screen and send
@@ -1045,7 +1112,95 @@ all accounts in unified view</li>
 </table>
 <h3 id="unified-inbox">Unified Inbox</h3>
 <p>Select <strong>All Inboxes</strong> at the top of the folder tree to
-see messages from all accounts merged into one list, sorted by date.</p>
+see messages from all accounts merged into one list, sorted by date. The
+same <strong>All Mail</strong> group also holds <strong>All
+Drafts</strong>, <strong>All Sent</strong>, and <strong>All
+Trash</strong>, each merging that kind of folder across every account;
+<strong>All Archive</strong>, which follows each account’s own archive
+setting; <strong>All Flagged</strong>, which collects flagged messages
+from every folder rather than from one kind of folder; and
+<strong>Watched Conversations</strong>, described below.</p>
+<p>In any of these merged views, each row also says which folder the
+message came from — qualified with the account name when the view spans
+more than one account, so “Work, Archive” and “Home, Archive” are told
+apart. In an ordinary single-folder view the folder is already known, so
+nothing extra is said. You can move where this falls in the row, or turn
+it off, in <a href="#message-list-fields">Message List Fields</a>.</p>
+<h3 id="watched-conversations">Watched Conversations</h3>
+<p>When a conversation matters — a release announcement, a bug thread, a
+trip itinerary — you can watch it, and every message in it collects in
+one place, including the replies that have not arrived yet.</p>
+<p>Press <code>Ctrl+Shift+W</code> on any message in the conversation,
+or choose <strong>Message → Watch Conversation</strong>. You will hear
+“Watching conversation” and the subject. From then on, <strong>Watched
+Conversations</strong> — the last item in the <strong>All Mail</strong>
+group of the folder tree — lists every message in that conversation,
+from every folder and every account, newest first. New replies join on
+their own as they arrive; you do not have to mark them.</p>
+<p>This is what makes watching different from flagging. A flag marks a
+message you already have, so you have to notice each new one first. A
+watch is a standing subscription to the conversation, so the ones you
+have not seen yet are already collected for you.</p>
+<p>To stop watching, press <code>Ctrl+Shift+W</code> again on any
+message in the conversation — the same key does both. If you are in the
+Watched Conversations folder at the time, that conversation’s messages
+leave the list straight away and the selection moves to the next
+message. Watching changes nothing on the mail server and nothing in
+other mail programs; it is remembered on this computer only.</p>
+<p>Everything else in the message list works here as usual: view modes,
+filters, sorting, and the message list fields.
+<strong>Conversations</strong> view mode is a natural fit — each watched
+conversation becomes a single group you can expand. You can also save
+Watched Conversations as one of your own views, the same way you would
+save any other folder.</p>
+<p>Two things worth knowing. QuickMail groups a conversation by its
+subject, ignoring any <code>Re:</code> and <code>Fwd:</code> prefixes,
+so a reply is recognised automatically — but two unrelated messages that
+happen to share a subject count as one conversation. And a message with
+no subject at all cannot be watched; if you try, you will hear “Cannot
+watch a conversation with no subject” and nothing changes.</p>
+<p>If you would like each row to say whether its conversation is
+watched, turn on the <strong>Watched</strong> field in <a
+href="#message-list-fields">Message List Fields</a>. It is off to begin
+with.</p>
+<p><strong>To see what you are watching</strong>, choose <strong>Message
+→ Watched Conversations…</strong>. The window lists every watch with how
+many cached messages it has collected and when you started it. Press
+<strong>Enter</strong> on one to jump to that conversation,
+<strong>Delete</strong> to stop watching it, or <strong>Rename</strong>
+to give it a clearer label. Renaming changes the label only — which
+messages the watch collects is decided by the subject and does not
+change. Type a letter to jump down the list. The window stays open while
+you work, so you can leave it up and keep going; <strong>Escape</strong>
+closes it.</p>
+<p><strong>To be told when a reply arrives</strong>, turn on
+<strong>Settings → Notifications → Show a notification when a watched
+conversation gets a reply</strong>. Unlike the ordinary new-mail
+notification, this one applies to every folder rather than just the
+inbox, because a watched thread’s next message can land anywhere. The
+two settings are independent; if a message is both new inbox mail and
+part of a watched conversation you get one notification, the watched
+one.</p>
+<p><strong>To narrow any folder to watched mail</strong>, choose
+<strong>View → Filter → Watched</strong>. That works in any folder, and
+can be saved as part of one of your own views.</p>
+<h3 id="jumping-to-an-item-by-typing">Jumping to an Item by Typing</h3>
+<p>In the folder tree, the message list, and the Conversations, From,
+and To trees, type the first letter of what you want to reach and the
+selection jumps to the next item starting with that letter. Keep typing
+to narrow it — letters typed within about a second of each other build
+up a longer prefix, so “arc” reaches Archive rather than stopping at
+Address book. Pause, and the next letter starts a fresh prefix. Pressing
+the same letter repeatedly steps through every item beginning with it,
+and the search wraps around to the top when it runs off the end.</p>
+<p>What each list matches is the text you would expect to hear first:
+the folder name in the folder tree (only folders currently expanded into
+view), the sender in the message list — or the subject when a message
+has no sender — the conversation subject in Conversations, and the
+person’s name in the From and To trees.</p>
+<p>The same typing works in the <strong>Go to Folder</strong> picker, in
+the address book’s contact, group, and member lists, and in the <a
+href="#message-list-fields">Message List Fields</a> window.</p>
 <h3 id="creating-folders">Creating Folders</h3>
 <p>Create a new folder in any of these ways:</p>
 <ul>
@@ -1060,6 +1215,43 @@ Customization</a>.</li>
 <p>The new folder is created under the folder currently selected in the
 folder tree, or under the account root when a header or nothing is
 selected.</p>
+<h3 id="moving-and-copying-folders">Moving and Copying Folders</h3>
+<p>Select a folder in the folder tree, press <strong>Shift+F10</strong>,
+and choose <strong>Move Folder…</strong> or <strong>Copy
+Folder…</strong>. Both open a picker showing the same hierarchical tree
+used in the folder panel — folders nested under their parent, everything
+already expanded. Arrow to the folder you want the selected folder to
+live under and press Enter. Copying brings the folder’s messages and any
+subfolders with it.</p>
+<p>Typing jumps to a folder here as it does in the folder tree: type the
+beginning of a folder name and the selection moves to it. Because a bare
+letter belongs to that typing, the picker’s buttons take
+<strong>Alt+O</strong> for Open and <strong>Alt+C</strong> for Cancel.
+Enter and Escape work as usual. There is no <strong>New Folder</strong>
+button in this picker — create the folder first, then move into it.</p>
+<p>Two things the picker leaves out on purpose:</p>
+<ul>
+<li><strong>Folders belonging to your other accounts.</strong> A folder
+can only move or copy within the account it already lives in, so only
+that account’s folders are offered.</li>
+<li><strong>The folder you are moving, and everything inside
+it.</strong> A folder cannot be moved or copied into itself or into one
+of its own subfolders.</li>
+</ul>
+<p>The picker opens on the folder you came from. Since the folder you
+are moving is not one of the destinations, it opens on the folder that
+one currently sits under, so you start where you were rather than at the
+top of the list. For a top-level folder there is no such parent, and it
+opens on the first folder instead.</p>
+<p>Because it opens there, pressing Enter straight away would put the
+folder back where it started. QuickMail says so rather than doing it —
+as it does for messages already in the folder you picked.</p>
+<p>If those two exclusions leave nowhere to go — an account whose only
+folder is the one you are moving — QuickMail says so instead of opening
+an empty picker. The same happens if you choose Move or Copy Folder on a
+view rather than a folder: All Inboxes, All Mail, and the per-account
+All Mail entries look like folders in the tree but are collections of
+messages from several folders, so there is nothing to move.</p>
 <h3 id="moving-and-copying-messages">Moving and Copying Messages</h3>
 <p>Select one or more messages (or a sender/recipient group, or a
 conversation) and choose <strong>Move to Folder…</strong> or
@@ -1072,6 +1264,17 @@ or copy. If you need a destination that does not exist yet, activate
 <strong>New Folder</strong> (or <strong>Alt+N</strong>) in the picker to
 create one under the selected folder and move into it without leaving
 the dialog.</p>
+<p>The picker opens on the folder the messages are in, so you start
+where you were. In a combined view such as All Inboxes that is the
+message’s own folder, not the view. If the messages you selected come
+from more than one folder there is no single starting point, and it
+opens on the first folder.</p>
+<p>Typing jumps to a folder here too, exactly as it does in the main
+folder tree: type the beginning of a folder name and the selection moves
+to it. Because a bare letter belongs to that typing, the picker’s
+buttons take <strong>Alt+O</strong> for Open, <strong>Alt+C</strong> for
+Cancel, and <strong>Alt+N</strong> for New Folder rather than plain
+letter shortcuts. Enter and Escape still work as usual.</p>
 <h3 id="message-list-views">Message List Views</h3>
 <p>Press <code>Ctrl+Shift+V</code> (or use the <strong>View</strong>
 menu) to switch how messages are grouped:</p>
@@ -1081,6 +1284,17 @@ menu) to switch how messages are grouped:</p>
 <li><strong>From</strong> — messages grouped by sender</li>
 <li><strong>To</strong> — messages grouped by recipient</li>
 </ul>
+<h3 id="message-list-density">Message List Density</h3>
+<p><strong>View → Density</strong> sets how much space each message row
+takes: <strong>Comfortable</strong> (the default) leaves room around
+each row, <strong>Compact</strong> tightens them so more messages fit on
+screen. The change applies at once and is remembered. The same choice is
+in <strong>Settings → Appearance</strong> under <strong>Message List
+Density</strong>, and <strong>Density: Comfortable</strong> and
+<strong>Density: Compact</strong> are in the command palette.</p>
+<p>Density changes spacing only. What a row says, and what a screen
+reader reports about it, is identical either way — that is set in <a
+href="#message-list-fields">Message List Fields</a>.</p>
 <h3 id="searching">Searching</h3>
 <p>Press <code>Ctrl+Shift+S</code> to open the search box. Type your
 query and press Enter. Results appear in the message list. Press Escape
@@ -1247,6 +1461,10 @@ work the same as in the main window:</p>
 <td>Grab Addresses</td>
 </tr>
 <tr class="even">
+<td><code>Ctrl+Shift+W</code></td>
+<td>Watch or unwatch this message’s conversation</td>
+</tr>
+<tr class="odd">
 <td><code>Alt+A</code></td>
 <td>Focus the attachment list</td>
 </tr>
@@ -1329,12 +1547,29 @@ setup. To choose a different folder, select a folder in the folder tree,
 open its context menu (Shift+F10), and choose <strong>Set as Archive
 Folder</strong>; choose <strong>Use Automatic Archive Folder</strong> to
 return to the automatic one.</p>
-<p>Gmail has no dedicated Archive folder — its archive is <strong>All
-Mail</strong>. To archive Gmail messages, set <strong>[Gmail]/All
-Mail</strong> as that account’s Archive folder; archiving then removes
-the message from the inbox, which is exactly what archiving means in
-Gmail. If an account has no Archive folder and you have not set one,
+<p>Gmail has no dedicated Archive folder, so pick one for the account.
+The recommended choice is a label of your own: create a Gmail label
+named <strong>Archive</strong>, then select it in the folder tree and
+choose <strong>Set as Archive Folder</strong>. Archiving a message moves
+it out of the inbox and onto that label — which is what archiving means
+in Gmail — and it gives you a folder that holds only what you
+archived.</p>
+<p>Setting <strong>[Gmail]/All Mail</strong> as the Archive folder also
+works and archives correctly, but that folder holds your entire mailbox,
+not just archived mail. Prefer a label unless you specifically want All
+Mail.</p>
+<p>If an account has no Archive folder and you have not set one,
 QuickMail tells you rather than doing nothing.</p>
+<p><strong>All Archive</strong> in the folder tree gathers every
+account’s archived mail into one list, alongside All Inboxes, All
+Drafts, All Sent, and All Trash. It follows each account’s own archive
+setting — including a folder you chose with <strong>Set as Archive
+Folder</strong> — so it shows exactly the mail <strong>Move to
+Archive</strong> put there. Accounts with no Archive folder simply
+contribute nothing. This is the other reason to prefer a Gmail label
+over <strong>[Gmail]/All Mail</strong>: an account pointed at All Mail
+contributes its entire mailbox to All Archive, because for that account
+All Mail <em>is</em> the archive.</p>
 <h3 id="tabs">Tabs</h3>
 <p>QuickMail can open messages in tabs, keeping multiple messages
 visible at once.</p>
@@ -1423,6 +1658,20 @@ to a field:</p>
 </tr>
 </tbody>
 </table>
+<h3 id="choosing-which-account-sends">Choosing Which Account Sends</h3>
+<p>Press <strong>Alt+M</strong> to reach the <strong>From</strong> list,
+then arrow to the account you want. Press <strong>Enter</strong> and
+QuickMail confirms your choice — “IdeaPlace used as From address”. You
+can also expand the list with <strong>Alt+Down Arrow</strong>, arrow to
+an account, and press Enter; the same confirmation follows.</p>
+<p>Arrowing past accounts does not announce anything extra, since your
+screen reader is already reading each account name as you go. The
+confirmation comes when the choice settles — on Enter, when the expanded
+list closes on a different account, or when you leave the From field
+having changed it. It uses the <strong>Announce action results</strong>
+setting, so turning that off turns this off with it.</p>
+<p>Enter in the From list never sends the message. Sending is
+<strong>Alt+S</strong> or <strong>Ctrl+Enter</strong>.</p>
 <h3 id="address-autocomplete">Address Autocomplete</h3>
 <p>Start typing a name or address in To, Cc, or Bcc. QuickMail searches
 your address book and recent contacts. Arrow down to choose a
@@ -1668,6 +1917,11 @@ numbers.</li>
 pasting files from the clipboard (<code>Ctrl+V</code>), or by dragging
 and dropping them onto the window. A screen reader announces how many
 files were attached.</p>
+<p>Press <strong>Alt+A</strong> to move focus to the list of files
+already attached — the same key that reaches the attachment list of a
+message you are reading. Arrow through the list and press
+<strong>Delete</strong> to remove the selected file. If the message has
+nothing attached yet, QuickMail announces “No attachments.”</p>
 <h3 id="message-templates">Message Templates</h3>
 <p>Save a message you write often — a standard reply, a form response —
 as a reusable template.</p>
@@ -1834,6 +2088,44 @@ Palette.</li>
 changes are written back. For Microsoft and Google it also pulls the
 people you’ve recently emailed; iCloud brings in your saved contacts
 (its CardDAV service has no separate “recent recipients” list).</p>
+<h3 id="changing-or-deleting-a-synced-contact">Changing or Deleting a
+Synced Contact</h3>
+<p>Because sync only runs one way, <strong>the address book is not the
+place to change or remove a contact that came from an account.</strong>
+With a synced contact selected, the <strong>Edit</strong> and
+<strong>Delete</strong> buttons are unavailable, and the matching
+Command Palette entries do nothing. This is deliberate: a deletion made
+here could not be sent to your account, so the contact would simply
+reappear the next time QuickMail refreshed — the change would look like
+it worked and then quietly undo itself.</p>
+<p>To change or remove a synced contact for good, edit it where it
+actually lives, then bring the change back:</p>
+<ol type="1">
+<li>Open the account’s own contacts — <strong>Google Contacts</strong>
+(contacts.google.com), <strong>Outlook / Microsoft 365 People</strong>,
+or <strong>iCloud Contacts</strong> — and make the change there.</li>
+<li>Return to QuickMail’s address book and press the <strong>Sync
+Now</strong> button (or run <strong>Sync Contacts Now</strong> from the
+Command Palette).</li>
+<li>The list is rebuilt from the account, so an edited contact shows its
+new details and a deleted one is gone.</li>
+</ol>
+<p>Without step 2 the address book keeps the old copy until the next
+background refresh, which happens about twice a day.</p>
+<p><strong>“Other contacts” from Google.</strong> Google keeps two
+separate lists: the contacts you saved, and <strong>Other
+contacts</strong> — addresses Google collected automatically from people
+you have emailed. QuickMail pulls both, which is why the address book
+can hold far more people than you ever saved. Removing one of these is
+the same two-step job as above, but do it in the <strong>Other
+contacts</strong> section of Google Contacts specifically; deleting from
+your saved contacts does not touch it. Google also re-collects an
+address if you email that person again.</p>
+<p><strong>If you only want them out of QuickMail</strong>, and not out
+of the account, clear <strong>Sync contacts from this account</strong>
+for that account in <strong>File → Manage Accounts…</strong>. That drops
+every contact synced from it, leaving the ones you added yourself alone.
+Nothing on the account is changed.</p>
 <h3 id="groups">Groups</h3>
 <p>Groups let you write to multiple people with a single address. Select
 a group in the address book and press Enter to expand it and see its
@@ -1883,8 +2175,15 @@ group</strong>, then to the group combo, then to the name field, then to
 Save and Cancel.</p>
 <hr />
 <h2 id="flags">Flags</h2>
-<p>Flags mark messages for follow-up and sync across all mail
-clients.</p>
+<p>Flags mark messages for follow-up.</p>
+<p>The <strong>built-in flag</strong> is the standard one your mail
+server already understands, so setting or clearing it in QuickMail shows
+up in every other mail program you use, and a message flagged elsewhere
+arrives in QuickMail already flagged. <strong>Named flags you create
+yourself are stored on this computer only</strong> — the name and color
+mean nothing to the server, so another program will not see them, and
+neither will QuickMail on a second computer. See <a
+href="#what-syncs-and-what-doesnt">What Syncs and What Doesn’t</a>.</p>
 <h3 id="basic-flagging">Basic Flagging</h3>
 <p>Press <strong>K</strong> to toggle the default flag on the selected
 message. Press <strong>K</strong> again to clear it. A screen reader
@@ -1909,35 +2208,141 @@ folder.</p>
 <p>The <strong>All Flagged Mail</strong> virtual folder in the folder
 tree aggregates flagged messages across all accounts.</p>
 <h3 id="flag-accessibility">Flag Accessibility</h3>
-<p>The flag name is announced before the read status when you navigate
-to a flagged message — for example, “Urgent. Unread. Kelly Ford. Budget
-deadline.” This makes it immediately clear a message needs attention.
-You can turn this off in <strong>Settings → General → Accessibility →
-Announce flag status</strong>.</p>
+<p>By default the flag name comes first when you navigate to a flagged
+message — for example, “Urgent. Unread. Kelly Ford. Budget deadline.”
+This makes it immediately clear a message needs attention.</p>
+<p>The flag is one of the pieces a row speaks, so where it falls — and
+whether it is spoken at all — is yours to set in <strong>View → Message
+List Fields…</strong>. Turn the <strong>Flag</strong> field off to leave
+it out, or move it later in the line to hear the sender first. See <a
+href="#message-list-fields">Message List Fields</a>. (There was
+previously an <strong>Announce flag status</strong> checkbox in
+Settings; it has been replaced by the Flag field in that window. If you
+had it turned off, the Flag field starts out turned off to match.)</p>
 <hr />
 <h2 id="mail-rules">Mail Rules</h2>
-<p>Mail rules run automatically when mail arrives and can move, flag,
-mark as read, or delete messages based on sender, recipient, subject, or
-other criteria.</p>
+<p>A mail rule watches your Inbox and acts on messages that match what
+you describe — filing newsletters into a folder, marking a mailing list
+as read, deleting something you never want to see.</p>
 <p>Open the <strong>Rules Manager</strong> from the
 <strong>Tools</strong> menu (<code>Ctrl+Shift+L</code>) or the command
-palette. Each rule has:</p>
+palette. It opens with the list of rules on the left and the selected
+rule’s settings on the right.</p>
+<h3 id="what-a-rule-is-made-of">What a rule is made of</h3>
 <ul>
-<li><strong>Conditions</strong> — criteria the message must match (any
-or all)</li>
-<li><strong>Actions</strong> — what to do when conditions are met (move
-to folder, flag, mark read, delete)</li>
-<li><strong>Active</strong> toggle — turn a rule on or off without
-deleting it</li>
+<li><strong>Rule name</strong> — how you recognize it in the list.</li>
+<li><strong>Enabled</strong> — turn a rule off without deleting it.</li>
+<li><strong>Account</strong> — which mailbox the rule watches. Every
+rule belongs to exactly one account; see <a
+href="#rules-belong-to-one-account">Rules belong to one
+account</a>.</li>
+<li><strong>Conditions</strong> — <strong>From</strong>,
+<strong>To</strong>, <strong>Subject</strong>, <strong>Body</strong>,
+and <strong>Has attachments</strong>. Check the ones you want and type
+the text to look for; the match is not case sensitive and looks for your
+text anywhere in the field. A message must satisfy
+<strong>every</strong> condition you checked, so leaving a condition
+unchecked is how you say “don’t care”.</li>
+<li><strong>Action</strong> — one of <strong>Mark as read</strong>,
+<strong>Mark as unread</strong>, <strong>Move to folder</strong>, or
+<strong>Delete</strong>. Choosing Move to folder adds a <strong>Choose
+Folder…</strong> button; the button then shows the folder you picked.
+The picker is the same folder tree used everywhere else you choose a
+destination, showing the folders of the rule’s own account — a rule
+files mail within one mailbox. It opens on the folder the rule already
+files into, or on the first folder for a new rule.</li>
 </ul>
-<p>Rules run in order. Drag to reorder, or use the Move Up / Move Down
-commands.</p>
+<p><strong>Test Rule</strong> runs the rule against the messages
+currently in your list and tells you how many it would match, so you can
+check a rule before letting it loose. <strong>Save</strong> stores the
+rule; <strong>New Rule</strong> and <strong>Delete</strong> manage the
+list.</p>
+<p>Every enabled rule for the account is tried, in list order, and each
+one that matches acts. A rule that moves or deletes a message takes it
+out of the running for the rest of the list.</p>
+<h3 id="when-rules-run">When rules run</h3>
+<p>Rules run <strong>on your Inbox, on mail as it arrives</strong> —
+including mail that arrives while QuickMail is sitting open, not only at
+a full sync. This is deliberate: a rule never reaches back into Sent,
+Archive, Junk, Trash, or a folder you filed something into by hand, so
+nothing you deliberately put somewhere is moved or deleted behind your
+back. Mail already in the mailbox before a rule existed is left alone
+too.</p>
+<p>To apply your rules to mail that is already there, use <strong>Run on
+Existing Mail</strong>. It runs every enabled rule over the Inbox of
+each account — again, the Inbox only — across the mail QuickMail has
+stored locally, and tells you how many messages were moved or deleted.
+(Mark as read and mark as unread still happen; they are not counted.) An
+account whose Inbox QuickMail has not read yet in this session is
+skipped rather than guessed at, and the skip is noted in the log.</p>
+<h3 id="rules-belong-to-one-account">Rules belong to one account</h3>
+<p>Each rule watches one account. Choose it in the
+<strong>Account</strong> list in the rule’s settings; a new rule starts
+on your default account. The account each rule belongs to is shown
+beside its name in the rules list.</p>
+<p>If you had rules from an earlier version that applied to <strong>all
+accounts</strong>, QuickMail converts each one into a separate rule per
+account the first time it starts, so they keep doing what they did. The
+one exception is a profile whose only accounts connect through Microsoft
+365 directly: those mailboxes have no client-side rule to convert to, so
+an old all-accounts rule is dropped and the reason is written to the
+log.</p>
+<h3 id="reading-the-rules-list">Reading the rules list</h3>
+<p>Each row in the rules list says the rule’s name and the account it
+belongs to. Turn on <strong>Show field labels in the rules list</strong>
+in <strong>Settings → General → Screen Reader Announcements</strong> to
+hear those pieces named (“Name … account …”) rather than run
+together.</p>
 <h3 id="creating-a-rule-from-a-message">Creating a Rule from a
 Message</h3>
 <p>Select a message and choose <strong>Create Rule from Message</strong>
 from the context menu or the command palette. QuickMail opens a new rule
 pre-filled with a condition matching the sender and, if present, the
 subject — a quick starting point you can adjust before saving.</p>
+<h3 id="microsoft-365-server-side-rules">Microsoft 365: server-side
+rules</h3>
+<p>If you have a Microsoft 365 (Exchange) account, the Rules Manager
+does a little more. Alongside the rules that run inside QuickMail, it
+shows the <strong>server-side rules</strong> on your Exchange mailbox —
+the same rules Outlook calls “Inbox rules.” A server rule runs on
+Microsoft’s servers, so it acts on your mail <strong>even when QuickMail
+is closed</strong>, and it applies wherever you read that mailbox.</p>
+<p><strong>One account at a time.</strong> With a Microsoft 365 account
+present, the Rules Manager opens on a single account chosen in an
+<strong>Account</strong> list at the top, rather than listing every
+account’s rules together. Choose the account whose rules you want, and
+the list below shows just that mailbox’s rules. If you have only one
+account there is no picker. This is the first thing to notice if you are
+used to seeing every account’s rules in one list: your rules are not
+gone, they are behind the account picker.</p>
+<p><strong>One list, marked where each rule runs.</strong> Server rules
+and QuickMail rules appear together in a single list. Each row says
+where the rule runs — <strong>on server</strong> or <strong>in
+QuickMail</strong> — along with its name and whether it is enabled.
+Creating, editing, enabling or disabling, reordering, and deleting all
+work the same way whichever kind a rule is.</p>
+<p><strong>QuickMail chooses where a new rule lives.</strong> When you
+create a rule, QuickMail saves it as a server rule whenever it can, so
+it keeps working while QuickMail is closed. A rule that needs something
+only QuickMail can do — today that is <strong>Mark as unread</strong> —
+is saved as a QuickMail rule instead, and QuickMail tells you why.</p>
+<p><strong>Some server rules are read-only.</strong> A rule you built in
+Outlook may use conditions or actions QuickMail cannot yet represent
+exactly. Rather than risk turning it into something you did not intend,
+QuickMail shows that rule as <strong>read-only</strong>: you can read
+it, but Edit, Delete, and Move are turned off. Change that rule in
+Outlook.</p>
+<p><strong>Testing.</strong> <strong>Test</strong> runs a rule against
+the messages in your list and reports how many it would match. It works
+on <strong>QuickMail rules only</strong>; for a <strong>server
+rule</strong> the Test control is turned off, the same way Edit and
+Delete are for a read-only rule — a server rule runs in Exchange, so
+there is nothing local to test it against.</p>
+<p><strong>What your organization may need to allow.</strong> For most
+work or school accounts, an administrator has to permit QuickMail to
+read and change your mailbox rules before this works. If that permission
+is not in place, you will see a message about it rather than your server
+rules; ask your administrator to grant QuickMail access.</p>
 <hr />
 <h2 id="saved-views">Saved Views</h2>
 <p>A saved view is a named filter you can return to instantly — for
@@ -2174,8 +2579,16 @@ the arrow keys without typing anything.</p>
 <td>One minute</td>
 </tr>
 <tr class="odd">
+<td>Shift+Up / Shift+Down</td>
+<td>One hour</td>
+</tr>
+<tr class="even">
 <td>Page Up / Page Down</td>
 <td>One hour</td>
+</tr>
+<tr class="odd">
+<td>Ctrl+Page Up / Ctrl+Page Down</td>
+<td>One day</td>
 </tr>
 </tbody>
 </table>
@@ -2237,6 +2650,48 @@ why instead of failing silently.</li>
 <p>If saving a change to an online account ever fails, QuickMail saves
 your appointment to the Local Calendar instead so your work is never
 lost, and tells you it did.</p>
+<h3 id="events-your-account-will-not-let-quickmail-change">Events your
+account will not let QuickMail change</h3>
+<p>Some events on a connected calendar are managed by the provider
+itself, not by you, and the provider refuses to let <strong>any</strong>
+outside mail or calendar program edit or delete them. Google is the one
+you are most likely to meet. Its protected events are:</p>
+<ul>
+<li><strong>Birthdays</strong> — generated from your Google Contacts,
+usually titled “Happy birthday!”</li>
+<li><strong>Out of office</strong></li>
+<li><strong>Working location</strong></li>
+<li><strong>Focus time</strong></li>
+<li><strong>Events Gmail created for you</strong> from a message, such
+as a flight, hotel, or delivery.</li>
+</ul>
+<p>Pressing <strong>Delete</strong> or saving an edit on one of these
+fails, and QuickMail currently reports it only as <strong>“Could not
+update your online calendar.”</strong> The event is not damaged and
+nothing is lost — Google simply declined the change. A clearer message
+naming the reason is planned.</p>
+<p>What to do instead, depending on the event:</p>
+<ul>
+<li><strong>Birthday</strong> — it follows the contact, so change or
+clear the birthday on that person in <strong>Google Contacts</strong>.
+To stop seeing birthdays altogether, hide the <strong>Birthdays</strong>
+calendar in Google Calendar’s settings; QuickMail will stop showing them
+at the next sync.</li>
+<li><strong>Out of office, Working location, Focus time</strong> —
+create, change, or remove these in <strong>Google Calendar</strong> on
+the web or in its mobile app, where the special editors for them
+live.</li>
+<li><strong>An event Gmail created</strong> — open the original message
+in Gmail and remove it there, or turn the feature off in Google
+Calendar’s settings under events from Gmail.</li>
+</ul>
+<p>After making the change on the provider’s side, press
+<strong>F5</strong> in the calendar (or run <strong>Sync Calendars
+Now</strong>) to pull the corrected events down.</p>
+<p>Repeating events from a connected calendar, and meeting invitations,
+are read-only in QuickMail for a different reason — QuickMail does not
+write those back yet. In those cases QuickMail tells you so before
+anything is attempted.</p>
 <h3 id="reminders">Reminders</h3>
 <p>Reminders are <strong>off by default</strong>. To turn them on, open
 <strong>Settings → General</strong>, check <strong>Remind me before
@@ -2363,6 +2818,12 @@ them.</li>
 (repeating appointments are saved to the Local Calendar).</li>
 <li>Edit or delete <strong>repeating</strong> events that came from an
 online calendar (repeating server events are read-only).</li>
+<li>Edit or delete the events your provider manages for you — Google
+birthdays, out-of-office, working location, focus time, and events Gmail
+created from a message. Google blocks this for every outside program,
+not just QuickMail; see <a
+href="#events-your-account-will-not-let-quickmail-change">Events your
+account will not let QuickMail change</a>.</li>
 <li>Connect calendars from generic CalDAV servers other than iCloud
 (Fastmail, Nextcloud, and the like).</li>
 <li>Subscribe to public <code>.ics</code> calendar feeds (holidays,
@@ -2455,6 +2916,107 @@ Tentative, Decline), are available from the command palette
 (<strong>Ctrl+Shift+P</strong>) and have no default key until you assign
 one.</p>
 <hr />
+<h2 id="what-syncs-and-what-doesnt">What Syncs and What Doesn’t</h2>
+<p>QuickMail talks to your accounts for three kinds of information —
+mail, contacts, and calendar — and it treats each one differently.
+Everything else QuickMail knows about is stored on this computer and
+never leaves it.</p>
+<p>The direction matters, so it is worth being blunt about it: a
+<strong>two-way</strong> item is safe to change in QuickMail, and the
+change reaches your account and every other program you read mail with.
+A <strong>download only</strong> item is a copy — changing it in
+QuickMail either is not offered, or would be undone the next time
+QuickMail refreshed. <strong>This computer only</strong> means exactly
+that: reinstall Windows or move to a second machine and you start
+over.</p>
+<table>
+<colgroup>
+<col style="width: 13%" />
+<col style="width: 25%" />
+<col style="width: 60%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>What</th>
+<th>Direction</th>
+<th>What that means for you</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Messages</strong></td>
+<td>Two-way</td>
+<td>Read and unread, moving between folders, deleting, and sending all
+go to the server. Another program sees the same state.</td>
+</tr>
+<tr class="even">
+<td><strong>The built-in flag</strong></td>
+<td>Two-way</td>
+<td>Set or cleared in QuickMail, it shows up everywhere else, and a
+message flagged elsewhere arrives here already flagged.</td>
+</tr>
+<tr class="odd">
+<td><strong>Named flags you create</strong></td>
+<td>This computer only</td>
+<td>The name and color exist in QuickMail alone. Other programs, and
+QuickMail on another computer, will not see them.</td>
+</tr>
+<tr class="even">
+<td><strong>Contacts</strong></td>
+<td>Download only</td>
+<td>QuickMail reads your Microsoft, Google, and iCloud contacts and
+never writes back. Synced contacts cannot be edited or deleted in the
+address book — <a href="#changing-or-deleting-a-synced-contact">make the
+change at the account and re-sync</a>.</td>
+</tr>
+<tr class="odd">
+<td><strong>Calendar events</strong></td>
+<td>Mostly two-way</td>
+<td>Single (non-repeating) events on a connected calendar can be
+created, edited, and deleted from QuickMail. Repeating events, meeting
+invitations, and the events your provider manages for you are <a
+href="#events-your-account-will-not-let-quickmail-change">download
+only</a>.</td>
+</tr>
+<tr class="even">
+<td><strong>Meeting responses</strong></td>
+<td>Two-way</td>
+<td>Accept, Tentative, and Decline are emailed to the organizer and
+update your calendar.</td>
+</tr>
+<tr class="odd">
+<td><strong>Mail rules</strong></td>
+<td>This computer only</td>
+<td>Rules run inside QuickMail as mail arrives. They are not server
+rules — your provider does not know about them, and they do nothing
+while QuickMail is closed.</td>
+</tr>
+<tr class="even">
+<td><strong>Everything else in QuickMail</strong></td>
+<td>This computer only</td>
+<td>Settings, themes, keyboard customizations, signatures, message
+templates, saved views, message-list field choices, contact groups, and
+the contacts you typed in yourself.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="if-something-you-changed-came-back">If something you changed
+came back</h3>
+<p>That is nearly always a download-only item. QuickMail refreshed from
+the account, the account still had the old version, and the old version
+won. The fix is the same in every case: make the change where the item
+actually lives — your account’s own contacts or calendar on the web —
+and then refresh QuickMail (<strong>Sync Now</strong> in the address
+book, <strong>F5</strong> in the calendar).</p>
+<h3 id="moving-to-a-new-computer">Moving to a new computer</h3>
+<p>Your mail, your contacts, and your connected calendars come back on
+their own once you add your accounts again, because they live on the
+server. The <strong>This computer only</strong> row above does not:
+rules, flags you named, templates, signatures, saved views, and your
+settings are stored in QuickMail’s data folder
+(<code>%APPDATA%\QuickMail</code>) and need to be copied across if you
+want them.</p>
+<hr />
 <h2 id="notifications">Notifications</h2>
 <p>New-mail notifications and the option to keep QuickMail running in
 the notification area when you close the window are both <strong>off by
@@ -2506,15 +3068,20 @@ only.</p>
 window menu bar and groups together the commands used less often than
 day-to-day mail actions:</p>
 <ul>
-<li><strong>Manage Themes…</strong> — opens the <a href="#themes">Theme
-Manager</a>.</li>
-<li><strong>Next Theme</strong> / <strong>Previous Theme</strong> —
-cycle through your available themes.</li>
 <li><strong>Address Book…</strong> (<code>Ctrl+Shift+B</code>)</li>
 <li><strong>Rules…</strong> (<code>Ctrl+Shift+L</code>) — opens the <a
 href="#mail-rules">Rules Manager</a>.</li>
 <li><strong>Command Palette…</strong> (<code>Ctrl+Shift+P</code>)</li>
 </ul>
+<p><strong>Choosing how QuickMail looks and reads is on the View
+menu</strong>, not here — <strong>Manage Themes…</strong> opens the <a
+href="#themes">Theme Manager</a>, <strong>Density</strong> sets <a
+href="#message-list-density">message list density</a>, and
+<strong>Message List Fields…</strong> opens the <a
+href="#message-list-fields">field chooser</a>. <strong>Next
+Theme</strong> and <strong>Previous Theme</strong> have no menu items;
+run them from the Command Palette, or give them a key of your own in
+<strong>Settings → Keyboard</strong>.</p>
 <hr />
 <h2 id="connection-diagnostics">Connection Diagnostics</h2>
 <p>Connection Diagnostics records what QuickMail is doing when it talks
@@ -2745,12 +3312,12 @@ activity to <code>quickmail.log</code> in your profile directory
 (usually <code>%APPDATA%\QuickMail</code>). Uncheck to stop writing the
 log file. Changes take effect when you select
 <strong>Save</strong>.</li>
-<li><strong>Delete QuickMail logs</strong> — deletes QuickMail’s log
-files immediately after confirmation: the application log
-(<code>quickmail.log</code>) and the connection diagnostics log
-(<code>connection.log</code>), if either exists. If logging or
-connection diagnostics are still on, new files are created the next time
-something is recorded.</li>
+<li><strong>Delete QuickMail logs</strong> — deletes QuickMail’s
+diagnostic files immediately after confirmation: the application log
+(<code>quickmail.log</code>), the connection diagnostics log
+(<code>connection.log</code>), and any screenshots saved by the debug
+capture option below. If logging or connection diagnostics are still on,
+new files are created the next time something is recorded.</li>
 </ul>
 <blockquote>
 <p><strong>Note:</strong> If QuickMail was launched with the
@@ -2772,6 +3339,16 @@ Records how QuickMail connects to your mail servers and adds
 menu. Takes effect as soon as you select <strong>Save</strong>, with no
 restart. See <a href="#connection-diagnostics">Connection
 Diagnostics</a>.</li>
+</ul>
+<p><strong>Diagnostics (debug)</strong></p>
+<ul>
+<li><strong>Capture screenshots of new windows</strong> — off by
+default, and a developer aid rather than an everyday setting. It saves a
+picture of each window as you open it, so someone reviewing how
+QuickMail looks has something to look at. It lasts for the current
+session only — QuickMail turns it back off when it closes — and every
+window’s title bar says so while it is on. The images stay on your
+computer and are removed by <strong>Delete QuickMail logs</strong>.</li>
 </ul>
 <h3 id="keyboard">Keyboard</h3>
 <p>Reassign shortcuts for any registered command.</p>
@@ -2797,6 +3374,12 @@ default)</strong> uses the theme’s own font.</p>
 <p><strong>Text size</strong> — a dropdown with fixed stops at 100%,
 110%, 125%, 150%, 175%, and 200%, independent of Windows display
 scaling.</p>
+<p><strong>Message List Density</strong> — <strong>Comfortable</strong>
+(the default) or <strong>Compact</strong>, changing how much space each
+message row takes. The same choice is on the <strong>View</strong> menu
+under <strong>Density</strong>; see <a
+href="#message-list-density">Message List Density</a>. It changes
+spacing only, never what a row says.</p>
 <p><strong>Vision settings:</strong></p>
 <ul>
 <li><strong>Always underline links</strong> — underlines every link in
@@ -2857,43 +3440,62 @@ failures are still announced</td>
 compose</td>
 </tr>
 <tr class="odd">
-<td>Announce flag status</td>
-<td>Flag name prepended to message row when navigating the list</td>
+<td>Announce spelling errors when typing</td>
+<td>Misspellings called out as you type them</td>
 </tr>
 <tr class="even">
+<td>Announce spelling errors while navigating</td>
+<td>Misspellings called out as you move the cursor through the
+message</td>
+</tr>
+<tr class="odd">
 <td>Announce spelling suggestions</td>
 <td>Suggestions included when a misspelling is announced</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td>Spelling Suggestions Verbosity</td>
 <td>Numbers with suggestions (default) or just suggestions</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td>Show field labels in the contact list</td>
 <td>When on, address-book rows speak field names (“Name … email …
 account …”); when off, they speak concise field data only</td>
 </tr>
+<tr class="even">
+<td>Show field labels in the calendar event list</td>
+<td>When on, calendar rows speak field names (“Subject … when … location
+…”)</td>
+</tr>
+<tr class="odd">
+<td>Show field labels in the rules list</td>
+<td>When on, rules-list rows speak field names (“Name … account …”)</td>
+</tr>
 </tbody>
 </table>
-<p>All settings default to on except <strong>Announce flag
-status</strong>, <strong>Show field labels in the contact list</strong>,
-and <strong>Announce spelling while typing</strong> (off by default).
-<strong>Spelling Suggestions Verbosity</strong> defaults to
-<strong>Numbers with suggestions</strong>. Turn off <strong>Custom
-Announcements</strong> to silence everything at once; turn it back on to
-restore your individual preferences.</p>
+<p>All settings default to on except the three <strong>Show field
+labels</strong> switches and <strong>Announce spelling errors when
+typing</strong>, which are off. <strong>Spelling Suggestions
+Verbosity</strong> defaults to <strong>Numbers with
+suggestions</strong>. Turn off <strong>Custom Announcements</strong> to
+silence everything at once; turn it back on to restore your individual
+preferences.</p>
+<p><strong>Message list rows are set elsewhere.</strong> What each row
+in a message list says, in what order, and whether those pieces are
+labelled, is set in <strong>View → Message List Fields…</strong> rather
+than here. See <a href="#message-list-fields">Message List
+Fields</a>.</p>
 <hr />
 <h2 id="themes">Themes</h2>
 <p>QuickMail’s color scheme is controlled through <strong>Settings →
 Appearance</strong> (see <a href="#settings">Settings</a>) and managed
 in more detail through the <strong>Theme Manager</strong>.</p>
 <h3 id="theme-manager">Theme Manager</h3>
-<p>Open the Command Palette (<strong>Ctrl+Shift+P</strong>) and choose
-<strong>Manage Themes</strong>, or choose <strong>Manage
-Themes…</strong> from the <strong>Tools</strong> menu. The Theme Manager
-is a separate, non-blocking window, so you can leave it open while you
-try a theme against real messages. From the theme list, press Tab to
-reach the actions:</p>
+<p>Choose <strong>Manage Themes…</strong> from the <strong>View</strong>
+menu, or open the Command Palette (<strong>Ctrl+Shift+P</strong>) and
+choose <strong>Manage Themes</strong>. The Theme Manager is a separate,
+non-blocking window, so you can leave it open while you try a theme
+against real messages. From the theme list, press Tab to reach the
+actions:</p>
 <ul>
 <li><strong>Apply</strong> — switch to the selected theme
 immediately.</li>
@@ -3008,6 +3610,178 @@ outline, and the four status colors (error, warning, success,
 information) — is inherited unchanged from Parchment. Parchment Dark is
 the only theme with a fully dark palette.</p>
 <hr />
+<h2 id="message-list-fields">Message List Fields</h2>
+<p>Each row in a message list is spoken as a single line — sender,
+subject, date, and so on. <strong>View → Message List Fields…</strong>
+lets you decide which of those pieces are spoken and in what order. It
+is also in the command palette as <strong>Message List Fields…</strong>.
+It has no keyboard shortcut of its own; assign one in <strong>Settings →
+Keyboard</strong> if you want one.</p>
+<p>Open it and you get a list of every available field, each one a real
+check box. Check a field to have it spoken, uncheck it to leave it out,
+and move it to change where it falls in the line.</p>
+<table>
+<colgroup>
+<col style="width: 38%" />
+<col style="width: 61%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Key</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Up</code> / <code>Down</code></td>
+<td>Move between fields; stops at the first and last one</td>
+</tr>
+<tr class="even">
+<td><code>Space</code></td>
+<td>Turn the focused field on or off</td>
+</tr>
+<tr class="odd">
+<td><code>Alt+Up</code> / <code>Alt+Down</code></td>
+<td>Move the focused field earlier or later in the spoken order</td>
+</tr>
+<tr class="even">
+<td><code>Home</code> / <code>End</code></td>
+<td>First / last field</td>
+</tr>
+<tr class="odd">
+<td><em>a letter</em></td>
+<td>Jump to the next field starting with that letter; press again to
+reach the next match</td>
+</tr>
+<tr class="even">
+<td><code>F6</code> / <code>Shift+F6</code></td>
+<td>Cycle: Row type, Fields, Field options, Spoken preview, buttons</td>
+</tr>
+<tr class="odd">
+<td><code>Ctrl+Shift+P</code></td>
+<td>This window’s own command palette</td>
+</tr>
+<tr class="even">
+<td><code>Escape</code></td>
+<td>Close</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Move Up</strong>, <strong>Move Down</strong>, <strong>Reset
+to Defaults</strong>, and <strong>Close</strong> are buttons as well.
+Moving a field says where it landed — “Moved down. Position 4 of 13.” —
+and adds “Not spoken” when the field you moved is switched off, so a
+move that changes nothing you can hear says so.</p>
+<p>The <strong>Spoken preview</strong> box at the bottom shows the
+message you had selected when you opened the window, read exactly as the
+list would read it, updating as you go.</p>
+<p>There is no OK or Cancel — changes save as you make them, and take
+effect immediately. The window is modeless, so you can leave it open,
+arrow through the message list behind it, and hear the result.</p>
+<h3 id="row-types">Row types</h3>
+<p>The <strong>Row type</strong> list at the top chooses which kind of
+row you are editing. Each keeps its own arrangement:</p>
+<ul>
+<li><strong>Messages</strong> — individual messages, in the flat list
+and inside all three group trees.</li>
+<li><strong>Conversation groups</strong> — the top-level rows in the
+Conversations view.</li>
+<li><strong>Sender and recipient groups</strong> — the top-level rows in
+the From and To views.</li>
+</ul>
+<h3 id="fields-for-messages">Fields for messages</h3>
+<table>
+<colgroup>
+<col style="width: 46%" />
+<col style="width: 53%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th>Field</th>
+<th>Speaks</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Flag</td>
+<td>The flag’s name, when the message is flagged</td>
+</tr>
+<tr class="even">
+<td>Status (combined)</td>
+<td>One word: “replied”, “forwarded”, “unread”, or “read”</td>
+</tr>
+<tr class="odd">
+<td>Attachments</td>
+<td>“attachments”</td>
+</tr>
+<tr class="even">
+<td>From, Subject, Preview, Date, To</td>
+<td>The field’s text</td>
+</tr>
+<tr class="odd">
+<td>Source folder</td>
+<td>Where the message lives — only in aggregate views such as All
+Archive, where it is account-qualified when the view spans accounts</td>
+</tr>
+<tr class="even">
+<td>Unread, Replied, Forwarded</td>
+<td>Each state on its own, so you can arrange them separately</td>
+</tr>
+<tr class="odd">
+<td>Mailing list</td>
+<td>“mailing list”</td>
+</tr>
+</tbody>
+</table>
+<h3 id="fields-for-group-rows">Fields for group rows</h3>
+<p><strong>Conversation groups</strong> offer Subject, Message count,
+Sender, Flag, Has unread, Preview, and Date. <strong>Sender and
+recipient groups</strong> offer Sender, Message count, Flag, Has unread,
+Preview, Date, and Newest subject. A message count is spoken as “1
+message” or “3 messages”.</p>
+<h3 id="speaking-a-state-only-when-it-applies">Speaking a state only
+when it applies</h3>
+<p>Fields such as <strong>Unread</strong>, <strong>Replied</strong>, and
+<strong>Attachments</strong> are states rather than text, so selecting
+one offers a choice:</p>
+<ul>
+<li><strong>Speak only when true</strong> — say “unread” on unread
+messages and nothing at all on read ones.</li>
+<li><strong>Always speak</strong> — say “unread” or “read”, whichever
+applies.</li>
+</ul>
+<p>This is how you get “tell me about unread but never say read”: turn
+<strong>Status (combined)</strong> off, turn <strong>Unread</strong> on,
+and leave it on <em>Speak only when true</em>. Fields with no meaningful
+opposite — Attachments, for example — stay silent when false in either
+mode.</p>
+<p><strong>Status (combined) and the separate states overlap.</strong>
+Both say the word “unread”, so turning on Unread while Status (combined)
+is still on says it twice. Whenever that would happen, the <strong>About
+this field</strong> note in the options pane says so and tells you which
+one to turn off. The note is a focusable box, so it is reachable from
+the keyboard rather than being text only a sighted user would
+notice.</p>
+<h3 id="field-labels">Field labels</h3>
+<p><strong>Speak field labels</strong> prefixes each text field with its
+name, so a row reads “From: Chris Lee. Subject: Budget review.” rather
+than “Chris Lee. Budget review.” It applies to all three row types.
+States and counts are never labelled, since “unread” and “3 messages”
+already say what they are.</p>
+<h3 id="starting-over">Starting over</h3>
+<p><strong>Reset to Defaults</strong> restores the shipped arrangement
+for the row type you are currently editing, leaving the other two
+alone.</p>
+<p>Until you change anything, rows read the way they always have. Empty
+fields are skipped rather than leaving a gap, so a message with no
+preview or no subject reads without a pause where it would have
+been.</p>
+<p>This window replaces the old <strong>Announce flag status</strong>
+checkbox in Settings — the flag is now the <strong>Flag</strong> field
+here, which you can turn off, or move anywhere in the line. If you had
+that checkbox turned off, the Flag field starts out turned off to match;
+from then on this window owns the choice.</p>
+<hr />
 <h2 id="screen-reader-announcements-1">Screen Reader Announcements</h2>
 <p>QuickMail uses UIA Notification events (the correct API for desktop
 screen readers on Windows 10 and later) rather than ARIA live regions,
@@ -3095,58 +3869,62 @@ box with any screen reader.</p>
 <td>Empty Trash</td>
 </tr>
 <tr class="even">
+<td><code>Ctrl+Shift+W</code></td>
+<td>Watch / unwatch the selected message’s conversation</td>
+</tr>
+<tr class="odd">
 <td><code>K</code></td>
 <td>Toggle flag</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+Shift+K</code></td>
 <td>Pick flag</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+S</code></td>
 <td>Search messages</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+Shift+F</code></td>
 <td>Search folders</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+V</code></td>
 <td>View menu</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+Shift+H</code></td>
 <td>Toggle Plain Text View</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+G</code></td>
 <td>Grab Addresses from Message</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+Shift+B</code></td>
 <td>Address Book</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+L</code></td>
 <td>Rules Manager</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Ctrl+,</code></td>
 <td>Settings</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>F1</code></td>
 <td>User Guide</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Shift+,</code></td>
 <td>First message in group</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Shift+.</code></td>
 <td>Last message in group</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Escape</code></td>
 <td>Close contact mail results (message list focus)</td>
 </tr>
@@ -3155,9 +3933,18 @@ box with any screen reader.</p>
 <p><strong>Move to Folder…</strong> and <strong>Copy to Folder…</strong>
 are available from the context menu (Shift+F10) or the command palette;
 they have no default keyboard shortcut. <strong>Manage Themes</strong>,
-<strong>Next Theme</strong>, <strong>Previous Theme</strong>, and
-<strong>Report a Bug</strong> are likewise command-palette-only unless
-you assign a shortcut yourself in Settings → Keyboard.</p>
+<strong>Next Theme</strong>, <strong>Previous Theme</strong>,
+<strong>Message List Fields…</strong>, <strong>Density:
+Comfortable</strong>, <strong>Density: Compact</strong>, <strong>Manage
+Flags…</strong>, and <strong>Report a Bug</strong> likewise have no
+default key — reach them from the menus or the command palette, or
+assign a shortcut yourself in Settings → Keyboard.</p>
+<p><code>Ctrl+1</code>, <code>Ctrl+2</code>, and <code>Ctrl+3</code>
+jump to a pane when no message tabs are open; with tabs open they select
+tab 1, 2, and 3 instead. <strong><code>Ctrl+Alt+1</code>,
+<code>Ctrl+Alt+2</code>, and <code>Ctrl+Alt+3</code> always</strong> go
+to the account list, folder tree, and message list, whatever else is
+open. <code>Ctrl+0</code> moves to the toolbar.</p>
 <p><strong>Calendar</strong> (<code>Ctrl+Shift+C</code> to open):
 <code>A</code>/<code>D</code>/<code>W</code>/<code>M</code> switch
 views, <code>T</code> goes to today,
@@ -3303,14 +4090,18 @@ href="#calendar">Calendar</a> section for the full list.</p>
 <td>Add attachment</td>
 </tr>
 <tr class="odd">
+<td><code>Alt+A</code></td>
+<td>Focus attachment list</td>
+</tr>
+<tr class="even">
 <td><code>Ctrl+K</code></td>
 <td>Check addresses</td>
 </tr>
-<tr class="even">
+<tr class="odd">
 <td><code>Ctrl+Shift+P</code></td>
 <td>Command palette</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>Escape</code></td>
 <td>Close window (when no menu or dropdown is open)</td>
 </tr>
