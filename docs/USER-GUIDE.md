@@ -948,7 +948,7 @@ If you have a Microsoft 365 (Exchange) account, the Rules Manager does a little 
 
 **Some server rules are read-only.** A rule you built in Outlook may use conditions or actions QuickMail cannot yet represent exactly. Rather than risk turning it into something you did not intend, QuickMail shows that rule as **read-only**: you can read it, but Edit, Delete, and Move are turned off. Change that rule in Outlook.
 
-**Testing.** **Test** runs a QuickMail rule against the messages in your list and reports how many it would match. Server rules run in Exchange, not in QuickMail, so there is nothing local to test them against — Test says so when a server rule is selected.
+**Testing.** **Test** runs a rule against the messages in your list and reports how many it would match. It works on **QuickMail rules only**; for a **server rule** the Test control is turned off, the same way Edit and Delete are for a read-only rule — a server rule runs in Exchange, so there is nothing local to test it against.
 
 **What your organization may need to allow.** For most work or school accounts, an administrator has to permit QuickMail to read and change your mailbox rules before this works. If that permission is not in place, you will see a message about it rather than your server rules; ask your administrator to grant QuickMail access.
 

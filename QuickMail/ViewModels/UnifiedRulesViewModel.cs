@@ -70,6 +70,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditSelected))]
     [NotifyPropertyChangedFor(nameof(CanModifySelected))]
+    [NotifyPropertyChangedFor(nameof(CanTestSelected))]
     [NotifyPropertyChangedFor(nameof(ToggleEnabledLabel))]
     [NotifyPropertyChangedFor(nameof(DetailText))]
     [NotifyCanExecuteChangedFor(nameof(EditRuleCommand))]
@@ -246,25 +247,18 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanMoveDown))]
     private Task MoveDownAsync(CancellationToken ct) => MoveServerAsync(+1, ct);
 
-    /// <summary>True whenever a rule is selected — Test is offered for any row (a server row explains it
-    /// can't be tested locally rather than being a dead, disabled button).</summary>
-    private bool HasSelectedRule => SelectedRule != null;
+    /// <summary>Test applies only to a CLIENT rule: a server rule runs in Exchange, so there is nothing
+    /// local to test it against. Disabled for a server row (and when nothing is selected), consistent
+    /// with how Edit/Delete/Move disable for a read-only server rule — a greyed control beats one that,
+    /// for a user running with announcements off, does nothing perceptible when pressed.</summary>
+    public bool CanTestSelected => SelectedRule is { RunsWhere: RuleRunsWhere.Client };
 
-    // Parity with RulesManagerViewModel.TestRule: run the selected CLIENT rule against the messages
-    // selected in the main window and report the match count. Server rules run in Exchange, not in
-    // QuickMail, so there's nothing local to test them against — say so rather than hide the button.
-    [RelayCommand(CanExecute = nameof(HasSelectedRule))]
+    // Parity with RulesManagerViewModel.TestRule: run the selected client rule against the messages
+    // currently in the main window and report the match count.
+    [RelayCommand(CanExecute = nameof(CanTestSelected))]
     private void TestRule()
     {
-        var row = SelectedRule;
-        if (row == null) return;
-
-        if (row.RunsWhere == RuleRunsWhere.Server)
-        {
-            StatusText = "Testing isn't available for server rules — they run in Exchange, not in QuickMail.";
-            Announce(StatusText, AnnouncementCategory.Result);
-            return;
-        }
+        if (SelectedRule is not { RunsWhere: RuleRunsWhere.Client } row) return;   // defensive; CanExecute gates it
 
         var messages = _selectedMessagesForTest?.ToList() ?? [];
         if (messages.Count == 0)

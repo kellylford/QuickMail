@@ -90,7 +90,7 @@ public partial class UnifiedRulesWindow : Window
             execute: () => Run(_vm.MoveDownCommand), isAvailable: () => _vm.CanMoveDown));
         _registry.Register(new CommandDefinition(
             id: "rules.test", category: "Rules", title: "Test Rule Against Selected Messages",
-            execute: () => Run(_vm.TestRuleCommand), isAvailable: () => _vm.SelectedRule != null));
+            execute: () => Run(_vm.TestRuleCommand), isAvailable: () => _vm.CanTestSelected));
         _registry.Register(new CommandDefinition(
             id: "rules.runOnExisting", category: "Rules", title: "Run Rules on Existing Mail",
             execute: () => Run(_vm.RunOnExistingCommand)));

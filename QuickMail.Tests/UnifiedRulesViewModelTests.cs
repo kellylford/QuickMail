@@ -340,8 +340,10 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
-    public async Task TestRule_ServerRule_SaysTestingNotAvailable()
+    public async Task TestRule_ServerRule_CommandDisabled()
     {
+        // Test has no meaning for a server rule (it runs in Exchange), so the command is disabled for a
+        // server row — same gating as Edit/Delete/Move, and correct for a user running announcements off.
         var a = Guid.NewGuid();
         var server = new FakeServerRules();
         server.Stored.Add(Server("S1"));
@@ -350,9 +352,8 @@ public class UnifiedRulesViewModelTests
         await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
         vm.SelectedRule = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Server);
 
-        vm.TestRuleCommand.Execute(null);
-
-        Assert.Contains("isn't available for server rules", vm.StatusText);
+        Assert.False(vm.CanTestSelected);
+        Assert.False(vm.TestRuleCommand.CanExecute(null));
     }
 
     [Fact]
