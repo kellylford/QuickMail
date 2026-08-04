@@ -6847,9 +6847,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Moves a folder to a new parent (IMAP RENAME) and refreshes the tree.</summary>
+    /// <summary>
+    /// Whether <paramref name="folder"/> already sits directly under <paramref name="destination"/>.
+    ///
+    /// <para>Worth checking because the picker now opens pre-selected on exactly that parent, so
+    /// Enter is one keystroke away, and the outcome is not harmless: IMAP's <c>RENAME</c> to the
+    /// same parent and name fails with a server error, and Graph's folder <c>/copy</c> succeeds —
+    /// Graph allows duplicate display names — leaving a second copy of the folder and all its mail
+    /// beside the original.</para>
+    /// </summary>
+    internal static bool IsAlreadyUnder(MailFolderModel folder, MailFolderModel destination)
+    {
+        if (folder.AccountId != destination.AccountId) return false;
+
+        // Graph references the parent by id, and its ids are case-sensitive.
+        if (folder.ParentId != null)
+            return string.Equals(folder.ParentId, destination.FullName, StringComparison.Ordinal);
+
+        // IMAP encodes the hierarchy in the separator-delimited FullName, so the destination is the
+        // parent when the folder's path is the destination's plus exactly one more segment. Both
+        // separators MailKit reports are accepted, the same pair FolderTreeBuilder detects between.
+        var full = folder.FullName;
+        var dest = destination.FullName;
+        if (dest.Length == 0 || full.Length <= dest.Length + 1) return false;
+        if (!full.StartsWith(dest, StringComparison.OrdinalIgnoreCase)) return false;
+        if (full[dest.Length] is not ('/' or '.')) return false;
+
+        return full.IndexOfAny(['/', '.'], dest.Length + 1) < 0;
+    }
+
     public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
+        if (IsAlreadyUnder(node.Folder, destination))
+        {
+            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
         StatusText = $"Moving folder '{node.Label}'…";
         IsBusy     = true;
         try
@@ -6876,6 +6911,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
+        if (IsAlreadyUnder(node.Folder, destination))
+        {
+            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
         StatusText = $"Copying folder '{node.Label}'…";
         IsBusy     = true;
         try
@@ -6946,10 +6987,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ── Message move / copy ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// Whether every one of these messages already lives in <paramref name="destination"/>.
+    ///
+    /// <para>Neither backend refuses this. A same-folder copy duplicates every message where it
+    /// already is, and a same-folder IMAP <c>UID MOVE</c> re-creates them under new UIDs while the
+    /// code below deletes the old ids from the local store and the list — so the messages disappear
+    /// from view until that folder next syncs. Both are worth a keystroke of protection now that the
+    /// picker opens pre-selected on the folder the messages came from: activating "Copy to Folder…"
+    /// with Enter and a repeated keypress would otherwise be enough.</para>
+    /// </summary>
+    private static bool AlreadyIn(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination) =>
+        messages.All(m => m.AccountId == destination.AccountId &&
+                          string.Equals(m.FolderName, destination.FullName, StringComparison.Ordinal));
+
     /// <summary>Moves the given messages to a destination folder and removes them from the current view.</summary>
     public async Task MoveSelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
+
+        if (AlreadyIn(messages, destination))
+        {
+            StatusText = messages.Count == 1
+                ? $"That message is already in {destination.DisplayName}."
+                : $"Those messages are already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Moving {label}…";
@@ -7003,6 +7067,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
+
+        if (AlreadyIn(messages, destination))
+        {
+            StatusText = messages.Count == 1
+                ? $"That message is already in {destination.DisplayName}."
+                : $"Those messages are already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Copying {label}…";
