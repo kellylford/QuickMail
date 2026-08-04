@@ -6200,7 +6200,7 @@ public partial class MainWindow : Window
             // VM falls back to the first account).
             var unifiedVm = new UnifiedRulesViewModel(
                 _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id,
-                selectedMessagesForTest: selectedMessages);
+                selectedMessagesForTest: selectedMessages, configService: _configService);
             unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
             // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
             unifiedWindow = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template);

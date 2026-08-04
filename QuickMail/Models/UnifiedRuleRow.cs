@@ -14,15 +14,20 @@ public enum RuleRunsWhere { Server, Client }
 /// </summary>
 public sealed class UnifiedRuleRow
 {
-    private UnifiedRuleRow(RuleRunsWhere runsWhere, ServerRuleModel? server, MailRule? client)
+    private readonly bool _showFieldLabels;
+
+    private UnifiedRuleRow(RuleRunsWhere runsWhere, ServerRuleModel? server, MailRule? client, bool showFieldLabels)
     {
         RunsWhere = runsWhere;
         Server = server;
         Client = client;
+        _showFieldLabels = showFieldLabels;
     }
 
-    public static UnifiedRuleRow ForServer(ServerRuleModel rule) => new(RuleRunsWhere.Server, rule, null);
-    public static UnifiedRuleRow ForClient(MailRule rule) => new(RuleRunsWhere.Client, null, rule);
+    public static UnifiedRuleRow ForServer(ServerRuleModel rule, bool showFieldLabels = false)
+        => new(RuleRunsWhere.Server, rule, null, showFieldLabels);
+    public static UnifiedRuleRow ForClient(MailRule rule, bool showFieldLabels = false)
+        => new(RuleRunsWhere.Client, null, rule, showFieldLabels);
 
     public RuleRunsWhere RunsWhere { get; }
 
@@ -48,7 +53,11 @@ public sealed class UnifiedRuleRow
             var name = string.IsNullOrWhiteSpace(Name) ? "Unnamed rule" : Name;
             var where = RunsWhere == RuleRunsWhere.Server ? "on server" : "in QuickMail";
             var state = IsEnabled ? "enabled" : "disabled";
-            var head = $"{name}, {where}, {state}";
+            // "Show field labels in the rules list" (RuleListShowFieldLabels): off reads the values run
+            // together, on prefixes each with its field name, mirroring the client window's "Rule …".
+            var head = _showFieldLabels
+                ? $"Rule {name}, runs {where}, status {state}"
+                : $"{name}, {where}, {state}";
             var summary = RunsWhere == RuleRunsWhere.Server ? Server!.OneLineSummary() : ClientSummary(Client!);
             return string.IsNullOrEmpty(summary) ? head : $"{head}. {summary}";
         }

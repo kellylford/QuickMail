@@ -32,17 +32,23 @@ public partial class UnifiedRulesViewModel : ObservableObject
     // the manager was opened without a message-list selection.
     private readonly IReadOnlyList<MailMessageSummary>? _selectedMessagesForTest;
 
+    // "Show field labels in the rules list" — read once at open (matches RulesManagerViewModel); a
+    // Settings change is picked up next time the manager opens.
+    private readonly bool _showFieldLabels;
+
     public UnifiedRulesViewModel(
         IRuleService clientRules,
         IServerRuleService? serverRules,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null,
         Guid? preferredAccountId = null,
-        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null)
+        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null,
+        IConfigService? configService = null)
     {
         _clientRules = clientRules;
         _serverRules = serverRules;
         _selectedMessagesForTest = selectedMessagesForTest?.ToList();
+        _showFieldLabels = configService?.Load().RuleListShowFieldLabels ?? false;
         _foldersByAccount = foldersByAccount;
         _allAccounts = accounts.ToList();
 
@@ -504,7 +510,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
                 try
                 {
                     var server = await _serverRules.ListAsync(accountId, token);
-                    rows.AddRange(server.Select(UnifiedRuleRow.ForServer));
+                    rows.AddRange(server.Select(r => UnifiedRuleRow.ForServer(r, _showFieldLabels)));
                 }
                 catch (OperationCanceledException) { return; }   // superseded — leave state untouched
                 catch (Exception ex)
@@ -518,7 +524,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
             try
             {
                 var client = _clientRules.LoadRules().Where(r => r.AccountId == accountId);
-                rows.AddRange(client.Select(UnifiedRuleRow.ForClient));
+                rows.AddRange(client.Select(r => UnifiedRuleRow.ForClient(r, _showFieldLabels)));
             }
             catch (Exception ex)
             {

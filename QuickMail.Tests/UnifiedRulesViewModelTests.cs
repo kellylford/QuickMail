@@ -399,6 +399,36 @@ public class UnifiedRulesViewModelTests
         Assert.Equal("No messages selected in the main window.", vm.StatusText);
     }
 
+    // ── Field labels (#493 Gap 1: honor RuleListShowFieldLabels in the unified list) ──────────
+
+    [Fact]
+    public async Task RowText_NoFieldLabels_ByDefault()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("Newsletters", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.StartsWith("Newsletters, in QuickMail, enabled", row.RowText);
+        Assert.DoesNotContain("Rule Newsletters", row.RowText);
+    }
+
+    [Fact]
+    public async Task RowText_LabelsFields_WhenShowFieldLabelsOn()
+    {
+        var a = Guid.NewGuid();
+        var cfg = new StubConfigService();
+        cfg.Save(new ConfigModel { RuleListShowFieldLabels = true });
+        var client = new StubRuleService { LoadedRules = [Client("Newsletters", a)] };
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)],
+            preferredAccountId: a, configService: cfg);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        var row = vm.Rules.First(r => r.RunsWhere == RuleRunsWhere.Client);
+        Assert.StartsWith("Rule Newsletters, runs in QuickMail, status enabled", row.RowText);
+    }
+
     [Fact]
     public void TestRule_NothingSelected_CommandDisabled()
     {
