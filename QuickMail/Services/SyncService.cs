@@ -39,6 +39,7 @@ public class SyncService : ISyncService
 
     public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
     public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+    public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
     public event Action<int>? RulesApplied;
     public event Action<int, int>? SyncProgressChanged;
 
@@ -402,19 +403,18 @@ public class SyncService : ISyncService
         // ── New messages ─────────────────────────────────────────────────────────
         var maxKey   = await _store.GetMaxMessageKeyAsync(account.Id, folder.FullName);
         var cfg      = _config.Load();
-        List<MailMessageSummary> incoming;
 
+        // maxKey is "0" for a genuinely-fresh folder AND for every Graph folder (Graph message ids are
+        // non-numeric, so GetMaxMessageKeyAsync's CAST-to-integer high-water mark is always 0). Without
+        // a guard, a fully-cached Graph folder re-fetched its whole SyncDays window on EVERY periodic
+        // sweep — ~all its recent mail, every cycle (#462). The id-diff path below fetches only when the
+        // server actually holds something new. (IMAP folders with mail have a real numeric maxKey and
+        // take the incremental branch below, so this changes nothing for them.)
         if (maxKey == "0" && cfg.SyncDays > 0)
-        {
-            // Fresh start with a date filter: use SEARCH SINCE rather than count-based fallback.
-            incoming = await _imap.GetMessagesSinceDateAsync(
-                account.Id, folder.FullName, DateTime.UtcNow.AddDays(-cfg.SyncDays), ct);
-        }
-        else
-        {
-            incoming = await _imap.GetMessagesSinceAsync(
-                account.Id, folder.FullName, maxKey, cfg.InitialSyncCount, ct);
-        }
+            return await SyncFolderByIdDiffAsync(account, folder, cfg, ct);
+
+        var incoming = await _imap.GetMessagesSinceAsync(
+            account.Id, folder.FullName, maxKey, cfg.InitialSyncCount, ct);
 
         if (incoming.Count > 0)
         {
@@ -429,6 +429,145 @@ public class SyncService : ISyncService
         // ── Remote deletions ─────────────────────────────────────────────────────
         await ReconcileFolderAsync(account, folder, ct);
 
+        return incoming;
+    }
+
+    /// <summary>
+    /// Sync path for a folder whose numeric high-water mark is always "0" — every Graph folder (Graph
+    /// ids are non-numeric) and any genuinely-fresh folder. Instead of re-fetching the whole SyncDays
+    /// window on every periodic sweep (#462), it lists the server ids WITH their received dates ONCE and
+    /// gates on that: it fetches the window only when the server holds a <em>within-window</em> id the
+    /// cache lacks, so an unchanged folder costs one id listing and no message fetch.
+    ///
+    /// Why window-scoped and not a plain id diff: the local cache only ever holds mail inside the
+    /// SyncDays window (the fetch is date-filtered), while the server lists mail of every age. A naïve
+    /// "server has an id the cache lacks" test is therefore true forever on any folder containing mail
+    /// older than the window, and would re-fetch every cycle — defeating the fix. Filtering the server
+    /// ids to the window before diffing compares like with like.
+    ///
+    /// Why the fetch pulls the WHOLE window (not "newest-cached-date forward"): that still surfaces mail
+    /// filed into the folder with an <em>older</em> receivedDateTime than the newest we already hold — a
+    /// server-side rule batch-filing older mail, or old mail moved in from another client — as long as it
+    /// falls inside the window. A date-forward filter would silently miss it. The single date-bearing
+    /// listing also drives the deletion reconcile (cached ids missing from the FULL set), so there is no
+    /// second round-trip.
+    /// </summary>
+    private async Task<List<MailMessageSummary>> SyncFolderByIdDiffAsync(
+        AccountModel account, MailFolderModel folder, ConfigModel cfg, CancellationToken ct)
+    {
+        var windowStart = DateTime.UtcNow.AddDays(-cfg.SyncDays);
+
+        // Probe mode: the fixture stub lists no server ids, so an id-diff would skip the seed fetch and
+        // (via reconcile) delete the seeded fixture mail. Fetch the window and skip reconcile, exactly
+        // as this branch did before #462.
+        if (_probeMode)
+        {
+            var seeded = await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, windowStart, ct);
+            return await SurfaceArrivalsAsync(account, folder, seeded, ct);
+        }
+
+        // id → is_read for everything cached in this folder. The key set is the folder's cached-id set
+        // (drives the addition/deletion diff), and the values let us reconcile read/unread changed by
+        // another client — so this one query replaces a separate GetAllMessageIdsAsync here.
+        var cacheReadStates = await _store.LoadFolderReadStatesAsync(account.Id, folder.FullName);
+
+        // Fresh/empty cache: fetch the full initial window and skip the id listing entirely — there is
+        // nothing to diff against and nothing to reconcile (both no-op on an empty cache), so the listing
+        // would be a wasted round-trip on each folder's first sync.
+        if (cacheReadStates.Count == 0)
+        {
+            var initial = await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, windowStart, ct);
+            return await SurfaceArrivalsAsync(account, folder, initial, ct);
+        }
+
+        var serverIdDates = await _imap.GetFolderMessageIdDatesAsync(account.Id, folder.FullName, ct);
+
+        // Fetch only when the server lists a WITHIN-WINDOW id we don't yet hold — old mail the cache never
+        // captured (older than the window) is not a reason to fetch.
+        var hasNew = serverIdDates.Any(m => m.ReceivedUtc >= windowStart && !cacheReadStates.ContainsKey(m.Id));
+
+        var fetched = hasNew
+            ? await _imap.GetMessagesSinceDateAsync(account.Id, folder.FullName, windowStart, ct)
+            : new List<MailMessageSummary>();
+
+        // Always run the (possibly empty) batch through the chokepoint. An empty batch is a no-op except
+        // that it consumes a pending #366 rebuild baseline (F4) — preserving the pre-#462 behavior where
+        // every sweep passed through ApplyRulesToArrivalsAsync.
+        var incoming = await SurfaceArrivalsAsync(account, folder, fetched, ct);
+
+        // ── Read/unread reconcile ── the old full-window re-fetch refreshed read state from the server as
+        // a side effect (UpsertSummariesAsync carries is_read = excluded.is_read); with the fetch now
+        // skipped, do it explicitly from the same listing. A cached message the server now reports with a
+        // different read state — read (or unread) elsewhere, e.g. Outlook on the phone — gets its cache
+        // row updated and the change surfaced. Messages just fetched above already carry current read
+        // state, so exclude them.
+        var fetchedIds = fetched.Count == 0 ? null : new HashSet<string>(fetched.Select(m => m.MessageId));
+        await ReconcileReadStatesAsync(account, folder, serverIdDates, cacheReadStates, fetchedIds);
+
+        // ── Remote deletions ── the FULL server id set (any age) vs the cache; reuse the listing we
+        // already have (no second server round-trip).
+        var localIds = new HashSet<string>(cacheReadStates.Keys);
+        var serverIds = serverIdDates.Select(m => m.Id).ToList();
+        await ReconcileDeletionsAsync(account, folder, localIds, serverIds);
+
+        return incoming;
+    }
+
+    /// <summary>
+    /// Updates the cache and the UI for messages whose read/unread state changed on the server since we
+    /// last saw them (#462). Diffs the server's read state (from the id listing) against the cached
+    /// state; for the rows that differ it updates only <c>is_read</c> in the store (never touching other
+    /// columns) and raises <see cref="FolderReadStatesReconciled"/> with minimal summaries so the view
+    /// can refresh the matching rows and folder counts. Deliberately NOT routed through FolderSynced: a
+    /// read change must not fire a new-mail toast or reconcile flag state.
+    /// </summary>
+    private async Task ReconcileReadStatesAsync(
+        AccountModel account, MailFolderModel folder,
+        IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)> serverIdDates,
+        Dictionary<string, bool> cacheReadStates,
+        HashSet<string>? justFetchedIds)
+    {
+        var toRead   = new List<(Guid, string, string)>();
+        var toUnread = new List<(Guid, string, string)>();
+        var changed  = new List<MailMessageSummary>();
+
+        foreach (var m in serverIdDates)
+        {
+            if (justFetchedIds != null && justFetchedIds.Contains(m.Id)) continue; // already current from the fetch
+            if (!cacheReadStates.TryGetValue(m.Id, out var cachedRead)) continue;  // not cached (or a new arrival)
+            if (cachedRead == m.IsRead) continue;
+
+            (m.IsRead ? toRead : toUnread).Add((account.Id, folder.FullName, m.Id));
+            changed.Add(new MailMessageSummary
+            {
+                MessageId  = m.Id,
+                AccountId  = account.Id,
+                FolderName = folder.FullName,
+                IsRead     = m.IsRead,
+            });
+        }
+
+        if (changed.Count == 0) return;
+
+        // is_read-only updates — never an upsert, which would blank the row's other columns.
+        if (toRead.Count   > 0) await _store.UpdateIsReadBatchAsync(toRead,   isRead: true);
+        if (toUnread.Count > 0) await _store.UpdateIsReadBatchAsync(toUnread, isRead: false);
+
+        LogService.Log($"Read-state reconcile {account.AccountLabel}/{folder.FullName}: {changed.Count} changed");
+        _ui.Post(() => FolderReadStatesReconciled?.Invoke(changed));
+    }
+
+    /// <summary>
+    /// Runs a fetched batch through the shared rules/upsert chokepoint and raises
+    /// <see cref="FolderSynced"/> for the survivors. An empty batch is a cheap no-op (aside from
+    /// consuming a pending rebuild baseline).
+    /// </summary>
+    private async Task<List<MailMessageSummary>> SurfaceArrivalsAsync(
+        AccountModel account, MailFolderModel folder, List<MailMessageSummary> fetched, CancellationToken ct)
+    {
+        var incoming = await ApplyRulesToArrivalsAsync(account, folder, fetched, persisted: true, consumeRebuildBaseline: true, ct);
+        if (incoming.Count > 0)
+            _ui.Post(() => FolderSynced?.Invoke(incoming));
         return incoming;
     }
 
@@ -455,6 +594,19 @@ public class SyncService : ISyncService
         if (localIds.Count == 0) return 0;
 
         var serverIds  = await _imap.GetFolderMessageIdsAsync(account.Id, folder.FullName, ct);
+        return await ReconcileDeletionsAsync(account, folder, localIds, serverIds);
+    }
+
+    /// <summary>
+    /// Deletion half of the reconcile, given id sets that have already been listed — removes cached ids
+    /// the server no longer lists and raises <see cref="MessagesRemoved"/>. Split out of
+    /// <see cref="ReconcileFolderAsync"/> so the Graph sweep path (<see cref="SyncFolderByIdDiffAsync"/>)
+    /// can drive both addition detection and deletion from a single server-id listing (#462). Callers own
+    /// the _probeMode guard and the empty-cache no-op.
+    /// </summary>
+    private async Task<int> ReconcileDeletionsAsync(
+        AccountModel account, MailFolderModel folder, HashSet<string> localIds, IList<string> serverIds)
+    {
         var serverSet  = new HashSet<string>(serverIds);
         var deletedIds = localIds.Where(id => !serverSet.Contains(id)).ToList();
 

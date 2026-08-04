@@ -745,6 +745,38 @@ public class ImapMailService : IMailService, IChangeNotifier, IConnectionProbe
         finally { await folder.CloseAsync(false, ct); }
     }
 
+    // NOTE: not on any live path today. The sweep only routes a folder here when its numeric high-water
+    // mark is "0", which for IMAP means an empty cache — and that case short-circuits to the initial
+    // fetch before this listing is reached (IMAP UIDs are numeric, so a populated folder always has a
+    // real high-water mark and takes the incremental branch). It exists to satisfy the interface. Two
+    // things to know if anything ever does route here: (1) FetchAsync(0, -1) pulls every message in the
+    // folder — not cheap on a large folder, and nothing currently guards it; (2) INTERNALDATE is
+    // date-granular the same way IMAP SEARCH SINCE is, so unlike Graph the gate's full-precision
+    // ReceivedUtc comparison and GetMessagesSinceDateAsync's SEARCH SINCE would not agree at the edge.
+    public async Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(
+        Guid accountId, string folderName, CancellationToken ct = default)
+    {
+        using var lease = await RentClientAsync(accountId, ImapLeasePriority.Background, ct);
+        var client = lease.Client;
+        var folder = await client.GetFolderAsync(folderName, ct);
+        await folder.OpenAsync(FolderAccess.ReadOnly, ct);
+        try
+        {
+            if (folder.Count == 0) return Array.Empty<(string, DateTimeOffset, bool)>();
+            // UID + INTERNALDATE + FLAGS for every message — the id listing plus each message's
+            // server-received timestamp and read state, so the sweep can window-filter and reconcile
+            // read/unread without fetching envelopes (#462).
+            var summaries = await folder.FetchAsync(
+                0, -1, MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate | MessageSummaryItems.Flags, ct);
+            return summaries
+                .Select(s => (s.UniqueId.Id.ToString(CultureInfo.InvariantCulture),
+                              (s.InternalDate ?? DateTimeOffset.MinValue).ToUniversalTime(),
+                              ((s.Flags ?? MessageFlags.None) & MessageFlags.Seen) != 0))
+                .ToList();
+        }
+        finally { await folder.CloseAsync(false, ct); }
+    }
+
     // ── Body-download preview fallback (used when server lacks IMAP PREVIEW) ────
 
     public async Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(

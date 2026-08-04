@@ -103,6 +103,7 @@ public class PreviewSuppressionTests
         public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
         public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
         public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
+        public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
         public Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.FromResult(new HashSet<string>());
         public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
         public Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId) => Task.FromResult(new Dictionary<string, int>());
@@ -239,6 +240,7 @@ public class IdleNewMailTests
         public Task<int> CountTrashMessagesAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<int> EmptyTrashAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult(0);
         public Task<IList<string>> GetFolderMessageIdsAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IList<string>>(Array.Empty<string>());
+        public Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<(string, DateTimeOffset, bool)>>([]);
         public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid accountId, string folderName, IList<string> messageIds, int maxLines, CancellationToken ct = default) => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
         public Task<int> PollAsync(Guid accountId, string folderName, CancellationToken ct = default) => Task.FromResult(0);
         public Task<(int Total, int Unread)> GetInboxStatusAsync(Guid accountId, CancellationToken ct = default) => Task.FromResult((0, 0));
@@ -265,6 +267,7 @@ public class IdleNewMailTests
 #pragma warning disable CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
         public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+        public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;
 #pragma warning restore CS0067

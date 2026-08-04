@@ -786,6 +786,21 @@ public class LocalStoreService : ILocalStoreService
         return result;
     }
 
+    public async Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT unique_id, is_read FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        var result = new Dictionary<string, bool>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            result[r.GetString(0)] = r.GetInt64(1) != 0;
+        return result;
+    }
+
     /// <summary>
     /// Which of <paramref name="messageIds"/> already exist in the folder — a bounded
     /// <c>WHERE unique_id IN (…)</c> so a live sync can dedupe its small fetched batch without
