@@ -2,7 +2,7 @@
 
 This is a large release — the most change in a single version since the calendar arrived in v0.8.33.
 
-Adding an account has been rebuilt around three questions instead of a page of server settings. You can now decide what each row of a message list says out loud, and in what order. You can watch a conversation and have every message in it — including the replies that have not arrived yet — collect in one folder. Mail deleted or filed somewhere else now keeps up while QuickMail is open, instead of waiting for a restart. Microsoft 365 accounts get a run of fixes and can now manage their server-side Inbox rules — the ones Outlook sets up — from inside QuickMail, mail rules change in when they run and which folders they act on, several lists that were unreadable to a screen reader are fixed, and there is a build for ARM PCs.
+Adding an account has been rebuilt around three questions instead of a page of server settings. Gmail accounts now need an app password, because Google is no longer granting QuickMail sign-in authorizations to anyone who does not already have one. You can now decide what each row of a message list says out loud, and in what order. You can watch a conversation and have every message in it — including the replies that have not arrived yet — collect in one folder. Mail deleted or filed somewhere else now keeps up while QuickMail is open, instead of waiting for a restart. Microsoft 365 accounts get a run of fixes and can now manage their server-side Inbox rules — the ones Outlook sets up — from inside QuickMail, mail rules change in when they run and which folders they act on, several lists that were unreadable to a screen reader are fixed, and there is a build for ARM PCs.
 
 The last public release was **v0.8.36**, so if that is what you have been running, everything below is new to you.
 
@@ -11,7 +11,7 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
 - [Download](#download)
 - [Accounts and signing in](#accounts-and-signing-in)
   - [New: adding an account now asks three questions, not ten](#new-adding-an-account-now-asks-three-questions-not-ten)
-  - [Changed: Google sign-in for Gmail is now something you turn on](#changed-google-sign-in-for-gmail-is-now-something-you-turn-on)
+  - [Changed: Gmail needs an app password — Google sign-in is no longer available to new accounts](#changed-gmail-needs-an-app-password--google-sign-in-is-no-longer-available-to-new-accounts)
 - [Microsoft 365 accounts](#microsoft-365-accounts)
   - [Fixed: deleted and moved mail no longer comes back](#fixed-deleted-and-moved-mail-no-longer-comes-back)
   - [New: mail deleted or filed elsewhere now keeps up while QuickMail is open](#new-mail-deleted-or-filed-elsewhere-now-keeps-up-while-quickmail-is-open)
@@ -121,22 +121,22 @@ The Provider list opens on **Other (enter settings manually)** rather than endin
 
 The [Accounts section of the User Guide](https://kellylford.github.io/QuickMail/accounts.html) covers the whole lifecycle — choosing a provider, adding an account, entering settings by hand, testing, editing, and removing.
 
-### Changed: Google sign-in for Gmail is now something you turn on
+### Changed: Gmail needs an app password — Google sign-in is no longer available to new accounts
 
-Google stopped granting QuickMail new authorizations, so a new Gmail account signs in with an app password. But a small number of accounts were authorized before that happened and still work perfectly well over Google sign-in, and this release makes sure they keep their route in.
+**Google is no longer granting QuickMail authorizations, so signing in with Google is not available to you unless your account was authorized before that happened.** For everyone else — which is nearly everyone — a Gmail account is added with an **app password**: a password you generate on Google's own website for use in a mail program, rather than the one you sign in to Google with. QuickMail says so above the password box when you choose Gmail, and links straight to the page where you create one. The User Guide's [Accounts section](https://kellylford.github.io/QuickMail/accounts.html) has the steps.
 
-**If your Gmail account already uses Google sign-in, nothing changes and you need do nothing.** It keeps signing in, keeps syncing mail, contacts, and calendar, and Manage Accounts still shows it as a Google account. Only the *offer* of Google sign-in to a new account is affected.
+This is not a limit QuickMail chose and it is not one any QuickMail setting can lift. An attempt to sign in with Google on an account that was not authorized earlier ends in **"This app has been blocked"** — Google refusing the application, not your account being wrong. If you see that, an app password is the way in.
 
-**If you want to add another Gmail account over Google sign-in**, turn the option on:
+**A small number of accounts were authorized before this happened, and they keep working.** If your Gmail account already uses Google sign-in, nothing changes and you need do nothing: it keeps signing in, keeps syncing mail, contacts, and calendar, and Manage Accounts still shows it as a Google account. This release exists in part to make sure those accounts keep their route in — only the *offer* of Google sign-in to a **new** account is withdrawn.
+
+**If you are one of those people and want to add another Gmail account over Google sign-in**, the offer is still there to turn on:
 
 1. **Tools → Settings → Advanced**, check **Sign in with Google for Gmail accounts**, and select **Save**.
 2. Restart QuickMail — the setting is read at startup.
 
 The **Provider** list then has a **Gmail (sign in with Google)** entry directly below plain **Gmail**. Choose it and there is no password box at all: Gmail's servers fill in as usual and a **Sign in with Google** button stands where the password would be. Contact and calendar sync are offered too, granted as part of the same sign-in. The Google choice also returns to **Advanced settings → Authentication**. (The same switch is available as `GoogleAuth = true` under `[features]` in `config.ini`, or `--feature GoogleAuth` at launch.)
 
-**Why it is off by default.** It used to be on for everyone, which meant the one path Google refuses was the one on offer — and a sign-in that ends in "This app has been blocked" tells you nothing about what to do instead. Off by default, a new Gmail account gets the app-password route that works, and the people the sign-in still works for have a supported way to ask for it.
-
-If you turn the setting on and sign-in still ends in **"This app has been blocked,"** your account is not one of the ones authorized earlier, and no QuickMail setting can change that. Use a Gmail app password — the User Guide's [Accounts section](https://kellylford.github.io/QuickMail/accounts.html) has the steps.
+**Why the offer is off unless you ask for it.** It used to be on for everyone, which meant the one path Google refuses was the one QuickMail put in front of you — and a sign-in that ends in "This app has been blocked" tells you nothing about what to do instead. Off by default, a new Gmail account gets the app-password route that works, and the few people the sign-in still works for have a supported way to ask for it.
 
 ---
 
