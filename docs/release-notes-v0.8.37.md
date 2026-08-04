@@ -2,7 +2,7 @@
 
 This is a large release — the most change in a single version since the calendar arrived in v0.8.33.
 
-Adding an account has been rebuilt around three questions instead of a page of server settings. You can now decide what each row of a message list says out loud, and in what order. You can watch a conversation and have every message in it — including the replies that have not arrived yet — collect in one folder. Mail deleted or filed somewhere else now keeps up while QuickMail is open, instead of waiting for a restart. Microsoft 365 accounts get a run of fixes, mail rules change in when they run and which folders they act on, several lists that were unreadable to a screen reader are fixed, and there is a build for ARM PCs.
+Adding an account has been rebuilt around three questions instead of a page of server settings. You can now decide what each row of a message list says out loud, and in what order. You can watch a conversation and have every message in it — including the replies that have not arrived yet — collect in one folder. Mail deleted or filed somewhere else now keeps up while QuickMail is open, instead of waiting for a restart. Microsoft 365 accounts get a run of fixes and can now manage their server-side Inbox rules — the ones Outlook sets up — from inside QuickMail, mail rules change in when they run and which folders they act on, several lists that were unreadable to a screen reader are fixed, and there is a build for ARM PCs.
 
 The last public release was **v0.8.36**, so if that is what you have been running, everything below is new to you.
 
@@ -28,6 +28,7 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
   - [Fixed: attachments were unreachable when a message opens in its own window](#fixed-attachments-were-unreachable-when-a-message-opens-in-its-own-window)
   - [Fixed: some links opened inside QuickMail instead of your browser](#fixed-some-links-opened-inside-quickmail-instead-of-your-browser)
 - [Mail rules](#mail-rules)
+  - [New: your Microsoft 365 server rules, in the Rules Manager](#new-your-microsoft-365-server-rules-in-the-rules-manager)
   - [Changed: rules are now per-account](#changed-rules-are-now-per-account)
   - [Changed: rules run on mail that arrives while QuickMail is open](#changed-rules-run-on-mail-that-arrives-while-quickmail-is-open)
   - [Changed: rules act on the Inbox, and only on new arrivals](#changed-rules-act-on-the-inbox-and-only-on-new-arrivals)
@@ -269,7 +270,22 @@ Every link in every message now opens in your default browser, from the reading 
 
 ## Mail rules
 
-Mail rules — the ones you set up in **Tools → Rules…** to file, flag, or delete mail automatically — changed in three ways this release: which account a rule belongs to, when rules run, and which folders they act on. If you use rules, all three are worth reading, because together they change behaviour you may be relying on.
+Mail rules — the ones you set up in **Tools → Rules…** to file, flag, or delete mail automatically — changed in four ways this release. If you have a Microsoft 365 account, the Rules Manager now shows the rules that live on your Exchange mailbox as well as the ones that run inside QuickMail. For everyone, three things changed about the rules QuickMail runs: which account a rule belongs to, when rules run, and which folders they act on. If you use rules, all of it is worth reading, because together these change behaviour you may be relying on.
+
+### New: your Microsoft 365 server rules, in the Rules Manager
+
+If you have a Microsoft 365 (Exchange) account, the Rules Manager now shows that mailbox's **server-side rules** — the same rules Outlook calls "Inbox rules" — alongside the rules that run inside QuickMail. A server rule runs on Microsoft's servers, so it acts on your mail **even when QuickMail is closed**, and wherever else you read that mailbox. You can create, edit, enable and disable, reorder, and delete them from QuickMail.
+
+**The change you will notice first: the Rules Manager is now one account at a time.** When you have a Microsoft 365 account, the Rules Manager opens on a single account chosen in an **Account** list at the top, instead of listing every account's rules together. Your rules are not gone — they are behind the account picker. Choose the account, and the list below shows that mailbox's rules. With only one account there is no picker.
+
+The rest of what is worth knowing:
+
+- **Server and QuickMail rules share one list**, each row saying where it runs — **on server** or **in QuickMail** — along with its name and whether it is enabled.
+- **QuickMail decides where a new rule lives.** It saves a rule as a server rule whenever it can, so the rule keeps working while QuickMail is closed. A rule that needs something only QuickMail can do — today, **Mark as unread** — is saved as a QuickMail rule instead, and QuickMail tells you why.
+- **Some rules built in Outlook are shown read-only.** If a rule uses conditions or actions QuickMail cannot represent exactly, you can read it here but not change it, so it cannot quietly become something you did not mean. Change those in Outlook.
+- **Test works on QuickMail rules.** For a server rule the Test control is turned off, the same way Edit and Delete are for a read-only rule — a server rule runs in Exchange, so there is nothing local to test it against.
+
+**For most work or school accounts this needs your administrator to allow QuickMail to read and change your mailbox rules.** Without that permission you will see a message saying so rather than your server rules. ([#333](https://github.com/kellylford/QuickMail/issues/333))
 
 ### Changed: rules are now per-account
 
@@ -568,7 +584,9 @@ Everything below is developer detail — implementation notes, test coverage, an
 - **`RuleService.MigrateAllAccountRules`** runs from `LoadRules()` and is not feature-gated. It defers entirely when the account list is empty — an empty read can be transient (startup ordering, a locked `accounts.json`) and migrating against it would drop every unscoped rule. A genuine Graph-only profile still drops, and logs each dropped rule by name. `AccountOptions` lists every account including Graph ones, so a user can rescope a dropped rule and it will run.
 - **`ApplyRulesToExistingAsync` takes an account→Inbox-`FullName` map** and filters cached mail to those pairs Ordinal, skipping accounts absent from the map **fail-closed** rather than guessing an Inbox. The caller builds the map from `CachedFolders`, logs unresolved accounts, and runs under a 60-second timeout. The Rules Manager's `Closed` handler no longer calls it — it only refreshes the status text.
 - **Never reached a user: the blank Account combo.** Retiring the "All accounts" option left a new rule's `AccountId` null with nothing in `AccountOptions` matching it, so the combo rendered blank. Introduced 77 minutes after the v0.8.36 tag and fixed 35 minutes later, so no shipped build ever had it — which is why it is not in the user-facing notes.
-- **Server rules remain gated.** `FeatureFlag.ServerRules` defaults to `false` in `ConfigFeatureGate.Defaults`, and `MainWindow` builds `UnifiedRulesWindow` only when the flag is on, a `ServerRuleService` exists, and a Graph account is present; otherwise the existing client-only `RulesManagerWindow` is used with `serverRulesVm: null`, which leaves `ServerRulesSection` collapsed. The classifier, the server-rule editor VM, and the unified list are all in the tree and all unreachable in a shipped build — they are deliberately absent from the user-facing notes above. There is no Settings UI for the flag; only `--feature ServerRules` or `config.ini`.
+- **Server rules ship on.** `FeatureFlag.ServerRules` now defaults to `true` in `ConfigFeatureGate.Defaults` — the flag existed to keep the surface hidden while list/create/edit/delete/reorder and the unified per-account window were built, and they are done. `MainWindow` builds `UnifiedRulesWindow` when the flag is on, a `ServerRuleService` exists, **and** a Graph account is present; a profile with no Graph account still gets the client-only `RulesManagerWindow`, unchanged. Note what the flip actually swaps for a Graph user: the whole Rules Manager, not an extra section — so the client-only window's per-rule Account column gives way to the unified window's account picker, and every action the old window offered had to exist in the new one. **Turn the surface off again** with `ServerRules=false` under `[features]` in `config.ini`, or `--no-feature ServerRules` at launch. There is no Settings UI for it.
+- **Test Rule was the parity gap the flip nearly shipped.** `RulesManagerWindow` has had a Test button since before the unified window existed; `UnifiedRulesViewModel` had no equivalent, so enabling the flag would have silently removed rule testing for every Microsoft 365 user — including for their client rules on IMAP accounts, since one Graph account swaps the window for all of them. Caught in review of the flag flip, not of the window that omitted it. `CanTestSelected` gates on the row being a client rule, and the button, context-menu item, and command-palette entry all follow it. Testing a *server* rule is deliberately a disabled control rather than an enabled one that announces "not available": that message was `Result`-category, so a user running with announcements off would have pressed a button and perceived nothing.
+- **Live verification** (Timothy Spaulding, real M365 mailbox, 67 server rules): create → edit → reorder → disable → delete each confirmed by re-listing from Graph afterwards rather than trusting the app's own state. The reorder held its minimal diff — 2 rules PATCHed, not all 66. A create rejected by Graph for an invalid Sent-To address surfaced the exact error and left the editor open, so the failure path is exercised too.
 
 ### Message-list row speech
 
