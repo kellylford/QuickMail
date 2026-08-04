@@ -330,17 +330,17 @@
                                 <CheckBox Content="Show field _labels in the contact list"
                                           IsChecked="{Binding ContactListShowFieldLabels, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Show field labels in the address book contact list accessible names"/>
+                                          AutomationProperties.Name="Show field labels in the contact list"/>
 
                                 <CheckBox Content="Show field labels in the _calendar event list"
                                           IsChecked="{Binding CalendarListShowFieldLabels, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Show field labels in the calendar event list accessible names"/>
+                                          AutomationProperties.Name="Show field labels in the calendar event list"/>
 
                                 <CheckBox Content="Show field labels in the r_ules list"
                                           IsChecked="{Binding RuleListShowFieldLabels, Mode=TwoWay}"
                                           Margin="16,4,0,0"
-                                          AutomationProperties.Name="Show field labels in the rules list accessible names"/>
+                                          AutomationProperties.Name="Show field labels in the rules list"/>
 
                                 <CheckBox Content="Remind me before appoin_tments"
                                           IsChecked="{Binding CalendarReminders, Mode=TwoWay}"
