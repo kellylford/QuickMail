@@ -5465,13 +5465,50 @@ public partial class MainWindow : Window
         await _vm.CreateFolderAndRefreshAsync(accountId.Value, parentFolder?.FullName, dlg.FolderName);
     }
 
+    // ── Move / copy folder (issue #431) ───────────────────────────────────────
+    // The context menu is attached to every folder-tree item, including the virtual nodes, so both
+    // handlers have to reject a node that is not a real server folder before anything else. The
+    // check is the one FolderContextMenu_SetArchive_Click uses: the aggregate views (All Inboxes,
+    // All Mail, …) carry no AccountId, and a per-account "All Mail" node carries a real AccountId
+    // with a \0-prefixed sentinel FullName that no server would accept. Left unguarded, the first
+    // reports "no other folder in this account" (untrue — it is not a folder at all) and the second
+    // opens a full picker and fails at the server.
+    private bool IsMovableFolder(FolderTreeNode? node, string verb)
+    {
+        if (node is { IsHeader: false, Folder: { } folder } &&
+            folder.AccountId != Guid.Empty &&
+            folder.FullName.Length > 0 && folder.FullName[0] != '\0')
+            return true;
+
+        // Say why. Silently ignoring a menu item the user just activated is the dead end this whole
+        // change is about; a header is the only case the user can reasonably predict.
+        if (node is { IsHeader: false })
+            Report($"'{node.Label}' is a view, not a folder, so there is nothing to {verb}.");
+        return false;
+    }
+
+    // Status bar for sighted users, announcement for screen-reader users — the pairing
+    // FolderContextMenu_SetArchive_Click established for these context-menu outcomes.
+    private void Report(string message)
+    {
+        _vm.StatusText = message;
+        AccessibilityHelper.Announce(this, message, category: AnnouncementCategory.Result);
+    }
+
     private async void FolderContextMenu_MoveFolder_Click(object sender, RoutedEventArgs e)
     {
         var node = GetContextMenuFolderNode(sender);
-        if (node?.Folder == null || node.IsHeader) return;
+        if (!IsMovableFolder(node, "move")) return;
 
         if (_vm.CachedFolders.Count == 0) return;
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Move Folder To") { Owner = this };
+        var picker = FolderPickerWindow.ForFolderMoveCopy(
+            _vm.Accounts, _vm.CachedFolders, node!.Folder!, "Move Folder To");
+        if (picker == null)
+        {
+            Report($"There is no other folder in this account to move '{node.Label}' into.");
+            return;
+        }
+        picker.Owner = this;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
@@ -5482,10 +5519,17 @@ public partial class MainWindow : Window
     private async void FolderContextMenu_CopyFolder_Click(object sender, RoutedEventArgs e)
     {
         var node = GetContextMenuFolderNode(sender);
-        if (node?.Folder == null || node.IsHeader) return;
+        if (!IsMovableFolder(node, "copy")) return;
 
         if (_vm.CachedFolders.Count == 0) return;
-        var picker = new FolderPickerWindow(_vm.Accounts, _vm.CachedFolders, title: "Copy Folder To") { Owner = this };
+        var picker = FolderPickerWindow.ForFolderMoveCopy(
+            _vm.Accounts, _vm.CachedFolders, node!.Folder!, "Copy Folder To");
+        if (picker == null)
+        {
+            Report($"There is no other folder in this account to copy '{node.Label}' into.");
+            return;
+        }
+        picker.Owner = this;
         var pickerOpened = picker.ShowDialog();
         _vm.CommitPendingFolderTreeRebuild(); // apply a folder created inside the picker, even on cancel (no-op otherwise)
         if (pickerOpened != true || picker.SelectedFolder == null) return;
