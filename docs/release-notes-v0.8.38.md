@@ -31,6 +31,10 @@ The checkbox is in **Settings → General** for everyone, but only the Rules Man
 
 Both windows honor it now. With it on, a rule in the account-at-a-time window reads as "Rule Newsletters, runs on server, status enabled" rather than running the pieces together. The setting is read when the Rules Manager opens, so change it in Settings and then open Rules to hear the difference. ([#493](https://github.com/kellylford/QuickMail/issues/493))
 
+## Fixed: three Settings checkboxes were read out with words that were not their labels
+
+The three **Show field labels in the … list** checkboxes — contact list, calendar event list, rules list — were each read out with "accessible names" tacked on the end, and the contact one called the list "the address book contact list" rather than what the label says. Each is now read out as its own label. ([#493](https://github.com/kellylford/QuickMail/issues/493))
+
 ---
 
 ## Internal
