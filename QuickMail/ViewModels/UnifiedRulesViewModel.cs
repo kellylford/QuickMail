@@ -28,15 +28,21 @@ public partial class UnifiedRulesViewModel : ObservableObject
     private readonly IReadOnlyDictionary<Guid, List<MailFolderModel>>? _foldersByAccount;
     private readonly List<AccountModel> _allAccounts;
 
+    // Messages selected in the main window, for Test Rule (parity with RulesManagerViewModel). Null when
+    // the manager was opened without a message-list selection.
+    private readonly IReadOnlyList<MailMessageSummary>? _selectedMessagesForTest;
+
     public UnifiedRulesViewModel(
         IRuleService clientRules,
         IServerRuleService? serverRules,
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>>? foldersByAccount = null,
-        Guid? preferredAccountId = null)
+        Guid? preferredAccountId = null,
+        IEnumerable<MailMessageSummary>? selectedMessagesForTest = null)
     {
         _clientRules = clientRules;
         _serverRules = serverRules;
+        _selectedMessagesForTest = selectedMessagesForTest?.ToList();
         _foldersByAccount = foldersByAccount;
         _allAccounts = accounts.ToList();
 
@@ -64,6 +70,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanEditSelected))]
     [NotifyPropertyChangedFor(nameof(CanModifySelected))]
+    [NotifyPropertyChangedFor(nameof(CanTestSelected))]
     [NotifyPropertyChangedFor(nameof(ToggleEnabledLabel))]
     [NotifyPropertyChangedFor(nameof(DetailText))]
     [NotifyCanExecuteChangedFor(nameof(EditRuleCommand))]
@@ -71,6 +78,7 @@ public partial class UnifiedRulesViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(ToggleEnabledCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveUpCommand))]
     [NotifyCanExecuteChangedFor(nameof(MoveDownCommand))]
+    [NotifyCanExecuteChangedFor(nameof(TestRuleCommand))]
     private UnifiedRuleRow? _selectedRule;
 
     /// <summary>Enable/Disable button text: "Enable" for a disabled rule, "Disable" for an enabled one.</summary>
@@ -238,6 +246,32 @@ public partial class UnifiedRulesViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(CanMoveDown))]
     private Task MoveDownAsync(CancellationToken ct) => MoveServerAsync(+1, ct);
+
+    /// <summary>Test applies only to a CLIENT rule: a server rule runs in Exchange, so there is nothing
+    /// local to test it against. Disabled for a server row (and when nothing is selected), consistent
+    /// with how Edit/Delete/Move disable for a read-only server rule — a greyed control beats one that,
+    /// for a user running with announcements off, does nothing perceptible when pressed.</summary>
+    public bool CanTestSelected => SelectedRule is { RunsWhere: RuleRunsWhere.Client };
+
+    // Parity with RulesManagerViewModel.TestRule: run the selected client rule against the messages
+    // currently in the main window and report the match count.
+    [RelayCommand(CanExecute = nameof(CanTestSelected))]
+    private void TestRule()
+    {
+        if (SelectedRule is not { RunsWhere: RuleRunsWhere.Client } row) return;   // defensive; CanExecute gates it
+
+        var messages = _selectedMessagesForTest?.ToList() ?? [];
+        if (messages.Count == 0)
+        {
+            StatusText = "No messages selected in the main window.";
+            Announce(StatusText, AnnouncementCategory.Result);
+            return;
+        }
+
+        var matched = _clientRules.TestRule(row.Client!, messages);
+        StatusText = $"Rule would match {matched.Count} of {messages.Count} selected messages.";
+        Announce(StatusText, AnnouncementCategory.Result);
+    }
 
     // ── Save routing ────────────────────────────────────────────────────────
 

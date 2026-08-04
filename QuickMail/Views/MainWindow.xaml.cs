@@ -6180,6 +6180,9 @@ public partial class MainWindow : Window
         // reader (GrabAddresses). Choose the layout: the unified single-list manager (spec §20) when
         // server rules are enabled and a Graph account exists; otherwise the client-only manager. The
         // shared Closed handler below works for either window type.
+        // Messages the Test Rule action runs against — the same set for either window type.
+        var selectedMessages = _vm.Messages.ToList();
+
         Window dialog;
         UnifiedRulesWindow? unifiedWindow = null;
         if (_serverRuleService != null
@@ -6189,7 +6192,8 @@ public partial class MainWindow : Window
             // Seed the picker with the account the user is currently in (null on aggregate views →
             // VM falls back to the first account).
             var unifiedVm = new UnifiedRulesViewModel(
-                _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id);
+                _ruleService, _serverRuleService, accounts, _vm.CachedFolders, _vm.SelectedAccount?.Id,
+                selectedMessagesForTest: selectedMessages);
             unifiedVm.RunOnExistingRequested += RunClientRulesOnExisting;
             // The window prefills from the template (Ctrl+Shift+T) in its Loaded handler, once shown.
             unifiedWindow = new UnifiedRulesWindow(unifiedVm, accounts, _vm.CachedFolders, template);
@@ -6197,7 +6201,6 @@ public partial class MainWindow : Window
         }
         else
         {
-            var selectedMessages = _vm.Messages.ToList();
             var rulesVm = new RulesManagerViewModel(
                 _ruleService, accounts,
                 prefillTemplate: template,

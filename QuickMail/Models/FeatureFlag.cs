@@ -32,10 +32,10 @@ public enum FeatureFlag
 
     /// <summary>
     /// Shows server-side (Exchange/Graph) Inbox rules in the Rules Manager for Microsoft 365
-    /// accounts (#333). Default: false while the feature is built out — enable at launch with
-    /// --feature ServerRules or in config.ini with ServerRules=true under [features]. Flip the
-    /// default to true via a joint-decision PR once create/edit/delete and the unified per-account
-    /// window are complete.
+    /// accounts (#333). Default: true — server-rule list/create/edit/delete/reorder and the unified
+    /// per-account rules window are complete. Rules the API can't fully round-trip are surfaced
+    /// read-only (see GraphServerRuleService.ListAsync). Turn the surface off again with
+    /// ServerRules=false under [features] in config.ini, or --no-feature ServerRules at launch.
     /// </summary>
     ServerRules,
 }
