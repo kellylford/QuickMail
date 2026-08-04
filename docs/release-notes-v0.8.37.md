@@ -44,6 +44,7 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
   - [New: typing and stepping dates and times in the appointment editor](#new-typing-and-stepping-dates-and-times-in-the-appointment-editor)
   - [Fixed: creating an appointment late in the evening](#fixed-creating-an-appointment-late-in-the-evening)
 - [Keyboard and navigation](#keyboard-and-navigation)
+  - [Fixed: moving or copying a folder now shows the folder tree](#fixed-moving-or-copying-a-folder-now-shows-the-folder-tree)
   - [Fixed: typing a folder name in the folder picker now works](#fixed-typing-a-folder-name-in-the-folder-picker-now-works)
   - [Fixed: arrowing through settings options now chooses them](#fixed-arrowing-through-settings-options-now-chooses-them)
 - [Screen readers](#screen-readers)
@@ -386,6 +387,19 @@ Pressing **N** for a new appointment after about 11:30 PM produced a default hal
 ---
 
 ## Keyboard and navigation
+
+### Fixed: moving or copying a folder now shows the folder tree
+
+Choosing where to move or copy a folder — **Shift+F10** on a folder, then **Move Folder…** or **Copy Folder…** — presented one long flat list of every folder in every account, with each one spelled out as a full path. Every other place QuickMail asks you to pick a destination folder shows a tree. This picker now does too: folders nested under their parent, everything expanded so arrow keys and type-ahead reach any folder without opening anything first. ([#431](https://github.com/kellylford/QuickMail/issues/431))
+
+Two destinations it no longer offers, both of which could only fail:
+
+- **Folders in your other accounts.** A folder moves and copies within its own account; the old list showed every account's folders with the account name spelled into each row. In a tree the account name sits on a header several rows up, so two accounts that each have an "Archive" would have been told apart only by where you had arrowed from — and the move would have silently acted on the wrong one. The picker is now limited to the account the folder already lives in.
+- **The folder you are moving, and everything inside it.** Nothing can be moved or copied into itself.
+
+Nothing is selected when the picker opens, so **Open** is unavailable until you arrow to a folder, and pressing Enter before then announces "Choose a folder" rather than appearing to ignore the keypress. The same applies to the move/copy-message picker.
+
+Two cases that used to end in silence or a server error now say what happened: when the exclusions above leave nowhere to move the folder, QuickMail says so instead of opening an empty picker; and **Move Folder…** or **Copy Folder…** on one of the views that sit in the folder tree — All Inboxes, All Mail, an account's All Mail — now says it is a view rather than a folder. Choosing it on a per-account All Mail previously opened a full picker and failed at the server.
 
 ### Fixed: typing a folder name in the folder picker now works
 
