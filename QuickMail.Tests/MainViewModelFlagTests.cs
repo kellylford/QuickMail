@@ -92,6 +92,7 @@ public class MainViewModelFlagTests
         public event Action<IReadOnlyList<MailMessageSummary>>? FolderSynced;
 #pragma warning disable CS0067
         public event Action<IReadOnlyList<MailMessageSummary>>? MessagesRemoved;
+        public event Action<IReadOnlyList<MailMessageSummary>>? FolderReadStatesReconciled;
         public event Action<int>? RulesApplied;
         public event Action<int, int>? SyncProgressChanged;
 #pragma warning restore CS0067
@@ -232,8 +233,10 @@ sealed class FilterableStoreForFlags : ILocalStoreService
     public Task<MailMessageDetail?> LoadDetailAsync(Guid accountId, string folderName, string messageId) => Task.FromResult<MailMessageDetail?>(null);
     public Task<string> GetMaxMessageKeyAsync(Guid accountId, string folderName) => Task.FromResult("0");
     public Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName) => Task.FromResult(new HashSet<string>());
+    public Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName) => Task.FromResult(new Dictionary<string, bool>());
     public Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.FromResult(new HashSet<string>());
     public Task<int> CountSummariesAsync(Guid accountId) => Task.FromResult(0);
+    public Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId) => Task.FromResult(new Dictionary<string, int>());
     public Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId) => Task.FromResult<DateTimeOffset?>(null);
     public Task UpdateFlagIdAsync(Guid accountId, string folderName, string messageId, string? flagId) => Task.CompletedTask;
     public Task UpdateFlagIdBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, string? flagId) => Task.CompletedTask;

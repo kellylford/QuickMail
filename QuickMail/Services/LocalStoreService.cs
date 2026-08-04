@@ -786,6 +786,21 @@ public class LocalStoreService : ILocalStoreService
         return result;
     }
 
+    public async Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName)
+    {
+        await using var conn = await OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT unique_id, is_read FROM MessageSummary WHERE account_id=$aid AND folder_name=$fn;";
+        cmd.Parameters.AddWithValue("$aid", accountId.ToString());
+        cmd.Parameters.AddWithValue("$fn",  folderName);
+        var result = new Dictionary<string, bool>();
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+            result[r.GetString(0)] = r.GetInt64(1) != 0;
+        return result;
+    }
+
     /// <summary>
     /// Which of <paramref name="messageIds"/> already exist in the folder — a bounded
     /// <c>WHERE unique_id IN (…)</c> so a live sync can dedupe its small fetched batch without
@@ -868,6 +883,19 @@ public class LocalStoreService : ILocalStoreService
         cmd.Parameters.AddWithValue("@id", accountId.ToString());
         var result = await cmd.ExecuteScalarAsync();
         return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
+    }
+
+    public async Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId)
+    {
+        await using var conn = await OpenAsync();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT folder_name, COUNT(*) FROM MessageSummary WHERE account_id = @id GROUP BY folder_name";
+        cmd.Parameters.AddWithValue("@id", accountId.ToString());
+        var byFolder = new Dictionary<string, int>();
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            byFolder[reader.GetString(0)] = reader.GetInt32(1);
+        return byFolder;
     }
 
     public async Task<DateTimeOffset?> GetOldestMessageDateAsync(Guid accountId)

@@ -605,6 +605,29 @@ public class LocalStoreServiceTests
     }
 
     [Fact]
+    public async Task CountSummariesByFolder_GroupsPerFolderForOneAccount()
+    {
+        // #462 sweep instrumentation: one grouped query yields every folder's cached count.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"QuickMailTests-{Guid.NewGuid():N}");
+        var store   = new LocalStoreService(new ProfileContext(tempDir));
+        store.Initialize();
+
+        var acct = Guid.NewGuid();
+        MailMessageSummary Msg(string id, string folder) => new()
+        {
+            MessageId = id, AccountId = acct, FolderName = folder,
+            From = "a@b.com", Subject = "s", Date = DateTimeOffset.UtcNow,
+        };
+        await store.UpsertSummariesAsync([Msg("1", "Inbox"), Msg("2", "Inbox"), Msg("3", "Archive")]);
+
+        var counts = await store.CountSummariesByFolderAsync(acct);
+        Assert.Equal(2, counts["Inbox"]);
+        Assert.Equal(1, counts["Archive"]);
+        Assert.False(counts.ContainsKey("Sent"));                                   // empty folder absent from the map
+        Assert.Empty(await store.CountSummariesByFolderAsync(Guid.NewGuid()));       // different account → empty map
+    }
+
+    [Fact]
     public async Task HasAttachments_PersistsAndLoads()
     {
         // Regression for §1.10: ReadSummariesAsync used to omit the has_attachments

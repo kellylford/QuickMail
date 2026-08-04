@@ -15,7 +15,16 @@ using QuickMail.Services;
 namespace QuickMail.Views;
 
 /// <summary>
-/// Fast modal folder picker backed by a virtualized flat list.
+/// Modal folder picker with two presentations, chosen by the <c>useTreeView</c> constructor flag.
+///
+/// <para>A folder tree mirroring the shape of the main window's folder tree, wherever the user is
+/// choosing a destination folder they already know from that tree: moving or copying messages
+/// (issue #250), and moving or copying a folder (issue #431).</para>
+///
+/// <para>Or a virtualized flat list with a search box — the default, and what "Go to Folder" needs,
+/// being the only caller that also offers the virtual folders (All Inboxes, All Mail, …), which have
+/// no place in a hierarchy. The rule editors still use it as well; they pick a real folder and are
+/// candidates for the tree.</para>
 /// </summary>
 public partial class FolderPickerWindow : Window
 {
@@ -38,22 +47,50 @@ public partial class FolderPickerWindow : Window
     private List<AccountModel>? _treeAccounts;
     private Dictionary<Guid, List<MailFolderModel>>? _treeFolders;
 
+    // Tree view only: a folder (and everything under it) to leave out of the destination tree.
+    // Set when the thing being moved or copied is itself a folder — see ForFolderMoveCopy.
+    private readonly MailFolderModel? _excludeFolder;
+
+    // Tree view only: where the excluded folder sat, remembered before it was removed, so the
+    // picker can open on the folder the user came out of rather than on nothing.
+    private FolderTreeNode? _openingNode;
+
     public MailFolderModel? SelectedFolder { get; private set; }
     public AccountModel? SelectedAccount { get; private set; }
+
+    /// <summary>
+    /// Whether the tree holds a folder the user could actually pick. False means showing the picker
+    /// would put up an empty dialog — which happens when scoping and exclusion between them leave
+    /// nothing, e.g. moving the only folder an account has. Always true for the flat list, which is
+    /// never filtered this way.
+    /// </summary>
+    private bool HasSelectableFolders =>
+        !_useTreeView ||
+        (FolderTreeView.ItemsSource is IEnumerable<FolderTreeNode> roots && AnySelectable(roots));
+
+    // Deliberately not TreeViewFocusHelper.GetVisibleTreeNodes: that walks only expanded nodes, and
+    // whether a folder exists to pick must not depend on what happens to be expanded.
+    private static bool AnySelectable(IEnumerable<FolderTreeNode> nodes) =>
+        nodes.Any(n => n is { IsHeader: false, Folder: not null } || AnySelectable(n.Children));
 
     public FolderPickerWindow(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
         IEnumerable<MailFolderModel>? virtualFolders = null,
         string title = "Go to Folder",
+        // The folder to open on: normally the one the user came from. Honoured by both
+        // presentations. When it is not in the tree, SelectOpeningNode stands something in for it —
+        // the picker never opens with nothing selected.
         MailFolderModel? initialFolder = null,
         IReadOnlyDictionary<Guid, MailFolderModel>? accountMailFolders = null,
         bool useTreeView = false,
-        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null)
+        Func<Guid, string?, string, Task<IReadOnlyList<MailFolderModel>?>>? folderCreator = null,
+        MailFolderModel? excludeFolder = null)
     {
         _initialFolder = initialFolder;
         _useTreeView = useTreeView;
         _folderCreator = folderCreator;
+        _excludeFolder = excludeFolder;
 
         InitializeComponent();
         Title = title;
@@ -145,10 +182,62 @@ public partial class FolderPickerWindow : Window
             .Where(a => cachedFolders.ContainsKey(a.Id))
             .ToDictionary(a => a.Id, a => cachedFolders[a.Id].ToList());
 
+        // Open follows the selection: a header or an IMAP path segment carries no folder, so there
+        // is nothing to open. Reporting that through the control itself reaches the user whatever
+        // their announcement settings are, unlike the "Choose a folder." announcement in Commit,
+        // which AnnounceResults can switch off.
+        OpenButton.IsEnabled = false;
+        FolderTreeView.SelectedItemChanged += (_, _) =>
+            OpenButton.IsEnabled = FolderTreeView.SelectedItem is FolderTreeNode
+                                   { IsHeader: false, Folder: not null };
+
         RebuildTreeView();
 
-        Loaded += (_, _) => Dispatcher.InvokeAsync(
-            () => FolderTreeView.Focus(), DispatcherPriority.Input);
+        // Item containers are generated on a later dispatcher pass, so the opening selection has to
+        // wait for one; until then there is nothing to select or focus.
+        Loaded += (_, _) => Dispatcher.InvokeAsync(SelectOpeningNode, DispatcherPriority.Input);
+    }
+
+    /// <summary>
+    /// Puts the selection — and keyboard focus — on the folder the user came from, so the picker
+    /// opens somewhere meaningful instead of on an empty tree. When that folder is not in the tree
+    /// (moving a folder excludes it, and an aggregate view is not a folder at all) the nearest
+    /// standing-in node is used: the parent it was moved out of, else the first real folder. Landing
+    /// on nothing is never the answer — a tree with no selection announces the tree and no item, and
+    /// leaves the user to guess that Down is what starts things.
+    /// </summary>
+    private void SelectOpeningNode()
+    {
+        if (FolderTreeView.ItemsSource is not IEnumerable<FolderTreeNode> roots)
+        {
+            FolderTreeView.Focus();
+            return;
+        }
+
+        var target = (_initialFolder != null
+                         ? TreeViewFocusHelper.FindFolderTreeNode(roots, _initialFolder)
+                         : null)
+                     ?? _openingNode;
+
+        // The stand-in can itself be unopenable: a parent that only exists as a path segment keeps
+        // its node as long as another child survives the exclusion, and landing on a row with Open
+        // disabled is the same failure as landing on nothing, one step in. Prefer the nearest real
+        // folder beneath it, so the user still starts near where they were.
+        if (target is not { IsHeader: false, Folder: not null })
+            target = (target != null ? FirstSelectable(target.Children) : null) ?? FirstSelectable(roots);
+
+        if (target == null || !TreeViewFocusHelper.SelectTreeViewNode(FolderTreeView, target))
+            FolderTreeView.Focus();
+    }
+
+    private static FolderTreeNode? FirstSelectable(IEnumerable<FolderTreeNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node is { IsHeader: false, Folder: not null }) return node;
+            if (FirstSelectable(node.Children) is { } found) return found;
+        }
+        return null;
     }
 
     private void RebuildTreeView()
@@ -166,7 +255,79 @@ public partial class FolderPickerWindow : Window
             roots.AddRange(nodes);
         }
 
+        if (_excludeFolder != null)
+        {
+            // Where the excluded folder sat, captured before it is removed: for a move or copy that
+            // is the folder the user came from, and the closest thing to it that survives into the
+            // destination tree. Null for a top-level folder — its parent is the account root, which
+            // this picker does not offer — and SelectOpeningNode falls back from there.
+            _openingNode = FindParentOfFolder(roots, _excludeFolder);
+
+            RemoveFolderSubtree(roots, _excludeFolder);
+            PruneEmptySyntheticNodes(roots);
+
+            // The parent may itself have been a path segment that the exclusion just emptied.
+            if (_openingNode != null && !Contains(roots, _openingNode))
+                _openingNode = null;
+        }
+
         FolderTreeView.ItemsSource = roots;
+    }
+
+    private static FolderTreeNode? FindParentOfFolder(IEnumerable<FolderTreeNode> nodes, MailFolderModel folder)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Children.Any(c => c.Folder is { } f &&
+                                       f.AccountId == folder.AccountId &&
+                                       string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal)))
+                return node;
+
+            if (FindParentOfFolder(node.Children, folder) is { } found) return found;
+        }
+        return null;
+    }
+
+    private static bool Contains(IEnumerable<FolderTreeNode> nodes, FolderTreeNode target) =>
+        nodes.Any(n => ReferenceEquals(n, target) || Contains(n.Children, target));
+
+    /// <summary>
+    /// Drops the node for <paramref name="folder"/>, and with it every subfolder underneath it,
+    /// from the destination tree. A folder cannot be moved or copied into itself or into one of
+    /// its own descendants, so offering those destinations only gives the user a way to reach a
+    /// server error — and in a tree the source folder sits inline among the valid destinations,
+    /// one mis-arrow away.
+    /// </summary>
+    private static void RemoveFolderSubtree(IList<FolderTreeNode> nodes, MailFolderModel folder)
+    {
+        for (int i = nodes.Count - 1; i >= 0; i--)
+        {
+            // Ordinal, not TreeViewFocusHelper.FoldersMatch: that compares FullName
+            // case-insensitively, which would drop a sibling "archive" alongside "Archive" from the
+            // destinations — and a Graph FullName is an opaque, case-sensitive id.
+            if (nodes[i].Folder is { } f &&
+                f.AccountId == folder.AccountId &&
+                string.Equals(f.FullName, folder.FullName, StringComparison.Ordinal))
+                nodes.RemoveAt(i);
+            else
+                RemoveFolderSubtree(nodes[i].Children, folder);
+        }
+    }
+
+    /// <summary>
+    /// Removes intermediate nodes left childless by <see cref="RemoveFolderSubtree"/>. An IMAP
+    /// hierarchy synthesizes a node for each path segment that is not itself a mailbox; once the
+    /// only folder beneath such a segment is gone, the node is a row that can be arrowed onto and
+    /// never opened.
+    /// </summary>
+    private static void PruneEmptySyntheticNodes(IList<FolderTreeNode> nodes)
+    {
+        for (int i = nodes.Count - 1; i >= 0; i--)
+        {
+            PruneEmptySyntheticNodes(nodes[i].Children);
+            if (nodes[i] is { Folder: null, IsHeader: false, Children.Count: 0 })
+                nodes.RemoveAt(i);
+        }
     }
 
     private static void ExpandAll(IEnumerable<FolderTreeNode> nodes)
@@ -189,6 +350,55 @@ public partial class FolderPickerWindow : Window
                title,
                initialFolder: null)
     {
+    }
+
+    /// <summary>
+    /// Picker for the folder tree's "Move Folder To" / "Copy Folder To" commands. The destination
+    /// is a real folder in a hierarchy the user already knows from the folder tree, so it is shown
+    /// as a tree rather than the flat list this dialog used to open with (issue #431). No search
+    /// box: arrow keys and type-ahead are how the folder tree is navigated everywhere else.
+    ///
+    /// <para>Scoped to <paramref name="source"/>'s own account, for the same reason
+    /// <c>MainWindow.BuildMessageFolderPicker</c> is: the backends move and copy by name over the
+    /// <em>source</em> account's connection and never look at the destination's account, so a
+    /// destination on another account either errors or — when both accounts have a folder of that
+    /// name, "Archive" being the obvious case — silently acts on the wrong one. The flat list spelled
+    /// the account into every row ("Work - Archive"); a tree carries it only on a header several rows
+    /// up, so scoping is what keeps the two apart.</para>
+    ///
+    /// <para><paramref name="source"/> and its subfolders are left out of the tree — a folder cannot
+    /// be moved or copied inside itself.</para>
+    ///
+    /// <para>Returns <see langword="null"/> when scoping and exclusion leave no folder to pick —
+    /// moving the only folder an account has, say. The caller must say why instead of putting up an
+    /// empty dialog. Returning null rather than an unusable window is deliberate: a WPF
+    /// <see cref="Window"/> joins <c>Application.Current.Windows</c> at construction and only leaves
+    /// it on <see cref="Window.Close"/>, so a picker the caller decided not to show and then dropped
+    /// keeps the app's <c>OnLastWindowClose</c> shutdown from ever firing — the zombie process that
+    /// holds the single-instance mutex (issue #252). Closing it here makes that unforgettable.</para>
+    ///
+    /// <para>A named factory rather than a call-site flag so the presentation is testable without
+    /// standing up a MainWindow — see <c>FolderPickerTreeTests</c>.</para>
+    /// </summary>
+    public static FolderPickerWindow? ForFolderMoveCopy(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        MailFolderModel source,
+        string title)
+    {
+        var picker = new FolderPickerWindow(
+            accounts.Where(a => a.Id == source.AccountId),
+            cachedFolders.Where(kv => kv.Key == source.AccountId)
+                         .ToDictionary(kv => kv.Key, kv => kv.Value),
+            title: title,
+            useTreeView: true,
+            excludeFolder: source);
+
+        if (picker.HasSelectableFolders)
+            return picker;
+
+        picker.Close();
+        return null;
     }
 
     private static bool IsInbox(MailFolderModel folder) =>
@@ -537,7 +747,13 @@ public partial class FolderPickerWindow : Window
         if (_useTreeView)
         {
             if (FolderTreeView.SelectedItem is not FolderTreeNode node || node.Folder == null || node.IsHeader)
+            {
+                // Account headers, and the path-only nodes an IMAP hierarchy produces for a parent
+                // that is not itself a mailbox, carry no folder — there is nothing to open. Say so
+                // rather than swallowing Enter and leaving the dialog looking stuck.
+                AccessibilityHelper.Announce(this, "Choose a folder.", category: AnnouncementCategory.Result);
                 return;
+            }
 
             SelectedFolder = node.Folder;
             DialogResult = true;

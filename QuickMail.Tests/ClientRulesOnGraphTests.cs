@@ -75,6 +75,7 @@ public class ClientRulesOnGraphTests : IDisposable
         public Task<int> CountTrashMessagesAsync(Guid a, CancellationToken ct = default) => Task.FromResult(0);
         public Task<int> EmptyTrashAsync(Guid a, CancellationToken ct = default) => Task.FromResult(0);
         public Task<IList<string>> GetFolderMessageIdsAsync(Guid a, string f, CancellationToken ct = default) => Task.FromResult<IList<string>>([]);
+        public Task<IReadOnlyList<(string Id, DateTimeOffset ReceivedUtc, bool IsRead)>> GetFolderMessageIdDatesAsync(Guid a, string f, CancellationToken ct = default) => Task.FromResult<IReadOnlyList<(string, DateTimeOffset, bool)>>([]);
         public Task<IReadOnlyDictionary<string, string>> FetchPreviewsAsync(Guid a, string f, IList<string> ids, int maxLines, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
         public Task<int> PollAsync(Guid a, string f, CancellationToken ct = default) => Task.FromResult(0);

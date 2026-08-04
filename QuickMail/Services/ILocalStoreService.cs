@@ -49,6 +49,15 @@ public interface ILocalStoreService
     /// <summary>Returns all message ids stored locally for this folder.</summary>
     Task<HashSet<string>> GetAllMessageIdsAsync(Guid accountId, string folderName);
 
+    /// <summary>
+    /// Returns id → is_read for every message stored locally in this folder. The periodic sweep uses it
+    /// to reconcile read/unread state changed by another client (#462): it diffs this against the
+    /// server's read state from the id listing and updates only the rows that differ, no message fetch.
+    /// The key set is also the folder's cached-id set (drives the addition/deletion diff), so this one
+    /// query replaces a separate <see cref="GetAllMessageIdsAsync"/> on the sweep path.
+    /// </summary>
+    Task<Dictionary<string, bool>> LoadFolderReadStatesAsync(Guid accountId, string folderName);
+
     /// <summary>Which of <paramref name="messageIds"/> already exist in the folder (bounded lookup).</summary>
     Task<HashSet<string>> GetExistingMessageIdsAsync(Guid accountId, string folderName, IEnumerable<string> messageIds);
 
@@ -57,6 +66,13 @@ public interface ILocalStoreService
     /// Returns 0 if the account has no messages or does not exist.
     /// </summary>
     Task<int> CountSummariesAsync(Guid accountId);
+
+    /// <summary>
+    /// Cached message-summary count per folder for one account, keyed by folder_name, in a single
+    /// grouped scan (#462 sweep instrumentation). One query per account beats one per folder — it keeps
+    /// the measurement's own cost off the timed region and off the per-folder hot path.
+    /// </summary>
+    Task<Dictionary<string, int>> CountSummariesByFolderAsync(Guid accountId);
 
     /// <summary>
     /// Returns the oldest message date stored for the given account, or null if no messages exist.

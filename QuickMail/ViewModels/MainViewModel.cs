@@ -1204,6 +1204,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         _syncService.FolderSynced    += OnFolderSynced;
         _syncService.MessagesRemoved += OnMessagesRemoved;
+        _syncService.FolderReadStatesReconciled += OnFolderReadStatesReconciled;
         _syncService.RulesApplied    += OnRulesApplied;
         if (_changeNotifier != null)
         {
@@ -2369,6 +2370,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         try
         {
+            long sweepCycle = 0;   // #462: numbers the "Sweep cycle" log lines
             while (!ct.IsCancellationRequested)
             {
                 var minutes = _configService.Load().MailSyncPollMinutes;
@@ -2379,6 +2381,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 if (ct.IsCancellationRequested) break;
 
                 if (_configService.Load().MailSyncPollMinutes <= 0) continue; // still disabled after the wait
+
+                // Time the whole cycle body — reconcile + snapshot + every folder — because the question
+                // #462 asks is "does one full cycle run longer than the interval?", and that's the whole
+                // loop, not just the folder fetches. Start above ReconcileCurrentFolderAsync. Debug-only,
+                // so a normal run pays nothing at the cycle level either.
+                var sweepTimer = LogService.DebugMode ? System.Diagnostics.Stopwatch.StartNew() : null;
 
                 // Reconcile the folder the user is currently viewing (#366). It's the one folder with
                 // no other live removal signal — a custom folder (any backend) the user is staring at
@@ -2392,13 +2400,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // anyone who chose it to avoid exactly that (metered or locked-down networks).
                 await ReconcileCurrentFolderAsync(ct).ConfigureAwait(false);
 
-                // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox
-                // folders have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the
-                // Inbox — so mail a server-side rule files into a custom folder at delivery is invisible
-                // until the folder is opened or the app restarts (#366). This periodic sweep syncs each
-                // folder fully (fetch new + reconcile deletions). Accounts/_cachedFolders are
-                // UI-thread-owned, so snapshot on the UI thread. (The Inbox is included but cheap —
-                // already kept current by the live watcher, so it usually has nothing new to fetch.)
+                // Snapshot EVERY non-excluded folder for EVERY account (all backends). Non-Inbox folders
+                // have no live watcher — Graph's delta poll and IMAP's IDLE both cover only the Inbox —
+                // so mail a server-side rule files into a custom folder at delivery is invisible until the
+                // folder is opened or the app restarts (#366). This periodic sweep syncs each folder fully
+                // (fetch new + reconcile deletions). The Inbox is included but cheap (kept current by the
+                // live watcher). Accounts/_cachedFolders are UI-thread-owned, so snapshot on the UI thread.
                 var jobs = new List<(AccountModel Account, MailFolderModel Folder, bool IsInbox)>();
                 _ui.Invoke(() =>
                 {
@@ -2415,17 +2422,53 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     }
                 });
 
+                // Per-folder cached item counts for the instrumentation (#462, /debug only): one grouped
+                // query per account, snapshotted here with the cycle timer PAUSED so the measurement never
+                // measures itself (review A). Per folder is then a dictionary lookup, not a query.
+                Dictionary<Guid, Dictionary<string, int>>? folderCounts = null;
+                if (sweepTimer != null)
+                {
+                    sweepTimer.Stop();
+                    folderCounts = new Dictionary<Guid, Dictionary<string, int>>();
+                    foreach (var acctId in jobs.Select(j => j.Account.Id).Distinct())
+                        folderCounts[acctId] = await _localStore.CountSummariesByFolderAsync(acctId).ConfigureAwait(false);
+                    sweepTimer.Start();
+                }
+
+                var sweepNew = 0;
+                var pacedDelays = 0;
+
                 foreach (var (account, folder, isInbox) in jobs)
                 {
                     if (ct.IsCancellationRequested) break;
                     try
                     {
+                        // Per-folder cost instrumentation (#462) — /debug only, so normal runs pay nothing.
+                        // Times this one folder and counts the Graph requests it makes, scoped to this async
+                        // flow via `using` (so a throwing folder can't leak the scope, and the concurrent
+                        // delta poll / navigation isn't misattributed here). The counter is Graph-only, so an
+                        // IMAP folder shows "req n/a" rather than a misleading 0 next to a slow time.
+                        var debug = LogService.DebugMode;
+                        var isGraph = account.BackendKind == BackendKind.MicrosoftGraph;
+                        var folderTimer = debug ? Stopwatch.StartNew() : null;
+                        using var reqScope = (debug && isGraph) ? Services.Graph.GraphClient.BeginRequestCount() : null;
+
                         // Fetch new (FolderSynced merges them into the current view) + reconcile
                         // deletions (MessagesRemoved). Runs off the UI thread; the events marshal back.
                         var incoming = await _syncService.SyncFolderFullAsync(account, folder, ct)
                             .ConfigureAwait(false);
-                        if (incoming.Count > 0)
-                            LogService.Debug($"Sweep sync [{account.AccountLabel}]/{folder.FullName}: {incoming.Count} new.");
+                        sweepNew += incoming.Count;
+
+                        if (folderTimer != null)
+                        {
+                            folderTimer.Stop();
+                            var items = folderCounts != null && folderCounts.TryGetValue(account.Id, out var byFolder)
+                                ? byFolder.GetValueOrDefault(folder.FullName) : 0;
+                            var reqStr = reqScope != null ? $"{reqScope.Count} req" : "req n/a";
+                            LogService.Debug(
+                                $"Sweep folder [{account.AccountLabel}]/{folder.FullName}: " +
+                                $"{folderTimer.Elapsed.TotalSeconds:F1}s, {reqStr}, {items} items, {incoming.Count} new");
+                        }
 
                         if (incoming.Count > 0)
                             _ui.Post(() =>
@@ -2448,9 +2491,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
                     // Pace between folders so a full sweep of a large mailbox doesn't burst Graph into a
                     // 503 "application request queue is full". Sequential + a short gap keeps it gentle.
-                    try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); }
+                    try { await Task.Delay(TimeSpan.FromMilliseconds(250), ct).ConfigureAwait(false); pacedDelays++; }
                     catch (OperationCanceledException) { break; }
                 }
+
+                // Per-cycle summary at Debug (a measurement aid, not always-on telemetry; #462). The paced
+                // figure is the count of delays actually executed × 250 ms — measured, not derived from the
+                // folder count, so a cycle cancelled partway doesn't report paced time it never spent (review C).
+                if (sweepTimer != null)
+                {
+                    sweepTimer.Stop();
+                    var sweepAccounts = jobs.Select(j => j.Account.Id).Distinct().Count();
+                    LogService.Debug(
+                        $"Sweep cycle {sweepCycle}: {jobs.Count} folder(s) / {sweepAccounts} account(s), " +
+                        $"{sweepTimer.Elapsed.TotalSeconds:F1}s total ({pacedDelays * 0.250:F1}s paced), {sweepNew} new.");
+                }
+                sweepCycle++;
             }
         }
         catch (OperationCanceledException) { }
@@ -2668,6 +2724,68 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         RebuildActiveGroupView();
     }
+
+    // ── Read/unread reconcile (#462) ──────────────────────────────────────────────
+    // Called on the UI thread by SyncService when the periodic sweep finds a cached message whose
+    // read/unread state was changed by another client (e.g. read on the phone). The store is already
+    // updated; here we refresh the matching visible rows and the folder unread counts. This is the live
+    // update the pre-#462 full-window re-fetch used to deliver as a side effect (via OnFolderSynced/#269).
+    // Deliberately separate from OnFolderSynced: no new-mail inserts, no toast, no flag reconcile.
+    private void OnFolderReadStatesReconciled(IReadOnlyList<MailMessageSummary> changed)
+    {
+        if (_suppressFolderSyncUpdates) return;
+        if (changed.Count == 0) return;
+
+        // Refresh the matching visible rows when a folder is selected. Match by per-folder identity
+        // (account, folder, uid) — which the changed summaries carry — so a real-folder view and an
+        // aggregate view (whose rows keep their own folder identity) both find the row. The one case this
+        // misses is a cross-folder Message-ID duplicate whose displayed representative was collapsed onto
+        // a different folder's copy (Gmail labels): the row's indicator then refreshes on next load.
+        if (SelectedFolder != null)
+        {
+            var newReadByKey = new Dictionary<string, bool>(changed.Count);
+            foreach (var m in changed)
+                newReadByKey[MessageDeduplicator.PerFolderKeyFor(m)] = m.IsRead;
+
+            var affected = new List<MailMessageSummary>();
+            foreach (var existing in _rawMessages)
+                if (newReadByKey.TryGetValue(MessageDeduplicator.PerFolderKeyFor(existing), out var isRead)
+                    && existing.IsRead != isRead)
+                {
+                    existing.IsRead = isRead;
+                    affected.Add(existing);
+                }
+
+            if (affected.Count > 0)
+            {
+                // A now-read message must leave the Unread view; a now-unread one must (re)appear if it
+                // matches. Batched so it costs one Reset, not one event per change (screen-reader-friendly).
+                using (Messages.BeginBatchScope())
+                {
+                    foreach (var m in affected)
+                    {
+                        var shouldShow = MatchesFilter(m) && MatchesDayLimit(m)
+                            && (string.IsNullOrWhiteSpace(SearchText) || MatchesSearch(m));
+                        var isShown = Messages.Contains(m);
+                        if (shouldShow && !isShown) InsertMessageSorted(m);
+                        else if (!shouldShow && isShown) Messages.Remove(m);
+                    }
+                }
+                RebuildActiveGroupView();
+            }
+        }
+
+        // Nudge the folder-tree unread badges. NOTE this only acts on IMAP/SMTP accounts — Graph folder
+        // counts are server-sourced (GetFoldersAsync) and refresh on interaction, so a quiet Graph
+        // folder's badge corrects on next folder open rather than live. The message-list row and the
+        // cache are corrected above regardless. (Pre-existing: the sweep's count refresh has always been
+        // IMAP-only; this is not introduced by #462.)
+        var accountIds = new HashSet<Guid>();
+        foreach (var m in changed) accountIds.Add(m.AccountId);
+        foreach (var acctId in accountIds)
+            ScheduleFolderCountRefresh(acctId);
+    }
+
     // Called on a ThreadPool thread by the change notifier when new mail lands in an inbox.
     // Runs a targeted sync for that account's INBOX so the message appears in the list. Accounts and
     // _cachedFolders are UI-thread-owned, so resolve them on the UI thread before the background sync.
@@ -6847,9 +6965,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Moves a folder to a new parent (IMAP RENAME) and refreshes the tree.</summary>
+    /// <summary>
+    /// Whether <paramref name="folder"/> already sits directly under <paramref name="destination"/>.
+    ///
+    /// <para>Worth checking because the picker now opens pre-selected on exactly that parent, so
+    /// Enter is one keystroke away, and the outcome is not harmless: IMAP's <c>RENAME</c> to the
+    /// same parent and name fails with a server error, and Graph's folder <c>/copy</c> succeeds —
+    /// Graph allows duplicate display names — leaving a second copy of the folder and all its mail
+    /// beside the original.</para>
+    /// </summary>
+    internal static bool IsAlreadyUnder(MailFolderModel folder, MailFolderModel destination)
+    {
+        if (folder.AccountId != destination.AccountId) return false;
+
+        // Graph references the parent by id, and its ids are case-sensitive.
+        if (folder.ParentId != null)
+            return string.Equals(folder.ParentId, destination.FullName, StringComparison.Ordinal);
+
+        // IMAP encodes the hierarchy in the separator-delimited FullName, so the destination is the
+        // parent when the folder's path is the destination's plus exactly one more segment. Both
+        // separators MailKit reports are accepted, the same pair FolderTreeBuilder detects between.
+        var full = folder.FullName;
+        var dest = destination.FullName;
+        if (dest.Length == 0 || full.Length <= dest.Length + 1) return false;
+        if (!full.StartsWith(dest, StringComparison.OrdinalIgnoreCase)) return false;
+        if (full[dest.Length] is not ('/' or '.')) return false;
+
+        return full.IndexOfAny(['/', '.'], dest.Length + 1) < 0;
+    }
+
     public async Task MoveFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
+        if (IsAlreadyUnder(node.Folder, destination))
+        {
+            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
         StatusText = $"Moving folder '{node.Label}'…";
         IsBusy     = true;
         try
@@ -6876,6 +7029,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopyFolderToAsync(FolderTreeNode node, MailFolderModel destination)
     {
         if (node.Folder == null) return;
+        if (IsAlreadyUnder(node.Folder, destination))
+        {
+            StatusText = $"'{node.Label}' is already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
         StatusText = $"Copying folder '{node.Label}'…";
         IsBusy     = true;
         try
@@ -6946,10 +7105,33 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     // ── Message move / copy ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// Whether every one of these messages already lives in <paramref name="destination"/>.
+    ///
+    /// <para>Neither backend refuses this. A same-folder copy duplicates every message where it
+    /// already is, and a same-folder IMAP <c>UID MOVE</c> re-creates them under new UIDs while the
+    /// code below deletes the old ids from the local store and the list — so the messages disappear
+    /// from view until that folder next syncs. Both are worth a keystroke of protection now that the
+    /// picker opens pre-selected on the folder the messages came from: activating "Copy to Folder…"
+    /// with Enter and a repeated keypress would otherwise be enough.</para>
+    /// </summary>
+    private static bool AlreadyIn(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination) =>
+        messages.All(m => m.AccountId == destination.AccountId &&
+                          string.Equals(m.FolderName, destination.FullName, StringComparison.Ordinal));
+
     /// <summary>Moves the given messages to a destination folder and removes them from the current view.</summary>
     public async Task MoveSelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
+
+        if (AlreadyIn(messages, destination))
+        {
+            StatusText = messages.Count == 1
+                ? $"That message is already in {destination.DisplayName}."
+                : $"Those messages are already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Moving {label}…";
@@ -7003,6 +7185,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task CopySelectedMessagesToFolderAsync(IReadOnlyList<MailMessageSummary> messages, MailFolderModel destination)
     {
         if (messages.Count == 0) return;
+
+        if (AlreadyIn(messages, destination))
+        {
+            StatusText = messages.Count == 1
+                ? $"That message is already in {destination.DisplayName}."
+                : $"Those messages are already in {destination.DisplayName}.";
+            Announce(StatusText);
+            return;
+        }
 
         var label  = messages.Count == 1 ? "message" : $"{messages.Count} messages";
         StatusText = $"Copying {label}…";

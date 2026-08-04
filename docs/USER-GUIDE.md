@@ -449,9 +449,28 @@ Create a new folder in any of these ways:
 
 The new folder is created under the folder currently selected in the folder tree, or under the account root when a header or nothing is selected.
 
+### Moving and Copying Folders
+
+Select a folder in the folder tree, press **Shift+F10**, and choose **Move Folder…** or **Copy Folder…**. Both open a picker showing the same hierarchical tree used in the folder panel — folders nested under their parent, everything already expanded. Arrow to the folder you want the selected folder to live under and press Enter. Copying brings the folder's messages and any subfolders with it.
+
+Typing jumps to a folder here as it does in the folder tree: type the beginning of a folder name and the selection moves to it. Because a bare letter belongs to that typing, the picker's buttons take **Alt+O** for Open and **Alt+C** for Cancel. Enter and Escape work as usual. There is no **New Folder** button in this picker — create the folder first, then move into it.
+
+Two things the picker leaves out on purpose:
+
+- **Folders belonging to your other accounts.** A folder can only move or copy within the account it already lives in, so only that account's folders are offered.
+- **The folder you are moving, and everything inside it.** A folder cannot be moved or copied into itself or into one of its own subfolders.
+
+The picker opens on the folder you came from. Since the folder you are moving is not one of the destinations, it opens on the folder that one currently sits under, so you start where you were rather than at the top of the list. For a top-level folder there is no such parent, and it opens on the first folder instead.
+
+Because it opens there, pressing Enter straight away would put the folder back where it started. QuickMail says so rather than doing it — as it does for messages already in the folder you picked.
+
+If those two exclusions leave nowhere to go — an account whose only folder is the one you are moving — QuickMail says so instead of opening an empty picker. The same happens if you choose Move or Copy Folder on a view rather than a folder: All Inboxes, All Mail, and the per-account All Mail entries look like folders in the tree but are collections of messages from several folders, so there is nothing to move.
+
 ### Moving and Copying Messages
 
 Select one or more messages (or a sender/recipient group, or a conversation) and choose **Move to Folder…** or **Copy to Folder…** from the context menu (Shift+F10) or the command palette. Both open a folder picker showing the same hierarchical tree used in the main folder panel — folders nested under their parent, with account names as headers when more than one account is present. Arrow through the tree and press Enter to complete the move or copy. If you need a destination that does not exist yet, activate **New Folder** (or **Alt+N**) in the picker to create one under the selected folder and move into it without leaving the dialog.
+
+The picker opens on the folder the messages are in, so you start where you were. In a combined view such as All Inboxes that is the message's own folder, not the view. If the messages you selected come from more than one folder there is no single starting point, and it opens on the first folder.
 
 Typing jumps to a folder here too, exactly as it does in the main folder tree: type the beginning of a folder name and the selection moves to it. Because a bare letter belongs to that typing, the picker's buttons take **Alt+O** for Open, **Alt+C** for Cancel, and **Alt+N** for New Folder rather than plain letter shortcuts. Enter and Escape still work as usual.
 
