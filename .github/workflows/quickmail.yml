@@ -566,3 +566,30 @@ jobs:
           # (clients would then quietly stop seeing updates).
           fail_on_unmatched_files: true
           body_path: docs/release-notes-${{ github.ref_name }}.md
+          # PUBLISH AS A PRE-RELEASE — deliberate, and the thing that stops every
+          # installed client updating the moment the tag lands.
+          #
+          # UpdateCheckService builds `new GithubSource(RepoUrl, accessToken: null,
+          # prerelease: false)`, and Velopack's GithubSource filters the candidate list
+          # with `.Where(x => includePrereleases || !x.Prerelease)` — so a pre-release is
+          # never seen, clients keep reading the previous release's feed, and Help >
+          # Check for Updates reports nothing. The portable exe's fallback path hits
+          # /releases/latest, which excludes pre-releases by GitHub's own definition.
+          # Both channels' feeds (win and win-arm64) ride on this one release, so ARM
+          # installs are covered by the same switch.
+          #
+          # The assets are still public: a pre-release shows on /releases, so anyone can
+          # download the MSI or the portable exe and install manually. That is the point
+          # — manual installers exercise the build before anyone is moved onto it.
+          #
+          # TO PROMOTE: on the release page, untick "Set as a pre-release" and tick "Set
+          # as the latest release". Nothing is rebuilt or re-uploaded; clients pick it up
+          # on their next launch. Do this BEFORE tagging the next version, or the delta
+          # step above (`vpk download github`, which defaults to stable) baselines against
+          # the release before this one.
+          #
+          # TO GO BACK to publishing normal releases: delete this input. It is hardcoded
+          # rather than driven by a repo variable on purpose — an unset variable would
+          # publish as latest and auto-update everyone, which is the failure this exists
+          # to prevent, while a forgotten `true` only leaves a release nobody is offered.
+          prerelease: true
