@@ -244,48 +244,116 @@ public class FolderPickerTreeTests
     }
 
     /// <summary>
-    /// The tree opens with nothing selected — deliberately, so a first Enter cannot commit a
-    /// destination the user never chose. Open must report that it has nothing to act on through the
-    /// control's own enabled state, which reaches the user whatever their announcement settings
-    /// are, rather than only through the announcement below.
+    /// The picker opens on the folder the user came from. For a folder move that folder is itself
+    /// excluded, so the stand-in is the parent it is being moved out of — the nearest thing to
+    /// where the user was that still exists as a destination.
     /// </summary>
     [StaFact]
-    public void OpenIsDisabledUntilARealFolderIsSelected()
+    public void OpensOnTheParentOfTheFolderBeingMoved()
     {
-        var window = Shown(Picker());
+        var window = Shown(Picker(source: Folder("INBOX/Projects", "Projects")));
         try
         {
-            var open = Named<Button>(window, "OpenButton");
-            Assert.False(open.IsEnabled, "Open is enabled with nothing selected.");
-
-            var tree  = Named<TreeView>(window, "FolderTreeView");
-            var inbox = Roots(window).First(n => n.Label == "INBOX");
-            Assert.True(TreeViewFocusHelper.SelectTreeViewNode(tree, inbox, focusNode: false),
-                        "could not select INBOX in the picker tree.");
-            Drain();
-
-            Assert.True(open.IsEnabled, "Open is still disabled after selecting a real folder.");
+            AssertOpenedOn(window, "INBOX");
         }
         finally { window.Close(); }
     }
 
     /// <summary>
-    /// Enter is handled by the tree before it can reach the (disabled) default button, so it still
-    /// has to say why nothing happened. Before the tree, this dialog had no unopenable rows at all.
+    /// The parent standing in for the source can itself be unopenable: an IMAP path segment that is
+    /// not a mailbox keeps its node when a sibling survives the exclusion. Landing there is the same
+    /// failure as landing on nothing, so the nearest real folder beneath it is used instead.
     /// </summary>
     [StaFact]
-    public void PressingEnterWithNoFolderSelectedSaysSoInsteadOfDoingNothing()
+    public void OpensOnARealFolderWhenTheParentIsOnlyAPathSegment()
     {
+        // "Clients" is never a folder of its own; Beta survives the exclusion so its node stays.
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [AccountId] =
+            [
+                Folder("INBOX", "INBOX"), Folder("Clients/Acme", "Acme"), Folder("Clients/Beta", "Beta"),
+            ],
+        };
+
+        var window = Shown(Picker(source: Folder("Clients/Acme", "Acme"), folders: folders));
+        try
+        {
+            AssertOpenedOn(window, "Beta");
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// Landing on nothing is never right, so a source whose parent cannot stand in — a top-level
+    /// folder, whose parent is the account root this picker does not offer — still opens on a real
+    /// folder rather than on an empty tree.
+    /// </summary>
+    [StaFact]
+    public void OpensOnAFolderEvenWhenTheSourceHasNoParentToFallBackTo()
+    {
+        var window = Shown(Picker(source: SourceFolder()));   // "Archive", top level
+        try
+        {
+            var selected = Assert.IsType<FolderTreeNode>(
+                Named<TreeView>(window, "FolderTreeView").SelectedItem);
+            Assert.False(selected.IsHeader);
+            AssertOpenedOn(window, selected.Label);
+        }
+        finally { window.Close(); }
+    }
+
+    /// <summary>
+    /// Selection alone is not the fix: a screen reader announces the item that has keyboard focus,
+    /// so asserting only <c>SelectedItem</c> would stay green if the opening selection stopped
+    /// focusing the container — which is the whole point of the change. Open must be enabled too,
+    /// or the picker has opened somewhere the user cannot act.
+    /// </summary>
+    private static void AssertOpenedOn(Window window, string label)
+    {
+        var selected = Assert.IsType<FolderTreeNode>(
+            Named<TreeView>(window, "FolderTreeView").SelectedItem);
+        Assert.Equal(label, selected.Label);
+
+        var focused = Assert.IsType<TreeViewItem>(Keyboard.FocusedElement);
+        Assert.Same(selected, focused.DataContext);
+
+        Assert.True(Named<Button>(window, "OpenButton").IsEnabled,
+                    $"Open is disabled although the picker opened on '{label}'.");
+    }
+
+    /// <summary>
+    /// Open follows the selection, and an IMAP path segment that is not itself a mailbox carries no
+    /// folder — arrowing onto one must report that there is nothing to open, both through the
+    /// control's enabled state and, since Enter is handled by the tree before it can reach the
+    /// default button, through an announcement.
+    /// </summary>
+    [StaFact]
+    public void SelectingANodeThatIsNotAFolderDisablesOpenAndSaysSoOnEnter()
+    {
+        // "Clients" exists only as a path segment of its child, so its node has no folder.
+        var folders = new Dictionary<Guid, List<MailFolderModel>>
+        {
+            [AccountId] = [Folder("INBOX", "INBOX"), Folder("Clients/Acme", "Acme")],
+        };
+
         var heard = new List<(string Text, AnnouncementCategory Category)>();
         AccessibilityHelper.AnnouncementObserver = (text, category) => heard.Add((text, category));
 
-        var window = Shown(Picker());
+        var window = Shown(Picker(source: Folder("INBOX", "INBOX"), folders: folders));
         try
         {
-            var tree = Named<TreeView>(window, "FolderTreeView");
-            // Nothing selected — the state the picker opens in. Enter must not commit, and must not
-            // stay silent. (DialogResult would throw on a window that was never shown as a dialog,
-            // so a commit here would fail loudly rather than pass.)
+            var tree    = Named<TreeView>(window, "FolderTreeView");
+            var clients = Flatten(Roots(window)).First(n => n.Label == "Clients");
+            Assert.Null(clients.Folder);
+
+            Assert.True(TreeViewFocusHelper.SelectTreeViewNode(tree, clients, focusNode: false),
+                        "could not select the Clients path segment.");
+            Drain();
+            Assert.False(Named<Button>(window, "OpenButton").IsEnabled,
+                         "Open is enabled on a node with no folder behind it.");
+
+            heard.Clear();
             tree.RaiseEvent(new KeyEventArgs(
                 Keyboard.PrimaryDevice, PresentationSource.FromVisual(window), 0, Key.Enter)
             {
@@ -293,6 +361,8 @@ public class FolderPickerTreeTests
             });
             Drain();
 
+            // Enter must not commit and must not stay silent. (DialogResult would throw on a window
+            // never shown as a dialog, so a commit here would fail loudly rather than pass.)
             var spoken = Assert.Single(heard.Where(h => h.Category == AnnouncementCategory.Result));
             Assert.Contains("folder", spoken.Text, StringComparison.OrdinalIgnoreCase);
         }

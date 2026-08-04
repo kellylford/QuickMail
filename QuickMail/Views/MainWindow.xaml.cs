@@ -6250,15 +6250,36 @@ public partial class MainWindow : Window
     private FolderPickerWindow BuildMessageFolderPicker(
         IEnumerable<MailMessageSummary> messages, string title)
     {
-        var ids      = messages.Select(m => m.AccountId).ToHashSet();
+        var list     = messages.ToList();
+        var ids      = list.Select(m => m.AccountId).ToHashSet();
         var accounts = _vm.Accounts.Where(a => ids.Contains(a.Id));
         var folders  = _vm.CachedFolders
                           .Where(kv => ids.Contains(kv.Key))
                           .ToDictionary(kv => kv.Key, kv => kv.Value);
         return new FolderPickerWindow(accounts, folders, title: title, useTreeView: true,
+            initialFolder: CurrentFolderOf(list, folders),
             folderCreator: (accountId, parentFullName, name) =>
                 _vm.CreateFolderReturningFoldersAsync(accountId, parentFullName, name))
             { Owner = this };
+    }
+
+    /// <summary>
+    /// The folder the messages are being moved out of, so the picker opens there rather than on an
+    /// empty tree. Taken from the messages themselves, not the folder-tree selection, so it is still
+    /// right in the aggregate views, where the selection is All Inboxes and each message's real
+    /// folder is the only meaningful "here". Null when the selection spans folders — there is no
+    /// single place the user came from — and the picker falls back to the first folder.
+    /// </summary>
+    private static MailFolderModel? CurrentFolderOf(
+        IReadOnlyCollection<MailMessageSummary> messages,
+        Dictionary<Guid, List<MailFolderModel>> folders)
+    {
+        var origins = messages.Select(m => (m.AccountId, m.FolderName)).Distinct().ToList();
+        if (origins.Count != 1 || !folders.TryGetValue(origins[0].AccountId, out var list))
+            return null;
+
+        return list.FirstOrDefault(f =>
+            string.Equals(f.FullName, origins[0].FolderName, StringComparison.Ordinal));
     }
 
     private void RebuildViewsMenu()
