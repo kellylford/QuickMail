@@ -307,7 +307,9 @@ Two things used to happen that they should not have. Rules ran against **every f
 
 Rules now behave the classic way: they run on the **Inbox**, on **new arrivals**, and never retroactively unless you ask. Other folders are still fetched and cached as before — they are just not rule-processed. Closing the Rules Manager no longer runs anything. ([#336](https://github.com/kellylford/QuickMail/issues/336))
 
-**Run on Existing Mail** is how you ask. It is the button beside New and Delete in the Rules Manager, and it has not moved — but its reach is now the Inbox of each account rather than every cached folder, so it can no longer move or delete mail you deliberately filed somewhere else. It reports how many messages were moved or deleted. An account whose Inbox cannot be identified is skipped rather than guessed at, and that is recorded in the log. (#346)
+**Run on Existing Mail** is how you ask. Its reach is now the Inbox of each account rather than every cached folder, so it can no longer move or delete mail you deliberately filed somewhere else. It reports how many messages were moved or deleted. An account whose Inbox cannot be identified is skipped rather than guessed at, and that is recorded in the log. It covers every account either way, not only the one you are looking at. (#346)
+
+**Where to find it depends on which Rules Manager you get.** Without a Microsoft 365 account it is the button beside New and Delete, where it has always been. **With a Microsoft 365 account** — where Rules opens the account-at-a-time window described above — there is no button for it in this release: press **Ctrl+Shift+P** in that window and choose **Run Rules on Existing Mail**. It does the same thing from there. ([#493](https://github.com/kellylford/QuickMail/issues/493))
 
 ### Fixed: the rules editor no longer offers actions with nothing to act on
 
