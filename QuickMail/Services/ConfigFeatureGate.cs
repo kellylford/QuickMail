@@ -20,7 +20,9 @@ public class ConfigFeatureGate : IFeatureGate
         // option to everyone only produced sign-ins that could not succeed. Opt-in for the users
         // whose authorization predates the block (#369).
         [FeatureFlag.GoogleAuth]   = false,
-        [FeatureFlag.ServerRules]  = false,   // off until server-rule editing + unified window ship (#333)
+        // On by default: server-rule list/create/edit/delete/reorder and the unified per-account rules
+        // window are complete and tested (#333). Set ServerRules=false under [features] to hide it again.
+        [FeatureFlag.ServerRules]  = true,
     };
 
     private readonly Dictionary<string, string> _configFlags;
