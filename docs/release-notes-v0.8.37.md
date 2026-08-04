@@ -65,6 +65,7 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
 - [Diagnostics and troubleshooting](#diagnostics-and-troubleshooting)
   - [Fixed: adding an account no longer shows every other account as disconnected](#fixed-adding-an-account-no-longer-shows-every-other-account-as-disconnected)
   - [New: Connection Diagnostics, for when something looks wrong](#new-connection-diagnostics-for-when-something-looks-wrong)
+  - [New: debug screenshots — off by default, and off again every time you exit](#new-debug-screenshots--off-by-default-and-off-again-every-time-you-exit)
   - [Changed: Delete QuickMail logs removes every diagnostic file](#changed-delete-quickmail-logs-removes-every-diagnostic-file)
 - [Thank You to Contributors](#thank-you-to-contributors)
 - [Internal](#internal) — developer detail, not needed to use QuickMail
@@ -552,13 +553,30 @@ While it is on, a **Connection Diagnostics** item appears in the **Help** menu. 
 
 The record goes into a file named `connection.log`, kept beside QuickMail's other settings. It is capped in size, and it stops the moment you turn the setting off.
 
+### New: debug screenshots — off by default, and off again every time you exit
+
+QuickMail can save a picture of each window as you open it, so that how the app *looks* can be reviewed by someone who is not looking at the screen. It is genuinely useful — it is how the visual problems fixed in this release were found — but it is the one feature here that writes pictures of your actual mail to disk, so it is deliberately hard to switch on and impossible to leave on by accident.
+
+**Two separate deliberate acts are required, and neither is remembered.**
+
+1. Start QuickMail with the `/debug` switch. Without it the feature does not exist — the setting is not merely hidden, there is nothing behind it to turn on.
+2. Then, in **Tools → Settings → Advanced**, find **Diagnostics (debug)** and check **Capture screenshots of new windows**.
+
+**It turns itself off when QuickMail closes.** The setting is never written to `config.ini` — it lives only in memory for the session. Start QuickMail again *with `/debug` again* and capture is off again, waiting to be switched on deliberately a second time. There is no way to make it stick, and that is the point.
+
+**While it is on, every window's title bar says so**, ending in " - SCREENSHOTS ON". If that text is not in your title bars, nothing is being captured.
+
+**Never attach a screenshot to a GitHub issue.** A GitHub issue is public and permanent, and a QuickMail screenshot is a picture of your real mailbox — senders, subject lines, and the text of whatever message was open. QuickMail itself never uploads them and never attaches them to a bug report: **Help → Report a Bug** does not touch them in any form. They stay in a folder on your computer (**Open screenshots folder** in that same Settings group takes you there), and **Settings → Advanced → Delete QuickMail logs** removes the whole folder. If a picture is genuinely needed to explain a problem, email it to [quickmailissues@theideaplace.net](mailto:quickmailissues@theideaplace.net), where it reaches a person rather than a public page — and look at what it shows before you send it.
+
+**Whether this ships enabled at all is still being decided.** It is in this release so it can be evaluated in real use; it may be restricted further, or removed from production builds entirely, in a future version. If you have a view on that, say so through any of the routes in [Reporting Issues](#reporting-issues). (#175)
+
 ### Changed: Delete QuickMail logs removes every diagnostic file
 
 QuickMail can leave three kinds of diagnostic file on your computer, and **Settings → Advanced → Delete QuickMail logs** removes all of them. Two of the three are new in this release, so this is what the command covers rather than a change to what it used to do:
 
 - **The application log** (`quickmail.log`) — a running record of what QuickMail did. It is always written, and in more detail if you start QuickMail with the `/debug` switch.
 - **The connection log** (`connection.log`) — the connection record described just above, written only while **Record connection diagnostics** is switched on.
-- **Debug screenshots** — pictures of QuickMail's own windows, saved to a folder. This is a development tool for checking how the app looks, and it is not something you will meet in ordinary use: it exists only when QuickMail is started with the `/debug` switch, has to be switched on deliberately in Settings once you are there, lasts only until you close the app, and puts " - SCREENSHOTS ON" in every window title while it is running — so it can never be capturing without your knowing.
+- **Debug screenshots** — pictures of QuickMail's own windows, saved to a folder, as described in the entry just above. It is not something you will meet in ordinary use, and it can never be capturing without your knowing.
 
 Delete QuickMail logs removes all three, and says so before it does it. The usual reason to delete these files is that they carry your email addresses and mail server names — and screenshots hold pictures of your actual mail — so leaving one behind because it happens to live in a different folder would quietly defeat the point. Screenshots are cleared even when you are running normally, in case an earlier `/debug` session left some behind. (#436)
 
