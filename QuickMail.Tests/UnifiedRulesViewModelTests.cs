@@ -278,18 +278,46 @@ public class UnifiedRulesViewModelTests
     }
 
     [Fact]
-    public async Task RunOnExisting_InvokesOwner_AndAnnouncesTheCount()
+    public async Task RunOnExisting_InvokesOwner_ScopedToSelectedAccount_AndAnnouncesTheCount()
     {
-        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(Guid.NewGuid())]);
-        var invoked = false;
-        vm.RunOnExistingRequested += () => { invoked = true; return Task.FromResult(3); };
+        var a = Guid.NewGuid();
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), new FakeServerRules(), [Graph(a)]);
+        Guid? scope = Guid.Empty;
+        vm.RunOnExistingRequested += id => { scope = id; return Task.FromResult(3); };
         string? announced = null;
         vm.AnnouncementRequested += (t, _) => announced = t;
 
         await vm.RunOnExistingCommand.ExecuteAsync(null);
 
-        Assert.True(invoked);
+        Assert.Equal(a, scope);   // #493: runs only the account in the picker, not all accounts
         Assert.Contains("3 messages moved or deleted", announced);
+        Assert.Contains("3 messages moved or deleted", vm.StatusText);   // visible too, for announcements-off users
+    }
+
+    [Fact]
+    public async Task RunOnExisting_DisabledWhenAccountHasNoEnabledClientRules()
+    {
+        var a = Guid.NewGuid();
+        // Graph account whose only rule is server-side → nothing for the client-only run to do.
+        var server = new FakeServerRules();
+        server.Stored.Add(Server("S1"));
+        var vm = new UnifiedRulesViewModel(new StubRuleService(), server, [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(vm.CanRunOnExisting);
+        Assert.False(vm.RunOnExistingCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task RunOnExisting_EnabledWhenAccountHasAnEnabledClientRule()
+    {
+        var a = Guid.NewGuid();
+        var client = new StubRuleService { LoadedRules = [Client("C1", a)] };  // enabled by default
+        var vm = new UnifiedRulesViewModel(client, new FakeServerRules(), [Graph(a)], preferredAccountId: a);
+        await vm.RefreshCommand.ExecuteAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(vm.CanRunOnExisting);
+        Assert.True(vm.RunOnExistingCommand.CanExecute(null));
     }
 
     [Fact]

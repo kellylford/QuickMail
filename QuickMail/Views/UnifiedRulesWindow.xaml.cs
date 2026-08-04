@@ -93,7 +93,7 @@ public partial class UnifiedRulesWindow : Window
             execute: () => Run(_vm.TestRuleCommand), isAvailable: () => _vm.CanTestSelected));
         _registry.Register(new CommandDefinition(
             id: "rules.runOnExisting", category: "Rules", title: "Run Rules on Existing Mail",
-            execute: () => Run(_vm.RunOnExistingCommand)));
+            execute: () => Run(_vm.RunOnExistingCommand), isAvailable: () => _vm.CanRunOnExisting));
         _registry.Register(new CommandDefinition(
             id: "rules.close", category: "Rules", title: "Close",
             execute: Close, defaultKey: Key.Escape, defaultModifiers: ModifierKeys.None));
