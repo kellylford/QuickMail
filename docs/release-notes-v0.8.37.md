@@ -46,6 +46,7 @@ The last public release was **v0.8.36**, so if that is what you have been runnin
   - [Fixed: creating an appointment late in the evening](#fixed-creating-an-appointment-late-in-the-evening)
 - [Keyboard and navigation](#keyboard-and-navigation)
   - [Fixed: moving or copying a folder now shows the folder tree](#fixed-moving-or-copying-a-folder-now-shows-the-folder-tree)
+  - [Fixed: choosing a rule's target folder now shows the folder tree](#fixed-choosing-a-rules-target-folder-now-shows-the-folder-tree)
   - [Fixed: typing a folder name in the folder picker now works](#fixed-typing-a-folder-name-in-the-folder-picker-now-works)
   - [Fixed: arrowing through settings options now chooses them](#fixed-arrowing-through-settings-options-now-chooses-them)
 - [Screen readers](#screen-readers)
@@ -420,6 +421,13 @@ Two destinations it no longer offers, both of which could only fail:
 Since the picker now opens on where you already are, **QuickMail no longer carries out a move or copy that puts something back where it started.** It says so instead. That was worth guarding: copying messages into the folder they are already in used to duplicate every one of them, and on Microsoft 365 accounts copying a folder into its own parent left a second copy of the folder and all of its mail.
 
 Two cases that used to end in silence or a server error now say what happened: when the exclusions above leave nowhere to move the folder, QuickMail says so instead of opening an empty picker; and **Move Folder…** or **Copy Folder…** on one of the views that sit in the folder tree — All Inboxes, All Mail, an account's All Mail — now says it is a view rather than a folder. Choosing it on a per-account All Mail previously opened a full picker and failed at the server.
+
+### Fixed: choosing a rule's target folder now shows the folder tree
+
+The rule editors were the last place still asking for a destination folder as one long flat list: **Choose Target Folder** in the Rules Manager, and the move and copy folder in the Microsoft 365 rule editor. Both now show the same tree as everywhere else, and both open on a folder rather than on nothing:
+
+- **Editing a rule that already files somewhere opens on that folder**, so checking or changing where a rule files starts where the rule already points. A new rule, or one whose folder has since been deleted or renamed on the server, opens on the first folder instead of leaving the tree unselected.
+- **Only the rule's own account is offered.** A rule files mail within one mailbox, so another account's folder was never a real choice — and with two accounts that each have an "Archive", the flat list's account-prefixed rows were the only thing telling them apart. If QuickMail cannot tell which account a rule belongs to, or has not cached that account's folders yet, it still shows every account rather than an empty picker.
 
 ### Fixed: typing a folder name in the folder picker now works
 

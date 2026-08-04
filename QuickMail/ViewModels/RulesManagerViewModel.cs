@@ -29,8 +29,12 @@ public partial class RulesManagerViewModel : ObservableObject
     /// <summary>Raised for screen-reader announcements.</summary>
     public event Action<string, AnnouncementCategory>? AnnouncementRequested;
 
-    /// <summary>Raised when the View should open a folder picker for the target folder.</summary>
-    public event Func<string?>? PickFolderRequested;
+    /// <summary>
+    /// Raised when the View should open a folder picker for the target folder. Carries the rule's
+    /// account — destinations are account-scoped, so the picker must not offer another account's
+    /// folders — and its current target, which is where the picker opens.
+    /// </summary>
+    public event Func<Guid?, string?, string?>? PickFolderRequested;
 
     /// <summary>
     /// Raised when the user asks to run all enabled rules against existing cached mail. The owner
@@ -343,8 +347,11 @@ public partial class RulesManagerViewModel : ObservableObject
     [RelayCommand]
     private void PickFolder()
     {
-        var folder = PickFolderRequested?.Invoke();
-        if (folder != null && SelectedRule != null)
+        // No rule, nothing to set a target on — and nothing to scope the picker to, so don't open it.
+        if (SelectedRule == null) return;
+
+        var folder = PickFolderRequested?.Invoke(SelectedRule.AccountId, SelectedRule.TargetFolder);
+        if (folder != null)
         {
             SelectedRule.TargetFolder = folder;
             OnPropertyChanged(nameof(SelectedRule));

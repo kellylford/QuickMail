@@ -87,12 +87,12 @@ public partial class RulesManagerWindow : Window
             RuleListBox.Focus();
     }
 
-    private string? OnPickFolderRequested()
+    private string? OnPickFolderRequested(Guid? accountId, string? currentFolder)
     {
-        var picker = new FolderPickerWindow(
-            _accounts,
-            _cachedFolders,
-            title: "Choose Target Folder") { Owner = this };
+        var picker = FolderPickerWindow.ForRuleTarget(
+            _accounts, _cachedFolders, accountId, currentFolder,
+            title: "Choose Target Folder");
+        picker.Owner = this;
 
         if (picker.ShowDialog() == true && picker.SelectedFolder is MailFolderModel folder)
         {
