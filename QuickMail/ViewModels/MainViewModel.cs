@@ -7764,154 +7764,84 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public event Action<string>? OpenInviteCardStatus;
 
-    public string BuildEventCardHtml()
+    /// <summary>The ICS PARTSTAT and the verb used in the confirmation, for a user's answer.</summary>
+    private static (string PartStat, string ActionLabel) PartsFor(InviteResponse response) => response switch
     {
-        var invite = MessageDetail?.CalendarInvite;
-        if (invite == null) return string.Empty;
-
-        // Card colors come from the resolved theme as hex strings (IThemeService
-        // never exposes UI types). Fallbacks match the Parchment light palette for
-        // tests that run without a theme service.
-        var theme = _themeService?.ResolvedTheme;
-        string Color(string token, string fallback) => theme?.ColorOf(token) ?? fallback;
-        var cardBorder = Color("border", "#D8D4CC");
-        var cardBg     = Color("surfaceBackground", "#F5F3EF");
-        var cardText   = Color("textPrimary", "#1F2328");
-
-        var sb = new System.Text.StringBuilder();
-        sb.Append($"<div style=\"border:1px solid {cardBorder};border-radius:6px;padding:12px;margin:0 0 16px 0;background:{cardBg};color:{cardText};font-family:Segoe UI,Arial,sans-serif;font-size:13px;line-height:1.45;\" role=\"region\" aria-label=\"");
-        sb.Append(System.Net.WebUtility.HtmlEncode(invite.DisplaySummary));
-        sb.Append("\">");
-        sb.Append("<div style=\"font-weight:bold;font-size:15px;margin-bottom:8px;\">Event Invitation</div>");
-
-        // Cancellation notice — shown instead of the accept/decline buttons when
-        // the organizer sent METHOD:CANCEL.
-        var isCancel = string.Equals(invite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
-        if (isCancel)
-        {
-            sb.Append($"<div style=\"font-weight:bold;color:{Color("error", "#B3261E")};margin-bottom:8px;\">This event has been cancelled by the organizer.</div>");
-        }
-
-        if (!string.IsNullOrWhiteSpace(invite.Summary))
-        {
-            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Event:</strong> ");
-            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Summary));
-            sb.Append("</div>");
-        }
-
-        if (!string.IsNullOrWhiteSpace(invite.OrganizerName))
-        {
-            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Organizer:</strong> ");
-            sb.Append(System.Net.WebUtility.HtmlEncode(invite.OrganizerName));
-            sb.Append("</div>");
-        }
-        else if (!string.IsNullOrWhiteSpace(invite.Organizer))
-        {
-            sb.Append("<div style=\"margin-bottom:4px;\"><strong>Organizer:</strong> ");
-            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Organizer));
-            sb.Append("</div>");
-        }
-
-        if (invite.StartTime.HasValue)
-        {
-            sb.Append("<div style=\"margin-bottom:4px;\"><strong>When:</strong> ");
-            sb.Append(System.Net.WebUtility.HtmlEncode(invite.StartTime.Value.ToLocalTime().ToString("f")));
-            if (invite.EndTime.HasValue)
-            {
-                sb.Append(" \u2013 ");
-                sb.Append(System.Net.WebUtility.HtmlEncode(invite.EndTime.Value.ToLocalTime().ToString("t")));
-            }
-            sb.Append("</div>");
-        }
-
-        if (!string.IsNullOrWhiteSpace(invite.Location))
-        {
-            sb.Append("<div style=\"margin-bottom:8px;\"><strong>Location:</strong> ");
-            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Location));
-            sb.Append("</div>");
-        }
-
-        if (!string.IsNullOrWhiteSpace(invite.Description))
-        {
-            sb.Append("<div style=\"margin-bottom:8px;white-space:pre-wrap;\">");
-            sb.Append(System.Net.WebUtility.HtmlEncode(invite.Description));
-            sb.Append("</div>");
-        }
-
-        // Buttons: Accept, Tentative, Decline — hidden for cancellations. Each uses
-        // its status color's pale background tint with the dark status text partner
-        // and a 1px status border, readable in light and dark themes alike; the
-        // verb text (not color) carries the meaning.
-        if (!isCancel)
-        {
-            void AppendButton(string href, string ariaLabel, string label, string fg, string bg, bool last = false)
-            {
-                sb.Append($"<a href=\"{href}\" role=\"button\" aria-label=\"{ariaLabel}\" ");
-                sb.Append($"style=\"display:inline-block;padding:6px 14px;{(last ? "" : "margin-right:8px;")}margin-bottom:4px;");
-                sb.Append($"background:{bg};color:{fg};border:1px solid {fg};border-radius:4px;text-decoration:none;font-weight:600;\">{label}</a>");
-            }
-
-            sb.Append("<div style=\"margin-top:8px;\">");
-            AppendButton("quickmail:ics-accept", "Accept invitation", "Accept",
-                Color("success", "#2E6B3E"), Color("successBackground", "#E9F3EC"));
-            AppendButton("quickmail:ics-tentative", "Tentatively accept invitation", "Tentative",
-                Color("warning", "#8A5A00"), Color("warningBackground", "#FBF3E2"));
-            AppendButton("quickmail:ics-decline", "Decline invitation", "Decline",
-                Color("error", "#B3261E"), Color("errorBackground", "#FBEAE9"), last: true);
-            sb.Append("</div>");
-
-            // Live status region for RSVP feedback (issue #329), updated in place via
-            // ExecuteScriptAsync so the result is announced from inside the document — a host-window
-            // notification is dropped while focus is in the WebView2. Empty until the user responds.
-            sb.Append("<div id=\"qm-invite-status\" aria-live=\"assertive\" aria-atomic=\"true\" " +
-                      "style=\"margin-top:8px;font-weight:600;\"></div>");
-        }
-
-        sb.Append("</div>");
-        return sb.ToString();
-    }
+        InviteResponse.Accept    => ("ACCEPTED",  "accepted"),
+        InviteResponse.Tentative => ("TENTATIVE", "tentatively accepted"),
+        InviteResponse.Decline   => ("DECLINED",  "declined"),
+        // No catch-all default: an unmapped value must not silently decline someone's meeting.
+        _ => throw new ArgumentOutOfRangeException(nameof(response)),
+    };
 
     [RelayCommand]
-    private async Task AcceptInvite()
-    {
-        await SendIcsReply("ACCEPTED", "accepted");
-    }
+    private async Task AcceptInvite() => await RespondToInviteAsync(MessageDetail, InviteResponse.Accept);
 
     [RelayCommand]
-    private async Task DeclineInvite()
-    {
-        await SendIcsReply("DECLINED", "declined");
-    }
+    private async Task DeclineInvite() => await RespondToInviteAsync(MessageDetail, InviteResponse.Decline);
 
     [RelayCommand]
-    private async Task TentativeInvite()
-    {
-        await SendIcsReply("TENTATIVE", "tentatively accepted");
-    }
+    private async Task TentativeInvite() => await RespondToInviteAsync(MessageDetail, InviteResponse.Tentative);
 
-    private async Task SendIcsReply(string partStat, string actionLabel)
+    /// <summary>
+    /// Responds to the invite shown in a standalone <c>MessageWindow</c>. That window renders its own
+    /// copy of the event card in its own WebView2, so the reply is driven by the message IT has open
+    /// (<paramref name="detail"/>) rather than <see cref="MessageDetail"/> — in Window mode the
+    /// reading pane is not showing this message, and may be showing a different one. Both feedback
+    /// channels are redirected to that window for the same reason: <paramref name="cardStatus"/>
+    /// writes into its card instead of the reading pane's, and <paramref name="hostAnnounce"/> raises
+    /// the announcement on its automation peer instead of the main window's.
+    /// </summary>
+    public Task RespondToOpenInviteAsync(MailMessageDetail detail, InviteResponse response,
+        Action<string> cardStatus, Action<string> hostAnnounce) =>
+        RespondToInviteAsync(detail, response, cardStatus, hostAnnounce);
+
+    /// <summary>
+    /// The one RSVP path for an invite the user has open, wherever it is open. The optional sinks
+    /// redirect the two feedback channels to a window other than the main one; with both null the
+    /// reading pane's card and the main window's announcements are used.
+    /// </summary>
+    private async Task RespondToInviteAsync(MailMessageDetail? detail, InviteResponse response,
+        Action<string>? cardStatus = null, Action<string>? hostAnnounce = null)
     {
-        var invite = MessageDetail?.CalendarInvite;
+        void Card(string text)
+        {
+            if (cardStatus != null) cardStatus(text);
+            else OpenInviteCardStatus?.Invoke(text);
+        }
+        void Host(string text)
+        {
+            if (hostAnnounce != null) hostAnnounce(text);
+            else Announce(text, AnnouncementCategory.Result);
+        }
+
+        var invite = detail?.CalendarInvite;
         if (invite == null)
         {
             // The card is shown but the invite data isn't available (e.g. a cache-served reopen before
             // reconstruction). Say so instead of returning silently (#329). The card is what's focused,
             // so route it through the card's live region as well as the host announce.
             const string msg = "This invitation can't be answered right now. Open it again from the message list and try once it has loaded.";
-            OpenInviteCardStatus?.Invoke(msg);
-            Announce(msg, AnnouncementCategory.Result);
+            Card(msg);
+            Host(msg);
             return;
         }
 
-        var account = Accounts.FirstOrDefault(a => a.Id == MessageDetail!.AccountId);
+        var account = Accounts.FirstOrDefault(a => a.Id == detail!.AccountId);
         if (account == null)
         {
-            Announce($"Cannot send calendar response: account not found.", AnnouncementCategory.Result);
+            // Through the card as well: focus is inside the WebView2 at this point, which is the very
+            // case a host announcement is dropped for — without this the button press does nothing
+            // the user can perceive.
+            const string msg = "Cannot send calendar response: the account for this message isn't available.";
+            Card(msg);
+            Host(msg);
             return;
         }
 
+        var (partStat, actionLabel) = PartsFor(response);
         await SendIcsReplyForAsync(invite, account, partStat, actionLabel,
-            MessageDetail!.MessageId, MessageDetail!.FolderName);
+            detail!.MessageId, detail!.FolderName, cardStatus, hostAnnounce);
     }
 
     /// <summary>
@@ -7972,13 +7902,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// response status so the calendar reflects the reply immediately.
     /// </summary>
     private async Task SendIcsReplyForAsync(IcsModel invite, AccountModel account, string partStat,
-        string actionLabel, string sourceMessageId, string sourceFolder)
+        string actionLabel, string sourceMessageId, string sourceFolder,
+        Action<string>? cardStatus = null, Action<string>? hostAnnounce = null)
     {
+        // Announcements follow the card: a reply driven from a standalone window must be announced on
+        // that window's peer, not the main window's. Passing the sink per call rather than flipping a
+        // shared "announce here instead" field keeps it correct across the await — a send takes
+        // seconds, and unrelated announcements (sync status, a move result) must not be dragged along.
+        void HostAnnounce(string text)
+        {
+            if (hostAnnounce != null) hostAnnounce(text);
+            else Announce(text, AnnouncementCategory.Result);
+        }
+
         // Feedback for a reading-pane RSVP goes through the card's in-document live region (#329), but
         // only while the reading pane still shows THIS invite \u2014 if the user navigated away during the
         // send, or this reply came from the calendar list, we must not write into a different card.
+        // A caller-supplied sink (the standalone MessageWindow) owns a different document, so it wins
+        // outright: that window's card is the one the user is reading, and the reading pane behind it
+        // is not showing this message at all.
         void CardStatus(string text)
         {
+            if (cardStatus != null)
+            {
+                cardStatus(text);
+                return;
+            }
             if (MessageDetail?.CalendarInvite is { } open &&
                 string.Equals(open.Uid, invite.Uid, StringComparison.Ordinal))
                 OpenInviteCardStatus?.Invoke(text);
@@ -7996,7 +7945,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             await _smtp.SendIcsReplyAsync(icsContent, account, password, invite.Organizer ?? "");
 
             var eventTitle = invite.Summary ?? "calendar event";
-            Announce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.", AnnouncementCategory.Result);
+            HostAnnounce($"Calendar response sent: {actionLabel} \u2014 {eventTitle}.");
 
             // Say what actually happened. The event is upserted to the calendar for every response
             // (the block below runs regardless of partStat, so the calendar reflects the reply), but
@@ -8050,7 +7999,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         catch (Exception ex)
         {
             LogService.Log($"SendIcsReply ({partStat})", ex);
-            Announce($"Failed to send calendar response: {ex.Message}", AnnouncementCategory.Result);
+            HostAnnounce($"Failed to send calendar response: {ex.Message}");
             // A failed send would otherwise be silent in the reading pane too (host announce dropped),
             // and the buttons remain so the user can retry.
             CardStatus("Couldn't send your reply. You can try again.");

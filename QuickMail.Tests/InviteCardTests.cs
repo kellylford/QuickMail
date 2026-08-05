@@ -40,7 +40,7 @@ public class InviteCardTests
         var vm = MakeVm();
         vm.MessageDetail = DetailWithInvite();
 
-        var html = vm.BuildEventCardHtml();
+        var html = QuickMail.Helpers.EventCardHtmlBuilder.Build(vm.MessageDetail?.CalendarInvite, themeService: null);
 
         Assert.Contains("id=\"qm-invite-status\"", html);
         Assert.Contains("aria-live=\"assertive\"", html);
@@ -52,7 +52,8 @@ public class InviteCardTests
     public void EventCard_NoInvite_IsEmpty()
     {
         var vm = MakeVm();
-        Assert.Equal(string.Empty, vm.BuildEventCardHtml());
+        Assert.Equal(string.Empty,
+            QuickMail.Helpers.EventCardHtmlBuilder.Build(vm.MessageDetail?.CalendarInvite, themeService: null));
     }
 
     [Fact]

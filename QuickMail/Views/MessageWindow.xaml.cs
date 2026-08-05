@@ -150,6 +150,26 @@ public partial class MessageWindow : Window
             defaultKey: Key.W, defaultModifiers: ModifierKeys.Control | ModifierKeys.Shift,
             isAvailable: () => !string.IsNullOrWhiteSpace(_vm.SelectedMessage?.Subject)));
 
+        // Answering an invitation is otherwise reachable only by tabbing to the links inside the
+        // card's document. No default keys — the palette is the discoverable route, and the New
+        // Window Checklist wants window-scoped actions there whether or not they have a gesture.
+        // Category "Mail" matches mail.acceptInvite and friends in MainViewModel: the same three
+        // actions must not group differently depending on which palette the user opened.
+        _localRegistry.Register(new CommandDefinition(
+            id: "window.acceptInvite", category: "Mail", title: "Accept Invitation",
+            execute: () => RespondToInvite(InviteResponse.Accept),
+            isAvailable: CanRespondToInvite));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "window.tentativeInvite", category: "Mail", title: "Tentatively Accept Invitation",
+            execute: () => RespondToInvite(InviteResponse.Tentative),
+            isAvailable: CanRespondToInvite));
+
+        _localRegistry.Register(new CommandDefinition(
+            id: "window.declineInvite", category: "Mail", title: "Decline Invitation",
+            execute: () => RespondToInvite(InviteResponse.Decline),
+            isAvailable: CanRespondToInvite));
+
         _localRegistry.Register(new CommandDefinition(
             id: "window.close", category: "View", title: "Close Window",
             execute: Close,
@@ -231,6 +251,13 @@ public partial class MessageWindow : Window
                     uri.StartsWith("data:",  StringComparison.OrdinalIgnoreCase))
                     return;
                 args.Cancel = true;
+                // The event card's RSVP buttons are quickmail: links. Cancelling the navigation is
+                // what keeps this document — and its aria-live status region — alive across the reply.
+                if (uri.StartsWith("quickmail:", StringComparison.OrdinalIgnoreCase))
+                {
+                    HandleQuickMailUri(uri);
+                    return;
+                }
                 OpenExternal(uri);
             };
 
@@ -318,6 +345,61 @@ public partial class MessageWindow : Window
     /// <summary>The sticky "read as plain text" preference (issue #34), read live at render time.</summary>
     private bool ReadAsPlainText() => _configService?.Load().ReadAsPlainText ?? false;
 
+    /// <summary>
+    /// UID of the invite the in-flight RSVP belongs to. A send takes seconds, and this window has
+    /// Previous/Next navigation, so the user can be on another message by the time the reply lands.
+    /// Without this, a confirmation would be written into whatever card is showing — announcing
+    /// "you accepted this meeting" inside a different invitation.
+    /// </summary>
+    private string? _pendingRsvpUid;
+
+    /// <summary>
+    /// Writes RSVP feedback into this window's own card, inside the document the screen reader is
+    /// reading. A host-window announcement is dropped while focus is in the WebView2 (issue #329),
+    /// and the main window's reading pane is not showing this message in Window mode.
+    /// </summary>
+    internal async void SetInviteCardStatus(string text)
+    {
+        if (!_webViewReady || MessageBody.CoreWebView2 is null) return;
+        // Only while this window is still showing the invite the reply was sent for.
+        if (!string.Equals(_vm.MessageDetail?.CalendarInvite?.Uid, _pendingRsvpUid, StringComparison.Ordinal))
+            return;
+        try { await MessageBody.CoreWebView2.ExecuteScriptAsync(EventCardHtmlBuilder.StatusScript(text)); }
+        catch (Exception ex) { LogService.Log("MessageWindow.SetInviteCardStatus", ex); }
+    }
+
+    /// <summary>
+    /// Raised when the user answers the open invitation from this window, with the message the window
+    /// has open. The main window handles it, because sending the reply, updating the calendar row,
+    /// and announcing the outcome all belong to MainViewModel — the same routing Ctrl+Shift+W uses
+    /// (see WatchToggleRequested). The response travels as an <see cref="InviteResponse"/> so the ICS
+    /// PARTSTAT and the wording of the confirmation stay in the ViewModel.
+    /// </summary>
+    public event Action<MailMessageDetail, InviteResponse>? InviteResponseRequested;
+
+    /// <summary>Handles quickmail: pseudo-URIs from this window's event card buttons.</summary>
+    private void HandleQuickMailUri(string uri)
+    {
+        if (uri.StartsWith("quickmail:ics-accept", StringComparison.OrdinalIgnoreCase))
+            RespondToInvite(InviteResponse.Accept);
+        else if (uri.StartsWith("quickmail:ics-tentative", StringComparison.OrdinalIgnoreCase))
+            RespondToInvite(InviteResponse.Tentative);
+        else if (uri.StartsWith("quickmail:ics-decline", StringComparison.OrdinalIgnoreCase))
+            RespondToInvite(InviteResponse.Decline);
+    }
+
+    private void RespondToInvite(InviteResponse response)
+    {
+        if (_vm.MessageDetail is not { } detail) return;
+        _pendingRsvpUid = detail.CalendarInvite?.Uid;
+        InviteResponseRequested?.Invoke(detail, response);
+    }
+
+    /// <summary>True when this window has an invitation open that can still be answered.</summary>
+    private bool CanRespondToInvite() =>
+        _vm.MessageDetail?.CalendarInvite is { } invite &&
+        !string.Equals(invite.Method, "CANCEL", StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Re-renders the open message with fresh theme CSS. Never moves focus.</summary>
     private void OnThemeChanged(object? sender, EventArgs e)
     {
@@ -327,7 +409,7 @@ public partial class MessageWindow : Window
             if (!_webViewReady || _vm.MessageDetail is not { } detail) return;
             var version = Interlocked.Increment(ref _renderVersion);
             var plainText = ReadAsPlainText();
-            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText));
+            var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
             if (version != _renderVersion) return;
             try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
             MessageBody.CoreWebView2.NavigateToString(html);
@@ -352,7 +434,7 @@ public partial class MessageWindow : Window
             {
                 var version = Interlocked.Increment(ref _renderVersion);
                 var plainText = cfg.ReadAsPlainText;
-                var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText));
+                var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
                 if (version != _renderVersion) return;
                 try { MessageBody.CoreWebView2.Stop(); } catch { /* best effort */ }
                 MessageBody.CoreWebView2.NavigateToString(html);
@@ -386,7 +468,8 @@ public partial class MessageWindow : Window
 
         var version = Interlocked.Increment(ref _renderVersion);
         var plainText = ReadAsPlainText();
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText));
+        // The builder prepends the calendar invite event card when this message is an invitation.
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, BuildThemeCss(), plainText, _themeService));
         if (version != _renderVersion) return;
 
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

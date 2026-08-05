@@ -3193,12 +3193,8 @@ public partial class MainWindow : Window
         var detail   = _vm.MessageDetail;
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText));
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService));
         if (renderVersion != _messageBodyRenderVersion) return;
-
-        var eventCardHtml = _vm.BuildEventCardHtml();
-        if (!string.IsNullOrEmpty(eventCardHtml))
-            html = InjectEventCard(html, eventCardHtml);
 
         try { MessageBody.CoreWebView2.Stop(); }
         catch (Exception ex) { LogService.Log("RerenderReadingPane/Stop", ex); }
@@ -3213,16 +3209,10 @@ public partial class MainWindow : Window
         var renderVersion = Interlocked.Increment(ref _messageBodyRenderVersion);
         var themeCss = BuildReadingPaneThemeCss();
         var plainText = _vm.ReadAsPlainText;
-        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText));
+        // The builder prepends the calendar invite event card when this message is an invitation.
+        var html = await Task.Run(() => MessageBodyHtmlBuilder.BuildMessageHtml(detail, themeCss, plainText, _themeService));
         if (renderVersion != _messageBodyRenderVersion)
             return;
-
-        // Prepend the calendar invite event card if present.
-        var eventCardHtml = _vm.BuildEventCardHtml();
-        if (!string.IsNullOrEmpty(eventCardHtml))
-        {
-            html = InjectEventCard(html, eventCardHtml);
-        }
 
         // Wait for navigation to finish before focusing so the screen reader
         // gets the rendered document, but never let a complex sender HTML wait forever.
@@ -3362,19 +3352,6 @@ public partial class MainWindow : Window
         return $"Message body. {trimmed}";
     }
 
-    /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
-    private static string InjectEventCard(string html, string eventCardHtml)
-    {
-        var bodyTag = "<body";
-        var bodyIdx = html.IndexOf(bodyTag, StringComparison.OrdinalIgnoreCase);
-        if (bodyIdx < 0) return eventCardHtml + html;
-
-        var closeIdx = html.IndexOf('>', bodyIdx);
-        if (closeIdx < 0) return eventCardHtml + html;
-
-        return html.Insert(closeIdx + 1, eventCardHtml);
-    }
-
     /// <summary>Handles quickmail: pseudo-URIs from the event card buttons.</summary>
     // Update the open invite card's aria-live status region in place (#329). Because the region lives
     // in the document the screen reader is already reading, updating its text is announced reliably —
@@ -3383,9 +3360,7 @@ public partial class MainWindow : Window
     private async void OnOpenInviteCardStatus(string text)
     {
         if (!_webViewReady || MessageBody.CoreWebView2 is null) return;
-        // JsonSerializer yields a safe, quoted JS string literal; textContent prevents HTML injection.
-        var js = "(function(){var s=document.getElementById('qm-invite-status');" +
-                 "if(s){s.textContent=" + System.Text.Json.JsonSerializer.Serialize(text) + ";}})();";
+        var js = Helpers.EventCardHtmlBuilder.StatusScript(text);
         try { await MessageBody.CoreWebView2.ExecuteScriptAsync(js); }
         catch (Exception ex) { LogService.Log("OnOpenInviteCardStatus", ex); }
     }
@@ -5181,6 +5156,25 @@ public partial class MainWindow : Window
             _announceTarget = win;
             try { _vm.ToggleWatchConversationFor(subject); }
             finally { _announceTarget = null; }
+        };
+        // RSVP from the window's own invite card. Routed here for the same reason as the watch
+        // toggle: MainViewModel owns sending the reply and updating the calendar row. Both feedback
+        // channels are passed in as sinks aimed at that window, rather than flipping _announceTarget:
+        // the send spans an await of a network round trip, and a shared field held that long would
+        // drag every unrelated announcement onto this window (and be cleared early by a second RSVP).
+        win.InviteResponseRequested += async (detail, response) =>
+        {
+            // async void by way of the event signature, so nothing above catches for us.
+            try
+            {
+                await _vm.RespondToOpenInviteAsync(detail, response, win.SetInviteCardStatus,
+                    text => AccessibilityHelper.Announce(win, text, interrupt: true,
+                                                         category: AnnouncementCategory.Result));
+            }
+            catch (Exception ex)
+            {
+                LogService.Log("MessageWindow invite response", ex);
+            }
         };
         _openMessageWindows.Add(win);
 

@@ -124,16 +124,8 @@ public class ViewModelConstructionTests
         Assert.False(vm.HasCalendarInvite);
     }
 
-    [Fact]
-    public void MainViewModel_BuildEventCardHtml_ReturnsEmptyWhenNoInvite()
-    {
-        var (imap, accounts, creds, store, sync, config, registry, _, _) = MakeServices();
-        var vm = new MainViewModel(imap, accounts, creds, store, new StubOAuthService(), sync, config, registry, new StubViewService(), new StubRuleService(), new StubSmtpService());
-
-        var html = vm.BuildEventCardHtml();
-
-        Assert.Equal(string.Empty, html);
-    }
+    // (The no-invite empty-card case moved to EventCardRenderTests.Card_WithNoInvite_IsEmpty when
+    // the card builder left MainViewModel; keeping a VM-constructing copy here only duplicated it.)
 
     [Fact]
     public void MainViewModel_AcceptInviteCommand_Exists()

@@ -8,7 +8,9 @@ namespace QuickMail.Helpers;
 
 /// <summary>
 /// Shared HTML rendering helpers for the reading pane and standalone MessageWindow.
-/// All methods are pure static; no DI required.
+/// All methods are pure static; nothing is constructed here. <see cref="IThemeService"/> is taken as
+/// a parameter purely to read color tokens (plain field reads, safe off the UI thread) — the same
+/// service the caller already draws <c>themeCss</c> from.
 /// </summary>
 public static class MessageBodyHtmlBuilder
 {
@@ -31,7 +33,36 @@ public static class MessageBodyHtmlBuilder
     /// variables are absent and the <c>var(--qm-*, fallback)</c> declarations
     /// resolve to their system-color fallbacks (the pre-theming behavior).
     /// </param>
-    public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null, bool forcePlainText = false)
+    /// <param name="themeService">
+    /// Supplies the invite card's colors when <paramref name="detail"/> carries a calendar invite.
+    /// The card is built and injected HERE, from the detail's own <c>CalendarInvite</c>, rather than
+    /// by each caller: a surface that forgets it renders an invitation with no date or time at all,
+    /// because the "when" lives only in the ICS part and never in the body. That is exactly how the
+    /// standalone MessageWindow shipped, so the obligation is not left to the call site. Null yields
+    /// the card's fallback palette; no invite yields no card.
+    /// </param>
+    public static string BuildMessageHtml(MailMessageDetail detail, string? themeCss = null,
+        bool forcePlainText = false, IThemeService? themeService = null)
+    {
+        var document = BuildBodyDocument(detail, themeCss, forcePlainText);
+        var card = EventCardHtmlBuilder.Build(detail.CalendarInvite, themeService);
+        return card.Length == 0 ? document : InjectEventCard(document, card);
+    }
+
+    /// <summary>Injects the event card HTML just after the opening &lt;body&gt; tag.</summary>
+    private static string InjectEventCard(string html, string eventCardHtml)
+    {
+        var bodyTag = "<body";
+        var bodyIdx = html.IndexOf(bodyTag, StringComparison.OrdinalIgnoreCase);
+        if (bodyIdx < 0) return eventCardHtml + html;
+
+        var closeIdx = html.IndexOf('>', bodyIdx);
+        if (closeIdx < 0) return eventCardHtml + html;
+
+        return html.Insert(closeIdx + 1, eventCardHtml);
+    }
+
+    private static string BuildBodyDocument(MailMessageDetail detail, string? themeCss, bool forcePlainText)
     {
         var htmlBody = detail.HtmlBody ?? string.Empty;
 
