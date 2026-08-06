@@ -11,6 +11,8 @@ Every service has a matching interface in `Services/I*.cs`, making them fully su
 
 **LocalStoreService** (SQLite via `Microsoft.Data.Sqlite`) caches messages in `mail.db` with WAL journaling. It stores `MessageSummary` rows for list panes and `MessageDetail` rows for body/attachment metadata, and handles column-addition migrations at startup. Schema version is tracked via `PRAGMA user_version` so data migrations run exactly once.
 
+**BugReportService** submits **Help → Report a Bug** through a Cloudflare Worker relay rather than to the GitHub API directly, so no GitHub credential ships inside the executable and user-filed issues are authored by a bot rather than the maintainer. It falls back to clipboard + a pre-filled `issues/new` URL whenever the relay is unavailable — including every local build, which carries no relay credentials by design. Operations and troubleshooting: [BUG-REPORTING.md](BUG-REPORTING.md). Relay setup: [`relay/README.md`](../relay/README.md).
+
 **SyncService** runs background IMAP sync. It raises `FolderSynced`, `MessagesRemoved`, and `RulesApplied` events; `MainViewModel` subscribes and merges new data into observable collections. UI is populated from the SQLite cache immediately, then background sync fills gaps.
 
 **OAuthService** wraps MSAL (`Microsoft.Identity.Client`) for Microsoft 365 / Outlook OAuth2. Token refresh is handled automatically; passwords for OAuth accounts are not stored in Credential Manager.
