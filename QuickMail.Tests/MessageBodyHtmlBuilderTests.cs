@@ -47,6 +47,93 @@ public class MessageBodyHtmlBuilderTests
     }
 
     [Fact]
+    public void StripHeavyHtml_ImageAltText_SurvivesTheImage()
+    {
+        const string html = "<body><p>See the <img src=\"chart.png\" alt=\"Q3 revenue chart\"> above.</p></body>";
+
+        var result = MessageBodyHtmlBuilder.StripHeavyHtml(html);
+
+        Assert.DoesNotContain("<img", result, System.StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Q3 revenue chart", result);
+    }
+
+    [Fact]
+    public void StripHeavyHtml_IconOnlyLink_IsNamedByAltNotItsHref()
+    {
+        // Issue #163: the social-icon footer every newsletter ships. Dropping the image left the
+        // anchor empty, so it took its accessible name from the tracking href and was announced as
+        // "redirect" rather than "Facebook".
+        const string html =
+            "<body><a href=\"https://substack.com/redirect/a7992ee5\">" +
+            "<img src=\"fb.png\" alt=\"Facebook\"></a></body>";
+
+        var result = MessageBodyHtmlBuilder.StripHeavyHtml(html);
+
+        Assert.Contains(">Facebook</a>", result);
+    }
+
+    [Theory]
+    [InlineData("<img src='x.png' alt=''>")]           // author-declared decorative
+    [InlineData("<img src='x.png' alt='   '>")]        // whitespace is not a name
+    [InlineData("<img src='x.png'>")]                  // no alt at all
+    public void StripHeavyHtml_ImageWithoutUsefulAlt_LeavesNothingBehind(string img)
+    {
+        var result = MessageBodyHtmlBuilder.StripHeavyHtml("<body><p>A</p>" + img + "<p>B</p></body>");
+
+        Assert.DoesNotContain("<img", result, System.StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("x.png", result);
+        Assert.Contains("<p>A</p><p>B</p>", result);
+    }
+
+    [Fact]
+    public void StripHeavyHtml_AltTextWithMarkup_IsEncodedNotSpliced()
+    {
+        // A bare '<' is legal inside a quoted attribute; moved into content unescaped it would
+        // open a tag the sanitizer has already finished inspecting. (A literal <script> in the alt
+        // never reaches this pass — the script removal earlier in the chain eats it — so the case
+        // worth pinning is the markup that does survive to here.)
+        const string html = "<body><img src=\"x.png\" alt=\"a <b>bold</b> logo\"></body>";
+
+        var result = MessageBodyHtmlBuilder.StripHeavyHtml(html);
+
+        Assert.Contains("a &lt;b&gt;bold&lt;/b&gt; logo", result);
+    }
+
+    [Fact]
+    public void StripHeavyHtml_AltTextEntities_StayDecodedOnce()
+    {
+        const string html = "<body><img src=\"x.png\" alt=\"Tom &amp; Jerry\"></body>";
+
+        var result = MessageBodyHtmlBuilder.StripHeavyHtml(html);
+
+        Assert.Contains("Tom &amp; Jerry", result);
+        Assert.DoesNotContain("&amp;amp;", result);
+    }
+
+    [Fact]
+    public void HtmlToText_ImageAltText_ReachesTheSimplifiedBody()
+    {
+        var text = MessageBodyHtmlBuilder.HtmlToText(
+            "<body><p>Follow us on <a href=\"http://t.example/c/1p\"><img alt=\"Facebook\"></a></p></body>");
+
+        Assert.Contains("Facebook", text);
+    }
+
+    [Fact]
+    public void TryStripHeavyHtml_ImageAltPassTimeout_ReturnsFalse()
+    {
+        // The alt-substitution pass must fail closed with the rest: a partially substituted
+        // document is not a sanitized one.
+        var html = string.Concat(System.Linq.Enumerable.Repeat(
+            "<img src=\"x.png\" alt=\"icon\">", 5000));
+
+        var ok = MessageBodyHtmlBuilder.TryStripHeavyHtml(
+            html, System.TimeSpan.FromTicks(1), out _);
+
+        Assert.False(ok);
+    }
+
+    [Fact]
     public void TryStripHeavyHtml_NormalInput_ReturnsTrueAndStrips()
     {
         const string html = "<body><script>alert(1)</script><p onclick=\"x()\">Hello</p></body>";

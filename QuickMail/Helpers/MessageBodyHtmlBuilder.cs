@@ -27,6 +27,16 @@ public static class MessageBodyHtmlBuilder
     private static readonly char[] AutoLinkTrailingPunct =
         ['.', ',', ';', ':', '!', '?', ')', ']', '}', '>', '\''];
 
+    /// <summary>
+    /// An <c>&lt;img&gt;</c> carrying a non-empty <c>alt</c>. An empty <c>alt=""</c> is deliberately
+    /// NOT matched: that is the author declaring the image decorative, and the right handling is the
+    /// plain removal the later pass performs.
+    /// </summary>
+    private static readonly Regex ImgWithAltText = new(
+        @"<img\b[^>]*?\balt\s*=\s*(?:""(?<alt>[^""]+)""|'(?<alt>[^']+)'|(?<alt>[^\s""'>]+))[^>]*>",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        HtmlRegexTimeout);
+
     /// <param name="themeCss">
     /// Optional theme CSS from <see cref="IThemeService.BuildMessageCss"/> — the
     /// <c>:root { --qm-* }</c> variable block. When null the document's CSS
@@ -243,6 +253,13 @@ public static class MessageBodyHtmlBuilder
             return result;
         }
 
+        string StepEval(string input, Regex regex, MatchEvaluator evaluator)
+        {
+            if (!TryRegexReplace(input, regex, evaluator, timeout, out var result))
+                complete = false;
+            return result;
+        }
+
         var body = html;
         // Remove elements hidden via inline display:none (e.g. newsletter preheader padding divs).
         // Must run before style-attribute stripping, which would make these visible.
@@ -254,6 +271,13 @@ public static class MessageBodyHtmlBuilder
         body = Step(body, "<style\\b.*?</style>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Step(body, "<svg\\b.*?</svg>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         body = Step(body, "<(iframe|object|embed|video|audio|canvas|form)\\b.*?</\\1>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        // Substitute each image's alt text before images are removed (issue #163). Removing the
+        // element outright discards the only name the image has: the CSP blocks the pixels either
+        // way, so what is lost is not the picture but the words describing it. Worst where the
+        // image is the whole content of a link — the anchor is left empty, has no accessible name,
+        // and is announced from its href instead, so a row of social icons reads as whatever the
+        // tracking URLs happen to spell ("redirect", "c/1pfGAI30…") rather than "Facebook".
+        body = StepEval(body, ImgWithAltText, ImageAltReplacement);
         body = Step(body, "<(img|link|base|input|button|meta)\\b[^>]*>", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         // target is stripped so that anchors navigate in-place: a target="_blank" link raises
         // WebView2's NewWindowRequested rather than NavigationStarting, and any host that
@@ -263,6 +287,22 @@ public static class MessageBodyHtmlBuilder
         body = Step(body, "\\s(on\\w+|style|src|srcset|background|target)\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
         stripped = body;
         return complete;
+    }
+
+    /// <summary>
+    /// The text that stands in for an image: its alt text and nothing else, so a link whose content
+    /// is an icon reads by its label ("Facebook link") exactly as it does in a client that shows the
+    /// picture. No "Image:" prefix — the marker would be spoken on every icon in a footer row, and
+    /// the cost of that repetition outweighs telling the reader the words arrived from a graphic.
+    ///
+    /// Decoded then re-encoded rather than spliced through: the attribute may hold entities that are
+    /// already correct as text (<c>&amp;amp;</c>), but it may equally hold a bare <c>&lt;</c>, which
+    /// is legal inside a quoted attribute and would open a tag once moved into content.
+    /// </summary>
+    private static string ImageAltReplacement(Match match)
+    {
+        var alt = match.Groups["alt"].Value.Trim();
+        return alt.Length == 0 ? string.Empty : WebUtility.HtmlEncode(WebUtility.HtmlDecode(alt));
     }
 
     public static string RemoveTitle(string html) =>
@@ -317,6 +357,31 @@ public static class MessageBodyHtmlBuilder
         catch (RegexMatchTimeoutException)
         {
             LogService.Log($"HTML cleanup timed out for pattern: {pattern}");
+            result = input;
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// As <see cref="TryRegexReplace(string, string, string, RegexOptions, TimeSpan, out string)"/>,
+    /// for a pre-built <see cref="Regex"/> whose replacement is computed per match.
+    /// </summary>
+    private static bool TryRegexReplace(
+        string input, Regex regex, MatchEvaluator evaluator, TimeSpan timeout, out string result)
+    {
+        try
+        {
+            // The compiled Regex carries its own timeout; honor a caller-supplied one that differs
+            // (the tests drive a deliberately tiny value through this path).
+            var effective = regex.MatchTimeout == timeout
+                ? regex
+                : new Regex(regex.ToString(), regex.Options & ~RegexOptions.Compiled, timeout);
+            result = effective.Replace(input, evaluator);
+            return true;
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            LogService.Log($"HTML cleanup timed out for pattern: {regex}");
             result = input;
             return false;
         }
