@@ -343,6 +343,24 @@ public partial class EventEditorViewModel : ObservableObject
         _end = _start + _duration;
     }
 
+    /// <summary>
+    /// Preselects the save target matching the user's default calendar (issue #497), and reports
+    /// whether one was found. Prefers the exact calendar; falls back to any target on the same
+    /// account, because the tree offers a node per discovered calendar while a Microsoft or Google
+    /// account contributes a single target (its default calendar) — "that account" is still the
+    /// right answer there. An unmatched default (the account was removed, or the calendar has not
+    /// synced yet) leaves the picker on the local calendar rather than guessing.
+    /// </summary>
+    public bool SelectTarget(Guid accountId, string? calendarId)
+    {
+        var index = _saveTargets.FindIndex(t => t.AccountId == accountId
+            && string.Equals(t.CalendarId ?? string.Empty, calendarId ?? string.Empty, StringComparison.Ordinal));
+        if (index < 0) index = _saveTargets.FindIndex(t => t.AccountId == accountId);
+        if (index < 0) return false;
+        SelectedTargetIndex = index;
+        return true;
+    }
+
     private static List<CalendarSaveTarget> BuildSaveTargets(IReadOnlyList<CalendarSaveTarget>? accountTargets)
     {
         var targets = new List<CalendarSaveTarget>

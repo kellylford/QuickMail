@@ -14,6 +14,13 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// <summary>True for account-level group nodes that serve as collapsible containers for folder children.</summary>
     public bool IsHeader { get; init; }
 
+    /// <summary>
+    /// True for the Calendar node and every node beneath it. Drives which context menu the tree
+    /// item gets: the mail folder actions (New Folder, Move, Delete…) mean nothing on a calendar,
+    /// and every one of them silently does nothing when activated there.
+    /// </summary>
+    public bool IsCalendarNode { get; init; }
+
     public string Label { get; init; } = string.Empty;
 
     public ObservableCollection<FolderTreeNode> Children { get; } = [];
@@ -28,7 +35,33 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     /// Do not move the count back out of the Name without checking with a screen-reader user first.
     /// </summary>
     public string AutomationName =>
-        ShowUnread ? $"{Label}, {Folder!.UnreadCount} unread" : Label;
+        ShowUnread ? $"{Label}, {Folder!.UnreadCount} unread"
+        : IsDefaultCalendar ? $"{Label}, default calendar"
+        : Label;
+
+    private bool _isDefaultCalendar;
+
+    /// <summary>
+    /// True for the one calendar node that new appointments are created on by default (issue #497).
+    /// Carried in <see cref="AutomationName"/> for the same reason the unread count is (#227): a
+    /// state that lives only in ItemStatus is not reliably announced, and a default the user cannot
+    /// hear is a default they cannot check.
+    /// </summary>
+    public bool IsDefaultCalendar
+    {
+        get => _isDefaultCalendar;
+        set
+        {
+            if (_isDefaultCalendar == value) return;
+            _isDefaultCalendar = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDefaultCalendar)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AutomationName)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DefaultCalendarDisplay)));
+        }
+    }
+
+    /// <summary>Visual marker next to a default calendar's label. Empty for every other node.</summary>
+    public string DefaultCalendarDisplay => IsDefaultCalendar ? "(default)" : string.Empty;
 
     // Gmail's All Mail / Important / Starred report unread counts that overlap the Inbox and include
     // archived mail, so they're hidden here to avoid a misleading count (issue #227).

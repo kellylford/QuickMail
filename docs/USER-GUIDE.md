@@ -1019,6 +1019,24 @@ Expand the **Calendar** node in the folder tree to choose which events you are l
 
 Selecting a source filters the list to it. "All Calendars" is the usual choice for day-to-day use.
 
+### Choosing a default calendar for new appointments
+
+If most of your appointments belong on one calendar, tell QuickMail which one and it will open the appointment editor on that calendar every time.
+
+1. In the folder tree, move to the calendar you want — **Local Calendar**, an account, or one of the calendars beneath an account.
+2. Open the context menu with **Shift+F10** or the Applications key (or right-click).
+3. Choose **Use as Default Calendar for New Appointments**.
+
+QuickMail confirms the choice in the status bar and announces it, and the calendar is marked **(default)** in the folder tree — its name is announced as "…, default calendar" — so you can always tell which one is set. The choice is remembered between sessions.
+
+To go back to saving new appointments on your local calendar, choose **Clear Default Calendar** from the same menu.
+
+Two things this does not do. It does not change which events you are *looking at* — that is still whatever source you have selected in the tree. And it is only a starting point: the **Calendar** picker in the appointment editor still lets you send any individual appointment somewhere else.
+
+**All Calendars** cannot be the default, because it is several calendars at once and so names no single place to save to. If you choose it, QuickMail says so and leaves your existing default alone.
+
+Both commands are also in the Command Palette (**Ctrl+Shift+P**) — as **Use as Default Calendar for New Appointments** and **Clear Default Calendar** — and you can assign them keys in **Settings → Keyboard**.
+
 ### The four views
 
 Your events can be shown four ways. Switch between them with the toolbar buttons or these keys while the event list has focus:
@@ -1070,7 +1088,7 @@ Press **N** (or the **New** toolbar button) to open the appointment editor. It i
 - **Location** — optional.
 - **Repeat** — leave as "Does not repeat" for a one-off, or set up a repeating appointment (see below).
 - **Notes** — free text.
-- **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved: your **Local Calendar** or a connected account. For iCloud the picker lists each of your Apple calendars (Home, Family, …) so you can choose which one. With no connected calendar this picker does not appear and everything is saved locally.
+- **Calendar** — when you have a Microsoft, Google, or iCloud account connected, a picker lets you choose where the new appointment is saved: your **Local Calendar** or a connected account. For iCloud the picker lists each of your Apple calendars (Home, Family, …) so you can choose which one. With no connected calendar this picker does not appear and everything is saved locally. The picker starts on your [default calendar](#choosing-a-default-calendar-for-new-appointments) if you have set one, and on **Local Calendar** if you have not.
 
 Press **Enter** (or the **Save** button) to save, or **Escape** to cancel. If something is wrong, QuickMail puts focus on the field at fault and shows the reason on an error line above the buttons; the message clears itself as soon as you fix it.
 
@@ -1232,7 +1250,7 @@ These work while the calendar list (or, where noted, the Month grid) has focus:
 | `F5` | Refresh |
 | `F6` | Move to the next pane |
 
-Export as `.ics`, and the invitation responses (Accept, Tentative, Decline), are available from the command palette (**Ctrl+Shift+P**) and have no default key until you assign one.
+Export as `.ics`, the invitation responses (Accept, Tentative, Decline), and the two [default-calendar](#choosing-a-default-calendar-for-new-appointments) commands are available from the command palette (**Ctrl+Shift+P**) and have no default key until you assign one.
 
 ---
 

@@ -302,6 +302,7 @@ public class ConfigService : IConfigService
                         if (Guid.TryParse(value, out _)) config.DefaultFlagId = value;
                         break;
                     case "showdeclinedevents": config.ShowDeclinedEvents = ParseBool(value); break;
+                    case "defaultcalendarsource": config.DefaultCalendarSource = value; break;
                     case "calendarpaneopen":   config.CalendarPaneOpen   = ParseBool(value); break;
                 }
             }
@@ -658,6 +659,14 @@ public class ConfigService : IConfigService
         sb.AppendLine("# Whether declined calendar events appear in the calendar list.");
         sb.AppendLine($"CalendarPaneOpen = {(config.CalendarPaneOpen ? "on" : "off")}");
         sb.AppendLine("# Whether the calendar pane was open when the app last closed.");
+        if (!string.IsNullOrEmpty(config.DefaultCalendarSource))
+        {
+            sb.AppendLine($"DefaultCalendarSource = {config.DefaultCalendarSource}");
+            sb.AppendLine("# The calendar new appointments are created on by default. Set it from the");
+            sb.AppendLine("# folder tree: select a calendar, open its context menu, and choose");
+            sb.AppendLine("# \"Use as Default Calendar for New Appointments\". Remove this line to go");
+            sb.AppendLine("# back to the local calendar.");
+        }
         sb.AppendLine();
 
         // ── [windowing] ──────────────────────────────────────────────────────────

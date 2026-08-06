@@ -253,6 +253,20 @@
                       AutomationProperties.Name="Delete Folder"
                       Click="FolderContextMenu_DeleteFolder_Click"/>
         </ContextMenu>
+
+        <!-- Calendar context menu — replaces FolderContextMenu on the Calendar node and its
+             children (issue #497). None of the mail folder actions apply to a calendar; every one
+             of them silently did nothing there. Same Window.Resources rule as above: a ContextMenu
+             with Click handlers must not be declared inside a Style setter. -->
+        <ContextMenu x:Key="CalendarContextMenu"
+                     AutomationProperties.Name="Calendar actions">
+            <MenuItem Header="Use as _Default Calendar for New Appointments"
+                      AutomationProperties.Name="Use as Default Calendar for New Appointments"
+                      Click="CalendarContextMenu_SetDefault_Click"/>
+            <MenuItem Header="_Clear Default Calendar"
+                      AutomationProperties.Name="Clear Default Calendar"
+                      Click="CalendarContextMenu_ClearDefault_Click"/>
+        </ContextMenu>
     </Window.Resources>
 
     <Window.InputBindings>
@@ -966,6 +980,24 @@
                                         </Style>
                                     </local:AriaHiddenTextBlock.Style>
                                 </local:AriaHiddenTextBlock>
+                                <!-- Default-calendar marker: "(default)" — collapsed when empty.
+                                     Same treatment as the unread badge; the accessible name
+                                     carries the same state via AutomationName. -->
+                                <local:AriaHiddenTextBlock Margin="4,0,0,0"
+                                                           Opacity="0.75"
+                                                           FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                                           Text="{Binding DefaultCalendarDisplay}">
+                                    <local:AriaHiddenTextBlock.Style>
+                                        <Style TargetType="local:AriaHiddenTextBlock">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DefaultCalendarDisplay}" Value="">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </local:AriaHiddenTextBlock.Style>
+                                </local:AriaHiddenTextBlock>
                             </StackPanel>
                         </HierarchicalDataTemplate>
                     </TreeView.Resources>
@@ -977,6 +1009,12 @@
                             <!-- Tag exposes the window DataContext (MainViewModel) to the ContextMenu -->
                             <Setter Property="Tag" Value="{Binding DataContext, RelativeSource={RelativeSource AncestorType=Window}}"/>
                             <Setter Property="ContextMenu" Value="{StaticResource FolderContextMenu}"/>
+                            <Style.Triggers>
+                                <!-- Calendar nodes get calendar actions, not folder actions (#497). -->
+                                <DataTrigger Binding="{Binding IsCalendarNode}" Value="True">
+                                    <Setter Property="ContextMenu" Value="{StaticResource CalendarContextMenu}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
                         </Style>
                     </TreeView.ItemContainerStyle>
                 </TreeView>
