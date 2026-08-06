@@ -10,6 +10,11 @@ can do nothing but file an issue on one repo. See issue #501.
 
 Nothing runs until a report arrives. There is no server to patch, monitor, or restart.
 
+**This file is setup — how to build the relay from nothing.** If it already exists and
+something is broken, go to [`docs/BUG-REPORTING.md`](../docs/BUG-REPORTING.md), which is the
+runbook: the path a report takes, where every value is configured, and a symptom-to-cause
+table.
+
 ## Deployment runs in CI, not from a maintainer's machine
 
 **Do not try to install wrangler locally on Windows ARM64.** It will not work — wrangler
