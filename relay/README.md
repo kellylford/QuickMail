@@ -59,10 +59,25 @@ Create it, then from the App's settings page:
 ### 2. Create a Cloudflare API token
 
 A Cloudflare account is needed, but nothing has to be configured inside it — no domain, no
-nameservers. Signing in with GitHub is fine.
+nameservers, no subdomain chosen up front. Signing in with GitHub is fine.
 
-At <https://dash.cloudflare.com/profile/api-tokens> → **Create Token** → use the **Edit
-Cloudflare Workers** template → **Continue to summary** → **Create Token**.
+At <https://dash.cloudflare.com/profile/api-tokens> → **Create Token**. Use **Create Custom
+Token** → **Get started**, which is at the *top* of that page, above the templates. Do not
+use the **Edit Cloudflare Workers** template: it grants a spread of Workers-adjacent
+permissions and a zone-scoped one, and there is no zone here to scope it to.
+
+- **Token name**: `QuickMail relay deploy`
+- **Permissions**, two rows:
+  - `Account` / `Workers Scripts` / **Edit** — uploads the Worker and sets its secrets
+  - `Account` / `Account Settings` / **Read** — lets wrangler resolve which account to deploy to
+- **Account Resources**: `Include` / your account
+- **Zone Resources**: leave empty. Nothing here touches DNS or zones.
+- **Client IP Address Filtering**: leave empty — GitHub runner IPs change constantly.
+- **TTL**: leave empty. An expiring token here fails silently months later, in a workflow
+  nobody is watching.
+
+**Continue to summary** → confirm it reads `Workers Scripts:Edit, Account Settings:Read` →
+**Create Token**.
 
 Copy the token. Like the private key, it is shown once.
 
@@ -93,6 +108,10 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 Keep that value: step 5 needs it again, and it is not readable back out of GitHub.
 
 ### 4. Deploy
+
+The workflow must be on `main` before it can be run — GitHub only registers
+`workflow_dispatch` from the default branch, and dispatching it from a feature branch fails
+with a 404 that reads as if the file does not exist.
 
 **Actions** → **Deploy bug-report relay** → **Run workflow**, and tick **Also push the
 Worker's secrets from repository secrets**. That box is off by default so a routine code
