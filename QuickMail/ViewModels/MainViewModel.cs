@@ -314,6 +314,77 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     public sealed record CalendarFilter(Guid? Account, string? CalendarId);
 
+    // ── Default calendar for new appointments (issue #497) ────────────────────────
+    //
+    // Stored as the calendar tree node's tail encoding ("local", "{guid}", "{guid}|{escapedCalId}")
+    // rather than as a pair of fields, so the one string the user picked in the tree round-trips
+    // through CalendarFilterFor with no second parser to keep in step. Empty = no preference.
+    private string _defaultCalendarSource = string.Empty;
+
+    /// <summary>The chosen default calendar as a filter, or null when the user has set no default.</summary>
+    private CalendarFilter? DefaultCalendarFilter =>
+        string.IsNullOrEmpty(_defaultCalendarSource)
+            ? null
+            : CalendarFilterFor(CalendarSourcePrefix + _defaultCalendarSource);
+
+    /// <summary>
+    /// Makes <paramref name="node"/> the calendar new appointments are created on, and returns the
+    /// sentence the View reports. Refuses the nodes that are not one calendar: the bare Calendar
+    /// node, which selects nothing, and All Calendars, which selects every source at once and so
+    /// names no single place to save to.
+    /// </summary>
+    public string SetDefaultCalendar(FolderTreeNode? node)
+    {
+        if (node?.Folder is not { } folder || !IsCalendarFolderName(folder.FullName))
+            return "Select a calendar in the folder tree first.";
+
+        var tail = folder.FullName.StartsWith(CalendarSourcePrefix, StringComparison.Ordinal)
+            ? folder.FullName[CalendarSourcePrefix.Length..]
+            : string.Empty;
+        if (tail.Length == 0 || tail == "all")
+            return $"'{node.Label}' is not a single calendar, so it cannot be the default. "
+                 + "Choose Local Calendar, an account, or one of its calendars.";
+
+        _defaultCalendarSource = tail;
+        PersistDefaultCalendar();
+        return $"New appointments will be created on {node.Label}.";
+    }
+
+    /// <summary>
+    /// Drops the default calendar, so the appointment editor opens on the local calendar again.
+    /// Returns the sentence the View reports.
+    /// </summary>
+    public string ClearDefaultCalendar()
+    {
+        if (string.IsNullOrEmpty(_defaultCalendarSource))
+            return "No default calendar is set. New appointments already start on Local Calendar.";
+        _defaultCalendarSource = string.Empty;
+        PersistDefaultCalendar();
+        return "Default calendar cleared. New appointments will start on Local Calendar.";
+    }
+
+    private void PersistDefaultCalendar()
+    {
+        var cfg = _configService.Load();
+        cfg.DefaultCalendarSource = _defaultCalendarSource;
+        _configService.Save(cfg);
+        if (CalendarVm != null) CalendarVm.DefaultCalendar = DefaultCalendarFilter;
+        // The marker moves between existing node objects rather than rebuilding the tree, which
+        // would replace every node and throw keyboard focus out of the item the user just acted on.
+        MarkDefaultCalendarNodes();
+    }
+
+    /// <summary>Puts the "(default)" marker on the one calendar node that matches the setting.</summary>
+    private void MarkDefaultCalendarNodes()
+    {
+        if (FolderTree == null) return;
+        foreach (var n in FlattenAllNodes(FolderTree))
+            if (n.IsCalendarNode && n.Folder is { } f)
+                n.IsDefaultCalendar = _defaultCalendarSource.Length > 0
+                    && string.Equals(f.FullName, CalendarSourcePrefix + _defaultCalendarSource,
+                                     StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// True for accounts with a server calendar the app can push appointments to: Microsoft
     /// (Graph backend), Google-signed-in accounts (keyed by auth type — Gmail mail is IMAP), and
@@ -1197,6 +1268,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                                // Discovered calendar sources (per iCloud calendar) feed the
                                                // save-target picker so each iCloud calendar is its own target.
                                                () => _calendarSources);
+            _defaultCalendarSource = cfg.DefaultCalendarSource ?? string.Empty;
+            CalendarVm.DefaultCalendar = DefaultCalendarFilter;
             RemindersEnabled = cfg.CalendarReminders;
             ReminderLeadMinutes = cfg.CalendarReminderMinutes;
             StartReminderTimer();
@@ -3633,16 +3706,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 Folder = CalendarFolder,
                 Label  = CalendarFolder.DisplayName,
+                IsCalendarNode = true,
             };
             calNode.Children.Add(new FolderTreeNode
             {
                 Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "all", DisplayName = "All Calendars" },
                 Label  = "All Calendars",
+                IsCalendarNode = true,
             });
             calNode.Children.Add(new FolderTreeNode
             {
                 Folder = new MailFolderModel { FullName = CalendarSourcePrefix + "local", DisplayName = "Local Calendar" },
                 Label  = "Local Calendar",
+                IsCalendarNode = true,
             });
             // Only accounts the user opted into calendar sync for (#282) get a source node.
             foreach (var acct in Accounts.Where(a => a.SyncCalendar))
@@ -3655,6 +3731,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         DisplayName = acct.AccountLabel,
                     },
                     Label = acct.AccountLabel,
+                    IsCalendarNode = true,
                 };
 
                 // A grandchild per discovered calendar so the user can view Home vs. Work vs. Family.
@@ -3670,6 +3747,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                                 DisplayName = calName,
                             },
                             Label = calName,
+                            IsCalendarNode = true,
                         });
 
                 calNode.Children.Add(acctNode);
@@ -3779,6 +3857,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 n.IsExpanded = true;
 
         FolderTree = new ObservableCollection<FolderTreeNode>(roots);
+        // Fresh node objects start unmarked; restore the default calendar's marker on the rebuild.
+        MarkDefaultCalendarNodes();
     }
 
     private static string NodeKey(FolderTreeNode n) =>

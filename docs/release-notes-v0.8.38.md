@@ -17,6 +17,20 @@ All downloads include the .NET 8 runtime — you do not need to install .NET sep
 
 ---
 
+## New: choose which calendar new appointments start on
+
+If most of your appointments belong on one calendar, you no longer have to steer the **Calendar** picker away from **Local Calendar** every time you create one.
+
+In the folder tree, move to the calendar you want — **Local Calendar**, an account, or one of the calendars beneath an account — open its context menu with **Shift+F10** or the Applications key, and choose **Use as Default Calendar for New Appointments**. From then on the appointment editor opens on that calendar. **Clear Default Calendar** on the same menu goes back to the local calendar. Both are also in the Command Palette (**Ctrl+Shift+P**) and can be given keys in **Settings → Keyboard**.
+
+The calendar you picked is marked **(default)** in the folder tree and its name is announced as "…, default calendar", so which one is set is something you can check rather than remember.
+
+Two things it deliberately does not do. It does not change which events you are *looking at* — that is still whatever you have selected in the tree. And it is a starting point, not a rule: the **Calendar** picker in the editor still sends any individual appointment wherever you want. ([#497](https://github.com/kellylford/QuickMail/issues/497))
+
+## Fixed: the calendar's context menu offered mail folder actions
+
+The context menu on the **Calendar** node and everything under it was the mail folder menu — **New Folder**, **Move Folder**, **Set as Archive Folder**, **Delete Folder**. None of them mean anything on a calendar, and every one of them did nothing at all when activated. That menu is now the calendar's own. ([#497](https://github.com/kellylford/QuickMail/issues/497))
+
 ## Fixed: Run on Existing Mail has a button again with a Microsoft 365 account
 
 With a Microsoft 365 account, **Tools → Rules** opens the Rules Manager that works one account at a time, and in v0.8.37 that window had no **Run on Existing Mail** control — the only way to reach it was **Ctrl+Shift+P**. It is now a button beside the others, and is also on the rule list's context menu, alongside the Command Palette entry that was already there.
@@ -40,6 +54,14 @@ The three **Show field labels in the … list** checkboxes — contact list, cal
 ## Internal
 
 Everything below is developer detail — implementation notes, test coverage, and build changes. Nothing here is needed to use QuickMail.
+
+### Calendar
+
+- **The default is stored as the tree node's own tail encoding, so there is one parser rather than two.** `ConfigModel.DefaultCalendarSource` holds exactly what follows `CalendarSourcePrefix` on the node the user chose — `local`, `{guid}`, or `{guid}|{escapedCalId}` — and `MainViewModel.DefaultCalendarFilter` reads it back through the existing `CalendarFilterFor`. Storing an account/calendar pair instead would have meant a second encoding to keep in step with the tree's, for no gain: the setting is only ever produced by, and only ever refers to, a node in that tree. Empty means no preference, which is distinct from an explicit `local` in the config file but identical in behavior.
+- **Honoring the default is a preselection in `NewEvent`, not a change to `BuildSaveTargets`.** `EventEditorViewModel.SelectTarget(accountId, calendarId)` moves `SelectedTargetIndex`; the target list itself still puts Local at index 0 unconditionally. That keeps the no-default path byte-for-byte what it was, and keeps the fallbacks in one testable place. The fallback ladder matters because the tree and the picker do not offer the same set: the tree shows a node per *discovered* calendar for any account with more than one, while only iCloud contributes a target per calendar (Microsoft and Google contribute one, their default calendar). So an exact `(account, calendar)` match is tried first, then any target on the same account — landing on "that account" rather than on Local, which is a different mailbox entirely — and only a default whose account is gone at all leaves the editor on Local. `SelectTarget` returns whether it matched so the fallback is observable in tests rather than inferred.
+- **Calendar nodes now carry `IsCalendarNode` and get their own context menu.** The `ItemContainerStyle` set `FolderContextMenu` on every tree item including the Calendar subtree, where all five entries fell through `IsMovableFolder`'s `\0` guard and silently did nothing. A `DataTrigger` on the new flag swaps in `CalendarContextMenu`. The menu is declared in `Window.Resources` and referenced from the trigger's setter — the XAML-compiler crash the neighbouring comment documents is about *declaring* a Click-handler menu inside a `Style.Setter.Value`, which this does not do.
+- **The marker lives in `AutomationName`, not only in `ItemStatus`.** `FolderTreeNode.IsDefaultCalendar` appends ", default calendar" to the accessible name and drives a `(default)` badge modelled on the unread badge. This is the #227 finding applied to a second piece of state: a marker carried only in `ItemStatus` is not reliably spoken, and a default the user cannot hear is a default they cannot check. `PersistDefaultCalendar` moves the marker between existing node objects via `MarkDefaultCalendarNodes` rather than rebuilding the tree, which would replace every node and throw keyboard focus out of the item the user just acted on; `BuildFolderTree` re-applies it after a genuine rebuild.
+- **Both commands are registered, so the context menu is not the only way in.** `calendar.setDefaultCalendar` and `calendar.clearDefaultCalendar` are Calendar-category `CommandDefinition`s with no default key — palette-reachable and rebindable. That is the #250 lesson (folder creation was context-menu-only and therefore undiscoverable without a mouse) applied up front. Refusals are sentences, not silence: the bare Calendar node and All Calendars are not one calendar, and `SetDefaultCalendar` returns why, which the View sends to both `StatusText` and a `Result` announcement.
 
 ### Rules
 

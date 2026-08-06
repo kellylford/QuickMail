@@ -300,6 +300,15 @@ public class ConfigModel
     public bool ShowDeclinedEvents { get; set; } = false;
 
     /// <summary>
+    /// Which calendar the appointment editor preselects for a NEW appointment (issue #497), chosen
+    /// from the folder tree's calendar context menu. Stored as the calendar tree node's tail
+    /// encoding so one string round-trips through <c>MainViewModel.CalendarFilterFor</c>:
+    /// <c>"local"</c>, <c>"{accountGuid}"</c>, or <c>"{accountGuid}|{escapedCalendarId}"</c>.
+    /// Empty (the default) means no preference — the editor opens on the local calendar as before.
+    /// </summary>
+    public string DefaultCalendarSource { get; set; } = string.Empty;
+
+    /// <summary>
     /// Obsolete: the calendar is now a folder in the folder tree, not a toggle pane.
     /// Retained only so older config.ini files do not break on parse.
     /// </summary>

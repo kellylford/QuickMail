@@ -1283,6 +1283,22 @@ public partial class MainWindow : Window
             execute: () => _vm.CalendarVm?.ExportEventCommand.Execute(_vm.CalendarVm.SelectedEvent),
             isAvailable: () => CalendarList.IsKeyboardFocusWithin && _vm.CalendarVm?.SelectedEvent != null));
 
+        // ── Default calendar for new appointments (issue #497) ──────────────────
+        // No default key: both act on the folder tree's calendar selection, and the context menu on
+        // that node is the primary entry point. Registered so they are also reachable — and
+        // rebindable — from the Command Palette.
+        _registry.Register(new CommandDefinition(
+            id: "calendar.setDefaultCalendar", category: "Calendar",
+            title: "Use as Default Calendar for New Appointments",
+            execute: SetDefaultCalendarFromSelection,
+            isAvailable: () => FolderList.IsKeyboardFocusWithin
+                               && (FolderList.SelectedItem as FolderTreeNode)?.IsCalendarNode == true));
+
+        _registry.Register(new CommandDefinition(
+            id: "calendar.clearDefaultCalendar", category: "Calendar", title: "Clear Default Calendar",
+            execute: () => Report(_vm.ClearDefaultCalendar()),
+            isAvailable: () => _vm.CalendarVm != null));
+
         // ── Respond to a pending invitation (Enter opens the menu; these are the palette entries) ──
         // No default key: Enter (calendar.openSourceMessage) shows the response menu, which is the
         // primary entry point. These keep the actions discoverable and rebindable in the palette.
@@ -5567,6 +5583,20 @@ public partial class MainWindow : Window
             category: AnnouncementCategory.Result);
         await reload;
     }
+
+    // ── Calendar context menu handlers (issue #497) ──────────────────────────
+
+    private void CalendarContextMenu_SetDefault_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.SetDefaultCalendar(GetContextMenuFolderNode(sender)));
+
+    private void CalendarContextMenu_ClearDefault_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ClearDefaultCalendar());
+
+    // Entry point for the calendar.setDefaultCalendar command (Command Palette / customizable
+    // hotkey), acting on the folder tree's selection. The context menu must not be the only way in:
+    // that is the dead end #250 filed against folder creation.
+    private void SetDefaultCalendarFromSelection()
+        => Report(_vm.SetDefaultCalendar(FolderList.SelectedItem as FolderTreeNode));
 
     // Deletes the folder and lands focus on the folder above. The VM splices the node out of the
     // tree in place (no rebuild), so the captured neighbour reference stays valid for FocusTreeItem.

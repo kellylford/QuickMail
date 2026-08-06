@@ -190,6 +190,14 @@ public partial class CalendarViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// The calendar new appointments are created on by default (issue #497), chosen from the folder
+    /// tree's calendar context menu. Null means no preference — the editor opens on the local
+    /// calendar. Set by MainViewModel from <c>DefaultCalendarSource</c> in config.ini. This only
+    /// preselects the editor's Calendar picker; the user is free to change it before saving.
+    /// </summary>
+    public MainViewModel.CalendarFilter? DefaultCalendar { get; set; }
+
     /// <summary>Clears and hides search, restoring the unfiltered view.</summary>
     public void ClearSearch()
     {
@@ -437,6 +445,10 @@ public partial class CalendarViewModel : ObservableObject
             }
         }
         var editor = new EventEditorViewModel(DateTime.Now, accountTargets);
+        // Preselect the user's default calendar (#497). Left alone the picker opens on Local, which
+        // is what an unset default should keep doing — so only a set default touches it.
+        if (DefaultCalendar is { Account: { } defaultAccount })
+            editor.SelectTarget(defaultAccount, DefaultCalendar.CalendarId);
         editor.Saved += evt => _ = SaveNewEventAsync(evt);
         EditorRequested?.Invoke(editor);
     }
