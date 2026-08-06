@@ -1,0 +1,96 @@
+name: Deploy bug-report relay
+
+# The relay is deployed from CI rather than a maintainer's machine because wrangler cannot
+# run on Windows ARM64 at all: it imports `workerd`, which publishes no win32-arm64 build and
+# throws "Unsupported platform" on startup — for `deploy` as much as for `dev`. A GitHub
+# runner is x64 Linux, so this sidesteps the problem and makes redeploys reproducible.
+#
+# Setup and the meaning of each secret are in relay/README.md. Issue #501.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_secrets:
+        description: "Also push the Worker's secrets from repository secrets"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths:
+      - 'relay/**'
+      - '.github/workflows/deploy-relay.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-relay
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # No install step: the relay's tests deliberately use only the Node standard library, so
+      # they stay runnable on a machine where `npm install wrangler` cannot succeed.
+      - name: Test
+        working-directory: relay
+        run: node test/jwt.test.js
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Deploy Worker
+        working-directory: relay
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4 deploy
+
+      # Opt-in, because a run whose repository secrets are missing would otherwise overwrite
+      # working Worker secrets with empty strings and silently break bug reporting.
+      - name: Sync Worker secrets
+        if: inputs.sync_secrets
+        working-directory: relay
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          APP_ID: ${{ secrets.RELAY_GITHUB_APP_ID }}
+          INSTALLATION_ID: ${{ secrets.RELAY_GITHUB_INSTALLATION_ID }}
+          PRIVATE_KEY: ${{ secrets.RELAY_GITHUB_PRIVATE_KEY }}
+          RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
+        run: |
+          for name in APP_ID INSTALLATION_ID PRIVATE_KEY RELAY_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Repository secret for $name is empty. Set it before syncing, or the Worker will be left unable to reach GitHub."
+              exit 1
+            fi
+          done
+
+          # jq --arg handles the private key's embedded newlines; building this JSON by hand
+          # would mangle the PEM. The file is written to the runner's temp dir and removed
+          # immediately, and never reaches the workspace or the logs.
+          secrets_file="$(mktemp)"
+          trap 'rm -f "$secrets_file"' EXIT
+          jq -n \
+            --arg app_id "$APP_ID" \
+            --arg installation_id "$INSTALLATION_ID" \
+            --arg private_key "$PRIVATE_KEY" \
+            --arg relay_key "$RELAY_KEY" \
+            '{GITHUB_APP_ID: $app_id, GITHUB_INSTALLATION_ID: $installation_id, GITHUB_PRIVATE_KEY: $private_key, RELAY_KEY: $relay_key}' \
+            > "$secrets_file"
+
+          npx --yes wrangler@4 secret bulk "$secrets_file"

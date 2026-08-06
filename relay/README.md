@@ -10,6 +10,26 @@ can do nothing but file an issue on one repo. See issue #501.
 
 Nothing runs until a report arrives. There is no server to patch, monitor, or restart.
 
+## Deployment runs in CI, not from a maintainer's machine
+
+**Do not try to install wrangler locally on Windows ARM64.** It will not work — wrangler
+imports `workerd`, which publishes no `win32-arm64` build and throws `Unsupported platform:
+win32 arm64 LE` on startup. That applies to `wrangler deploy` as much as to `wrangler dev`,
+and `npm install --ignore-scripts` does not get around it, because the failure is at import
+time rather than install time.
+
+The **Deploy bug-report relay** workflow
+(`.github/workflows/deploy-relay.yml`) runs on x64 Linux instead. Every value the Worker
+needs is a repository secret; the workflow pushes both the code and the secrets. You never
+run wrangler.
+
+The tests in `test/` deliberately use only the Node standard library, so they stay runnable
+here:
+
+```bash
+node relay/test/jwt.test.js
+```
+
 ## One-time setup
 
 ### 1. Create the GitHub App
@@ -33,81 +53,91 @@ Create it, then from the App's settings page:
   repositories** → `QuickMail`.
 - After installing, the browser lands on a URL ending in a number, e.g.
   `.../installations/12345678`. That number is the **installation ID**. To find it later:
-  App settings → **Install App** → the gear icon beside your account.
+  <https://github.com/settings/installations> → **Configure** beside the App → read it off
+  the URL.
 
-### 2. Deploy the Worker
+### 2. Create a Cloudflare API token
 
-From this folder:
+A Cloudflare account is needed, but nothing has to be configured inside it — no domain, no
+nameservers. Signing in with GitHub is fine.
 
-```bash
-npm install
-```
+At <https://dash.cloudflare.com/profile/api-tokens> → **Create Token** → use the **Edit
+Cloudflare Workers** template → **Continue to summary** → **Create Token**.
 
-```bash
-npx wrangler login
-```
+Copy the token. Like the private key, it is shown once.
 
-```bash
-npx wrangler deploy
-```
+### 3. Set the repository secrets
 
-The deploy prints the Worker URL, something like
-`https://quickmail-bug-relay.<your-subdomain>.workers.dev`. The app posts to that URL plus
-`/report`.
+At <https://github.com/kellylford/QuickMail/settings/secrets/actions>:
 
-### 3. Set the four secrets
+| Secret | Value |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | the token from step 2 |
+| `RELAY_GITHUB_APP_ID` | the App ID from step 1 |
+| `RELAY_GITHUB_INSTALLATION_ID` | the installation ID from step 1 |
+| `RELAY_GITHUB_PRIVATE_KEY` | the entire `.pem` file, `-----BEGIN`/`-----END` lines included |
+| `BUG_REPORT_RELAY_KEY` | a long random string you generate (below) |
 
-Each command prompts for the value and stores it encrypted at Cloudflare. Values are never
-echoed back and never appear in the repo.
+The `RELAY_` prefixes are not decoration: GitHub rejects repository secrets whose names begin
+with `GITHUB_`.
 
-```bash
-npx wrangler secret put GITHUB_APP_ID
-```
+Either PEM format works — the Worker converts PKCS#1 to PKCS#8 itself, so paste whichever
+GitHub gave you.
 
-```bash
-npx wrangler secret put GITHUB_INSTALLATION_ID
-```
-
-```bash
-npx wrangler secret put GITHUB_PRIVATE_KEY
-```
-
-For the private key, paste the entire `.pem` file including the `-----BEGIN`/`-----END`
-lines. Either format GitHub gives you works — the Worker converts PKCS#1 to PKCS#8 itself.
-
-```bash
-npx wrangler secret put RELAY_KEY
-```
-
-Generate that one first — any long random string. For example:
+To generate the relay key:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-### 4. Give the same relay key to the build
+Keep that value: step 5 needs it again, and it is not readable back out of GitHub.
 
-Add the value as a repository secret named `BUG_REPORT_RELAY_KEY` at
-<https://github.com/kellylford/QuickMail/settings/secrets/actions>, and set the Worker URL
-as a repository **variable** named `BUG_REPORT_RELAY_URL` (Variables tab, same page). CI
-compiles both into the release build.
+### 4. Deploy
 
-The old `BUG_REPORT_TOKEN` secret can be deleted once a release carrying the new build has
-shipped — see *Retiring the old token* below.
+**Actions** → **Deploy bug-report relay** → **Run workflow**, and tick **Also push the
+Worker's secrets from repository secrets**. That box is off by default so a routine code
+redeploy cannot blank the Worker's secrets; it needs to be on for this first run and any time
+a secret changes.
 
-## Checking it works
+The **Deploy Worker** step's log ends with the Worker URL, of the form
+`https://quickmail-bug-relay.<your-subdomain>.workers.dev`.
+
+If that step fails saying more than one account is available, add a repository **variable**
+`CLOUDFLARE_ACCOUNT_ID` (Variables tab, same settings page) with your account ID — it is in
+the dashboard URL after `dash.cloudflare.com/`. Otherwise it is not needed.
+
+### 5. Point the app at the relay
+
+Still at <https://github.com/kellylford/QuickMail/settings/variables/actions>, add a
+repository **variable** (not a secret):
+
+| Variable | Value |
+|---|---|
+| `BUG_REPORT_RELAY_URL` | the Worker URL from step 4, plus `/report` |
+
+CI compiles that URL and `BUG_REPORT_RELAY_KEY` into release builds. The next release picks
+them up; nothing further is needed per build.
+
+### 6. Check it works
 
 ```bash
 curl -X POST https://quickmail-bug-relay.<your-subdomain>.workers.dev/report -H "X-QuickMail-Key: <relay key>" -H "Content-Type: application/json" -d "{\"title\":\"Relay smoke test\",\"body\":\"Ignore and close.\"}"
 ```
 
-A success returns `{"issueUrl":"...","number":N}`. Close the issue afterwards.
+Success returns `{"issueUrl":"...","number":N}`, and the issue is authored by
+`quickmail-bug-reporter[bot]` rather than by you — that authorship is the whole point, so it
+is worth confirming. Close the issue afterwards.
 
-Live logs, while a report is being filed:
+Failures worth recognising:
 
-```bash
-npx wrangler tail
-```
+| Response | Cause |
+|---|---|
+| `401 Unauthorized` | the `X-QuickMail-Key` header does not match `RELAY_KEY` at Cloudflare |
+| `502 Could not create the issue` | App credentials wrong, or the App is not installed on the repo |
+| `429` | the per-IP rate limit; wait a minute |
+
+For the underlying GitHub error behind a 502, check the Worker's logs: **Cloudflare
+dashboard** → **Workers & Pages** → `quickmail-bug-relay` → **Logs**.
 
 ## Retiring the old token
 
@@ -119,9 +149,10 @@ Ship the release first, give it a few weeks, then revoke the PAT at
 ## If the relay key leaks
 
 It will eventually — it ships in a public binary, and that is the design assumption, not a
-failure. The blast radius is junk issues on one repo. To cut it off: set a new `RELAY_KEY`
-secret, update `BUG_REPORT_RELAY_KEY` in the repo, and ship a build. Older installs fall
-back to the pre-filled issue URL and clipboard path, which needs no relay at all.
+failure. The blast radius is junk issues on one repo. To cut it off: update the
+`BUG_REPORT_RELAY_KEY` repository secret, re-run the deploy workflow **with the secrets box
+ticked**, and ship a build. Older installs fall back to the pre-filled issue URL and
+clipboard path, which needs no relay at all.
 
 Nothing about a leaked relay key touches your GitHub account, the App's private key, or any
 other repository.
@@ -135,3 +166,5 @@ other repository.
 - **The relay never sees mail content.** It forwards the same text the report window already
   shows the user before sending — no log file, no message bodies, no addresses beyond an
   optional contact line the user types.
+- **Changing the Worker's code** needs no ceremony: merge to `main` with changes under
+  `relay/`, and the workflow redeploys automatically without touching secrets.

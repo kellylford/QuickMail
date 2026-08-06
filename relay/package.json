@@ -4,13 +4,8 @@
   "private": true,
   "type": "module",
   "description": "Cloudflare Worker that files QuickMail bug reports as a GitHub App",
+  "//": "No dependencies on purpose. wrangler cannot be installed on Windows ARM64 (its workerd dependency has no build for that platform), so listing it here would make `npm install` fail on the maintainer's machine for no gain — CI invokes it with `npx wrangler@4`. Keeping the tests on the Node standard library keeps them runnable everywhere.",
   "scripts": {
-    "test": "node test/jwt.test.js",
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "tail": "wrangler tail"
-  },
-  "devDependencies": {
-    "wrangler": "^4.0.0"
+    "test": "node test/jwt.test.js"
   }
 }
