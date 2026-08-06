@@ -1,0 +1,16 @@
+{
+  "name": "quickmail-bug-relay",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that files QuickMail bug reports as a GitHub App",
+  "scripts": {
+    "test": "node test/jwt.test.js",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

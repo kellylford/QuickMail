@@ -51,21 +51,38 @@ public class BugReportServiceTests
         StepsToReproduce = "1. Click button\n2. Observe crash",
     };
 
+    private const string RelayUrl = "https://relay.example.test/report";
+    private const string LegacyTokenKey = "QuickMail.BugReportService.AppOwnedToken";
+
     private static BugReportService MakeService(
         Func<HttpRequestMessage, HttpResponseMessage> responder,
         out FakeHttpMessageHandler handler,
         FakeCredentialService? credentials = null,
-        string appOwnedToken = "")   // hermetic: never inherit the CI-baked compiled-in token
+        // Hermetic: never inherit the CI-baked compiled-in relay coordinates.
+        string relayUrl = RelayUrl,
+        string relayKey = "relay-key")
     {
         handler = new FakeHttpMessageHandler(responder);
-        return new BugReportService(credentials ?? new FakeCredentialService(), handler, appOwnedToken);
+        return new BugReportService(credentials ?? new FakeCredentialService(), handler, relayUrl, relayKey);
     }
 
-    [Fact]
-    public async Task SubmitAsync_NoTokenAvailable_FailsWithoutHttpCall()
+    private static HttpResponseMessage IssueCreated(int number = 999) => new(HttpStatusCode.Created)
     {
+        Content = new StringContent(
+            $"{{\"issueUrl\":\"https://github.com/kellylford/QuickMail/issues/{number}\",\"number\":{number}}}"),
+    };
+
+    [Theory]
+    [InlineData("", "relay-key")]
+    [InlineData(RelayUrl, "")]
+    public async Task SubmitAsync_RelayNotConfigured_FailsWithoutHttpCall(string relayUrl, string relayKey)
+    {
+        // A build without relay coordinates (any local or fork build) must fall straight through
+        // to the clipboard path rather than POST the report somewhere unconfigured.
         var handlerCalled = false;
-        var service = MakeService(_ => { handlerCalled = true; return new HttpResponseMessage(HttpStatusCode.OK); }, out _);
+        var service = MakeService(
+            _ => { handlerCalled = true; return new HttpResponseMessage(HttpStatusCode.OK); },
+            out _, relayUrl: relayUrl, relayKey: relayKey);
 
         var result = await service.SubmitAsync(SampleReport());
 
@@ -75,51 +92,52 @@ public class BugReportServiceTests
     }
 
     [Fact]
-    public async Task SubmitAsync_UsesAppOwnedToken_WhenNoStoredSecret()
+    public async Task SubmitAsync_Success_PostsToRelayWithKey_AndReturnsIssueUrl()
     {
-        // No per-user stored secret; only the app-owned token is available (the normal
-        // release path). Submit must use it and cache it into the credential store.
-        var credentials = new FakeCredentialService();
-        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.Created)
-        {
-            Content = new StringContent("{\"html_url\":\"https://github.com/kellylford/QuickMail/issues/1\"}"),
-        }, out var handler, credentials, appOwnedToken: "app-token");
-
-        var result = await service.SubmitAsync(SampleReport());
-
-        Assert.True(result.Success);
-        Assert.Equal("app-token", handler.LastRequest!.Headers.Authorization!.Parameter);
-        Assert.Equal("app-token", credentials.GetSecret("QuickMail.BugReportService.AppOwnedToken"));
-    }
-
-    [Fact]
-    public async Task SubmitAsync_Success_ReturnsIssueUrl()
-    {
-        var credentials = new FakeCredentialService();
-        credentials.SaveSecret("QuickMail.BugReportService.AppOwnedToken", "fake-token");
-
-        var service = MakeService(req => new HttpResponseMessage(HttpStatusCode.Created)
-        {
-            Content = new StringContent("{\"html_url\":\"https://github.com/kellylford/QuickMail/issues/999\"}"),
-        }, out var handler, credentials);
+        var service = MakeService(_ => IssueCreated(), out var handler);
 
         var result = await service.SubmitAsync(SampleReport());
 
         Assert.True(result.Success);
         Assert.Equal("https://github.com/kellylford/QuickMail/issues/999", result.IssueUrl);
-        Assert.Equal("Bearer", handler.LastRequest!.Headers.Authorization!.Scheme);
-        Assert.Equal("fake-token", handler.LastRequest!.Headers.Authorization!.Parameter);
-        Assert.Contains("user-reported", handler.LastRequestBody);
+        Assert.Equal(HttpMethod.Post, handler.LastRequest!.Method);
+        Assert.Equal(RelayUrl, handler.LastRequest!.RequestUri!.ToString());
+        Assert.Equal("relay-key", Assert.Single(handler.LastRequest!.Headers.GetValues("X-QuickMail-Key")));
         Assert.DoesNotContain("quickmail.log", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task SubmitAsync_RevokedToken_FailsGracefully()
+    public async Task SubmitAsync_SendsNoGitHubCredential_AndNoClientChosenLabels()
     {
-        var credentials = new FakeCredentialService();
-        credentials.SaveSecret("QuickMail.BugReportService.AppOwnedToken", "bad-token");
+        // The whole point of #501: nothing that reaches the wire may be a GitHub credential,
+        // and the client must not name its own labels — an extracted relay key would otherwise
+        // let anyone apply arbitrary ones. The relay decides both.
+        var service = MakeService(_ => IssueCreated(), out var handler);
 
-        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized), out _, credentials);
+        await service.SubmitAsync(SampleReport());
+
+        Assert.Null(handler.LastRequest!.Headers.Authorization);
+        Assert.DoesNotContain("github_pat", handler.LastRequestBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("\"labels\"", handler.LastRequestBody);
+    }
+
+    [Fact]
+    public void Constructor_DeletesThePreRelayGitHubToken_LeftBehindByOlderInstalls()
+    {
+        // Upgrading from a pre-relay build leaves a real PAT in Credential Manager. Nothing
+        // reads it any more, so it must not simply sit there.
+        var credentials = new FakeCredentialService();
+        credentials.SaveSecret(LegacyTokenKey, "github_pat_stale");
+
+        _ = MakeService(_ => IssueCreated(), out _, credentials);
+
+        Assert.Null(credentials.GetSecret(LegacyTokenKey));
+    }
+
+    [Fact]
+    public async Task SubmitAsync_RelayRejectsKey_FailsGracefully()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized), out _);
 
         var result = await service.SubmitAsync(SampleReport());
 
@@ -128,12 +146,21 @@ public class BugReportServiceTests
     }
 
     [Fact]
+    public async Task SubmitAsync_RateLimited_SaysToRetry_RatherThanShowingAStatusCode()
+    {
+        var service = MakeService(_ => new HttpResponseMessage(HttpStatusCode.TooManyRequests), out _);
+
+        var result = await service.SubmitAsync(SampleReport());
+
+        Assert.False(result.Success);
+        Assert.Contains("Try again", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("429", result.ErrorMessage!);
+    }
+
+    [Fact]
     public async Task SubmitAsync_NetworkFailure_FailsGracefully()
     {
-        var credentials = new FakeCredentialService();
-        credentials.SaveSecret("QuickMail.BugReportService.AppOwnedToken", "fake-token");
-
-        var service = MakeService(_ => throw new HttpRequestException("offline"), out _, credentials);
+        var service = MakeService(_ => throw new HttpRequestException("offline"), out _);
 
         var result = await service.SubmitAsync(SampleReport());
 
