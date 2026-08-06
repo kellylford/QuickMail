@@ -107,6 +107,19 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 Keep that value: step 5 needs it again, and it is not readable back out of GitHub.
 
+### 3b. Register a workers.dev subdomain
+
+Signing up through GitHub never prompts for one, and without it the first deploy fails with
+*"You need to register a workers.dev subdomain before publishing to workers.dev"* — there is
+simply nowhere to publish to.
+
+Register it at `https://dash.cloudflare.com/<account id>/workers/subdomain`. **Not** the
+`/workers/onboarding` URL wrangler prints in that error; that page 404s.
+
+The name is lowercase letters, digits and hyphens, globally unique across Cloudflare, and
+permanent — it becomes part of the public relay address. This account uses `quickmail`, so
+the Worker lives at `https://quickmail-bug-relay.quickmail.workers.dev`.
+
 ### 4. Deploy
 
 The workflow must be on `main` before it can be run — GitHub only registers
