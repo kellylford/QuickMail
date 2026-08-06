@@ -35,7 +35,7 @@ Thumbs.db
 # Google OAuth client credentials (real values — copy from docs/GoogleOAuthService.Credentials.example)
 **/GoogleOAuthService.Credentials.cs
 
-# Bug-report app-owned GitHub token (real values — copy from docs/BugReportService.Credentials.example)
+# Bug-report relay URL and key (real values — copy from docs/BugReportService.Credentials.example)
 **/BugReportService.Credentials.cs
 
 # Claude Code worktrees and local session data

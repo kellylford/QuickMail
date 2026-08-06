@@ -47,13 +47,15 @@ jobs:
       - name: Write bug-report credentials
         shell: pwsh
         env:
-          BUG_REPORT_TOKEN: ${{ secrets.BUG_REPORT_TOKEN }}
+          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
+          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
         run: |
           @"
           namespace QuickMail.Services;
           public partial class BugReportService
           {
-              private const string AppOwnedToken = "$env:BUG_REPORT_TOKEN";
+              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
+              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
           }
           "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
 
@@ -146,13 +148,15 @@ jobs:
       - name: Write bug-report credentials
         shell: pwsh
         env:
-          BUG_REPORT_TOKEN: ${{ secrets.BUG_REPORT_TOKEN }}
+          BUG_REPORT_RELAY_URL: ${{ vars.BUG_REPORT_RELAY_URL }}
+          BUG_REPORT_RELAY_KEY: ${{ secrets.BUG_REPORT_RELAY_KEY }}
         run: |
           @"
           namespace QuickMail.Services;
           public partial class BugReportService
           {
-              private const string AppOwnedToken = "$env:BUG_REPORT_TOKEN";
+              private const string RelayUrl = "$env:BUG_REPORT_RELAY_URL";
+              private const string RelayKey = "$env:BUG_REPORT_RELAY_KEY";
           }
           "@ | Set-Content -Path "QuickMail/Services/BugReportService.Credentials.cs" -Encoding UTF8
 

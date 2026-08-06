@@ -1,0 +1,21 @@
+name = "quickmail-bug-relay"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+# Secrets (set with `wrangler secret put`, never committed):
+#   GITHUB_APP_ID           the App's numeric ID
+#   GITHUB_INSTALLATION_ID  the installation of that App on kellylford/QuickMail
+#   GITHUB_PRIVATE_KEY      the App's private key PEM (PKCS#1 or PKCS#8 both work)
+#   RELAY_KEY               shared with the shipped app; low-value, rotatable
+
+# Per-IP cap on issue creation. 5/minute is far above any human filing a bug and far below
+# what makes a spam run worthwhile. `namespace_id` is an arbitrary label, not a resource to
+# create; `period` accepts only 10 or 60.
+[[unsafe.bindings]]
+name = "RATE_LIMITER"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+[observability]
+enabled = true
