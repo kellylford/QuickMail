@@ -539,7 +539,9 @@ Press **Ctrl+Enter** to open a message in a new tab regardless of the Reading Mo
 
 ### Reading Pane
 
-The reading pane renders HTML messages with WebView2. Links open in your default browser. Images from remote sources are blocked by default.
+The reading pane renders HTML messages with WebView2. Links open in your default browser.
+
+Images from remote sources are not loaded — fetching them tells the sender your address is live, which is what a tracking pixel in a newsletter is for. Where the sender wrote a description for a picture, QuickMail shows that description in its place, so a picture that is also a link reads by what it is ("Facebook link") rather than by its web address. A picture the sender marked as decorative contributes nothing, which is what marking it that way asks for.
 
 Press **F6** or **Shift+F6** to move between the reading pane and other panes.
 
@@ -1077,6 +1079,8 @@ Invitations you receive by email show in the calendar with a **Pending** status 
 2. Choose **Accept**, **Tentative**, or **Decline** — or **Open full appointment** to read the original email instead. Press **Escape** to close the menu without responding.
 
 QuickMail sends your reply to the organizer from the account that received the invitation and updates the appointment's status, so it no longer shows as pending. Accept, Tentative, and Decline are also in the Command Palette (**Ctrl+Shift+P**) when a pending invitation is selected.
+
+You can also answer from the email itself. Open the invitation and the message starts with a short card giving the title, when the meeting is, where, and who organized it, followed by **Accept**, **Tentative**, and **Decline**. The card is worth reading even when you plan to answer elsewhere: for many invitations it is the only place the date and time appear at all — a meeting sent from Outlook for a Zoom call is a body of join links and dial-in numbers, and the when is carried in the attachment rather than written out. The card appears however you have QuickMail set to open messages, and in a message window the three responses are on that window's Command Palette (**Ctrl+Shift+P**) as well.
 
 ### Creating an appointment
 
