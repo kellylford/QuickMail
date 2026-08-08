@@ -31,6 +31,8 @@ public static class FolderTreeBuilder
                 Folder     = null,
                 IsHeader   = true,
                 IsExpanded = true,
+                AccountId       = account.Id,        // #31: node-key disambiguation
+                IsSharedAccount = account.IsShared,  // #31: "shared mailbox" in the accessible name
             };
             foreach (var root in folderRoots)
                 accountNode.Children.Add(root);

@@ -2629,8 +2629,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IEnumerable<MailMessageSummary> relevant;
         if (selected.FullName == AllMailFolder.FullName)
         {
-            // Global "All Mail" - accept messages from every account.
-            relevant = incoming;
+            // Global "All Mail" - accept messages from every account except shared mailboxes (#31).
+            relevant = incoming.Where(m => !IsSharedAccountId(m.AccountId));
         }
         else if (TryGetAccountIdFromSentinel(selected.FullName, out var watchedAccountId))
         {
@@ -2639,8 +2639,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else if (selected.FullName == AllFlaggedFolder.FullName)
         {
-            // All Flagged Mail — only accept flagged incoming messages.
-            relevant = incoming.Where(m => m.IsFlagged);
+            // All Flagged Mail — only accept flagged incoming messages (shared mailboxes excluded, #31).
+            relevant = incoming.Where(m => m.IsFlagged && !IsSharedAccountId(m.AccountId));
         }
         else if (selected.FullName == AllWatchedFolder.FullName)
         {
@@ -3446,7 +3446,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // per-IP connection limit shared hosting enforces (same rationale as SyncService); accounts
         // on different hosts still connect in parallel.
         var resultsByHost = await Task.WhenAll(
-            Accounts.GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
+            Accounts.Where(a => !a.IsShared)   // #31: shared mailboxes are not connected in PR 1 (no own creds)
+                    .GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
                     .Select(async hostGroup =>
                     {
                         var groupResults = new List<(Guid Id, List<MailFolderModel>? Folders)>();
@@ -3840,12 +3841,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                // Placeholder node for accounts that have not yet loaded folders.
+                // Placeholder node for accounts that have not yet loaded folders. A shared mailbox (#31)
+                // stays here through PR 1 (no backend access yet) — a navigable top-level node with no
+                // children — so it must carry the account id + shared flag for the node key and name.
                 roots.Add(new FolderTreeNode
                 {
                     IsHeader = true,
                     Label    = account.AccountLabel,
                     Folder   = null,
+                    AccountId       = account.Id,
+                    IsSharedAccount = account.IsShared,
                 });
             }
         }
@@ -3861,8 +3866,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MarkDefaultCalendarNodes();
     }
 
-    private static string NodeKey(FolderTreeNode n) =>
-        n.Folder != null ? $"F:{n.Folder.AccountId}:{n.Folder.FullName}" : $"H:{n.Label}";
+    internal static string NodeKey(FolderTreeNode n) =>
+        n.Folder != null ? $"F:{n.Folder.AccountId}:{n.Folder.FullName}"
+        : n.AccountId is { } id ? $"H:{id}:{n.Label}"   // #31: disambiguate same-named account/shared headers
+        : $"H:{n.Label}";
 
     private static IEnumerable<FolderTreeNode> FlattenAllNodes(IEnumerable<FolderTreeNode> nodes)
     {
@@ -4637,7 +4644,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 (cached.Any(m => string.IsNullOrWhiteSpace(m.To))
                     || await _localStore.HasSummariesMissingRecipientsAsync());
             var perAccountTasks = Accounts
-                .Where(a => _cachedFolders.ContainsKey(a.Id))
+                .Where(a => _cachedFolders.ContainsKey(a.Id) && !a.IsShared)   // #31: shared excluded from All Mail
                 .Select(account => (OnlineMode || needsRecipientRepair)
                     ? FetchAccountAllFoldersAsync(account, ct)
                     : FetchAccountNewMessagesAsync(account, ct));
@@ -5615,7 +5622,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// list has not been cached yet, and accounts with no archive destination, contribute nothing.
     /// Both the fetch and the live-arrival filter read this, so they can never disagree.
     /// </summary>
-    private IEnumerable<(AccountModel Account, MailFolderModel Folder)> FolderScopedAggregateSources(
+    /// <summary>True if the given account id belongs to a shared mailbox (#31) — used to keep shared
+    /// mail out of the global aggregates (All Mail / All Flagged) while it still gets swept.</summary>
+    internal bool IsSharedAccountId(Guid accountId) =>
+        Accounts.FirstOrDefault(a => a.Id == accountId)?.IsShared == true;
+
+    internal IEnumerable<(AccountModel Account, MailFolderModel Folder)> FolderScopedAggregateSources(
         string fullName)
     {
         var isArchive = string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal);
@@ -5628,6 +5640,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         foreach (var account in Accounts)
         {
+            if (account.IsShared) continue;   // #31: shared mailboxes are excluded from All-* aggregates (still swept)
             if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
 
             if (isArchive)
@@ -7747,7 +7760,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IEnumerable<AccountModel> accounts,
         Func<Guid, bool> isBackendConnected,
         Func<Guid, bool> hasCachedFolders)
-        => accounts.Where(a => !isBackendConnected(a.Id) || !hasCachedFolders(a.Id)).ToList();
+        // #31: a shared mailbox has no credentials of its own — it reads through its parent's token
+        // (from PR 2). PR 1 never connects it: it's a navigable, empty top-level node until then.
+        => accounts.Where(a => !a.IsShared && (!isBackendConnected(a.Id) || !hasCachedFolders(a.Id))).ToList();
 
     public void RefreshAccountList()
     {

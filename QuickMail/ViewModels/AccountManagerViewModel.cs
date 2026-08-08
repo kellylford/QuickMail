@@ -31,9 +31,36 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [NotifyPropertyChangedFor(nameof(CanSyncContacts))]
     [NotifyPropertyChangedFor(nameof(CanSyncCalendar))]
     [NotifyPropertyChangedFor(nameof(ShowTestConnection))]
+    [NotifyPropertyChangedFor(nameof(IsSharedSelected))]
+    [NotifyPropertyChangedFor(nameof(ShowNormalAccountFields))]
+    [NotifyPropertyChangedFor(nameof(SharedParentName))]
+    [NotifyCanExecuteChangedFor(nameof(SetDefaultCommand))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
+
+    /// <summary>
+    /// True when the selected account is a shared mailbox (#31). A shared mailbox has no credentials
+    /// and no connection of its own — it reads through its parent — so its connection method,
+    /// authentication, password, IMAP/SMTP servers, sign-in, Test Connection, and contact/calendar
+    /// sync are all meaningless. The editor hides that whole surface and shows a read-only summary,
+    /// the same way a Graph account already hides IMAP/SMTP. Calendar and contacts are out of scope
+    /// for shared mailboxes by spec (mail only), so those checkboxes are hidden here too.
+    /// </summary>
+    public bool IsSharedSelected => SelectedAccount?.IsShared == true;
+
+    /// <summary>Fields that only apply to a real, credentialed account — the connection/auth surface
+    /// (password, OAuth sign-in, Advanced servers) and the sender display name — are shown for a normal
+    /// account and hidden for a shared mailbox, which has none of them (it reads and sends through its
+    /// parent under the mailbox's own directory identity). "Set as default" is likewise unavailable for
+    /// a shared account (see <see cref="CanSetDefault"/>) — credential-less, per spec §4.</summary>
+    public bool ShowNormalAccountFields => !IsSharedSelected;
+
+    /// <summary>Name of the parent account a shared mailbox reads through — for its read-only summary.</summary>
+    public string SharedParentName =>
+        SelectedAccount?.ParentAccountId is { } pid
+            ? Accounts.FirstOrDefault(a => a.Id == pid)?.AccountName ?? "another account"
+            : string.Empty;
 
     /// <summary>
     /// Test Connection is offered only when there is an account to test. With nothing selected the
@@ -45,7 +72,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// could only probe IMAP, but it now probes Graph accounts too, via the backend's GET /me — so
     /// hiding it for Microsoft 365 would hide it exactly where it just started working.
     /// </summary>
-    public bool ShowTestConnection => IsEditing;
+    public bool ShowTestConnection => IsEditing && !IsSharedSelected;
 
     /// <summary>
     /// Contact sync (issue #256) is offered for Microsoft and Google (OAuth contact APIs), plus
@@ -53,7 +80,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// calendar sync. Other password/IMAP accounts show no checkbox.
     /// </summary>
     public bool CanSyncContacts =>
-        _contactSync != null && SelectedAccount is { } acct &&
+        _contactSync != null && SelectedAccount is { IsShared: false } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
          || ProviderCatalog.IsICloud(acct));
 
@@ -65,11 +92,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// accounts show no checkbox.
     /// </summary>
     public bool CanSyncCalendar =>
-        _graphCalendarSync != null && SelectedAccount is { } acct &&
+        _graphCalendarSync != null && SelectedAccount is { IsShared: false } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
          || ProviderCatalog.IsICloud(acct));
 
     protected override bool IsGoogleAuthEnabled => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
+
+    /// <summary>#31: gates the "Add shared…" button — the sole path that can create a shared mailbox.
+    /// Off by default while the multi-PR feature is built (see <see cref="FeatureFlag.SharedMailboxes"/>).</summary>
+    public bool IsSharedMailboxesEnabled => _featureGate.IsEnabled(FeatureFlag.SharedMailboxes);
 
     public AccountManagerViewModel(
         IAccountService accountService,
@@ -383,25 +414,55 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
+    /// <summary>Set by the View to confirm removing a parent that has shared mailboxes (#31): message →
+    /// user's yes/no. With no children, delete proceeds as before. When there ARE children this is the
+    /// only way to get the required yes, so an unset callback fails closed — the cascade is treated as
+    /// declined and nothing is removed, never removed unconfirmed. The shipped View always wires it.</summary>
+    public Func<string, bool>? ConfirmCascadeRemoval { get; set; }
+
     [RelayCommand]
     private async Task DeleteAccountAsync()
     {
         if (SelectedAccount == null) return;
         var account = SelectedAccount;
 
+        // #31: a shared mailbox has no independent existence — it lives entirely through its parent's
+        // token and backend — so removing the parent removes its shared mailboxes too. Confirm and name
+        // them first. Removing a shared mailbox on its own is an ordinary single-account delete.
+        var sharedChildren = account.IsShared
+            ? new List<AccountModel>()
+            : Accounts.Where(a => a.IsShared && a.ParentAccountId == account.Id).ToList();
+        if (sharedChildren.Count > 0)
+        {
+            // The cascade needs an explicit yes. With no confirmation mechanism wired we cannot get one,
+            // so fail closed (?? false) — never remove a parent's shared mailboxes unconfirmed.
+            var names = string.Join(", ", sharedChildren.Select(c => c.AccountLabel));
+            var one = sharedChildren.Count == 1;
+            var confirmed = ConfirmCascadeRemoval?.Invoke(
+                $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?") ?? false;
+            if (!confirmed) return;
+        }
+
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
+        foreach (var child in sharedChildren) Accounts.Remove(child);
         SelectedAccount = null;
         _accountService.SaveAccounts([.. Accounts]);
 
         var config = _configService.Load();
-        if (config.Accounts.Remove(account.Id))
-            _configService.Save(config);
+        var configChanged = config.Accounts.Remove(account.Id);
+        foreach (var child in sharedChildren) configChanged |= config.Accounts.Remove(child.Id);
+        if (configChanged) _configService.Save(config);
 
         StatusText = "Account deleted. Cleaning up…";
 
         try   { await _localStore.DeleteAccountDataAsync(account.Id); }
         catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to purge mail.db — {ex.Message}"); }
+        foreach (var child in sharedChildren)
+        {
+            try   { await _localStore.DeleteAccountDataAsync(child.Id); }
+            catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to purge shared mailbox data — {ex.Message}"); }
+        }
 
         if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
         {
@@ -416,10 +477,32 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to remove synced contacts — {ex.Message}"); }
         }
 
-        StatusText = "Account deleted.";
+        StatusText = sharedChildren.Count > 0
+            ? $"Account deleted, along with {sharedChildren.Count} shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}."
+            : "Account deleted.";
     }
 
-    [RelayCommand]
+    // ── Add shared mailbox (#31) ──────────────────────────────────────────────────
+    public AddSharedMailboxViewModel CreateAddSharedMailboxViewModel() =>
+        new(Accounts, SelectedAccount?.Id);
+
+    /// <summary>Adds a created shared mailbox to the list and persists it — no credentials to save (it
+    /// reads through its parent). The dialog closes on success; the manager's close refreshes the main
+    /// window, which registers the backend and shows the new top-level node.</summary>
+    public void CommitNewSharedMailbox(AccountModel sharedMailbox)
+    {
+        Accounts.Add(sharedMailbox);
+        _accountService.SaveAccounts([.. Accounts]);
+        SelectedAccount = sharedMailbox;
+        StatusText = "Shared mailbox added.";
+    }
+
+    /// <summary>A shared mailbox cannot be the default account (#31, spec §4: default-account semantics
+    /// are out — it is credential-less and never the identity a new message composes from). Also guards
+    /// the no-selection case, which the command used to accept and no-op.</summary>
+    private static bool CanSetDefault(AccountModel? account) => account is { IsShared: false };
+
+    [RelayCommand(CanExecute = nameof(CanSetDefault))]
     private void SetDefault(AccountModel? account)
     {
         if (account == null) return;

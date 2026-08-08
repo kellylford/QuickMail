@@ -15,6 +15,17 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     public bool IsHeader { get; init; }
 
     /// <summary>
+    /// The account this node belongs to, for account header/placeholder nodes (#31). Header nodes carry
+    /// no <see cref="Folder"/>, so without this two same-named accounts produce the same node key and
+    /// collide (their expansion state and selection get confused). Null for non-account nodes.
+    /// </summary>
+    public System.Guid? AccountId { get; init; }
+
+    /// <summary>True for the top-level node of a shared mailbox (#31) — drives the "shared mailbox"
+    /// qualifier in <see cref="AutomationName"/>.</summary>
+    public bool IsSharedAccount { get; init; }
+
+    /// <summary>
     /// True for the Calendar node and every node beneath it. Drives which context menu the tree
     /// item gets: the mail folder actions (New Folder, Move, Delete…) mean nothing on a calendar,
     /// and every one of them silently does nothing when activated there.
@@ -37,6 +48,7 @@ public sealed class FolderTreeNode : INotifyPropertyChanged
     public string AutomationName =>
         ShowUnread ? $"{Label}, {Folder!.UnreadCount} unread"
         : IsDefaultCalendar ? $"{Label}, default calendar"
+        : IsSharedAccount ? $"{Label}, shared mailbox"
         : Label;
 
     private bool _isDefaultCalendar;

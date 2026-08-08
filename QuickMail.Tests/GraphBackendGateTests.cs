@@ -450,4 +450,34 @@ public class ConfigFeatureGateTests
     public void CliDisable_WinsOverCliEnable()
         => Assert.False(new ConfigFeatureGate(new ConfigModel(), new[] { "GraphBackend" }, new[] { "GraphBackend" })
             .IsEnabled(FeatureFlag.GraphBackend));
+
+    [Fact]
+    public void Default_SharedMailboxesOff() // #31: off while the multi-PR feature is built
+        => Assert.False(new ConfigFeatureGate(new ConfigModel(), Array.Empty<string>())
+            .IsEnabled(FeatureFlag.SharedMailboxes));
+
+    [Fact]
+    public void Config_EnablesSharedMailboxes() // testers turn it on with SharedMailboxes=true
+        => Assert.True(new ConfigFeatureGate(ConfigWith("SharedMailboxes", "true"), Array.Empty<string>())
+            .IsEnabled(FeatureFlag.SharedMailboxes));
+}
+
+/// <summary>#31: the "Add shared…" button — the sole shared-mailbox creation path — is bound to
+/// <see cref="AccountManagerViewModel.IsSharedMailboxesEnabled"/>, which must track the gate.</summary>
+public class SharedMailboxButtonGateTests
+{
+    private static AccountManagerViewModel Make(bool sharedEnabled)
+    {
+        var gate = new StubFeatureGate { [FeatureFlag.SharedMailboxes] = sharedEnabled };
+        return new AccountManagerViewModel(
+            new StubAccountService(), new StubCredentialService(), new StubImapMailService(),
+            new StubOAuthService(), new StubLocalStoreService(), new StubConfigService(),
+            gate, new ProviderCatalog());
+    }
+
+    [Fact]
+    public void GateOff_ButtonHidden() => Assert.False(Make(sharedEnabled: false).IsSharedMailboxesEnabled);
+
+    [Fact]
+    public void GateOn_ButtonShown() => Assert.True(Make(sharedEnabled: true).IsSharedMailboxesEnabled);
 }

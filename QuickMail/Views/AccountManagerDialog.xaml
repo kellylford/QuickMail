@@ -49,7 +49,13 @@
                         Command="{Binding SetDefaultCommand}"
                         CommandParameter="{Binding SelectedAccount}"
                         AutomationProperties.Name="Set as default"
-                        MinWidth="75" TabIndex="3"/>
+                        MinWidth="75" Margin="0,0,4,0" TabIndex="3"/>
+                <Button Content="Add _shared…"
+                        x:Name="AddSharedButton"
+                        Click="AddSharedMailboxButton_Click"
+                        AutomationProperties.Name="Add shared mailbox"
+                        Visibility="{Binding IsSharedMailboxesEnabled, Converter={StaticResource BoolToVisibility}}"
+                        MinWidth="90" TabIndex="4"/>
             </StackPanel>
             <ListBox x:Name="AccountListBox"
                      TabIndex="0"
@@ -104,20 +110,43 @@
                          AutomationProperties.LabeledBy="{Binding ElementName=LblAccountName}"
                          TabIndex="5"/>
 
-                <!-- Sender Display Name -->
-                <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
-                <TextBox x:Name="DisplayNameBox"
-                         Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
-                         AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
-                         TabIndex="6"/>
+                <!-- Sender Display Name — hidden for a shared mailbox (#31): its outgoing identity is the
+                     mailbox's own directory display name on send, not a name set per-account here. -->
+                <StackPanel Visibility="{Binding ShowNormalAccountFields, Converter={StaticResource BoolToVisibility}}">
+                    <Label x:Name="LblDisplayName" Content="Sender _display name:" Target="{Binding ElementName=DisplayNameBox}" Padding="0" Margin="0,8,0,2"/>
+                    <TextBox x:Name="DisplayNameBox"
+                             Text="{Binding DisplayName, UpdateSourceTrigger=PropertyChanged}"
+                             AutomationProperties.LabeledBy="{Binding ElementName=LblDisplayName}"
+                             TabIndex="6"/>
+                </StackPanel>
 
                 <!-- The account's own email address. Since #396 it is only that: a server whose
                      login differs has a separate Login username box under Advanced settings. -->
                 <Label x:Name="LblUsername" Content="_Email address:" Target="{Binding ElementName=UsernameBox}" Padding="0" Margin="0,8,0,2"/>
                 <TextBox x:Name="UsernameBox"
                          Text="{Binding Username, UpdateSourceTrigger=PropertyChanged}"
+                         IsReadOnly="{Binding IsSharedSelected}"
                          AutomationProperties.LabeledBy="{Binding ElementName=LblUsername}"
                          TabIndex="7"/>
+
+                <!-- #31: a shared mailbox has no credentials or connection of its own — it reads through
+                     its parent account and shows mail only. In place of the connection/auth/sync
+                     surface (hidden below), a read-only summary says what it is. A read-only TextBox,
+                     not a TextBlock, so a screen reader reads the value (same reasoning as ProviderText). -->
+                <StackPanel Visibility="{Binding IsSharedSelected, Converter={StaticResource BoolToVisibility}}"
+                            Margin="0,8,0,0">
+                    <Label x:Name="LblSharedParent" Content="Shared mailbox:" Target="{Binding ElementName=SharedSummaryText}" Padding="0" Margin="0,0,0,2"/>
+                    <TextBox x:Name="SharedSummaryText"
+                             Text="{Binding SharedParentName, Mode=OneWay, StringFormat=Reads through {0}. Mail only — no separate sign-in.}"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             AutomationProperties.LabeledBy="{Binding ElementName=LblSharedParent}"/>
+                </StackPanel>
+
+                <!-- #31: the whole editable connection surface (password, OAuth sign-in) is hidden for a
+                     shared mailbox — it authenticates through its parent, not itself. The inner panels
+                     keep their own auth-type visibility for normal accounts. -->
+                <StackPanel Visibility="{Binding ShowNormalAccountFields, Converter={StaticResource BoolToVisibility}}">
 
                 <!-- Password panel -->
                 <StackPanel Visibility="{Binding IsPasswordAuth, Converter={StaticResource BoolToVisibility}}">
@@ -161,6 +190,9 @@
                         AutomationProperties.Name="Sign in with Google"
                         HorizontalAlignment="Left" MinWidth="200" Margin="0,8,0,0" TabIndex="11"/>
 
+                </StackPanel>
+                <!-- end #31 ShowNormalAccountFields wrapper (password + OAuth sign-in) -->
+
                 <!-- Contact sync (issue #256) — shown only for accounts with a contact API. Stays on
                      the main surface: it is a per-account choice, not a server setting. -->
                 <StackPanel Visibility="{Binding CanSyncContacts, Converter={StaticResource BoolToVisibility}}">
@@ -193,6 +225,7 @@
                           Header="Ad_vanced settings"
                           IsExpanded="{Binding IsAdvancedExpanded, Mode=TwoWay}"
                           AutomationProperties.Name="Advanced settings"
+                          Visibility="{Binding ShowNormalAccountFields, Converter={StaticResource BoolToVisibility}}"
                           Margin="0,14,0,0">
                     <StackPanel Margin="0,8,0,0">
 
