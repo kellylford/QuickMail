@@ -133,6 +133,29 @@ public partial class AccountModel : ObservableObject
     /// </summary>
     public string? ArchiveFolderFullName { get; set; }
 
+    // ── Shared mailbox linkage (#31) ─────────────────────────────────────────────
+
+    /// <summary>
+    /// True if this account is a Microsoft 365 / Exchange shared mailbox added by address (Approach B):
+    /// a first-class account with its own <see cref="Id"/>, but no credentials of its own — it reads and
+    /// sends through its <see cref="ParentAccountId"/>'s token and backend. Optional; defaults false, so
+    /// existing accounts round-trip unchanged (no migration).
+    /// </summary>
+    public bool IsShared { get; set; }
+
+    /// <summary>
+    /// For a shared account (<see cref="IsShared"/>), the <see cref="Id"/> of the parent account whose
+    /// token authorizes access and whose backend serves it. Null for a normal account.
+    /// </summary>
+    public Guid? ParentAccountId { get; set; }
+
+    /// <summary>
+    /// For a shared account, the shared mailbox's own SMTP address — the <c>/users/{SharedAddress}</c>
+    /// target for a Graph parent, or the XOAUTH2 <c>user=</c> for an IMAP parent. Null for a normal
+    /// account.
+    /// </summary>
+    public string? SharedAddress { get; set; }
+
     // ── Runtime-only status (not serialized, updated after each connection) ──────
 
     [ObservableProperty]
@@ -175,17 +198,20 @@ public partial class AccountModel : ObservableObject
     /// Full accessible name for screen readers: account label + connection status + unread count.
     /// TotalUnread covers all folders. Placed in AutomationProperties.Name on the list item
     /// container so it is announced on focus without requiring the user to hover.
-    /// Examples: "Idea Place, disconnected", "Kelly, connected", "Kelly, connected, 1630 unread"
+    /// Examples: "Idea Place, disconnected", "Kelly, connected", "Kelly, connected, 1630 unread".
+    /// A shared mailbox (#31) inserts the qualifier right after the label:
+    /// "Support, shared mailbox, connected, 12 unread".
     /// </summary>
     [JsonIgnore]
     public string AccessibleName
     {
         get
         {
-            if (!IsConnected) return $"{AccountLabel}, disconnected";
+            var shared = IsShared ? ", shared mailbox" : "";
+            if (!IsConnected) return $"{AccountLabel}{shared}, disconnected";
             return TotalUnread > 0
-                ? $"{AccountLabel}, connected, {TotalUnread} unread"
-                : $"{AccountLabel}, connected";
+                ? $"{AccountLabel}{shared}, connected, {TotalUnread} unread"
+                : $"{AccountLabel}{shared}, connected";
         }
     }
 
