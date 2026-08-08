@@ -14,7 +14,8 @@ namespace QuickMail.Views;
 /// between and a palette would only duplicate the two buttons (same New-Window-Checklist exception as
 /// <see cref="ServerRuleEditorWindow"/>). It has an editable TextBox and can open over the main
 /// window's live WebView2, so it is shown modeless (<c>Show()</c>) with Escape/Cancel wired explicitly
-/// — the GrabAddresses deadlock lesson. Focus lands on Address; the owner restores focus on close.
+/// — the GrabAddresses deadlock lesson. Focus lands on Address; the owner (Account Manager) restores
+/// focus to the "Add shared…" button it was launched from when this window closes.
 /// </summary>
 public partial class AddSharedMailboxWindow : Window
 {

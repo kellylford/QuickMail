@@ -415,7 +415,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     }
 
     /// <summary>Set by the View to confirm removing a parent that has shared mailboxes (#31): message →
-    /// user's yes/no. Absent (or no children) → delete proceeds as before.</summary>
+    /// user's yes/no. With no children, delete proceeds as before. When there ARE children this is the
+    /// only way to get the required yes, so an unset callback fails closed — the cascade is treated as
+    /// declined and nothing is removed, never removed unconfirmed. The shipped View always wires it.</summary>
     public Func<string, bool>? ConfirmCascadeRemoval { get; set; }
 
     [RelayCommand]
@@ -430,13 +432,15 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         var sharedChildren = account.IsShared
             ? new List<AccountModel>()
             : Accounts.Where(a => a.IsShared && a.ParentAccountId == account.Id).ToList();
-        if (sharedChildren.Count > 0 && ConfirmCascadeRemoval != null)
+        if (sharedChildren.Count > 0)
         {
+            // The cascade needs an explicit yes. With no confirmation mechanism wired we cannot get one,
+            // so fail closed (?? false) — never remove a parent's shared mailboxes unconfirmed.
             var names = string.Join(", ", sharedChildren.Select(c => c.AccountLabel));
             var one = sharedChildren.Count == 1;
-            if (!ConfirmCascadeRemoval(
-                    $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?"))
-                return;
+            var confirmed = ConfirmCascadeRemoval?.Invoke(
+                $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?") ?? false;
+            if (!confirmed) return;
         }
 
         _credentials.DeletePassword(account.Id);

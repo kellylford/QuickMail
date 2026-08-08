@@ -83,6 +83,22 @@ public class SharedMailboxRemovalTests
         Assert.Contains(vm.Accounts, a => a.Id == parent.Id);
         Assert.Contains(vm.Accounts, a => a.Id == shared.Id);
     }
+
+    [Fact]
+    public async Task CascadeWithoutConfirmCallback_FailsClosed_RemovesNothing()
+    {
+        var parent = Parent("Work");
+        var shared = SharedOf(parent, "support@work.com");
+        var vm = Manager(parent, shared);
+        // ConfirmCascadeRemoval deliberately not wired: with children present there is no way to obtain
+        // the required confirmation, so the delete must fail closed and remove nothing.
+        vm.SelectedAccount = parent;
+
+        await vm.DeleteAccountCommand.ExecuteAsync(null);
+
+        Assert.Contains(vm.Accounts, a => a.Id == parent.Id);
+        Assert.Contains(vm.Accounts, a => a.Id == shared.Id);
+    }
 }
 
 /// <summary>

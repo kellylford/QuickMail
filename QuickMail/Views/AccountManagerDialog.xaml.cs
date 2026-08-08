@@ -47,7 +47,11 @@ public partial class AccountManagerDialog : Window
         addVm.SharedMailboxAdded += _vm.CommitNewSharedMailbox;   // commit + persist; the window closes itself
         // Modeless (Show), not ShowDialog: an editable field over the main window's live WebView2 would
         // deadlock under a nested modal loop — the GrabAddresses lesson (spec §7).
-        new AddSharedMailboxWindow(addVm) { Owner = this }.Show();
+        var window = new AddSharedMailboxWindow(addVm) { Owner = this };
+        // New-Window-Checklist focus restoration: a modeless window does not reliably return focus to
+        // its launcher, so put it back on the button that opened this dialog when it closes.
+        window.Closed += (_, _) => AddSharedButton.Focus();
+        window.Show();
     }
 
     private void OnPasswordCleared()
