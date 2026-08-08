@@ -23,6 +23,10 @@ public class ConfigFeatureGate : IFeatureGate
         // On by default: server-rule list/create/edit/delete/reorder and the unified per-account rules
         // window are complete and tested (#333). Set ServerRules=false under [features] to hide it again.
         [FeatureFlag.ServerRules]  = true,
+        // Off while shared mailboxes (#31) is built across multiple PRs — the "Add shared…" button, the
+        // sole creation path, stays hidden until the feature is whole. Set SharedMailboxes=true under
+        // [features] to test.
+        [FeatureFlag.SharedMailboxes] = false,
     };
 
     private readonly Dictionary<string, string> _configFlags;

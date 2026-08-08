@@ -71,6 +71,10 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
 
     protected override bool IsGoogleAuthEnabled => _featureGate.IsEnabled(FeatureFlag.GoogleAuth);
 
+    /// <summary>#31: gates the "Add shared…" button — the sole path that can create a shared mailbox.
+    /// Off by default while the multi-PR feature is built (see <see cref="FeatureFlag.SharedMailboxes"/>).</summary>
+    public bool IsSharedMailboxesEnabled => _featureGate.IsEnabled(FeatureFlag.SharedMailboxes);
+
     public AccountManagerViewModel(
         IAccountService accountService,
         ICredentialService credentials,

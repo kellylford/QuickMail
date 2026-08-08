@@ -54,6 +54,7 @@
                         x:Name="AddSharedButton"
                         Click="AddSharedMailboxButton_Click"
                         AutomationProperties.Name="Add shared mailbox"
+                        Visibility="{Binding IsSharedMailboxesEnabled, Converter={StaticResource BoolToVisibility}}"
                         MinWidth="90" TabIndex="4"/>
             </StackPanel>
             <ListBox x:Name="AccountListBox"
