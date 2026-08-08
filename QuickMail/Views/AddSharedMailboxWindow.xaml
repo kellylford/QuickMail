@@ -14,6 +14,10 @@
         FontFamily="{DynamicResource Theme.FontFamily}"
         FontSize="{DynamicResource Theme.FontSizeBase}">
 
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility"/>
+    </Window.Resources>
+
     <StackPanel Margin="16">
 
         <TextBlock Text="Shared mailbox address" Margin="0,0,0,2"/>

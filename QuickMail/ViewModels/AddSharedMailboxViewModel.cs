@@ -32,6 +32,11 @@ public partial class AddSharedMailboxViewModel : ObservableObject
 
         _selectedParent = ParentOptions.FirstOrDefault(a => a.Id == preferredParentId)
                           ?? ParentOptions.FirstOrDefault();
+
+        // A shared mailbox reads through a parent account's token, so it needs one. Say so rather than
+        // present an inert form with no parent and a disabled Add.
+        if (ParentOptions.Count == 0)
+            _errorText = "Add a Microsoft 365 (work or school) or IMAP account first — a shared mailbox reads through one of your accounts.";
     }
 
     public List<AccountModel> ParentOptions { get; }
