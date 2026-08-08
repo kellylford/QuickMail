@@ -101,6 +101,16 @@ missing when #59 was written.
 | Contact scraping / sync | **out** | Not "your" mail. |
 | Default-account semantics | **out** | Credential-less. |
 
+**Account Manager editor for a selected shared mailbox (added PR 1):** a shared account has no
+credentials or connection of its own, so when it is the selected account the editor hides the entire
+connection/auth surface — connection method, Authentication, Password, IMAP/SMTP servers (the whole
+Advanced expander), the OAuth **Sign-in** buttons, **Test Connection** — and the **Sync contacts /
+Sync calendar** checkboxes (mail only, per the out-of-scope rows above). In their place a **read-only
+summary** names the parent it reads through (*"Reads through {parent}. Mail only — no separate
+sign-in."*), and the shared **email address is read-only** (editing it would break the link). The
+account **label stays editable**. Gated on `AccountManagerViewModel.IsSharedSelected`, the same way a
+Graph account already hides IMAP/SMTP on `IsImapBackend`.
+
 ## 5. Architecture & Technical Decisions
 
 ### 5.1 Key architectural decisions

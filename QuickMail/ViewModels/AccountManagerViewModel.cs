@@ -31,9 +31,32 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [NotifyPropertyChangedFor(nameof(CanSyncContacts))]
     [NotifyPropertyChangedFor(nameof(CanSyncCalendar))]
     [NotifyPropertyChangedFor(nameof(ShowTestConnection))]
+    [NotifyPropertyChangedFor(nameof(IsSharedSelected))]
+    [NotifyPropertyChangedFor(nameof(ShowConnectionEditing))]
+    [NotifyPropertyChangedFor(nameof(SharedParentName))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
+
+    /// <summary>
+    /// True when the selected account is a shared mailbox (#31). A shared mailbox has no credentials
+    /// and no connection of its own — it reads through its parent — so its connection method,
+    /// authentication, password, IMAP/SMTP servers, sign-in, Test Connection, and contact/calendar
+    /// sync are all meaningless. The editor hides that whole surface and shows a read-only summary,
+    /// the same way a Graph account already hides IMAP/SMTP. Calendar and contacts are out of scope
+    /// for shared mailboxes by spec (mail only), so those checkboxes are hidden here too.
+    /// </summary>
+    public bool IsSharedSelected => SelectedAccount?.IsShared == true;
+
+    /// <summary>The editable connection/auth surface (password, OAuth sign-in, Advanced servers) is
+    /// shown for a normal account and hidden for a shared mailbox, which configures none of it.</summary>
+    public bool ShowConnectionEditing => !IsSharedSelected;
+
+    /// <summary>Name of the parent account a shared mailbox reads through — for its read-only summary.</summary>
+    public string SharedParentName =>
+        SelectedAccount?.ParentAccountId is { } pid
+            ? Accounts.FirstOrDefault(a => a.Id == pid)?.AccountName ?? "another account"
+            : string.Empty;
 
     /// <summary>
     /// Test Connection is offered only when there is an account to test. With nothing selected the
@@ -45,7 +68,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// could only probe IMAP, but it now probes Graph accounts too, via the backend's GET /me — so
     /// hiding it for Microsoft 365 would hide it exactly where it just started working.
     /// </summary>
-    public bool ShowTestConnection => IsEditing;
+    public bool ShowTestConnection => IsEditing && !IsSharedSelected;
 
     /// <summary>
     /// Contact sync (issue #256) is offered for Microsoft and Google (OAuth contact APIs), plus
@@ -53,7 +76,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// calendar sync. Other password/IMAP accounts show no checkbox.
     /// </summary>
     public bool CanSyncContacts =>
-        _contactSync != null && SelectedAccount is { } acct &&
+        _contactSync != null && SelectedAccount is { IsShared: false } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
          || ProviderCatalog.IsICloud(acct));
 
@@ -65,7 +88,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// accounts show no checkbox.
     /// </summary>
     public bool CanSyncCalendar =>
-        _graphCalendarSync != null && SelectedAccount is { } acct &&
+        _graphCalendarSync != null && SelectedAccount is { IsShared: false } acct &&
         (acct.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google
          || ProviderCatalog.IsICloud(acct));
 
