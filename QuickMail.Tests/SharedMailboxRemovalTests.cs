@@ -128,10 +128,11 @@ public class SharedMailboxEditorTests
         vm.SelectedAccount = shared;
 
         Assert.True(vm.IsSharedSelected);
-        Assert.False(vm.ShowConnectionEditing); // password / OAuth sign-in / Advanced servers hidden
-        Assert.False(vm.ShowTestConnection);    // nothing of its own to test
-        Assert.False(vm.CanSyncContacts);       // mail only, per spec
+        Assert.False(vm.ShowNormalAccountFields); // password / OAuth sign-in / Advanced servers / display name hidden
+        Assert.False(vm.ShowTestConnection);      // nothing of its own to test
+        Assert.False(vm.CanSyncContacts);         // mail only, per spec
         Assert.False(vm.CanSyncCalendar);
+        Assert.False(vm.SetDefaultCommand.CanExecute(shared)); // credential-less — cannot be default
         Assert.Equal("Work", vm.SharedParentName);
     }
 
@@ -145,10 +146,11 @@ public class SharedMailboxEditorTests
         vm.SelectedAccount = parent;
 
         Assert.False(vm.IsSharedSelected);
-        Assert.True(vm.ShowConnectionEditing);
+        Assert.True(vm.ShowNormalAccountFields);
         Assert.True(vm.ShowTestConnection);
         Assert.True(vm.CanSyncContacts);        // a normal Microsoft account still offers sync
         Assert.True(vm.CanSyncCalendar);
+        Assert.True(vm.SetDefaultCommand.CanExecute(parent)); // a real account can be the default
         Assert.Equal(string.Empty, vm.SharedParentName);
     }
 
@@ -160,12 +162,12 @@ public class SharedMailboxEditorTests
         var vm = Manager(parent, shared);
 
         vm.SelectedAccount = shared;
-        Assert.False(vm.ShowConnectionEditing);
+        Assert.False(vm.ShowNormalAccountFields);
 
         // Selecting a normal account must bring the connection surface back — the gate tracks the
         // selection, it is not a one-way latch.
         vm.SelectedAccount = parent;
-        Assert.True(vm.ShowConnectionEditing);
+        Assert.True(vm.ShowNormalAccountFields);
         Assert.True(vm.ShowTestConnection);
     }
 }

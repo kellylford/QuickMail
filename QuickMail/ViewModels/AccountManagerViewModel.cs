@@ -32,8 +32,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     [NotifyPropertyChangedFor(nameof(CanSyncCalendar))]
     [NotifyPropertyChangedFor(nameof(ShowTestConnection))]
     [NotifyPropertyChangedFor(nameof(IsSharedSelected))]
-    [NotifyPropertyChangedFor(nameof(ShowConnectionEditing))]
+    [NotifyPropertyChangedFor(nameof(ShowNormalAccountFields))]
     [NotifyPropertyChangedFor(nameof(SharedParentName))]
+    [NotifyCanExecuteChangedFor(nameof(SetDefaultCommand))]
     private AccountModel? _selectedAccount;
 
     public bool IsEditing => SelectedAccount != null;
@@ -48,9 +49,12 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
     /// </summary>
     public bool IsSharedSelected => SelectedAccount?.IsShared == true;
 
-    /// <summary>The editable connection/auth surface (password, OAuth sign-in, Advanced servers) is
-    /// shown for a normal account and hidden for a shared mailbox, which configures none of it.</summary>
-    public bool ShowConnectionEditing => !IsSharedSelected;
+    /// <summary>Fields that only apply to a real, credentialed account — the connection/auth surface
+    /// (password, OAuth sign-in, Advanced servers) and the sender display name — are shown for a normal
+    /// account and hidden for a shared mailbox, which has none of them (it reads and sends through its
+    /// parent under the mailbox's own directory identity). "Set as default" is likewise unavailable for
+    /// a shared account (see <see cref="CanSetDefault"/>) — credential-less, per spec §4.</summary>
+    public bool ShowNormalAccountFields => !IsSharedSelected;
 
     /// <summary>Name of the parent account a shared mailbox reads through — for its read-only summary.</summary>
     public string SharedParentName =>
@@ -489,7 +493,12 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         StatusText = "Shared mailbox added.";
     }
 
-    [RelayCommand]
+    /// <summary>A shared mailbox cannot be the default account (#31, spec §4: default-account semantics
+    /// are out — it is credential-less and never the identity a new message composes from). Also guards
+    /// the no-selection case, which the command used to accept and no-op.</summary>
+    private static bool CanSetDefault(AccountModel? account) => account is { IsShared: false };
+
+    [RelayCommand(CanExecute = nameof(CanSetDefault))]
     private void SetDefault(AccountModel? account)
     {
         if (account == null) return;
