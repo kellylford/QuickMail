@@ -383,25 +383,51 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         }
     }
 
+    /// <summary>Set by the View to confirm removing a parent that has shared mailboxes (#31): message →
+    /// user's yes/no. Absent (or no children) → delete proceeds as before.</summary>
+    public Func<string, bool>? ConfirmCascadeRemoval { get; set; }
+
     [RelayCommand]
     private async Task DeleteAccountAsync()
     {
         if (SelectedAccount == null) return;
         var account = SelectedAccount;
 
+        // #31: a shared mailbox has no independent existence — it lives entirely through its parent's
+        // token and backend — so removing the parent removes its shared mailboxes too. Confirm and name
+        // them first. Removing a shared mailbox on its own is an ordinary single-account delete.
+        var sharedChildren = account.IsShared
+            ? new List<AccountModel>()
+            : Accounts.Where(a => a.IsShared && a.ParentAccountId == account.Id).ToList();
+        if (sharedChildren.Count > 0 && ConfirmCascadeRemoval != null)
+        {
+            var names = string.Join(", ", sharedChildren.Select(c => c.AccountLabel));
+            var one = sharedChildren.Count == 1;
+            if (!ConfirmCascadeRemoval(
+                    $"Removing {account.AccountLabel} will also remove its shared mailbox{(one ? "" : "es")}: {names}. Continue?"))
+                return;
+        }
+
         _credentials.DeletePassword(account.Id);
         Accounts.Remove(account);
+        foreach (var child in sharedChildren) Accounts.Remove(child);
         SelectedAccount = null;
         _accountService.SaveAccounts([.. Accounts]);
 
         var config = _configService.Load();
-        if (config.Accounts.Remove(account.Id))
-            _configService.Save(config);
+        var configChanged = config.Accounts.Remove(account.Id);
+        foreach (var child in sharedChildren) configChanged |= config.Accounts.Remove(child.Id);
+        if (configChanged) _configService.Save(config);
 
         StatusText = "Account deleted. Cleaning up…";
 
         try   { await _localStore.DeleteAccountDataAsync(account.Id); }
         catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to purge mail.db — {ex.Message}"); }
+        foreach (var child in sharedChildren)
+        {
+            try   { await _localStore.DeleteAccountDataAsync(child.Id); }
+            catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to purge shared mailbox data — {ex.Message}"); }
+        }
 
         if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
         {
@@ -416,7 +442,24 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
             catch (Exception ex) { LogService.Log($"AccountManager.DeleteAccount: failed to remove synced contacts — {ex.Message}"); }
         }
 
-        StatusText = "Account deleted.";
+        StatusText = sharedChildren.Count > 0
+            ? $"Account deleted, along with {sharedChildren.Count} shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}."
+            : "Account deleted.";
+    }
+
+    // ── Add shared mailbox (#31) ──────────────────────────────────────────────────
+    public AddSharedMailboxViewModel CreateAddSharedMailboxViewModel() =>
+        new(Accounts, SelectedAccount?.Id);
+
+    /// <summary>Adds a created shared mailbox to the list and persists it — no credentials to save (it
+    /// reads through its parent). The dialog closes on success; the manager's close refreshes the main
+    /// window, which registers the backend and shows the new top-level node.</summary>
+    public void CommitNewSharedMailbox(AccountModel sharedMailbox)
+    {
+        Accounts.Add(sharedMailbox);
+        _accountService.SaveAccounts([.. Accounts]);
+        SelectedAccount = sharedMailbox;
+        StatusText = "Shared mailbox added.";
     }
 
     [RelayCommand]

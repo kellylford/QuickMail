@@ -3446,7 +3446,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // per-IP connection limit shared hosting enforces (same rationale as SyncService); accounts
         // on different hosts still connect in parallel.
         var resultsByHost = await Task.WhenAll(
-            Accounts.GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
+            Accounts.Where(a => !a.IsShared)   // #31: shared mailboxes are not connected in PR 1 (no own creds)
+                    .GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
                     .Select(async hostGroup =>
                     {
                         var groupResults = new List<(Guid Id, List<MailFolderModel>? Folders)>();
@@ -7759,7 +7760,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IEnumerable<AccountModel> accounts,
         Func<Guid, bool> isBackendConnected,
         Func<Guid, bool> hasCachedFolders)
-        => accounts.Where(a => !isBackendConnected(a.Id) || !hasCachedFolders(a.Id)).ToList();
+        // #31: a shared mailbox has no credentials of its own — it reads through its parent's token
+        // (from PR 2). PR 1 never connects it: it's a navigable, empty top-level node until then.
+        => accounts.Where(a => !a.IsShared && (!isBackendConnected(a.Id) || !hasCachedFolders(a.Id))).ToList();
 
     public void RefreshAccountList()
     {

@@ -35,6 +35,19 @@ public partial class AccountManagerDialog : Window
         // password itself — otherwise the box keeps showing dots for a password that is gone.
         vm.PasswordCleared += OnPasswordCleared;
         vm.EmailAddressRejected += OnEmailAddressRejected;
+        // #31: removing a parent takes its shared mailboxes with it — confirm, naming them, first.
+        vm.ConfirmCascadeRemoval = message =>
+            MessageBox.Show(this, message, "Remove shared mailboxes",
+                MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+    }
+
+    private void AddSharedMailboxButton_Click(object sender, RoutedEventArgs e)
+    {
+        var addVm = _vm.CreateAddSharedMailboxViewModel();
+        addVm.SharedMailboxAdded += _vm.CommitNewSharedMailbox;   // commit + persist; the window closes itself
+        // Modeless (Show), not ShowDialog: an editable field over the main window's live WebView2 would
+        // deadlock under a nested modal loop — the GrabAddresses lesson (spec §7).
+        new AddSharedMailboxWindow(addVm) { Owner = this }.Show();
     }
 
     private void OnPasswordCleared()

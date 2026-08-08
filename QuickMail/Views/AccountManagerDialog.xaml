@@ -49,7 +49,12 @@
                         Command="{Binding SetDefaultCommand}"
                         CommandParameter="{Binding SelectedAccount}"
                         AutomationProperties.Name="Set as default"
-                        MinWidth="75" TabIndex="3"/>
+                        MinWidth="75" Margin="0,0,4,0" TabIndex="3"/>
+                <Button Content="Add _shared…"
+                        x:Name="AddSharedButton"
+                        Click="AddSharedMailboxButton_Click"
+                        AutomationProperties.Name="Add shared mailbox"
+                        MinWidth="90" TabIndex="4"/>
             </StackPanel>
             <ListBox x:Name="AccountListBox"
                      TabIndex="0"
