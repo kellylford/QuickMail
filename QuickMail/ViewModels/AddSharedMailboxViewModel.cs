@@ -34,10 +34,16 @@ public partial class AddSharedMailboxViewModel : ObservableObject
                           ?? ParentOptions.FirstOrDefault();
 
         // A shared mailbox reads through a parent account's token, so it needs one. Say so rather than
-        // present an inert form with no parent and a disabled Add.
+        // present an inert form with no parent and a disabled Add. The Account Manager also reads this
+        // to decline opening the dialog at all and report it in its status line (the primary path).
         if (ParentOptions.Count == 0)
-            _errorText = "Add a Microsoft 365 (work or school) or IMAP account first — a shared mailbox reads through one of your accounts.";
+            _errorText = NoEligibleParentMessage;
     }
+
+    /// <summary>Shown when no account can host a shared mailbox. The Account Manager reports this in its
+    /// status line instead of opening a dead-end dialog; the dialog also carries it as a fallback.</summary>
+    public const string NoEligibleParentMessage =
+        "Add a Microsoft 365 (work or school) or IMAP account first — a shared mailbox reads through one of your accounts.";
 
     public List<AccountModel> ParentOptions { get; }
 
@@ -53,9 +59,15 @@ public partial class AddSharedMailboxViewModel : ObservableObject
     [NotifyCanExecuteChangedFor(nameof(AddCommand))]
     private AccountModel? _selectedParent;
 
-    /// <summary>Graph shared mailboxes have no live watcher — only the #456 sweep — so the dialog warns
-    /// (static text, not an announce) that they update on a poll. Absent for an IMAP parent (IDLE).</summary>
+    /// <summary>Graph shared mailboxes have no live watcher — only the #456 sweep. True for a Graph
+    /// parent (shows the poll caption and drives its Hint announce); false for an IMAP parent (IDLE).</summary>
     public bool ShowGraphPollNote => SelectedParent?.BackendKind == BackendKind.MicrosoftGraph;
+
+    /// <summary>The poll caption for a Graph parent. Shown visibly AND spoken once as a Hint when the
+    /// dialog opens on a Graph parent — a screen-reader user would not otherwise discover static text.</summary>
+#pragma warning disable CA1822 // instance property: bound via {Binding GraphPollNote} in the window XAML, which resolves against the DataContext instance
+    public string GraphPollNote => "Shared mailboxes update every few minutes, not instantly.";
+#pragma warning restore CA1822
 
     [ObservableProperty] private string _errorText = string.Empty;
 
@@ -93,7 +105,11 @@ public partial class AddSharedMailboxViewModel : ObservableObject
             ParentAccountId = parent.Id,
             BackendKind     = parent.BackendKind,   // access follows the parent's backend (§5.1)
             AuthType        = parent.AuthType,
-            ImapHost        = parent.ImapHost,       // IMAP parents connect over the parent's host
+            // Copied so SyncService can group by host in PR 1 (no access yet). This is a second copy of
+            // the parent's state that would drift if the parent's host later changed — PR 2 (when access
+            // is actually wired) should resolve the host from the parent at access time to match the
+            // "reads through its parent" architecture, rather than persist a snapshot here. (review)
+            ImapHost        = parent.ImapHost,
             ProviderId      = parent.ProviderId,
         });
     }

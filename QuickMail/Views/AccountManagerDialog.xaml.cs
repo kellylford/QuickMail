@@ -44,13 +44,31 @@ public partial class AccountManagerDialog : Window
     private void AddSharedMailboxButton_Click(object sender, RoutedEventArgs e)
     {
         var addVm = _vm.CreateAddSharedMailboxViewModel();
+        // No shared-capable account to read through: don't open a dead-end form the user can't complete.
+        // Report why in the manager's status line, where it is announced as a Result.
+        if (addVm.ParentOptions.Count == 0)
+        {
+            _vm.SetStatusOutcome(AddSharedMailboxViewModel.NoEligibleParentMessage);
+            return;
+        }
+
         addVm.SharedMailboxAdded += _vm.CommitNewSharedMailbox;   // commit + persist; the window closes itself
-        // Modeless (Show), not ShowDialog: an editable field over the main window's live WebView2 would
-        // deadlock under a nested modal loop — the GrabAddresses lesson (spec §7).
+        // Modeless (Show), not ShowDialog: this window has an editable field and can sit over the main
+        // window's live WebView2. Note the manager itself is modal (ShowDialog), so the editable field is
+        // already inside a nested modal loop — the same position the manager's own text boxes occupy and
+        // use without issue; Show() keeps this window from adding a SECOND nested loop. Verify with a
+        // screen reader before default-on (spec §7 modal rule; PR review finding 5).
         var window = new AddSharedMailboxWindow(addVm) { Owner = this };
-        // New-Window-Checklist focus restoration: a modeless window does not reliably return focus to
-        // its launcher, so put it back on the button that opened this dialog when it closes.
-        window.Closed += (_, _) => AddSharedButton.Focus();
+        // Don't let repeated presses stack several add windows.
+        AddSharedButton.IsEnabled = false;
+        window.Closed += (_, _) =>
+        {
+            addVm.SharedMailboxAdded -= _vm.CommitNewSharedMailbox;   // pair the += so no ghost callback survives
+            AddSharedButton.IsEnabled = true;
+            // Focus restoration (New-Window-Checklist): a modeless window does not reliably return focus
+            // to its launcher, so put it back on the button that opened this dialog.
+            AddSharedButton.Focus();
+        };
         window.Show();
     }
 

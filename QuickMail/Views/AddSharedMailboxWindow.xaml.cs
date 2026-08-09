@@ -35,6 +35,10 @@ public partial class AddSharedMailboxWindow : Window
         {
             AddressBox.Focus();
             Keyboard.Focus(AddressBox);
+            // A Graph parent updates only on the sweep. Speak the poll caption once as a Hint — a screen
+            // reader user would not otherwise find the static on-screen text. Respects AnnounceHints.
+            if (_vm.ShowGraphPollNote)
+                AccessibilityHelper.Announce(this, _vm.GraphPollNote, category: AnnouncementCategory.Hint);
         };
     }
 

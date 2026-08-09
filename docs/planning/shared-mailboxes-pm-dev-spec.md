@@ -114,6 +114,12 @@ it would break the link). The account **label stays editable**. Gated on
 `AccountManagerViewModel.IsSharedSelected` / `ShowNormalAccountFields`, the same way a Graph account
 already hides IMAP/SMTP on `IsImapBackend`.
 
+**Signature is deferred to PR 3 (send-as), by decision.** The Signature field lives inside the Advanced
+expander, so it is hidden for a shared mailbox along with the rest of that surface. Nothing sends from a
+shared mailbox until send-as ships in PR 3, so there is nothing for a signature to append to in PR 1.
+Whether a shared mailbox gets its own signature — or inherits the parent's — is a send-as design
+question and is resolved there, not left to fall out of the layout here.
+
 ## 5. Architecture & Technical Decisions
 
 ### 5.1 Key architectural decisions

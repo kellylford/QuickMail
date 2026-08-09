@@ -20,34 +20,49 @@
 
     <StackPanel Margin="16">
 
-        <TextBlock Text="Shared mailbox address" Margin="0,0,0,2"/>
+        <!-- Label + Target/LabeledBy (not a bare TextBlock) so there is an Alt+A access key to the box
+             and the screen reader reads "Shared mailbox address" as the field's name. -->
+        <Label x:Name="LblAddress" Content="Shared mailbox _address:" Target="{Binding ElementName=AddressBox}"
+               Padding="0" Margin="0,0,0,2"/>
         <TextBox x:Name="AddressBox"
                  Text="{Binding Address, UpdateSourceTrigger=PropertyChanged}"
-                 AutomationProperties.Name="Shared mailbox address"
+                 AutomationProperties.LabeledBy="{Binding ElementName=LblAddress}"
                  Padding="4,3" Margin="0,0,0,10"/>
 
         <StackPanel Visibility="{Binding ShowParentSelector, Converter={StaticResource BoolToVisibility}}">
-            <TextBlock Text="Parent account" Margin="0,0,0,2"/>
-            <ComboBox ItemsSource="{Binding ParentOptions}"
+            <Label x:Name="LblParent" Content="_Parent account:" Target="{Binding ElementName=ParentCombo}"
+                   Padding="0" Margin="0,0,0,2"/>
+            <ComboBox x:Name="ParentCombo"
+                      ItemsSource="{Binding ParentOptions}"
                       SelectedItem="{Binding SelectedParent}"
-                      AutomationProperties.Name="Parent account"
+                      AutomationProperties.LabeledBy="{Binding ElementName=LblParent}"
                       Margin="0,0,0,10"/>
         </StackPanel>
 
-        <!-- Static note, not an announce: a Graph shared mailbox has no live watcher, only the sweep. -->
-        <TextBlock Text="Shared mailboxes update every few minutes, not instantly."
+        <!-- Visible poll caption for a Graph parent; also spoken once as a Hint on open (code-behind),
+             since a screen-reader user would not otherwise find static screen text. -->
+        <TextBlock Text="{Binding GraphPollNote}"
                    TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,10"
                    Visibility="{Binding ShowGraphPollNote, Converter={StaticResource BoolToVisibility}}"/>
 
-        <TextBlock Text="{Binding ErrorText}" TextWrapping="Wrap" FontWeight="SemiBold"
-                   Margin="0,0,0,10"/>
+        <!-- Collapses when empty so it contributes no stray margin to the layout. -->
+        <TextBlock Text="{Binding ErrorText}" TextWrapping="Wrap" FontWeight="SemiBold" Margin="0,0,0,10">
+            <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                    <Setter Property="Visibility" Value="Visible"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ErrorText}" Value="">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </TextBlock.Style>
+        </TextBlock>
 
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Add" Command="{Binding AddCommand}" IsDefault="True"
-                    MinWidth="72" Margin="0,0,8,0"
-                    AutomationProperties.Name="Add shared mailbox"/>
-            <Button Content="Cancel" Click="CancelButton_Click" MinWidth="72"
-                    AutomationProperties.Name="Cancel"/>
+            <Button Content="_Add" Command="{Binding AddCommand}" IsDefault="True"
+                    MinWidth="72" Margin="0,0,8,0"/>
+            <Button Content="_Cancel" Click="CancelButton_Click" MinWidth="72"/>
         </StackPanel>
 
     </StackPanel>

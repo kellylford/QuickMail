@@ -60,16 +60,54 @@ public class SharedMailboxAggregateTests
             [Normal(NormalId, "Work"), Shared(SharedId, ParentId, "Support")],
             new() { [NormalId] = [Inbox(NormalId)], [SharedId] = [sharedInbox] });
 
+        // Seed the shared account's folder cache (ConnectAllAccounts skips shared, so it would otherwise
+        // be absent and the TryGetValue guard — not the new IsShared guard — would do the excluding).
+        // With the cache populated, the exclusion can only come from `if (account.IsShared) continue;`,
+        // which is the line this test exists to pin (and the state PR 2 will actually be in).
+        await vm.RefreshFolderListAsync(SharedId);
+        Assert.NotEmpty(vm.FolderScopedAggregateSources(MainViewModel.AllInboxesFolder.FullName)); // sanity: cache is live
+
         var sources = vm.FolderScopedAggregateSources(MainViewModel.AllInboxesFolder.FullName).ToList();
 
         Assert.Contains(sources, s => s.Account.Id == NormalId);        // normal account contributes
-        Assert.DoesNotContain(sources, s => s.Account.Id == SharedId);  // shared is excluded from the aggregate
+        Assert.DoesNotContain(sources, s => s.Account.Id == SharedId);  // shared excluded despite cached folders
 
         // The exclusion is by IsShared, not by the folder flag the sweep filters on — so the shared
         // Inbox is NOT marked ExcludeFromAllMail and the #456 sweep still covers it.
         Assert.False(sharedInbox.ExcludeFromAllMail);
         Assert.True(vm.IsSharedAccountId(SharedId));
         Assert.False(vm.IsSharedAccountId(NormalId));
+    }
+
+    [Fact]
+    public async Task MainWindowDelete_OfParent_CascadesSharedChildren()
+    {
+        // The main-window account context menu delete (MainViewModel) must cascade a parent's shared
+        // mailboxes exactly as the Account Manager does — otherwise the shared account is orphaned with a
+        // ParentAccountId pointing at nothing (PR review finding 1). Shared child's parent = the Work account.
+        var vm = await MakeVmAsync(
+            [Normal(NormalId, "Work"), Shared(SharedId, NormalId, "Support")],
+            new() { [NormalId] = [Inbox(NormalId)] });
+        vm.ConfirmationRequested = (_, _) => true;
+
+        await vm.DeleteAccountCommand.ExecuteAsync(vm.Accounts.First(a => a.Id == NormalId));
+
+        Assert.DoesNotContain(vm.Accounts, a => a.Id == NormalId);   // parent removed
+        Assert.DoesNotContain(vm.Accounts, a => a.Id == SharedId);   // shared child cascaded away — no orphan
+    }
+
+    [Fact]
+    public async Task MainWindowDelete_FailsClosed_WhenConfirmationDeclined()
+    {
+        var vm = await MakeVmAsync(
+            [Normal(NormalId, "Work"), Shared(SharedId, NormalId, "Support")],
+            new() { [NormalId] = [Inbox(NormalId)] });
+        vm.ConfirmationRequested = (_, _) => false;   // user declines
+
+        await vm.DeleteAccountCommand.ExecuteAsync(vm.Accounts.First(a => a.Id == NormalId));
+
+        Assert.Contains(vm.Accounts, a => a.Id == NormalId);   // nothing removed
+        Assert.Contains(vm.Accounts, a => a.Id == SharedId);
     }
 
     [Fact]

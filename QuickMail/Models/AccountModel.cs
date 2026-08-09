@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -155,6 +157,17 @@ public partial class AccountModel : ObservableObject
     /// account.
     /// </summary>
     public string? SharedAddress { get; set; }
+
+    /// <summary>
+    /// The shared mailboxes (#31) that read through <paramref name="parent"/>, taken from
+    /// <paramref name="all"/>. Empty when <paramref name="parent"/> is itself shared — a shared mailbox
+    /// is never a parent. Both account-delete paths (the Account Manager and the main-window account
+    /// context menu) call this so a parent's removal cascades to its shared mailboxes identically.
+    /// </summary>
+    public static List<AccountModel> SharedChildrenOf(AccountModel parent, IEnumerable<AccountModel> all) =>
+        parent.IsShared
+            ? new List<AccountModel>()
+            : all.Where(a => a.IsShared && a.ParentAccountId == parent.Id).ToList();
 
     // ── Runtime-only status (not serialized, updated after each connection) ──────
 

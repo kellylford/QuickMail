@@ -429,9 +429,7 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         // #31: a shared mailbox has no independent existence — it lives entirely through its parent's
         // token and backend — so removing the parent removes its shared mailboxes too. Confirm and name
         // them first. Removing a shared mailbox on its own is an ordinary single-account delete.
-        var sharedChildren = account.IsShared
-            ? new List<AccountModel>()
-            : Accounts.Where(a => a.IsShared && a.ParentAccountId == account.Id).ToList();
+        var sharedChildren = AccountModel.SharedChildrenOf(account, Accounts);
         if (sharedChildren.Count > 0)
         {
             // The cascade needs an explicit yes. With no confirmation mechanism wired we cannot get one,
@@ -494,7 +492,9 @@ public partial class AccountManagerViewModel : AccountEditorViewModel
         Accounts.Add(sharedMailbox);
         _accountService.SaveAccounts([.. Accounts]);
         SelectedAccount = sharedMailbox;
-        StatusText = "Shared mailbox added.";
+        // Result, not Status: the add succeeded and the add window has already closed, so this is the
+        // only feedback — it must be spoken even for a user who has AnnounceStatus off (#396 pattern).
+        SetStatusOutcome("Shared mailbox added.");
     }
 
     /// <summary>A shared mailbox cannot be the default account (#31, spec §4: default-account semantics
