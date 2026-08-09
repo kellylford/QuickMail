@@ -2647,8 +2647,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             // Watched Conversations — accept arrivals belonging to a watched conversation. This
             // branch IS the feature: a reply to a watched thread joins the open folder during sync
             // with no user action. It must stay above the real-folder branch below, which would
-            // otherwise never let an aggregate see these messages.
-            relevant = incoming.Where(IsWatchedMessage);
+            // otherwise never let an aggregate see these messages. Shared mailboxes are excluded here
+            // too (#31), so the live path agrees with the cache read in FetchWatchedAsync.
+            relevant = incoming.Where(m => IsWatchedMessage(m) && !IsSharedAccountId(m.AccountId));
         }
         else if (IsFolderScopedAggregate(selected.FullName))
         {
@@ -2664,8 +2665,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else if (TryGetContactMailFromSentinel(selected.FullName, out var contactAddress, out var contactDirection))
         {
-            // Contact mail results (#370) — only accept messages that still match the address.
-            relevant = incoming.Where(m => MatchesContactAddress(m, contactAddress, contactDirection));
+            // Contact mail results (#370) — only accept messages that still match the address, and
+            // never from a shared mailbox (#31), so the live path agrees with the cache read.
+            relevant = incoming.Where(m =>
+                MatchesContactAddress(m, contactAddress, contactDirection) && !IsSharedAccountId(m.AccountId));
         }
         else if (!selected.IsHeader && selected.AccountId != Guid.Empty)
         {
