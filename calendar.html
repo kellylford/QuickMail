@@ -79,6 +79,40 @@ beneath the account, so you can look at just that one.</li>
 </ul>
 <p>Selecting a source filters the list to it. “All Calendars” is the
 usual choice for day-to-day use.</p>
+<h3 id="choosing-a-default-calendar-for-new-appointments">Choosing a
+default calendar for new appointments</h3>
+<p>If most of your appointments belong on one calendar, tell QuickMail
+which one and it will open the appointment editor on that calendar every
+time.</p>
+<ol type="1">
+<li>In the folder tree, move to the calendar you want — <strong>Local
+Calendar</strong>, an account, or one of the calendars beneath an
+account.</li>
+<li>Open the context menu with <strong>Shift+F10</strong> or the
+Applications key (or right-click).</li>
+<li>Choose <strong>Use as Default Calendar for New
+Appointments</strong>.</li>
+</ol>
+<p>QuickMail confirms the choice in the status bar and announces it, and
+the calendar is marked <strong>(default)</strong> in the folder tree —
+its name is announced as “…, default calendar” — so you can always tell
+which one is set. The choice is remembered between sessions.</p>
+<p>To go back to saving new appointments on your local calendar, choose
+<strong>Clear Default Calendar</strong> from the same menu.</p>
+<p>Two things this does not do. It does not change which events you are
+<em>looking at</em> — that is still whatever source you have selected in
+the tree. And it is only a starting point: the <strong>Calendar</strong>
+picker in the appointment editor still lets you send any individual
+appointment somewhere else.</p>
+<p><strong>All Calendars</strong> cannot be the default, because it is
+several calendars at once and so names no single place to save to. If
+you choose it, QuickMail says so and leaves your existing default
+alone.</p>
+<p>Both commands are also in the Command Palette
+(<strong>Ctrl+Shift+P</strong>) — as <strong>Use as Default Calendar for
+New Appointments</strong> and <strong>Clear Default Calendar</strong> —
+and you can assign them keys in <strong>Settings →
+Keyboard</strong>.</p>
 <h3 id="the-four-views">The four views</h3>
 <p>Your events can be shown four ways. Switch between them with the
 toolbar buttons or these keys while the event list has focus:</p>
@@ -162,6 +196,17 @@ received the invitation and updates the appointment’s status, so it no
 longer shows as pending. Accept, Tentative, and Decline are also in the
 Command Palette (<strong>Ctrl+Shift+P</strong>) when a pending
 invitation is selected.</p>
+<p>You can also answer from the email itself. Open the invitation and
+the message starts with a short card giving the title, when the meeting
+is, where, and who organized it, followed by <strong>Accept</strong>,
+<strong>Tentative</strong>, and <strong>Decline</strong>. The card is
+worth reading even when you plan to answer elsewhere: for many
+invitations it is the only place the date and time appear at all — a
+meeting sent from Outlook for a Zoom call is a body of join links and
+dial-in numbers, and the when is carried in the attachment rather than
+written out. The card appears however you have QuickMail set to open
+messages, and in a message window the three responses are on that
+window’s Command Palette (<strong>Ctrl+Shift+P</strong>) as well.</p>
 <h3 id="creating-an-appointment">Creating an appointment</h3>
 <p>Press <strong>N</strong> (or the <strong>New</strong> toolbar button)
 to open the appointment editor. It is a normal window you can tab
@@ -183,7 +228,10 @@ appointment is saved: your <strong>Local Calendar</strong> or a
 connected account. For iCloud the picker lists each of your Apple
 calendars (Home, Family, …) so you can choose which one. With no
 connected calendar this picker does not appear and everything is saved
-locally.</li>
+locally. The picker starts on your <a
+href="#choosing-a-default-calendar-for-new-appointments">default
+calendar</a> if you have set one, and on <strong>Local Calendar</strong>
+if you have not.</li>
 </ul>
 <p>Press <strong>Enter</strong> (or the <strong>Save</strong> button) to
 save, or <strong>Escape</strong> to cancel. If something is wrong,
@@ -572,8 +620,10 @@ email; or (in Month view) open the selected day</td>
 </tr>
 </tbody>
 </table>
-<p>Export as <code>.ics</code>, and the invitation responses (Accept,
-Tentative, Decline), are available from the command palette
+<p>Export as <code>.ics</code>, the invitation responses (Accept,
+Tentative, Decline), and the two <a
+href="#choosing-a-default-calendar-for-new-appointments">default-calendar</a>
+commands are available from the command palette
 (<strong>Ctrl+Shift+P</strong>) and have no default key until you assign
 one.</p>
 <hr />

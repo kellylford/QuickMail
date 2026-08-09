@@ -35,8 +35,14 @@ Mode</strong> setting in <strong>Settings → General</strong>).</p>
 regardless of the Reading Mode setting.</p>
 <h3 id="reading-pane">Reading Pane</h3>
 <p>The reading pane renders HTML messages with WebView2. Links open in
-your default browser. Images from remote sources are blocked by
-default.</p>
+your default browser.</p>
+<p>Images from remote sources are not loaded — fetching them tells the
+sender your address is live, which is what a tracking pixel in a
+newsletter is for. Where the sender wrote a description for a picture,
+QuickMail shows that description in its place, so a picture that is also
+a link reads by what it is (“Facebook link”) rather than by its web
+address. A picture the sender marked as decorative contributes nothing,
+which is what marking it that way asks for.</p>
 <p>Press <strong>F6</strong> or <strong>Shift+F6</strong> to move
 between the reading pane and other panes.</p>
 <h3 id="plain-text-view">Plain Text View</h3>
