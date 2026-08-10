@@ -1615,6 +1615,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private async Task ApplyViewAsync(SavedView view, bool allFolders = false)
     {
+        await ApplyViewStateAsync(view);
+
+        if (view.Folders.Count == 0)
+        {
+            if (!string.IsNullOrEmpty(view.VirtualFolderKey))
+            {
+                // VirtualFolderKey is stored without the \x00 sentinel prefix.
+                // Reconstruct the full sentinel name to look up the folder.
+                var sentinelName  = "\x00" + view.VirtualFolderKey;
+                var virtualFolder = Folders.FirstOrDefault(f =>
+                    string.Equals(f.FullName, sentinelName, StringComparison.Ordinal))
+                    ?? new MailFolderModel { FullName = sentinelName, DisplayName = view.Name };
+                SelectedFolder = virtualFolder;
+                await FetchVirtualAsync(virtualFolder);
+                return;
+            }
+            // Legacy view (null key or pre-fix garbled key): default to All Mail and
+            // patch the key so a future Save will persist the correct value.
+            view.VirtualFolderKey = AllMailFolder.FullName.Substring(1); // "AllMail"
+            SelectedFolder = AllMailFolder;
+            await FetchVirtualAsync(AllMailFolder);
+            return;
+        }
+
+        await ApplyViewFoldersAsync(view, allFolders);
+    }
+
+    /// <summary>
+    /// Applies a saved view's presentation state — mode, filter, sort, flag filter, day limit — and
+    /// clears search and open-message state. Split out of <see cref="ApplyViewAsync"/> so the startup
+    /// path can adopt a view's state while loading its messages from the local store instead of the
+    /// network (#516); everything here is pure VM state with no fetch of its own.
+    /// </summary>
+    private async Task ApplyViewStateAsync(SavedView view)
+    {
         ActiveView = view;
 
         // Apply view's mode/filter/sort before clearing search so rebuild
@@ -1651,29 +1686,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IsSearchActive = false;
         MessageDetail  = null;
         IsMessageOpen  = false;
+    }
 
-        if (view.Folders.Count == 0)
-        {
-            if (!string.IsNullOrEmpty(view.VirtualFolderKey))
-            {
-                // VirtualFolderKey is stored without the \x00 sentinel prefix.
-                // Reconstruct the full sentinel name to look up the folder.
-                var sentinelName  = "\x00" + view.VirtualFolderKey;
-                var virtualFolder = Folders.FirstOrDefault(f =>
-                    string.Equals(f.FullName, sentinelName, StringComparison.Ordinal))
-                    ?? new MailFolderModel { FullName = sentinelName, DisplayName = view.Name };
-                SelectedFolder = virtualFolder;
-                await FetchVirtualAsync(virtualFolder);
-                return;
-            }
-            // Legacy view (null key or pre-fix garbled key): default to All Mail and
-            // patch the key so a future Save will persist the correct value.
-            view.VirtualFolderKey = AllMailFolder.FullName.Substring(1); // "AllMail"
-            SelectedFolder = AllMailFolder;
-            await FetchVirtualAsync(AllMailFolder);
-            return;
-        }
-
+    /// <summary>
+    /// Selects and fetches the folder(s) a saved view covers. Assumes the view's presentation state
+    /// has already been applied by <see cref="ApplyViewStateAsync"/>.
+    /// </summary>
+    private async Task ApplyViewFoldersAsync(SavedView view, bool allFolders)
+    {
         bool multiFolder = view.Folders.Count > 1 || allFolders;
 
         if (!multiFolder)
@@ -2146,8 +2166,153 @@ public partial class MainViewModel : ObservableObject, IDisposable
         "Microsoft 365 mail is doing a one-time re-sync — this may take a few minutes.";
 
     /// <summary>
-    /// Shows All Mail from the local store immediately (no network).
-    /// Called first in OnLoaded so the UI is populated before any IMAP work begins.
+    /// The saved view a <c>view:{guid}</c> startup value points at, or null. Only the one-time
+    /// migration off <c>SavedView.IsDefault</c> writes that form (#516).
+    /// </summary>
+    private SavedView? StartupView(ConfigModel cfg) =>
+        cfg.StartupFolder.StartsWith("view:", StringComparison.Ordinal) &&
+        Guid.TryParse(cfg.StartupFolder["view:".Length..], out var id)
+            ? SavedViews.FirstOrDefault(v => v.Id == id)
+            : null;
+
+    /// <summary>
+    /// The folder the configured startup folder names, or null to mean All Mail. Resolves entirely
+    /// against <see cref="_cachedFolders"/> — restored from the local store moments earlier — so it
+    /// works with no network, which is the whole point: applying the choice after connect is what
+    /// produced the All Mail flash users complained about.
+    /// <paramref name="fallbackReason"/> is set when a folder was configured but could not be
+    /// resolved, so the caller can say why rather than silently showing the wrong thing.
+    /// </summary>
+    private MailFolderModel? ResolveStartupFolder(ConfigModel cfg, out string? fallbackReason)
+    {
+        fallbackReason = null;
+        var key = cfg.StartupFolder;
+        if (string.IsNullOrWhiteSpace(key)) return null;    // empty == All Mail, the default
+
+        var label = string.IsNullOrWhiteSpace(cfg.StartupFolderLabel) ? key : cfg.StartupFolderLabel;
+
+        // A real folder on a specific account.
+        if (!string.IsNullOrWhiteSpace(cfg.StartupFolderAccount))
+        {
+            if (!Guid.TryParse(cfg.StartupFolderAccount, out var accountId) ||
+                !Accounts.Any(a => a.Id == accountId))
+            {
+                fallbackReason = $"The account for startup folder '{label}' is no longer set up — showing All Mail.";
+                return null;
+            }
+            var match = _cachedFolders.TryGetValue(accountId, out var folders)
+                ? folders.FirstOrDefault(f => string.Equals(f.FullName, key, StringComparison.OrdinalIgnoreCase))
+                : null;
+            if (match == null)
+            {
+                fallbackReason = $"Startup folder '{label}' was not found — showing All Mail.";
+                return null;
+            }
+            return match;
+        }
+
+        // A saved view (migration-only form). Its own folders are resolved by the caller.
+        if (key.StartsWith("view:", StringComparison.Ordinal))
+        {
+            if (StartupView(cfg) != null) return null;      // handled separately, not a folder
+            fallbackReason = $"The startup view '{label}' no longer exists — showing All Mail.";
+            return null;
+        }
+
+        // A virtual folder, stored without the NUL sentinel prefix (an INI cannot carry one).
+        var sentinel = "\x00" + key;
+        var virtualFolder = Folders.FirstOrDefault(f =>
+            string.Equals(f.FullName, sentinel, StringComparison.Ordinal));
+        if (virtualFolder != null) return virtualFolder;
+
+        fallbackReason = $"Startup folder '{label}' is no longer available — showing All Mail.";
+        return null;
+    }
+
+    /// <summary>
+    /// The startup folder for <c>--online</c>, where there is no local store and so no folder cache
+    /// to match against. Virtual keys resolve to their sentinel singletons; a real folder is
+    /// fabricated from the configured account, name, and label, which is enough for the fetch that
+    /// follows connect. Returns null to mean All Mail.
+    /// </summary>
+    private MailFolderModel? ResolveOnlineStartupFolder(ConfigModel cfg)
+    {
+        var key = cfg.StartupFolder;
+        if (string.IsNullOrWhiteSpace(key) || key.StartsWith("view:", StringComparison.Ordinal))
+            return null;
+
+        if (!string.IsNullOrWhiteSpace(cfg.StartupFolderAccount))
+        {
+            if (!Guid.TryParse(cfg.StartupFolderAccount, out var accountId) ||
+                !Accounts.Any(a => a.Id == accountId))
+                return null;
+            return new MailFolderModel
+            {
+                AccountId   = accountId,
+                FullName    = key,
+                DisplayName = string.IsNullOrWhiteSpace(cfg.StartupFolderLabel) ? key : cfg.StartupFolderLabel,
+            };
+        }
+
+        var sentinel = "\x00" + key;
+        return AllVirtualFolders.FirstOrDefault(f =>
+            string.Equals(f.FullName, sentinel, StringComparison.Ordinal));
+    }
+
+    /// <summary>Every top-level virtual aggregate, in folder-tree order. One list so the startup
+    /// resolver, the folder tree, and the context-menu guard cannot drift apart.</summary>
+    internal static readonly MailFolderModel[] AllVirtualFolders =
+    [
+        AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder,
+        AllArchiveFolder, AllTrashFolder, AllFlaggedFolder, AllWatchedFolder,
+    ];
+
+    /// <summary>
+    /// Cached messages for a saved view's folders, read from the local store only. Used at startup
+    /// for the migration-only <c>view:{guid}</c> form, where a multi-folder view has no single
+    /// folder to select (#516).
+    /// </summary>
+    private async Task<List<MailMessageSummary>> LoadViewSummariesAsync(SavedView view)
+    {
+        if (view.Folders.Count == 0)
+            return ExcludeSharedMail(await _localStore.LoadAllSummariesAsync());
+
+        var all = new List<MailMessageSummary>();
+        foreach (var vf in view.Folders)
+            all.AddRange(await _localStore.LoadFolderSummariesAsync(vf.AccountId, vf.FolderFullName));
+        return [.. all.OrderByDescending(m => m.Date)];
+    }
+
+    /// <summary>
+    /// Cached messages for the startup selection, read from the local store only — no network.
+    /// All Mail keeps loading the whole cache as it always has; a real folder reads just its own
+    /// rows; a folder-scoped aggregate unions the folders it spans, which is resolvable offline
+    /// now that folder kinds are persisted (#516).
+    /// </summary>
+    private async Task<List<MailMessageSummary>> LoadStartupSummariesAsync(MailFolderModel folder)
+    {
+        if (string.Equals(folder.FullName, AllMailFolder.FullName, StringComparison.Ordinal))
+            return ExcludeSharedMail(await _localStore.LoadAllSummariesAsync());   // #31
+
+        if (IsFolderScopedAggregate(folder.FullName))
+        {
+            var all = new List<MailMessageSummary>();
+            foreach (var (account, source) in FolderScopedAggregateSources(folder.FullName))
+                all.AddRange(await _localStore.LoadFolderSummariesAsync(account.Id, source.FullName));
+            return [.. all.OrderByDescending(m => m.Date)];
+        }
+
+        if (folder.AccountId != Guid.Empty && folder.FullName.Length > 0 && folder.FullName[0] != '\0')
+            return await _localStore.LoadFolderSummariesAsync(folder.AccountId, folder.FullName);
+
+        // Any other sentinel (All Flagged, Watched, a view, contact mail…) has no cheap cached
+        // form here; fall back to the whole cache and let the post-connect refresh narrow it.
+        return ExcludeSharedMail(await _localStore.LoadAllSummariesAsync());
+    }
+
+    /// <summary>
+    /// Shows the startup folder's cached mail immediately (no network) — All Mail unless the user
+    /// chose otherwise. Called first in OnLoaded so the UI is populated before any IMAP work begins.
     /// </summary>
     public async Task InitialLoadAsync()
     {
@@ -2174,32 +2339,34 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ImmutableIdRebuildAnnouncePending = false;
             Announce(ImmutableIdRebuildNotice, AnnouncementCategory.Status);
         }
+        var startupCfg = _configService.Load();
+
         if (OnlineMode)
         {
+            // Online mode never initializes the local store, so there is no folder cache to resolve
+            // against. Select what the config names anyway — the fetch that follows connect reads
+            // SelectedFolder — so the choice is honoured here too. It was not before: the old
+            // default-view application sat after an early return on this path.
+            SelectedFolder = ResolveOnlineStartupFolder(startupCfg) ?? AllMailFolder;
             StatusText = "Online mode — connecting…";
             ConnectionStatusText = "Connecting…";
             return;
         }
-        var cached = ExcludeSharedMail(await _localStore.LoadAllSummariesAsync()); // #31: All Mail excludes shared
-        await ResolveFlagNamesAsync(cached);
-        SetMessages(cached);
-        StatusText = cached.Count > 0
-            ? $"{cached.Count} messages (cached — syncing…)"
-            : rebuildNotice ? ImmutableIdRebuildNotice : "Connecting and syncing…";
-        ConnectionStatusText = "Connecting…";
-        StartPrefetchTopOfFolder();
+
         // Drop calendar events left behind by accounts that no longer exist — e.g. an account removed
         // and re-added during setup gets a new id, so its old events would otherwise linger and show
         // as duplicates (one per stale id). Local events (empty account id) are kept.
         var knownAccountIds = Accounts.Select(a => a.Id).ToList();
         await _localStore.PurgeCalendarEventsForUnknownAccountsAsync(knownAccountIds);
 
-        // Restore the folder list from the local store (#516). Until this landed, _cachedFolders was
-        // empty until ConnectAllAccountsAsync returned, so the tree below showed only the virtual
+        // Restore the folder list from the local store (#516) — BEFORE resolving the startup folder
+        // and loading messages, because both depend on it. Until this landed, _cachedFolders was
+        // empty until ConnectAllAccountsAsync returned, so the tree showed only the virtual
         // aggregates and nothing could tell which folders were Inboxes — which is why a startup
         // folder could not be honoured before the network came up. Purge first so an account removed
         // while the app was closed does not reappear in the tree. Failure here is not fatal: the
-        // cache repopulates on connect, exactly as it did before.
+        // cache repopulates on connect, exactly as it did before, and the startup folder falls back
+        // to All Mail.
         try
         {
             await _localStore.PurgeFoldersForUnknownAccountsAsync(knownAccountIds);
@@ -2212,8 +2379,57 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LogService.Log("InitialLoad: restoring cached folder list", ex);
         }
 
+        // Build the folder list now: ResolveStartupFolder matches virtual sentinels against Folders,
+        // and the tree is worth drawing before the message load either way.
         await ReloadCalendarSourcesAsync(); // populate before the tree is built so calendars show at startup
         RebuildFolderListFromCache();
+
+        // Apply the startup folder here, not after sync. CLAUDE.md's startup rule is explicit about
+        // this, and the alternative is what users reported: All Mail on screen for the first seconds,
+        // then a jarring switch once connections came up.
+        var startupView   = StartupView(startupCfg);
+        var startupFolder = ResolveStartupFolder(startupCfg, out var fallbackReason);
+        if (startupView != null)
+        {
+            await ApplyViewStateAsync(startupView);        // mode/filter/sort only — no fetch
+            // Select the view sentinel, the same shape ApplyViewFoldersAsync uses for a multi-folder
+            // view, so RefreshAsync and the post-sync reload resolve it like any other selection.
+            SelectedFolder = new MailFolderModel
+            {
+                FullName    = $"{ViewPrefix}{startupView.Id}",
+                DisplayName = startupView.Name,
+            };
+        }
+        else
+        {
+            SelectedFolder = startupFolder ?? AllMailFolder;
+        }
+
+        var cached = startupView != null
+            ? await LoadViewSummariesAsync(startupView)
+            : await LoadStartupSummariesAsync(SelectedFolder);
+        await ResolveFlagNamesAsync(cached);
+        SetMessages(cached);
+
+        var where = SelectedFolder == AllMailFolder && startupView == null
+            ? null : startupView?.Name ?? SelectedFolder.DisplayName;
+        StatusText = cached.Count > 0
+            ? where == null
+                ? $"{cached.Count} messages (cached — syncing…)"
+                : $"{cached.Count} messages in {where} (cached — syncing…)"
+            : rebuildNotice ? ImmutableIdRebuildNotice : "Connecting and syncing…";
+
+        // A configured startup folder that no longer resolves must say so. Silently showing All Mail
+        // looks like the setting was ignored, and the user has no way to tell which it was.
+        if (fallbackReason != null)
+        {
+            StatusText = fallbackReason;
+            Announce(fallbackReason, AnnouncementCategory.Status);
+            LogService.Log($"InitialLoad: {fallbackReason}");
+        }
+
+        ConnectionStatusText = "Connecting…";
+        StartPrefetchTopOfFolder();
     }
 
     /// <summary>
@@ -2297,15 +2513,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (OnlineMode)
         {
             // In online mode there is no background sync — just load the current folder live.
-            await FetchVirtualAsync(AllMailFolder);
+            // RefreshAsync rather than a hardcoded All Mail fetch: InitialLoadAsync has already
+            // selected the startup folder, and it handles every sentinel and view shape (#516).
+            await RefreshAsync();
             return;
         }
 
-        // Apply default view now that connections are ready, so the user sees the right
-        // view during sync rather than waiting ~40s for sync to complete (issue #57).
-        var defaultView = SavedViews.FirstOrDefault(v => v.IsDefault);
-        if (defaultView != null)
-            await ApplyViewAsync(defaultView);
+        // The startup folder is applied in InitialLoadAsync now, before this method runs — no
+        // post-connect view switch here. Applying it at this point is what produced the All Mail
+        // flash: #57 moved it from post-sync to post-connect, which shortened the flash without
+        // removing it. #516 moved it to the cached load, which removes it.
 
         StatusText = "Syncing mail…";
         ConnectionStatusText = "Syncing…";

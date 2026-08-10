@@ -191,9 +191,22 @@ sealed class StubLocalStoreService : ILocalStoreService
 {
     public void Initialize() { }
     public Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries) => Task.CompletedTask;
-    public Task<List<MailMessageSummary>> LoadAllSummariesAsync() => Task.FromResult(new List<MailMessageSummary>());
-    public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId) => Task.FromResult(new List<MailMessageSummary>());
-    public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>());
+
+    /// <summary>Cached rows keyed by (account, folder). Empty by default, so every existing test that
+    /// never seeds it keeps seeing an empty cache; seed it to exercise a cache-first load such as the
+    /// startup folder (#516).</summary>
+    public Dictionary<(Guid AccountId, string Folder), List<MailMessageSummary>> SeededSummaries { get; } = [];
+
+    private static List<MailMessageSummary> Newest(IEnumerable<MailMessageSummary> rows)
+        => [.. rows.OrderByDescending(m => m.Date)];
+
+    public Task<List<MailMessageSummary>> LoadAllSummariesAsync()
+        => Task.FromResult(Newest(SeededSummaries.Values.SelectMany(v => v)));
+    public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId)
+        => Task.FromResult(Newest(SeededSummaries.Where(kv => kv.Key.AccountId == accountId).SelectMany(kv => kv.Value)));
+    public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null)
+        => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
+            ? Newest(rows) : []);
     public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
     public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
     public Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
