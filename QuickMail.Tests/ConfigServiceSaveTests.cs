@@ -49,6 +49,76 @@ public class ConfigServiceSaveTests
     }
 
     [Fact]
+    public void SaveThenLoad_RoundTripsStartupSettings()
+    {
+        // The startup folder is the whole point of #516; if it does not survive a save/load it is
+        // not a setting, it is a session preference. Also guards the [windowing] ordering trap
+        // documented in SaveThenLoad_RoundTripsCalendarSettings below — these keys are parsed
+        // under [global] and would be silently dropped if written after that header.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.StartupFolder        = "INBOX/Work";
+        config.StartupFolderAccount = "8f14e45f-ceea-467a-9575-1b1c1b1c1b1c";
+        config.StartupFolderLabel   = "Work";
+        config.StartupSyncScope     = ConfigModel.StartupSyncScopeInboxes;
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.Equal("INBOX/Work", reloaded.StartupFolder);
+        Assert.Equal("8f14e45f-ceea-467a-9575-1b1c1b1c1b1c", reloaded.StartupFolderAccount);
+        Assert.Equal("Work", reloaded.StartupFolderLabel);
+        Assert.Equal(ConfigModel.StartupSyncScopeInboxes, reloaded.StartupSyncScope);
+    }
+
+    [Fact]
+    public void SaveThenLoad_RoundTripsAVirtualStartupFolder()
+    {
+        // The common case: "open me in All Inboxes". Stored without the NUL sentinel prefix
+        // because an INI file cannot carry one.
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+
+        var config = service.Load();
+        config.StartupFolder      = "AllInboxes";
+        config.StartupFolderLabel = "All Inboxes";
+        service.Save(config);
+
+        var reloaded = new ConfigService(profile).Load();
+        Assert.Equal("AllInboxes", reloaded.StartupFolder);
+        Assert.Equal(string.Empty, reloaded.StartupFolderAccount);
+    }
+
+    [Fact]
+    public void FreshConfig_DefaultsToAllMailAndStartupFolderScope()
+    {
+        var profile = MakeTempProfile();
+
+        var config = new ConfigService(profile).Load();
+
+        Assert.Equal(string.Empty, config.StartupFolder);          // empty == All Mail
+        Assert.Equal(string.Empty, config.StartupFolderAccount);
+        Assert.Equal(ConfigModel.StartupSyncScopeStartupFolder, config.StartupSyncScope);
+
+        var ini = File.ReadAllText(Path.Combine(profile.ProfileDir, "config.ini"));
+        Assert.Contains("StartupSyncScope = startupFolder", ini, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Load_UnknownStartupSyncScope_NormalizesToTheDefault()
+    {
+        var profile = MakeTempProfile();
+        var service = new ConfigService(profile);
+        var config  = service.Load();
+        config.StartupSyncScope = "everything-please";
+        service.Save(config);
+
+        Assert.Equal(ConfigModel.StartupSyncScopeStartupFolder,
+                     new ConfigService(profile).Load().StartupSyncScope);
+    }
+
+    [Fact]
     public void SaveThenLoad_RoundTripsCalendarSettings()
     {
         // Regression test: ShowDeclinedEvents and CalendarPaneOpen were being written by
