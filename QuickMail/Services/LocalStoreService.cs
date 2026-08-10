@@ -142,6 +142,31 @@ public class LocalStoreService : ILocalStoreService
         // invite rows. Unversioned idempotent ALTER, like calendar_id/calendar_name above.
         RunMigration(conn, "ALTER TABLE CalendarEvent ADD COLUMN resource_url TEXT NOT NULL DEFAULT '';");
 
+        // Folder table (#516). The folder list used to live only in MainViewModel._cachedFolders,
+        // filled by GetFoldersAsync after connect — so at launch nothing knew which folders existed,
+        // let alone which were Inboxes. That made a startup folder impossible to honour before the
+        // network came up, and left the folder tree showing only the virtual aggregates. Persisting
+        // the list makes both work offline. Additive, no existing table touched, so no user_version
+        // bump is needed (same reasoning as CalendarEvent above).
+        //
+        // SuppressUnreadCount is deliberately NOT a column — it is derived from Kind on the model.
+        // Header rows are synthesized by RebuildFolderListFromCache and are never stored.
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS Folder (
+                account_id            TEXT    NOT NULL,
+                full_name             TEXT    NOT NULL,
+                display_name          TEXT    NOT NULL DEFAULT '',
+                parent_id             TEXT    DEFAULT NULL,
+                kind                  INTEGER NOT NULL DEFAULT 0,
+                exclude_from_all_mail INTEGER NOT NULL DEFAULT 0,
+                unread_count          INTEGER NOT NULL DEFAULT 0,
+                message_count         INTEGER NOT NULL DEFAULT 0,
+                sort_order            INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (account_id, full_name)
+            );
+            """;
+        cmd.ExecuteNonQuery();
+
         RunDataMigrations(conn);
     }
 
@@ -472,7 +497,8 @@ public class LocalStoreService : ILocalStoreService
         cmd.CommandText =
             "DELETE FROM MessageDetail  WHERE account_id = $aid;" +
             "DELETE FROM MessageSummary WHERE account_id = $aid;" +
-            "DELETE FROM CalendarEvent  WHERE account_id = $aid;";
+            "DELETE FROM CalendarEvent  WHERE account_id = $aid;" +
+            "DELETE FROM Folder         WHERE account_id = $aid;";
         cmd.Parameters.AddWithValue("$aid", accountId.ToString());
         await cmd.ExecuteNonQueryAsync();
         await tx.CommitAsync();
@@ -510,6 +536,131 @@ public class LocalStoreService : ILocalStoreService
     /// so the old id's events linger and show as duplicates), or after a cache rebuild. Local events
     /// (<see cref="Guid.Empty"/>) are always kept. No-op when there are no orphans.
     /// </summary>
+    // ── Folders (#516) ───────────────────────────────────────────────────────────
+
+    public async Task SaveFoldersAsync(Guid accountId, IReadOnlyList<MailFolderModel> folders)
+    {
+        // Replace-all for this account, in one transaction: a folder deleted or renamed on the
+        // server must disappear locally, and an upsert alone would leave the old row behind.
+        // Other accounts are untouched, so a partial connect only refreshes what it reached.
+        await using var conn = await OpenAsync();
+        await using var tx   = await conn.BeginTransactionAsync();
+
+        await using (var del = conn.CreateCommand())
+        {
+            del.CommandText = "DELETE FROM Folder WHERE account_id = $aid;";
+            del.Parameters.AddWithValue("$aid", accountId.ToString());
+            await del.ExecuteNonQueryAsync();
+        }
+
+        await using (var ins = conn.CreateCommand())
+        {
+            ins.CommandText = """
+                INSERT OR REPLACE INTO Folder
+                    (account_id, full_name, display_name, parent_id, kind,
+                     exclude_from_all_mail, unread_count, message_count, sort_order)
+                VALUES ($aid, $fn, $dn, $pid, $kind, $excl, $unread, $total, $ord);
+                """;
+            var pFn    = ins.Parameters.Add("$fn",     Microsoft.Data.Sqlite.SqliteType.Text);
+            var pDn    = ins.Parameters.Add("$dn",     Microsoft.Data.Sqlite.SqliteType.Text);
+            var pPid   = ins.Parameters.Add("$pid",    Microsoft.Data.Sqlite.SqliteType.Text);
+            var pKind  = ins.Parameters.Add("$kind",   Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pExcl  = ins.Parameters.Add("$excl",   Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pUnr   = ins.Parameters.Add("$unread", Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pTot   = ins.Parameters.Add("$total",  Microsoft.Data.Sqlite.SqliteType.Integer);
+            var pOrd   = ins.Parameters.Add("$ord",    Microsoft.Data.Sqlite.SqliteType.Integer);
+            ins.Parameters.AddWithValue("$aid", accountId.ToString());
+
+            var order = 0;
+            foreach (var f in folders)
+            {
+                // Header rows are synthesized for display and carry no server folder.
+                if (f.IsHeader || string.IsNullOrEmpty(f.FullName)) continue;
+
+                pFn.Value   = f.FullName;
+                pDn.Value   = f.DisplayName ?? string.Empty;
+                pPid.Value  = (object?)f.ParentId ?? DBNull.Value;
+                pKind.Value = (int)f.Kind;
+                pExcl.Value = f.ExcludeFromAllMail ? 1 : 0;
+                pUnr.Value  = f.UnreadCount;
+                pTot.Value  = f.MessageCount;
+                pOrd.Value  = order++;
+                await ins.ExecuteNonQueryAsync();
+            }
+        }
+
+        await tx.CommitAsync();
+    }
+
+    public async Task<Dictionary<Guid, List<MailFolderModel>>> LoadFoldersAsync()
+    {
+        var result = new Dictionary<Guid, List<MailFolderModel>>();
+        await using var conn = await OpenAsync();
+        await using var cmd  = conn.CreateCommand();
+        cmd.CommandText = """
+            SELECT account_id, full_name, display_name, parent_id, kind,
+                   exclude_from_all_mail, unread_count, message_count
+            FROM Folder
+            ORDER BY account_id, sort_order;
+            """;
+        await using var r = await cmd.ExecuteReaderAsync();
+        while (await r.ReadAsync())
+        {
+            // A row whose account_id no longer parses is unusable; skip rather than throw and
+            // lose every other account's folders on one bad value.
+            if (!Guid.TryParse(r.GetString(0), out var accountId)) continue;
+
+            if (!result.TryGetValue(accountId, out var list))
+                result[accountId] = list = [];
+
+            list.Add(new MailFolderModel
+            {
+                AccountId          = accountId,
+                FullName           = r.GetString(1),
+                DisplayName        = r.GetString(2),
+                ParentId           = r.IsDBNull(3) ? null : r.GetString(3),
+                Kind               = (SpecialFolderKind)r.GetInt32(4),
+                ExcludeFromAllMail = r.GetInt32(5) != 0,
+                UnreadCount        = r.GetInt32(6),
+                MessageCount       = r.GetInt32(7),
+            });
+        }
+        return result;
+    }
+
+    public async Task PurgeFoldersForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
+    {
+        await using var conn = await OpenAsync();
+
+        // Unlike calendar events there is no Guid.Empty "local" bucket to preserve — every folder
+        // belongs to a real account, so an unrecognised id is always an orphan.
+        var keep = new HashSet<string>(knownAccountIds.Select(id => id.ToString()),
+                                       StringComparer.OrdinalIgnoreCase);
+
+        var present = new List<string>();
+        await using (var q = conn.CreateCommand())
+        {
+            q.CommandText = "SELECT DISTINCT account_id FROM Folder;";
+            await using var r = await q.ExecuteReaderAsync();
+            while (await r.ReadAsync()) present.Add(r.GetString(0));
+        }
+
+        var orphans = present.Where(a => !keep.Contains(a)).ToList();
+        if (orphans.Count == 0) return;
+
+        await using var del = conn.CreateCommand();
+        del.CommandText = "DELETE FROM Folder WHERE account_id = $aid;";
+        var p = del.CreateParameter();
+        p.ParameterName = "$aid";
+        del.Parameters.Add(p);
+        foreach (var orphan in orphans)
+        {
+            p.Value = orphan;
+            await del.ExecuteNonQueryAsync();
+        }
+        LogService.Log($"LocalStoreService: purged folders for {orphans.Count} unknown account(s).");
+    }
+
     public async Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
     {
         await using var conn = await OpenAsync();

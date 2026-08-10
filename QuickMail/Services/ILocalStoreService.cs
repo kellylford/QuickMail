@@ -25,6 +25,32 @@ public interface ILocalStoreService
     /// removed-and-re-added account or a cache rebuild). Local events (<see cref="Guid.Empty"/>) are kept.
     /// </summary>
     Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds);
+
+    // ── Folders (#516) ───────────────────────────────────────────────────────────
+    // The folder list is persisted so the startup folder can be resolved — and the folder tree
+    // drawn — before any account connects. Without this, folder metadata exists only in
+    // MainViewModel._cachedFolders, populated by GetFoldersAsync after connect, so nothing at
+    // launch knows which folders exist or which of them are Inboxes.
+
+    /// <summary>
+    /// Replaces the stored folder list for one account, in a single transaction. Replace rather than
+    /// upsert: a folder deleted or renamed on the server must disappear locally. Header rows and rows
+    /// with an empty <c>FullName</c> are skipped — they are display artifacts, not server folders.
+    /// Other accounts are untouched, so a partial connect refreshes only what it reached.
+    /// </summary>
+    Task SaveFoldersAsync(Guid accountId, IReadOnlyList<MailFolderModel> folders);
+
+    /// <summary>
+    /// Every stored folder, grouped by account and in the order it was last saved. Shaped to drop
+    /// straight into <c>MainViewModel._cachedFolders</c>.
+    /// </summary>
+    Task<Dictionary<Guid, List<MailFolderModel>>> LoadFoldersAsync();
+
+    /// <summary>
+    /// Deletes folders for accounts not in <paramref name="knownAccountIds"/> — orphans left by an
+    /// account removed while the app was closed, or removed and re-added under a new id.
+    /// </summary>
+    Task PurgeFoldersForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds);
     Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead);
     Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead);
     Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview);

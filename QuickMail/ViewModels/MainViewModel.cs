@@ -187,9 +187,32 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private EventHandler? _onFlagDefinitionsChanged;
     private Action<Guid, bool>? _onReachabilityChanged;
 
-    // Retains folder lists for every account that has been connected this session
+    // Folder lists per account. Since #516 this is ALSO seeded from the local store at startup, so
+    // presence here no longer implies the account connected — see _connectedAccountIds below.
     private readonly Dictionary<Guid, List<MailFolderModel>> _cachedFolders = new();
     public IReadOnlyDictionary<Guid, List<MailFolderModel>> CachedFolders => _cachedFolders;
+
+    /// <summary>
+    /// Accounts that have actually connected this session. Before #516, <c>_cachedFolders.Count</c>
+    /// carried this meaning — an account appeared there only after <c>GetFoldersAsync</c> succeeded.
+    /// Now the dictionary is pre-filled from SQLite at launch so the startup folder can be resolved
+    /// and the tree drawn offline, which would make that count report "connected" for accounts that
+    /// never came up. Anything asking "did we connect?" must use this set, not the dictionary.
+    /// </summary>
+    private readonly HashSet<Guid> _connectedAccountIds = [];
+
+    /// <summary>
+    /// Records an account's folder list, marks it connected, and persists it so the next launch can
+    /// resolve the startup folder and draw the tree before any network call (#516). Every write to
+    /// <see cref="_cachedFolders"/> that comes from a live server fetch goes through here.
+    /// The save is fire-and-forget: a failed cache write must never break the folder list in hand.
+    /// </summary>
+    private void SetCachedFolders(Guid accountId, List<MailFolderModel> folders)
+    {
+        _cachedFolders[accountId] = folders;
+        _connectedAccountIds.Add(accountId);
+        _localStore.SaveFoldersAsync(accountId, folders).LogFaults("persist folder list");
+    }
 
     // Debounced folder-unread-count refresh (issue #227). Folder counts are server-authoritative
     // (IMAP STATUS), which matters for Gmail where marking one message read propagates \Seen across
@@ -2168,7 +2191,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Drop calendar events left behind by accounts that no longer exist — e.g. an account removed
         // and re-added during setup gets a new id, so its old events would otherwise linger and show
         // as duplicates (one per stale id). Local events (empty account id) are kept.
-        await _localStore.PurgeCalendarEventsForUnknownAccountsAsync(Accounts.Select(a => a.Id).ToList());
+        var knownAccountIds = Accounts.Select(a => a.Id).ToList();
+        await _localStore.PurgeCalendarEventsForUnknownAccountsAsync(knownAccountIds);
+
+        // Restore the folder list from the local store (#516). Until this landed, _cachedFolders was
+        // empty until ConnectAllAccountsAsync returned, so the tree below showed only the virtual
+        // aggregates and nothing could tell which folders were Inboxes — which is why a startup
+        // folder could not be honoured before the network came up. Purge first so an account removed
+        // while the app was closed does not reappear in the tree. Failure here is not fatal: the
+        // cache repopulates on connect, exactly as it did before.
+        try
+        {
+            await _localStore.PurgeFoldersForUnknownAccountsAsync(knownAccountIds);
+            foreach (var (accountId, folders) in await _localStore.LoadFoldersAsync())
+                if (folders.Count > 0)
+                    _cachedFolders[accountId] = folders;   // NOT SetCachedFolders — nothing has connected yet
+        }
+        catch (Exception ex)
+        {
+            LogService.Log("InitialLoad: restoring cached folder list", ex);
+        }
+
         await ReloadCalendarSourcesAsync(); // populate before the tree is built so calendars show at startup
         RebuildFolderListFromCache();
     }
@@ -2206,9 +2249,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // Nothing connected — skip the heavy full sync. Watchers/labels are already handled above, and
         // WireUpWatchers will start the watcher once an account connects later.
-        if (_cachedFolders.Count == 0) return;
+        // Must ask _connectedAccountIds, not _cachedFolders: since #516 the folder cache is restored
+        // from SQLite at launch, so it is non-empty even when every connect failed. Testing the
+        // dictionary here would send the full sync at accounts that have no connection (#516).
+        if (_connectedAccountIds.Count == 0) return;
 
-        var accountList = Accounts.ToList();
+        // Connected accounts only. Everything downstream of this list needs a live connection —
+        // the full sync, the folder-count STATUS sweep, and the NOOP heartbeat — and since #516 the
+        // folder cache no longer implies one.
+        var accountList = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
 
         // Subscribe to sync progress updates.
         // Announce every 10 folders to avoid excessive screen reader chatter.
@@ -2272,7 +2321,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            await _syncService.SyncAllAccountsAsync(Accounts, _cachedFolders, ct);
+            await _syncService.SyncAllAccountsAsync(accountList, _cachedFolders, ct);
 
             // Sync done — refresh the current view/folder once so the UI reflects every
             // folder that was synced without N intermediate screen-reader announcements.
@@ -2287,7 +2336,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var count = Messages.Count;
             StatusText = $"{count} messages.";
             LastSyncText = $"Synced {DateTime.Now:t}";
-            ConnectionStatusText = $"{Accounts.Count} account{(Accounts.Count == 1 ? "" : "s")} connected";
+            // Report accounts that connected, not accounts configured — this label read
+            // "3 accounts connected" with two of them offline.
+            ConnectionStatusText = $"{accountList.Count} account{(accountList.Count == 1 ? "" : "s")} connected";
             Announce($"{count} {(count == 1 ? "message" : "messages")} loaded.", AnnouncementCategory.Status);
 
             // Start periodic NOOP heartbeat (10-minute interval) to keep connections alive
@@ -2305,7 +2356,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             StatusText = $"Sync error: {ex.Message}";
             Announce($"Sync error: {ex.Message}", AnnouncementCategory.Status);
             // Only set "Connection error" if no accounts connected at all.
-            if (_cachedFolders.Count == 0)
+            if (_connectedAccountIds.Count == 0)
                 ConnectionStatusText = "Connection error";
         }
         finally
@@ -2337,7 +2388,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// </summary>
     private void WireUpWatchers()
     {
-        var connected    = Accounts.Where(a => _cachedFolders.ContainsKey(a.Id)).ToList();
+        // Connected means "this session reached the server", not "we have folders for it" — the
+        // folder cache is restored from SQLite at launch (#516), so keying off it here would start
+        // watchers against accounts that never connected.
+        var connected    = Accounts.Where(a => _connectedAccountIds.Contains(a.Id)).ToList();
         var connectedIds = connected.Select(a => a.Id).ToHashSet();
 
         // Only (re)start watchers when the connected set changed — StartWatchers stops and restarts
@@ -2379,13 +2433,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
         }
 
-        ConnectionStatusText = _cachedFolders.Count > 0
-            ? $"{_cachedFolders.Count} account{(_cachedFolders.Count == 1 ? "" : "s")} connected"
+        ConnectionStatusText = _connectedAccountIds.Count > 0
+            ? $"{_connectedAccountIds.Count} account{(_connectedAccountIds.Count == 1 ? "" : "s")} connected"
             : "Offline";
 
         // Don't leave the label stuck at its pre-sync defaults once an account is actually connected;
         // the sync/poll paths (OnFolderSynced, StartBackgroundSyncAsync) keep it current from here.
-        if (_cachedFolders.Count > 0 && LastSyncText is "Never synced" or "In progress")
+        if (_connectedAccountIds.Count > 0 && LastSyncText is "Never synced" or "In progress")
             LastSyncText = $"Synced {DateTime.Now:t}";
     }
 
@@ -2484,6 +2538,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     foreach (var account in Accounts)
                     {
+                        // Sweep only accounts that actually connected — the folder cache is restored
+                        // from SQLite at launch (#516), so it lists folders for offline accounts too
+                        // and every job queued for one of those would just fail.
+                        if (!_connectedAccountIds.Contains(account.Id)) continue;
                         if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
                         foreach (var folder in folders)
                         {
@@ -3466,16 +3524,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (account != null)
                 ApplyAccountStatus(account, folders, "initial-connect");
             if (folders != null)
-                _cachedFolders[id] = folders;
+                SetCachedFolders(id, folders);
         }
 
         IsBusy = false;
         RebuildFolderListFromCache();
-        StatusText = _cachedFolders.Count > 0
-            ? $"{_cachedFolders.Count} of {Accounts.Count} account(s) connected."
+        // Count connections, not cache entries: since #516 _cachedFolders is pre-filled from the
+        // local store at launch, so its size would report accounts that never connected.
+        StatusText = _connectedAccountIds.Count > 0
+            ? $"{_connectedAccountIds.Count} of {Accounts.Count} account(s) connected."
             : "No accounts could be connected.";
-        ConnectionStatusText = _cachedFolders.Count > 0
-            ? $"{_cachedFolders.Count} account(s) connected"
+        ConnectionStatusText = _connectedAccountIds.Count > 0
+            ? $"{_connectedAccountIds.Count} account(s) connected"
             : "Offline";
     }
 
@@ -4115,7 +4175,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ReplaceCts(ref _connectCts, out var ct);
             await _imap.ConnectAsync(account, password, ct);
             var folderList = await _imap.GetFoldersAsync(account.Id, ct);
-            _cachedFolders[account.Id] = folderList;
+            SetCachedFolders(account.Id, folderList);
             ApplyAccountStatus(account, folderList, "select-account");
             RebuildFolderListFromCache();
             // Start this account's new-mail watcher and refresh the status labels — a manual
@@ -4580,7 +4640,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (folders == null) continue;
             if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folders))
             {
-                _cachedFolders[account.Id] = folders;
+                SetCachedFolders(account.Id, folders);
                 ApplyAccountStatus(account, folders, "refresh-folder-lists");
                 changed = true;
             }
@@ -4647,7 +4707,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 (cached.Any(m => string.IsNullOrWhiteSpace(m.To))
                     || await _localStore.HasSummariesMissingRecipientsAsync());
             var perAccountTasks = Accounts
-                .Where(a => _cachedFolders.ContainsKey(a.Id) && !a.IsShared)   // #31: shared excluded from All Mail
+                // Connected, not merely cached: this phase issues live IMAP fetches, and since #516
+                // the folder cache is populated before any account connects.
+                .Where(a => _connectedAccountIds.Contains(a.Id) && !a.IsShared)   // #31: shared excluded from All Mail
                 .Select(account => (OnlineMode || needsRecipientRepair)
                     ? FetchAccountAllFoldersAsync(account, ct)
                     : FetchAccountNewMessagesAsync(account, ct));
@@ -6769,9 +6831,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// notification activation (cold start) open its message once the account is reachable.</summary>
     public event Action? StartupConnectCompleted;
 
-    /// <summary>True when the account's folders are cached, i.e. it is connected and a message detail
-    /// fetch by id can succeed. Used to decide whether to open a toast's message now or defer it.</summary>
-    public bool IsAccountReady(Guid accountId) => _cachedFolders.ContainsKey(accountId);
+    /// <summary>True when the account has connected this session, i.e. a message detail fetch by id
+    /// can succeed. Used to decide whether to open a toast's message now or defer it. Deliberately
+    /// not "are its folders cached" — since #516 folders are restored from SQLite before any
+    /// connect, so that question is true offline and the fetch would fail.</summary>
+    public bool IsAccountReady(Guid accountId) => _connectedAccountIds.Contains(accountId);
 
     [RelayCommand]
     private void Exit() => ExitRequested?.Invoke();
@@ -6824,7 +6888,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _credentials.DeletePassword(a.Id);
             Accounts.Remove(a);
             _cachedFolders.Remove(a.Id);
+            _connectedAccountIds.Remove(a.Id);
         }
+        // DeleteAccountDataAsync drops the account's persisted folders too, so a removed account
+        // does not come back in the folder tree on the next launch (#516).
         _accountService.SaveAccounts([.. Accounts]);
         RebuildFolderListFromCache();
 
@@ -6882,7 +6949,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             using var cts   = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             var folderList  = await _imap.GetFoldersAsync(accountId, cts.Token);
-            _cachedFolders[accountId] = folderList;
+            SetCachedFolders(accountId, folderList);
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
             if (account != null) ApplyAccountStatus(account, folderList, "folder-refresh");
             RebuildFolderListFromCache();
@@ -6999,7 +7066,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             f.FullName.StartsWith(deleted.FullName + "/", StringComparison.OrdinalIgnoreCase) ||
             f.FullName.StartsWith(deleted.FullName + ".", StringComparison.OrdinalIgnoreCase);
 
-        _cachedFolders[accountId] = folders.Where(f => !ShouldRemove(f)).ToList();
+        SetCachedFolders(accountId, folders.Where(f => !ShouldRemove(f)).ToList());
 
         // Keep the flat Folders collection in sync — it backs saved-view resolution, the folder
         // picker, and the next tree rebuild, so a stale entry there would resolve a deleted folder.
@@ -7073,7 +7140,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await _imap.CreateFolderAsync(accountId, parentFolderName, name, cts.Token);
             var folderList = await _imap.GetFoldersAsync(accountId, cts.Token);
-            _cachedFolders[accountId] = folderList;
+            SetCachedFolders(accountId, folderList);
             var account = Accounts.FirstOrDefault(a => a.Id == accountId);
             if (account != null) ApplyAccountStatus(account, folderList, "folder-created");
             _folderTreeRebuildPending = true;
@@ -7830,8 +7897,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // it, so folder ops fail "…is not connected" until an app restart (#219). Reconnecting it
         // here fixes that without a restart. _cachedFolders is UI-thread-owned: read it on the UI
         // thread and marshal every write back through _ui so the background loop never touches it.
+        // The VM-side predicate asks "has this account connected this session", which _cachedFolders
+        // stopped answering in #516 — it is restored from SQLite at launch, so a never-connected
+        // account would look present here and never be reconnected.
         var accountsToConnect = AccountsNeedingConnect(
-            Accounts, _imap.IsConnected, id => _cachedFolders.ContainsKey(id));
+            Accounts, _imap.IsConnected, id => _connectedAccountIds.Contains(id));
         _ = Task.Run(async () =>
         {
             foreach (var account in accountsToConnect)
@@ -7842,7 +7912,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     ApplyAccountStatus(account, result.Folders, "account-list-refresh");
                     if (result.Folders != null)
                     {
-                        _cachedFolders[result.Id] = result.Folders;
+                        SetCachedFolders(result.Id, result.Folders);
                         RebuildFolderListFromCache();
                     }
                 });

@@ -198,6 +198,25 @@ sealed class StubLocalStoreService : ILocalStoreService
     public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
     public Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
     public Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds) => Task.CompletedTask;
+
+    /// <summary>Folders the stub hands back from <see cref="LoadFoldersAsync"/> — seed this to stand in
+    /// for a persisted folder list at startup (#516). <see cref="SaveFoldersAsync"/> writes into it too,
+    /// so a save/load round-trip works without a real database.</summary>
+    public Dictionary<Guid, List<MailFolderModel>> SeededFolders { get; } = [];
+    public Task SaveFoldersAsync(Guid accountId, IReadOnlyList<MailFolderModel> folders)
+    {
+        SeededFolders[accountId] = [.. folders.Where(f => !f.IsHeader && f.FullName.Length > 0)];
+        return Task.CompletedTask;
+    }
+    public Task<Dictionary<Guid, List<MailFolderModel>>> LoadFoldersAsync()
+        => Task.FromResult(SeededFolders.ToDictionary(kv => kv.Key, kv => new List<MailFolderModel>(kv.Value)));
+    public Task PurgeFoldersForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
+    {
+        foreach (var id in SeededFolders.Keys.Where(k => !knownAccountIds.Contains(k)).ToList())
+            SeededFolders.Remove(id);
+        return Task.CompletedTask;
+    }
+
     public Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead) => Task.CompletedTask;
     public Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead) => Task.CompletedTask;
     public Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview) => Task.CompletedTask;
