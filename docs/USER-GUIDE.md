@@ -985,11 +985,35 @@ Open the **View Manager** from the **View** menu or the command palette. Create 
 
 Press the assigned hotkey from anywhere in the main window to switch to that view immediately.
 
-### Choose what opens at startup
+---
 
-By default QuickMail opens to **All Mail**. To make it open somewhere else — your Inbox, a specific folder, or any saved view — select the **Default view (applied on startup)** checkbox for that view in the View Manager. QuickMail then opens to that view, and the folder it targets, each time it starts. Only one view can be the default at a time; choosing a new default clears the previous one.
+## Startup
 
-So to open directly into a particular folder on launch: navigate to that folder, choose **Save View…** from the **View** menu, then mark the new view as the default in the View Manager.
+By default QuickMail opens to **All Mail**. You can tell it to open anywhere you like instead — one account's Inbox, a project folder, or **All Inboxes**.
+
+### Choose your startup folder
+
+The quickest way is from the folder tree itself:
+
+1. Move to the folder you want (**Ctrl+1** puts you in the folder tree).
+2. Press the **Applications** key, or **Shift+F10**, to open the folder's context menu.
+3. Choose **Set as Startup Folder**.
+
+QuickMail confirms the change, and opens there every time it starts from then on.
+
+You can also do it from **Tools → Settings → Startup**, where the **Opens in** field shows your current choice. Select **Choose…** to pick a different folder from the folder tree, or **Clear** to go back to All Mail. **Clear Startup Folder** in the folder context menu does the same thing.
+
+If the folder later disappears — you delete it, rename it, or remove the account — QuickMail opens in All Mail and tells you why. Nothing is lost and nothing needs repairing.
+
+### Choose how much is checked at startup
+
+Also under **Tools → Settings → Startup**, **Startup Sync** controls how much mail QuickMail checks while it is starting. This matters most if you have several accounts and a lot of folders.
+
+- **Just my startup folder** (recommended) — checks only what your startup folder shows. If your startup folder is All Inboxes, that is every inbox; if it is All Mail, that is everything.
+- **Every account's inbox** — checks each account's inbox, whichever folder you open in.
+- **Every folder** — checks everything before settling. This is how QuickMail behaved before this setting existed.
+
+New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have set that to **Off**, other folders are only checked when you open them.
 
 ---
 

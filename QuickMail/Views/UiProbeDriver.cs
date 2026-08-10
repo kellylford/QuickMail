@@ -133,6 +133,14 @@ internal sealed class UiProbeDriver
                     w => w is SettingsDialog, path,
                     prepare: w => SelectTabByHeader((SettingsDialog)w, "ppearance"));
 
+            // #516. Its own surface rather than riding on settings-appearance: the Startup tab is
+            // the only Settings pane combining a read-only field, a button row, and a radio group,
+            // and none of that is visible in a capture of a different tab.
+            case "settings-startup":
+                return await CaptureChildWindowAsync(() => _window.ShowSettingsDialogForProbe(),
+                    w => w is SettingsDialog, path,
+                    prepare: w => SelectTabByHeader((SettingsDialog)w, "tart"));
+
             case "command-palette":
                 return await CaptureChildWindowAsync(() => _window.OpenCommandPaletteForProbe(),
                     w => w is CommandPaletteWindow, path);
@@ -146,7 +154,7 @@ internal sealed class UiProbeDriver
                     w => w is RowFieldsWindow, path);
 
             default:
-                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, command-palette, folder-picker, row-fields.");
+                LogService.Log($"ui-probe: unknown surface \"{surface}\". Known: inbox, reading-pane, calendar, compose, theme-manager, address-book, rules, saved-views, settings-appearance, settings-startup, command-palette, folder-picker, row-fields.");
                 return false;
         }
     }

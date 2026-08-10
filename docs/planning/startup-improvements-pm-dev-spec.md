@@ -1,421 +1,244 @@
 # Startup Improvements — PM + Dev Spec
 
-**GitHub issue:** [#144 Improve QuickMail startup](https://github.com/kellylford/QuickMail/issues/144)
+**GitHub issues:** [#144 Improve QuickMail startup](https://github.com/kellylford/QuickMail/issues/144) (closed — Phase 1)
+· [#516 Startup folder as a first-class setting, and a configurable startup sync scope](https://github.com/kellylford/QuickMail/issues/516)
+· resolves [#498](https://github.com/kellylford/QuickMail/issues/498)
 
 ## Status
 
 | Phase | Description | Status |
 |---|---|---|
-| 1 | Inbox-first parallel sync in `SyncService` | ✅ Complete — shipped in v0.7.6 |
-| 2 | `ConfigModel.StartupFolder` + `ConfigService` persistence | ⬜ Not started |
-| 3 | Apply `StartupFolder` in `InitialLoadAsync` | ⬜ Not started |
-| 4 | Settings UI — read-only field + "Choose…" button (tree-view picker) | ⬜ Not started |
+| 1 | Inbox-first parallel sync in `SyncService` | ✅ Shipped in v0.7.6 |
+| 2 | Persist the folder list in SQLite | ✅ #516 |
+| 3 | `StartupFolder` config keys | ✅ #516 |
+| 4 | Resolve and apply the startup folder in `InitialLoadAsync` | ✅ #516 |
+| 5 | Retire `SavedView.IsDefault`, with migration | ✅ #516 |
+| 6 | Folder-tree context menu + commands | ✅ #516 |
+| 7 | Settings → Startup | ✅ #516 |
+| 8 | Startup sync scope | ✅ #516 |
 
-**Resume at Phase 2.** Start a new implementation session with: *"Implement Phases 2–4 of `docs/planning/startup-improvements-pm-dev-spec.md`. Phase 1 is complete. Read the spec in full before writing any code."*
+> **This spec was rewritten for #516.** The original Phases 2–4 (a `StartupFolder` limited to
+> virtual folders and saved views, applied *after* the saved-view default, chosen from a flat
+> ComboBox) were never built and are superseded. Their central assumption was wrong: see §2.
 
 ---
 
 ## Section 1: Executive Summary
 
-For users with many email accounts and many folders, QuickMail's startup can feel slow: the cached message list appears immediately, but new mail from the server doesn't show until every folder across every account has been synced — a sequential process that can take 20–40 seconds or more. This spec addresses startup latency through two complementary strategies: (1) smarter sync ordering that prioritizes Inbox folders so new inbox mail surfaces quickly, and (2) a configurable startup folder/view so users choose what they see at launch rather than always landing on "All Mail." Together these changes make the first 5–10 seconds of use feel much more responsive without changing behavior for users who are happy with the current defaults.
+Users kept asking to open QuickMail in a folder of their choosing. The only route was to navigate
+there, save a view, open the View Manager, and tick **Default view (applied on startup)** — three
+surfaces and a permanent saved-view artifact to express one preference. #516 makes the startup
+folder a first-class setting, reachable from the folder tree's context menu or Settings → Startup,
+and removes the saved-view mechanism entirely.
+
+The same change lets users cap how much QuickMail syncs at launch, which matters for anyone with
+several accounts and a deep folder tree.
 
 ---
 
-## Section 2: User Problem & Opportunity
+## Section 2: What the original spec got wrong
 
-### 2.1 Current state (verified)
+The 2026 spec assumed the startup folder was a small config-plus-UI job. It is not, because of one
+fact it did not record:
 
-| Surface | Today | Pain | Who feels it |
-|---|---|---|---|
-| Startup folder | Always "All Mail" (`AllMailFolder` sentinel, hardcoded at `MainViewModel.cs:1301`) | Users who mostly live in their inbox see a big "All Mail" list that then changes again after sync | Multi-account users, inbox-focused users |
-| Sync ordering | All accounts synced sequentially, all folders per account before moving to next account (`SyncService.cs:50-88`) | New inbox mail doesn't appear until every sent/trash/bulk folder for every account is done | Anyone with more than ~2 accounts or 20+ folders |
-| Default view override | Requires creating a saved view and marking it IsDefault | User-hostile: a persistent UI artifact just to control startup destination | Power users, accessibility users |
-| Startup folder setting | Does not exist | No way to say "start me in All Inboxes" without creating a saved view | All users |
+**The folder list was never persisted.** `MainViewModel._cachedFolders` was in-memory only, filled
+by `GetFoldersAsync` after connect. So at launch nothing knew which folders existed, let alone which
+were Inboxes. That made "open me in All Inboxes" unimplementable before the network came up — which
+is exactly why the saved-view default was applied *post-connect* and why users saw All Mail first
+and a switch a few seconds later. Issue #57 had already moved that application from post-sync to
+post-connect; it shortened the flash without removing it.
 
-**Code-verified facts:**
-- `InitialLoadAsync()` (`MainViewModel.cs:1299`) hardcodes `SelectedFolder = AllMailFolder`.
-- `SyncAllAccountsAsync()` (`SyncService.cs:33`) iterates accounts sequentially, then folders within each account sequentially. No prioritization.
-- A saved-view default IS applied, but only after `ConnectAllAccountsAsync()` completes (`MainViewModel.cs:1407`). This typically means ~5–15s after launch before the default view is applied.
-- `ConfigModel` has no `StartupFolder` or startup-destination property.
+It is also why the folder tree at launch showed only the eight virtual aggregates, and the root
+cause behind [#451](https://github.com/kellylford/QuickMail/issues/451).
 
-### 2.2 Target personas
+So #516 starts by persisting folder metadata, and everything else builds on it.
 
-**Alex — 4-account power user.** Has work IMAP, personal IMAP, a newsletter account, and a list account. Each has 40+ folders. Startup sync takes 45 seconds. By the time new mail appears, Alex has given up and checked the phone instead.
-
-**Sam — single account, lots of folders.** Uses aggressive sub-folder filing. Has 80+ folders. Starting in "All Mail" dumps 2,000+ cached messages that reload again after sync. Sam just wants to see their inbox.
-
-**Jordan — screen reader user.** The long sync with announcements every 10 folders creates many "Synced X of Y folders" announcements before the real mail is visible. Jordan wants the inbox-relevant mail announced first.
-
-**Casey — new user.** Has 2 accounts, all mail in inbox. The default "All Mail" view is confusing — shows duplicates of inbox mail alongside sent, and Casey doesn't understand the difference from "All Inboxes."
-
-**Morgan — rules-heavy user.** Has mail rules that move everything out of inbox into folders. "All Mail" is the right default for Morgan. A configurable setting lets Morgan keep the current behavior while others change theirs.
-
-### 2.3 Why now
-
-- The saved-view default mechanism (issue #57 fix) is already in place — this builds on top of it.
-- Sync infrastructure is stable; inbox-first ordering is a targeted change to `SyncService`.
-- No external dependencies. No schema changes to SQLite.
+Two further corrections to the original text: the settings dialog is `Views/SettingsDialog.xaml`
+(there is no `SettingsWindow.xaml`), and its line references were stale by roughly 800 lines.
 
 ---
 
-## Section 3: Design Principles
+## Section 3: Design principles
 
-1. **Zero behavior change for existing users who don't opt in.** The default startup folder stays "All Mail" to match today's behavior. Inbox-first sync is a transparent optimization with no user-visible change except speed.
-2. **The setting is simple: one choice, not a tree.** The startup folder picker presents a flat list of options (virtual folders + saved views), not the full folder tree.
-3. **Fast path for the common case.** Inbox-first sync must reduce time-to-new-mail for inbox-focused users even if they never touch the setting.
-4. **Respect the existing saved-view default.** If a user has set a saved view as default, that takes precedence over the new `StartupFolder` setting.
-
----
-
-## Section 4: Feature Scope & Acceptance Criteria
-
-### 4.1 In scope (v1)
-
-| Feature | Setting / Location | Default | Notes |
-|---|---|---|---|
-| Startup folder setting | `StartupFolder` in `[startup]` section of config.ini | `"AllMail"` (current behavior) | Accepts: `"AllMail"`, `"AllInboxes"`, `"AllDrafts"`, `"AllSent"`, `"AllTrash"`, or a saved-view name |
-| Startup folder UI | **Settings → General → Startup folder** — read-only field + "Choose…" button | All Mail | Opens `FolderPickerWindow` (tree-view) scoped to virtual folders and saved views; keyboard-friendly |
-| Inbox-first sync ordering | Internal to `SyncService`; no UI | On (transparent) | Inbox/Inbox-kind folders across all accounts sync first, then remaining folders |
-| Parallel account sync | Internal to `SyncService`; no UI | On (transparent) | Accounts sync concurrently (capped at N connections per account, already enforced by `ImapMailService`) |
-| Change default from All Mail to All Inboxes | Opt-in via setting | No change (stays All Mail) | Recommended in onboarding/docs, not enforced |
-
-### 4.2 Explicitly out of scope (v1)
-
-- Per-account startup folder (one global setting only).
-- Startup folder set to a specific real IMAP folder (e.g. "work/Projects"). Only virtual folders and saved views in v1.
-- Persisting startup folder across profile directories.
-- Startup folder in the first-run tutorial UI (can be added later).
-- Changing `SyncDays` or `InitialSyncCount` as a startup-speed lever (already exposed; out of scope here).
-- Background/idle sync scheduling changes.
+1. **The startup folder is applied from cache, before any connect.** CLAUDE.md's startup rule
+   requires it, and applying it later is the defect being fixed, not an implementation detail.
+2. **One concept, not two.** A startup folder is a folder. Saved views remain what they always
+   were — named filters with hotkeys — and no longer double as a startup mechanism.
+3. **Set it where you already are.** The folder tree is the primary entry point; Settings is where
+   you see and change it.
+4. **Falling back is normal, and it is explained.** A startup folder that no longer resolves opens
+   All Mail and says so. Never a dialog, never a crash.
+5. **Nothing is skipped permanently.** Every sync scope still leaves the periodic sweep visiting
+   every folder and the live watchers covering every Inbox.
 
 ---
 
-## Section 5: Architecture & Technical Decisions
+## Section 4: Scope
 
-### 5.1 Key architectural decisions
+### In scope
 
-**Decision A: Inbox-first sync ordering inside `SyncService`.**
+| Feature | Location | Default |
+|---|---|---|
+| Folder metadata persistence | `Folder` table in `mail.db` | Always on |
+| `StartupFolder` / `StartupFolderAccount` / `StartupFolderLabel` | `[global]` in `config.ini` | Empty = All Mail |
+| `StartupSyncScope` | `[global]` in `config.ini` | `startupFolder` |
+| Set / Clear from the folder tree | `FolderContextMenu` + `folder.setStartupFolder`, `folder.clearStartupFolder` | No default hotkey |
+| Settings → Startup | `SettingsDialog.xaml`, sixth tab | — |
+| Migration off `SavedView.IsDefault` | `StartupFolderMigration`, run once in `App.OnStartup` | — |
 
-Reorder `SyncAllAccountsAsync` to iterate in two passes:
-1. Pass 1: For each account, sync only folders with `SpecialFolderKind.Inbox` (i.e., where `folder.Kind == SpecialFolderKind.Inbox`). Accounts can run in parallel in this pass.
-2. Pass 2: For each account, sync all remaining non-Inbox folders that aren't excluded (`!folder.ExcludeFromAllMail`). Accounts can run in parallel.
-3. After both passes, fire `FolderSynced` and let `StartBackgroundSyncAsync` call `RefreshAsync` as today.
+### Out of scope
 
-**Alternatives:**
-1. Keep sequential, but put Inbox first per account. Pro: simpler, no concurrency. Con: still slow for many accounts — account 1's inbox syncs, then all of account 1's folders, then account 2's inbox, etc.
-2. Full parallelism (all folders, all accounts concurrently). Pro: fastest. Con: can exhaust IMAP connections; harder to reason about; more complex error handling.
-
-**Rationale:** Two-pass with per-account parallelism gives the biggest win with manageable complexity. Each account still uses its own IMAP client (already isolated in `ImapMailService`); parallelism across accounts is safe. `MaxImapConnectionsPerAccount` already caps connections.
-
----
-
-**Decision B: `StartupFolder` stored in `config.ini` as a string key.**
-
-Use the same sentinel naming scheme as virtual folders (e.g., `"AllMail"`, `"AllInboxes"`) plus saved-view names. Saved views are identified by `SavedView.Name` (not Guid, for readability).
-
-**Alternatives:**
-1. Store a Guid for saved views, sentinel string for virtuals. Pro: rename-safe. Con: config file is unreadable; Guid lookup needed on every startup.
-2. Store a JSON blob. Pro: extensible. Con: over-engineered for one setting.
-
-**Rationale:** String keys match how saved views are already serialized (`VirtualFolderKey` in `SavedView`). Renames are an acceptable edge case — if a saved view is renamed, startup falls back to "All Mail" gracefully.
+Per-account startup folders. Launching QuickMail with Windows (#129). Remembering the last folder
+used. Per-folder sync opt-in/opt-out. Scoping the *periodic* sweep (#462). The observable-property
+half of #451 — persisting folders removes its root cause, but re-stamping already-displayed rows is
+a separate change.
 
 ---
 
-**Decision C: `StartupFolder` setting takes lower precedence than the saved-view `IsDefault` flag.**
+## Section 5: Architecture
 
-The existing "Mark as default" saved-view mechanism stays and takes precedence. `StartupFolder` is the new baseline when no saved view is marked default.
+### 5.1 The `Folder` table
 
-**Rationale:** Backwards compatibility. Users who have relied on the saved-view default mechanism since issue #57 see no change. `StartupFolder` is additive.
+`account_id, full_name, display_name, parent_id, kind, exclude_from_all_mail, unread_count,
+message_count, sort_order`, primary key `(account_id, full_name)`. Created with
+`CREATE TABLE IF NOT EXISTS`, so no `user_version` bump — the same treatment `CalendarEvent` got.
+`SuppressUnreadCount` is not stored; it is derived from `Kind`.
 
----
+Written replace-all per account after each discovery, so a folder deleted or renamed on the server
+disappears locally. Read once in `InitialLoadAsync`; purged for unknown accounts there and on
+account deletion.
 
-**Decision D: Parallel account sync uses `Task.WhenAll` with one task per account.**
+### 5.2 The `_cachedFolders` / `_connectedAccountIds` split — the load-bearing decision
 
-Each account runs its Inbox-pass folders concurrently via `Task.WhenAll`. Exception handling: a faulted account task logs and continues; it does not cancel others.
+`_cachedFolders` used to mean *"accounts connected this session"*: an account appeared there only
+after `GetFoldersAsync` succeeded, and eleven call sites relied on that. Pre-filling it from SQLite
+would have made every one of them report "connected" for accounts that never came up — the full
+sync firing at unreachable servers, watchers starting for them, the status bar claiming connections
+that did not exist, and `AccountsNeedingConnect` no longer reconnecting them.
 
-**Rationale:** `ImapMailService.GetOrReconnectAsync` is account-scoped and thread-safe for concurrent calls on different accounts. Same pattern used elsewhere in the codebase.
+Connection state therefore has its own home, `_connectedAccountIds`. **Anything asking "did we
+connect?" must use the set; anything asking "what folders do we know about?" uses the dictionary.**
+Sites moved to the set: the sync guard, the sync account list, the periodic sweep, `WireUpWatchers`,
+`IsAccountReady`, the All Mail IMAP fetch phase, `AccountsNeedingConnect`, and the connected-count
+labels.
 
----
+This is the first thing to check if a startup or connection bug appears near this code.
 
-### 5.2 Runtime mode compatibility
+### 5.3 Startup folder resolution
 
-| Mode | Behavior |
+`ConfigModel.StartupFolder` holds one of four things:
+
+| Value | Meaning |
 |---|---|
-| Normal | Full feature: inbox-first sync, startup folder applied from config |
-| `--online` | No sync at all today; startup folder still applies (controls which virtual folder is selected before the IMAP fetch) |
-| `--profileDir <path>` | Uses alternate config.ini — `StartupFolder` read from that profile's config |
+| empty | All Mail (the default, and today's behaviour) |
+| `AllInboxes`, `AllMail`, … | A virtual aggregate. Stored without the NUL sentinel prefix — an INI file cannot carry one — matching the `SavedView.VirtualFolderKey` convention. |
+| a folder's `FullName` + `StartupFolderAccount` | A real folder. The account is required: folder names collide across accounts, and the pair is what resolves. |
+| `view:{guid}` | A migrated multi-folder saved view. **Written only by the migration**; no picker offers or can create it. |
 
-### 5.3 Code reuse and duplication risks
+`StartupFolderLabel` is display-only, stored rather than derived because a Microsoft Graph
+`FullName` is an opaque server id with nothing human-readable to fall back on.
 
-- `FetchVirtualAsync(AllMailFolder)` is currently called in three places when online mode or no default view: at `InitialLoadAsync` for the cache, and again in `StartBackgroundSyncAsync`. The startup-folder selection needs to call the right fetch method for each virtual folder type. Use the existing `RefreshAsync()` (which already handles all sentinel types) rather than duplicating dispatch logic.
+Anything unresolvable falls back to All Mail with the reason in the status bar and one
+`AnnouncementCategory.Status` announce.
 
-### 5.4 Shared component audit
+`--online` never initializes the local store, so it resolves against config alone
+(`ResolveOnlineStartupFolder`) and its background path calls `RefreshAsync` instead of a hardcoded
+All Mail fetch. The setting was previously ignored entirely on that path.
 
-| Component | File | Other consumers | Change needed | Risk |
-|---|---|---|---|---|
-| `SyncService.SyncAllAccountsAsync` | `Services/SyncService.cs` | `StartBackgroundSyncAsync` in `MainViewModel` | Add two-pass inbox-first + parallel account sync | Progress counter math changes; `SyncProgressChanged` must still fire accurately. Tests must cover new ordering. |
-| `ConfigModel` | `Models/ConfigModel.cs` | `ConfigService`, every settings VM | Add `StartupFolder` string property | Additive only; no existing consumers affected. |
-| `ConfigService` | `Services/ConfigService.cs` | All settings read/write | Read/write `StartupFolder` from `[startup]` section | Well-isolated INI section; no risk to other sections. |
-| `MainViewModel.InitialLoadAsync` | `ViewModels/MainViewModel.cs` | `App.xaml.cs` (called once on startup) | Apply `StartupFolder` setting instead of hardcoded `AllMailFolder` | Must fall back to `AllMailFolder` if setting is invalid or no match. |
-| `SettingsViewModel` | `ViewModels/SettingsViewModel.cs` | `SettingsWindow` | Add `StartupFolder` property + picker options | No other consumers of `SettingsViewModel`. |
-| `SettingsWindow.xaml` | `Views/SettingsWindow.xaml` | — | Add ComboBox for Startup folder | XAML parse test covers this. |
-| `ISyncService` | `Services/ISyncService.cs` | `MainViewModel`, `StubServices` (tests) | `SyncAllAccountsAsync` signature unchanged | `StubSyncService` in tests needs no change if signature unchanged. |
+### 5.4 Startup sync scope
 
----
+`SyncAllAccountsAsync` has exactly one caller, so it *is* the startup sync and reads the scope from
+config itself — keeping it off `ISyncService` and out of the five test stubs.
 
-## Section 6: Keyboard Walkthrough
+`startupFolder` mirrors what the startup folder shows. **Note the consequence:** with no startup
+folder configured, that is All Mail, which spans everything, so those users still get the full
+sweep. A narrower sync would leave stale rows on the screen they are looking at. The saving is
+opted into by choosing a narrower place to start; `inboxes` is there for anyone who wants it
+unconditionally.
 
-### Path A: Change startup folder in settings
+Cases that cannot be resolved narrowly sync wide: a startup folder that no longer exists (startup
+itself falls back to All Mail), an unparseable account id, and `view:{guid}`. Under-syncing what the
+user is looking at is the worse failure.
 
-1. User opens Settings (Ctrl+,). **Expected:** Settings window opens, focus on first tab.
-2. User navigates to the "General" tab. **Expected:** General settings pane is visible.
-3. User presses Tab to reach the "Startup folder" read-only text field. **Expected:** Screen reader announces "Startup folder" label then field value (e.g. "All Mail").
-4. User presses Tab to the "Choose…" button and activates it. **Expected:** Folder picker window opens — using `FolderPickerWindow` (tree-view) scoped to virtual folders and saved views. Focus lands on the folder tree. Screen reader announces the current selection (e.g. "All Mail").
-5. User presses Down arrow to move to "All Inboxes". **Expected:** Screen reader announces "All Inboxes".
-6. User presses Enter to confirm. **Expected:** Picker closes, "Startup folder" field in Settings updates to "All Inboxes". Change is not yet saved.
-7. User activates "Save" button. **Expected:** Settings window closes, setting written to config.ini. No restart required.
-8. User restarts QuickMail. **Expected:** App opens with "All Inboxes" selected in the folder tree, "All Inboxes" messages loaded from cache immediately.
-
-### Path B: Startup with "All Inboxes" selected (user has set it)
-
-1. App launches. **Expected:** Folder tree visible, "All Inboxes" is the selected folder. Cache shows inbox messages immediately. Status bar says "N messages (cached — syncing…)".
-2. Sync runs (inbox-first pass). **Expected:** After a few seconds (inbox folders only), message list updates with new inbox mail. Screen reader announces "N messages loaded." (when `AnnounceStatus` is on).
-3. Sync continues (remaining folders in background). **Expected:** No UI change to the message list (user is in All Inboxes; non-inbox folders don't affect this view). Status bar updates to "N messages." when sync completes.
-
-### Path C: Inbox-first sync (transparent, no setting changed)
-
-1. App launches with default "All Mail" setting. **Expected:** Cached messages shown immediately as today.
-2. Inbox folders across all accounts sync first. **Expected:** New inbox messages appear in the All Mail list within a few seconds of launch (much sooner than today).
-3. Remaining folders sync. **Expected:** Additional non-inbox messages trickle in as each folder completes, exactly as today.
-4. Sync completes. **Expected:** Status bar and announcement as today.
-
-### Path D: Saved view default (existing behavior, unchanged)
-
-1. User has saved view "Work Inbox" marked as default. **Expected:** After connections ready (~5s), "Work Inbox" view is applied. `StartupFolder` setting is ignored (saved-view default takes precedence).
-
-### Path E: Edge case — saved view referenced by StartupFolder is deleted
-
-1. User had saved view "My View" set as startup folder. User then deleted "My View". **Expected:** App falls back to "All Mail" silently. No crash. No error dialog.
+The `SyncProgressChanged` denominator comes from the same filtered set, or the progress announcement
+names a total the sync never reaches and "Sync complete" never fires.
 
 ---
 
-## Section 7: Accessibility Checklist
+## Section 6: Keyboard walkthrough
 
-- **`AutomationProperties.Name`:** The read-only text field gets its name from a `<Label Target="{Binding ElementName=StartupFolderField}">` binding (matching the existing settings UI pattern). The "Choose…" button gets `AutomationProperties.Name="Choose startup folder"`. `FolderPickerWindow` already has its own accessible names — no new ones needed there.
-- **Announcements:** No new `AccessibilityHelper.Announce` calls needed. The existing "N messages loaded" `AnnouncementCategory.Status` announcement at end of sync covers the startup-folder case. Inbox-first sync is transparent — no new announcement.
-- **Focus restoration:** The Settings ComboBox is in the existing tab order; no special focus restoration needed.
-- **F6 ring:** No new panes. No F6 changes.
-- **Radio/checkbox groups:** No new grouped controls; the ComboBox is a single control.
-- **Color-only information:** None.
+### Path A — set it from the folder tree
 
----
+1. **Ctrl+1** moves focus to the folder tree.
+2. Arrow to the folder. The screen reader announces the folder and its unread count.
+3. Press the **Applications** key (or **Shift+F10**). Announced: "Folder actions".
+4. Arrow to **Set as Startup Folder**, press **Enter**. The menu closes, focus returns to the
+   folder, and a `Result` announcement says "QuickMail will open in Projects." The status bar shows
+   the same sentence.
 
-## Section 8: Acceptance Walkthrough
+### Path B — set it from Settings
 
-### Scenario 1: Change startup folder to All Inboxes
+1. **Ctrl+,** opens Settings.
+2. **Ctrl+Tab** to the **Startup** tab. Announced: "Startup settings".
+3. **Tab** reaches the read-only **Opens in** field, which reads its current value ("All Mail" when
+   nothing is configured). It is read-only rather than disabled so Tab still reaches it.
+4. **Tab** to **Choose…**, **Enter**. The folder tree picker opens with the current startup folder
+   already selected — never nothing.
+5. Arrow to the folder, **Enter**. The picker closes; the field updates.
+6. **Tab** to the **Startup Sync** radio group: one tab stop, arrows move and select together.
+7. **Tab** to **Save**, **Enter**.
 
-**Setup:** App running. At least 2 accounts configured with mail in Inbox. Current startup folder is "All Mail" (default).
+### Path C — launching
 
-1. Open Settings (Ctrl+,). **Verify:** Settings window opens.
-2. Navigate to General tab. **Verify:** "Startup folder" field is present showing "All Mail", and a "Choose…" button is beside it.
-3. Activate "Choose…", navigate to "All Inboxes" in the tree picker, press Enter. Activate "Save". **Verify:** Settings closes, config.ini `[startup]` section contains `StartupFolder=AllInboxes`.
-4. Restart app. **Verify:** Folder tree shows "All Inboxes" selected, message list shows inbox messages from cache. Message count status bar visible.
-5. Wait for sync to complete. **Verify:** Message list updates with new inbox mail. No "All Mail" messages visible.
+The app opens with the startup folder selected and its cached messages already listed. No All Mail
+flash. The folder tree is fully populated from cache before any connect. Status bar:
+"N messages in Projects (cached — syncing…)".
 
-### Scenario 2: Inbox-first sync speed improvement
+### Path D — the folder is gone
 
-**Setup:** App configured with 2+ accounts, each with 10+ folders. Observer: watch the message list update during startup.
-
-1. Launch app (default All Mail startup folder). **Verify:** Cached messages appear immediately.
-2. Watch first message list update after sync begins. **Verify:** New messages arrive in the list within ~5 seconds (inbox folders complete first, before sent/trash/bulk). Previously this took longer.
-3. Continue watching. **Verify:** Additional messages arrive as other folders complete. No regression in final message count.
-
-### Scenario 3: Saved-view default takes precedence over StartupFolder
-
-**Setup:** A saved view "Work" is marked as default (IsDefault = true). StartupFolder is set to "AllInboxes" in config.
-
-1. Launch app. **Verify:** After connections ready, "Work" saved view is applied — not "All Inboxes". The saved-view default wins.
-
-### Scenario 4: Invalid StartupFolder falls back gracefully
-
-**Setup:** Manually set `StartupFolder=NonExistentView` in config.ini.
-
-1. Launch app. **Verify:** App starts normally with "All Mail" selected. No crash, no error dialog.
-
-### Scenario 5: Settings — screen reader
-
-**Setup:** Screen reader active.
-
-1. Tab to "Startup folder" ComboBox in Settings. **Verify:** Screen reader announces "Startup folder" and current value (e.g., "All Mail").
-2. Open dropdown and navigate options. **Verify:** Each option name is announced as focus moves.
-3. Save with changed selection. **Verify:** No unexpected announcements. Settings closes.
-
-### Scenario 6: `--online` mode
-
-**Setup:** Launch with `--online` flag. StartupFolder set to "AllInboxes".
-
-1. Launch app. **Verify:** "All Inboxes" is selected at startup. IMAP fetch runs for All Inboxes virtual folder. No crash.
+The app opens in All Mail. Status bar and one `Status` announcement: "Startup folder 'Projects' was
+not found — showing All Mail." No dialog.
 
 ---
 
-## Section 9: Success Metrics
+## Section 7: Infrastructure changes
 
-- **Primary happy path works:** User sets StartupFolder to "AllInboxes", restarts, lands in All Inboxes with cached messages visible immediately.
-- **Speed improvement is perceptible:** On a 3-account × 30-folder setup, new inbox mail appears in the list within 5–10 seconds (inbox-first pass) rather than 30–45 seconds (after all folders).
-- **No regression:** Existing behavior for users with a saved-view default is unchanged. `IsDefault` saved view still overrides StartupFolder.
-- **Invalid config handled:** Deleting a referenced saved view does not crash on startup.
-- **Keyboard-only:** All new settings UI operable with Tab, arrow keys, Enter, Escape.
-- **`--online` mode compatible:** Feature works correctly under `--online`.
-
----
-
-## Section 10: Implementation Phases
-
-### Phase 1: Inbox-first parallel sync in SyncService ✅ Complete (v0.7.6)
-
-**Goal:** `SyncAllAccountsAsync` runs Inbox folders first (all accounts concurrently), then all remaining folders (all accounts concurrently). Progress reporting still accurate.
-
-**Deliverables:**
-- Modify `QuickMail/Services/SyncService.cs`: restructure `SyncAllAccountsAsync` into two `Task.WhenAll` passes.
-- Pass 1: one `Task` per account, each syncing only `folder.Kind == SpecialFolderKind.Inbox` folders.
-- Pass 2: one `Task` per account, each syncing remaining non-excluded folders.
-- `SyncProgressChanged` fires from within each task; total count stays the same.
-
-**Tests:**
-- `SyncServiceTests` (new): verify inbox folders complete before non-inbox folders using a controllable stub. Verify `SyncProgressChanged` fires the correct total count. Verify an exception in one account task does not prevent other accounts from completing.
-
-**Risk:** Race in `SyncProgressChanged` counter across parallel tasks — use `Interlocked.Increment` on `completedFolders`. Medium probability, Medium impact. Mitigation: unit test with two concurrent accounts.
-
-**Duration:** 2–3 hours
+- **F6 ring:** unchanged. No new panes.
+- **Commands:** `folder.setStartupFolder` and `folder.clearStartupFolder`, category `Mail`, no
+  default hotkeys. Both registered in `MainWindow.xaml.cs`.
+- **`AutomationProperties.Name` added:** "Startup settings", "Startup folder settings", "Startup
+  sync settings", "Choose startup folder", "Clear startup folder", "Set as Startup Folder", "Clear
+  Startup Folder", and one per sync-scope radio.
+- **Announcements added:** the set/clear/refusal sentences via `Report(...)`
+  (`AnnouncementCategory.Result`), and the startup fallback sentence
+  (`AnnouncementCategory.Status`). No new announcement categories.
+- **Removed:** `SavedView.IsDefault`, `ViewManagerViewModel.EditIsDefault`, the View Manager's
+  Options group, and the post-connect `ApplyViewAsync` call in `StartBackgroundSyncAsync`.
+- **VM state:** `MainViewModel._connectedAccountIds` is new and is now the authority on connection
+  state (§5.2).
+- **Test registries touched:** `RadioGroupWiringTests.RadioGroupSites` gains `StartupSyncScope`.
+  No new `Selector`-bound type, so `SelectorItemAccessibilityTests` and `TypeAheadWiringTests` are
+  unaffected.
 
 ---
 
-### Phase 2: ConfigModel + ConfigService for StartupFolder
+## Section 8: Tests
 
-**Goal:** `ConfigModel.StartupFolder` property reads from and writes to `[startup]` section of config.ini.
-
-**Deliverables:**
-- Modify `QuickMail/Models/ConfigModel.cs`: add `public string StartupFolder { get; set; } = "AllMail";`
-- Modify `QuickMail/Services/ConfigService.cs`: read/write `StartupFolder` from `[startup]` section (new section).
-
-**Tests:**
-- `SettingsViewModelTests` or a new `ConfigServiceStartupTests`: round-trip read/write of `StartupFolder`. Test default (key absent from config.ini returns `"AllMail"`). Test unknown value round-trips as-is.
-
-**Risk:** New INI section parsing — low risk given existing pattern. Low probability, Minor impact.
-
-**Duration:** 1–2 hours
+| Suite | Covers |
+|---|---|
+| `FolderStoreTests` | Folder table round-trip, replace-on-save, per-account isolation, purge, idempotent `Initialize` |
+| `ConfigServiceSaveTests` | All four keys through a real INI, fresh-config defaults, scope normalisation |
+| `MainViewModelStartupTests` | Resolution for each form, every fallback, `--online` |
+| `StartupFolderMigrationTests` | Each `IsDefault` shape, malformed JSON, never overwriting an explicit choice |
+| `StartupFolderCommandTests` | The context-menu guard, including the aggregates it must accept and the sentinels it must refuse |
+| `StartupSyncScopeTests` | Which folders each scope actually visits; the progress denominator |
+| `StartupSettingsTests` | Settings round-trip, Choose/Clear, and call-site guards on the picker |
 
 ---
 
-### Phase 3: Apply StartupFolder in InitialLoadAsync
+## Section 9: Known limitation
 
-**Goal:** `InitialLoadAsync` selects the startup folder based on `ConfigModel.StartupFolder`, falling back to `AllMailFolder` for unrecognized values.
-
-**Deliverables:**
-- Modify `QuickMail/ViewModels/MainViewModel.cs` `InitialLoadAsync()`:
-  - Read `_configService.Load().StartupFolder`.
-  - Map the value to the correct `MailFolderModel` sentinel (using existing sentinel constants: `AllMailFolder`, `AllInboxesFolder`, `AllDraftsFolder`, `AllSentFolder`, `AllTrashFolder`, or a matching saved view).
-  - Fall back to `AllMailFolder` if no match.
-  - Set `SelectedFolder` to the resolved folder.
-  - Load cache for that folder (for virtual folders: `LoadAllSummariesAsync` already loads everything from SQLite, which is correct for any virtual view — no change needed there).
-
-**Tests:**
-- `MainViewModelStartupTests` (new or extend existing): verify `InitialLoadAsync` selects the correct `SelectedFolder` for each valid `StartupFolder` value; verify fallback to `AllMailFolder` for unknown value.
-
-**Risk:** If `SavedViews` is not yet populated when `InitialLoadAsync` runs (saved views load async from store), the saved-view lookup may fail to match. Mitigation: load saved views synchronously during `InitialLoadAsync` before the folder lookup, or accept that saved-view startup folder may silently fall back to "All Mail" on first launch (acceptable — saved views are populated before display in normal flow).
-
-**Duration:** 1–2 hours
-
----
-
-### Phase 4: Settings UI
-
-**Goal:** Users can select their startup folder in Settings → General.
-
-**Deliverables:**
-- Modify `QuickMail/ViewModels/SettingsViewModel.cs`: add `StartupFolder` string property (two-way bound to config). Add `StartupFolderOptions` list populated from virtual folder names + current saved views.
-- Modify `QuickMail/Views/SettingsWindow.xaml`: add Label + ComboBox in General section, bound to `StartupFolder` and `StartupFolderOptions`.
-- Options list: "All Mail", "All Inboxes", "All Drafts", "All Sent", "All Trash", then each saved view by name.
-
-**Tests:**
-- `XamlParseTests`: `SettingsWindow` XAML loads without error (catches XAML binding mistakes).
-- `SettingsViewModelTests`: verify `StartupFolderOptions` contains at least the 5 virtual folder options; verify `StartupFolder` property round-trips through config.
-
-**Risk:** `SettingsViewModel` currently has no dependency on `ISavedViewService` or the saved views list. Options: (a) inject saved views at construction (preferred), (b) derive options from `_viewService.GetSavedViews()`. Verify that existing `SettingsViewModelTests` compile and pass with the new injection.
-
-**Duration:** 2–3 hours
-
----
-
-## Section 11: Files to Create / Modify
-
-### Files to Modify
-
-| File | Changes | Lines changed (est.) |
-|---|---|---|
-| `Services/SyncService.cs` | Restructure `SyncAllAccountsAsync` into two-pass parallel; `Interlocked.Increment` for progress counter | +40, -20 |
-| `Models/ConfigModel.cs` | Add `StartupFolder` string property with default `"AllMail"` | +5 |
-| `Services/ConfigService.cs` | Read/write `[startup]` section; parse `StartupFolder` | +15 |
-| `ViewModels/MainViewModel.cs` | `InitialLoadAsync`: resolve startup folder from config | +20 |
-| `ViewModels/SettingsViewModel.cs` | Add `StartupFolder`, `StartupFolderOptions` | +30 |
-| `Views/SettingsWindow.xaml` | Add Label, read-only TextBlock, and "Choose…" button for startup folder in General tab | +15 |
-
-### Files to Create
-
-None. All changes extend existing files.
-
----
-
-## Section 12: Tests to Add
-
-| Test Class | Test Methods | Coverage |
-|---|---|---|
-| `SyncServiceTests` (new) | `InboxFoldersCompleteBeforeOtherFolders`, `ExceptionInOneAccountDoesNotCancelOthers`, `ProgressCounterAccurateWithParallelAccounts` | Sync ordering, error isolation, progress reporting |
-| `ConfigServiceStartupTests` (new or extend `SettingsViewModelTests`) | `StartupFolder_DefaultIsAllMail`, `StartupFolder_RoundTrip`, `StartupFolder_AbsentKeyReturnsDefault` | Config persistence |
-| `MainViewModelStartupTests` (new or extend `ViewModelConstructionTests`) | `InitialLoad_DefaultStartupFolder_SelectsAllMail`, `InitialLoad_AllInboxesStartupFolder`, `InitialLoad_UnknownStartupFolder_FallsBackToAllMail` | Startup folder resolution |
-| `SettingsViewModelTests` (extend) | `StartupFolderOptions_ContainsVirtualFolders`, `StartupFolder_BindsToConfig` | Settings persistence |
-| `XamlParseTests` (extend) | `SettingsWindow_ParsesWithoutError` (already exists, covers new XAML) | XAML correctness |
-
----
-
-## Section 13: Known Risks & Open Questions
-
-### 13.1 Risks
-
-| Risk | Probability | Impact | Mitigation |
-|---|---|---|---|
-| `Interlocked.Increment` race in `SyncProgressChanged` counter with parallel accounts | Medium | Minor (cosmetic: incorrect progress count) | Use `Interlocked.Increment`; unit test with two concurrent accounts |
-| Saved-view lookup in `InitialLoadAsync` fails because views not yet loaded from SQLite | Medium | Minor (silent fallback to All Mail) | Acceptable for v1; document in Phase 3 implementation note |
-| Parallel account sync reveals hidden concurrency bug in `ImapMailService` | Low | Major | Each account already has its own IMAP client stack; concurrent calls on *different* accounts are safe. Test with 3+ accounts. |
-| `SyncService` progress total count changes if Inbox-pass and remaining-pass overlap | Low | Minor | Count all non-excluded folders once at the start, same as today; the two-pass split doesn't change total. |
-
-### 13.2 Open questions
-
-All resolved before implementation:
-
-- **Q: Should parallel account sync be capped?** No additional cap needed — each account's IMAP connections are already limited by `MaxImapConnectionsPerAccount`. `Task.WhenAll` over accounts is safe.
-- **Q: What if a user's saved view is named "AllMail" — does it shadow the virtual folder?** The virtual folders are matched first by sentinel name; saved views are matched second. "AllMail" (no sentinel prefix) would only shadow if we search saved views before virtuals. Implementation must check sentinel names first.
-- **Q: Should "All Inboxes" become the new default instead of "All Mail"?** No — keep "All Mail" as the default for v1 to avoid surprising existing users. The user guide can recommend "All Inboxes" as the better default for inbox-focused users. This can be revisited for v2.
-
----
-
-## Section 14: Implementation Guidance for AI
-
-### 14.1 Adjustments you're expected to make
-
-- The spec describes `Task.WhenAll` over accounts. If you discover that `ImapMailService.GetOrReconnectAsync` is NOT thread-safe for concurrent calls on *different* account IDs (e.g., a shared dictionary without locking), fall back to sequential account processing but keep the inbox-first folder ordering within each account. Document the deviation.
-- `StartupFolderOptions` in `SettingsViewModel` requires access to saved views. Inject the saved views list via the constructor or a method. Choose whichever approach is consistent with how `SettingsViewModel` currently gets other dynamic data.
-- The ComboBox in `SettingsWindow.xaml` should use `DisplayMemberPath` or an item template that shows the display name. The stored value should be the sentinel/name string, not an index.
-
-### 14.2 When to ask for clarification
-
-- If `ImapMailService` has a shared lock or synchronization concern that makes parallel account access risky, stop and ask before proceeding with Phase 1.
-- If saved views are not available at the time `SettingsViewModel` is constructed (because they load async), stop and ask how to populate `StartupFolderOptions`.
-
-### 14.3 Acceptance walkthrough preview
-
-After implementation, the highest-risk steps to verify are:
-
-1. **Scenario 2, step 2** — inbox messages appear in the list faster than today (subjective but perceptible on a multi-account setup).
-2. **Scenario 3** — saved-view default still overrides `StartupFolder`. This is the most likely regression.
-3. **Scenario 4** — unknown `StartupFolder` value does not crash on startup.
+The periodic sweep is unscoped: it visits every folder every `MailSyncPollMinutes` (default 5). So
+work skipped at launch still happens shortly after. This moves load out of the critical window
+rather than removing it. Scoping the sweep is [#462](https://github.com/kellylford/QuickMail/issues/462)
+and was deliberately left out of #516.

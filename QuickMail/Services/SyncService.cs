@@ -75,6 +75,60 @@ public class SyncService : ISyncService
         foreach (var id in accountIds) _rebuildAccounts.TryAdd(id, 0);
     }
 
+    /// <summary>
+    /// Which folders this launch's sync covers, per <see cref="ConfigModel.StartupSyncScope"/>.
+    /// Returns a predicate rather than a set so the two-pass loop stays untouched.
+    ///
+    /// <para><c>startupFolder</c> — the default — syncs exactly what the startup folder shows. That
+    /// means a real folder syncs alone, All Inboxes syncs every Inbox, and All Mail syncs
+    /// everything, because All Mail spans everything and a narrower sync would put stale rows on
+    /// screen. So a user who has not chosen a startup folder still gets today's full sweep: the
+    /// saving is opted into by choosing a narrower place to start, not imposed.</para>
+    ///
+    /// <para>All Archive is approximated by <see cref="SpecialFolderKind.Archive"/>; resolving a
+    /// per-account archive override lives in the VM and is not worth reaching for here, since
+    /// guessing wide only costs one extra folder. A <c>view:{guid}</c> startup folder syncs
+    /// everything for the same reason — this layer has no view service to resolve it.</para>
+    /// </summary>
+    private static Func<AccountModel, MailFolderModel, bool> BuildStartupScopeFilter(
+        ConfigModel cfg, string scope,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+    {
+        if (scope == ConfigModel.StartupSyncScopeAll)
+            return static (_, _) => true;
+
+        if (scope == ConfigModel.StartupSyncScopeInboxes)
+            return static (_, f) => f.Kind == SpecialFolderKind.Inbox;
+
+        // startupFolder: mirror whatever the startup folder covers.
+        var key = cfg.StartupFolder;
+        if (string.IsNullOrWhiteSpace(key) || key.StartsWith("view:", StringComparison.Ordinal))
+            return static (_, _) => true;                       // All Mail, or a view we cannot resolve
+
+        if (!string.IsNullOrWhiteSpace(cfg.StartupFolderAccount))
+        {
+            if (!Guid.TryParse(cfg.StartupFolderAccount, out var accountId))
+                return static (_, _) => true;                   // unreadable — sync wide rather than nothing
+            // One real folder. Its account must still be one we know about; if the folder itself has
+            // gone, startup falls back to All Mail, so sync wide rather than sync nothing.
+            var known = cachedFolders.TryGetValue(accountId, out var fl) &&
+                        fl.Any(f => string.Equals(f.FullName, key, StringComparison.OrdinalIgnoreCase));
+            if (!known) return static (_, _) => true;
+            return (a, f) => a.Id == accountId &&
+                             string.Equals(f.FullName, key, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return key switch
+        {
+            "AllInboxes" => static (_, f) => f.Kind == SpecialFolderKind.Inbox,
+            "AllDrafts"  => static (_, f) => f.Kind == SpecialFolderKind.Drafts,
+            "AllSent"    => static (_, f) => f.Kind == SpecialFolderKind.Sent,
+            "AllTrash"   => static (_, f) => f.Kind == SpecialFolderKind.Trash,
+            "AllArchive" => static (_, f) => f.Kind == SpecialFolderKind.Archive,
+            _            => static (_, _) => true,              // AllMail, AllFlagged, AllWatched, unknown
+        };
+    }
+
     public async Task SyncAllAccountsAsync(
         IEnumerable<AccountModel> accounts,
         IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
@@ -83,8 +137,19 @@ public class SyncService : ISyncService
         var previewJobs = new ConcurrentBag<(AccountModel Account, MailFolderModel Folder, List<MailMessageSummary> Incoming)>();
         var accountList = accounts.ToList();
 
+        // Startup sync scope (#516). This method has exactly one caller — MainViewModel's startup
+        // pass — so it IS the startup sync, and reading the setting here keeps it off the interface
+        // and out of five test stubs. InScope decides which folders this launch covers; everything
+        // it skips is still picked up by the periodic sweep, which visits every folder, and by the
+        // IMAP IDLE / Graph delta watchers, which cover every account's Inbox live. Nothing is
+        // skipped permanently, and new-mail notifications are unaffected.
+        var startupCfg = _config.Load();
+        var scope      = ConfigModel.ParseStartupSyncScope(startupCfg.StartupSyncScope);
+        var inScope    = BuildStartupScopeFilter(startupCfg, scope, cachedFolders);
+
         int totalFolders = accountList.Sum(a =>
-            cachedFolders.TryGetValue(a.Id, out var fl) ? fl.Count(f => !f.ExcludeFromAllMail) : 0);
+            cachedFolders.TryGetValue(a.Id, out var fl)
+                ? fl.Count(f => !f.ExcludeFromAllMail && inScope(a, f)) : 0);
 
         // int[] so Interlocked.Increment works inside async lambdas (can't use ref locals there).
         int[] completedFolders = { 0 };
@@ -107,6 +172,7 @@ public class SyncService : ISyncService
                     {
                         ct.ThrowIfCancellationRequested();
                         if (folder.ExcludeFromAllMail || !folderFilter(folder)) continue;
+                        if (!inScope(account, folder)) continue;
                         try
                         {
                             var incoming = await SyncFolderAsync(account, folder, ct);

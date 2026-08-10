@@ -77,8 +77,9 @@ public partial class ViewManagerViewModel : ObservableObject
     [ObservableProperty]
     private string _editHotkey = string.Empty;
 
-    [ObservableProperty]
-    private bool _editIsDefault;
+    // EditIsDefault (and SavedView.IsDefault behind it) was removed in #516. A startup folder is a
+    // folder, set from the folder tree or Settings > Startup — not a flag on a saved view the user
+    // had to create first.
 
     /// <summary>Bound to the day-limit TextBox. Empty string means no limit.</summary>
     [ObservableProperty]
@@ -340,7 +341,6 @@ public partial class ViewManagerViewModel : ObservableObject
         SelectedView   = view;
         EditName       = view.Name;
         EditHotkey     = string.Empty;
-        EditIsDefault  = false;
         EditUnlimitedDays = !CurrentDayLimit.HasValue;
         EditDaysOfMail = CurrentDayLimit.HasValue ? CurrentDayLimit.Value.ToString() : string.Empty;
 
@@ -417,7 +417,6 @@ public partial class ViewManagerViewModel : ObservableObject
         SelectedView      = null;
         EditName          = string.Empty;
         EditHotkey        = string.Empty;
-        EditIsDefault     = false;
         EditUnlimitedDays = true;
         EditDaysOfMail    = string.Empty;
         Persist();
@@ -463,7 +462,6 @@ public partial class ViewManagerViewModel : ObservableObject
         {
             EditName       = SelectedView.Name;
             EditHotkey     = GetEffectiveHotkey(SelectedView);
-            EditIsDefault  = SelectedView.IsDefault;
             EditUnlimitedDays = !SelectedView.DaysOfMail.HasValue;
             EditDaysOfMail = SelectedView.DaysOfMail.HasValue ? SelectedView.DaysOfMail.Value.ToString() : string.Empty;
         }
@@ -505,7 +503,6 @@ public partial class ViewManagerViewModel : ObservableObject
         {
             EditName          = string.Empty;
             EditHotkey        = string.Empty;
-            EditIsDefault     = false;
             EditUnlimitedDays = true;
             EditDaysOfMail    = string.Empty;
         }
@@ -513,7 +510,6 @@ public partial class ViewManagerViewModel : ObservableObject
         {
             EditName          = value.Name;
             EditHotkey        = GetEffectiveHotkey(value);
-            EditIsDefault     = value.IsDefault;
             EditUnlimitedDays = !value.DaysOfMail.HasValue;
             EditDaysOfMail    = value.DaysOfMail.HasValue ? value.DaysOfMail.Value.ToString() : string.Empty;
         }
@@ -599,14 +595,6 @@ public partial class ViewManagerViewModel : ObservableObject
 
         if (SelectedView.Hotkey != oldHotkey)
             PersistHotkey(SelectedView);
-
-        // Update default — clear any other default first
-        if (EditIsDefault && !SelectedView.IsDefault)
-        {
-            foreach (var v in SavedViews.Where(v => v != SelectedView))
-                v.IsDefault = false;
-        }
-        SelectedView.IsDefault = EditIsDefault;
 
         // Update day limit — "unlimited" checkbox wins; otherwise parse the text box
         SelectedView.DaysOfMail = EditUnlimitedDays

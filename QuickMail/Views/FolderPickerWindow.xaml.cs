@@ -47,6 +47,10 @@ public partial class FolderPickerWindow : Window
     private List<AccountModel>? _treeAccounts;
     private Dictionary<Guid, List<MailFolderModel>>? _treeFolders;
 
+    /// <summary>Virtual aggregates offered as tree roots above the accounts (#516). Empty for the
+    /// pickers where an aggregate is not a legal destination — move/copy and rule targets.</summary>
+    private List<MailFolderModel> _treeVirtualFolders = [];
+
     // Tree view only: a folder (and everything under it) to leave out of the destination tree.
     // Set when the thing being moved or copied is itself a folder — see ForFolderMoveCopy.
     private readonly MailFolderModel? _excludeFolder;
@@ -108,7 +112,12 @@ public partial class FolderPickerWindow : Window
 
         if (_useTreeView)
         {
-            BuildTreeView(accounts, cachedFolders);
+            // Virtual folders reach tree mode too (#516). Until the startup picker needed them, the
+            // only tree-mode callers were move/copy and rule targets, for which an aggregate is not
+            // a legal destination — so virtualFolders was read only by the flat-list path below and
+            // silently dropped here. A startup folder may be an aggregate: All Inboxes is the most
+            // asked-for value of the whole setting.
+            BuildTreeView(accounts, cachedFolders, virtualFolders);
             return;
         }
 
@@ -169,11 +178,14 @@ public partial class FolderPickerWindow : Window
 
     private void BuildTreeView(
         IEnumerable<AccountModel> accounts,
-        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        IEnumerable<MailFolderModel>? virtualFolders = null)
     {
         SearchBox.Visibility = Visibility.Collapsed;
         FolderListBox.Visibility = Visibility.Collapsed;
         FolderTreeView.Visibility = Visibility.Visible;
+
+        _treeVirtualFolders = virtualFolders?.ToList() ?? [];
 
         // Retain a private, mutable copy so RebuildTreeView can regenerate the tree after a folder
         // is created without depending on the caller's snapshot (which may be a filtered copy).
@@ -245,6 +257,12 @@ public partial class FolderPickerWindow : Window
         if (_treeAccounts == null || _treeFolders == null) return;
 
         var roots = new List<FolderTreeNode>();
+
+        // Aggregates first, matching the main folder tree's order, so a user arriving from there
+        // finds All Inboxes where they expect it. Leaf nodes: an aggregate has no children.
+        foreach (var vf in _treeVirtualFolders)
+            roots.Add(new FolderTreeNode { Folder = vf, Label = vf.DisplayName });
+
         foreach (var account in _treeAccounts)
         {
             if (!_treeFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)
@@ -447,6 +465,57 @@ public partial class FolderPickerWindow : Window
             useScoped ? scopedAccounts : accounts,
             folders,
             title: title,
+            initialFolder: initial,
+            useTreeView: true);
+    }
+
+    /// <summary>
+    /// The picker for Settings → Startup (#516). A tree, like the other destination pickers, because
+    /// the user is choosing a folder they already know from the main window's folder tree.
+    ///
+    /// <para>Deliberately <b>unscoped</b>, unlike <see cref="ForFolderMoveCopy"/> and
+    /// <see cref="ForRuleTarget"/>. Those two scope to one account because their backends act by
+    /// folder <i>name</i> over that account's connection, so offering another account's "Archive"
+    /// silently operates on the wrong mailbox. A startup folder does the opposite: it is one global
+    /// choice across every account, stored with its owning account id, and resolved by that pair. So
+    /// the account-collision hazard does not apply, and scoping would make most of the tree
+    /// unreachable.</para>
+    ///
+    /// <para><paramref name="virtualFolders"/> carries the aggregates — All Inboxes, All Mail and the
+    /// rest — because "open me in All Inboxes" is the most-requested form of this setting, and they
+    /// are legitimate startup destinations even though no other destination picker offers them.</para>
+    ///
+    /// <para>Opens on the current choice: <paramref name="currentAccountId"/> plus
+    /// <paramref name="currentKey"/> for a real folder, or the matching aggregate for a virtual one.
+    /// A picker must not open with nothing selected — <see cref="SelectOpeningNode"/> stands in the
+    /// first real folder when there is no current choice to land on.</para>
+    /// </summary>
+    public static FolderPickerWindow ForStartupFolder(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        IEnumerable<MailFolderModel> virtualFolders,
+        string? currentKey,
+        Guid? currentAccountId)
+    {
+        var virtualList = virtualFolders?.ToList() ?? [];
+
+        MailFolderModel? initial = null;
+        if (!string.IsNullOrEmpty(currentKey))
+        {
+            initial = currentAccountId is Guid acct && acct != Guid.Empty
+                ? (cachedFolders.TryGetValue(acct, out var owned)
+                    ? owned.FirstOrDefault(f => string.Equals(f.FullName, currentKey, StringComparison.Ordinal))
+                    : null)
+                // A virtual key is stored without the NUL sentinel prefix; the aggregates carry it.
+                : virtualList.FirstOrDefault(f =>
+                    string.Equals(f.FullName, "\x00" + currentKey, StringComparison.Ordinal));
+        }
+
+        return new FolderPickerWindow(
+            accounts,
+            cachedFolders,
+            virtualFolders: virtualList,
+            title: "Choose Startup Folder",
             initialFolder: initial,
             useTreeView: true);
     }

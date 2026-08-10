@@ -530,7 +530,78 @@
                 </Grid>
             </TabItem>
 
-            <!-- Windowing Tab -->
+            <!-- Startup Tab (#516) -->
+            <TabItem Header="Start_up" AutomationProperties.Name="Startup settings">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="10">
+                        <!-- Startup folder -->
+                        <GroupBox Header="Startup _Folder" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Startup folder settings">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                           Text="Where QuickMail opens each time it starts. You can also set this from the folder tree: select a folder, open its context menu, and choose Set as Startup Folder."/>
+                                <Label x:Name="StartupFolderLabelControl"
+                                       Content="Opens _in:"
+                                       Target="{Binding ElementName=StartupFolderBox}"
+                                       FontWeight="SemiBold"/>
+                                <!-- Read-only rather than disabled: a disabled TextBox is skipped by Tab,
+                                     so the value would be unreachable to a keyboard or screen-reader user. -->
+                                <TextBox x:Name="StartupFolderBox"
+                                         Text="{Binding StartupFolderDisplay, Mode=OneWay}"
+                                         IsReadOnly="True"
+                                         AutomationProperties.LabeledBy="{Binding ElementName=StartupFolderLabelControl}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                    <Button Content="C_hoose…"
+                                            Command="{Binding ChooseStartupFolderCommand}"
+                                            AutomationProperties.Name="Choose startup folder"
+                                            MinWidth="90" Margin="0,0,8,0"/>
+                                    <Button Content="C_lear"
+                                            Command="{Binding ClearStartupFolderCommand}"
+                                            AutomationProperties.Name="Clear startup folder"
+                                            MinWidth="90"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+
+                        <!-- Startup sync -->
+                        <!-- Access keys across this whole dialog: G A K U W P (tabs), S (Save),
+                             C (Cancel). This tab therefore uses F I H L Y J X D, all otherwise
+                             unused. WPF cycles between duplicates rather than activating, so a
+                             collision costs the user the keystroke entirely. -->
+                        <GroupBox Header="Startup S_ync" Padding="10" Margin="0,0,0,15"
+                                  AutomationProperties.Name="Startup sync settings">
+                            <StackPanel>
+                                <TextBlock TextWrapping="Wrap" Margin="0,0,0,8"
+                                           Foreground="{DynamicResource Theme.TextSecondary}" FontSize="{DynamicResource Theme.FontSizeSmall}"
+                                           Text="How much mail to check when QuickMail starts. New mail still arrives in your inboxes right away whichever you choose. Other folders are caught up by the background check on the General tab — if you have set that to Off, they are only checked when you open them."/>
+                                <StackPanel KeyboardNavigation.TabNavigation="Once"
+                                            KeyboardNavigation.DirectionalNavigation="Cycle"
+                                            helpers:RadioGroupNavigation.SelectionFollowsFocus="True">
+                                    <RadioButton Content="_Just my startup folder (recommended)"
+                                                 IsChecked="{Binding IsStartupSyncScopeStartupFolder, Mode=TwoWay}"
+                                                 GroupName="StartupSyncScope"
+                                                 AutomationProperties.Name="Just my startup folder"
+                                                 AutomationProperties.HelpText="Fastest start. Checks only the folders your startup folder shows. If that is All Mail, this checks everything."
+                                                 Margin="0,0,0,4"/>
+                                    <RadioButton Content="Every account's inbo_x"
+                                                 IsChecked="{Binding IsStartupSyncScopeInboxes, Mode=TwoWay}"
+                                                 GroupName="StartupSyncScope"
+                                                 AutomationProperties.Name="Every account's inbox"
+                                                 AutomationProperties.HelpText="Checks each account's inbox at startup, whatever folder you open in."
+                                                 Margin="0,0,0,4"/>
+                                    <RadioButton Content="Every fol_der"
+                                                 IsChecked="{Binding IsStartupSyncScopeAll, Mode=TwoWay}"
+                                                 GroupName="StartupSyncScope"
+                                                 AutomationProperties.Name="Every folder"
+                                                 AutomationProperties.HelpText="Checks every folder on every account before settling. Slowest start, and how QuickMail behaved before this setting existed."/>
+                                </StackPanel>
+                            </StackPanel>
+                        </GroupBox>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem Header="_Windowing" AutomationProperties.Name="Windowing settings">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="10">

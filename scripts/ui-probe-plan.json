@@ -22,6 +22,11 @@
       "scale": 100
     },
     {
+      "surface": "settings-startup",
+      "theme": "parchment",
+      "scale": 100
+    },
+    {
       "surface": "theme-manager",
       "theme": "parchment",
       "scale": 100
@@ -77,6 +82,11 @@
       "scale": 100
     },
     {
+      "surface": "settings-startup",
+      "theme": "dark",
+      "scale": 100
+    },
+    {
       "surface": "theme-manager",
       "theme": "dark",
       "scale": 100
@@ -128,6 +138,11 @@
     },
     {
       "surface": "settings-appearance",
+      "theme": "parchment",
+      "scale": 150
+    },
+    {
+      "surface": "settings-startup",
       "theme": "parchment",
       "scale": 150
     },

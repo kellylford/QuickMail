@@ -37,6 +37,64 @@ public class ConfigModel
     /// </summary>
     public int SyncDays { get; set; } = 30;
 
+    // ── Startup (#516) ───────────────────────────────────────────────────────────
+    // Which folder QuickMail opens in, and how much it syncs getting there. Replaces the old
+    // "mark a saved view as the default" route, which took four steps and a permanent saved-view
+    // artifact to express one preference.
+
+    /// <summary>
+    /// Where QuickMail opens. Empty (the default) means All Mail — the behaviour before this
+    /// setting existed. Three other forms:
+    /// <list type="bullet">
+    /// <item>A virtual-folder key with no NUL prefix, e.g. <c>"AllInboxes"</c>. An INI file cannot
+    /// carry a NUL, so the sentinel prefix is stripped on write and restored on read — the same
+    /// convention <see cref="SavedView.VirtualFolderKey"/> already uses.</item>
+    /// <item>A real folder's <c>FullName</c>, paired with <see cref="StartupFolderAccount"/>.</item>
+    /// <item><c>"view:{guid}"</c> — only ever written by the one-time migration off
+    /// <c>SavedView.IsDefault</c>, for a multi-folder default view that no single folder can
+    /// express. No picker offers this form.</item>
+    /// </list>
+    /// An unresolvable value falls back to All Mail; it is never an error.
+    /// </summary>
+    public string StartupFolder { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Owning account for <see cref="StartupFolder"/> when it names a real folder. Empty means
+    /// <see cref="StartupFolder"/> is a virtual-folder key or a view reference, which belong to no
+    /// single account.
+    /// </summary>
+    public string StartupFolderAccount { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Display text for the configured startup folder, shown in Settings. Stored rather than
+    /// derived because for Microsoft Graph accounts <c>FullName</c> is an opaque server id, so
+    /// there is nothing human-readable to fall back on when the folder list is not loaded yet.
+    /// </summary>
+    public string StartupFolderLabel { get; set; } = string.Empty;
+
+    /// <summary>
+    /// How much to sync at launch. Values: <c>"startupFolder"</c> (default — only the folders the
+    /// startup folder covers), <c>"inboxes"</c> (every account's Inbox), <c>"all"</c> (every
+    /// non-excluded folder on every account, the behaviour before this setting existed).
+    /// Nothing is skipped permanently under any value: the periodic sweep still visits every
+    /// folder, and the IMAP IDLE / Graph delta watchers still cover every account's Inbox live,
+    /// so new-mail notifications are unaffected.
+    /// </summary>
+    public string StartupSyncScope { get; set; } = StartupSyncScopeStartupFolder;
+
+    public const string StartupSyncScopeStartupFolder = "startupFolder";
+    public const string StartupSyncScopeInboxes       = "inboxes";
+    public const string StartupSyncScopeAll           = "all";
+
+    /// <summary>Normalizes a persisted or user-supplied scope, falling back to the default.</summary>
+    public static string ParseStartupSyncScope(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "inboxes"        => StartupSyncScopeInboxes,
+        "all"            => StartupSyncScopeAll,
+        "startupfolder"  => StartupSyncScopeStartupFolder,   // explicit, not just the fallback
+        _                => StartupSyncScopeStartupFolder,
+    };
+
     /// <summary>Maximum simultaneous IMAP connections QuickMail may open per account.</summary>
     public int MaxImapConnectionsPerAccount { get; set; } = 6;
 

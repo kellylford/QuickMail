@@ -63,8 +63,10 @@ class StubImapMailServiceBase : IMailService
     public virtual Task DisconnectAsync(Guid accountId, CancellationToken ct = default) => _inner.DisconnectAsync(accountId, ct);
     public Task<List<MailFolderModel>> GetFoldersAsync(Guid accountId, CancellationToken ct = default) => _inner.GetFoldersAsync(accountId, ct);
     public Task<List<MailMessageSummary>> GetMessageSummariesAsync(Guid accountId, string folderName, int maxMessages, CancellationToken ct = default) => _inner.GetMessageSummariesAsync(accountId, folderName, maxMessages, ct);
-    public Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default) => _inner.GetMessagesSinceDateAsync(accountId, folderName, since, ct);
-    public Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid accountId, string folderName, string sinceMessageId, int initialCount, CancellationToken ct = default) => _inner.GetMessagesSinceAsync(accountId, folderName, sinceMessageId, initialCount, ct);
+    // Virtual: the two fetch entry points a sync exercises, so a double can record which folders
+    // were actually visited (#516 startup sync scope) without reimplementing IMailService.
+    public virtual Task<List<MailMessageSummary>> GetMessagesSinceDateAsync(Guid accountId, string folderName, DateTime since, CancellationToken ct = default) => _inner.GetMessagesSinceDateAsync(accountId, folderName, since, ct);
+    public virtual Task<List<MailMessageSummary>> GetMessagesSinceAsync(Guid accountId, string folderName, string sinceMessageId, int initialCount, CancellationToken ct = default) => _inner.GetMessagesSinceAsync(accountId, folderName, sinceMessageId, initialCount, ct);
     public Task<MailMessageDetail> GetMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.GetMessageDetailAsync(accountId, folderName, messageId, ct);
     public Task<MailMessageDetail> PrefetchMessageDetailAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.PrefetchMessageDetailAsync(accountId, folderName, messageId, ct);
     public Task MarkReadAsync(Guid accountId, string folderName, string messageId, CancellationToken ct = default) => _inner.MarkReadAsync(accountId, folderName, messageId, ct);
@@ -191,13 +193,45 @@ sealed class StubLocalStoreService : ILocalStoreService
 {
     public void Initialize() { }
     public Task UpsertSummariesAsync(IEnumerable<MailMessageSummary> summaries) => Task.CompletedTask;
-    public Task<List<MailMessageSummary>> LoadAllSummariesAsync() => Task.FromResult(new List<MailMessageSummary>());
-    public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId) => Task.FromResult(new List<MailMessageSummary>());
-    public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null) => Task.FromResult(new List<MailMessageSummary>());
+
+    /// <summary>Cached rows keyed by (account, folder). Empty by default, so every existing test that
+    /// never seeds it keeps seeing an empty cache; seed it to exercise a cache-first load such as the
+    /// startup folder (#516).</summary>
+    public Dictionary<(Guid AccountId, string Folder), List<MailMessageSummary>> SeededSummaries { get; } = [];
+
+    private static List<MailMessageSummary> Newest(IEnumerable<MailMessageSummary> rows)
+        => [.. rows.OrderByDescending(m => m.Date)];
+
+    public Task<List<MailMessageSummary>> LoadAllSummariesAsync()
+        => Task.FromResult(Newest(SeededSummaries.Values.SelectMany(v => v)));
+    public Task<List<MailMessageSummary>> LoadAllSummariesAsync(Guid accountId)
+        => Task.FromResult(Newest(SeededSummaries.Where(kv => kv.Key.AccountId == accountId).SelectMany(kv => kv.Value)));
+    public Task<List<MailMessageSummary>> LoadFolderSummariesAsync(Guid accountId, string folderName, int? limit = null)
+        => Task.FromResult(SeededSummaries.TryGetValue((accountId, folderName), out var rows)
+            ? Newest(rows) : []);
     public Task DeleteSummariesAsync(Guid accountId, string folderName, IEnumerable<string> messageIds) => Task.CompletedTask;
     public Task DeleteAccountDataAsync(Guid accountId) => Task.CompletedTask;
     public Task ClearCachedMailAsync(System.Collections.Generic.IEnumerable<System.Guid> accountIds) => Task.CompletedTask;
     public Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds) => Task.CompletedTask;
+
+    /// <summary>Folders the stub hands back from <see cref="LoadFoldersAsync"/> — seed this to stand in
+    /// for a persisted folder list at startup (#516). <see cref="SaveFoldersAsync"/> writes into it too,
+    /// so a save/load round-trip works without a real database.</summary>
+    public Dictionary<Guid, List<MailFolderModel>> SeededFolders { get; } = [];
+    public Task SaveFoldersAsync(Guid accountId, IReadOnlyList<MailFolderModel> folders)
+    {
+        SeededFolders[accountId] = [.. folders.Where(f => !f.IsHeader && f.FullName.Length > 0)];
+        return Task.CompletedTask;
+    }
+    public Task<Dictionary<Guid, List<MailFolderModel>>> LoadFoldersAsync()
+        => Task.FromResult(SeededFolders.ToDictionary(kv => kv.Key, kv => new List<MailFolderModel>(kv.Value)));
+    public Task PurgeFoldersForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
+    {
+        foreach (var id in SeededFolders.Keys.Where(k => !knownAccountIds.Contains(k)).ToList())
+            SeededFolders.Remove(id);
+        return Task.CompletedTask;
+    }
+
     public Task UpdateIsReadAsync(Guid accountId, string folderName, string messageId, bool isRead) => Task.CompletedTask;
     public Task UpdateIsReadBatchAsync(IEnumerable<(Guid AccountId, string FolderName, string MessageId)> items, bool isRead) => Task.CompletedTask;
     public Task UpdatePreviewAsync(Guid accountId, string folderName, string messageId, string preview) => Task.CompletedTask;

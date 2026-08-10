@@ -1299,6 +1299,18 @@ public partial class MainWindow : Window
             execute: () => Report(_vm.ClearDefaultCalendar()),
             isAvailable: () => _vm.CalendarVm != null));
 
+        // ── Startup folder (#516) ──
+        // No default key: the folder-tree context menu and Settings > Startup are the primary
+        // entry points. Registered so both are reachable — and rebindable — from the palette.
+        _registry.Register(new CommandDefinition(
+            id: "folder.setStartupFolder", category: "Mail", title: "Set as Startup Folder",
+            execute: SetStartupFolderFromSelection,
+            isAvailable: () => FolderList.IsKeyboardFocusWithin && FolderList.SelectedItem != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "folder.clearStartupFolder", category: "Mail", title: "Clear Startup Folder",
+            execute: () => Report(_vm.ClearStartupFolder())));
+
         // ── Respond to a pending invitation (Enter opens the menu; these are the palette entries) ──
         // No default key: Enter (calendar.openSourceMessage) shows the response menu, which is the
         // primary entry point. These keep the actions discoverable and rebindable in the palette.
@@ -5584,6 +5596,19 @@ public partial class MainWindow : Window
         await reload;
     }
 
+    // ── Startup folder (#516) ────────────────────────────────────────────────
+
+    private void FolderContextMenu_SetStartupFolder_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.SetStartupFolder(GetContextMenuFolderNode(sender)));
+
+    private void FolderContextMenu_ClearStartupFolder_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ClearStartupFolder());
+
+    // Selection-based twins. The context menu must never be the only way to reach an action
+    // (issue #250) — these are what the command palette and any user-assigned hotkey invoke.
+    private void SetStartupFolderFromSelection()
+        => Report(_vm.SetStartupFolder(FolderList.SelectedItem as FolderTreeNode));
+
     // ── Calendar context menu handlers (issue #497) ──────────────────────────
 
     private void CalendarContextMenu_SetDefault_Click(object sender, RoutedEventArgs e)
@@ -5848,6 +5873,22 @@ public partial class MainWindow : Window
         var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
             (Application.Current as App)?.ScreenshotCapture);
         var dialog = new SettingsDialog(vm) { Owner = this };
+
+        // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
+        // plain record back (#516). Wired here rather than in SettingsDialog because this is where
+        // the accounts and the folder cache live. The picker is a ShowDialog over the Settings
+        // dialog, which hosts no WebView2, so the modal-nesting rule does not bite.
+        vm.PickStartupFolderRequested = () =>
+        {
+            var picker = FolderPickerWindow.ForStartupFolder(
+                _vm.Accounts, _vm.CachedFolders, MainViewModel.AllVirtualFolders,
+                vm.StartupFolder,
+                Guid.TryParse(vm.StartupFolderAccount, out var acct) ? acct : null);
+            picker.Owner = dialog;
+            // Hand back the folder itself; converting it to storage form is the VM's job.
+            return picker.ShowDialog() == true ? picker.SelectedFolder : null;
+        };
+
         if (dialog.ShowDialog() == true)
         {
             // The dialog's message loop is dead here, so ApplySettings may safely
@@ -6183,6 +6224,10 @@ public partial class MainWindow : Window
             foreach (var (accountId, folders) in _vm.CachedFolders)
             {
                 if (accountScope is { } scope && accountId != scope) continue;
+                // Since #516 the folder cache is restored from disk at launch, so an entry here no
+                // longer implies the account connected. The fail-closed rule below depends on
+                // "couldn't resolve an Inbox" meaning "not connected", so ask directly.
+                if (!_vm.IsAccountReady(accountId)) continue;
                 var inbox = folders.FirstOrDefault(f =>
                     f.Kind == SpecialFolderKind.Inbox ||
                     string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));

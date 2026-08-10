@@ -209,13 +209,10 @@
                                    Text="days"/>
                     </Grid>
 
-                    <!-- Options -->
-                    <TextBlock Style="{StaticResource SectionLabel}" Text="Options"
-                               Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
-                    <CheckBox Content="_Default view (applied on startup)"
-                              IsChecked="{Binding EditIsDefault}"
-                              AutomationProperties.Name="Set as default view"
-                              Visibility="{Binding ShowEditPanel, Converter={StaticResource BoolToVis}}"/>
+                    <!-- The "Default view (applied on startup)" checkbox lived here until #516. Setting
+                         a startup folder no longer needs a saved view at all: use the folder tree's
+                         "Set as Startup Folder", or Tools > Settings > Startup. The whole Options
+                         section went with it, being that checkbox and nothing else. -->
 
                     <!-- Name (last before Save — shown after day limit so the suggestion already includes it) -->
                     <TextBlock Style="{StaticResource SectionLabel}" Text="Name"

@@ -32,8 +32,10 @@ public class SavedView
     /// <summary>Gesture string for the default keyboard shortcut, e.g. "Ctrl+1". Null = no shortcut.</summary>
     public string? Hotkey  { get; set; }
 
-    /// <summary>When true this view is applied automatically on startup.</summary>
-    public bool IsDefault  { get; set; }
+    // IsDefault ("applied automatically on startup") was removed in #516. Choosing where QuickMail
+    // opens no longer requires creating a saved view: see ConfigModel.StartupFolder. Existing
+    // views.json files still carry the property; StartupFolderMigration reads it once, converts it
+    // to the new setting, and it drops out on the next save.
 
     /// <summary>
     /// When set, only messages received within this many days are shown.

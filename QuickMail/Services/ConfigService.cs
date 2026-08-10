@@ -211,6 +211,16 @@ public class ConfigService : IConfigService
                     case "syncdays":
                         if (int.TryParse(value, out var sd)) config.SyncDays = Math.Max(0, sd);
                         break;
+                    // ── Startup (#516) ──
+                    // Values are round-tripped verbatim: a folder name is whatever the server calls
+                    // it (for Graph, an opaque id), so there is nothing to validate here. An
+                    // unresolvable startup folder is handled at launch by falling back to All Mail.
+                    case "startupfolder":        config.StartupFolder        = value; break;
+                    case "startupfolderaccount": config.StartupFolderAccount = value; break;
+                    case "startupfolderlabel":   config.StartupFolderLabel   = value; break;
+                    case "startupsyncscope":
+                        config.StartupSyncScope = ConfigModel.ParseStartupSyncScope(value);
+                        break;
                     case "maximapconnectionsperaccount":
                         if (int.TryParse(value, out var maxConn))
                             config.MaxImapConnectionsPerAccount = Math.Clamp(maxConn, 1, 15);
@@ -669,11 +679,43 @@ public class ConfigService : IConfigService
         }
         sb.AppendLine();
 
+        // ── Startup (#516) ───────────────────────────────────────────────────────
+        // Parsed under [global], so these must stay above the [windowing] header — see the note
+        // below. Written unconditionally (even when empty) so the file documents the settings and
+        // shows a user where to look; empty StartupFolder means All Mail.
+        sb.AppendLine($"StartupFolder = {config.StartupFolder}");
+        sb.AppendLine("# The folder QuickMail opens in. Empty means All Mail.");
+        sb.AppendLine("# Set it from the folder tree's context menu (\"Set as Startup Folder\") or");
+        sb.AppendLine("# under Tools > Settings > Startup. A virtual folder is stored by name, e.g.");
+        sb.AppendLine("# AllInboxes; a real folder is stored as its server name plus the account");
+        sb.AppendLine("# below. A folder that no longer exists falls back to All Mail at launch.");
+        sb.AppendLine();
+
+        sb.AppendLine($"StartupFolderAccount = {config.StartupFolderAccount}");
+        sb.AppendLine("# The account owning StartupFolder, when it names a real folder.");
+        sb.AppendLine("# Empty when StartupFolder is a virtual folder such as AllInboxes.");
+        sb.AppendLine();
+
+        sb.AppendLine($"StartupFolderLabel = {config.StartupFolderLabel}");
+        sb.AppendLine("# Display name for the startup folder, shown in Settings. Cosmetic only —");
+        sb.AppendLine("# stored because Microsoft 365 folder names are opaque server ids.");
+        sb.AppendLine();
+
+        sb.AppendLine($"StartupSyncScope = {config.StartupSyncScope}");
+        sb.AppendLine("# How much mail to sync at launch.");
+        sb.AppendLine("# Values: startupFolder (default) syncs only the folders your startup folder");
+        sb.AppendLine("#   covers; inboxes syncs every account's Inbox; all syncs every folder.");
+        sb.AppendLine("# New-mail notifications are unaffected by this setting — inboxes are always");
+        sb.AppendLine("# watched. Other folders are caught up by the periodic check; if");
+        sb.AppendLine("# MailSyncPollMinutes is 0 (off), they are only synced when you open them.");
+        sb.AppendLine();
+
         // ── [windowing] ──────────────────────────────────────────────────────────
         // NOTE: ShowDeclinedEvents and CalendarPaneOpen above are parsed under the [global]
         // section (see ParseFile) — they must stay above this header. They were previously
         // written after it by mistake, so both settings were silently dropped back to their
         // default (off) on the very next load, regardless of what the user configured.
+        // The Startup block immediately above is [global] too, for the same reason.
 
         sb.AppendLine("[windowing]");
         sb.AppendLine();
