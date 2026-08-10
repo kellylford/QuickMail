@@ -89,9 +89,10 @@ public class ConfigModel
     /// <summary>Normalizes a persisted or user-supplied scope, falling back to the default.</summary>
     public static string ParseStartupSyncScope(string? value) => value?.Trim().ToLowerInvariant() switch
     {
-        "inboxes" => StartupSyncScopeInboxes,
-        "all"     => StartupSyncScopeAll,
-        _         => StartupSyncScopeStartupFolder,
+        "inboxes"        => StartupSyncScopeInboxes,
+        "all"            => StartupSyncScopeAll,
+        "startupfolder"  => StartupSyncScopeStartupFolder,   // explicit, not just the fallback
+        _                => StartupSyncScopeStartupFolder,
     };
 
     /// <summary>Maximum simultaneous IMAP connections QuickMail may open per account.</summary>

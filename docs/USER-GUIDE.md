@@ -1013,7 +1013,7 @@ Also under **Tools → Settings → Startup**, **Startup Sync** controls how muc
 - **Every account's inbox** — checks each account's inbox, whichever folder you open in.
 - **Every folder** — checks everything before settling. This is how QuickMail behaved before this setting existed.
 
-Whichever you choose, nothing is skipped for long: QuickMail keeps checking every folder in the background afterwards, and new mail still arrives in your inboxes straight away, so notifications are unaffected.
+New mail still arrives in your inboxes straight away whichever you choose, so notifications are unaffected. Other folders are caught up by the background check — the **Check for new mail every** setting on the **General** tab. If you have set that to **Off**, other folders are only checked when you open them.
 
 ---
 

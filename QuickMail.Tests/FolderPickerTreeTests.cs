@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using QuickMail.Models;
+using QuickMail.ViewModels;
 using QuickMail.Views;
 using Xunit;
 
@@ -371,5 +372,97 @@ public class FolderPickerTreeTests
             AccessibilityHelper.AnnouncementObserver = null;
             window.Close();
         }
+    }
+
+    // ── ForStartupFolder (#516) ──────────────────────────────────────────────────
+
+    private static FolderPickerWindow StartupPicker(string? currentKey = null, Guid? currentAccount = null) =>
+        Shown(FolderPickerWindow.ForStartupFolder(
+            [Account()], Folders(), MainViewModel.AllVirtualFolders, currentKey, currentAccount));
+
+    [StaFact]
+    public void ForStartupFolder_OffersTheVirtualAggregatesAsRoots()
+    {
+        // The regression this pins: tree mode returned before virtualFolders was ever read, so every
+        // aggregate was silently dropped and Settings could not select All Inboxes at all — the most
+        // asked-for value of the whole setting. The call-site test that only checked the argument
+        // appeared in MainWindow's source passed the entire time.
+        var window = StartupPicker();
+        try
+        {
+            var roots = Roots(window);
+            Assert.Contains(roots, r => r.Folder?.FullName == MainViewModel.AllInboxesFolder.FullName);
+            Assert.Contains(roots, r => r.Folder?.FullName == MainViewModel.AllMailFolder.FullName);
+
+            // Aggregates come first, matching the main folder tree's order.
+            Assert.Equal(MainViewModel.AllMailFolder.FullName, roots[0].Folder?.FullName);
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void ForStartupFolder_StillOffersTheRealFolders()
+    {
+        var window = StartupPicker();
+        try
+        {
+            Assert.Contains(Flatten(Roots(window)),
+                            n => n.Folder is { IsHeader: false } f && f.FullName == "INBOX");
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void ForStartupFolder_OpensOnTheCurrentVirtualChoice()
+    {
+        // Stored without the NUL sentinel prefix, so the factory has to restore it to match.
+        var window = StartupPicker(currentKey: "AllInboxes");
+        try
+        {
+            var selected = Assert.IsType<FolderTreeNode>(
+                Named<TreeView>(window, "FolderTreeView").SelectedItem);
+            Assert.Equal(MainViewModel.AllInboxesFolder.FullName, selected.Folder?.FullName);
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void ForStartupFolder_OpensOnTheCurrentRealFolder()
+    {
+        var window = StartupPicker(currentKey: "INBOX", currentAccount: AccountId);
+        try
+        {
+            var selected = Assert.IsType<FolderTreeNode>(
+                Named<TreeView>(window, "FolderTreeView").SelectedItem);
+            Assert.Equal("INBOX", selected.Folder?.FullName);
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void ForStartupFolder_NeverOpensWithNothingSelected()
+    {
+        // The picker rule: a tree with no selection announces the tree and no item, leaving the user
+        // to work out that Down is what starts things.
+        var window = StartupPicker();
+        try
+        {
+            Assert.NotNull(Named<TreeView>(window, "FolderTreeView").SelectedItem);
+        }
+        finally { window.Close(); }
+    }
+
+    [StaFact]
+    public void MoveCopyPicker_StillOffersNoAggregates()
+    {
+        // The other side of the same change: an aggregate is not a legal move/copy destination, and
+        // adding virtual-folder support to tree mode must not have leaked them in here.
+        var window = Picker();
+        try
+        {
+            Assert.DoesNotContain(Flatten(Roots(window)),
+                                  n => n.Folder is { } f && f.FullName.StartsWith('\0'));
+        }
+        finally { window.Close(); }
     }
 }

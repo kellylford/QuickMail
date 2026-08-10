@@ -47,6 +47,10 @@ public partial class FolderPickerWindow : Window
     private List<AccountModel>? _treeAccounts;
     private Dictionary<Guid, List<MailFolderModel>>? _treeFolders;
 
+    /// <summary>Virtual aggregates offered as tree roots above the accounts (#516). Empty for the
+    /// pickers where an aggregate is not a legal destination — move/copy and rule targets.</summary>
+    private List<MailFolderModel> _treeVirtualFolders = [];
+
     // Tree view only: a folder (and everything under it) to leave out of the destination tree.
     // Set when the thing being moved or copied is itself a folder — see ForFolderMoveCopy.
     private readonly MailFolderModel? _excludeFolder;
@@ -108,7 +112,12 @@ public partial class FolderPickerWindow : Window
 
         if (_useTreeView)
         {
-            BuildTreeView(accounts, cachedFolders);
+            // Virtual folders reach tree mode too (#516). Until the startup picker needed them, the
+            // only tree-mode callers were move/copy and rule targets, for which an aggregate is not
+            // a legal destination — so virtualFolders was read only by the flat-list path below and
+            // silently dropped here. A startup folder may be an aggregate: All Inboxes is the most
+            // asked-for value of the whole setting.
+            BuildTreeView(accounts, cachedFolders, virtualFolders);
             return;
         }
 
@@ -169,11 +178,14 @@ public partial class FolderPickerWindow : Window
 
     private void BuildTreeView(
         IEnumerable<AccountModel> accounts,
-        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders)
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        IEnumerable<MailFolderModel>? virtualFolders = null)
     {
         SearchBox.Visibility = Visibility.Collapsed;
         FolderListBox.Visibility = Visibility.Collapsed;
         FolderTreeView.Visibility = Visibility.Visible;
+
+        _treeVirtualFolders = virtualFolders?.ToList() ?? [];
 
         // Retain a private, mutable copy so RebuildTreeView can regenerate the tree after a folder
         // is created without depending on the caller's snapshot (which may be a filtered copy).
@@ -245,6 +257,12 @@ public partial class FolderPickerWindow : Window
         if (_treeAccounts == null || _treeFolders == null) return;
 
         var roots = new List<FolderTreeNode>();
+
+        // Aggregates first, matching the main folder tree's order, so a user arriving from there
+        // finds All Inboxes where they expect it. Leaf nodes: an aggregate has no children.
+        foreach (var vf in _treeVirtualFolders)
+            roots.Add(new FolderTreeNode { Folder = vf, Label = vf.DisplayName });
+
         foreach (var account in _treeAccounts)
         {
             if (!_treeFolders.TryGetValue(account.Id, out var folders) || folders.Count == 0)

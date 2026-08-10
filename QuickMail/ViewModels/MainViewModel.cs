@@ -202,6 +202,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly HashSet<Guid> _connectedAccountIds = [];
 
     /// <summary>
+    /// Set when <see cref="InitialLoadAsync"/> had a startup folder configured but no persisted
+    /// folder list to resolve it against — the first launch after upgrading (the migration has just
+    /// written one), a fresh <c>--profileDir</c>, or a rebuilt <c>mail.db</c>. Consumed once by
+    /// <see cref="StartBackgroundSyncAsync"/> after the connect pass, so the user's choice is
+    /// honoured in that same session rather than only from the next launch.
+    /// </summary>
+    private bool _startupFolderNeedsRetry;
+
+    /// <summary>
     /// Records an account's folder list, marks it connected, and persists it so the next launch can
     /// resolve the startup folder and draw the tree before any network call (#516). Every write to
     /// <see cref="_cachedFolders"/> that comes from a live server fetch goes through here.
@@ -211,6 +220,26 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         _cachedFolders[accountId] = folders;
         _connectedAccountIds.Add(accountId);
+
+        // Never let an empty result overwrite a good cache. SaveFoldersAsync is replace-all, so
+        // persisting [] erases the account's folders — and an empty list is reachable from a
+        // SUCCESSFUL call: ProbeOfflineMailService returns one by design, and a server can answer a
+        // LIST with nothing during a partial outage. The in-memory cache still takes the empty value
+        // (this session genuinely has no folders for that account), but the last good copy on disk
+        // survives to be restored at the next launch. A real "this account has no folders at all" is
+        // indistinguishable here and not worth the cost of getting the common case wrong.
+        if (folders.Count == 0)
+        {
+            LogService.Debug($"SetCachedFolders: {accountId} returned no folders — keeping the stored list.");
+            return;
+        }
+
+        // --online never initializes the local store, and the connection string is ReadWriteCreate,
+        // so writing here would create an empty mail.db in the profile and then throw "no such
+        // table: Folder" on every account. Every other store write in this class is guarded the
+        // same way.
+        if (OnlineMode) return;
+
         _localStore.SaveFoldersAsync(accountId, folders).LogFaults("persist folder list");
     }
 
@@ -2264,8 +2293,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 fallbackReason = $"The account for startup folder '{label}' is no longer set up — showing All Mail.";
                 return null;
             }
+            // The trimmed comparison is the fallback, not the rule. config.ini is hand-parsed and
+            // trims every value, so a mailbox legitimately named "Work " (IMAP permits it) comes
+            // back as "Work" and would otherwise never resolve again — the user would see the
+            // fallback notice on every launch with no way to fix it from the UI, since re-picking
+            // writes the same untrimmable value.
             var match = _cachedFolders.TryGetValue(accountId, out var folders)
                 ? folders.FirstOrDefault(f => string.Equals(f.FullName, key, StringComparison.OrdinalIgnoreCase))
+                  ?? folders.FirstOrDefault(f => string.Equals(f.FullName.Trim(), key, StringComparison.OrdinalIgnoreCase))
                 : null;
             if (match == null)
             {
@@ -2323,8 +2358,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             string.Equals(f.FullName, sentinel, StringComparison.Ordinal));
     }
 
-    /// <summary>Every top-level virtual aggregate, in folder-tree order. One list so the startup
-    /// resolver, the folder tree, and the context-menu guard cannot drift apart.</summary>
+    /// <summary>Every top-level virtual aggregate, in folder-tree order. Shared by the startup
+    /// resolver, the context-menu guard, and the Settings picker. (RebuildFolderListFromCache and
+    /// BuildFolderTree still list them separately — worth unifying, but not in #516.)</summary>
     internal static readonly MailFolderModel[] AllVirtualFolders =
     [
         AllMailFolder, AllInboxesFolder, AllDraftsFolder, AllSentFolder,
@@ -2343,7 +2379,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var all = new List<MailMessageSummary>();
         foreach (var vf in view.Folders)
+        {
+            // Legacy views could carry a virtual sentinel in Folders; it names no real folder and
+            // would query the store for a row that cannot exist. Same guard FetchViewFoldersAsync has.
+            if (string.IsNullOrEmpty(vf.FolderFullName) || vf.FolderFullName[0] == '\0') continue;
             all.AddRange(await _localStore.LoadFolderSummariesAsync(vf.AccountId, vf.FolderFullName));
+        }
         return [.. all.OrderByDescending(m => m.Date)];
     }
 
@@ -2485,7 +2526,20 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         // A configured startup folder that no longer resolves must say so. Silently showing All Mail
         // looks like the setting was ignored, and the user has no way to tell which it was.
-        if (fallbackReason != null)
+        //
+        // Unless we simply had nothing to resolve against. On the FIRST launch after upgrading —
+        // exactly when the migration writes a startup folder — the Folder table is still empty,
+        // because nothing has ever persisted it. Same for a fresh --profileDir or a rebuilt mail.db.
+        // Announcing "not found" there would be wrong twice over: it is not missing, and the old
+        // post-connect application (deleted in #516) did honour it in that session. So defer instead
+        // and retry once the folder lists arrive.
+        if (fallbackReason != null && _cachedFolders.Count == 0)
+        {
+            _startupFolderNeedsRetry = true;
+            LogService.Log("InitialLoad: no cached folder list yet — deferring the startup folder " +
+                           "until the first connect completes.");
+        }
+        else if (fallbackReason != null)
         {
             StatusText = fallbackReason;
             Announce(fallbackReason, AnnouncementCategory.Status);
@@ -2494,6 +2548,38 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         ConnectionStatusText = "Connecting…";
         StartPrefetchTopOfFolder();
+    }
+
+    /// <summary>
+    /// Applies the startup folder that <see cref="InitialLoadAsync"/> had to defer because no folder
+    /// list was cached yet (#516). Runs at most once per session, after the connect pass has filled
+    /// the cache. If it still cannot resolve, the folder really is gone and the user is told so —
+    /// the message deferred earlier.
+    /// </summary>
+    private async Task RetryStartupFolderIfDeferredAsync()
+    {
+        if (!_startupFolderNeedsRetry) return;
+        _startupFolderNeedsRetry = false;
+
+        var cfg      = _configService.Load();
+        var resolved = ResolveStartupFolder(cfg, out var fallbackReason);
+        var view     = StartupView(cfg);
+
+        if (view == null && resolved == null)
+        {
+            if (fallbackReason == null) return;      // nothing was configured after all
+            StatusText = fallbackReason;
+            Announce(fallbackReason, AnnouncementCategory.Status);
+            LogService.Log($"StartupFolder retry: {fallbackReason}");
+            return;
+        }
+
+        if (view != null) await ApplyViewAsync(view);
+        else
+        {
+            SelectedFolder = resolved!;
+            await RefreshAsync();
+        }
     }
 
     /// <summary>
@@ -2587,6 +2673,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // post-connect view switch here. Applying it at this point is what produced the All Mail
         // flash: #57 moved it from post-sync to post-connect, which shortened the flash without
         // removing it. #516 moved it to the cached load, which removes it.
+        //
+        // The one exception is the launch where there was no persisted folder list to resolve
+        // against, so InitialLoadAsync could not apply it at all — see _startupFolderNeedsRetry.
+        // Now that the folder lists are in, resolve once. This is the first launch after upgrade,
+        // which is precisely when a migrated setting must be seen to work.
+        await RetryStartupFolderIfDeferredAsync();
 
         StatusText = "Syncing mail…";
         ConnectionStatusText = "Syncing…";
@@ -3463,9 +3555,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // Aggregate/virtual views union multiple folders, so one physical message can arrive as
         // several per-folder copies (notably Gmail: INBOX + All Mail + labels). Collapse them to one
         // representative here (issue #220). Single real-folder views show their own contents as-is.
-        // Note: on the very first cached load (InitialLoadAsync) _cachedFolders is not yet populated,
-        // so ResolveFolderKind returns None and representative *ranking* is neutral (date/name tie-
-        // break) — collapse is still correct; the preferred Inbox representative settles on first fetch.
+        // Note: _cachedFolders is restored from the local store before the first cached load since
+        // #516, so ResolveFolderKind usually has real kinds even at launch and the preferred Inbox
+        // representative is picked correctly straight away. On a profile that has never persisted a
+        // folder list (first run, fresh --profileDir, rebuilt mail.db) it is still empty, ranking is
+        // neutral (date/name tie-break), and the representative settles on the first fetch — collapse
+        // is correct either way.
         if (IsVirtualFolder(SelectedFolder))
         {
             list = MessageDeduplicator.CollapseForAggregate(list, ResolveFolderKind);
@@ -4919,9 +5014,22 @@ public partial class MainViewModel : ObservableObject, IDisposable
         foreach (var (account, folders) in results)
         {
             if (folders == null) continue;
-            if (!_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folders))
+
+            // Capture the previous set BEFORE updating the cache — SetCachedFolders replaces it.
+            var isNew = !_cachedFolders.TryGetValue(account.Id, out var prev) || FolderSetChanged(prev, folders);
+
+            // A successful GetFoldersAsync means this account IS connected — the client pool
+            // connects lazily on demand — so record that regardless of whether the tree needs
+            // rebuilding. Since #516 the folder cache is restored from disk at launch, so an account
+            // that was down at startup and has come back returns a folder set identical to the
+            // persisted one, making isNew false. Marking connected only inside that branch left such
+            // an account absent from _connectedAccountIds for the rest of the session: no IDLE
+            // watcher and so no new-mail notifications, skipped by the sweep and by All Mail,
+            // undercounted in the status bar. F5 used to recover it completely.
+            SetCachedFolders(account.Id, folders);
+
+            if (isNew)
             {
-                SetCachedFolders(account.Id, folders);
                 ApplyAccountStatus(account, folders, "refresh-folder-lists");
                 changed = true;
             }
@@ -5991,9 +6099,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// and the aggregate always shows exactly where Move to Archive puts mail. Accounts whose folder
     /// list has not been cached yet, and accounts with no archive destination, contribute nothing.
     /// Both the fetch and the live-arrival filter read this, so they can never disagree.
+    ///
+    /// <para><paramref name="connectedOnly"/> exists because the two callers want different sets
+    /// since #516. A LIVE fetch must skip accounts that never connected: the client pool connects
+    /// lazily, so including one turns opening All Inboxes into a blocking wait on its connect
+    /// timeout before anything renders — the same hazard the periodic sweep already guards against.
+    /// A CACHE read wants every account whose folders we know, which is exactly what the restored
+    /// cache gives us and why the startup load can render All Inboxes offline at all.</para>
     /// </summary>
     internal IEnumerable<(AccountModel Account, MailFolderModel Folder)> FolderScopedAggregateSources(
-        string fullName)
+        string fullName, bool connectedOnly = false)
     {
         var isArchive = string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal);
         var kind = string.Equals(fullName, AllInboxesFolder.FullName, StringComparison.Ordinal) ? SpecialFolderKind.Inbox
@@ -6006,6 +6121,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         foreach (var account in Accounts)
         {
             if (account.IsShared) continue;   // #31: shared mailboxes are excluded from All-* aggregates (still swept)
+            if (connectedOnly && !_connectedAccountIds.Contains(account.Id)) continue;
             if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
 
             if (isArchive)
@@ -6052,7 +6168,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         try
         {
-            var perAccountTasks = FolderScopedAggregateSources(fullName)
+            // connectedOnly: this is the live-fetch path. An account that never connected would
+            // otherwise be handed to GetMessageSummariesAsync, and the lazy client pool would sit on
+            // its connect timeout inside Task.WhenAll before the view could render.
+            var perAccountTasks = FolderScopedAggregateSources(fullName, connectedOnly: true)
                 .GroupBy(s => s.Account)
                 .Select(g => FetchAccountFoldersAsync(g.Key, g.Select(s => s.Folder).ToList(), ct));
 

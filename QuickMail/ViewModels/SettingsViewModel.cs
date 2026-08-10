@@ -305,17 +305,18 @@ public partial class SettingsViewModel : ObservableObject
 
     // ── Startup (#516) ────────────────────────────────────────────────────────────
 
-    /// <summary>What the View hands back when the user picks a folder: the stored key, the owning
-    /// account (empty for a virtual folder), and the text to show. A plain record so the VM never
-    /// sees a folder-picker or any other UI type.</summary>
-    public sealed record StartupFolderChoice(string Key, string AccountId, string Label);
-
     /// <summary>
     /// Set by the View to show the folder picker and return the chosen folder, or null if the user
     /// cancelled. Same shape as <c>MainViewModel.SaveFolderPathRequested</c>: picking needs a window,
     /// which is the View's job, so the VM asks rather than opens.
+    ///
+    /// <para>Returns the picked <see cref="MailFolderModel"/> — a Models type, so no UI type crosses
+    /// the boundary — and the VM converts it to storage form. The View must not do that conversion:
+    /// it is the same rule <see cref="MainViewModel.SetStartupFolder"/> applies, and a second copy
+    /// in code-behind is a data transformation the MVVM rules put in the VM precisely so the two
+    /// cannot drift.</para>
     /// </summary>
-    public Func<StartupFolderChoice?>? PickStartupFolderRequested { get; set; }
+    public Func<MailFolderModel?>? PickStartupFolderRequested { get; set; }
 
     [ObservableProperty]
     private string _startupFolder = string.Empty;
@@ -335,10 +336,18 @@ public partial class SettingsViewModel : ObservableObject
     [RelayCommand]
     private void ChooseStartupFolder()
     {
-        if (PickStartupFolderRequested?.Invoke() is not { } choice) return;   // cancelled
-        StartupFolder        = choice.Key;
-        StartupFolderAccount = choice.AccountId;
-        StartupFolderLabel   = choice.Label;
+        if (PickStartupFolderRequested?.Invoke() is not { } folder) return;   // cancelled
+
+        // Same rule as MainViewModel.SetStartupFolder, and the same allow-list: a virtual aggregate
+        // is stored without its NUL sentinel prefix (an INI cannot carry one) and with no account,
+        // since it spans them all. A real folder keeps its name and carries its owning account,
+        // because folder names collide across accounts and the pair is what resolves at startup.
+        var isVirtual = MainViewModel.AllVirtualFolders.Any(v =>
+            string.Equals(v.FullName, folder.FullName, StringComparison.Ordinal));
+
+        StartupFolder        = isVirtual ? folder.FullName[1..] : folder.FullName;
+        StartupFolderAccount = isVirtual ? string.Empty : folder.AccountId.ToString();
+        StartupFolderLabel   = folder.DisplayName;
     }
 
     [RelayCommand]

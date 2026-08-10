@@ -61,8 +61,9 @@ public static class StartupFolderMigration
                 vfk.ValueKind == JsonValueKind.String &&
                 !string.IsNullOrWhiteSpace(vfk.GetString()))
             {
-                config.StartupFolder      = vfk.GetString()!;
-                config.StartupFolderLabel = VirtualFolderLabel(config.StartupFolder, name);
+                config.StartupFolder        = vfk.GetString()!;
+                config.StartupFolderAccount = string.Empty;   // a virtual folder spans every account
+                config.StartupFolderLabel   = VirtualFolderLabel(config.StartupFolder, name);
                 return true;
             }
 
@@ -86,8 +87,9 @@ public static class StartupFolderMigration
                 idEl.ValueKind == JsonValueKind.String &&
                 Guid.TryParse(idEl.GetString(), out var id))
             {
-                config.StartupFolder      = $"view:{id}";
-                config.StartupFolderLabel = name;
+                config.StartupFolder        = $"view:{id}";
+                config.StartupFolderAccount = string.Empty;   // a view is not scoped to one account
+                config.StartupFolderLabel   = name;
                 return true;
             }
 
@@ -159,7 +161,21 @@ public static class StartupFolderMigration
             if (!ApplyToConfig(config, File.ReadAllText(path))) return false;
 
             configService.Save(config);
-            viewService.Save(viewService.Load());   // re-serialize without IsDefault
+
+            // Re-serialize through the current model so the retired IsDefault property is dropped
+            // for good. Guarded, because ViewService.Load() swallows every failure and returns an
+            // empty list — a type mismatch on any property, or a transient sharing violation from a
+            // backup agent, would otherwise have us write [] over every saved view the user has,
+            // atomically and silently, on the first launch after upgrade. ApplyToConfig returning
+            // true proves the file held at least one view, so an empty load here is provably a read
+            // failure rather than an empty file. Leaving IsDefault in place costs nothing: the
+            // config gate above already makes the migration one-time.
+            var views = viewService.Load();
+            if (views.Count > 0)
+                viewService.Save(views);
+            else
+                LogService.Log("Startup migration: views.json migrated but re-read as empty — " +
+                               "leaving the file untouched rather than overwriting it.");
             LogService.Log($"Startup migration: default view converted to StartupFolder " +
                            $"'{config.StartupFolder}' ({config.StartupFolderLabel}).");
             return true;

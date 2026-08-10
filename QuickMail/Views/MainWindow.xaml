@@ -249,11 +249,13 @@
                       AutomationProperties.Name="Use Automatic Archive Folder"
                       Click="FolderContextMenu_ClearArchive_Click"/>
             <Separator/>
-            <!-- #516. Mnemonics: N, M, C, A, u and D are taken above, so S and the u in "Start_up". -->
+            <!-- #516. N, M, C, A, U and D are taken by the items above — note U, from "Use A_utomatic
+                 Archive Folder" — leaving S and F. WPF cycles between duplicate access keys instead
+                 of invoking, so a collision here would make the key highlight rather than activate. -->
             <MenuItem Header="Set as _Startup Folder"
                       AutomationProperties.Name="Set as Startup Folder"
                       Click="FolderContextMenu_SetStartupFolder_Click"/>
-            <MenuItem Header="Clear Start_up Folder"
+            <MenuItem Header="Clear Startup _Folder"
                       AutomationProperties.Name="Clear Startup Folder"
                       Click="FolderContextMenu_ClearStartupFolder_Click"/>
             <Separator/>

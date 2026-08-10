@@ -705,8 +705,9 @@ public class ConfigService : IConfigService
         sb.AppendLine("# How much mail to sync at launch.");
         sb.AppendLine("# Values: startupFolder (default) syncs only the folders your startup folder");
         sb.AppendLine("#   covers; inboxes syncs every account's Inbox; all syncs every folder.");
-        sb.AppendLine("# Nothing is skipped permanently under any value — the periodic check still");
-        sb.AppendLine("# visits every folder, and new-mail notifications are unaffected.");
+        sb.AppendLine("# New-mail notifications are unaffected by this setting — inboxes are always");
+        sb.AppendLine("# watched. Other folders are caught up by the periodic check; if");
+        sb.AppendLine("# MailSyncPollMinutes is 0 (off), they are only synced when you open them.");
         sb.AppendLine();
 
         // ── [windowing] ──────────────────────────────────────────────────────────

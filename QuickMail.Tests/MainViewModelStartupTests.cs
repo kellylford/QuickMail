@@ -227,4 +227,46 @@ public class MainViewModelStartupTests
 
         Assert.Equal(MainViewModel.AllInboxesFolder.FullName, vm.SelectedFolder?.FullName);
     }
+
+    [Fact]
+    public async Task OnlineMode_DoesNotWriteFoldersToTheLocalStore()
+    {
+        // --online never initializes the store, and the connection string is ReadWriteCreate, so a
+        // write here would create an empty mail.db in the profile and then throw per account.
+        var (vm, _, store) = MakeVm(onlineMode: true);
+        ((StubLocalStoreService)store).SeededFolders.Clear();
+
+        await vm.InitialLoadAsync();
+
+        Assert.Empty(((StubLocalStoreService)store).SeededFolders);
+    }
+
+    [Fact]
+    public async Task NoPersistedFolders_DefersRatherThanClaimingTheFolderIsMissing()
+    {
+        // The first launch after upgrading is exactly when the migration writes a startup folder,
+        // and exactly when nothing has ever been persisted to resolve it against. Announcing
+        // "not found" there would be wrong: it is not missing, we just cannot see it yet. The
+        // deferred retry runs once the connect pass fills the cache.
+        var store = new StubLocalStoreService();          // no SeededFolders at all
+        var config = new StubConfigService();
+        var cfg = config.Load();
+        cfg.StartupFolder        = "INBOX/Projects";
+        cfg.StartupFolderAccount = WorkId.ToString();
+        cfg.StartupFolderLabel   = "Projects";
+        config.Save(cfg);
+
+        var vm = new MainViewModel(
+            new StubImapMailService(),
+            new AccountsStub(new AccountModel { Id = WorkId, AccountName = "Work" }),
+            new StubCredentialService(), store, new StubOAuthService(), new StubSyncService(),
+            config, new StubCommandRegistry(), new StubViewService(), new StubRuleService(),
+            new StubSmtpService());
+        vm.LoadAccountList();
+
+        await vm.InitialLoadAsync();
+
+        Assert.Equal(MainViewModel.AllMailFolder.FullName, vm.SelectedFolder?.FullName);
+        Assert.DoesNotContain("not found", vm.StatusText, StringComparison.OrdinalIgnoreCase);
+    }
 }

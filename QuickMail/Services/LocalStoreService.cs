@@ -530,12 +530,6 @@ public class LocalStoreService : ILocalStoreService
         await tx.CommitAsync();
     }
 
-    /// <summary>
-    /// Deletes calendar events whose <c>account_id</c> is not among <paramref name="knownAccountIds"/> —
-    /// orphans left behind when an account is removed and re-added (the re-added account gets a new id,
-    /// so the old id's events linger and show as duplicates), or after a cache rebuild. Local events
-    /// (<see cref="Guid.Empty"/>) are always kept. No-op when there are no orphans.
-    /// </summary>
     // ── Folders (#516) ───────────────────────────────────────────────────────────
 
     public async Task SaveFoldersAsync(Guid accountId, IReadOnlyList<MailFolderModel> folders)
@@ -661,6 +655,12 @@ public class LocalStoreService : ILocalStoreService
         LogService.Log($"LocalStoreService: purged folders for {orphans.Count} unknown account(s).");
     }
 
+    /// <summary>
+    /// Deletes calendar events whose <c>account_id</c> is not among <paramref name="knownAccountIds"/> —
+    /// orphans left behind when an account is removed and re-added (the re-added account gets a new id,
+    /// so the old id's events linger and show as duplicates), or after a cache rebuild. Local events
+    /// (<see cref="Guid.Empty"/>) are always kept. No-op when there are no orphans.
+    /// </summary>
     public async Task PurgeCalendarEventsForUnknownAccountsAsync(IReadOnlyCollection<Guid> knownAccountIds)
     {
         await using var conn = await OpenAsync();

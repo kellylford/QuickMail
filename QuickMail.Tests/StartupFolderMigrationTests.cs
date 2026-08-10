@@ -5,6 +5,8 @@
 // could not express the very thing being migrated.
 
 using System;
+using System.Collections.Generic;
+using System.IO;
 using QuickMail.Models;
 using QuickMail.Services;
 using Xunit;
@@ -175,4 +177,53 @@ public class StartupFolderMigrationTests
     [Fact]
     public void ApplyToConfig_RejectsANullConfig()
         => Assert.Throws<ArgumentNullException>(() => StartupFolderMigration.ApplyToConfig(null!, "[]"));
+
+    [Fact]
+    public void VirtualAndViewForms_LeaveNoStaleAccountBehind()
+    {
+        // A stale account id paired with a virtual key would send ResolveStartupFolder down the
+        // real-folder branch, where the key is not a folder name and never resolves.
+        var virtualCfg = new ConfigModel { StartupFolderAccount = WorkAccount };
+        Assert.True(StartupFolderMigration.ApplyToConfig(virtualCfg, Views(VirtualView("AllInboxes"))));
+        Assert.Equal(string.Empty, virtualCfg.StartupFolderAccount);
+
+        var viewCfg = new ConfigModel { StartupFolderAccount = WorkAccount };
+        Assert.True(StartupFolderMigration.ApplyToConfig(viewCfg, Views(MultiFolderView)));
+        Assert.Equal(string.Empty, viewCfg.StartupFolderAccount);
+    }
+
+    /// <summary>Fails every Load, the way ViewService does when views.json cannot be deserialized —
+    /// it swallows the exception and returns an empty list.</summary>
+    private sealed class FailingViewService : IViewService
+    {
+        public int SaveCount { get; private set; }
+        public List<SavedView> Load() => [];              // "read failed", indistinguishable from empty
+        public void Save(List<SavedView> views) => SaveCount++;
+    }
+
+    [Fact]
+    public void AFailedReReadOfViewsJson_DoesNotOverwriteIt()
+    {
+        // ViewService.Load() has a bare catch returning []. Blindly doing Save(Load()) would write
+        // [] over every saved view the user has — atomically, silently, on the first launch after
+        // upgrade. ApplyToConfig succeeding proves the file held at least one view, so an empty
+        // re-read is provably a read failure, not an empty file.
+        var tempDir = Path.Combine(Path.GetTempPath(), $"qm-migrate-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            File.WriteAllText(Path.Combine(tempDir, "views.json"), Views(VirtualView("AllInboxes")));
+            var views = new FailingViewService();
+
+            var migrated = StartupFolderMigration.Run(
+                new ProfileContext(tempDir), new ConfigModel(), new StubConfigService(), views);
+
+            Assert.True(migrated);
+            Assert.Equal(0, views.SaveCount);   // the file was left alone
+        }
+        finally
+        {
+            try { Directory.Delete(tempDir, recursive: true); } catch { }
+        }
+    }
 }

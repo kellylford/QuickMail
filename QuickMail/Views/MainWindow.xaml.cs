@@ -5885,16 +5885,8 @@ public partial class MainWindow : Window
                 vm.StartupFolder,
                 Guid.TryParse(vm.StartupFolderAccount, out var acct) ? acct : null);
             picker.Owner = dialog;
-            if (picker.ShowDialog() != true || picker.SelectedFolder is not { } folder) return null;
-
-            // A virtual aggregate is stored without the NUL sentinel prefix and with no account —
-            // it spans all of them. A real folder carries its owning account, because folder names
-            // collide across accounts and the pair is what resolves at startup.
-            var isVirtual = folder.FullName.Length > 0 && folder.FullName[0] == '\0';
-            return new SettingsViewModel.StartupFolderChoice(
-                isVirtual ? folder.FullName[1..] : folder.FullName,
-                isVirtual ? string.Empty : folder.AccountId.ToString(),
-                folder.DisplayName);
+            // Hand back the folder itself; converting it to storage form is the VM's job.
+            return picker.ShowDialog() == true ? picker.SelectedFolder : null;
         };
 
         if (dialog.ShowDialog() == true)
@@ -6232,6 +6224,10 @@ public partial class MainWindow : Window
             foreach (var (accountId, folders) in _vm.CachedFolders)
             {
                 if (accountScope is { } scope && accountId != scope) continue;
+                // Since #516 the folder cache is restored from disk at launch, so an entry here no
+                // longer implies the account connected. The fail-closed rule below depends on
+                // "couldn't resolve an Inbox" meaning "not connected", so ask directly.
+                if (!_vm.IsAccountReady(accountId)) continue;
                 var inbox = folders.FirstOrDefault(f =>
                     f.Kind == SpecialFolderKind.Inbox ||
                     string.Equals(f.FullName, "INBOX", StringComparison.OrdinalIgnoreCase));
