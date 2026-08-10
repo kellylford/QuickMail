@@ -114,10 +114,17 @@ public static class StartupFolderMigration
                 ? fn.GetString() : null;
             if (string.IsNullOrEmpty(full)) continue;
 
-            Guid.TryParse(
-                f.TryGetProperty("AccountId", out var aid) && aid.ValueKind == JsonValueKind.String
-                    ? aid.GetString() : null,
-                out var accountId);
+            // An unreadable account id falls back to Guid.Empty deliberately: the folder name is
+            // still real, and Guid.Empty is the documented "no owning account" value, which
+            // ResolveStartupFolder treats as unresolvable. So a corrupt entry declines to migrate
+            // rather than migrating to a folder on the wrong account. Written as an explicit
+            // assignment because discarding TryParse's result trips CA1806, and this build treats
+            // analyzer warnings as errors on publish.
+            if (!Guid.TryParse(
+                    f.TryGetProperty("AccountId", out var aid) && aid.ValueKind == JsonValueKind.String
+                        ? aid.GetString() : null,
+                    out var accountId))
+                accountId = Guid.Empty;
 
             var display = f.TryGetProperty("FolderDisplayName", out var dn) && dn.ValueKind == JsonValueKind.String
                 ? dn.GetString() ?? string.Empty : string.Empty;
