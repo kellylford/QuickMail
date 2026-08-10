@@ -2157,7 +2157,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ConnectionStatusText = "Connecting…";
             return;
         }
-        var cached = await _localStore.LoadAllSummariesAsync();
+        var cached = ExcludeSharedMail(await _localStore.LoadAllSummariesAsync()); // #31: All Mail excludes shared
         await ResolveFlagNamesAsync(cached);
         SetMessages(cached);
         StatusText = cached.Count > 0
@@ -2629,8 +2629,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IEnumerable<MailMessageSummary> relevant;
         if (selected.FullName == AllMailFolder.FullName)
         {
-            // Global "All Mail" - accept messages from every account.
-            relevant = incoming;
+            // Global "All Mail" - accept messages from every account except shared mailboxes (#31).
+            relevant = incoming.Where(m => !IsSharedAccountId(m.AccountId));
         }
         else if (TryGetAccountIdFromSentinel(selected.FullName, out var watchedAccountId))
         {
@@ -2639,16 +2639,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else if (selected.FullName == AllFlaggedFolder.FullName)
         {
-            // All Flagged Mail — only accept flagged incoming messages.
-            relevant = incoming.Where(m => m.IsFlagged);
+            // All Flagged Mail — only accept flagged incoming messages (shared mailboxes excluded, #31).
+            relevant = incoming.Where(m => m.IsFlagged && !IsSharedAccountId(m.AccountId));
         }
         else if (selected.FullName == AllWatchedFolder.FullName)
         {
             // Watched Conversations — accept arrivals belonging to a watched conversation. This
             // branch IS the feature: a reply to a watched thread joins the open folder during sync
             // with no user action. It must stay above the real-folder branch below, which would
-            // otherwise never let an aggregate see these messages.
-            relevant = incoming.Where(IsWatchedMessage);
+            // otherwise never let an aggregate see these messages. Shared mailboxes are excluded here
+            // too (#31), so the live path agrees with the cache read in FetchWatchedAsync.
+            relevant = incoming.Where(m => IsWatchedMessage(m) && !IsSharedAccountId(m.AccountId));
         }
         else if (IsFolderScopedAggregate(selected.FullName))
         {
@@ -2664,8 +2665,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         else if (TryGetContactMailFromSentinel(selected.FullName, out var contactAddress, out var contactDirection))
         {
-            // Contact mail results (#370) — only accept messages that still match the address.
-            relevant = incoming.Where(m => MatchesContactAddress(m, contactAddress, contactDirection));
+            // Contact mail results (#370) — only accept messages that still match the address, and
+            // never from a shared mailbox (#31), so the live path agrees with the cache read.
+            relevant = incoming.Where(m =>
+                MatchesContactAddress(m, contactAddress, contactDirection) && !IsSharedAccountId(m.AccountId));
         }
         else if (!selected.IsHeader && selected.AccountId != Guid.Empty)
         {
@@ -3446,7 +3449,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         // per-IP connection limit shared hosting enforces (same rationale as SyncService); accounts
         // on different hosts still connect in parallel.
         var resultsByHost = await Task.WhenAll(
-            Accounts.GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
+            Accounts.Where(a => !a.IsShared)   // #31: shared mailboxes are not connected in PR 1 (no own creds)
+                    .GroupBy(a => a.ImapHost, StringComparer.OrdinalIgnoreCase)
                     .Select(async hostGroup =>
                     {
                         var groupResults = new List<(Guid Id, List<MailFolderModel>? Folders)>();
@@ -3840,12 +3844,16 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                // Placeholder node for accounts that have not yet loaded folders.
+                // Placeholder node for accounts that have not yet loaded folders. A shared mailbox (#31)
+                // stays here through PR 1 (no backend access yet) — a navigable top-level node with no
+                // children — so it must carry the account id + shared flag for the node key and name.
                 roots.Add(new FolderTreeNode
                 {
                     IsHeader = true,
                     Label    = account.AccountLabel,
                     Folder   = null,
+                    AccountId       = account.Id,
+                    IsSharedAccount = account.IsShared,
                 });
             }
         }
@@ -3861,8 +3869,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         MarkDefaultCalendarNodes();
     }
 
-    private static string NodeKey(FolderTreeNode n) =>
-        n.Folder != null ? $"F:{n.Folder.AccountId}:{n.Folder.FullName}" : $"H:{n.Label}";
+    internal static string NodeKey(FolderTreeNode n) =>
+        n.Folder != null ? $"F:{n.Folder.AccountId}:{n.Folder.FullName}"
+        : n.AccountId is { } id ? $"H:{id}:{n.Label}"   // #31: disambiguate same-named account/shared headers
+        : $"H:{n.Label}";
 
     private static IEnumerable<FolderTreeNode> FlattenAllNodes(IEnumerable<FolderTreeNode> nodes)
     {
@@ -4614,7 +4624,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 // ── Phase 1: show cache immediately (same data as InitialLoadAsync) ──
                 // This keeps the view consistent regardless of how many times the user
                 // navigates to All Mail.  The IMAP fetch in Phase 2 adds truly new messages.
-                cached = await _localStore.LoadAllSummariesAsync();
+                cached = ExcludeSharedMail(await _localStore.LoadAllSummariesAsync()); // #31: All Mail excludes shared
                 if (!IsCurrentFolderLoad(loadVersion, AllMailFolder))
                     return;
 
@@ -4637,7 +4647,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 (cached.Any(m => string.IsNullOrWhiteSpace(m.To))
                     || await _localStore.HasSummariesMissingRecipientsAsync());
             var perAccountTasks = Accounts
-                .Where(a => _cachedFolders.ContainsKey(a.Id))
+                .Where(a => _cachedFolders.ContainsKey(a.Id) && !a.IsShared)   // #31: shared excluded from All Mail
                 .Select(account => (OnlineMode || needsRecipientRepair)
                     ? FetchAccountAllFoldersAsync(account, ct)
                     : FetchAccountNewMessagesAsync(account, ct));
@@ -4887,6 +4897,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 all = new List<MailMessageSummary>();
                 foreach (var account in Accounts)
                 {
+                    if (account.IsShared) continue;   // #31: shared excluded from All Watched
                     if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
                     foreach (var folder in folders)
                     {
@@ -4910,7 +4921,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                all = await _localStore.LoadAllSummariesAsync();
+                all = ExcludeSharedMail(await _localStore.LoadAllSummariesAsync()); // #31: aggregate excludes shared
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
@@ -4960,6 +4971,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 all = new List<MailMessageSummary>();
                 foreach (var account in Accounts)
                 {
+                    if (account.IsShared) continue;   // #31: shared excluded from All Flagged
                     if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
                     foreach (var folder in folders)
                     {
@@ -4983,7 +4995,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                all = await _localStore.LoadAllSummariesAsync();
+                all = ExcludeSharedMail(await _localStore.LoadAllSummariesAsync()); // #31: aggregate excludes shared
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
@@ -5071,6 +5083,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 all = new List<MailMessageSummary>();
                 foreach (var account in Accounts)
                 {
+                    if (account.IsShared) continue;   // #31: shared excluded from contact-mail results
                     if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
                     foreach (var folder in folders)
                     {
@@ -5094,7 +5107,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             }
             else
             {
-                all = await _localStore.LoadAllSummariesAsync();
+                all = ExcludeSharedMail(await _localStore.LoadAllSummariesAsync()); // #31: aggregate excludes shared
             }
             if (!IsCurrentFolderLoad(loadVersion, expectedFolder)) return;
 
@@ -5607,6 +5620,27 @@ public partial class MainViewModel : ObservableObject, IDisposable
          string.Equals(fullName, AllTrashFolder.FullName,   StringComparison.Ordinal) ||
          string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal));
 
+    /// <summary>True if the given account id belongs to a shared mailbox (#31) — used to keep shared
+    /// mail out of the global aggregates (All Mail / All Flagged / All Watched / contact-mail) while it
+    /// still gets swept.</summary>
+    internal bool IsSharedAccountId(Guid accountId) =>
+        Accounts.FirstOrDefault(a => a.Id == accountId)?.IsShared == true;
+
+    /// <summary>
+    /// Drops shared-mailbox messages (#31) from a cross-account aggregate read from cache. The global
+    /// aggregates never include shared mail; this is the cache-read counterpart to the
+    /// <see cref="IsSharedAccountId"/> filter the live-arrival path applies in <c>OnFolderSynced</c>, so
+    /// the fetch and the live filter can never disagree (the invariant <see cref="FolderScopedAggregateSources"/>
+    /// documents). Fast-paths the common no-shared-accounts case so All Mail loads pay nothing for it.
+    /// </summary>
+    private List<MailMessageSummary> ExcludeSharedMail(IEnumerable<MailMessageSummary> summaries)
+    {
+        var sharedIds = Accounts.Where(a => a.IsShared).Select(a => a.Id).ToHashSet();
+        return sharedIds.Count == 0
+            ? summaries as List<MailMessageSummary> ?? summaries.ToList()
+            : summaries.Where(m => !sharedIds.Contains(m.AccountId)).ToList();
+    }
+
     /// <summary>
     /// The real (account, folder) pairs a folder-scoped aggregate spans. All Inboxes / Drafts / Sent
     /// / Trash match on <see cref="SpecialFolderKind"/>; All Archive resolves each account's archive
@@ -5615,7 +5649,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     /// list has not been cached yet, and accounts with no archive destination, contribute nothing.
     /// Both the fetch and the live-arrival filter read this, so they can never disagree.
     /// </summary>
-    private IEnumerable<(AccountModel Account, MailFolderModel Folder)> FolderScopedAggregateSources(
+    internal IEnumerable<(AccountModel Account, MailFolderModel Folder)> FolderScopedAggregateSources(
         string fullName)
     {
         var isArchive = string.Equals(fullName, AllArchiveFolder.FullName, StringComparison.Ordinal);
@@ -5628,6 +5662,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         foreach (var account in Accounts)
         {
+            if (account.IsShared) continue;   // #31: shared mailboxes are excluded from All-* aggregates (still swept)
             if (!_cachedFolders.TryGetValue(account.Id, out var folders)) continue;
 
             if (isArchive)
@@ -6769,18 +6804,31 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (account == null) return;
 
-        if (ConfirmationRequested?.Invoke(
-            $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected.",
-            "Remove Account") != true) return;
+        // #31: a parent's shared mailboxes have no independent existence — remove them with it, naming
+        // them in the confirmation, exactly as the Account Manager does (AccountManagerViewModel uses the
+        // same AccountModel.SharedChildrenOf helper). Without this, deleting a parent here left orphaned
+        // shared accounts whose ParentAccountId points at nothing — unconnectable and unrepairable.
+        var sharedChildren = AccountModel.SharedChildrenOf(account, Accounts);
+        var prompt = sharedChildren.Count == 0
+            ? $"Remove the account '{account.AccountLabel}'? This only removes it from QuickMail — your mail on the server is not affected."
+            : $"Removing '{account.AccountLabel}' will also remove its shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}: "
+              + $"{string.Join(", ", sharedChildren.Select(c => c.AccountLabel))}. This only removes them from QuickMail — your mail on the server is not affected.";
+        // Fail closed: an unwired or declined confirmation removes nothing.
+        if (ConfirmationRequested?.Invoke(prompt, "Remove Account") != true) return;
 
-        _credentials.DeletePassword(account.Id);
-        Accounts.Remove(account);
+        var removed = new List<AccountModel> { account };
+        removed.AddRange(sharedChildren);
+
+        foreach (var a in removed)
+        {
+            _credentials.DeletePassword(a.Id);
+            Accounts.Remove(a);
+            _cachedFolders.Remove(a.Id);
+        }
         _accountService.SaveAccounts([.. Accounts]);
-
-        _cachedFolders.Remove(account.Id);
         RebuildFolderListFromCache();
 
-        if (SelectedAccount?.Id == account.Id)
+        if (SelectedAccount != null && removed.Any(a => a.Id == SelectedAccount.Id))
         {
             SelectedAccount  = Accounts.FirstOrDefault();
             SelectedFolder   = AllMailFolder;
@@ -6788,21 +6836,30 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         var config = _configService.Load();
-        if (config.Accounts.Remove(account.Id))
-            _configService.Save(config);
+        var configChanged = false;
+        foreach (var a in removed) configChanged |= config.Accounts.Remove(a.Id);
+        if (configChanged) _configService.Save(config);
 
         StatusText = $"Account '{account.AccountLabel}' removed. Cleaning up local data…";
 
-        try   { await _localStore.DeleteAccountDataAsync(account.Id); }
-        catch (Exception ex) { LogService.Log($"DeleteAccount: failed to purge mail.db — {ex.Message}"); }
-
-        if (account.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
+        foreach (var a in removed)
         {
-            try   { await _oauthService.SignOutAsync(account); }
-            catch (Exception ex) { LogService.Log($"DeleteAccount: failed OAuth sign-out — {ex.Message}"); }
+            try   { await _localStore.DeleteAccountDataAsync(a.Id); }
+            catch (Exception ex) { LogService.Log($"DeleteAccount: failed to purge mail.db for {a.AccountLabel} — {ex.Message}"); }
+
+            // A shared child inherits the parent's AuthType, so it enters this block too; SignOutAsync
+            // matches the MSAL cache by Username (the shared address, never the parent's), so it resolves
+            // to no account and is a harmless no-op — the parent's token is not touched by the child.
+            if (a.AuthType is AuthType.OAuth2Microsoft or AuthType.OAuth2Google)
+            {
+                try   { await _oauthService.SignOutAsync(a); }
+                catch (Exception ex) { LogService.Log($"DeleteAccount: failed OAuth sign-out for {a.AccountLabel} — {ex.Message}"); }
+            }
         }
 
-        StatusText = $"Account '{account.AccountLabel}' removed.";
+        StatusText = sharedChildren.Count == 0
+            ? $"Account '{account.AccountLabel}' removed."
+            : $"Account '{account.AccountLabel}' removed, along with {sharedChildren.Count} shared mailbox{(sharedChildren.Count == 1 ? "" : "es")}.";
         ConnectionStatusText = Accounts.Count == 0 ? "Offline" : $"{Accounts.Count} account(s) connected";
     }
 
@@ -7747,7 +7804,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         IEnumerable<AccountModel> accounts,
         Func<Guid, bool> isBackendConnected,
         Func<Guid, bool> hasCachedFolders)
-        => accounts.Where(a => !isBackendConnected(a.Id) || !hasCachedFolders(a.Id)).ToList();
+        // #31: a shared mailbox has no credentials of its own — it reads through its parent's token
+        // (from PR 2). PR 1 never connects it: it's a navigable, empty top-level node until then.
+        => accounts.Where(a => !a.IsShared && (!isBackendConnected(a.Id) || !hasCachedFolders(a.Id))).ToList();
 
     public void RefreshAccountList()
     {
