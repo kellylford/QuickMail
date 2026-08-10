@@ -451,6 +451,57 @@ public partial class FolderPickerWindow : Window
             useTreeView: true);
     }
 
+    /// <summary>
+    /// The picker for Settings → Startup (#516). A tree, like the other destination pickers, because
+    /// the user is choosing a folder they already know from the main window's folder tree.
+    ///
+    /// <para>Deliberately <b>unscoped</b>, unlike <see cref="ForFolderMoveCopy"/> and
+    /// <see cref="ForRuleTarget"/>. Those two scope to one account because their backends act by
+    /// folder <i>name</i> over that account's connection, so offering another account's "Archive"
+    /// silently operates on the wrong mailbox. A startup folder does the opposite: it is one global
+    /// choice across every account, stored with its owning account id, and resolved by that pair. So
+    /// the account-collision hazard does not apply, and scoping would make most of the tree
+    /// unreachable.</para>
+    ///
+    /// <para><paramref name="virtualFolders"/> carries the aggregates — All Inboxes, All Mail and the
+    /// rest — because "open me in All Inboxes" is the most-requested form of this setting, and they
+    /// are legitimate startup destinations even though no other destination picker offers them.</para>
+    ///
+    /// <para>Opens on the current choice: <paramref name="currentAccountId"/> plus
+    /// <paramref name="currentKey"/> for a real folder, or the matching aggregate for a virtual one.
+    /// A picker must not open with nothing selected — <see cref="SelectOpeningNode"/> stands in the
+    /// first real folder when there is no current choice to land on.</para>
+    /// </summary>
+    public static FolderPickerWindow ForStartupFolder(
+        IEnumerable<AccountModel> accounts,
+        IReadOnlyDictionary<Guid, List<MailFolderModel>> cachedFolders,
+        IEnumerable<MailFolderModel> virtualFolders,
+        string? currentKey,
+        Guid? currentAccountId)
+    {
+        var virtualList = virtualFolders?.ToList() ?? [];
+
+        MailFolderModel? initial = null;
+        if (!string.IsNullOrEmpty(currentKey))
+        {
+            initial = currentAccountId is Guid acct && acct != Guid.Empty
+                ? (cachedFolders.TryGetValue(acct, out var owned)
+                    ? owned.FirstOrDefault(f => string.Equals(f.FullName, currentKey, StringComparison.Ordinal))
+                    : null)
+                // A virtual key is stored without the NUL sentinel prefix; the aggregates carry it.
+                : virtualList.FirstOrDefault(f =>
+                    string.Equals(f.FullName, "\x00" + currentKey, StringComparison.Ordinal));
+        }
+
+        return new FolderPickerWindow(
+            accounts,
+            cachedFolders,
+            virtualFolders: virtualList,
+            title: "Choose Startup Folder",
+            initialFolder: initial,
+            useTreeView: true);
+    }
+
     private static bool IsInbox(MailFolderModel folder) =>
         folder.Kind == SpecialFolderKind.Inbox ||
         folder.FullName.Equals("INBOX", StringComparison.OrdinalIgnoreCase);

@@ -5873,6 +5873,30 @@ public partial class MainWindow : Window
         var vm = new SettingsViewModel(_configService, _registry, _themeService, fontNames,
             (Application.Current as App)?.ScreenshotCapture);
         var dialog = new SettingsDialog(vm) { Owner = this };
+
+        // Picking a startup folder needs a window, which is the View's job — the VM asks and gets a
+        // plain record back (#516). Wired here rather than in SettingsDialog because this is where
+        // the accounts and the folder cache live. The picker is a ShowDialog over the Settings
+        // dialog, which hosts no WebView2, so the modal-nesting rule does not bite.
+        vm.PickStartupFolderRequested = () =>
+        {
+            var picker = FolderPickerWindow.ForStartupFolder(
+                _vm.Accounts, _vm.CachedFolders, MainViewModel.AllVirtualFolders,
+                vm.StartupFolder,
+                Guid.TryParse(vm.StartupFolderAccount, out var acct) ? acct : null);
+            picker.Owner = dialog;
+            if (picker.ShowDialog() != true || picker.SelectedFolder is not { } folder) return null;
+
+            // A virtual aggregate is stored without the NUL sentinel prefix and with no account —
+            // it spans all of them. A real folder carries its owning account, because folder names
+            // collide across accounts and the pair is what resolves at startup.
+            var isVirtual = folder.FullName.Length > 0 && folder.FullName[0] == '\0';
+            return new SettingsViewModel.StartupFolderChoice(
+                isVirtual ? folder.FullName[1..] : folder.FullName,
+                isVirtual ? string.Empty : folder.AccountId.ToString(),
+                folder.DisplayName);
+        };
+
         if (dialog.ShowDialog() == true)
         {
             // The dialog's message loop is dead here, so ApplySettings may safely

@@ -22,6 +22,7 @@ public class RadioGroupWiringTests
         { "SettingsDialog.xaml",    "ListDensity" },
         { "SettingsDialog.xaml",    "LogFormat" },
         { "SettingsDialog.xaml",    "SpellingSuggestionsVerbosity" },
+        { "SettingsDialog.xaml",    "StartupSyncScope" },
         { "EventEditorWindow.xaml", "EditScope" },
     };
 

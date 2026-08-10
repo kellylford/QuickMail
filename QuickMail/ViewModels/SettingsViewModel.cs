@@ -303,6 +303,76 @@ public partial class SettingsViewModel : ObservableObject
         set { if (value) LogFormat = "timeFirst"; }
     }
 
+    // ── Startup (#516) ────────────────────────────────────────────────────────────
+
+    /// <summary>What the View hands back when the user picks a folder: the stored key, the owning
+    /// account (empty for a virtual folder), and the text to show. A plain record so the VM never
+    /// sees a folder-picker or any other UI type.</summary>
+    public sealed record StartupFolderChoice(string Key, string AccountId, string Label);
+
+    /// <summary>
+    /// Set by the View to show the folder picker and return the chosen folder, or null if the user
+    /// cancelled. Same shape as <c>MainViewModel.SaveFolderPathRequested</c>: picking needs a window,
+    /// which is the View's job, so the VM asks rather than opens.
+    /// </summary>
+    public Func<StartupFolderChoice?>? PickStartupFolderRequested { get; set; }
+
+    [ObservableProperty]
+    private string _startupFolder = string.Empty;
+
+    [ObservableProperty]
+    private string _startupFolderAccount = string.Empty;
+
+    /// <summary>Read-only text of the current choice. "All Mail" stands for "nothing configured",
+    /// which is what an empty <see cref="StartupFolder"/> means and what the app does anyway.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StartupFolderDisplay))]
+    private string _startupFolderLabel = string.Empty;
+
+    public string StartupFolderDisplay =>
+        string.IsNullOrWhiteSpace(StartupFolderLabel) ? "All Mail" : StartupFolderLabel;
+
+    [RelayCommand]
+    private void ChooseStartupFolder()
+    {
+        if (PickStartupFolderRequested?.Invoke() is not { } choice) return;   // cancelled
+        StartupFolder        = choice.Key;
+        StartupFolderAccount = choice.AccountId;
+        StartupFolderLabel   = choice.Label;
+    }
+
+    [RelayCommand]
+    private void ClearStartupFolder()
+    {
+        StartupFolder        = string.Empty;
+        StartupFolderAccount = string.Empty;
+        StartupFolderLabel   = string.Empty;
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStartupSyncScopeStartupFolder))]
+    [NotifyPropertyChangedFor(nameof(IsStartupSyncScopeInboxes))]
+    [NotifyPropertyChangedFor(nameof(IsStartupSyncScopeAll))]
+    private string _startupSyncScope = ConfigModel.StartupSyncScopeStartupFolder;
+
+    public bool IsStartupSyncScopeStartupFolder
+    {
+        get => StartupSyncScope == ConfigModel.StartupSyncScopeStartupFolder;
+        set { if (value) StartupSyncScope = ConfigModel.StartupSyncScopeStartupFolder; }
+    }
+
+    public bool IsStartupSyncScopeInboxes
+    {
+        get => StartupSyncScope == ConfigModel.StartupSyncScopeInboxes;
+        set { if (value) StartupSyncScope = ConfigModel.StartupSyncScopeInboxes; }
+    }
+
+    public bool IsStartupSyncScopeAll
+    {
+        get => StartupSyncScope == ConfigModel.StartupSyncScopeAll;
+        set { if (value) StartupSyncScope = ConfigModel.StartupSyncScopeAll; }
+    }
+
     public ObservableCollection<HotkeyRowViewModel> HotkeyRows { get; } = [];
 
     [ObservableProperty]
@@ -385,6 +455,10 @@ public partial class SettingsViewModel : ObservableObject
             _                           => "plain",
         };
         LogFormat                        = cfg.LogFormat;
+        StartupFolder                    = cfg.StartupFolder;
+        StartupFolderAccount             = cfg.StartupFolderAccount;
+        StartupFolderLabel               = cfg.StartupFolderLabel;
+        StartupSyncScope                 = ConfigModel.ParseStartupSyncScope(cfg.StartupSyncScope);
         EnableLogging                    = cfg.EnableLogging;
         ConnectionDiagnostics            = cfg.ConnectionDiagnostics;
         MessageOpenMode = cfg.Windowing.MessageOpenMode switch
@@ -485,6 +559,10 @@ public partial class SettingsViewModel : ObservableObject
             _          => Models.ComposeMode.PlainText,
         };
         cfg.LogFormat                        = LogFormat;
+        cfg.StartupFolder                    = StartupFolder;
+        cfg.StartupFolderAccount             = StartupFolderAccount;
+        cfg.StartupFolderLabel               = StartupFolderLabel;
+        cfg.StartupSyncScope                 = StartupSyncScope;
         cfg.EnableLogging                    = EnableLogging;
         cfg.ConnectionDiagnostics            = ConnectionDiagnostics;
         cfg.Windowing.MessageOpenMode = MessageOpenMode switch
