@@ -143,24 +143,26 @@ public class ViewManagerViewModelTests
     [Fact]
     public void SelectingAView_PopulatesEditFields()
     {
-        var view = new SavedView { Name = "Work Inbox", IsDefault = true };
+        var view = new SavedView { Name = "Work Inbox", Hotkey = "Ctrl+1", DaysOfMail = 7 };
         var vm   = MakeVm(views: [view], selectedView: view);
 
         Assert.Equal("Work Inbox", vm.EditName);
-        Assert.True(vm.EditIsDefault);
+        Assert.Equal("7", vm.EditDaysOfMail);
+        Assert.False(vm.EditUnlimitedDays);
     }
 
     [Fact]
     public void ClearingSelection_ResetsEditFields()
     {
-        var view = new SavedView { Name = "Work Inbox", IsDefault = true };
+        var view = new SavedView { Name = "Work Inbox", Hotkey = "Ctrl+1", DaysOfMail = 7 };
         var vm   = MakeVm(views: [view], selectedView: view);
 
         vm.SelectedView = null;
 
         Assert.Equal(string.Empty, vm.EditName);
         Assert.Equal(string.Empty, vm.EditHotkey);
-        Assert.False(vm.EditIsDefault);
+        Assert.Equal(string.Empty, vm.EditDaysOfMail);
+        Assert.True(vm.EditUnlimitedDays);
     }
 
     // ── Commands ──────────────────────────────────────────────────────────────────────

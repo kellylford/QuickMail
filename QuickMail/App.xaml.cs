@@ -411,6 +411,11 @@ public partial class App : Application
             commandRegistry.ApplyUserOverrides(startupCfg.CustomHotkeys);
 
             var viewService = new ViewService(profile);
+
+            // One-time: convert an old "default view (applied on startup)" into the startup folder
+            // setting that replaced it (#516). No-ops once a startup folder is configured, and
+            // rewrites views.json so the retired IsDefault flag cannot come back.
+            StartupFolderMigration.Run(profile, startupCfg, configService, viewService);
             var watchService = new WatchService(profile);
             var rowLayoutService = new RowLayoutService(profile, configService);
             var flagService = new FlagService(profile, configService, localStore, effectiveMail);
