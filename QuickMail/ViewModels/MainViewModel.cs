@@ -386,6 +386,70 @@ public partial class MainViewModel : ObservableObject, IDisposable
         return "Default calendar cleared. New appointments will start on Local Calendar.";
     }
 
+    /// <summary>
+    /// Makes the given folder-tree node the startup folder (#516). Returns the sentence the View
+    /// reports — status bar plus a Result announcement, the pairing every folder context-menu
+    /// outcome uses.
+    ///
+    /// <para>Unlike the move/copy guard this accepts a top-level virtual aggregate: "open me in All
+    /// Inboxes" is the single most-requested form of this setting. What it must still reject is
+    /// anything that is not a place mail lives — account headers, calendar nodes, and the
+    /// per-account All Mail sentinels — and it says why rather than doing nothing, because a menu
+    /// item that silently no-ops is the dead end #250 was about.</para>
+    /// </summary>
+    public string SetStartupFolder(FolderTreeNode? node)
+    {
+        if (node is null || node.IsHeader || node.Folder is not { } folder)
+            return "Select a folder in the folder tree first.";
+
+        if (IsCalendarFolderName(folder.FullName))
+            return $"'{node.Label}' is a calendar, not a mail folder, so QuickMail cannot start there.";
+
+        var isVirtual = AllVirtualFolders.Any(v =>
+            string.Equals(v.FullName, folder.FullName, StringComparison.Ordinal));
+
+        if (!isVirtual &&
+            (folder.AccountId == Guid.Empty || folder.FullName.Length == 0 || folder.FullName[0] == '\0'))
+            return $"'{node.Label}' is a view, not a folder, so it cannot be the startup folder.";
+
+        var cfg = _configService.Load();
+        if (isVirtual)
+        {
+            // Stored without the NUL sentinel prefix — an INI file cannot carry one.
+            cfg.StartupFolder        = folder.FullName[1..];
+            cfg.StartupFolderAccount = string.Empty;
+        }
+        else
+        {
+            cfg.StartupFolder        = folder.FullName;
+            cfg.StartupFolderAccount = folder.AccountId.ToString();
+        }
+        cfg.StartupFolderLabel = folder.DisplayName;
+        _configService.Save(cfg);
+
+        return $"QuickMail will open in {folder.DisplayName}.";
+    }
+
+    /// <summary>
+    /// Drops the startup folder, so QuickMail opens in All Mail again. Returns the sentence the
+    /// View reports.
+    /// </summary>
+    public string ClearStartupFolder()
+    {
+        var cfg = _configService.Load();
+        if (string.IsNullOrEmpty(cfg.StartupFolder))
+            return "No startup folder is set. QuickMail already opens in All Mail.";
+
+        var previous = string.IsNullOrWhiteSpace(cfg.StartupFolderLabel)
+            ? cfg.StartupFolder : cfg.StartupFolderLabel;
+        cfg.StartupFolder        = string.Empty;
+        cfg.StartupFolderAccount = string.Empty;
+        cfg.StartupFolderLabel   = string.Empty;
+        _configService.Save(cfg);
+
+        return $"Startup folder '{previous}' cleared. QuickMail will open in All Mail.";
+    }
+
     private void PersistDefaultCalendar()
     {
         var cfg = _configService.Load();

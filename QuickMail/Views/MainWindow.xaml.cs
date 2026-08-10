@@ -1299,6 +1299,18 @@ public partial class MainWindow : Window
             execute: () => Report(_vm.ClearDefaultCalendar()),
             isAvailable: () => _vm.CalendarVm != null));
 
+        // ── Startup folder (#516) ──
+        // No default key: the folder-tree context menu and Settings > Startup are the primary
+        // entry points. Registered so both are reachable — and rebindable — from the palette.
+        _registry.Register(new CommandDefinition(
+            id: "folder.setStartupFolder", category: "Mail", title: "Set as Startup Folder",
+            execute: SetStartupFolderFromSelection,
+            isAvailable: () => FolderList.IsKeyboardFocusWithin && FolderList.SelectedItem != null));
+
+        _registry.Register(new CommandDefinition(
+            id: "folder.clearStartupFolder", category: "Mail", title: "Clear Startup Folder",
+            execute: () => Report(_vm.ClearStartupFolder())));
+
         // ── Respond to a pending invitation (Enter opens the menu; these are the palette entries) ──
         // No default key: Enter (calendar.openSourceMessage) shows the response menu, which is the
         // primary entry point. These keep the actions discoverable and rebindable in the palette.
@@ -5583,6 +5595,19 @@ public partial class MainWindow : Window
             category: AnnouncementCategory.Result);
         await reload;
     }
+
+    // ── Startup folder (#516) ────────────────────────────────────────────────
+
+    private void FolderContextMenu_SetStartupFolder_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.SetStartupFolder(GetContextMenuFolderNode(sender)));
+
+    private void FolderContextMenu_ClearStartupFolder_Click(object sender, RoutedEventArgs e)
+        => Report(_vm.ClearStartupFolder());
+
+    // Selection-based twins. The context menu must never be the only way to reach an action
+    // (issue #250) — these are what the command palette and any user-assigned hotkey invoke.
+    private void SetStartupFolderFromSelection()
+        => Report(_vm.SetStartupFolder(FolderList.SelectedItem as FolderTreeNode));
 
     // ── Calendar context menu handlers (issue #497) ──────────────────────────
 
